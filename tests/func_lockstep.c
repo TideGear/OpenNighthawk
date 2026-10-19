@@ -573,6 +573,69 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0xCE01, 0xCE01, 0x0054 },
+    { "VGAME.EXE", 0xCB77, 0xCB77, 0x001E },
+    { "VGAME.EXE", 0xCA0A, 0xCA0A, 0x0046 },
+    { "VGAME.EXE", 0xCE5D, 0xCE5D, 0x0002 },
+    { "VGAME.EXE", 0xCE55, 0xCE55, 0x0008 },
+    { "VGAME.EXE", 0xCDF3, 0xCDF3, 0x000E },
+    { "VGAME.EXE", 0xCDE9, 0xCDE9, 0x000A },
+    { "VGAME.EXE", 0xCDDB, 0xCDDB, 0x000E },
+    { "VGAME.EXE", 0xCDD6, 0xCDD6, 0x0005 },
+    { "VGAME.EXE", 0xCDCB, 0xCDCB, 0x000B },
+    { "VGAME.EXE", 0xCDB8, 0xCDB8, 0x0013 },
+    { "VGAME.EXE", 0xCCFB, 0xCCFB, 0x0009 },
+    { "VGAME.EXE", 0xCCF2, 0xCCF2, 0x0009 },
+    { "VGAME.EXE", 0xCCE9, 0xCCE9, 0x0009 },
+    { "VGAME.EXE", 0xCCE0, 0xCCE0, 0x0009 },
+    { "VGAME.EXE", 0xCCD7, 0xCCD7, 0x0009 },
+    { "VGAME.EXE", 0xCCCE, 0xCCCE, 0x0009 },
+    { "VGAME.EXE", 0xCC93, 0xCC93, 0x0049 },
+    { "VGAME.EXE", 0xCC4C, 0xCC4C, 0x0047 },
+    { "VGAME.EXE", 0xCC25, 0xCC25, 0x0027 },
+    { "VGAME.EXE", 0xCC20, 0xCC20, 0x0005 },
+    { "VGAME.EXE", 0xCC19, 0xCC19, 0x0007 },
+    { "VGAME.EXE", 0xCC12, 0xCC12, 0x0007 },
+    { "VGAME.EXE", 0xCC0B, 0xCC0B, 0x0007 },
+    { "VGAME.EXE", 0xCC02, 0xCC02, 0x0009 },
+    { "VGAME.EXE", 0xCBF9, 0xCBF9, 0x0009 },
+    { "VGAME.EXE", 0xCBF0, 0xCBF0, 0x0009 },
+    { "VGAME.EXE", 0xCBE7, 0xCBE7, 0x0009 },
+    { "VGAME.EXE", 0xCBDE, 0xCBDE, 0x0009 },
+    { "VGAME.EXE", 0xCBD5, 0xCBD5, 0x0009 },
+    { "VGAME.EXE", 0xCBBE, 0xCBBE, 0x0017 },
+    { "VGAME.EXE", 0xCBA8, 0xCBA8, 0x0016 },
+    { "VGAME.EXE", 0xCB95, 0xCB95, 0x0013 },
+    { "VGAME.EXE", 0xCB42, 0xCB42, 0x0035 },
+    { "VGAME.EXE", 0xCB27, 0xCB27, 0x001B },
+    { "VGAME.EXE", 0xCAEA, 0xCAEA, 0x003D },
+    { "VGAME.EXE", 0xCAE4, 0xCAE4, 0x0006 },
+    { "VGAME.EXE", 0xCAC7, 0xCAC7, 0x001D },
+    { "VGAME.EXE", 0xCA8E, 0xCA8E, 0x0039 },
+    { "VGAME.EXE", 0xCA50, 0xCA50, 0x003E },
+    { "VGAME.EXE", 0xC9DE, 0xC9DE, 0x002C },
+    { "VGAME.EXE", 0xC9D6, 0xC9D6, 0x0008 },
+    { "VGAME.EXE", 0xC9CE, 0xC9CE, 0x0008 },
+    { "VGAME.EXE", 0xC9C6, 0xC9C6, 0x0008 },
+    { "VGAME.EXE", 0xC9BE, 0xC9BE, 0x0008 },
+    { "VGAME.EXE", 0xC993, 0xC993, 0x001B },
+    { "VGAME.EXE", 0xC977, 0xC977, 0x0013 },
+    { "VGAME.EXE", 0xC973, 0xC973, 0x0004 },
+    { "VGAME.EXE", 0xC96F, 0xC96F, 0x0004 },
+    { "VGAME.EXE", 0xC968, 0xC968, 0x0007 },
+    { "VGAME.EXE", 0xC961, 0xC961, 0x0007 },
+    { "VGAME.EXE", 0xC944, 0xC944, 0x001D },
+    { "VGAME.EXE", 0xC93F, 0xC93F, 0x0005 },
+    { "VGAME.EXE", 0xC93A, 0xC93A, 0x0005 },
+    { "VGAME.EXE", 0xC8E6, 0xC8E6, 0x0014 },
+    { "VGAME.EXE", 0xC8CA, 0xC8CA, 0x001C },
+    { "START.EXE", 0x7611, 0x7611, 0x00AF },
+    { "START.EXE", 0x9520, 0x9520, 0x007E },
+    { "END.EXE", 0x3E61, 0x3E61, 0x00E3 },
+    { "END.EXE", 0x519E, 0x519E, 0x007E },
+    { "END.EXE", 0x3BBF, 0x3BBF, 0x0035 },
+    { "END.EXE", 0x0977, 0x0977, 0x00F1 },
+    { "VGAME.EXE", 0xCD04, 0xCD04, 0x007A },
     { "START.EXE", 0x11DB, 0x11DB, 0x012D },
     { "START.EXE", 0x1C2F, 0x1C2F, 0x0310 },
     { "VGAME.EXE", 0x93E9, 0x93E9, 0x00C4 },
@@ -782,6 +845,8 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "END.EXE", 0x5096, 0x5096, 0x0410 },      /* ... END 0x05482-0x054A3 */
     { "END.EXE", 0x5825, 0x5825, 0x01D3 },      /* "%s" length arm and the returning field output at 59F7 */
     { "END.EXE", 0x5987, 0x568B, 0x03F7 }, /* integer conversion and its returning scan thunk */
+    { "VGAME.EXE", 0xCC93, 0xCC85, 0x0049 },    /* the shared store tail CC85..CC90 lies below the entry: last match wins */
+    { "END.EXE", 0x0977, 0x0894, 0x00F1 },    /* the icon arms 0894..0976 lie below the dispatcher entry: last match wins */
 };
 static uint16_t g_from, g_span = 0x300; /* the routine under test's code: from g_from, g_span bytes */
 
@@ -866,6 +931,7 @@ static const struct { const char *module; uint16_t seg, lo, hi; } SHARED_ENDINGS
     { "VGAME.EXE", 0x0000, 0xF542, 0xF5A2 },
     { "PLAYER.EXE", 0x0000, 0x1F70, 0x1FD0 },
     { "MPS_LOGO.EXE", 0x0146, 0x1A70, 0x1AD0 },
+    { "END.EXE", 0x0000, 0x0A97, 0x0A98 },
 };
 static uint16_t g_end_lo[4], g_end_hi[4];   /* the routine's module's shared code */
 static int g_nend;
@@ -1051,6 +1117,69 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0x0000, 0x93E9, 0x00C4, 75, 75, "redraw the armament panel: background, then each station's count and rack name" },
     { "START.EXE", 0x0000, 0x1C2F, 0x0310, 303, 303, "info popup text of a briefing-map airbase or radar site" },
     { "START.EXE", 0x0000, 0x11DB, 0x012D, 127, 127, "briefing-map hover: relight the palette entry of the item under the pointer, help line and site popup" },
+    { "VGAME.EXE", 0x0000, 0xCD04, 0x007A, 46, 46, "key dispatcher arm: eject (Shift+F10), sounds, survival test, sortie record and seat position" },
+    { "END.EXE", 0x0000, 0x0977, 0x00F1, 71, 71, "icon placement: choose the icon frame from the kind, through the jump table at 0985 and every arm" },
+    { "END.EXE", 0x0000, 0x3BBF, 0x0035, 22, 22, "the captured-pilot debrief page: picture, sound, text colours, continue prompt" },
+    { "END.EXE", 0x0000, 0x519E, 0x007E, 52, 52, "call software interrupt n with register structures (int86)" },
+    { "END.EXE", 0x0000, 0x3E61, 0x00E3, 102, 102, "Alt+Q quit confirmation panel: Y quits END, any other key restores the screen" },
+    { "START.EXE", 0x0000, 0x9520, 0x007E, 52, 52, "int86: call a software interrupt through registers held in a record" },
+    { "START.EXE", 0x0000, 0x7611, 0x00AF, 82, 82, "Alt+Q quit confirmation panel (Y quits, any other key restores the screen)" },
+    { "VGAME.EXE", 0x0000, 0xC8CA, 0x001C, 11, 11, "key dispatcher entry: frame, scratch words, no key to the tail or the arm chooser" },
+    { "VGAME.EXE", 0x0000, 0xC8E6, 0x0014, 5, 5, "key dispatcher arm: n, the display flag toggle" },
+    { "VGAME.EXE", 0x0000, 0xC93A, 0x0005, 2, 2, "key dispatcher arm: z, zoom the view" },
+    { "VGAME.EXE", 0x0000, 0xC93F, 0x0005, 2, 2, "key dispatcher arm: x, unzoom the view" },
+    { "VGAME.EXE", 0x0000, 0xC944, 0x001D, 12, 12, "key dispatcher arm: 4, the jammer switch and its lamp" },
+    { "VGAME.EXE", 0x0000, 0xC961, 0x0007, 2, 2, "key dispatcher arm: 3, the infrared jammer switch" },
+    { "VGAME.EXE", 0x0000, 0xC968, 0x0007, 3, 3, "key dispatcher arm: 1, release a countermeasure of kind 1" },
+    { "VGAME.EXE", 0x0000, 0xC96F, 0x0004, 2, 2, "key dispatcher arm: 2, release a countermeasure of kind 2" },
+    { "VGAME.EXE", 0x0000, 0xC973, 0x0004, 2, 2, "key dispatcher arm: 5, release a countermeasure of kind 3" },
+    { "VGAME.EXE", 0x0000, 0xC977, 0x0013, 6, 6, "key dispatcher arm: 6, the landing gear command" },
+    { "VGAME.EXE", 0x0000, 0xC993, 0x001B, 9, 9, "key dispatcher arm: 9, the flaps switch and its cockpit element" },
+    { "VGAME.EXE", 0x0000, 0xC9BE, 0x0008, 2, 2, "key dispatcher arm: Alt-A, the scene detail master switch" },
+    { "VGAME.EXE", 0x0000, 0xC9C6, 0x0008, 2, 2, "key dispatcher arm: Alt-H, a display option toggle" },
+    { "VGAME.EXE", 0x0000, 0xC9CE, 0x0008, 2, 2, "key dispatcher arm: Alt-W, a switch toggle" },
+    { "VGAME.EXE", 0x0000, 0xC9D6, 0x0008, 2, 2, "key dispatcher arm: Alt-M, the external views' readouts toggle" },
+    { "VGAME.EXE", 0x0000, 0xC9DE, 0x002C, 18, 18, "key dispatcher arm: Alt-C, the cockpit picture height and its strip redraw" },
+    { "VGAME.EXE", 0x0000, 0xCA50, 0x003E, 24, 24, "key dispatcher arm: Ins, the keyboard sensitivity step and its message" },
+    { "VGAME.EXE", 0x0000, 0xCA8E, 0x0039, 24, 24, "key dispatcher arm: Alt-F, the frame rate message" },
+    { "VGAME.EXE", 0x0000, 0xCAC7, 0x001D, 10, 10, "key dispatcher arm: Shift-Z, accelerated time" },
+    { "VGAME.EXE", 0x0000, 0xCAE4, 0x0006, 2, 2, "key dispatcher arm: Shift-X, normal time" },
+    { "VGAME.EXE", 0x0000, 0xCAEA, 0x003D, 24, 24, "key dispatcher arm: Alt-V, the sound level step and its message" },
+    { "VGAME.EXE", 0x0000, 0xCB27, 0x001B, 7, 7, "key dispatcher arm: Alt-T, the training switch" },
+    { "VGAME.EXE", 0x0000, 0xCB42, 0x0035, 15, 15, "key dispatcher arm: Space, the next weapon selection" },
+    { "VGAME.EXE", 0x0000, 0xCB95, 0x0013, 4, 4, "key dispatcher arm: b, clear the interface marker [9D3E] and set bit 7 of the display words [3D92] and [3D94]" },
+    { "VGAME.EXE", 0x0000, 0xCBA8, 0x0016, 6, 6, "key dispatcher arm: v, step the HUD detail level [294A] 0, 1, 2, 0" },
+    { "VGAME.EXE", 0x0000, 0xCBBE, 0x0017, 6, 6, "key dispatcher arm: Backspace, press the cannon button ([43EE] = 1) unless the realism word is set" },
+    { "VGAME.EXE", 0x0000, 0xCBD5, 0x0009, 2, 2, "key dispatcher arm: Enter, press the weapon release button (button 1, [43F0] = 1)" },
+    { "VGAME.EXE", 0x0000, 0xCBDE, 0x0009, 2, 2, "key dispatcher arm: F1: the forward view, the view word [C0A6] = 00h" },
+    { "VGAME.EXE", 0x0000, 0xCBE7, 0x0009, 2, 2, "key dispatcher arm: ?: the view ahead, the view word [C0A6] = 44h" },
+    { "VGAME.EXE", 0x0000, 0xCBF0, 0x0009, 2, 2, "key dispatcher arm: >: the view to the rear, the view word [C0A6] = 41h" },
+    { "VGAME.EXE", 0x0000, 0xCBF9, 0x0009, 2, 2, "key dispatcher arm: <: the view to the left, the view word [C0A6] = 43h" },
+    { "VGAME.EXE", 0x0000, 0xCC02, 0x0009, 2, 2, "key dispatcher arm: M: the view to the right, the view word [C0A6] = 42h" },
+    { "VGAME.EXE", 0x0000, 0xCC0B, 0x0007, 2, 2, "key dispatcher arm: m (326Dh), the camera view angle C000h (left) for the shared tail CC25" },
+    { "VGAME.EXE", 0x0000, 0xCC12, 0x0007, 2, 2, "key dispatcher arm: / (352Fh), the camera view angle 0000h (forward) for the shared tail CC25" },
+    { "VGAME.EXE", 0x0000, 0xCC19, 0x0007, 2, 2, "key dispatcher arm: , (332Ch), the camera view angle 4000h (right) for the shared tail CC25" },
+    { "VGAME.EXE", 0x0000, 0xCC20, 0x0005, 1, 1, "key dispatcher arm: . (342Eh), the camera view angle 8000h (rear) for the shared tail CC25" },
+    { "VGAME.EXE", 0x0000, 0xCC25, 0x0027, 11, 11, "key dispatcher arms' shared tail: show the camera display (13h) with the view angle the key chose at bp-8" },
+    { "VGAME.EXE", 0x0000, 0xCC4C, 0x0047, 24, 24, "key dispatcher arm: ] or }, with display 13h up, lower the 3-bit level of the byte at [4390]+960h or +9E0h" },
+    { "VGAME.EXE", 0x0000, 0xCC93, 0x0049, 25, 25, "key dispatcher arm: [ or {, with display 13h up, raise the 3-bit level of the byte at [4390]+960h or +9E0h" },
+    { "VGAME.EXE", 0x0000, 0xCCCE, 0x0009, 2, 2, "key dispatcher arm: Shift-F2: the chase view, the view word [C0A6] = 84h" },
+    { "VGAME.EXE", 0x0000, 0xCCD7, 0x0009, 2, 2, "key dispatcher arm: Shift-F3: the side view, the view word [C0A6] = 85h" },
+    { "VGAME.EXE", 0x0000, 0xCCE0, 0x0009, 2, 2, "key dispatcher arm: Shift-F1: the slot view, the view word [C0A6] = 87h" },
+    { "VGAME.EXE", 0x0000, 0xCCE9, 0x0009, 2, 2, "key dispatcher arm: Shift-F4: the missile view, the view word [C0A6] = 89h" },
+    { "VGAME.EXE", 0x0000, 0xCCF2, 0x0009, 2, 2, "key dispatcher arm: Shift-F5: the tactical view, the view word [C0A6] = 88h" },
+    { "VGAME.EXE", 0x0000, 0xCCFB, 0x0009, 2, 2, "key dispatcher arm: Shift-F6: the inverse tactical view, the view word [C0A6] = 8Bh" },
+    { "VGAME.EXE", 0x0000, 0xCDB8, 0x0013, 7, 7, "key dispatcher arm: F3, select the left display mode (0 when [DF06] is 1, else 1)" },
+    { "VGAME.EXE", 0x0000, 0xCDCB, 0x000B, 3, 3, "key dispatcher arm: F4, flip the HUD colour mode [43DE] and apply it (01C1)" },
+    { "VGAME.EXE", 0x0000, 0xCDD6, 0x0005, 2, 2, "key dispatcher arm: F5, select the right display 15h (through CE5F)" },
+    { "VGAME.EXE", 0x0000, 0xCDDB, 0x000E, 4, 4, "key dispatcher arm: F6, flip [43E0] and light or clear cockpit lamp 19h (through C9A1)" },
+    { "VGAME.EXE", 0x0000, 0xCDE9, 0x000A, 3, 3, "key dispatcher arm: F7, set [B838] = 1 and select the right display 14h (through CE5F)" },
+    { "VGAME.EXE", 0x0000, 0xCDF3, 0x000E, 4, 4, "key dispatcher arm: F8, clear [B838] and copy the cursor index [2EAE] to [2EB0], then select display 14h (through CDEF)" },
+    { "VGAME.EXE", 0x0000, 0xCE55, 0x0008, 2, 2, "key dispatcher arm: F9, flip bit 2 of the mode flags [9B35] (the ILS)" },
+    { "VGAME.EXE", 0x0000, 0xCE5D, 0x0002, 1, 1, "key dispatcher arm: F10, select the right display 18h (through CE5F)" },
+    { "VGAME.EXE", 0x0000, 0xCA0A, 0x0046, 27, 27, "key dispatcher arm: Alt-D, the detail level counted down and shown" },
+    { "VGAME.EXE", 0x0000, 0xCB77, 0x001E, 10, 10, "key dispatcher arm: the 7 key, height hold off or on at the current height (500 or more)" },
+    { "VGAME.EXE", 0x0000, 0xCE01, 0x0054, 33, 33, "key dispatcher arm: Shift-F8, reload the four waypoints from the ins table and average the first two" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1183,6 +1312,72 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
     { "END.EXE", 0x0000, 0x5987, 0x568B },    /* the formatter's integer conversion: JMP back to the scan */
     { "END.EXE", 0x0000, 0x34EA, 0x34C4 },    /* debrief score step: JMP to the record-kind switch below it */
     { "MPS_LOGO.EXE", 0x0146, 0x010E, 0x08A2 },    /* _cinit: a carry from the floating-point hook */
+    { "VGAME.EXE", 0x0000, 0xCD04, 0xC8FA },    /* the key dispatcher's eject arm: its JMPs to the common exit */
+    { "END.EXE", 0x0000, 0x0977, 0x099D },
+    { "VGAME.EXE", 0x0000, 0xC8CA, 0xD17F },    /* the key dispatcher's arm at C8CA: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC8CA, 0xCE65 },    /* the key dispatcher's arm at C8CA: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC8E6, 0xC8FA },    /* the key dispatcher's arm at C8E6: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC8E6, 0xCC25 },    /* the key dispatcher's arm at C8E6: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC93A, 0xC8FA },    /* the key dispatcher's arm at C93A: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC93F, 0xC8FA },    /* the key dispatcher's arm at C93F: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC944, 0xC98F },    /* the key dispatcher's arm at C944: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC961, 0xC8FA },    /* the key dispatcher's arm at C961: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC968, 0xC98F },    /* the key dispatcher's arm at C968: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC96F, 0xC96A },    /* the key dispatcher's arm at C96F: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC973, 0xC96A },    /* the key dispatcher's arm at C973: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC977, 0xC8FA },    /* the key dispatcher's arm at C977: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC977, 0xC98A },    /* the key dispatcher's arm at C977: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC993, 0xC8FA },    /* the key dispatcher's arm at C993: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9BE, 0xC8FA },    /* the key dispatcher's arm at C9BE: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9C6, 0xC8FA },    /* the key dispatcher's arm at C9C6: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9CE, 0xC8FA },    /* the key dispatcher's arm at C9CE: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9D6, 0xC8FA },    /* the key dispatcher's arm at C9D6: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9DE, 0xC9E5 },    /* the key dispatcher's arm at C9DE: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xC9DE, 0xC8FA },    /* the key dispatcher's arm at C9DE: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCA50, 0xC98F },    /* the key dispatcher's arm at CA50: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCA8E, 0xCA76 },    /* the key dispatcher's arm at CA8E: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCAC7, 0xCB33 },    /* the key dispatcher's arm at CAC7: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCAC7, 0xC8FA },    /* the key dispatcher's arm at CAC7: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCAE4, 0xC8FA },    /* the key dispatcher's arm at CAE4: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCAEA, 0xC8FA },    /* the key dispatcher's arm at CAEA: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCB27, 0xC8FA },    /* the key dispatcher's arm at CB27: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCB42, 0xC8FA },    /* the key dispatcher's arm at CB42: its JMP to a shared exit */
+    { "VGAME.EXE", 0x0000, 0xCB95, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBA8, 0xCC53 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBA8, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBBE, 0xCC53 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBBE, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBD5, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCBDE, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCBE7, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCBF0, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCBF9, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCC02, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCC0B, 0xCC25 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC12, 0xCC25 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC19, 0xCC25 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC20, 0xCC25 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC25, 0xCE5F },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC25, 0xCC53 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCC4C, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCC93, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCCE, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCD7, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCE0, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCE9, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCF2, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCCFB, 0xC8FA },    /* a key dispatcher arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCDB8, 0xC98F },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCDCB, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCDD6, 0xC98F },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCDDB, 0xC9A1 },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCDE9, 0xC98F },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCDF3, 0xCDEF },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCE55, 0xC8FA },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCE5D, 0xC98F },    /* a key dispatcher arm: its JMP out of the arm */
+    { "VGAME.EXE", 0x0000, 0xCA0A, 0xC8FA },    /* the key dispatcher's detail-level arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCB77, 0xC8FA },    /* the key dispatcher's height-hold arm: its JMP to the common exit */
+    { "VGAME.EXE", 0x0000, 0xCE01, 0xC8FA },    /* the key dispatcher's waypoint reset arm: its JMPs to the common exit */
 };
 /* Routines whose named code ends with a POPF that restores the caller's IF: the POPF clears the run
  * limit so the run loop can take an interrupt, so the body stops after it with the machine at `stop`
@@ -1621,6 +1816,8 @@ int main(int argc, char **argv)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
         if (g_cov >= 0) { g_cov_ip = (uint16_t)(COVERED[g_cov].ip - ((o->seg == 0x130D && o->ip == 0x033F) || (o->seg == 0x120A && o->ip == 0x0CE9) ? g_below : 0)); g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         if (g_cov >= 0 && !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xC9AE) g_cov_ip = 0xC8FA;   /* coverage from the common exit below the entry */
+        if (g_cov >= 0 && !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xCC93) g_cov_ip = 0xCC85;   /* the shared store tail below the entry */
+        if (g_cov >= 0 && !strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x0977) g_cov_ip = 0x0894;   /* the icon arms below the dispatcher entry */
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
@@ -18251,6 +18448,9412 @@ int main(int argc, char **argv)
 #undef XSTUB
 #undef XITEM
 #undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCD04) {
+                /* The eject arm, entered with the dispatcher's frame live (BP two words below the SP set
+                 * here so the dispatcher's own RET comes back to the harness's return word). The common
+                 * exit after the arm is the original's: its callees are stubbed (a stub folds FLAGS, and
+                 * for the three the arm calls its arguments too, counts its call into a cell and answers
+                 * from a random list), except the clamp C67A, the long shift EF74, the station setter
+                 * 49F9 and the absolute value EE0C, which the arm itself calls. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3C00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* The arm's own cells. [C09A] is clear in most states (the first press) and set in some
+                 * (the key does nothing). The limit is the first answer of the random stub (C88C) plus
+                 * 500; the measure is |[2DF2]|>>5 + |[2DF0]|>>5 + [B194] (signed shifts), and [B194] is
+                 * worked out so that the measure lands on, next to, or far from the limit, also across
+                 * the sign boundary where a signed compare differs from an unsigned one. */
+                {
+                    static const uint16_t edge_[]={0x7FFF,0x8000,0x8001,0x0000,0xFFFF,0x7FFE,0x01F4,0x0200};
+                    static const int16_t near_[]={-2,-1,0,0,1,2};
+                    static const uint16_t speed_[]={0,1,0x1F,0x20,0x7FFF,0x8000,0x8001,0xFFFF,0xFFE0,0x0400,0x03FF};
+                    XW16(dg,0xC09A,PCT(22)?(PCT(60)?1:(uint16_t)XRAND()):0);
+                    XW16(dg,0x2DF4,PCT(25)?(uint16_t)(0xFFF8+XRAND()%8):PCT(15)?(uint16_t)(0x7FF8+XRAND()%8):(uint16_t)XRAND());
+                    const uint16_t sx=PCT(45)?PICK(speed_):(uint16_t)(PCT(50)?XRAND()&0x7FF:XRAND());
+                    const uint16_t sy=PCT(45)?PICK(speed_):(uint16_t)(PCT(50)?XRAND()&0x7FF:XRAND());
+                    XW16(dg,0x2DF0,sx);XW16(dg,0x2DF2,sy);
+                    const uint16_t ax_=(sx&0x8000)?(uint16_t)(0u-sx):sx, ay_=(sy&0x8000)?(uint16_t)(0u-sy):sy;
+                    const uint16_t tx_=(uint16_t)((int16_t)ax_>>5), ty_=(uint16_t)((int16_t)ay_>>5);
+                    const unsigned kr_=15;                      /* C88C is the 16th entry of the stubbed callees below */
+                    const unsigned idx_=XRAND()%32;
+                    const unsigned mode_=XRAND()%10;
+                    uint16_t limit_,measure_;
+                    if(mode_<7) {
+                        const uint16_t rnd_=PCT(85)?(uint16_t)(XRAND()%300):(uint16_t)XRAND();
+                        limit_=(uint16_t)(rnd_+0x1F4);
+                        measure_=(mode_<5)?(uint16_t)(limit_+(uint16_t)near_[XRAND()%6]):(uint16_t)(limit_+(int)(XRAND()%401)-200);
+                    } else if(mode_==7) {
+                        limit_=PICK(edge_);measure_=PICK(edge_);
+                    } else {
+                        limit_=(uint16_t)XRAND();measure_=(uint16_t)XRAND();
+                    }
+                    XW16(dg,(uint16_t)(0xF802+8*kr_),(uint16_t)(2*idx_));
+                    XW16(dg,(uint16_t)(0x8000+0x40*kr_+2*idx_),(uint16_t)(limit_-0x1F4));
+                    XW16(dg,0xB194,(uint16_t)(measure_-tx_-ty_));
+                }
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x50*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,(calls_[k]==0xD3F9)?2:(calls_[k]==0xC88C||calls_[k]==0x4A42)?1:0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x0977) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                /* The icon placement's switch, entered with 0880's frame live: BP two words below
+                 * the harness's return word (so the epilogue's RET lands on it), the icon record
+                 * pointer at bp+4 and the flag word at bp+6 (the harness's argument words 0 and 1),
+                 * the kind in AX with the record pointer in BX, as 0880's opening leaves them. The
+                 * arms and the drawing tail 099D are the original's, run to the end of the routine
+                 * on both sides, so the data of every arm is staged: the unit table at 56F2, the
+                 * tables at 71F0 and 145A, the debriefing record behind [7222] and the byte [6440].
+                 * The tail's driver copy 05FA:24CC is a stub; its two scales (0ECD, 0EE0) are the
+                 * original's. The stack stays clear of the stub's cells (F800..F900) and of the
+                 * unit table when it is in the data segment. */
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=PCT(60)?0xE000:(uint16_t)(0x0100+2*(XRAND()%0x6F00));
+                if(seg[S_SS]==dg && r[R_SP]>0x5500 && r[R_SP]<0x6000) r[R_SP]=0xE000;
+                r[R_BP]=(uint16_t)(r[R_SP]-4);
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                uint16_t rec_;
+                {
+                    static const uint16_t flags_[]={0,0,0,1,2,0x0100,0x8000,0xFF00,0x00FF,0xFFFF,0x7FFF};
+                    rec_=(uint16_t)(0x2000+2*(XRAND()%0x1000));
+                    uint16_t arg[4];
+                    arg[0]=rec_;
+                    arg[1]=PCT(55)?PICK(flags_):(uint16_t)XRAND();
+                    arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                /* The record: bytes +2 and +3 (read by the tail), the flag byte +4 (kind 11) and the
+                 * unit byte +5 (kind 1). */
+                {
+                    static const uint8_t flagbyte_[]={0x80,0xC0,0x40,0x00,0x3F,0xFF,0x7F,0xBF,0x01,0x41};
+                    static const uint8_t unit_[]={0,1,2,0x7F,0x7E,0x80,0xFF,0x40,0x3F,0x0F,0x10};
+                    for(unsigned j=0;j<8;j++)XW8(dg,(uint16_t)(rec_+j),XRAND());
+                    if(PCT(50)){XW8(dg,(uint16_t)(rec_+2),PCT(50)?(uint8_t)(0x6A+XRAND()%0x10):(uint8_t)XRAND());
+                                XW8(dg,(uint16_t)(rec_+3),PCT(50)?(uint8_t)(0x50+XRAND()%0x10):(uint8_t)XRAND());}
+                    XW8(dg,(uint16_t)(rec_+4),PCT(75)?PICK(flagbyte_):(uint8_t)XRAND());
+                    XW8(dg,(uint16_t)(rec_+5),PCT(40)?PICK(unit_):(uint8_t)XRAND());
+                }
+                /* The kind: 1 to 12 mostly, now and then 0, 13 and up (the switch's own range
+                 * test), with the word's other bits clear as 0880's AND leaves it. BX is the record
+                 * pointer, or noise now and then so that the swap is told apart. */
+                {
+                    static const uint16_t other_[]={0,13,14,0x0F,0x10,0x20,0x3F,0x0B,0x0C};
+                    r[R_AX]=PCT(85)?(uint16_t)(1+XRAND()%12):PCT(70)?PICK(other_):(uint16_t)XRAND();
+                    r[R_BX]=PCT(85)?rec_:(uint16_t)XRAND();
+                }
+                r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                /* Kind 1: the unit table at 56F2, 16 bytes per unit, bit 3 set in about half of the
+                 * tested bytes. */
+                {
+                    static const uint8_t byte_[]={0x08,0xF7,0x00,0xFF,0x01,0x88,0x78,0x0F};
+                    for(unsigned u=0;u<0x80;u++)
+                        for(unsigned j=0;j<16;j++)
+                            XW8(dg,(uint16_t)(0x56F2+16*u+j),(j==0)?(PCT(50)?PICK(byte_):(uint8_t)XRAND()):(uint8_t)XRAND());
+                }
+                /* Kind 11: the index the arm ends up with (0 for bit 7, 1 for bit 6, else the planted
+                 * word at bp-2), the record table word at 71F0 + 12h * index, and the word at
+                 * 145A + 0Ch * that, planted as 3 half of the time. */
+                {
+                    const uint8_t fb_=g_pristine[phys(dg,(uint16_t)(rec_+4))];
+                    static const uint16_t idx_[]={0,1,2,3,4,0xFFFF,0x8000,0x00FF,0x0100};
+                    const uint16_t planted_=PCT(70)?(uint16_t)(XRAND()%6):PICK(idx_);
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-2),planted_);
+                    const uint16_t index_=(fb_&0x80)?0:(fb_&0x40)?1:planted_;
+                    const uint16_t bx_=(uint16_t)(0x12*index_);
+                    static const uint16_t word_[]={0,1,2,3,4,5,0xFFFF,0xFFFE,0x8000,0x7FFF,0x2AAB,0xFFFD};
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x71F0+2*j),PCT(60)?PICK(word_):(uint16_t)XRAND());
+                    const uint16_t v_=PCT(75)?(uint16_t)(XRAND()%5):PICK(word_);
+                    XW16(dg,(uint16_t)(0x71F0+bx_),v_);
+                    const uint16_t bx2_=(uint16_t)(0x0C*(uint16_t)v_);
+                    static const uint16_t near_[]={2,4,0x0103,0x0300,0,0xFFFF,0x8003};
+                    for(unsigned j=0;j<0x40;j++)XW16(dg,(uint16_t)(0x145A+bx2_-0x20+2*j),(uint16_t)XRAND());
+                    XW16(dg,(uint16_t)(0x145A+bx2_),PCT(50)?3:PCT(70)?PICK(near_):(uint16_t)XRAND());
+                }
+                /* Kind 8 (staged after the 71F0 table, which covers [7222] too): the debriefing record behind the far pointer [7222] (outcome word at +26h)
+                 * and the byte [6440], whose byte after it is the opposite of its own (a word compare
+                 * would tell). */
+                {
+                    static const uint16_t outcome_[]={3,3,1,1,0,2,0x0103,0x0301,0x0100,0x0001,0x8003,0x8001,0xFFFF,4,0x0300};
+                    static const uint8_t nonzero_[]={1,2,0x80,0xFF,0x40,0x7F};
+                    const uint16_t rseg=(XRAND()&1)?0x7000:0x7800;
+                    const uint16_t roff=(uint16_t)(XRAND()%0xFF00);
+                    XW16(dg,0x7222,roff);XW16(dg,0x7224,rseg);
+                    for(unsigned j=0;j<0x40;j++)XW8(rseg,(uint16_t)(roff+j),XRAND());
+                    XW16(rseg,(uint16_t)(roff+0x26),PCT(80)?PICK(outcome_):(uint16_t)XRAND());
+                    if(XRAND()&1){XW8(dg,0x6440,0);XW8(dg,0x6441,PCT(70)?(uint8_t)(1+XRAND()%255):(uint8_t)XRAND());}
+                    else{XW8(dg,0x6440,PCT(60)?PICK(nonzero_):(uint8_t)(1+XRAND()%255));XW8(dg,0x6441,PCT(70)?0:(uint8_t)XRAND());}
+                }
+                /* The tail's cells (the icon's place, noise before it is written) and the stub's:
+                 * fold cell F800, call count F802, list cursor F820 and the answer list F400. */
+                XW16(dg,0x55AE,XRAND());XW16(dg,0x55B0,XRAND());
+                for(unsigned j=0;j<0x40;j+=2)XW16(dg,0xF800+j,0);
+                XW16(dg,0xF800,XRAND());
+                for(unsigned j=0;j<32;j++)XW16(dg,0xF400+2*j,(XRAND()%5==0)?0:XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* 05FA:24CC (the page copy, eight words, far): a far jump to its stub in segment 0. */
+                    const uint16_t code=0xF200;
+                    XW8(0x05FA,0x24CC,0xEA);XW16(0x05FA,0x24CD,code);XW16(0x05FA,0x24CF,0);
+                    XSTUB(0,code,0,0x0977,8,1);
+                    XW16(dg,0xF820,2*(XRAND()%32));
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x3BBF) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The stack pointer: the usual place, a random one, and the low
+                 * values where the pushes wrap below zero. With the stack in the
+                 * data segment, keep it clear of the stubs' cells (F3C0..F900). */
+                switch(XPICK(6)) {
+                    case 0: r[R_SP]=0xF000; break;
+                    case 1: r[R_SP]=(uint16_t)(0x0100+2*XPICK(0x1800)); break;
+                    case 2: r[R_SP]=(uint16_t)(2*XPICK(0x10)); break;
+                    case 3: r[R_SP]=(uint16_t)(0xFA00+2*XPICK(0x100)); break;
+                    case 4: r[R_SP]=(uint16_t)(0xFFE0+2*XPICK(0x10)); break;
+                    default: r[R_SP]=(uint16_t)(0x4000+2*XPICK(0x1000)); break;
+                }
+                if(seg[S_SS]==dg && r[R_SP]>0xF300 && r[R_SP]<0xF980) r[R_SP]=0xF000;
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                /* No arguments: the words above SP are noise, and the harness's
+                 * small[] copies of them match. */
+                for(unsigned j=0;j<8;j++) {
+                    const uint16_t w=(uint16_t)XRAND();
+                    XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);
+                    if(j<4)small[j]=w;
+                }
+                /* The registers the routine overwrites or leaves: noise on entry. */
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                /* The cells it writes, with their neighbours: the flag byte 6982
+                 * (the byte after it is noise a word write would hit), the two
+                 * text-colour words. */
+                for(unsigned j=0;j<0x20;j++)XW8(dg,0x6978+j,XRAND());
+                for(unsigned j=0;j<0x20;j++)XW8(dg,0x6D84+j,XRAND());
+                /* The callees' lists: noise, with zero now and then. */
+                for(unsigned k=0;k<3;k++)
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xF400+0x40*k+2*j,XPICK(5)==0?0:XRAND());
+                for(unsigned j=0;j<0x40;j+=2)XW16(dg,0xF800+j,0);
+                XW16(dg,0xF800,XRAND());
+                /* Returning probes: fold a number naming the callee and then every
+                 * argument, in order, into one shared cell (F800), count the call
+                 * (F802 + 2k), keep a list index (F820 + 2k) and return the next
+                 * word of the callee's list (F400 + 40h * k). */
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* k: 0 1901 (near, 2 words), 1 05FA:25F3 (far, 1), 2 206A
+                     * (near, 2). The driver entry is a far jump in the original,
+                     * so it gets a far jump to its stub in segment 0. */
+                    static const struct { uint16_t entry; uint8_t args; uint8_t far_; } nb_[3]={
+                        {0x1901,2,0},{0x25F3,1,1},{0x206A,2,0}};
+                    for(unsigned k=0;k<3;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x90*k);
+                        const uint16_t id=(uint16_t)(0x3BBF+0x1111*k);
+                        if(nb_[k].far_) {
+                            XW8(0x05FA,nb_[k].entry,0xEA);XW16(0x05FA,nb_[k].entry+1,code);XW16(0x05FA,nb_[k].entry+3,0);
+                        } else {
+                            XW8(0,nb_[k].entry,0xE9);XW16(0,nb_[k].entry+1,(uint16_t)(code-nb_[k].entry-3));
+                        }
+                        XSTUB(0,code,k,id,nb_[k].args,nb_[k].far_);
+                        XW16(dg,0xF820+2*k,2*XPICK(32));
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x519E) {
+                const uint16_t dg=0x5000, hs=0x7000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;
+                r[R_SP]=(uint16_t)(0xF000-2*(XRAND()%8));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x200;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The interrupt: 21h, 16h and 33h (answered by the harness), 10h, the
+                 * disk calls 25h and 26h and their neighbours 24h and 27h, and vectors
+                 * 60h-7Fh, the dispatched ones reaching the handler below through the
+                 * vector table. AH of the number word is ignored by the routine. */
+                uint16_t vec_;
+                {
+                    const unsigned p_=XRAND()%24;
+                    vec_=(p_<5)?0x21:(p_<6)?0x16:(p_<7)?0x33:(p_<9)?0x10:(p_<12)?0x25:(p_<15)?0x26:(p_<16)?0x24:(p_<17)?0x27:(uint16_t)(0x60+XRAND()%0x20);
+                }
+                const uint16_t number_=(uint16_t)(vec_|((XRAND()%3==0)?(uint16_t)((XRAND()&0xFF)<<8):0));
+                /* Structures in DS: in and out (often the same, as the game's calls
+                 * pass them). */
+                const uint16_t in_=(uint16_t)(0x1000+2*(XRAND()%0x800));
+                const uint16_t out_=(XRAND()%5<2)?in_:(uint16_t)(0x2000+2*(XRAND()%0x800));
+                const uint16_t in_ax_=(uint16_t)XRAND();
+                if(out_!=in_)for(unsigned j=0;j<0x0E;j+=2){const uint16_t w_=(uint16_t)XRAND();XW16(dg,out_+j,w_);}
+                XW16(dg,in_,in_ax_);
+                for(unsigned j=2;j<0x0E;j+=2){const uint16_t w_=(uint16_t)XRAND();XW16(dg,in_+j,w_);}
+                const uint16_t arg_[4]={number_,in_,out_,(uint16_t)XRAND()};
+                for(unsigned j=0;j<4;j++){XW16(ss_,(uint16_t)(r[R_SP]+2*j),arg_[j]);small[j]=arg_[j];}
+                /* The errno mapper (54AA, through 54A4): the DOS major version at
+                 * DS:512A around its 3 boundary, and its translation table at 515E. */
+                {
+                    static const uint8_t ver_[6]={0,1,2,3,4,0xFF};
+                    XW8(dg,0x512A,ver_[XRAND()%6]);
+                    for(unsigned j=0;j<0x24;j++)XW8(dg,0x515E + j,XRAND());
+                    XW16(dg,0x5122,XRAND());XW8(dg,0x512D,XRAND());
+                }
+                /* The handler: folds AX BX CX DX SI DI BP ES DS FLAGS in order into
+                 * CS:[F800], counts at CS:[F802], changes every register, sets DF and
+                 * CF as chosen, and returns with RETF 2 (RETF for the disk calls,
+                 * which leave FLAGS on the stack). */
+                if(vec_!=0x21&&vec_!=0x16&&vec_!=0x33) {
+                    unsigned out__=0x0100;
+#define XB_(b_) XW8(hs,out__++,(b_))
+#define XFOLD(rm_) do { XB_(0x2E);XB_(0xD1);XB_(0x06);XB_(0x00);XB_(0xF8); \
+    XB_(0x2E);XB_(0x31);XB_(rm_);XB_(0x00);XB_(0xF8); } while(0)
+#define XIMM(w_) do { const uint16_t w__=(uint16_t)(w_);XB_(w__&0xFF);XB_(w__>>8); } while(0)
+                    XW16(hs,0xF800,XRAND());XW16(hs,0xF802,XRAND());
+                    XFOLD(0x06);XFOLD(0x1E);XFOLD(0x0E);XFOLD(0x16);XFOLD(0x36);XFOLD(0x3E);XFOLD(0x2E);
+                    XB_(0x8C);XB_(0xC5);XFOLD(0x2E);
+                    XB_(0x8C);XB_(0xDD);XFOLD(0x2E);
+                    XB_(0x9C);XB_(0x5D);XFOLD(0x2E);
+                    XB_(0x2E);XB_(0xFF);XB_(0x06);XB_(0x02);XB_(0xF8);
+                    static const uint16_t ax_[10]={0x0013,0x0014,0x0012,0x001F,0x0020,0x0021,0x0022,0x0023,0x0005,0x0000};
+                    const unsigned q_=XRAND()%4;
+                    const uint16_t ax_out_=(q_==0)?(uint16_t)XRAND():(q_==1)?(uint16_t)(((XRAND()%0x20)<<8)|(XRAND()&0xFF)):ax_[XRAND()%10];
+                    XB_(0x05);XIMM(ax_out_-in_ax_);
+                    XB_(0x81);XB_(0xF3);XIMM(XRAND());
+                    XB_(0x81);XB_(0xC1);XIMM(XRAND());
+                    XB_(0x81);XB_(0xEA);XIMM(XRAND());
+                    XB_(0x81);XB_(0xF6);XIMM(XRAND());
+                    XB_(0x81);XB_(0xC7);XIMM(XRAND());
+                    if(XRAND()%4){XB_(0xBD);XIMM(XRAND());XB_(0x8E);XB_(0xC5);}            /* ES */
+                    if(XRAND()%8==0){XB_(0xBD);XIMM(0x5000+0x100*(XRAND()%16));XB_(0x8E);XB_(0xDD);}   /* DS, rarely */
+                    XB_(0xBD);XIMM(XRAND());
+                    XB_((XRAND()&1)?0xFD:0xFC);
+                    XB_((XRAND()%5<2)?0xF9:0xF8);
+                    if(vec_==0x25||vec_==0x26){XB_(0xCB);}
+                    else{XB_(0xCA);XB_(0x02);XB_(0x00);}
+                    XW16(0,(uint16_t)(vec_*4),0x0100);XW16(0,(uint16_t)(vec_*4+2),hs);
+#undef XIMM
+#undef XFOLD
+#undef XB_
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x3E61) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The stack: the 302h-byte buffer sits below BP; the saved palette
+                 * is copied there in the DATA segment (4B0C is DS-relative). */
+                static const uint16_t stacks[]={0xF000,0x8000,0x4000,0x1000};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x340;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x340+j),XRAND());
+                for(unsigned j=0;j<0x340;j++)XW8(dg,(uint16_t)(r[R_SP]-0x340+j),XRAND());
+                /* The argument byte: zero, one, a zero low byte over a nonzero high
+                 * byte (a byte compare must not see it), or anything. */
+                {
+                    uint16_t flag;
+                    switch(XPICK(6)) {
+                    case 0: case 1: flag=0; break;
+                    case 2: flag=1; break;
+                    case 3: flag=(uint16_t)(0x100*(1+XPICK(255))); break;
+                    case 4: flag=(uint16_t)(1+XPICK(255)); break;
+                    default: flag=(uint16_t)XRAND(); break;
+                    }
+                    uint16_t arg[4];
+                    arg[0]=flag;arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                /* The palette table, the panel's far buffer cells and the draw cells. */
+                for(unsigned j=0;j<0x300;j++)XW8(dg,(uint16_t)(0x1F25+j),XRAND());
+                XW16(dg,0x6442,XRAND());XW16(dg,0x6444,XRAND());
+                XW16(dg,0x55D0,XRAND());XW16(dg,0x7220,XRAND());
+                /* Callee probes: each folds its id and arguments (in order) into
+                 * F800, counts its calls at F802 + 2k and returns the next word of a
+                 * list. The list of 25BC (keyboard waiting) is mixed zero and non-zero
+                 * and ends in zero; that of 25C1 (the key) is mostly 'Y' and 'N'
+                 * spellings and boundary values of the 5Fh mask. */
+                static const uint16_t keys[]={0x59,0x79,0x0159,0x0179,0x00D9,0xFF59,0x58,0x5A,0x78,0x7A,0x4E,0x6E,0x1B,0x0D,0x20,0x39,0x00,0x19,0x99,0xD9,0x5F,0x7F,0xFFFF,0x3F59};
+                for(unsigned k=0;k<10;k++) {
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t value=(uint16_t)XRAND();
+                        if(k==8)value=XPICK(2)?0:(uint16_t)(1+XPICK(0xFFFF));
+                        if(k==9)value=XPICK(4)?keys[XPICK(24)]:(uint16_t)XRAND();
+                        XW16(dg,0xF400+0x40*k+2*j,value);
+                    }
+                    if(k==8)XW16(dg,0xF400+0x40*k+62,0);
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,(uint16_t)(2*XPICK(32)));
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(entry_,k_,id_,nargs_,far_,scribble_) do { \
+    uint8_t cb_[256]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    const unsigned code_=0xF000+0x100*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    if(scribble_) { /* fill DS:1F25 .. +300h with A7h, as a palette read would */ \
+        cb_[n_++]=0x06;cb_[n_++]=0x57;cb_[n_++]=0x51;cb_[n_++]=0x1E;cb_[n_++]=0x07; \
+        cb_[n_++]=0xBF;cb_[n_++]=0x25;cb_[n_++]=0x1F;cb_[n_++]=0xB9;cb_[n_++]=0x00;cb_[n_++]=0x03; \
+        cb_[n_++]=0xB0;cb_[n_++]=0xA7;cb_[n_++]=0xF3;cb_[n_++]=0xAA; \
+        cb_[n_++]=0x59;cb_[n_++]=0x5F;cb_[n_++]=0x07; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8(0,code_+k2_,cb_[k2_]); \
+    if(far_) { /* the far entry in segment 05FA jumps to the stub in segment 0 */ \
+        XW8(0x05FA,(entry_),0xE9);XW16(0x05FA,(entry_)+1,(uint16_t)((code_-0x5FA0)-((entry_)+3))); \
+    } else { \
+        XW8(0,(entry_),0xE9);XW16(0,(entry_)+1,(uint16_t)(code_-(entry_)-3)); \
+    } } while(0)
+                XSTUB(0x15EF,0,0x1A11,1,0,0);    /* palette fade out */
+                XSTUB(0x15D7,1,0x2B22,1,0,0);    /* palette fade in */
+                XSTUB(0x0FA4,2,0x3C33,3,0,0);    /* read the panel picture */
+                XSTUB(0x4722,3,0x4D44,2,0,0);    /* draw it */
+                XSTUB(0x0FDA,4,0x5E55,2,0,1);    /* read the panel palette */
+                XSTUB(0x3F44,5,0x6F66,1,0,0);    /* quit */
+                XSTUB(0x24CC,6,0x7A77,8,1,0);    /* blank the screen */
+                XSTUB(0x25F3,7,0x8B88,1,1,0);
+                XSTUB(0x25BC,8,0x9C99,0,1,0);    /* key waiting */
+                XSTUB(0x25C1,9,0xAD00,0,1,0);    /* the key */
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x9520) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF)); if(XPICK(2))flags=(uint16_t)(flags|F_DF);
+                {
+                    static const uint16_t same_ss[]={0xF000,0x8000,0x7800,0x2000,0xC000,0x9000};
+                    static const uint16_t other_ss[]={0xF000,0x8000,0x0200,0x0100,0x0040,0x0030,0xFFF0,0x7000,0x0A00};
+                    r[R_SP]=(seg[S_SS]==dg)?same_ss[XPICK(6)]:other_ss[XPICK(9)];
+                }
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                /* Arguments: the interrupt number (the low byte counts), the input
+                 * record, the output record (often the same one, as 76D1 passes it). */
+                static const uint8_t ints[]={0x10,0x13,0x21,0x25,0x26,0x25,0x26,0x24,0x27,0x33,0x16,0x1A,0x00,0x03,0xFF,0x60,0x10,0x25,0x26,0x6C};
+                const uint16_t intno=(uint16_t)((XPICK(3)?(uint16_t)(XRAND()<<8):0)|(XPICK(5)?ints[XPICK(20)]:(uint8_t)XRAND()));
+                const uint16_t inrec=(uint16_t)(0x7000+2*XPICK(0x200));
+                uint16_t outrec;
+                {
+                    const unsigned pick=XPICK(10);
+                    outrec=(pick<5)?inrec:(pick<7)?(uint16_t)(inrec+2*(1+XPICK(6))):(uint16_t)(0x7800+2*XPICK(0x200));
+                }
+                uint16_t arg[4];
+                arg[0]=intno;arg[1]=inrec;arg[2]=outrec;arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                r[R_BP]=(uint16_t)XRAND();r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                /* The records: fourteen random bytes each. */
+                for(unsigned j=0;j<14;j++){XW8(dg,(uint16_t)(inrec+j),XRAND());XW8(dg,(uint16_t)(outrec+j),XRAND());}
+                for(unsigned j=0;j<14;j++)XW8(dg,(uint16_t)(inrec+j),XRAND());
+                /* 98CA's cells and table (the error map): small values and wide ones. */
+                for(unsigned j=0;j<0x80;j++)XW8(dg,(uint16_t)(0xAE40+j),XPICK(3)?(uint8_t)XPICK(0x24):(uint8_t)XRAND());
+                XW8(dg,0xAE5A,XPICK(2)?(uint8_t)XPICK(6):(uint8_t)XRAND());
+                /* The interrupt vector table is the image's first bytes: every vector
+                 * leads to its own entry (xor ax with its own constant, then a jump to
+                 * a common handler).  The common handlers add BX and AX, rotate CX,
+                 * swap DX and SI, add DX to DI, set or clear the carry as the state
+                 * says, and return: RETF 2 (an IRET would stop the body), or a plain
+                 * RETF for 25h and 26h, which leave the flags on the stack. */
+                {
+                    const unsigned carry=XPICK(2);
+                    static const uint8_t common[4][16]={
+                        {0x01,0xC3,0xD1,0xC1,0x87,0xD6,0x01,0xD7,0xF9,0xCA,0x02,0x00},   /* stc, retf 2 */
+                        {0x01,0xC3,0xD1,0xC1,0x87,0xD6,0x01,0xD7,0xF8,0xCA,0x02,0x00},   /* clc, retf 2 */
+                        {0x01,0xC3,0xD1,0xC1,0x87,0xD6,0x01,0xD7,0xF9,0xCB},             /* stc, retf */
+                        {0x01,0xC3,0xD1,0xC1,0x87,0xD6,0x01,0xD7,0xF8,0xCB}};            /* clc, retf */
+                    static const unsigned lens[4]={12,12,10,10};
+                    for(unsigned q=0;q<4;q++)for(unsigned j=0;j<lens[q];j++)XW8(0,(uint16_t)(0xF000+0x20*q+j),common[q][j]);
+                    for(unsigned v=0;v<256;v++) {
+                        const uint16_t entry=(uint16_t)(0xE000+8*v);
+                        const unsigned kind=(v==0x25||v==0x26)?(2+carry):carry;
+                        const uint16_t target=(uint16_t)(0xF000+0x20*kind);
+                        XW16(0,4*v,entry);XW16(0,4*v+2,0);
+                        XW8(0,entry,0x35);XW16(0,entry+1,(uint16_t)(0x0101*(v+1)));
+                        XW8(0,entry+3,0xE9);XW16(0,entry+4,(uint16_t)(target-(entry+6)));
+                    }
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7611) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The frame is 302h bytes: with SS = DS the stack stays clear of the
+                 * palette (64E3..67E2), the lists and the call log (F400 and up); a
+                 * separate SS also takes the small values, where the frame wraps. */
+                {
+                    static const uint16_t same_ss[]={0xF000,0x8000,0x7800,0x2000,0x7000,0xE000};
+                    static const uint16_t other_ss[]={0xF000,0x8000,0x0200,0x0100,0x0304,0x0400,0xFFF0,0x7000};
+                    r[R_SP]=(seg[S_SS]==dg)?same_ss[XPICK(6)]:other_ss[XPICK(8)];
+                }
+                for(unsigned j=0;j<0x500;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x500+j),XRAND());
+                r[R_BP]=(uint16_t)XRAND();
+                /* The caller's words above the return address. */
+                {
+                    uint16_t arg[4];
+                    for(unsigned j=0;j<4;j++){arg[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                /* The working palette: 768 bytes the routine copies out and back. */
+                for(unsigned j=0;j<0x300;j++)XW8(dg,(uint16_t)(0x64E3+j),XRAND());
+                /* Callee probes: list k, counter k, pointer k; every stub folds its
+                 * id and its arguments in order into the log word F800, counts
+                 * itself, and returns the next word of its list. */
+                for(unsigned k=0;k<9;k++) {
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xF400+0x40*k+2*j,XRAND());
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,(uint16_t)(2*XPICK(32)));
+                }
+                XW16(dg,0xF800,XRAND());
+                /* Poll list (k = 1): zero means a key is waiting.  Mixed, and always
+                 * at least one zero so the wait ends. */
+                {
+                    const unsigned zero=XPICK(32);
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t v=(XPICK(3)==0)?0:(uint16_t)(1+XPICK(0xFFFF));
+                        if(j==zero)v=0;
+                        XW16(dg,0xF400+0x40*1+2*j,v);
+                    }
+                }
+                /* Key list (k = 2): Y in several spellings (case bit 20h, bit 80h,
+                 * the high byte), its neighbours, the usual answers, any word. */
+                {
+                    static const uint16_t ys[]={0x59,0x79,0xD9,0xF9,0x0159,0x7F59,0x1B79,0xFFD9};
+                    static const uint16_t misses[]={0x58,0x5A,0x19,0x39,0x49,0x41,0x1B,0x0D,0x4E,0x6E,0x20,0x00,0x5F,0x5B,0x0100,0x1000};
+                    for(unsigned j=0;j<32;j++) {
+                        const unsigned pick=XPICK(8);
+                        uint16_t v;
+                        if(pick<3)v=ys[XPICK(8)];
+                        else if(pick<5)v=misses[XPICK(16)];
+                        else v=(uint16_t)XRAND();
+                        XW16(dg,0xF400+0x40*2+2*j,v);
+                    }
+                }
+                /* The stub: push bp, mov bp,sp, push bx, count, fold id, fold the
+                 * arguments, optionally fold the palette's first word (probe) and
+                 * overwrite it with the log (clobber), return list[pointer] and
+                 * advance the pointer (wrapping at 32 words). */
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_,probe_,clobber_) do { \
+    uint8_t cb_[300]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    if(probe_) { \
+        cb_[n_++]=0xA1;cb_[n_++]=0xE3;cb_[n_++]=0x64; \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    if(clobber_) { \
+        cb_[n_++]=0xA1;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xA3;cb_[n_++]=0xE3;cb_[n_++]=0x64; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* Near callees: patch E9 over the entry (segment 0), stub above. */
+                    static const struct { uint16_t entry; uint8_t args,probe,clobber; unsigned k; } near_[]={
+                        {0x3088,1,0,0,4},   /* fade out */
+                        {0x35FC,2,0,0,5},   /* print string */
+                        {0x289A,2,1,1,6},   /* load file into the palette */
+                        {0x3070,1,1,0,7},   /* fade in: sees the palette */
+                        {0x76D1,1,1,0,8}};  /* exit routine (a stub that returns) */
+                    for(unsigned q=0;q<5;q++) {
+                        const uint16_t code=(uint16_t)(0xF000+0x100*q);
+                        XW8(0,near_[q].entry,0xE9);XW16(0,near_[q].entry+1,(uint16_t)(code-near_[q].entry-3));
+                        XSTUB(0,code,near_[q].k,0x1234+0x1111*near_[q].k,near_[q].args,0,near_[q].probe,near_[q].clobber);
+                    }
+                    /* Far thunks in segment 0A95: E9 over the five-byte slot, stub at F200 up. */
+                    static const struct { uint16_t slot; uint8_t args; unsigned k; } far_[]={
+                        {0x6BB1,1,0},{0x6B7A,0,1},{0x6B7F,0,2},{0x6A8A,8,3}};
+                    for(unsigned q=0;q<4;q++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x100*q);
+                        XW8(0x0A95,far_[q].slot,0xE9);XW16(0x0A95,far_[q].slot+1,(uint16_t)(code-far_[q].slot-3));
+                        XSTUB(0x0A95,code,far_[q].k,0x2468+0x0F0F*far_[q].k,far_[q].args,1,0,0);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC8CA) {
+                /* The key arm 0xC8CA, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0000;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                r[R_BP]=(uint16_t)XRAND();
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC8E6) {
+                /* The key arm 0xC8E6, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x316E;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC93A) {
+                /* The key arm 0xC93A, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2C7A;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC93F) {
+                /* The key arm 0xC93F, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2D78;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC944) {
+                /* The key arm 0xC944, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0534;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC961) {
+                /* The key arm 0xC961, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0433;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC968) {
+                /* The key arm 0xC968, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0231;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC96F) {
+                /* The key arm 0xC96F, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0332;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC973) {
+                /* The key arm 0xC973, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0635;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC977) {
+                /* The key arm 0xC977, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0736;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC993) {
+                /* The key arm 0xC993, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x0A39;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9BE) {
+                /* The key arm 0xC9BE, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x1E00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9C6) {
+                /* The key arm 0xC9C6, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2300;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9CE) {
+                /* The key arm 0xC9CE, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x1100;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9D6) {
+                /* The key arm 0xC9D6, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x3200;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9DE) {
+                /* The key arm 0xC9DE, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2E00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    static const uint8_t pg_[]={0,1,2,0x7F,0x80,0xFF,0xFE};
+                    XW8(dg,0x40B6,PCT(80)?PICK(pg_):(uint8_t)XRAND());
+                    XW16(dg,0x2E08,PCT(55)?1:PCT(30)?0:(uint16_t)XRAND());
+                }
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCA50) {
+                /* The key arm 0xCA50, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x5200;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    static const uint16_t sv_[]={0,1,2,3,4,0xFFFF,0xFFFE,0x7FFF,0x8000};
+                    XW16(dg,0x43EA,PCT(85)?PICK(sv_):(uint16_t)XRAND());
+                }
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCA8E) {
+                /* The key arm 0xCA8E, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2100;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCAC7) {
+                /* The key arm 0xCAC7, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2C5A;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    static const uint16_t rt_[]={0,1,2,3,4,5,0xFFFF,0xFFFE,0xFFFD,0x7FFF,0x8000,0x8001};
+                    XW16(dg,0x368E,PCT(80)?PICK(rt_):(uint16_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(60)?1:PCT(40)?2:(uint16_t)XRAND());
+                }
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCAE4) {
+                /* The key arm 0xCAE4, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2D58;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCAEA) {
+                /* The key arm 0xCAEA, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2F00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCB27) {
+                /* The key arm 0xCB27, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x1400;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCB42) {
+                /* The key arm 0xCB42, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x3920;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    const uint16_t rec3=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                    XW16(dg,0x9924,rec3);XW16(dg,0x9926,0x7000);
+                    for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec3+j),XRAND());
+                    XW16(0x7000,(uint16_t)(rec3+0x42),PCT(50)?0:(PCT(50)?(uint16_t)(1<<(XRAND()&15)):(uint16_t)XRAND()));
+                    XW16(dg,0x3680,PCT(70)?(uint16_t)(XRAND()&7):(uint16_t)XRAND());
+                    XW8(dg,0x9B35,(uint8_t)(XRAND()&(PCT(50)?0xFF:0xFD)));
+                }
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCB95) {
+                /* Key arm CB95, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3062;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D94,XRAND());XW16(dg,0x3D92,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBA8) {
+                /* Key arm CBA8, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x2F76;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    static const uint8_t lv_[]={0,1,2,3,0xFE,0xFF,0x7F,0x80};
+                    XW8(dg,0x294A,PCT(70)?PICK(lv_):(uint8_t)XRAND());XW8(dg,0x294B,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBBE) {
+                /* Key arm CBBE, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x0E08;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    const uint16_t rec=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                    XW16(dg,0x9924,rec);XW16(dg,0x9926,0x7000);
+                    for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                    XW16(0x7000,(uint16_t)(rec+0x42),PCT(50)?0:PCT(50)?0x0100:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43EE,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBD5) {
+                /* Key arm CBD5, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x1C0D;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0x43F0,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBDE) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3B00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBE7) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x353F;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBF0) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x343E;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCBF9) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x333C;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC02) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x324D;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC0B) {
+                /* A camera-angle arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x326D;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the frame word it replaces (any value). */
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC12) {
+                /* A camera-angle arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x352F;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the frame word it replaces (any value). */
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC19) {
+                /* A camera-angle arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x332C;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the frame word it replaces (any value). */
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC20) {
+                /* A camera-angle arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x342E;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the frame word it replaces (any value). */
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC25) {
+                /* The camera view tail, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=(XRAND()&1)?0x352F:0x326D;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This tail's cells: the view angle in the frame (the quarter turns and any word),
+                     * the compass bit among the mode flags, and the cells it overwrites. */
+                    static const uint16_t ang_[]={0,0x4000,0x8000,0xC000};
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),PCT(70)?PICK(ang_):(uint16_t)XRAND());
+                    XW8(dg,0x9B35,PCT(50)?(uint8_t)(XRAND()|2):(uint8_t)(XRAND()&~2u));
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                    XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC4C) {
+                /* The camera level step arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=(XRAND()&1)?0x1B5D:0x1B7D;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cells, set after the state block above (the stubs and their lists
+                     * come after the end of it): the display (13h for most), the table choice and the
+                     * pointer's two bytes, with every level 0..7 and the upper five bits. */
+                    XW16(dg,0xE008,PCT(75)?0x13:PCT(50)?0x14:(uint16_t)XRAND());
+                    XW16(dg,0xE32A,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t base=(uint16_t)(0x2000+(XRAND()&0x3FFF));
+                        XW16(dg,0x4390,base);
+                        XW8(dg,(uint16_t)(base+0x960),PCT(40)?(uint8_t)(XRAND()&0xF8)|(uint8_t)(XRAND()%3?XRAND()&7:7*(XRAND()&1)):(uint8_t)XRAND());
+                        XW8(dg,(uint16_t)(base+0x9E0),PCT(40)?(uint8_t)(XRAND()&0xF8)|(uint8_t)(XRAND()%3?XRAND()&7:7*(XRAND()&1)):(uint8_t)XRAND());
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCC93) {
+                /* The camera level step-up arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=(XRAND()&1)?0x1A5B:0x1A7B;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cells, set after the state block above (the stubs and their lists
+                     * come after the end of it): the display (13h for most), the table choice and the
+                     * pointer's two bytes, with every level 0..7 and the upper five bits. */
+                    XW16(dg,0xE008,PCT(75)?0x13:PCT(50)?0x14:(uint16_t)XRAND());
+                    XW16(dg,0xE32A,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t base=(uint16_t)(0x2000+(XRAND()&0x3FFF));
+                        XW16(dg,0x4390,base);
+                        XW8(dg,(uint16_t)(base+0x960),PCT(40)?(uint8_t)(XRAND()&0xF8)|(uint8_t)(XRAND()%3?XRAND()&7:7*(XRAND()&1)):(uint8_t)XRAND());
+                        XW8(dg,(uint16_t)(base+0x9E0),PCT(40)?(uint8_t)(XRAND()&0xF8)|(uint8_t)(XRAND()%3?XRAND()&7:7*(XRAND()&1)):(uint8_t)XRAND());
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCCE) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5500;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCD7) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5600;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCE0) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5400;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCE9) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5700;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCF2) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5800;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCCFB) {
+                /* A view-setting arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5900;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cell: the view word, any value (the arm replaces it). */
+                    XW16(dg,0xC0A6,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDB8) {
+                /* Key arm CDB8, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3D00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDCB) {
+                /* Key arm CDCB, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3E00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW8(dg,0x43DE,XRAND());XW8(dg,0x43DF,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDD6) {
+                /* Key arm CDD6, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x3F00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDDB) {
+                /* Key arm CDDB, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x4000;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0x43E0,PCT(50)?(uint16_t)(XRAND()&0xFF00):(uint16_t)XRAND());XW16(dg,0x4010,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDE9) {
+                /* Key arm CDE9, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x4100;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0xB838,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCDF3) {
+                /* Key arm CDF3, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x4200;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW16(dg,0xB838,XRAND());XW16(dg,0x2EAE,XRAND());XW16(dg,0x2EB0,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCE55) {
+                /* Key arm CE55, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x4300;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                XW8(dg,0x9B35,XRAND());XW8(dg,0x9B36,XRAND());XW8(dg,0x9B34,XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCE5D) {
+                /* Key arm CE5D, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm hands back at the common exit
+                 * C8FA, which is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own keys, the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x4400;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCA0A) {
+                /* The key arm 0xCA0A, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The common exit after the arm is the
+                 * original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (3C00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<45)key=0x2000;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    static const uint16_t lv_[]={0,1,2,3,4,0xFFFF,0x8000,0x8001,0x7FFF};
+                    XW16(dg,0x990E,PCT(85)?PICK(lv_):(uint16_t)XRAND());
+                }
+
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        if(k==2)for(unsigned j=0;j<32;j++)XW16(dg,(uint16_t)(0x8000+0x40*30+2*j),PCT(45)?3:PCT(30)?2:(uint16_t)XRAND());
+
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCB77) {
+                /* The height-hold arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). The arm reads DX, [3684] and [2DF4] and
+                 * hands back at the common exit C8FA; the original's tail runs on from there
+                 * to the dispatcher's RET, so its state and callees are set up as for any
+                 * other arm: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (0837h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x0837;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                {
+                    /* This arm's cells: DX (the selector's remainder, 0 on the real path), the hold
+                     * and the height, with the floor 1F4h (signed) and the signed edges. The tail
+                     * reads the hold ([3664] bit 3 drops it) and the height too. */
+                    static const uint16_t edge_[]={0x01F4,0x01F3,0x01F5,0,1,0x7FFF,0x8000,0x8001,0xFFFF,0xFFFE,0x0200,0x01F0};
+                    const uint16_t dx=PCT(70)?0:PCT(40)?PICK(edge_):(uint16_t)XRAND();
+                    const uint16_t hold=PCT(45)?dx:PCT(25)?0:PCT(40)?PICK(edge_):(uint16_t)XRAND();
+                    const uint16_t height=PCT(60)?PICK(edge_):PCT(50)?(uint16_t)(0x01F4+(int)(XRAND()%9)-4):(uint16_t)XRAND();
+                    r[R_DX]=dx;
+                    XW16(dg,0x3684,hold);
+                    XW16(dg,0x2DF4,height);
+                    XW16(dg,0xC0CE,PCT(30)?height:(uint16_t)XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xCE01) {
+                /* The waypoint reset arm, entered with the dispatcher's frame live (the key at
+                 * bp+4, BP two words below the SP set here so the dispatcher's own RET comes
+                 * back to the harness's return word). Its waypoint setter D50A and the
+                 * navigation redraw 8F71 are stubbed with the rest of the callees (a stub
+                 * folds FLAGS and its arguments into a cell, counts its call and answers from a
+                 * random list); the common exit after the arm is the original's: its callees are stubbed (a stub folds FLAGS and counts its call
+                 * into a cell and answers from a random list), except the clamp C67A, the
+                 * long shift EF74 and the station setter 49F9. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: this arm's own (5B00h), the tail's (Alt and cursor keys), or any word. */
+                const int navkey_=0;
+                {
+                    static const uint16_t tail_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t key,arg[4];
+                    const unsigned pick_=XRAND()%100u;
+                    if(pick_<40)key=0x5B00;
+                    else if(pick_<75)key=PICK(tail_);
+                    else key=(uint16_t)XRAND();
+                    arg[0]=key;
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                    /* AX is the key the dispatcher loaded; now and then it is not, so that the
+                     * word at bp+4 and the register are told apart. */
+                    r[R_AX]=PCT(12)?(uint16_t)XRAND():key;
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,(navkey_&&PCT(85))?0x14:PCT(40)?0x14:PCT(40)?0x15:PCT(40)?0x13:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record (far pointer E574) and the one at 9924, in a segment of their own. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec+j),XRAND());
+                        const uint16_t rec2=(uint16_t)(0x8000+(XRAND()&0x3FFF));
+                        XW16(dg,0x9924,rec2);XW16(dg,0x9926,0x7000);
+                        for(unsigned j=0;j<0x80;j++)XW8(0x7000,(uint16_t)(rec2+j),PCT(30)?0:XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                    /* The cells the arms read: the display and cycle words, flags and counters. */
+                    XW16(dg,0xE32A,PCT(85)?(uint16_t)(XRAND()%4):PCT(50)?(uint16_t)(0xFFFF-XRAND()%2):(uint16_t)XRAND());
+                    XW16(dg,0xDF06,PCT(50)?1:PCT(50)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t h=(uint16_t)XRAND();
+                        XW16(dg,0x2DF4,h);XW16(dg,0xC0CE,PCT(30)?h:(uint16_t)XRAND());
+                    }
+                    XW16(dg,0x43E0,XRAND());XW8(dg,0x294A,PCT(60)?(uint8_t)(XRAND()%5):(uint8_t)XRAND());
+                    XW16(dg,0x3DA8,PCT(50)?1:(uint16_t)XRAND());XW16(dg,0x2E08,PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x990E,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43EA,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x43F2,PCT(70)?(uint16_t)(XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3680,XRAND());
+                    XW8(dg,0x034A,XRAND());XW8(dg,0x43E6,XRAND());XW8(dg,0x466E,XRAND());XW8(dg,0x43E4,XRAND());
+                    XW16(dg,0x4390,(uint16_t)(0x2000+(XRAND()&0x3FFF)));
+                    XW16(dg,0x43E8,XRAND());
+                    XW16(dg,0x2EA2,XRAND());XW16(dg,0x2EA4,XRAND());XW16(dg,0xE308,XRAND());
+                    XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0x2DF0,XRAND());XW16(dg,0x2DF2,XRAND());
+                    XW16(dg,0x4010,XRAND());XW16(dg,0x43EE,XRAND());XW16(dg,0x43F0,XRAND());
+                    XW16(dg,0x9D3E,XRAND());XW16(dg,0x3D92,XRAND());XW16(dg,0x3D94,XRAND());
+                    XW16(dg,0x43E2,XRAND());XW16(dg,0xE582,XRAND());
+                }
+                /* Stub cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x80;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<32;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<32;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0x8000+0x40*k+2*j),(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Every near callee of the arms and the tail that draws, sounds, formats text,
+                     * redraws or answers a button. */
+                    static const uint16_t calls_[]={
+                        0x01B9,0x01C1,0x4A42,0x462E,0x7663,0x81E8,0x825D,0x8342,0x83E9,0x8575,0x85B3,
+                        0x889B,0x8A4F,0x8F71,0x93E9,0xC88C,0xC89C,0xD3F9,0xD41F,0xD441,0xD4A5,0xD4F5,
+                        0xD50A,0xD578,0xEB10,0xEB50,0xEB9E,0xEE0C};
+                    for(unsigned k=0;k<28;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x40*k);
+                        XW8(0,calls_[k],0xE9);XW16(0,(uint16_t)(calls_[k]+1),(uint16_t)(code-calls_[k]-3));
+                        XSTUB(0,code,0xF800+8*k,0,0x8000+0x40*k,0);
+                    }
+                    /* The driver's calls 1E42:0313 (sound request), 01EC and 0255 jump to stubs at 1E42:0800.. */
+                    static const uint16_t far_[]={0x0313,0x01EC,0x0255};
+                    for(unsigned k=0;k<3;k++) {
+                        XSTUB(0x1E42,(uint16_t)(0x0800+0x100*k),0xF800+8*(28+k),0,0x8000+0x40*(28+k),1);
+                        XW8(0x1E42,far_[k],0xE9);XW16(0x1E42,(uint16_t)(far_[k]+1),(uint16_t)(0x0800+0x100*k-far_[k]-3));
+                    }
+                }
+                {
+                    /* This arm's cells, set after the state block above: the four entry numbers (the
+                     * stub folds them, so each must differ and reach the call in order), the first two
+                     * waypoints' words (sums that carry out of 16 bits, and that do not) and the display. */
+                    static const uint16_t w_[]={0,1,0x7FFF,0x8000,0x8001,0xFFFF,0xFFFE,0x4000,0xC000};
+                    XW16(dg,0xE308,XRAND());XW16(dg,0xE306,XRAND());XW16(dg,0xE318,XRAND());XW16(dg,0xE31A,XRAND());
+                    XW16(dg,0x2E9E,PCT(40)?PICK(w_):(uint16_t)XRAND());XW16(dg,0x2EA0,PCT(40)?PICK(w_):(uint16_t)XRAND());
+                    XW16(dg,0x2EA2,PCT(40)?PICK(w_):(uint16_t)XRAND());XW16(dg,0x2EA4,PCT(40)?PICK(w_):(uint16_t)XRAND());
+                    XW16(dg,0xE008,PCT(50)?0x14:PCT(50)?0x15:PCT(50)?0x13:(uint16_t)XRAND());
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
 #undef XRAND
 #undef XW16
 #undef XW8

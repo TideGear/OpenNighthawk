@@ -151,20 +151,20 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,020 addresses matched; named code runs 150,952 of the
+      **Now:** 1,083 addresses matched; named code runs 153,352 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784 and batch x 301.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301 and batch aa 2,215.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 156,351 /187,351 creditable bytes (P2 84.28%, overall 94.90%);
+      the score measures 158,751 /187,356 creditable bytes (P2 85.50%, overall 95.44%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -274,6 +274,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | v | 19 Oct | 1,018 | 873 | VGAME `8F71` the navigation display (legs, times and clock bar; 258 instructions) and VGAME `93E9` the armament panel refresh (75): both reached only by the new `display_tour` route (51 checkpoints; 15 and 1 calls). `8F71` misses two instructions there (damage bit 5 of `[3664]`), covered by the fixture |
 | w | 19 Oct | 1,019 | 784 | START `1C2F` `start_site_popup_text`: the info popup text of a briefing-map airbase or radar site (303 instructions; two-slot loop; proved on `display_tour`, 51 checkpoints / 40 calls; the route misses 23 instructions that need flagged sites in a theatre briefing, covered by the fixture) |
 | x | 19 Oct | 1,020 | 301 | START `11DB` `start_map_hover_light`: the briefing-map hover handler (127 instructions, 301 bytes: relights the palette entry of the item under the pointer, the help line and the site popup; the census rows `11DB`, `1285` and `12DB` are parts of it). Proved on `display_tour` (1,301 calls) |
+| aa | 19 Oct | 1,083 | 2,215 | 63 routines on the new routes: the flight key dispatcher's arms (VGAME `C8CA`..`D3F8`: 55 arms, each a hand-back routine named by its key: zoom, countermeasures, gear, flaps, HUD options, the camera and view keys, the height hold, the sensitivity, detail, sound and frame-rate steps, the training switch, the waypoint reset, the display selectors F3-F10, Enter/Backspace buttons and more), the eject arm `CD04`, START's Alt+Q panel `7611` and int86 `9520`, END's Alt+Q panel `3E61`, TASS page `3BBF`, int86 `519E` and the whole icon-frame switch `0977`. On `key_tour`, `quit_dialogs`, `ejection_tass`, `display_tour`, `navigation_grid`, `recon`, `airair_type5`, `korea_strike` and `camera_gradients`. Mutation counts: 1,709 in all, all caught; 13 arms of two or three instructions have fewer than 20 (5 to 18) because no more distinct edits exist |
 
 Notes that still matter:
 

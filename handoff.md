@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 84.28%, P3 99.46%, All 95.06%
+- **Scoreboard:** P1 100.00%, P2 85.50%, P3 99.46%, All 95.44%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,020 addresses matched. Scope is the expanded seven-program
-  one: **156,351 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,083 addresses matched. Scope is the expanded seven-program
+  one: **158,751 / 187,356 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -51,16 +51,18 @@ Consolidate it instead of appending to it.
 - **Batches w, x (accepted):** w = START `1C2F` (784 bytes), x = START `11DB` (the briefing-map hover handler,
   301 bytes), both on `display_tour`. Evidence `D:/f117-gate/p2-batch-{w,x}-accept/`. `new_batch.py LETTER PREV
   BASE_COMMIT ...` takes the keyed baseline from the newest batch that froze one and the named coverage from PREV.
+- **Batch aa (accepted, 63 routines, 2,215 bytes):** the flight key dispatcher's arms (VGAME `C8CA`..`D3F8`),
+  the eject arm, START's Alt+Q panel and int86, END's Alt+Q panel, TASS page, int86 and icon-frame switch, on
+  the new routes `key_tour`, `quit_dialogs`, `ejection_tass` (batch z gated them: 49 routes / 48 sessions, keyed
+  baseline in `p2-batch-z-accept/baseline`). Tools: `D:/f117-gate/accept-kit/integrate_many.py DIR...` merges the
+  proofs and their FATAL_JUMPS/SHARED_ENDINGS rows (SPANS rows and `g_cov_ip` lines of proofs whose code lies
+  below the entry, e.g. VGAME `CC93` and END `0977`, are added by hand); `new_batch.py LETTER PREV BASE_COMMIT
+  DIR[:PREFIX[:partial]]...` (mark hand-back routines `partial`). Evidence `D:/f117-gate/p2-batch-aa-accept/`.
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
-  5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown (roadmap). Three
-  routes for the player groups are now in `tools/routes/` and gated (batch z: 49 routes / 48 sessions, keyed
-  baseline in `p2-batch-z-accept/baseline`): `key_tour` (the flight key dispatcher's arms, the ILS panel, the
-  Lockheed checkbox; coverage `D:/f117-gate/route-research2/key_tour/`), `quit_dialogs` (START's Alt+Q panel) and
-  `ejection_tass` (Shift+F10, END's TASS page). `ejection` (END's rescue page, +264 bytes for 2.5 G) is built but
-  not adopted. **Next:** prove on them, with the kit's `checkpoints --route NAME`: the key-dispatcher arms (VGAME
-  `0C9AE` family and `0CB77` rows: dozens of small arms; one proof per arm or per group), the ILS panel `0971A`,
-  the eject arm `0CD04`, START `07611` and `09520`, END `03BBF`, `03E61`, `0519E` and the icon rows `008EA`/`00936`.
-  Refresh the score's route coverage first: `D:/f117-gate/route-cover-20261019` + the three new captures.
+  5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
+  player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
+  `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
+  (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
   Owner decision pending: whether dead (and error/setup) code leaves the denominator.
 - **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
   freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes

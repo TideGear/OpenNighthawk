@@ -72216,7 +72216,2805 @@ store:                                                            /* 0x12FD */
 #undef SECOND_SLOT_RECORD
 }
 
+/* VGAME CD04: the eject key's arm (Shift+F10, raw code 5D00h) of the flight key
+ * dispatcher (keys_dispatch, entered at C8CA), reached by a jump from the
+ * dispatcher's key chain with the dispatcher's frame live (SI and DI saved below
+ * it). Everything the arm does, up to its jump to the dispatcher's common exit at
+ * C8FA, which stays the original's (the body hands back there).
+ *
+ * The cell [C09A] says the pilot has already ejected; while it is set the key does
+ * nothing (a second press goes straight to the common exit). Otherwise:
+ *
+ * - Two sound requests through D3F9 (priority 2, ids 5 and 14h: the ejection
+ *   sounds), each followed by the caller's two POPs for its two words.
+ * - The survival test. The limit is 500 plus a random number below 300 (C88C with
+ *   300; the result is kept in SI). The measure is the sum of three terms: the
+ *   absolute value (EE0C) of the word [2DF2] shifted right five places, that of
+ *   the word [2DF0] shifted right five places (both words are the aircraft's speed
+ *   components; EE0C's argument is pushed and popped by the caller each time), and
+ *   the signed word [B194]. A measure above the limit (signed compare) is an
+ *   ejection too fast to survive: the sortie ends with result 6 (flight_end, 4A42).
+ *   A measure at or below the limit marks the sortie record (the far pointer at
+ *   [E574]): its +26h is 2, an ejection.
+ * - Either way the ejection is recorded for the cameras: [C09A] becomes 1, the
+ *   aircraft's map position ([C0D0], [C0DE]) is copied to [DECE] and [DEF2], and
+ *   its height [2DF4] plus 8 to [DEF6] (the seat starts a little above the cockpit).
+ *
+ * AX, BX, ES, SI, DI and the flags are left as the original leaves them: AX the
+ * height plus 8 (flags of that ADD), BX the last POP or the record pointer's low
+ * word, SI the limit, DI the second term shifted. Every callee returns with a plain
+ * RET; the caller removes the arguments (POP BX). */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+/* PUSH WORD PTR [ds:o]: read the word, lower SP, store it; on a part before the 286 the word is
+ * read again after SP has moved (it differs only if it lies in the stack). */
+#define XPUSHM(o_) do { const uint16_t po_ = (uint16_t)(o_), pv_ = seg_read16(c, c->seg[S_DS], po_); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? pv_ : seg_read16(c, c->seg[S_DS], po_)); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_eject(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        EJECTED = 0xC09A,           /* the pilot has ejected: 0 or 1 */
+        SPEED_X = 0x2DF0, SPEED_Y = 0x2DF2,   /* the two speed components */
+        SPEED_BIAS = 0xB194,        /* the signed term added to the measure */
+        RECORD_PTR = 0xE574,        /* far pointer to the sortie record */
+        RECORD_OUTCOME = 0x26,      /* the record's outcome word: 2 = ejected */
+        MAP_X = 0xC0D0, MAP_Y = 0xC0DE, HEIGHT = 0x2DF4,
+        SEAT_X = 0xDECE, SEAT_Y = 0xDEF2, SEAT_HEIGHT = 0xDEF6,
+        SOUND_REQUEST = 0xD3F9, RANDOM_BELOW = 0xC88C, ABSOLUTE_VALUE = 0xEE0C, FLIGHT_END = 0x4A42,
+        COMMON_EXIT = 0xC8FA
+    };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCD04);
+    alu_op(c, 7, ds_get(c, EJECTED), 0, 1);                                 /* cmp [C09A],0 / je CD0E */
+    if (x86_cond(c, 4)) goto first_press;
+    XB(1, 0xCD0B); c->ip = COMMON_EXIT; return 1;                           /* already ejected: nothing */
+first_press:
+    XB(2, 0xCD0E); XPUSH(2); XPUSH(5);
+    XNEAR(0xCD12, SOUND_REQUEST, 0xCD15);
+    XB(4, 0xCD15); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); XPUSH(2); XPUSH(0x14);
+    XNEAR(0xCD1B, SOUND_REQUEST, 0xCD1E);
+    XB(3, 0xCD1E); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); XPUSH(0x12C);
+    XNEAR(0xCD23, RANDOM_BELOW, 0xCD26);
+    XB(4, 0xCD26);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x01F4, 1);             /* the limit: random + 500 */
+    XPUSHM(SPEED_Y);
+    c->r[R_SI] = c->r[R_AX];
+    XNEAR(0xCD30, ABSOLUTE_VALUE, 0xCD33);
+    XB(3, 0xCD33);
+    c->r[R_BX] = cpu_pop16(c);
+    XPUSHM(SPEED_X);
+    c->r[R_DI] = c->r[R_AX];
+    XNEAR(0xCD3A, ABSOLUTE_VALUE, 0xCD3D);
+    XB(7, 0xCD3D);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 5, 1);               /* sar ax,5 */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 7, c->r[R_DI], 5, 1);               /* sar di,5 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_DI], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, SPEED_BIAS), 1);
+    alu_op(c, 7, c->r[R_AX], c->r[R_SI], 1);                                /* cmp ax,si / jle CD56 */
+    if (x86_cond(c, 14)) goto survived;
+    XB(1, 0xCD4E); XPUSH(6);                                                /* too fast: the sortie ends, result 6 */
+    XNEAR(0xCD50, FLIGHT_END, 0xCD53);
+    XB(2, 0xCD53); c->r[R_BX] = cpu_pop16(c);                               /* pop bx / jmp CD60 */
+    goto seat;
+survived:
+    XB(2, 0xCD56);
+    c->r[R_BX] = ds_get(c, RECORD_PTR);                                     /* les bx,[E574] */
+    c->seg[S_ES] = ds_get(c, (uint16_t)(RECORD_PTR + 2));
+    seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + RECORD_OUTCOME), 2);
+seat:
+    XB(9, 0xCD60);
+    ds_put(c, EJECTED, 1);
+    c->r[R_AX] = ds_get(c, MAP_X);
+    ds_put(c, SEAT_X, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, MAP_Y);
+    ds_put(c, SEAT_Y, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, HEIGHT);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 8, 1);                  /* the seat starts 8 above */
+    ds_put(c, SEAT_HEIGHT, c->r[R_AX]);
+    c->ip = COMMON_EXIT; return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPUSHM
+#undef XPUSH
+#undef XB
+
+/* END 0977 with its arms (0894 to 0975): the switch of the debriefing map's
+ * icon placement (0880) that chooses which frame of the icon sheet the icon
+ * is drawn with. 0880 has built its frame and left the icon's kind (the low
+ * six bits of the record's byte +4) in AX with the record pointer in BX; the
+ * record is at BP+4, the flag word at BP+6 and the frame number goes to the
+ * local at BP-8. Every route out of the switch ends in a JMP to 099D, the
+ * placement's drawing tail, which stays the original's (a matched routine of
+ * its own); the body hands over there.
+ *   - The kind counts from 1: AX is decremented, and a result above 0Bh (kind
+ *     0, or 0Ch and up after the wrap) goes straight to 099D with the frame
+ *     local untouched. Otherwise AX is doubled and swapped with BX (BX the
+ *     table offset, AX the record pointer) and the jump goes through the word
+ *     table in the code segment at 0985: 0894, 08C2, 08BA, 08E2, 08CA, 08DA,
+ *     08D2, 08EA, 099D, 092F, 0936, 08C2 for kinds 1 to 12.
+ *   - Six arms and the one at 092F only store a constant frame: 08BA 1, 08C2
+ *     2, 08CA 3, 08D2 4, 08DA 5, 08E2 6, 092F 0Ah.
+ *   - Kind 1 (0894): the record's byte +5, its low seven bits, numbers a unit;
+ *     the table at 56F2 holds 16 bytes per unit, and bit 3 of the byte at
+ *     56F2 + 16 * unit gives frame 0Fh when set, 0 when clear.
+ *   - Kind 8 (08EA): with the flag word at BP+6 zero the frame is 8; otherwise
+ *     the debriefing record behind the far pointer [7222] decides by its word
+ *     at +26h (the mission's outcome): 3 gives 7, 1 gives 0Eh, anything else
+ *     0Bh when the byte [6440] is zero and 0Dh when it is not. The far pointer
+ *     is loaded with LES, so ES and BX are left pointing at the record.
+ *   - Kind 11 (0936): the record's flag byte +4 gives an index kept at BP-2:
+ *     0 when bit 7 is set, else 1 when bit 6 is set, else the local is not
+ *     written and whatever the frame held is used. The index picks a record of
+ *     the table at 71F0 (12h bytes each, the product a real MUL), whose first
+ *     word times 0Ch (a signed IMUL) is an offset into the table at 145A; the
+ *     word there equal to 3 gives frame 9, anything else 0Ch.
+ * AX, BX, CX, DX, ES and the flags are left as the original's instructions
+ * leave them: the loads, the masks, the multiplies and the last compare or
+ * test (the jumps and the stores do not change them). */
+static int end_icon_frame_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, FLAG = 6, INDEX = -2, FRAME = -8 };
+    enum { LAST_INDEX = 0x0B, TABLE = 0x0985, DRAW_TAIL = 0x099D };
+    enum { ARM_UNIT = 0x0894, ARM_OUTCOME = 0x08EA, ARM_RECORD = 0x0936 };
+    enum { UNIT_BYTE = 5, UNIT_MASK = 0x7F, UNIT_SHIFT = 4, UNIT_TABLE = 0x56F2, UNIT_BIT = 8, FRAME_SET = 0x0F, FRAME_CLEAR = 0 };
+    enum { RECORD_PTR = 0x7222, OUTCOME = 0x26, RESULT_CELL = 0x6440, OUTCOME_CAPTURE = 3, OUTCOME_ONE = 1 };
+    enum { FRAME_FLAGGED = 8, FRAME_CAPTURE = 7, FRAME_ONE = 0x0E, FRAME_QUIET = 0x0B, FRAME_OTHER = 0x0D };
+    enum { FLAGS_BYTE = 4, FIRST_BIT = 0x80, SECOND_BIT = 0x40 };
+    enum { RECORD_SIZE = 0x12, ROW_SIZE = 0x0C, RECORD_TABLE = 0x71F0, ROW_TABLE = 0x145A, WANTED = 3, FRAME_WANTED = 9, FRAME_MISS = 0x0C };
+    uint16_t at, frame;
+#define IB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define HAND_OVER() do { c->ip = DRAW_TAIL; return 1; } while(0)
+    if (!room(c, 3)) return 0;
+    IB(3, 0x0977);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    alu_op(c, 7, c->r[R_AX], LAST_INDEX, 1);                          /* cmp ax,0Bh / ja 099D */
+    if (x86_cond(c, 7)) HAND_OVER();
+    IB(3, 0x097D);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);         /* shl ax,1 */
+    { const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t; }   /* xchg bx,ax */
+    at = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + TABLE)); /* jmp cs:[bx+0985h] */
+    switch (at) {
+    case ARM_UNIT: goto unit_flag;
+    case ARM_OUTCOME: goto outcome_arm;
+    case ARM_RECORD: goto record_arm;
+    case 0x08BA: frame = 1; goto constant;
+    case 0x08C2: frame = 2; goto constant;
+    case 0x08CA: frame = 3; goto constant;
+    case 0x08D2: frame = 4; goto constant;
+    case 0x08DA: frame = 5; goto constant;
+    case 0x08E2: frame = 6; goto constant;
+    case 0x092F: frame = 0x0A; goto constant;
+    default: c->ip = at; return 1;                                    /* 099D: the tail itself */
+    }
+constant:
+    IB(2, at);                                                        /* mov word [bp-8],n / jmp 099D */
+    bp_put(c, FRAME, frame);
+    HAND_OVER();
+unit_flag:
+    IB(8, 0x0894);
+    c->r[R_BX] = bp_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + UNIT_BYTE)));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & UNIT_MASK, 1);    /* and ax,7Fh */
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_CL, UNIT_SHIFT);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);   /* shl bx,cl */
+    alu_logic(c, (uint32_t)ds_get8(c, (uint16_t)(c->r[R_BX] + UNIT_TABLE)) & UNIT_BIT, 0);   /* test byte [bx+56F2],8 / je 08B2 */
+    if (c->flags & F_ZF) { IB(2, 0x08B2); bp_put(c, FRAME, FRAME_CLEAR); HAND_OVER(); }
+    IB(2, 0x08AA);
+    bp_put(c, FRAME, FRAME_SET);
+    HAND_OVER();
+outcome_arm:
+    IB(2, 0x08EA);
+    alu_op(c, 7, bp_get(c, FLAG), 0, 1);                              /* cmp [bp+6],0 / jne 08F8 */
+    if (!x86_cond(c, 5)) { IB(2, 0x08F0); bp_put(c, FRAME, FRAME_FLAGGED); HAND_OVER(); }
+    IB(3, 0x08F8);
+    c->r[R_BX] = ds_get(c, RECORD_PTR);                               /* les bx,[7222] */
+    c->seg[S_ES] = ds_get(c, (uint16_t)(RECORD_PTR + 2));
+    alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + OUTCOME)), OUTCOME_CAPTURE, 1);
+    if (!x86_cond(c, 5)) { IB(2, 0x0903); bp_put(c, FRAME, FRAME_CAPTURE); HAND_OVER(); }
+    IB(2, 0x090B);
+    alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + OUTCOME)), OUTCOME_ONE, 1);
+    if (!x86_cond(c, 5)) { IB(2, 0x0912); bp_put(c, FRAME, FRAME_ONE); HAND_OVER(); }
+    IB(2, 0x091A);
+    alu_op(c, 7, ds_get8(c, RESULT_CELL), 0, 0);                      /* cmp byte [6440],0 / jne 0928 */
+    if (!x86_cond(c, 5)) { IB(2, 0x0921); bp_put(c, FRAME, FRAME_QUIET); HAND_OVER(); }
+    IB(2, 0x0928);
+    bp_put(c, FRAME, FRAME_OTHER);
+    HAND_OVER();
+record_arm:
+    IB(3, 0x0936);
+    c->r[R_BX] = bp_get(c, RECORD);
+    alu_logic(c, (uint32_t)ds_get8(c, (uint16_t)(c->r[R_BX] + FLAGS_BYTE)) & FIRST_BIT, 0);   /* test byte [bx+4],80h / je 0946 */
+    if (c->flags & F_ZF) {
+        IB(2, 0x0946);
+        alu_logic(c, (uint32_t)ds_get8(c, (uint16_t)(c->r[R_BX] + FLAGS_BYTE)) & SECOND_BIT, 0); /* test byte [bx+4],40h / je 0951 */
+        if (!(c->flags & F_ZF)) { IB(1, 0x094C); bp_put(c, INDEX, 1); }
+    } else {
+        IB(2, 0x093F);
+        bp_put(c, INDEX, 0);
+    }
+    IB(8, 0x0951);
+    c->r[R_AX] = RECORD_SIZE;
+    x86_mul16(c, bp_get(c, INDEX));                                   /* mul word [bp-2]: DX:AX */
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = ROW_SIZE;
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + RECORD_TABLE)));  /* imul word [bx+71F0]: DX:AX */
+    c->r[R_BX] = c->r[R_AX];
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + ROW_TABLE)), WANTED, 1);   /* cmp word [bx+145A],3 / jne 0970 */
+    if (!x86_cond(c, 5)) { IB(2, 0x0969); bp_put(c, FRAME, FRAME_WANTED); HAND_OVER(); }
+    IB(2, 0x0970);
+    bp_put(c, FRAME, FRAME_MISS);
+    HAND_OVER();
+#undef IB
+#undef HAND_OVER
+}
+
+/* END 3BBF, the debrief page of a captured pilot (the TASS capture page). It
+ * takes no arguments and has no branch: the same steps every time.
+ *   - The byte [6982] is set to 1 (a one-byte page flag; START uses the same
+ *     address for a different table, so it is named only by this use).
+ *   - The picture 10BEh is shown through the picture loader 1901(callback 0,
+ *     name 10BEh): the name word is pushed last, the zero callback word
+ *     before it, so no callback runs over the picture.
+ *   - Sound 26h is requested from the driver's far entry 05FA:25F3.
+ *   - The text colours [6D90] and [6D92] become 0Fh and 0.
+ *   - The continue prompt 206A is drawn at (A0h, C0h): the x word is pushed
+ *     last, so it is argument 0.
+ * 1901 and 206A return with a plain RET and the driver's far entry with a far
+ * RET, so this routine removes each call's arguments itself (two POP BX after
+ * 1901 and after 206A, one after 25F3). The SUB AX,AX and every POP are real
+ * instructions and are kept in order; the routine leaves with a plain RET,
+ * with AX and BX as 206A and the last POP left them. */
+static int end_capture_page(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PAGE_FLAG = 0x6982, TEXT_COLOUR = 0x6D90, TEXT_BACKGROUND = 0x6D92 };
+    enum { PICTURE = 0x10BE, SOUND = 0x26, PROMPT_X = 0x00A0, PROMPT_Y = 0x00C0 };
+#define CB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define CP(v_) cpu_push16(c,(v_))
+#define CPOP() (c->r[R_BX]=cpu_pop16(c))
+#define CRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); CRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define CFAR(at_,ret_) do { SM4_NEED(1,(at_)); CRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 5)) return 0;
+    /* The flag, then the picture: 1901(callback 0, name 10BEh). */
+    CB(5, 0x3BBF);
+    ds_put8(c, PAGE_FLAG, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    CP(c->r[R_AX]);
+    c->r[R_CX] = PICTURE;
+    CP(c->r[R_CX]);
+    CNEAR(0x3BCB, 0x1901, 0x3BCE);
+    /* The sound request: 25F3(26h). */
+    CB(4, 0x3BCE);
+    CPOP();
+    CPOP();
+    c->r[R_AX] = SOUND;
+    CP(c->r[R_AX]);
+    CFAR(0x3BD4, 0x3BD9);
+    /* The text colours, then the prompt: 206A(A0h, C0h). */
+    CB(7, 0x3BD9);
+    CPOP();
+    ds_put(c, TEXT_COLOUR, 0x000F);
+    ds_put(c, TEXT_BACKGROUND, 0x0000);
+    c->r[R_AX] = PROMPT_Y;
+    CP(c->r[R_AX]);
+    c->r[R_AX] = PROMPT_X;
+    CP(c->r[R_AX]);
+    CNEAR(0x3BEE, 0x206A, 0x3BF1);
+    CB(3, 0x3BF1);
+    CPOP();
+    CPOP();
+    near_ret(c);
+    return 1;
+#undef CB
+#undef CP
+#undef CPOP
+#undef CRUN
+#undef CNEAR
+#undef CFAR
+}
+
+/* END 519E: software interrupt call through register structures (the C
+ * library's int86): interrupt `n` (bp+4) with the registers of `in` (bp+6:
+ * AX, BX, CX, DX, SI, DI at 0-0Ah), results to `out` (bp+8: the same six
+ * words, the carry flag as 0 or 1 at 0Ch). The interrupt number is a byte of
+ * the code, so the instruction is built in the frame: CD n CB (INT n; RETF)
+ * at [bp-0Ah], or for the absolute disk read and write (25h, 26h), which
+ * come back with FLAGS still on the stack, CD n 44 44 CB (INT n; INC SP;
+ * INC SP; RETF). The routine far-calls it through the pointer it keeps at
+ * [bp-0Eh] (SS:bp-0Ah), with BP saved around it; DI is loaded last, from
+ * in->di, over the structure pointer. Afterwards AX, BX, CX, DX and SI go to
+ * out and the DI the interrupt left (saved across the reload of the out
+ * pointer) to out->di. With carry set, the error code in AL goes through
+ * 54A4 (AH = 0, then the DOS-error-to-errno mapper at 54AA; plain RET) and AX
+ * is reloaded from out->ax, cflag 1; otherwise cflag is 0. Returns out->ax in
+ * AX. The direction flag is cleared after the call; the final flags are
+ * those of the frame drop's ADD SP,0Ah. It is the same routine as PLAYER
+ * 13CE and VGAME EC12, at another address with its own mapper. */
+static int end_interrupt_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NUMBER = 4, IN = 6, OUT = 8, THUNK_PTR = -0x0E, THUNK_SEG = -0x0C,
+           CODE_INT = -0x0A, CODE_NUM = -9, CODE_2 = -8, CODE_3 = -7, CODE_4 = -6 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+    if (!room(c, 10)) return 0;
+    XB(10, 0x519E);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI); x86_push_reg(c, R_DI);
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0A, 1);
+    bp_put8(c, CODE_INT, 0xCD);                                   /* INT */
+    c->r[R_AX] = bp_get(c, NUMBER); bp_put8(c, CODE_NUM, get_r8(c, R_AL));
+    alu_op(c, 7, get_r8(c, R_AL), 0x25, 0); if (x86_cond(c, 4)) goto disk;
+    XB(2, 0x51B4);
+    alu_op(c, 7, get_r8(c, R_AL), 0x26, 0); if (x86_cond(c, 4)) goto disk;
+    XB(2, 0x51B8);
+    bp_put8(c, CODE_2, 0xCB); goto call;                          /* RETF */
+disk:
+    XB(3, 0x51BE);
+    bp_put8(c, CODE_4, 0xCB); bp_put8(c, CODE_3, 0x44); bp_put8(c, CODE_2, 0x44);   /* INC SP, INC SP, RETF */
+call:
+    XB(11, 0x51CA);
+    bp_put(c, THUNK_SEG, c->seg[S_SS]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + CODE_INT); bp_put(c, THUNK_PTR, c->r[R_AX]);
+    c->r[R_DI] = bp_get(c, IN);
+    c->r[R_AX] = ds_get(c, c->r[R_DI]);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + 4));
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_DI] + 6));
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_DI] + 8));
+    c->r[R_DI] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x0A));       /* in->di, loaded last */
+    x86_push_reg(c, R_BP);
+    SM4_NEED(1, 0x51E8);
+    RUN(guest_call_far_to(m, bp_get(c, THUNK_SEG), bp_get(c, THUNK_PTR), 0x51EB));
+    XB(11, 0x51EB);
+    c->r[R_BP] = cpu_pop16(c);
+    set_flag(c, F_DF, 0);
+    x86_push_reg(c, R_DI);                                        /* the DI the interrupt left */
+    c->r[R_DI] = bp_get(c, OUT);
+    ds_put(c, c->r[R_DI], c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 2), c->r[R_BX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 4), c->r[R_CX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 6), c->r[R_DX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 8), c->r[R_SI]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x0A), cpu_pop16(c));
+    if (x86_cond(c, 2)) goto failed;
+    XB(2, 0x5204);
+    c->r[R_SI] = (uint16_t)alu_op(c, 6, c->r[R_SI], c->r[R_SI], 1); goto store_flag;
+failed:
+    SM4_NEED(1, 0x5208);
+    RUN(guest_call_pop(m, 0x54A4, 0x520B, 0));
+    XB(2, 0x520B);
+    c->r[R_SI] = 1; c->r[R_AX] = ds_get(c, c->r[R_DI]);
+store_flag:
+    XB(7, 0x5210);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x0C), c->r[R_SI]);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0A, 1);
+    c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c); return 1;
+#undef XB
+#undef RUN
+}
+
+/* END 3E61: the Alt+Q quit confirmation. The 768-byte palette table at
+ * DS:1F25 (256 RGB entries, the table 15EF and 15D7 hand to the palette fade
+ * at 1607) is first copied into a 302h-byte buffer in this routine's frame
+ * (4B0C(src, dst, count) is rep movsb with ES = DS, so the copy is
+ * DS-relative), after the far 25F3 has been called with 0 (what it does is
+ * not settled here; 1607 polls it with 2 until it answers zero). The screen
+ * fades out (15EF with 1) and, when the argument byte [BP+4] is nonzero, the
+ * screen is blanked through the far 24CC, which takes eight words (0, 0, 0,
+ * 1, 0, 0, 140h, 0C8h, the last two being the 320 x 200 size). The panel is
+ * the picture named at 10D1, read into the far buffer [6444]:[6442] (0FA4)
+ * and drawn from [55D0]:[7220] (4722), with its own palette read from the
+ * file named at 10D9 into DS:1F25 (0FDA); the screen fades back in (15D7).
+ * The keyboard is then drained (the far 25BC is polled until it answers zero)
+ * and one key is taken from the far 25C1, made upper case with AND 5Fh and
+ * kept at [BP-2]. 'Y' (59h) quits: 3F44 is called with 0 (it shuts the
+ * program down; if it does return, the epilogue follows at once). Any other
+ * key puts the screen back: fade out, the screen blanked again (24CC with
+ * its first word 1 this time), the saved palette copied back to DS:1F25, fade
+ * in. Every near callee returns with a plain RET and every far one with RETF;
+ * this routine removes the arguments itself (ADD SP or POP BX), and the
+ * epilogue is POP BX (the last call's argument), MOV SP,BP, POP BP, RET. */
+static int end_quit_confirm_panel(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAG = 4, KEY = -2, SAVED_PALETTE = -0x302 };
+    enum { PALETTE = 0x1F25, PALETTE_BYTES = 0x300, SCREEN_WIDTH = 0x140, SCREEN_HEIGHT = 0x0C8 };
+#define QB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define QP(v_) cpu_push16(c,(v_))
+#define QPOP() (c->r[R_BX]=cpu_pop16(c))
+#define QSP(n_) (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+#define QRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define QNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); QRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define QFAR(at_,ret_) do { SM4_NEED(1,(at_)); QRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 5)) return 0;
+    /* Frame, then the far 25F3 with 0. */
+    QB(5, 0x3E61);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0302, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); QP(c->r[R_AX]);
+    QFAR(0x3E6B, 0x3E70);
+    /* Save the palette: 4B0C(DS:1F25, frame buffer, 300h); fade out. */
+    QB(7, 0x3E70);
+    QPOP();
+    c->r[R_AX] = PALETTE_BYTES; QP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SAVED_PALETTE); QP(c->r[R_AX]);
+    c->r[R_AX] = PALETTE; QP(c->r[R_AX]);
+    QNEAR(0x3E7E, 0x4B0C, 0x3E81);
+    QB(3, 0x3E81);
+    QSP(6);
+    c->r[R_AX] = 1; QP(c->r[R_AX]);
+    QNEAR(0x3E88, 0x15EF, 0x3E8B);
+    QB(3, 0x3E8B);
+    QPOP();
+    alu_op(c, 7, bp_get8(c, FLAG), 0, 0);
+    if (x86_cond(c, 4)) goto panel;
+    /* A nonzero flag blanks the screen first: 24CC(0, 0, 0, 1, 0, 0, 140h, 0C8h). */
+    QB(12, 0x3E92);
+    c->r[R_AX] = SCREEN_HEIGHT; QP(c->r[R_AX]);
+    c->r[R_AX] = SCREEN_WIDTH; QP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); QP(c->r[R_AX]);
+    QP(c->r[R_AX]);
+    c->r[R_CX] = 1; QP(c->r[R_CX]);
+    QP(c->r[R_AX]); QP(c->r[R_AX]); QP(c->r[R_AX]);
+    QFAR(0x3EA5, 0x3EAA);
+    QB(1, 0x3EAA);
+    QSP(0x10);
+panel:
+    /* The panel picture: 0FA4(10D1, [6442], [6444]), then 4722([7220], [55D0]). */
+    QB(4, 0x3EAD);
+    QP(ds_get(c, 0x6444)); QP(ds_get(c, 0x6442));
+    c->r[R_AX] = 0x10D1; QP(c->r[R_AX]);
+    QNEAR(0x3EB9, 0x0FA4, 0x3EBC);
+    QB(3, 0x3EBC);
+    QSP(6);
+    QP(ds_get(c, 0x55D0)); QP(ds_get(c, 0x7220));
+    QNEAR(0x3EC7, 0x4722, 0x3ECA);
+    /* The panel's palette: 0FDA(10D9, DS:1F25); fade in. */
+    QB(6, 0x3ECA);
+    QPOP(); QPOP();
+    c->r[R_AX] = PALETTE; QP(c->r[R_AX]);
+    c->r[R_AX] = 0x10D9; QP(c->r[R_AX]);
+    QNEAR(0x3ED4, 0x0FDA, 0x3ED7);
+    QB(4, 0x3ED7);
+    QPOP(); QPOP();
+    c->r[R_AX] = 1; QP(c->r[R_AX]);
+    QNEAR(0x3EDD, 0x15D7, 0x3EE0);
+    QB(1, 0x3EE0);
+    QPOP();
+drain:
+    /* Wait until the keyboard is empty, then read one key. */
+    QFAR(0x3EE1, 0x3EE6);
+    QB(2, 0x3EE6);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 5)) goto drain;
+    QFAR(0x3EEA, 0x3EEF);
+    QB(4, 0x3EEF);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x005F, 1);
+    bp_put(c, KEY, c->r[R_AX]);
+    alu_op(c, 7, c->r[R_AX], 0x0059, 1);
+    if (x86_cond(c, 5)) goto restore;
+    /* 'Y': quit. */
+    QB(2, 0x3EFA);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); QP(c->r[R_AX]);
+    QNEAR(0x3EFD, 0x3F44, 0x3F00);
+    QB(1, 0x3F00);
+    goto leave;
+restore:
+    /* Any other key: fade out, blank the screen, put the palette back, fade in. */
+    QB(2, 0x3F02);
+    c->r[R_AX] = 1; QP(c->r[R_AX]);
+    QNEAR(0x3F06, 0x15EF, 0x3F09);
+    QB(13, 0x3F09);
+    QPOP();
+    c->r[R_AX] = SCREEN_HEIGHT; QP(c->r[R_AX]);
+    c->r[R_AX] = SCREEN_WIDTH; QP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); QP(c->r[R_AX]);
+    QP(c->r[R_AX]); QP(c->r[R_AX]); QP(c->r[R_AX]); QP(c->r[R_AX]);
+    c->r[R_AX] = 1; QP(c->r[R_AX]);
+    QFAR(0x3F1D, 0x3F22);
+    QB(7, 0x3F22);
+    QSP(0x10);
+    c->r[R_AX] = PALETTE_BYTES; QP(c->r[R_AX]);
+    c->r[R_AX] = PALETTE; QP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SAVED_PALETTE); QP(c->r[R_AX]);
+    QNEAR(0x3F32, 0x4B0C, 0x3F35);
+    QB(3, 0x3F35);
+    QSP(6);
+    c->r[R_AX] = 1; QP(c->r[R_AX]);
+    QNEAR(0x3F3C, 0x15D7, 0x3F3F);
+leave:
+    QB(4, 0x3F3F);
+    QPOP();
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef QB
+#undef QP
+#undef QPOP
+#undef QSP
+#undef QRUN
+#undef QNEAR
+#undef QFAR
+}
+
+/* START 0000:9520 - int86(intno, inregs, outregs), the C library's software
+ * interrupt call (no census name).  Used on the exit path (76D1 asks the
+ * BIOS for text mode, function 3 of INT 10h) and by anything else that
+ * wants a software interrupt with a register image.
+ *
+ * Arguments: [BP+4] the interrupt number (its low byte), [BP+6] the address
+ * of the input record, [BP+8] the address of the output record (both in the
+ * data segment; they may be the same record, as 76D1 passes them).  A record
+ * is six words AX, BX, CX, DX, SI, DI, then the carry word at +0Ch.
+ *
+ * The routine cannot write "INT n" with a variable n, so it builds the
+ * instruction in its own frame and calls it.  The ten bytes at [BP-0Ah] are
+ *      CD nn CB            INT nn / RETF                  (most interrupts)
+ *      CD nn 44 44 CB      INT nn / INC SP / INC SP / RETF   (25h and 26h)
+ * (the two INC SP drop the flags word that DOS's absolute disk read and write
+ * leave on the stack).  Its far address (SS : BP-0Ah) is kept at [BP-0Eh].
+ * The input record is loaded into AX, BX, CX, DX, SI and DI, BP is saved
+ * around the far call (the stub returns with whatever BP the interrupt left),
+ * and after the call the six registers are stored into the output record
+ * (DI is saved on the stack while the pointer is loaded, and popped straight
+ * into the record's DI word) with CLD.
+ *
+ * The carry the interrupt left is then tested: with CF set 98CA is called
+ * (the C library's DOS-error mapping: it sets the error variables from AL;
+ * it is run as original code, a plain RET with no argument), SI becomes 1 and
+ * AX is taken again from the record's AX word; with CF clear SI is 0.  SI is
+ * stored as the carry word at +0Ch of the output record.  The routine returns
+ * with AX the output record's AX (the interrupt's AX when the carry is clear)
+ * and SI and DI restored.
+ *
+ * Callees: the stub on the stack (far, RETF), 98CA (near, plain RET).  The
+ * clock: each IB(n, at) claims room for the n instructions of one straight
+ * run and charges them; the runs are the original's (they start at every
+ * branch target and after every conditional jump and call). */
+static int start_call_interrupt(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { INT_NUMBER = 4, IN_RECORD = 6, OUT_RECORD = 8,
+           STUB = -0x0A, STUB_VECTOR = -9, STUB_NEXT = -8, STUB_NEXT2 = -7, STUB_NEXT3 = -6,
+           STUB_POINTER_OFF = -0x0E, STUB_POINTER_SEG = -0x0C };
+    enum { OP_INT = 0xCD, OP_RETF = 0xCB, OP_INC_SP = 0x44, DOS_ABSOLUTE_READ = 0x25, DOS_ABSOLUTE_WRITE = 0x26 };
+    enum { REG_AX = 0, REG_BX = 2, REG_CX = 4, REG_DX = 6, REG_SI = 8, REG_DI = 0x0A, REG_CARRY = 0x0C };
+    enum { MAP_DOS_ERROR = 0x98CA };
+#define IB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define IRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 10)) return 0;
+    /* The frame, the first byte of the stub, the interrupt number. */
+    IB(10, 0x9520);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0A, 1);
+    bp_put8(c, STUB, OP_INT);
+    c->r[R_AX] = bp_get(c, INT_NUMBER);
+    bp_put8(c, STUB_VECTOR, get_r8(c, R_AL));
+    (void)alu_op(c, 7, get_r8(c, R_AL), DOS_ABSOLUTE_READ, 0);
+    if (x86_cond(c, 4)) goto drops_flags;
+    IB(2, 0x9536);
+    (void)alu_op(c, 7, get_r8(c, R_AL), DOS_ABSOLUTE_WRITE, 0);
+    if (x86_cond(c, 4)) goto drops_flags;
+    IB(2, 0x953A);
+    bp_put8(c, STUB_NEXT, OP_RETF);
+    goto call_stub;
+drops_flags:
+    IB(3, 0x9540);
+    bp_put8(c, STUB_NEXT3, OP_RETF);
+    bp_put8(c, STUB_NEXT2, OP_INC_SP);
+    bp_put8(c, STUB_NEXT, OP_INC_SP);
+call_stub:
+    /* The stub's far address, the input record into the registers, and the call. */
+    IB(11, 0x954C);
+    bp_put(c, STUB_POINTER_SEG, c->seg[S_SS]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + STUB);
+    bp_put(c, STUB_POINTER_OFF, c->r[R_AX]);
+    c->r[R_DI] = bp_get(c, IN_RECORD);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_AX));
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_BX));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_CX));
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_DX));
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_SI));
+    c->r[R_DI] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_DI));
+    cpu_push16(c, c->r[R_BP]);
+    SM4_NEED(1, 0x956A);
+    IRUN(guest_call_far_to(m, bp_get(c, STUB_POINTER_SEG), bp_get(c, STUB_POINTER_OFF), 0x956D));
+    /* Back from the interrupt: the registers into the output record. */
+    IB(11, 0x956D);
+    c->r[R_BP] = cpu_pop16(c);
+    c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_DF));
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = bp_get(c, OUT_RECORD);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_AX), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_BX), c->r[R_BX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_CX), c->r[R_CX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_DX), c->r[R_DX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_SI), c->r[R_SI]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_DI), cpu_pop16(c));
+    if (x86_cond(c, 2)) goto failed;
+    IB(2, 0x9586);
+    c->r[R_SI] = (uint16_t)alu_op(c, 6, c->r[R_SI], c->r[R_SI], 1);
+    goto store_carry;
+failed:
+    /* Carry set: map the DOS error, carry word 1, AX again from the record. */
+    SM4_NEED(1, 0x958A);
+    IRUN(guest_call(m, MAP_DOS_ERROR, 0x958D));
+    IB(2, 0x958D);
+    c->r[R_SI] = 1;
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + REG_AX));
+store_carry:
+    IB(7, 0x9592);
+    ds_put(c, (uint16_t)(c->r[R_DI] + REG_CARRY), c->r[R_SI]);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0A, 1);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef IB
+#undef IRUN
+}
+
+/* START 0000:7611 - the quit confirmation panel (census name quit_prompt).
+ *
+ * Alt+Q (the key word 1000h) in three of the front end's input loops - the
+ * key-or-button wait at 3F33 among them - calls this routine with no
+ * argument.  It puts a one-line "quit?" panel on the screen, waits for a
+ * key, and either leaves the program or gives the screen back:
+ *
+ *   1. It hides the mouse cursor (the far thunk 0A95:6BB1 with 0), copies the
+ *      768 bytes of the working palette PALETTE (64E3, 100h entries of three
+ *      bytes) into a buffer of its own at [BP-302h], and fades the screen to
+ *      black (3088 with 1).
+ *   2. While the screen is dark it prints string number 1Fh (35FC with 1Fh
+ *      and 0; the string is the question), loads the file whose name is at
+ *      DS:0EE5 into PALETTE (289A: opened, read, closed - the panel's own
+ *      palette, inferred) and fades back in (3070 with 1).
+ *   3. It waits for a key: the far thunk 0A95:6B7A is called until it returns
+ *      zero, then 0A95:6B7F reads the key.  The key is folded to upper case
+ *      (AND 5Fh, which also clears the high byte) and kept at [BP-2].
+ *   4. Y (59h): the exit routine 76D1 is called with 0 and, if it ever came
+ *      back, the routine leaves through its common tail.  76D1 hides the
+ *      cursor, closes the files, sets text mode through int86 (9520) and
+ *      ends the program, so on the real machine that call does not return.
+ *   5. Any other key: the screen is faded to black again, a full 320 by 200
+ *      rectangle is drawn by the far thunk 0A95:6A8A (its eight arguments, in
+ *      call order: 1, five zeros, 140h, 0C8h - the screen wiped), the saved
+ *      palette is copied back into PALETTE, and the screen is faded in (3070
+ *      with 1).
+ *
+ * Both tails end at 76BB: the argument word left by the last call is popped
+ * into BX (the routine's own 3070 or 76D1 call takes one), then MOV SP,BP /
+ * POP BP / RET.  The copy is 8B6C(from, to, count) = REP MOVSB, run as
+ * original code; the other callees are cdecl near calls or far thunks, each
+ * returning with a plain RET / RETF, and this code removes their arguments
+ * (a POP BX per word, or ADD SP).  The flags of every OR, AND, CMP and ADD
+ * are the original's.
+ *
+ * Frame: [BP-2] the folded key, [BP-302h] the saved palette.
+ *
+ * The clock: each QB(n, at) claims room for the n instructions of one
+ * straight run and charges them; the runs are the original's (they start at
+ * every branch target and after every conditional jump and call). */
+static int start_quit_confirmation(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { KEY = -2, SAVED_PALETTE = -0x302 };
+    /* Data segment. */
+    enum { PALETTE = 0x64E3, PALETTE_BYTES = 0x300, QUESTION_STRING = 0x1F,
+           PANEL_FILE_NAME = 0x0EE5, SCREEN_WIDTH = 0x140, SCREEN_HEIGHT = 0xC8,
+           KEY_CASE_MASK = 0x5F, KEY_Y = 0x59 };
+    /* Callees. */
+    enum { COPY_BYTES = 0x8B6C, FADE_OUT = 0x3088, FADE_IN = 0x3070,
+           DRAW_STRING = 0x35FC, LOAD_FILE = 0x289A, EXIT_PROGRAM = 0x76D1 };
+#define QB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define QPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define QPOP() (c->r[R_BX] = cpu_pop16(c))
+#define QZERO() (c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1))
+#define QADDSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(n_), 1))
+#define QRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define QNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); QRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define QFAR(at_,ret_) do { SM4_NEED(1, (at_)); QRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 5)) return 0;
+    /* Hide the cursor, save the palette, fade out. */
+    QB(5, 0x7611);
+    frame_open(c, 0x302);
+    QZERO(); QPUSH(c->r[R_AX]);
+    QFAR(0x761B, 0x7620);
+    QB(7, 0x7620);
+    QPOP();
+    c->r[R_AX] = PALETTE_BYTES; QPUSH(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SAVED_PALETTE); QPUSH(c->r[R_AX]);
+    c->r[R_AX] = PALETTE; QPUSH(c->r[R_AX]);
+    QNEAR(0x762E, COPY_BYTES, 0x7631);
+    QB(3, 0x7631);
+    QADDSP(6);
+    c->r[R_AX] = 1; QPUSH(c->r[R_AX]);
+    QNEAR(0x7638, FADE_OUT, 0x763B);
+    /* In the dark: the question, the panel's palette, fade in. */
+    QB(5, 0x763B);
+    QPOP();
+    QZERO(); QPUSH(c->r[R_AX]);
+    c->r[R_AX] = QUESTION_STRING; QPUSH(c->r[R_AX]);
+    QNEAR(0x7643, DRAW_STRING, 0x7646);
+    QB(6, 0x7646);
+    QPOP(); QPOP();
+    c->r[R_AX] = PALETTE; QPUSH(c->r[R_AX]);
+    c->r[R_AX] = PANEL_FILE_NAME; QPUSH(c->r[R_AX]);
+    QNEAR(0x7650, LOAD_FILE, 0x7653);
+    QB(4, 0x7653);
+    QPOP(); QPOP();
+    c->r[R_AX] = 1; QPUSH(c->r[R_AX]);
+    QNEAR(0x7659, FADE_IN, 0x765C);
+    QB(1, 0x765C);
+    QPOP();
+wait_key:
+    /* Wait until 6B7A reports a key, then read it. */
+    QFAR(0x765D, 0x7662);
+    QB(2, 0x7662);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 5)) goto wait_key;
+    QFAR(0x7666, 0x766B);
+    QB(4, 0x766B);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], KEY_CASE_MASK, 1);
+    bp_put(c, KEY, c->r[R_AX]);
+    (void)alu_op(c, 7, c->r[R_AX], KEY_Y, 1);
+    if (x86_cond(c, 5)) goto restore_screen;
+    /* Y: leave the program. */
+    QB(2, 0x7676);
+    QZERO(); QPUSH(c->r[R_AX]);
+    QNEAR(0x7679, EXIT_PROGRAM, 0x767C);
+    QB(1, 0x767C);
+    goto tail;
+restore_screen:
+    /* Any other key: fade out, wipe the screen, put the palette back, fade in. */
+    QB(2, 0x767E);
+    c->r[R_AX] = 1; QPUSH(c->r[R_AX]);
+    QNEAR(0x7682, FADE_OUT, 0x7685);
+    QB(13, 0x7685);
+    QPOP();
+    c->r[R_AX] = SCREEN_HEIGHT; QPUSH(c->r[R_AX]);
+    c->r[R_AX] = SCREEN_WIDTH; QPUSH(c->r[R_AX]);
+    QZERO(); QPUSH(c->r[R_AX]);
+    QPUSH(c->r[R_AX]); QPUSH(c->r[R_AX]); QPUSH(c->r[R_AX]); QPUSH(c->r[R_AX]);
+    c->r[R_AX] = 1; QPUSH(c->r[R_AX]);
+    QFAR(0x7699, 0x769E);
+    QB(7, 0x769E);
+    QADDSP(0x10);
+    c->r[R_AX] = PALETTE_BYTES; QPUSH(c->r[R_AX]);
+    c->r[R_AX] = PALETTE; QPUSH(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SAVED_PALETTE); QPUSH(c->r[R_AX]);
+    QNEAR(0x76AE, COPY_BYTES, 0x76B1);
+    QB(3, 0x76B1);
+    QADDSP(6);
+    c->r[R_AX] = 1; QPUSH(c->r[R_AX]);
+    QNEAR(0x76B8, FADE_IN, 0x76BB);
+tail:
+    QB(4, 0x76BB);
+    QPOP();
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef QB
+#undef QPUSH
+#undef QPOP
+#undef QZERO
+#undef QADDSP
+#undef QRUN
+#undef QNEAR
+#undef QFAR
+}
+
+/* VGAME C8CA: the flight key dispatcher (keys_dispatch), called once for every key the
+ * flight loop reads, with the key (scan code high, character low) as its one argument at
+ * bp+4 after the entry. This is its opening only: the choice of the key's arm and the arms
+ * themselves are other code (CE65, then the arm), and the one RET at D3F8 closes every path.
+ *
+ * It builds the frame (ENTER 10h, 0 - sixteen bytes of locals, the arms use bp-2, bp-8 and
+ * bp-10h), saves DI and SI, and clears the two words [KEY_SCRATCH_A] and [KEY_SCRATCH_B]
+ * (they are the first things the arms and the tail read; inferred: per-key state the
+ * frame loop looks at afterwards). Key 0 (no key) goes to D17F, the tail that runs on every
+ * frame; any other key goes to the arm chooser at CE65 with AX = the key.
+ *
+ * The body hands back at D17F or at CE65 and the original (or the chooser's own body)
+ * carries on from there.
+ *
+ * On leaving, AX is the key (or 0), the flags those of the CMP, and the stack holds the
+ * frame, SI and DI as the original leaves them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_dispatcher_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        KEY = 4,                  /* bp+4: the key */
+        KEY_SCRATCH_A = 0x43F0,
+        KEY_SCRATCH_B = 0x43EE,
+        FRAME_BYTES = 0x10
+    };
+    if (!room(c, 8)) return 0;
+    XB(8, 0xC8CA);
+    x86_enter(c, FRAME_BYTES, 0);                                                /* enter 10h,0 */
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);              /* sub ax,ax */
+    ds_put(c, KEY_SCRATCH_A, c->r[R_AX]);
+    ds_put(c, KEY_SCRATCH_B, c->r[R_AX]);
+    alu_op(c, 7, bp_get(c, KEY), c->r[R_AX], 1);                                 /* cmp [bp+4],ax / jne */
+    if (x86_cond(c, 5)) goto some_key;
+    XB(1, 0xC8DD);
+    c->ip = 0xD17F;                                                              /* no key: the every-frame tail */
+    return 1;
+some_key:
+    XB(2, 0xC8E0);
+    c->r[R_AX] = bp_get(c, KEY);
+    c->ip = 0xCE65;                                                              /* choose the key's arm */
+    return 1;
+}
+#undef XB
+
+/* VGAME C8E6: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `n` key, the navigation display switch.
+ *
+ * Bit 0 of the display flags [DISPLAY_FLAGS] is flipped and the local word at bp-8 is
+ * cleared (the dispatcher's frame local the later arms read: here it only gets its start
+ * value). While the display page [DISPLAY] is 13h (the compass page, per the notes on the
+ * `n` key) the arm goes on to CC25, which belongs to another arm of the dispatcher; with
+ * any other page it ends at the common exit C8FA. The body hands back at whichever the
+ * original reaches and that code stays the original's.
+ *
+ * AX and the flags are those of the CMP; the common exit reads none of them but the
+ * lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_toggle_display_flag(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        DISPLAY_FLAGS = 0x9B35,   /* bit 0 flipped by this key */
+        DISPLAY = 0xE008,         /* the display page showing */
+        LOCAL_CLEARED = -8,       /* bp-8 */
+        COMPASS_PAGE = 0x13
+    };
+    if (!room(c, 4)) return 0;
+    XB(4, 0xC8E6);
+    ds_put8(c, DISPLAY_FLAGS, (uint8_t)alu_op(c, 6, ds_get8(c, DISPLAY_FLAGS), 1, 0));   /* xor byte [DISPLAY_FLAGS],1 */
+    bp_put(c, LOCAL_CLEARED, 0);
+    alu_op(c, 7, ds_get(c, DISPLAY), COMPASS_PAGE, 1);                           /* cmp [DISPLAY],13h / jne */
+    if (x86_cond(c, 5)) { c->ip = 0xC8FA; return 1; }
+    XB(1, 0xC8F7);
+    c->ip = 0xCC25;
+    return 1;
+}
+#undef XB
+
+/* VGAME C93A: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `z` key, zoom the view.
+ *
+ * It calls 8575 (the view zoom step in) with no argument and returns with a plain RET.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX, BX and the flags are what the callee leaves. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_zoom_view(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FN_CALLEE = 0x8575 };
+    if (!room(c, 1)) return 0;
+    XNEAR(0xC93A, FN_CALLEE, 0xC93D);
+    XB(1, 0xC93D);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XB
+
+/* VGAME C93F: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `x` key, unzoom the view.
+ *
+ * It calls 85B3 (the view zoom step out) with no argument and returns with a plain RET.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX, BX and the flags are what the callee leaves. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_unzoom_view(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FN_CALLEE = 0x85B3 };
+    if (!room(c, 1)) return 0;
+    XNEAR(0xC93F, FN_CALLEE, 0xC942);
+    XB(1, 0xC942);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XB
+
+/* VGAME C944: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `4` key, the radar jammer (ECM) switch.
+ *
+ * Bit 4 of the switch byte [SWITCHES] is flipped. The lamp for the switch (lamp 5) is then
+ * set through the lamp routine 889B with two words, lamp number 5 pushed last and the value
+ * first: 0Ah when the bit is now set and 0 when it is clear (the original builds it from
+ * the bit with CMP, CMC, SBB and AND, which the body repeats so that every flag comes out
+ * the same). The lamp routine returns with a plain RET; the two argument words are removed
+ * by one POP BX here and one at C98F.
+ *
+ * The arm's JMP to C98F (POP BX, then the common exit C8FA) is the end of the named code:
+ * the body hands back there and that exit stays the original's.
+ *
+ * AX is the lamp value, BX the popped word, and the flags those of the lamp routine's own
+ * last instruction; the common exit reads none of them but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPOPBX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_ecm_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and values. */
+    enum {
+        SWITCHES = 0x9B34,        /* the cockpit switches: bit 4 the radar jammer */
+        JAMMER_BIT = 0x10,
+        JAMMER_LAMP = 5,
+        LAMP_ON = 0x0A
+    };
+    enum { FN_SET_LAMP = 0x889B };
+    if (!room(c, 9)) return 0;
+    XB(9, 0xC944);
+    ds_put8(c, SWITCHES, (uint8_t)alu_op(c, 6, ds_get8(c, SWITCHES), JAMMER_BIT, 0));    /* xor byte [SWITCHES],10h */
+    set_r8(c, R_AL, ds_get8(c, SWITCHES));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], JAMMER_BIT, 1);                     /* and ax,10h */
+    alu_op(c, 7, c->r[R_AX], 1, 1);                                                      /* cmp ax,1 */
+    c->flags ^= F_CF;                                                                    /* cmc */
+    c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);                      /* sbb ax,ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], LAMP_ON, 1);                         /* and ax,0Ah */
+    XPUSH(c->r[R_AX]); XPUSH(JAMMER_LAMP);
+    XNEAR(0xC95B, FN_SET_LAMP, 0xC95E);
+    XB(2, 0xC95E);
+    XPOPBX();
+    c->ip = 0xC98F;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPOPBX
+#undef XPUSH
+#undef XB
+
+/* VGAME C961: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `3` key, the infrared jammer switch.
+ *
+ * Bit 5 of the byte [SWITCHES] is flipped (the cockpit switches; bit 5 is the infrared jammer). Nothing else happens.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX and BX are untouched; the flags are those of the XOR, which the lockstep compares. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_ir_jammer_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SWITCHES = 0x9B34, SWITCHES_BIT = 0x20 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC961);
+    ds_put8(c, SWITCHES, (uint8_t)alu_op(c, 6, ds_get8(c, SWITCHES), SWITCHES_BIT, 0));      /* xor byte [SWITCHES],32 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME C968: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `1` key, release a countermeasure of kind 1
+ * (a flare, from the notes on the key).
+ *
+ * It pushes the kind (1) and calls the countermeasure routine 462E, which returns with a
+ * plain RET; the caller's POP BX that removes the argument is in the shared code at C98F
+ * (together with the common exit C8FA). The `2` key (C96F) and the `5` key (C973) push
+ * their own kind and join this arm's call at C96A.
+ *
+ * The arm's JMP to C98F is the end of the named code: the body hands back there and that
+ * code stays the original's.
+ *
+ * AX, BX and the flags are what the callee leaves; the shared code reads none of them but
+ * the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_release_flare(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { COUNTERMEASURE_KIND = 1 };
+    enum { FN_RELEASE_COUNTERMEASURE = 0x462E };
+    if (!room(c, 1)) return 0;
+    XB(1, 0xC968);
+    XPUSH(COUNTERMEASURE_KIND);
+    XNEAR(0xC96A, FN_RELEASE_COUNTERMEASURE, 0xC96D);
+    XB(1, 0xC96D);
+    c->ip = 0xC98F;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPUSH
+#undef XB
+
+/* VGAME C96F: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `2` key, release a countermeasure of kind 2
+ * (chaff, from the notes on the key).
+ *
+ * It pushes the kind and jumps to the call of the countermeasure routine 462E at C96A,
+ * which belongs to the `1` key's arm (C968); the call, the POP BX that removes the argument
+ * (at C98F) and the common exit are that code. The body hands back at C96A and that code
+ * stays the original's.
+ *
+ * AX, BX and the flags are untouched. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+static int vgame_key_release_chaff(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { COUNTERMEASURE_KIND = 2 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC96F);
+    XPUSH(COUNTERMEASURE_KIND);
+    c->ip = 0xC96A;
+    return 1;
+}
+#undef XPUSH
+#undef XB
+
+/* VGAME C973: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `5` key, release a countermeasure of kind 3
+ * (a decoy, from the notes on the key).
+ *
+ * It pushes the kind and jumps to the call of the countermeasure routine 462E at C96A,
+ * which belongs to the `1` key's arm (C968); the call, the POP BX that removes the argument
+ * (at C98F) and the common exit are that code. The body hands back at C96A and that code
+ * stays the original's.
+ *
+ * AX, BX and the flags are untouched. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+static int vgame_key_release_decoy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { COUNTERMEASURE_KIND = 3 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC973);
+    XPUSH(COUNTERMEASURE_KIND);
+    c->ip = 0xC96A;
+    return 1;
+}
+#undef XPUSH
+#undef XB
+
+/* VGAME C977: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `6` key, the landing gear.
+ *
+ * The gear is only moved when the height [HEIGHT] differs from the word [GROUND_HEIGHT]
+ * (inferred: the height of the ground under the aircraft, so that the gear cannot be
+ * raised while the aircraft is on it); when they are equal the arm goes straight to the
+ * common exit C8FA. Otherwise the gear's command byte [GEAR_COMMAND] is flipped (bit 0) and
+ * the sound request number 13h is pushed; the driver's request itself (the far call at
+ * C98A, then POP BX at C98F) is code the `8` key's arm shares, so the body hands back
+ * at C98A with the request number on the stack.
+ *
+ * AX is the height and the flags those of the last instruction; the shared code reads none
+ * of them but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+static int vgame_key_gear(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        HEIGHT = 0x2DF4,          /* the aircraft's height */
+        GROUND_HEIGHT = 0xC0CE,   /* compared with it (inferred: the ground below) */
+        GEAR_COMMAND = 0xA098,    /* bit 0 flipped by this key */
+        GEAR_SOUND_REQUEST = 0x13
+    };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xC977);
+    c->r[R_AX] = ds_get(c, HEIGHT);
+    alu_op(c, 7, ds_get(c, GROUND_HEIGHT), c->r[R_AX], 1);                       /* cmp [GROUND_HEIGHT],ax / jne */
+    if (x86_cond(c, 5)) goto move_gear;
+    XB(1, 0xC980);
+    c->ip = 0xC8FA;
+    return 1;
+move_gear:
+    XB(2, 0xC983);
+    ds_put8(c, GEAR_COMMAND, (uint8_t)alu_op(c, 6, ds_get8(c, GEAR_COMMAND), 1, 0));     /* xor byte [GEAR_COMMAND],1 */
+    XPUSH(GEAR_SOUND_REQUEST);
+    c->ip = 0xC98A;
+    return 1;
+}
+#undef XPUSH
+#undef XB
+
+/* VGAME C993: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): the `9` key, the flaps (the notes on the arm call it
+ * flaps in and out; the element lit is named only by its number).
+ *
+ * Bit 1 of the switch byte [SWITCHES] is flipped. Then the cockpit element 21h is lit or
+ * put out to match: D578 (light or extinguish a cockpit element on the requested page) is
+ * called with three words, pushed last to first: the bit's new value (0 or 2), the element
+ * number 21h and the page [PAGE] ([4010], the page the display code is drawing on). It
+ * returns with a plain RET; the caller removes the arguments with ADD SP,6.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the
+ * body hands back there and the common exit, with the dispatcher's own RET, stays the
+ * original's.
+ *
+ * AX is the new value, and the flags those of the ADD; the common exit reads none of them
+ * but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPUSHM(o_) do { const uint16_t po_ = (uint16_t)(o_); const uint16_t pv_ = ds_get(c, po_); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? pv_ : ds_get(c, po_)); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_flaps(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        SWITCHES = 0x9B34,        /* the cockpit switches: bit 1 the flaps */
+        FLAPS_BIT = 2,
+        PAGE = 0x4010,
+        REQUEST_NUMBER = 0x21
+    };
+    enum { FN_REQUEST = 0xD578 };
+    if (!room(c, 6)) return 0;
+    XB(6, 0xC993);
+    ds_put8(c, SWITCHES, (uint8_t)alu_op(c, 6, ds_get8(c, SWITCHES), FLAPS_BIT, 0));     /* xor byte [SWITCHES],2 */
+    set_r8(c, R_AL, ds_get8(c, SWITCHES));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], FLAPS_BIT, 1);                       /* and ax,2 */
+    XPUSH(c->r[R_AX]); XPUSH(REQUEST_NUMBER); XPUSHM(PAGE);
+    XNEAR(0xC9A5, FN_REQUEST, 0xC9A8);
+    XB(2, 0xC9A8);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);                               /* add sp,6 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPUSHM
+#undef XPUSH
+#undef XB
+
+/* VGAME C9BE: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-A, the scene detail master switch.
+ *
+ * Bit 0 of the byte [SCENE_DETAIL] is flipped (the scene code treats a clear byte as detail level 0). Nothing else happens.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX and BX are untouched; the flags are those of the XOR, which the lockstep compares. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_scene_detail_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SCENE_DETAIL = 0x43E6, SCENE_DETAIL_BIT = 0x01 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC9BE);
+    ds_put8(c, SCENE_DETAIL, (uint8_t)alu_op(c, 6, ds_get8(c, SCENE_DETAIL), SCENE_DETAIL_BIT, 0));      /* xor byte [SCENE_DETAIL],1 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME C9C6: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-H, a display option (read by the display code around 5D4A; its meaning is not otherwise established).
+ *
+ * Bit 0 of the byte [DISPLAY_OPTION_H] is flipped (a display option). Nothing else happens.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX and BX are untouched; the flags are those of the XOR, which the lockstep compares. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_display_option_h(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DISPLAY_OPTION_H = 0x466E, DISPLAY_OPTION_H_BIT = 0x01 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC9C6);
+    ds_put8(c, DISPLAY_OPTION_H, (uint8_t)alu_op(c, 6, ds_get8(c, DISPLAY_OPTION_H), DISPLAY_OPTION_H_BIT, 0));      /* xor byte [DISPLAY_OPTION_H],1 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME C9CE: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-W, a switch whose reader is not identified.
+ *
+ * Bit 0 of the byte [OPTION_W] is flipped (unidentified: this proof did not look for its reader). Nothing else happens.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX and BX are untouched; the flags are those of the XOR, which the lockstep compares. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_option_w(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OPTION_W = 0x034A, OPTION_W_BIT = 0x01 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC9CE);
+    ds_put8(c, OPTION_W, (uint8_t)alu_op(c, 6, ds_get8(c, OPTION_W), OPTION_W_BIT, 0));      /* xor byte [OPTION_W],1 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME C9D6: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-M, the numeric readouts of the external views.
+ *
+ * Bit 0 of the byte [EXTERNAL_READOUTS] is flipped (set = the readouts are shown). Nothing else happens.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX and BX are untouched; the flags are those of the XOR, which the lockstep compares. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_external_readouts(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { EXTERNAL_READOUTS = 0x43E4, EXTERNAL_READOUTS_BIT = 0x01 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC9D6);
+    ds_put8(c, EXTERNAL_READOUTS, (uint8_t)alu_op(c, 6, ds_get8(c, EXTERNAL_READOUTS), EXTERNAL_READOUTS_BIT, 0));      /* xor byte [EXTERNAL_READOUTS],1 */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME C9DE: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-C, the cockpit picture's height.
+ *
+ * Bit 0 of the word [COCKPIT_HEIGHT] is flipped (a tall picture, 107 rows, or a short one,
+ * 91 rows: the notes on the arm; the scene code reads it, not this arm). When the word
+ * comes out zero the arm redraws the strip the taller picture had covered: one call of the
+ * driver's far routine 1E42:01EC with eight words (pushed last to first): 2, 0, 5Bh, 0,
+ * 5Bh, the negated one-less sign-extended byte [VIEW_PAGE], 140h and 10h; the caller
+ * removes them with ADD SP,10h. (A copy of a 140h by 10h block: a reading inferred from
+ * the numbers.) When the word is not zero the arm goes on to C9E5, which belongs to the `8`
+ * key's arm and is only a JMP to the common exit.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA (or the JMP at C9E5) is the end of
+ * the named code: the body hands back at C9E5 or at C8FA and the common exit, with the
+ * dispatcher's own RET, stays the original's.
+ *
+ * AX and the flags are what the last instruction leaves; the common exit reads none of
+ * them but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XFAR(at_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+static int vgame_key_cockpit_height(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and the strip's numbers. */
+    enum {
+        COCKPIT_HEIGHT = 0x2E08,  /* bit 0: the cockpit picture's size */
+        VIEW_PAGE = 0x40B6,       /* byte: the page the strip is copied from or to (inferred) */
+        STRIP_HEIGHT = 0x10,
+        STRIP_WIDTH = 0x140,
+        STRIP_TOP = 0x5B,
+        BLIT_MODE = 2
+    };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xC9DE);
+    ds_put(c, COCKPIT_HEIGHT, (uint16_t)alu_op(c, 6, ds_get(c, COCKPIT_HEIGHT), 1, 1));   /* xor [COCKPIT_HEIGHT],1 / je */
+    if (x86_cond(c, 4)) goto redraw;
+    c->ip = 0xC9E5;                                                              /* not zero: the JMP at C9E5 */
+    return 1;
+redraw:
+    XB(12, 0xC9E8);
+    XPUSH(STRIP_HEIGHT); XPUSH(STRIP_WIDTH); XPUSH(STRIP_TOP); XPUSH(0);
+    set_r8(c, R_AL, ds_get8(c, VIEW_PAGE));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);                     /* cbw */
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);                      /* neg ax */
+    XPUSH(c->r[R_AX]); XPUSH(STRIP_TOP); XPUSH(0); XPUSH(BLIT_MODE);
+    XFAR(0xC9FF, 0xCA04);                                                        /* lcall 1E42:01EC */
+    XB(2, 0xCA04);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x10, 1);                    /* add sp,10h */
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XFAR
+#undef XRUN
+#undef XPUSH
+#undef XB
+
+/* VGAME CA50: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Ins (the keypad's 0), the keyboard sensitivity.
+ *
+ * The setting [SENSITIVITY] steps 0, 1, 2 and back to 0 (a value above 2, which the game
+ * never stores, is also sent to 0). The arm then composes the status-line message in the
+ * work buffer [TEXT_BUFFER]: it copies the label "Kybd Sensitivity" onto it (EB50,
+ * destination pushed last), converts the setting plus one (so the player reads 1 to 3)
+ * to decimal (EB9E, radix 10, into the scratch string [NUMBER_TEXT]), appends the digits
+ * (EB10) and shows the buffer (8A4F). Every callee returns with a plain RET; the caller
+ * removes the arguments (POP BX for two words, ADD SP,6 for three).
+ *
+ * The composing from CA76 on (convert, append, show) is code the frame-rate arm at CA8E
+ * jumps into after its own text; this body runs it as its own tail. The arm's JMP to the
+ * dispatcher's shared exit C98F (POP BX, then the common exit C8FA) is the end of the
+ * named code: the body hands back there and that exit stays the original's.
+ *
+ * AX is what the last callee leaves, BX the last POP's word; the flags are those of the
+ * last flag-setting instruction, as the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPOPBX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_sensitivity(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and strings. */
+    enum {
+        SENSITIVITY = 0x43EA,     /* keyboard sensitivity setting, 0..2 */
+        TEXT_BUFFER = 0x98A6,     /* the status-line message being composed */
+        NUMBER_TEXT = 0xDED6,     /* scratch string the decimal conversion writes */
+        LABEL_SENSITIVITY = 0x43B6,   /* "Kybd Sensitivity" */
+        RADIX_TEN = 10,
+        HIGHEST_SETTING = 2
+    };
+    /* Near callees. */
+    enum { FN_COPY = 0xEB50, FN_APPEND = 0xEB10, FN_DECIMAL = 0xEB9E, FN_SHOW_MESSAGE = 0x8A4F };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCA50);
+    ds_put(c, SENSITIVITY, (uint16_t)alu_inc(c, ds_get(c, SENSITIVITY), 1));            /* inc [SENSITIVITY] */
+    alu_op(c, 7, ds_get(c, SENSITIVITY), HIGHEST_SETTING, 1);                           /* cmp [SENSITIVITY],2 / jle */
+    if (x86_cond(c, 14)) goto compose;
+    XB(1, 0xCA5B);
+    ds_put(c, SENSITIVITY, 0);
+compose:
+    XB(2, 0xCA61);
+    XPUSH(LABEL_SENSITIVITY); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA67, FN_COPY, 0xCA6A);
+    XB(7, 0xCA6A);
+    XPOPBX(); XPOPBX();
+    XPUSH(RADIX_TEN); XPUSH(NUMBER_TEXT);
+    c->r[R_AX] = ds_get(c, SENSITIVITY);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    XPUSH(c->r[R_AX]);
+    XNEAR(0xCA76, FN_DECIMAL, 0xCA79);
+    XB(3, 0xCA79);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);                              /* add sp,6 */
+    XPUSH(c->r[R_AX]); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA80, FN_APPEND, 0xCA83);
+    XB(3, 0xCA83);
+    XPOPBX(); XPOPBX();
+    XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA88, FN_SHOW_MESSAGE, 0xCA8B);
+    XB(1, 0xCA8B);
+    c->ip = 0xC98F;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPOPBX
+#undef XPUSH
+#undef XB
+
+/* VGAME CA8E: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-F, the frame rate.
+ *
+ * Nothing is changed here: the arm only reports two words in the status line. It composes
+ * the message in the work buffer [TEXT_BUFFER]: the label "FrameRate " is copied onto it
+ * (EB50, destination pushed last), the rate setting [FRAME_RATE] is converted to decimal
+ * (EB9E, radix 10, into the scratch string [NUMBER_TEXT]) and appended (EB10), then the
+ * separator [SEPARATOR_TEXT] is appended, and the arguments of the second conversion
+ * (radix 10, [NUMBER_TEXT], the second word [FRAME_RATE_SECOND]) are pushed. The arm then
+ * jumps to the conversion call at CA76, which belongs to the sensitivity arm at CA50: the
+ * conversion, the append, the display of the buffer and the exit through C98F are that
+ * arm's code. The body hands back at CA76 and that code stays the original's.
+ *
+ * Every callee returns with a plain RET; the caller removes the arguments (POP BX for two
+ * words, ADD SP,6 for three). AX is what the last callee leaves and BX the last POP's
+ * word; the flags are those of the last flag-setting instruction. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPUSHM(o_) do { const uint16_t po_ = (uint16_t)(o_); const uint16_t pv_ = ds_get(c, po_); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? pv_ : ds_get(c, po_)); } while (0)
+#define XPOPBX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_frame_rate_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and strings. */
+    enum {
+        FRAME_RATE = 0x368E,          /* the first reported word */
+        FRAME_RATE_SECOND = 0x43E8,   /* the second reported word */
+        TEXT_BUFFER = 0x98A6,         /* the status-line message being composed */
+        NUMBER_TEXT = 0xDED6,         /* scratch string the decimal conversion writes */
+        LABEL_FRAME_RATE = 0x43C7,    /* "FrameRate " */
+        SEPARATOR_TEXT = 0x43D2,      /* the string between the two numbers */
+        RADIX_TEN = 10
+    };
+    /* Near callees. */
+    enum { FN_COPY = 0xEB50, FN_APPEND = 0xEB10, FN_DECIMAL = 0xEB9E };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCA8E);
+    XPUSH(LABEL_FRAME_RATE); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA94, FN_COPY, 0xCA97);
+    XB(5, 0xCA97);
+    XPOPBX(); XPOPBX();
+    XPUSH(RADIX_TEN); XPUSH(NUMBER_TEXT); XPUSHM(FRAME_RATE);
+    XNEAR(0xCAA2, FN_DECIMAL, 0xCAA5);
+    XB(3, 0xCAA5);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);                        /* add sp,6 */
+    XPUSH(c->r[R_AX]); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCAAC, FN_APPEND, 0xCAAF);
+    XB(4, 0xCAAF);
+    XPOPBX(); XPOPBX();
+    XPUSH(SEPARATOR_TEXT); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCAB7, FN_APPEND, 0xCABA);
+    XB(6, 0xCABA);
+    XPOPBX(); XPOPBX();
+    XPUSH(RADIX_TEN); XPUSH(NUMBER_TEXT); XPUSHM(FRAME_RATE_SECOND);
+    c->ip = 0xCA76;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPOPBX
+#undef XPUSHM
+#undef XPUSH
+#undef XB
+
+/* VGAME CAC7: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Shift-Z, faster time.
+ *
+ * Only while the time mode [TIME_MODE] is 1 (normal): it becomes 2 and the rate [TIME_RATE]
+ * is halved (CX = 2, DX:AX the sign-extended word, a signed division, so it truncates toward
+ * zero), then D441 applies the new rates (the routine the game uses to set the simulation
+ * rates; it takes no arguments and returns with a plain RET). Any other mode goes to CB33,
+ * which is only a JMP to the common exit C8FA (it belongs to the Alt-T arm).
+ *
+ * The arm's JMP to the common exit at C8FA is the end of the named code: the body hands
+ * back there (or at CB33) and the common exit, with the dispatcher's own RET, stays the
+ * original's.
+ *
+ * On leaving, CX is 2, DX the division's remainder, AX is what the callee leaves; the
+ * flags are the callee's. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_faster_time(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells. */
+    enum {
+        TIME_MODE = 0x3DA8,       /* 1 = normal, 2 = accelerated */
+        TIME_RATE = 0x368E,       /* the time-compression factor */
+        NORMAL_TIME = 1,
+        ACCELERATED_TIME = 2
+    };
+    enum { FN_APPLY_RATES = 0xD441 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCAC7);
+    alu_op(c, 7, ds_get(c, TIME_MODE), NORMAL_TIME, 1);                          /* cmp [TIME_MODE],1 / jne */
+    if (x86_cond(c, 5)) { c->ip = 0xCB33; return 1; }
+    XB(6, 0xCACE);
+    c->r[R_CX] = ACCELERATED_TIME;
+    ds_put(c, TIME_MODE, c->r[R_CX]);
+    c->r[R_AX] = ds_get(c, TIME_RATE);
+    cwd(c);
+    x86_idiv16(c, c->r[R_CX], 0);
+    ds_put(c, TIME_RATE, c->r[R_AX]);
+    XNEAR(0xCADE, FN_APPLY_RATES, 0xCAE1);
+    XB(1, 0xCAE1);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XB
+
+/* VGAME CAE4: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Shift-X, normal time.
+ *
+ * It calls D4F5 (the routine that applies the time mode and its rates; Shift-Z calls D441 for the faster case) with no argument and returns with a plain RET.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the body hands back there
+ * and that code stays the original's.
+ *
+ * AX, BX and the flags are what the callee leaves. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_normal_time(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FN_CALLEE = 0xD4F5 };
+    if (!room(c, 1)) return 0;
+    XNEAR(0xCAE4, FN_CALLEE, 0xCAE7);
+    XB(1, 0xCAE7);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XB
+
+/* VGAME CAEA: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-V, the sound level.
+ *
+ * The counter [SOUND_STEP] goes up by one each press and is kept to two bits (0..3). The
+ * level the player reads is 3 minus the counter. The arm composes the status-line message
+ * in the work buffer [TEXT_BUFFER]: it copies the label "Sounds " onto it (EB50,
+ * destination pushed last), converts the level to decimal (EB9E, radix 10, into the
+ * scratch string [NUMBER_TEXT]), appends the digits (EB10), shows the buffer (8A4F) and
+ * calls D41F, the routine that applies the new level to the sound driver (inferred from
+ * its place here: it is the one call after the message). Every callee returns with a
+ * plain RET; the caller removes the arguments (POP BX for two words, ADD SP,6 for three).
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the
+ * body hands back there and the common exit, with the dispatcher's own RET, stays the
+ * original's.
+ *
+ * AX is what the last callee leaves, BX the last POP's word; the flags are those of the
+ * last flag-setting instruction, as the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPOPBX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_sound_level(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and strings. */
+    enum {
+        SOUND_STEP = 0x43F2,      /* counts up with each press, two bits */
+        TEXT_BUFFER = 0x98A6,     /* the status-line message being composed */
+        NUMBER_TEXT = 0xDED6,     /* scratch string the decimal conversion writes */
+        LABEL_SOUNDS = 0x43D4,    /* "Sounds " */
+        SOUND_STEP_MASK = 3,
+        HIGHEST_LEVEL = 3,        /* level shown = HIGHEST_LEVEL - SOUND_STEP */
+        RADIX_TEN = 10
+    };
+    /* Near callees. */
+    enum { FN_COPY = 0xEB50, FN_APPEND = 0xEB10, FN_DECIMAL = 0xEB9E, FN_SHOW_MESSAGE = 0x8A4F,
+           FN_APPLY_SOUND = 0xD41F };
+    if (!room(c, 4)) return 0;
+    XB(4, 0xCAEA);
+    ds_put(c, SOUND_STEP, (uint16_t)alu_inc(c, ds_get(c, SOUND_STEP), 1));                       /* inc [SOUND_STEP] */
+    ds_put(c, SOUND_STEP, (uint16_t)alu_op(c, 4, ds_get(c, SOUND_STEP), SOUND_STEP_MASK, 1));    /* and [SOUND_STEP],3 */
+    XPUSH(LABEL_SOUNDS); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCAF9, FN_COPY, 0xCAFC);
+    XB(7, 0xCAFC);
+    XPOPBX(); XPOPBX();
+    XPUSH(RADIX_TEN); XPUSH(NUMBER_TEXT);
+    c->r[R_AX] = HIGHEST_LEVEL;
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], ds_get(c, SOUND_STEP), 1);                   /* sub ax,[SOUND_STEP] */
+    XPUSH(c->r[R_AX]);
+    XNEAR(0xCB0B, FN_DECIMAL, 0xCB0E);
+    XB(3, 0xCB0E);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);                                       /* add sp,6 */
+    XPUSH(c->r[R_AX]); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCB15, FN_APPEND, 0xCB18);
+    XB(3, 0xCB18);
+    XPOPBX(); XPOPBX();
+    XPUSH(TEXT_BUFFER);
+    XNEAR(0xCB1D, FN_SHOW_MESSAGE, 0xCB20);
+    XB(1, 0xCB20);
+    XPOPBX();
+    XNEAR(0xCB21, FN_APPLY_SOUND, 0xCB24);
+    XB(1, 0xCB24);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XPOPBX
+#undef XPUSH
+#undef XB
+
+/* VGAME CB27: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-T, the training switch (the notes on the key:
+ * "go to training"; the map keys Alt-R, I, J, K, L and N work only while it is on).
+ *
+ * Bit 4 of the display flags [DISPLAY_FLAGS] is flipped. When it is now set the arm also
+ * sets bit 0 of the byte at +30h in the flight record that the far pointer [RECORD_PTR]
+ * names (LES, OR es:[bx+30h],1); when it is now clear the arm leaves at once through the JMP at
+ * CB33, which is also where the Shift-Z arm jumps to leave. The body hands back at the
+ * common exit C8FA and that exit, with the dispatcher's own RET, stays the original's.
+ *
+ * ES:BX is left at the record when it was read, and the flags are those of the OR (or of
+ * the TEST); the common exit reads none of them but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_training_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum {
+        DISPLAY_FLAGS = 0x9B35,   /* bit 4: the training switch */
+        TRAINING_BIT = 0x10,
+        RECORD_PTR = 0xE574,      /* far pointer to the flight record */
+        RECORD_TRAINING_FLAGS = 0x30,
+        RECORD_TRAINING_ON = 1
+    };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCB27);
+    ds_put8(c, DISPLAY_FLAGS, (uint8_t)alu_op(c, 6, ds_get8(c, DISPLAY_FLAGS), TRAINING_BIT, 0));   /* xor byte [DISPLAY_FLAGS],10h */
+    alu_logic(c, (uint32_t)ds_get8(c, DISPLAY_FLAGS) & TRAINING_BIT, 0);                          /* test byte [DISPLAY_FLAGS],10h / jne */
+    if (x86_cond(c, 5)) goto training_on;
+    XB(1, 0xCB33);                                                                                /* now clear: the JMP at CB33 */
+    c->ip = 0xC8FA;
+    return 1;
+training_on:
+    XB(3, 0xCB36);
+    c->r[R_BX] = ds_get(c, RECORD_PTR);                                                           /* les bx,[RECORD_PTR] */
+    c->seg[S_ES] = ds_get(c, RECORD_PTR + 2);
+    {
+        const uint32_t at = phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + RECORD_TRAINING_FLAGS));
+        mem_write8(c, at, (uint8_t)alu_op(c, 1, mem_read8(c, at), RECORD_TRAINING_ON, 0));         /* or byte es:[bx+30h],1 */
+    }
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XB
+
+/* VGAME CB42: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Space, the next weapon selection.
+ *
+ * The selection word [WEAPON_SELECT] steps through four positions (add one, keep two
+ * bits) - except when the flight record that the far pointer [RECORD_PTR] names has a
+ * non-zero word at +42h (the realism setting that gives the aircraft two weapon positions
+ * only, the "Lockheed F-117A" option): then the low bit of the byte is flipped instead.
+ * Afterwards, while the compass display is up (bit 1 of [DISPLAY_FLAGS]) the compass
+ * is redrawn (8342), and while the armament display (display 15h) is the one showing
+ * ([DISPLAY] = 15h) the armament panel is redrawn (93E9). Both callees return with a
+ * plain RET and take no arguments.
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the
+ * body hands back there and the common exit, with the dispatcher's own RET, stays the
+ * original's.
+ *
+ * ES:BX is left at the record (LES), AX and the flags as the last instruction leaves them;
+ * the common exit reads none of them but the lockstep compares them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+static int vgame_key_next_weapon(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells. */
+    enum {
+        RECORD_PTR = 0x9924,      /* far pointer to the flight record the realism setting lives in */
+        WEAPON_SELECT = 0x3680,   /* the selected weapon position */
+        DISPLAY_FLAGS = 0x9B35,   /* bit 1: the compass display is up */
+        DISPLAY = 0xE008,         /* the display page showing */
+        REALISM_FIELD = 0x42,     /* word in the flight record: non-zero = two weapon positions */
+        POSITION_MASK = 3,
+        COMPASS_BIT = 2,
+        ARMAMENT_DISPLAY = 0x15
+    };
+    /* Near callees. */
+    enum { FN_COMPASS = 0x8342, FN_ARMAMENT_PANEL = 0x93E9 };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCB42);
+    c->r[R_BX] = ds_get(c, RECORD_PTR);                                          /* les bx,[RECORD_PTR] */
+    c->seg[S_ES] = ds_get(c, RECORD_PTR + 2);
+    alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + REALISM_FIELD)), 0, 1);   /* cmp es:[bx+42h],0 / je */
+    if (x86_cond(c, 4)) goto four_positions;
+    XB(2, 0xCB4D);
+    ds_put8(c, WEAPON_SELECT, (uint8_t)alu_op(c, 6, ds_get8(c, WEAPON_SELECT), 1, 0));   /* xor byte [WEAPON_SELECT],1 */
+    goto after_select;
+four_positions:
+    XB(2, 0xCB54);
+    ds_put(c, WEAPON_SELECT, (uint16_t)alu_inc(c, ds_get(c, WEAPON_SELECT), 1));
+    ds_put(c, WEAPON_SELECT, (uint16_t)alu_op(c, 4, ds_get(c, WEAPON_SELECT), POSITION_MASK, 1));
+after_select:
+    XB(2, 0xCB5D);
+    alu_logic(c, (uint32_t)ds_get8(c, DISPLAY_FLAGS) & COMPASS_BIT, 0);          /* test byte [DISPLAY_FLAGS],2 / je */
+    if (x86_cond(c, 4)) goto armament;
+    XNEAR(0xCB64, FN_COMPASS, 0xCB67);
+armament:
+    XB(2, 0xCB67);
+    alu_op(c, 7, ds_get(c, DISPLAY), ARMAMENT_DISPLAY, 1);                       /* cmp [DISPLAY],15h / je */
+    if (x86_cond(c, 4)) goto redraw_armament;
+    XB(1, 0xCB6E);
+    c->ip = 0xC8FA;
+    return 1;
+redraw_armament:
+    XNEAR(0xCB71, FN_ARMAMENT_PANEL, 0xCB74);
+    XB(1, 0xCB74);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XRUN
+#undef XB
+
+/* VGAME CB95: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): `b` (3062h) clears the interface marker [9D3E] (the word
+ * the sound gate and the camera arms also set) and sets bit 7 in the low byte of the display
+ * words [3D94] and [3D92] (the redraw marks the camera arm sets to FFFFh as a whole), then
+ * jumps to the dispatcher's common exit at C8FA, which stays the original's (the body
+ * hands back there). The flags are those of the second OR. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_mark_displays(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { INTERFACE_MARKER = 0x9D3E, REDRAW_B = 0x3D94, REDRAW_A = 0x3D92, MARK = 0x80 };
+    if (!room(c, 4)) return 0;
+    XB(4, 0xCB95);
+    ds_put(c, INTERFACE_MARKER, 0);
+    ds_put8(c, REDRAW_B, (uint8_t)alu_op(c, 1, ds_get8(c, REDRAW_B), MARK, 0));
+    ds_put8(c, REDRAW_A, (uint8_t)alu_op(c, 1, ds_get8(c, REDRAW_A), MARK, 0));
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBA8: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): `v` (2F76h) steps the byte [294A], the HUD's detail
+ * level (the panel redraw tests it against 1 and 2): it is incremented and, past 2, set
+ * back to 0. A step that stays at 1 or 2 jumps to CC53, the one JMP of the camera arm
+ * to the dispatcher's common exit (the body hands back there, so that the JMP runs as
+ * the original's); the wrap jumps to the common exit at C8FA itself, which also stays
+ * the original's. The flags are those of the CMP with 2 (the wrap's MOV sets none). */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_step_hud_declutter(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HUD_LEVEL = 0x294A, TOP_LEVEL = 2 };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCBA8);
+    ds_put8(c, HUD_LEVEL, (uint8_t)alu_inc(c, ds_get8(c, HUD_LEVEL), 0));              /* inc byte [294A] */
+    alu_op(c, 7, ds_get8(c, HUD_LEVEL), TOP_LEVEL, 0);                                 /* cmp byte [294A],2 / jg CBB6 */
+    if (x86_cond(c, 15)) goto wrap;
+    XB(1, 0xCBB3); c->ip = 0xCC53; return 1;
+wrap:
+    XB(2, 0xCBB6);
+    ds_put8(c, HUD_LEVEL, 0);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBBE: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Backspace (0E08h). The game's buttons are the words at
+ * 43EE + 2 * n: this arm presses button 0, the cannon, by setting [43EE] to 1 (the flight
+ * step that reads the button clears it), but only while the word at +42h of the record
+ * the far pointer [9924] addresses is 0 (the research notes read it as the option under which
+ * the cannon is not fired from the keyboard). Otherwise it jumps to CC53, the one JMP of the
+ * camera arm to the dispatcher's common exit (the body hands back there, so that the JMP
+ * runs as the original's). The firing path jumps to the common exit at C8FA itself, which
+ * also stays the original's. ES and BX are left holding the far pointer. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_press_cannon_button(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD_POINTER = 0x9924, RECORD_OPTION = 0x42, CANNON_BUTTON = 0x43EE };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCBBE);
+    c->r[R_BX] = ds_get(c, RECORD_POINTER);
+    c->seg[S_ES] = ds_get(c, RECORD_POINTER + 2);
+    alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + RECORD_OPTION)), 0, 1);   /* cmp es:[bx+42h],0 / je CBCC */
+    if (x86_cond(c, 4)) goto fire;
+    XB(1, 0xCBC9); c->ip = 0xCC53; return 1;
+fire:
+    XB(2, 0xCBCC);
+    ds_put(c, CANNON_BUTTON, 1);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBD5: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Enter (1C0Dh). The game's buttons are the words at
+ * 43EE + 2 * n (button(n), C89C, reads them): this arm presses button 1, the weapon release,
+ * by setting [43F0] to 1 (the flight step that reads the button clears it). It then jumps to
+ * the dispatcher's common exit at C8FA, which stays the original's (the body hands back
+ * there). Registers and flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_press_release_button(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RELEASE_BUTTON = 0x43F0 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCBD5);
+    ds_put(c, RELEASE_BUTTON, 1);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBDE: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F1 (3B00h), which the research notes read as the forward view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 00h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_front(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCBDE);
+    ds_put(c, VIEW, 0x00);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBE7: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): ? (353Fh), which the research notes read as the view ahead.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 44h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_44(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCBE7);
+    ds_put(c, VIEW, 0x44);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBF0: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): > (343Eh), which the research notes read as the view to the rear.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 41h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_41(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCBF0);
+    ds_put(c, VIEW, 0x41);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CBF9: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): < (333Ch), which the research notes read as the view to the left.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 43h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_43(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCBF9);
+    ds_put(c, VIEW, 0x43);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CC02: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): M (324Dh), which the research notes read as the view to the right.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 42h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_42(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC02);
+    ds_put(c, VIEW, 0x42);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CC0B: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): m (326Dh) stores the camera view angle C000h in the
+ * frame at bp-8 (a quarter-turn multiple of the 16-bit angle: left by the research notes'
+ * reading of the key) and jumps to CC25, the tail four such arms share (it shows the camera
+ * display with that angle). CC25 stays the original's (the body hands back there).
+ * Nothing but the frame word is touched: registers and flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_angle_left(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW_ANGLE = -8 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC0B);
+    bp_put(c, VIEW_ANGLE, 0xC000);
+    c->ip = 0xCC25; return 1;
+}
+#undef XB
+
+/* VGAME CC12: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): / (352Fh) stores the camera view angle 0000h in the
+ * frame at bp-8 (a quarter-turn multiple of the 16-bit angle: forward by the research notes'
+ * reading of the key) and jumps to CC25, the tail four such arms share (it shows the camera
+ * display with that angle). CC25 stays the original's (the body hands back there).
+ * Nothing but the frame word is touched: registers and flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_angle_forward(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW_ANGLE = -8 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC12);
+    bp_put(c, VIEW_ANGLE, 0x0000);
+    c->ip = 0xCC25; return 1;
+}
+#undef XB
+
+/* VGAME CC19: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): , (332Ch) stores the camera view angle 4000h in the
+ * frame at bp-8 (a quarter-turn multiple of the 16-bit angle: right by the research notes'
+ * reading of the key) and jumps to CC25, the tail four such arms share (it shows the camera
+ * display with that angle). CC25 stays the original's (the body hands back there).
+ * Nothing but the frame word is touched: registers and flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_angle_right(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW_ANGLE = -8 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC19);
+    bp_put(c, VIEW_ANGLE, 0x4000);
+    c->ip = 0xCC25; return 1;
+}
+#undef XB
+
+/* VGAME CC20: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): . (342Eh) stores the camera view angle 8000h in the
+ * frame at bp-8 (a quarter-turn multiple of the 16-bit angle: rear by the research notes'
+ * reading of the key) and runs on into CC25, the tail four such arms share (it shows the camera
+ * display with that angle). CC25 stays the original's (the body hands back there).
+ * Nothing but the frame word is touched: registers and flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_angle_rear(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW_ANGLE = -8 };
+    if (!room(c, 1)) return 0;
+    XB(1, 0xCC20);
+    bp_put(c, VIEW_ANGLE, 0x8000);
+    c->ip = 0xCC25; return 1;
+}
+#undef XB
+
+/* VGAME CC25: the tail that four key arms of the flight key dispatcher (keys_dispatch,
+ * entered at C8CA, which has built its frame) share: `/`, `m`, `,` and `.` (352Fh, 326Dh,
+ * 332Ch, 342Eh) each store a view angle in the frame at bp-8 (0, C000h, 4000h and 8000h:
+ * quarter turns of the 16-bit angle, forward, left, right and rear by the research
+ * notes' reading) and jump here. The arms are CC12, CC0B, CC19 and CC20.
+ *
+ * While bit 1 of [9B35] is set (the compass display is up) nothing happens: the JNE goes to
+ * CC53, the one JMP of the camera arm to the dispatcher's common exit, which stays the
+ * original's (the body hands back there). Otherwise the camera display is asked for:
+ *
+ * - [9D3E] (the interface marker the sound gate also sets) is cleared, [43E2] is set to 1
+ *   and the angle is stored in [E582], the camera display's view angle;
+ * - the display words [3D92] and [3D94] are both set to FFFFh (marked for redraw);
+ * - the display number 13h is pushed and the arm jumps to CE5F, which calls the display
+ *   selector 825D and runs on to the common exit. CE5F stays the original's: the body
+ *   hands back there, with the argument pushed.
+ *
+ * AX is left holding FFFFh, and the flags are those of the TEST. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_select_camera_view(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MODE_FLAGS = 0x9B35, COMPASS_UP = 0x02, INTERFACE_MARKER = 0x9D3E, CAMERA_REQUESTED = 0x43E2,
+           CAMERA_ANGLE = 0xE582, REDRAW_A = 0x3D92, REDRAW_B = 0x3D94, VIEW_ANGLE = -8,
+           CAMERA_DISPLAY = 0x13 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC25);
+    alu_logic(c, (uint32_t)ds_get8(c, MODE_FLAGS) & COMPASS_UP, 0);           /* test [9B35],2 / jne CC53 */
+    if (x86_cond(c, 5)) goto compass_up;
+    XB(9, 0xCC2C);
+    ds_put(c, INTERFACE_MARKER, 0);
+    ds_put(c, CAMERA_REQUESTED, 1);
+    c->r[R_AX] = bp_get(c, VIEW_ANGLE);
+    ds_put(c, CAMERA_ANGLE, c->r[R_AX]);
+    c->r[R_AX] = 0xFFFF;
+    ds_put(c, REDRAW_A, c->r[R_AX]);
+    ds_put(c, REDRAW_B, c->r[R_AX]);
+    cpu_push16(c, CAMERA_DISPLAY);
+    c->ip = 0xCE5F; return 1;                                                 /* jmp CE5F */
+compass_up:
+    c->ip = 0xCC53; return 1;
+}
+#undef XB
+
+/* VGAME CC4C: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): `]` and `}` (1B5Dh and 1B7Dh), lower a level while
+ * display 13h is up (the arm does nothing otherwise, and jumps at once to the
+ * dispatcher's common exit at C8FA, which stays the original's: the body hands back
+ * there).
+ *
+ * The level is the low three bits of one byte in a table the pointer [4390] addresses:
+ * the byte at +9E0h when [E32A] is 1, else at +960h. The offset is kept in the frame at
+ * bp-4, and the arm builds the new byte in the frame as the original does: the low
+ * three bits (0..7) at bp-0Eh, the upper five bits (mask F8h) at bp-0Ch. A level above
+ * 0 is lowered by one (the level 0 stays 0), and the byte is stored back with the upper
+ * bits unchanged (CC88, which the up-step arm at CC93 shares).
+ *
+ * AX, BX, CX, SI and the frame words are what the original leaves (CX is the byte read,
+ * with AH of the old AX above it); the flags are those of the last OR. Every cell is
+ * read and written in the data segment but the frame, which is in the stack segment. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_level_down(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DISPLAY = 0xE008, CAMERA_DISPLAY = 0x13, TABLE_SELECT = 0xE32A, TABLE_POINTER = 0x4390,
+           FIRST_TABLE = 0x960, SECOND_TABLE = 0x9E0,
+           TABLE_OFFSET = -4, LEVEL = -0x0E, UPPER_BITS = -0x0C };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC4C);
+    alu_op(c, 7, ds_get(c, DISPLAY), CAMERA_DISPLAY, 1);                      /* cmp [E008],13h / je CC56 */
+    if (x86_cond(c, 4)) goto camera_display;
+    XB(1, 0xCC53); c->ip = 0xC8FA; return 1;                                  /* another display: nothing */
+camera_display:
+    XB(2, 0xCC56);
+    alu_op(c, 7, ds_get(c, TABLE_SELECT), 1, 1);                              /* cmp [E32A],1 / jne CC64 */
+    if (x86_cond(c, 5)) goto first_table;
+    XB(2, 0xCC5D);
+    bp_put(c, TABLE_OFFSET, SECOND_TABLE);                                    /* jmp CC69 */
+    goto read_byte;
+first_table:
+    XB(1, 0xCC64);
+    bp_put(c, TABLE_OFFSET, FIRST_TABLE);
+read_byte:
+    XB(10, 0xCC69);
+    c->r[R_BX] = ds_get(c, TABLE_POINTER);
+    c->r[R_SI] = bp_get(c, TABLE_OFFSET);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI])));
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x07, 0));         /* and al,7 */
+    bp_put8(c, LEVEL, get_r8(c, R_AL));
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 4, get_r8(c, R_CL), 0xF8, 0));         /* and cl,F8h */
+    bp_put8(c, UPPER_BITS, get_r8(c, R_CL));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al,al / je CC88 */
+    if (x86_cond(c, 4)) goto store;
+    XB(2, 0xCC83);
+    set_r8(c, R_AL, (uint8_t)alu_dec(c, get_r8(c, R_AL), 0));                 /* dec al */
+    bp_put8(c, LEVEL, get_r8(c, R_AL));
+store:
+    XB(4, 0xCC88);
+    set_r8(c, R_AL, bp_get8(c, LEVEL));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), bp_get8(c, UPPER_BITS), 0));   /* or al,[bp-0Ch] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI]), get_r8(c, R_AL));
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CC93: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): `[` and `{` (1A5Bh and 1A7Bh), raise a level while
+ * display 13h is up (the arm does nothing otherwise, and jumps at once to the
+ * dispatcher's common exit at C8FA, which stays the original's: the body hands back
+ * there). It is the opposite step of the arm at CC4C.
+ *
+ * The level is the low three bits of one byte in a table the pointer [4390] addresses:
+ * the byte at +9E0h when [E32A] is 1, else at +960h. The offset is kept in the frame at
+ * bp-4, and the arm builds the new byte in the frame as the original does: the low
+ * three bits (0..7) at bp-0Eh, the upper five bits (mask F8h) at bp-0Ch. A level below
+ * 7 is raised by one (7 stays 7), and the byte is stored back with the upper bits
+ * unchanged (CC88, which the down-step arm shares).
+ *
+ * AX, BX, CX, SI and the frame words are what the original leaves (CX is the byte read,
+ * with AH of the old AX above it); the flags are those of the CMP with 7, or of the OR
+ * at CC8B. Every cell is read and written in the data segment but the frame, which is in
+ * the stack segment. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_camera_level_up(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DISPLAY = 0xE008, CAMERA_DISPLAY = 0x13, TABLE_SELECT = 0xE32A, TABLE_POINTER = 0x4390,
+           FIRST_TABLE = 0x960, SECOND_TABLE = 0x9E0, TOP_LEVEL = 7,
+           TABLE_OFFSET = -4, LEVEL = -0x0E, UPPER_BITS = -0x0C };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCC93);
+    alu_op(c, 7, ds_get(c, DISPLAY), CAMERA_DISPLAY, 1);                      /* cmp [E008],13h / je CC9D */
+    if (x86_cond(c, 4)) goto camera_display;
+    XB(1, 0xCC9A); c->ip = 0xC8FA; return 1;                                  /* another display: nothing */
+camera_display:
+    XB(2, 0xCC9D);
+    alu_op(c, 7, ds_get(c, TABLE_SELECT), 1, 1);                              /* cmp [E32A],1 / jne CCAB */
+    if (x86_cond(c, 5)) goto first_table;
+    XB(2, 0xCCA4);
+    bp_put(c, TABLE_OFFSET, SECOND_TABLE);                                    /* jmp CCB0 */
+    goto read_byte;
+first_table:
+    XB(1, 0xCCAB);
+    bp_put(c, TABLE_OFFSET, FIRST_TABLE);
+read_byte:
+    XB(10, 0xCCB0);
+    c->r[R_BX] = ds_get(c, TABLE_POINTER);
+    c->r[R_SI] = bp_get(c, TABLE_OFFSET);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI])));
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x07, 0));         /* and al,7 */
+    bp_put8(c, LEVEL, get_r8(c, R_AL));
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 4, get_r8(c, R_CL), 0xF8, 0));         /* and cl,F8h */
+    bp_put8(c, UPPER_BITS, get_r8(c, R_CL));
+    alu_op(c, 7, get_r8(c, R_AL), TOP_LEVEL, 0);                              /* cmp al,7 / jae CC88 */
+    if (x86_cond(c, 3)) goto store;
+    XB(2, 0xCCCA);
+    set_r8(c, R_AL, (uint8_t)alu_inc(c, get_r8(c, R_AL), 0));                 /* inc al / jmp CC85 */
+    XB(1, 0xCC85);
+    bp_put8(c, LEVEL, get_r8(c, R_AL));
+store:
+    XB(4, 0xCC88);
+    set_r8(c, R_AL, bp_get8(c, LEVEL));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), bp_get8(c, UPPER_BITS), 0));   /* or al,[bp-0Ch] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI]), get_r8(c, R_AL));
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCCE: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F2 (5500h), which the research notes read as the chase view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 84h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_84(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCCE);
+    ds_put(c, VIEW, 0x84);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCD7: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F3 (5600h), which the research notes read as the side view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 85h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_85(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCD7);
+    ds_put(c, VIEW, 0x85);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCE0: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F1 (5400h), which the research notes read as the slot view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 87h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_87(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCE0);
+    ds_put(c, VIEW, 0x87);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCE9: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F4 (5700h), which the research notes read as the missile view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 89h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_89(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCE9);
+    ds_put(c, VIEW, 0x89);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCF2: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F5 (5800h), which the research notes read as the tactical view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 88h, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_88(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCF2);
+    ds_put(c, VIEW, 0x88);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CCFB: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F6 (5900h), which the research notes read as the inverse tactical view.
+ * The code itself only stores a number: the view word [C0A6] (bit 7 set selects the outside
+ * views) is set to 8Bh, for the camera cells in the dispatcher's tail and the view compose
+ * to act on. The arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). Nothing else is touched: registers and flags are
+ * as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_view_8b(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VIEW = 0xC0A6 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCCFB);
+    ds_put(c, VIEW, 0x8B);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CDB8: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F3 (3D00h) toggles the left display between the map
+ * (mode 0) and the panel display (mode 1): it calls 81E8 (mfd_left_select(mode)) with 0 when
+ * the mode word [DF06] is 1 and with 1 otherwise. The argument is removed by the code the arm
+ * jumps to, C98F (POP BX, then the common exit C8FA), which stays the original's (the body
+ * hands back there). Registers and flags are as the callee leaves them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+static int vgame_key_select_left_display(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LEFT_MODE = 0xDF06, SELECT_LEFT = 0x81E8 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCDB8);
+    alu_op(c, 7, ds_get(c, LEFT_MODE), 1, 1);                                 /* cmp [DF06],1 / jne CDC7 */
+    if (x86_cond(c, 5)) goto to_panel;
+    XB(1, 0xCDBF);
+    cpu_push16(c, 0);
+    goto select;
+to_panel:
+    XB(2, 0xCDC7);
+    cpu_push16(c, 1);                                                         /* jmp CDC1 */
+select:
+    XNEAR(0xCDC1, SELECT_LEFT);
+    XB(1, 0xCDC4);                                                            /* jmp C98F */
+    c->ip = 0xC98F; return 1;
+}
+#undef XB
+#undef XNEAR
+#undef XRUN
+
+/* VGAME CDCB: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F4 (3E00h) flips the byte [43DE], the HUD colour mode
+ * (the HUD set-up chooses the green or the monochrome colours by it: day and night), and
+ * calls 01C1, which applies the setting (a palette routine without arguments, a plain RET).
+ * The arm then jumps to the dispatcher's common exit at C8FA, which stays the original's
+ * (the body hands back there). */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+static int vgame_key_toggle_hud_colour(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HUD_COLOUR = 0x43DE, APPLY = 0x01C1 };
+    if (!room(c, 1)) return 0;
+    XB(1, 0xCDCB);
+    ds_put8(c, HUD_COLOUR, (uint8_t)alu_op(c, 6, ds_get8(c, HUD_COLOUR), 1, 0));      /* xor byte [43DE],1 */
+    XNEAR(0xCDD0, APPLY);
+    XB(1, 0xCDD3);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+#undef XNEAR
+#undef XRUN
+
+/* VGAME CDD6: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F5 (3F00h) asks for the right display 15h (the armament
+ * panel): it pushes the display number and jumps to CE5F, which calls the display selector
+ * 825D and runs on to the common exit. CE5F (CALL 825D, with the argument
+ * left on the stack, then JMP C98F) is run by the body as well; C98F (POP BX, then the
+ * common exit C8FA) stays the original's (the body hands back there). Registers and
+ * flags are as the selector left them. */
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_show_display_15(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SELECT_RIGHT = 0x825D, DISPLAY = 0x15 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCDD6);
+    cpu_push16(c, DISPLAY);
+    XNEAR(0xCE5F, SELECT_RIGHT);                                              /* CE5F: call 825D */
+    XB(1, 0xCE62);                                                            /* jmp C98F */
+    c->ip = 0xC98F; return 1;
+}
+#undef XB
+#undef XNEAR
+#undef XRUN
+
+/* VGAME CDDB: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F6 (4000h) flips the byte [43E0] and pushes its word
+ * (as the lamp's state) and the lamp number 19h, then jumps to C9A1, the tail the arm for
+ * the other lamp key (C993) shares: it pushes the panel element [4010], calls the cockpit
+ * lamp routine D578 and removes the three words (ADD SP,6). C9A1 stays the original's (the
+ * body hands back there with the two arguments pushed). The flags are those of the XOR. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_toggle_lamp_25(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LAMP_STATE = 0x43E0, LAMP = 0x19 };
+    if (!room(c, 4)) return 0;
+    XB(4, 0xCDDB);
+    ds_put8(c, LAMP_STATE, (uint8_t)alu_op(c, 6, ds_get8(c, LAMP_STATE), 1, 0));      /* xor byte [43E0],1 */
+    {   const uint16_t v_ = ds_get(c, LAMP_STATE);                                    /* push [43E0] */
+        c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+        seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? v_ : ds_get(c, LAMP_STATE)); }
+    cpu_push16(c, LAMP);
+    c->ip = 0xC9A1; return 1;
+}
+#undef XB
+
+/* VGAME CDE9: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F7 (4100h) sets [B838] to 1 (the navigation display's
+ * second scale/cursor set, which the dispatcher's tail and the map scale read), asks for the
+ * right display 14h (the navigation display) by pushing the number and jumping to CE5F,
+ * which calls the display selector 825D and runs on to the common exit. (CDEF, the PUSH
+ * and JMP, is also where F8's arm joins.) CE5F (CALL 825D, with the argument
+ * left on the stack, then JMP C98F) is run by the body as well; C98F (POP BX, then the
+ * common exit C8FA) stays the original's (the body hands back there). Registers and
+ * flags are as the selector left them. */
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_navigation_second_set(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SELECT_RIGHT = 0x825D, SECOND_SET = 0xB838, DISPLAY = 0x14 };
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCDE9);
+    ds_put(c, SECOND_SET, 1);
+    cpu_push16(c, DISPLAY);
+    XNEAR(0xCE5F, SELECT_RIGHT);                                              /* CE5F: call 825D */
+    XB(1, 0xCE62);                                                            /* jmp C98F */
+    c->ip = 0xC98F; return 1;
+}
+#undef XB
+#undef XNEAR
+#undef XRUN
+
+/* VGAME CDF3: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F8 (4200h) is F7's opposite: it clears [B838] (the
+ * navigation display's second set) and copies the index [2EAE] (the first set's cursor) to
+ * [2EB0] (the cursor the navigation keys of the dispatcher's tail use), then jumps to CDEF,
+ * where F7's arm joins: push the display number 14h and run through CE5F (the display
+ * selector 825D) to the common exit. CDEF stays the original's (the body hands back there).
+ * AX is left holding [2EAE]; the flags are as the selector left them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_navigation_first_set(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SECOND_SET = 0xB838, FIRST_CURSOR = 0x2EAE, CURSOR = 0x2EB0 };
+    if (!room(c, 4)) return 0;
+    XB(4, 0xCDF3);
+    ds_put(c, SECOND_SET, 0);
+    c->r[R_AX] = ds_get(c, FIRST_CURSOR);
+    ds_put(c, CURSOR, c->r[R_AX]);
+    c->ip = 0xCDEF; return 1;                                                 /* jmp CDEF */
+}
+#undef XB
+
+/* VGAME CE55: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F9 (4300h) flips bit 2 of the mode flags byte [9B35]
+ * (the instrument landing system on or off: the ILS panel runs while the bit is set).
+ * It then jumps to the dispatcher's common exit at C8FA, which stays the original's (the
+ * body hands back there). The flags are those of the XOR; nothing else is touched. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_toggle_ils(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MODE_FLAGS = 0x9B35, ILS = 0x04 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCE55);
+    ds_put8(c, MODE_FLAGS, (uint8_t)alu_op(c, 6, ds_get8(c, MODE_FLAGS), ILS, 0));      /* xor byte [9B35],4 */
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CE5D: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): F10 (4400h) asks for the right display 18h: it pushes the
+ * display number and runs on into CE5F, which calls the display selector 825D and continues
+ * to the common exit. CE5F (CALL 825D, with the argument
+ * left on the stack, then JMP C98F) is run by the body as well; C98F (POP BX, then the
+ * common exit C8FA) stays the original's (the body hands back there). Registers and
+ * flags are as the selector left them. */
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_show_display_18(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SELECT_RIGHT = 0x825D, DISPLAY = 0x18 };
+    if (!room(c, 1)) return 0;
+    XB(1, 0xCE5D);
+    cpu_push16(c, DISPLAY);
+    XNEAR(0xCE5F, SELECT_RIGHT);                                              /* CE5F: call 825D */
+    XB(1, 0xCE62);                                                            /* jmp C98F */
+    c->ip = 0xC98F; return 1;
+}
+#undef XB
+#undef XNEAR
+#undef XRUN
+
+/* VGAME CA0A: one key's arm of the flight key dispatcher (keys_dispatch, which C8CA enters
+ * with ENTER 10h; the key is at bp+4): Alt-D, the detail level.
+ *
+ * The level word [DETAIL_LEVEL] counts down by one each press. Going below zero wraps it
+ * to the top: the driver is asked (far call 1E42:0255, no arguments) and its answer is
+ * kept when it is 3, anything else makes the top 2 (inferred: the most the machine can
+ * do). The arm then composes the message shown on the status line in the work buffer
+ * [TEXT_BUFFER]: it copies the label "Detail Level " onto it (EB50, destination pushed
+ * last), converts the level to decimal (EB9E, radix 10, into the scratch string
+ * [NUMBER_TEXT]), appends the digits (EB10), shows the buffer (8A4F) and refreshes the
+ * display it lives on (D4A5). Every callee returns with a plain RET; the caller removes
+ * the arguments (POP BX for two words, ADD SP,6 for three).
+ *
+ * The arm's JMP to the dispatcher's common exit at C8FA is the end of the named code: the
+ * body hands back there and the common exit, with the dispatcher's own RET, stays the
+ * original's.
+ *
+ * AX is what the last callee leaves, BX is the last POP's word and the flags are the last
+ * flag-setting instruction's; the common exit reads none of them but the lockstep compares
+ * them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XPUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define XPUSHM(o_) do { const uint16_t po_ = (uint16_t)(o_); const uint16_t pv_ = ds_get(c, po_); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? pv_ : ds_get(c, po_)); } while (0)
+#define XPOPBX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XFAR(at_,ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+static int vgame_key_detail_level(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Data segment cells and strings. */
+    enum {
+        DETAIL_LEVEL = 0x990E,    /* the detail level, 3 or 2 at most, counted down by this key */
+        TEXT_BUFFER = 0x98A6,     /* the status-line message being composed */
+        NUMBER_TEXT = 0xDED6,     /* scratch string the decimal conversion writes */
+        LABEL_DETAIL = 0x43A8,    /* "Detail Level " */
+        RADIX_TEN = 10,
+        DRIVER_TOP_LEVEL = 3,     /* the driver's answer kept as the top level */
+        DEFAULT_TOP_LEVEL = 2
+    };
+    /* Near callees (the driver's far entry 1E42:0255 is called at CA10). */
+    enum { FN_COPY = 0xEB50, FN_APPEND = 0xEB10, FN_DECIMAL = 0xEB9E, FN_SHOW_MESSAGE = 0x8A4F,
+           FN_REFRESH = 0xD4A5 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCA0A);
+    ds_put(c, DETAIL_LEVEL, (uint16_t)alu_dec(c, ds_get(c, DETAIL_LEVEL), 1));    /* dec [DETAIL_LEVEL] / jns */
+    if (x86_cond(c, 9)) goto compose;
+    XFAR(0xCA10, 0xCA15);                                                         /* lcall 1E42:0255 */
+    XB(2, 0xCA15);
+    alu_op(c, 7, c->r[R_AX], DRIVER_TOP_LEVEL, 1);                                /* cmp ax,3 / je */
+    if (x86_cond(c, 4)) goto keep;
+    XB(1, 0xCA1A);
+    c->r[R_AX] = DEFAULT_TOP_LEVEL;
+keep:
+    XB(1, 0xCA1D);
+    ds_put(c, DETAIL_LEVEL, c->r[R_AX]);
+compose:
+    XB(2, 0xCA20);
+    XPUSH(LABEL_DETAIL); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA26, FN_COPY, 0xCA29);
+    XB(5, 0xCA29);
+    XPOPBX(); XPOPBX();
+    XPUSH(RADIX_TEN); XPUSH(NUMBER_TEXT); XPUSHM(DETAIL_LEVEL);
+    XNEAR(0xCA34, FN_DECIMAL, 0xCA37);
+    XB(3, 0xCA37);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);                        /* add sp,6 */
+    XPUSH(c->r[R_AX]); XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA3E, FN_APPEND, 0xCA41);
+    XB(3, 0xCA41);
+    XPOPBX(); XPOPBX();
+    XPUSH(TEXT_BUFFER);
+    XNEAR(0xCA46, FN_SHOW_MESSAGE, 0xCA49);
+    XB(1, 0xCA49);
+    XPOPBX();
+    XNEAR(0xCA4A, FN_REFRESH, 0xCA4D);
+    XB(1, 0xCA4D);
+    c->ip = 0xC8FA;
+    return 1;
+}
+#undef XNEAR
+#undef XFAR
+#undef XRUN
+#undef XPOPBX
+#undef XPUSHM
+#undef XPUSH
+#undef XB
+
+/* VGAME CB77: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): the `7` key (0837h: the arm selector's table index 6)
+ * switches the height hold on and off. The hold is the word [3684], the height to keep
+ * (0 = no hold, which the flight step reads and which the damage test in the dispatcher's
+ * tail also clears).
+ *
+ * The arm is entered with DX = the remainder of the selector's DIV, which is 0 whenever
+ * the selector sends a key here, and it compares [3684] with DX itself rather than with
+ * zero, so a DX other than 0 is carried into the test and the store as the original does:
+ *
+ * - [3684] differs from DX (a hold is set): it is replaced by DX, so the hold is off.
+ * - [3684] equals DX (no hold): the hold is set to the aircraft's present height [2DF4],
+ *   but not below 1F4h (500, a signed comparison: a negative height is raised to it
+ *   too). AX is left holding that height or 1F4h.
+ *
+ * Either way the arm then jumps to the dispatcher's common exit at C8FA, which stays the
+ * original's (the body hands back there). The flags are those of the CMP that decided,
+ * or of the CMP with 1F4h on the second path. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_toggle_height_hold(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HEIGHT_HOLD = 0x3684, HEIGHT = 0x2DF4, MIN_HOLD = 0x01F4 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCB77);
+    alu_op(c, 7, ds_get(c, HEIGHT_HOLD), c->r[R_DX], 1);                   /* cmp [3684],dx / je CB84 */
+    if (x86_cond(c, 4)) goto no_hold_yet;
+    XB(2, 0xCB7D);
+    ds_put(c, HEIGHT_HOLD, c->r[R_DX]);                                    /* a hold was set: off */
+    c->ip = 0xC8FA; return 1;
+no_hold_yet:
+    XB(3, 0xCB84);
+    c->r[R_AX] = ds_get(c, HEIGHT);
+    alu_op(c, 7, c->r[R_AX], MIN_HOLD, 1);                                 /* cmp ax,1F4h / jge CB8F */
+    if (x86_cond(c, 13)) goto store_hold;
+    XB(1, 0xCB8C);
+    c->r[R_AX] = MIN_HOLD;
+store_hold:
+    XB(2, 0xCB8F);
+    ds_put(c, HEIGHT_HOLD, c->r[R_AX]);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
+/* VGAME CE01: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): Shift-F8 (5B00h), reset the navigation waypoints.
+ *
+ * The four waypoints the navigation display (display 14h) shows are pairs of words at
+ * [2E9E + 4 * n] (x) and [2EA0 + 4 * n] (y), n = 0..3 (the cursor keys of the dispatcher's
+ * tail move them). Four calls to D50A(n, k) copy table entry k, of the 16-byte entries at
+ * B2D0 (x at +0, y at +2), into waypoint n: n = 0 takes the entry numbered by [E308],
+ * n = 1 by [E306], n = 2 by [E318] and n = 3 by [E31A] (the entry numbers, set up by
+ * the mission, are used unchecked). Then waypoint 0 is moved to the midpoint of itself
+ * and waypoint 1: each coordinate becomes the sum of the two shifted right by 1 (a
+ * logical shift of the 16-bit sum, the carry lost). When the navigation display is up
+ * ([E008] = 14h) it is redrawn (8F71, no arguments).
+ *
+ * The arm then jumps to the dispatcher's common exit at C8FA, which stays the original's
+ * (the body hands back there). Every callee returns with a plain RET and the arm removes
+ * the arguments itself (two POP BX). AX is the last coordinate (or whatever 8F71 leaves),
+ * the flags those of the CMP with 14h (or of what 8F71 leaves). */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+/* push [cell]: a word of the data segment, as the original's PUSH m16 */
+#define XPUSHM(o_) do { const uint16_t pv_ = ds_get(c, (o_)); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? pv_ : ds_get(c, (o_))); } while (0)
+static int vgame_key_reset_waypoints(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WAYPOINT_X = 0x2E9E, WAYPOINT_Y = 0x2EA0, WAYPOINT_1_X = 0x2EA2, WAYPOINT_1_Y = 0x2EA4,
+           ENTRY_0 = 0xE308, ENTRY_1 = 0xE306, ENTRY_2 = 0xE318, ENTRY_3 = 0xE31A,
+           DISPLAY = 0xE008, NAVIGATION_DISPLAY = 0x14,
+           SET_WAYPOINT = 0xD50A, REDRAW_NAVIGATION = 0x8F71 };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCE01);
+    XPUSHM(ENTRY_0); cpu_push16(c, 0);
+    XNEAR(0xCE07, SET_WAYPOINT);
+    XB(4, 0xCE0A);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    XPUSHM(ENTRY_1); cpu_push16(c, 1);
+    XNEAR(0xCE12, SET_WAYPOINT);
+    XB(4, 0xCE15);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    XPUSHM(ENTRY_2); cpu_push16(c, 2);
+    XNEAR(0xCE1D, SET_WAYPOINT);
+    XB(4, 0xCE20);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    XPUSHM(ENTRY_3); cpu_push16(c, 3);
+    XNEAR(0xCE28, SET_WAYPOINT);
+    XB(12, 0xCE2B);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = ds_get(c, WAYPOINT_1_X);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, WAYPOINT_X), 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);                 /* shr ax,1 */
+    ds_put(c, WAYPOINT_X, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, WAYPOINT_Y);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, WAYPOINT_1_Y), 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);                 /* shr ax,1 */
+    ds_put(c, WAYPOINT_Y, c->r[R_AX]);
+    alu_op(c, 7, ds_get(c, DISPLAY), NAVIGATION_DISPLAY, 1);                  /* cmp [E008],14h / je CE4F */
+    if (x86_cond(c, 4)) goto redraw;
+    XB(1, 0xCE4C); c->ip = 0xC8FA; return 1;
+redraw:
+    XNEAR(0xCE4F, REDRAW_NAVIGATION);
+    XB(1, 0xCE52); c->ip = 0xC8FA; return 1;
+}
+#undef XPUSHM
+#undef XNEAR
+#undef XRUN
+#undef XB
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE01, vgame_key_reset_waypoints, "key dispatcher arm: Shift-F8, reload the four waypoints from the ins table and average the first two", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCB77, vgame_key_toggle_height_hold, "key dispatcher arm: the 7 key, height hold off or on at the current height (500 or more)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCA0A, vgame_key_detail_level, "key dispatcher arm: Alt-D, the detail level counted down and shown", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE5D, vgame_key_show_display_18, "key dispatcher arm: F10, select the right display 18h (through CE5F)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE55, vgame_key_toggle_ils, "key dispatcher arm: F9, flip bit 2 of the mode flags [9B35] (the ILS)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDF3, vgame_key_navigation_first_set, "key dispatcher arm: F8, clear [B838] and copy the cursor index [2EAE] to [2EB0], then select display 14h (through CDEF)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDE9, vgame_key_navigation_second_set, "key dispatcher arm: F7, set [B838] = 1 and select the right display 14h (through CE5F)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDDB, vgame_key_toggle_lamp_25, "key dispatcher arm: F6, flip [43E0] and light or clear cockpit lamp 19h (through C9A1)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDD6, vgame_key_show_display_15, "key dispatcher arm: F5, select the right display 15h (through CE5F)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDCB, vgame_key_toggle_hud_colour, "key dispatcher arm: F4, flip the HUD colour mode [43DE] and apply it (01C1)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCDB8, vgame_key_select_left_display, "key dispatcher arm: F3, select the left display mode (0 when [DF06] is 1, else 1)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCFB, vgame_key_view_8b, "key dispatcher arm: Shift-F6: the inverse tactical view, the view word [C0A6] = 8Bh", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCF2, vgame_key_view_88, "key dispatcher arm: Shift-F5: the tactical view, the view word [C0A6] = 88h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCE9, vgame_key_view_89, "key dispatcher arm: Shift-F4: the missile view, the view word [C0A6] = 89h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCE0, vgame_key_view_87, "key dispatcher arm: Shift-F1: the slot view, the view word [C0A6] = 87h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCD7, vgame_key_view_85, "key dispatcher arm: Shift-F3: the side view, the view word [C0A6] = 85h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCCCE, vgame_key_view_84, "key dispatcher arm: Shift-F2: the chase view, the view word [C0A6] = 84h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC93, vgame_key_camera_level_up, "key dispatcher arm: [ or {, with display 13h up, raise the 3-bit level of the byte at [4390]+960h or +9E0h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC4C, vgame_key_camera_level_down, "key dispatcher arm: ] or }, with display 13h up, lower the 3-bit level of the byte at [4390]+960h or +9E0h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC25, vgame_key_select_camera_view, "key dispatcher arms' shared tail: show the camera display (13h) with the view angle the key chose at bp-8", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC20, vgame_key_camera_angle_rear, "key dispatcher arm: . (342Eh), the camera view angle 8000h (rear) for the shared tail CC25", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC19, vgame_key_camera_angle_right, "key dispatcher arm: , (332Ch), the camera view angle 4000h (right) for the shared tail CC25", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC12, vgame_key_camera_angle_forward, "key dispatcher arm: / (352Fh), the camera view angle 0000h (forward) for the shared tail CC25", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC0B, vgame_key_camera_angle_left, "key dispatcher arm: m (326Dh), the camera view angle C000h (left) for the shared tail CC25", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCC02, vgame_key_view_42, "key dispatcher arm: M: the view to the right, the view word [C0A6] = 42h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBF9, vgame_key_view_43, "key dispatcher arm: <: the view to the left, the view word [C0A6] = 43h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBF0, vgame_key_view_41, "key dispatcher arm: >: the view to the rear, the view word [C0A6] = 41h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBE7, vgame_key_view_44, "key dispatcher arm: ?: the view ahead, the view word [C0A6] = 44h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBDE, vgame_key_view_front, "key dispatcher arm: F1: the forward view, the view word [C0A6] = 00h", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBD5, vgame_key_press_release_button, "key dispatcher arm: Enter, press the weapon release button (button 1, [43F0] = 1)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBBE, vgame_key_press_cannon_button, "key dispatcher arm: Backspace, press the cannon button ([43EE] = 1) unless the realism word is set", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCBA8, vgame_key_step_hud_declutter, "key dispatcher arm: v, step the HUD detail level [294A] 0, 1, 2, 0", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCB95, vgame_key_mark_displays, "key dispatcher arm: b, clear the interface marker [9D3E] and set bit 7 of the display words [3D92] and [3D94]", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCB42, vgame_key_next_weapon, "key dispatcher arm: Space, the next weapon selection", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCB27, vgame_key_training_switch, "key dispatcher arm: Alt-T, the training switch", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCAEA, vgame_key_sound_level, "key dispatcher arm: Alt-V, the sound level step and its message", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCAE4, vgame_key_normal_time, "key dispatcher arm: Shift-X, normal time", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCAC7, vgame_key_faster_time, "key dispatcher arm: Shift-Z, accelerated time", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCA8E, vgame_key_frame_rate_text, "key dispatcher arm: Alt-F, the frame rate message", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCA50, vgame_key_sensitivity, "key dispatcher arm: Ins, the keyboard sensitivity step and its message", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9DE, vgame_key_cockpit_height, "key dispatcher arm: Alt-C, the cockpit picture height and its strip redraw", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9D6, vgame_key_external_readouts, "key dispatcher arm: Alt-M, the external views' readouts toggle", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9CE, vgame_key_option_w, "key dispatcher arm: Alt-W, a switch toggle", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9C6, vgame_key_display_option_h, "key dispatcher arm: Alt-H, a display option toggle", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9BE, vgame_key_scene_detail_switch, "key dispatcher arm: Alt-A, the scene detail master switch", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC993, vgame_key_flaps, "key dispatcher arm: 9, the flaps switch and its cockpit element", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC977, vgame_key_gear, "key dispatcher arm: 6, the landing gear command", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC973, vgame_key_release_decoy, "key dispatcher arm: 5, release a countermeasure of kind 3", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC96F, vgame_key_release_chaff, "key dispatcher arm: 2, release a countermeasure of kind 2", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC968, vgame_key_release_flare, "key dispatcher arm: 1, release a countermeasure of kind 1", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC961, vgame_key_ir_jammer_switch, "key dispatcher arm: 3, the infrared jammer switch", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC944, vgame_key_ecm_switch, "key dispatcher arm: 4, the jammer switch and its lamp", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC93F, vgame_key_unzoom_view, "key dispatcher arm: x, unzoom the view", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC93A, vgame_key_zoom_view, "key dispatcher arm: z, zoom the view", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC8E6, vgame_key_toggle_display_flag, "key dispatcher arm: n, the display flag toggle", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC8CA, vgame_key_dispatcher_entry, "key dispatcher entry: frame, scratch words, no key to the tail or the arm chooser", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7611, start_quit_confirmation, "Alt+Q quit confirmation panel (Y quits, any other key restores the screen)", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9520, start_call_interrupt, "int86: call a software interrupt through registers held in a record", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3E61, end_quit_confirm_panel, "Alt+Q quit confirmation panel: Y quits END, any other key restores the screen", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x519E, end_interrupt_call, "call software interrupt n with register structures (int86)", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3BBF, end_capture_page, "the captured-pilot debrief page: picture, sound, text colours, continue prompt", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0977, end_icon_frame_switch, "icon placement: choose the icon frame from the kind, through the jump table at 0985 and every arm", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCD04, vgame_key_eject, "key dispatcher arm: eject (Shift+F10), sounds, survival test, sortie record and seat position", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x11DB, start_map_hover_light, "briefing-map hover: relight the palette entry of the item under the pointer, help line and site popup", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x1C2F, start_site_popup_text, "info popup text of a briefing-map airbase or radar site", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x93E9, vgame_armament_panel_refresh, "redraw the armament panel: background, then each station's count and rack name", 1 },

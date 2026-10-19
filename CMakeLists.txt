@@ -813,6 +813,132 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:1C2F)
     add_test(NAME matched_start_map_hover_light COMMAND func_lockstep --states 5000
       --only START.EXE:11DB)
+    add_test(NAME matched_vgame_key_eject COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CD04)
+    add_test(NAME matched_end_icon_frame_switch COMMAND func_lockstep --states 5000
+      --only END.EXE:977)
+    add_test(NAME matched_end_capture_page COMMAND func_lockstep --states 5000
+      --only END.EXE:3BBF)
+    add_test(NAME matched_end_interrupt_call COMMAND func_lockstep --states 5000
+      --only END.EXE:519E)
+    add_test(NAME matched_end_quit_confirm_panel COMMAND func_lockstep --states 5000
+      --only END.EXE:3E61)
+    add_test(NAME matched_start_call_interrupt COMMAND func_lockstep --states 5000
+      --only START.EXE:9520)
+    add_test(NAME matched_start_quit_confirmation COMMAND func_lockstep --states 5000
+      --only START.EXE:7611)
+    add_test(NAME matched_vgame_key_dispatcher_entry COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C8CA)
+    add_test(NAME matched_vgame_key_toggle_display_flag COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C8E6)
+    add_test(NAME matched_vgame_key_zoom_view COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C93A)
+    add_test(NAME matched_vgame_key_unzoom_view COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C93F)
+    add_test(NAME matched_vgame_key_ecm_switch COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C944)
+    add_test(NAME matched_vgame_key_ir_jammer_switch COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C961)
+    add_test(NAME matched_vgame_key_release_flare COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C968)
+    add_test(NAME matched_vgame_key_release_chaff COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C96F)
+    add_test(NAME matched_vgame_key_release_decoy COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C973)
+    add_test(NAME matched_vgame_key_gear COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C977)
+    add_test(NAME matched_vgame_key_flaps COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C993)
+    add_test(NAME matched_vgame_key_scene_detail_switch COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9BE)
+    add_test(NAME matched_vgame_key_display_option_h COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9C6)
+    add_test(NAME matched_vgame_key_option_w COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9CE)
+    add_test(NAME matched_vgame_key_external_readouts COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9D6)
+    add_test(NAME matched_vgame_key_cockpit_height COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9DE)
+    add_test(NAME matched_vgame_key_sensitivity COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CA50)
+    add_test(NAME matched_vgame_key_frame_rate_text COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CA8E)
+    add_test(NAME matched_vgame_key_faster_time COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CAC7)
+    add_test(NAME matched_vgame_key_normal_time COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CAE4)
+    add_test(NAME matched_vgame_key_sound_level COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CAEA)
+    add_test(NAME matched_vgame_key_training_switch COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CB27)
+    add_test(NAME matched_vgame_key_next_weapon COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CB42)
+    add_test(NAME matched_vgame_key_mark_displays COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CB95)
+    add_test(NAME matched_vgame_key_step_hud_declutter COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBA8)
+    add_test(NAME matched_vgame_key_press_cannon_button COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBBE)
+    add_test(NAME matched_vgame_key_press_release_button COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBD5)
+    add_test(NAME matched_vgame_key_view_front COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBDE)
+    add_test(NAME matched_vgame_key_view_44 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBE7)
+    add_test(NAME matched_vgame_key_view_41 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBF0)
+    add_test(NAME matched_vgame_key_view_43 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CBF9)
+    add_test(NAME matched_vgame_key_view_42 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC02)
+    add_test(NAME matched_vgame_key_camera_angle_left COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC0B)
+    add_test(NAME matched_vgame_key_camera_angle_forward COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC12)
+    add_test(NAME matched_vgame_key_camera_angle_right COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC19)
+    add_test(NAME matched_vgame_key_camera_angle_rear COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC20)
+    add_test(NAME matched_vgame_key_select_camera_view COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC25)
+    add_test(NAME matched_vgame_key_camera_level_down COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC4C)
+    add_test(NAME matched_vgame_key_camera_level_up COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CC93)
+    add_test(NAME matched_vgame_key_view_84 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCCE)
+    add_test(NAME matched_vgame_key_view_85 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCD7)
+    add_test(NAME matched_vgame_key_view_87 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCE0)
+    add_test(NAME matched_vgame_key_view_89 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCE9)
+    add_test(NAME matched_vgame_key_view_88 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCF2)
+    add_test(NAME matched_vgame_key_view_8b COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CCFB)
+    add_test(NAME matched_vgame_key_select_left_display COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDB8)
+    add_test(NAME matched_vgame_key_toggle_hud_colour COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDCB)
+    add_test(NAME matched_vgame_key_show_display_15 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDD6)
+    add_test(NAME matched_vgame_key_toggle_lamp_25 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDDB)
+    add_test(NAME matched_vgame_key_navigation_second_set COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDE9)
+    add_test(NAME matched_vgame_key_navigation_first_set COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDF3)
+    add_test(NAME matched_vgame_key_toggle_ils COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CE55)
+    add_test(NAME matched_vgame_key_show_display_18 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CE5D)
+    add_test(NAME matched_vgame_key_detail_level COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CA0A)
+    add_test(NAME matched_vgame_key_toggle_height_hold COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CB77)
+    add_test(NAME matched_vgame_key_reset_waypoints COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CE01)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -150,13 +150,13 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed instruction bytes outside those rows, within the same seven programs; added to numerator and denominator for scoring. Other modules are reported separately. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 979,
-    "matched_bytes": 150952,
-    "partial_functions": 291,
+    "matched_functions": 1003,
+    "matched_bytes": 153352,
+    "partial_functions": 287,
     "classes": {
-      "credited": 150952,
-      "ran": 4137,
-      "never_run": 12972,
+      "credited": 153352,
+      "ran": 3840,
+      "never_run": 10869,
       "unreached": 1030,
       "slots": 842,
       "data": 6906,
@@ -165,7 +165,7 @@
     "creditable_bytes": 169933,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
-      "bytes": 17418,
+      "bytes": 17423,
       "credited": 5399,
       "reviewed_static_bytes": 10426,
       "by_module": {
@@ -200,26 +200,26 @@
           "reviewed_static_bytes": 625
         },
         "VGAME": {
-          "bytes": 7929,
+          "bytes": 7934,
           "credited": 4864,
           "reviewed_static_bytes": 2804
         }
       },
       "other_modules_executed_bytes": {
-        "ASOUND.117": 5338,
+        "ASOUND.117": 5373,
         "ASOUND.LOG": 2615,
-        "F117.COM": 831,
+        "F117.COM": 834,
         "ISOUND.117": 983,
         "ISOUND.LOG": 1063,
-        "MGRAPHIC": 3233,
+        "MGRAPHIC": 3237,
         "MISC": 65,
         "RSOUND.117": 2213,
         "RSOUND.LOG": 2128
       },
       "route_records": {
-        "accepted": 59070,
+        "accepted": 61416,
         "changed": 124,
-        "bound_slots": 161,
+        "bound_slots": 162,
         "decode": 3
       }
     }

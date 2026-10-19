@@ -748,7 +748,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,020 addresses are matched in all seven programs (the census totals are in
+1,083 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
