@@ -30,6 +30,21 @@ verification) is not an optimisation; it needs the owner's approval.
   positive comparison counts; `finalize.py` validates old coverage against the
   previous batch's own registration table and every new byte against the
   dossiers. The census refresh afterwards takes seconds.
+- **Batch acceptance tooling (`D:/f117-gate/accept-kit/`, 18 October).**
+  `new_batch.py LETTER PREV BASE_COMMIT DIR...` creates `p2-batch-<letter>-accept/`
+  from generic scripts (no hand-editing of routine names, counts or hashes: tests, routine totals,
+  mutations and added bytes are read from the gate log, `matched.c` and the verdicts; far-segment
+  routines use linear addresses; `callfar` kinds and call macros are recognised); `accept.py` runs the
+  gate with the overlapped presentation, the ten optimized seeds, the baseline group verdict and the
+  credit audit, then `audit_private.py` is run by hand. `finish_all.py DIR[:ROUTE]...` runs each
+  directory's checkpoints, boot proof and verdict side by side on spare CPUs. Wall-time changes that
+  keep every check: the gate now starts the 44 fresh interpreter sessions (the critical path: the
+  career chain is ~1,285 s) right after the build and before the unit tests rather than after them
+  (`build_recomp.py`: the same tests run concurrently, a failure still fails the gate); the overlapped
+  N=1 presentation starts speculatively when coverage ends instead of after the re-translation check
+  (the closing runner-hash comparison turns a wrong guess into a failed acceptance, never a pass).
+  Expected saving: roughly 100-170 s of ~1,700 s; the remaining floor is the interpreter chain
+  (about 337 s of build and tests, plus the 1,285 s career run).
 - **Static-code scope review.** Read each candidate range in full, decode every
   instruction independently with Capstone, then let `reviewed_code_bytes`
   verify image hashes, complete instruction boundaries, counts and

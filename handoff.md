@@ -205,6 +205,22 @@ C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache`, via
 `D:/f117-gate/affinity_launch.py`; about 22-30 min) before it is pushed. Read
 the tally (`N ok, 0 failed`), not the exit code. Check GitHub CI after pushing.
 
+## Open harness issue (found 18 Oct, batch s gate)
+
+Step 7c at the rotating seed `0x904ceaac77b9` (HEAD `904ceaa`) fails with one mismatch:
+`projectiles: 1 calls escaped their return`, VGAME `683E` state 1799 (`trap 6EE4 sp 34E0, at E83E
+sp 3522`). Reproduce: `build/func_lockstep.exe --states 5000 --seed 0x904ceaac77b9 --only
+VGAME.EXE:683E` (all 6,056 compared states are equal; the escape counter alone fails the run). It
+is in the same family as the 18 Oct false escape and the 16 Oct changed-return fix
+(`destroyed_return`, `same_changed_return`, `g_changed_ret` in `tests/func_lockstep.c`): a nested
+original run reaches the routine's own return from inside a callee (the trace shows the C818
+helper returning into the routine and the original finishing it, ending `leave; ret` at 7242 with
+SP 3520), so the escape guard cannot tell a harness gap from a real divergence. It does not depend
+on batch s (the seed is derived from HEAD, and the routine's stream from its address). Find the
+cause with `DBGSTATE`-style tracing (set `g_trace` for one `g_state_index` in `step_runner`), then
+fix with exact original-state evidence and keep the seed as a CTest, as for the earlier cases. Until
+then a gate can fail at 7c on an unlucky HEAD; committing anything new changes the seed.
+
 ## Traps
 
 Matching and the gate:

@@ -100,7 +100,7 @@ def recompile(data, gen, coverage_files):
     return changed
 
 
-def build(gen, unit_jobs=8):
+def build(gen, unit_jobs=8, run_tests=True):
     # A prior core-only build must not silently omit the five host tests.
     r = run(["cmd", "/c", os.path.join(ROOT, "build.cmd"), "-DF117R_BUILD_APP=ON",
              "-DF117R_GEN_DIR=" + gen.replace("\\", "/")],
@@ -110,7 +110,8 @@ def build(gen, unit_jobs=8):
         print(tail)
         sys.exit("build failed")
     print("  build OK")
-    unit_tests(unit_jobs)
+    if run_tests:
+        unit_tests(unit_jobs)
 
 
 def unit_tests(jobs=8):
@@ -512,12 +513,13 @@ def main():
         print("1. translate")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
         print("2. build")
-        build(gen, a.unit_jobs)
-        lap("translate and build")
+        # The unit tests run after the interpreter overlap below has started (same tests, same
+        # verdict): they never touch the private runner snapshot, and the interpreter half of the
+        # slowest route is the gate's critical path, so every second it starts earlier is one
+        # the whole gate does not wait.
+        build(gen, a.unit_jobs, run_tests=False)
     lockstep = {}
     atexit.register(stop_locksteps, lockstep)
-    if not a.no_parity:
-        lockstep.update(start_locksteps(a.work))
     skip_coverage = False
     key = gen_digest = None
     if not a.no_coverage and not a.parity_only and a.coverage_record:
@@ -566,6 +568,11 @@ def main():
             early[r] = early_pool.submit(interp_run, r, exe, env)
         print("  %d interpreter parity runs started beside coverage on %d workers (private runner %s)" % (
             len(early), a.overlap_jobs, exe))
+    if not a.parity_only:
+        unit_tests(a.unit_jobs)
+        lap("translate and build")
+    if not a.no_parity:
+        lockstep.update(start_locksteps(a.work))
     if not a.no_coverage and not a.parity_only and not skip_coverage:
         print("3. coverage")
         cov_results = {}
