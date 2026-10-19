@@ -839,6 +839,13 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       tuning task, not a fixed class list, and the look on a real screen is a
       person's judgement. Moved here on 18 Oct 2026 (owner): not scored, taken
       up only if wanted.
+- [ ] **Maybe: the hardware-only parts of Stages 3 and 4** (owner, 18 Oct 2026).
+      Pacing and smoothness on other physical machines (slower or older CPUs,
+      weaker GPUs), on displays with other refresh rates, and the owner's own
+      judgement of how motion looks on a real screen (tearing, judder). They
+      need hardware or a person this project does not have; the testable parts
+      stay in Stages 3 and 4 and are measured here (long flights, constrained
+      cores as a labelled proxy, playback-clock tuning). Not scored.
 
 ## Housekeeping
 
