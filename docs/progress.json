@@ -165,14 +165,14 @@
     "creditable_bytes": 169933,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
-      "bytes": 14268,
+      "bytes": 15590,
       "credited": 846,
-      "reviewed_static_bytes": 8341,
+      "reviewed_static_bytes": 9663,
       "by_module": {
         "DSWAP": {
-          "bytes": 1563,
+          "bytes": 1755,
           "credited": 98,
-          "reviewed_static_bytes": 1428
+          "reviewed_static_bytes": 1620
         },
         "END": {
           "bytes": 366,
@@ -180,14 +180,14 @@
           "reviewed_static_bytes": 195
         },
         "MPS_LOGO": {
-          "bytes": 851,
+          "bytes": 1025,
           "credited": 49,
-          "reviewed_static_bytes": 787
+          "reviewed_static_bytes": 961
         },
         "PLAYER": {
-          "bytes": 483,
+          "bytes": 839,
           "credited": 22,
-          "reviewed_static_bytes": 460
+          "reviewed_static_bytes": 816
         },
         "SETUP": {
           "bytes": 2442,
@@ -195,14 +195,14 @@
           "reviewed_static_bytes": 2154
         },
         "START": {
-          "bytes": 1381,
+          "bytes": 1599,
           "credited": 291,
-          "reviewed_static_bytes": 195
+          "reviewed_static_bytes": 413
         },
         "VGAME": {
-          "bytes": 7182,
+          "bytes": 7564,
           "credited": 311,
-          "reviewed_static_bytes": 3122
+          "reviewed_static_bytes": 3504
         }
       },
       "other_modules_executed_bytes": {

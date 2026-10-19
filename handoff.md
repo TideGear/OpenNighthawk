@@ -20,6 +20,21 @@ CTests and ten Machine API regressions pass. Local user config and the 4K
 preset inherit the new defaults. No fullscreen run is needed for promotion;
 the selected mode was already validated below.
 
+**18 Oct Phase 2 static-code review, second tranche:** seven ranges add
+1,322 bytes of confirmed code to the workload, with no new matching credit.
+`docs/census-code.tsv` now has 23 reviewed ranges; current scope is
+148,294 /185,523 bytes, P2 80.94%, All 93.48%. Evidence:
+`D:/f117-gate/census-gap-20261018/{review.py,review.json}`. Full ranges were
+read and independently decoded; every hash, complete instruction boundary,
+count and non-overlap check passes. The PLAYER formatter inventory ends in
+half of CMP AL,4Eh at 1B9B: trim the reviewed range to 199 bytes. The logo
+mouse-helper inventory has an alternate ENTER beginning inside MOV CX,AX
+(linear 1308 versus 1307); defer that range rather than accept it from length
+agreement alone. 5,767 static-inventory bytes and the other-module scope
+remain open. All 37 classifier, eight progress and six dossier tests pass.
+The 15/60 default commit `6cd99c4` has green Windows and Munt CI. No runtime
+code changed in this scope review.
+
 **18 Oct broader 15/60 validation (passed):** owner requested broader
 validation after the 4K60 and map-edge repairs. New evidence is
 `D:/f117-gate/cadence15-broad-20261018/` (B), frozen API/runner from `2245c14`.
@@ -298,10 +313,10 @@ All private runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
 https://github.com/TideGear/OpenNighthawk/actions/runs/39083815431.
 Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
-Scoreboard: P1 100.00%, P2 81.48%, P3 97.22%, All 93.64% (P4 and the decided-against P3 items are no longer scored)
+Scoreboard: P1 100.00%, P2 80.94%, P3 97.22%, All 93.48% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
-147,448 of 169,933 creditable historical census bytes, plus 846 of 14,268 proven bytes outside its rows:
-**148,294 / 184,201 in the expanded seven-program scope** (credit by byte since 16 October).
+147,448 of 169,933 creditable historical census bytes, plus 846 of 15,590 proven bytes outside its rows:
+**148,294 / 185,523 in the expanded seven-program scope** (credit by byte since 16 October).
 **The denominator was split on 17 October (owner):** 9,280 of the 179,213 census bytes are data or code that stays original and no longer count
 (`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
 The jump from 83.02% to 87.28% at the change was the metric, not new matching. The 842 bytes of unused
@@ -333,8 +348,8 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   adding 8,341 bytes with no matching credit. Hash, complete instruction boundaries, count and overlapping
   reviews are checked at every refresh; all lengths independently agree with Capstone. Private evidence:
   `D:/f117-gate/census-gap-20261017/static-audit/{approve.py,reviewed-verdict.json,inventory.json}`.
-  Scope is now 148,294 / 184,201, P2 81.48%, overall 93.64%; the reduction records more work, not lost matching.
-- **Still outside the score:** 7,089 static-discovery bytes remain unreviewed, including speculative table/padding
+  Scope after the first tranche was 148,294 / 184,201, P2 81.48%, overall 93.64%; the reduction records more work, not lost matching.
+- **Still outside the score (after the second tranche above):** 5,767 static-discovery bytes remain unreviewed, including speculative table/padding
   decodes and decoder disagreements; do not blindly add them. Also **18,469 validated executed bytes in other
   modules**, individually reported by the classifier. Matching the launcher, resident graphics and sound drivers needs module/segment support.
   The score explicitly describes the expanded seven-program scope, not all game code.

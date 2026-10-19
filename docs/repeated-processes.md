@@ -1,5 +1,19 @@
 # Repeated processes
 
+**18 Oct static-code scope review, second tranche:** evidence is
+`D:/f117-gate/census-gap-20261018/{review.py,review.json}`. Read candidate
+ranges in full; independently decode every accepted instruction with Capstone,
+then use `reviewed_code_bytes` to verify image hashes, complete boundaries,
+counts and non-overlap. Seven ranges add 1,322 uncredited static bytes; no
+runtime change. The initial all-or-nothing check rejects PLAYER 1AD4's
+partial final instruction before writing the table; the accepted range stops
+at 1B9B (199 bytes). Defer the logo mouse helpers' overlapping 1307/1308
+starts even though isolated lengths agree. Refresh with the existing census,
+batch-o named coverage and batch-h route coverage (about five seconds).
+All 37 classifier, eight progress and six dossier tests pass (under four
+seconds wall time in parallel). The broad machine/presentation gates are not
+rerun for a scope-table-only update; no executable behavior changes.
+
 **18 Oct normal-play default promotion:** after the broader validation below,
 the owner approved 15 Hz /60 MIPS as the application default. Only the app's
 initial cadence and instruction budget change; headless/API defaults and

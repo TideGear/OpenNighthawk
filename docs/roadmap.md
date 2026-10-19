@@ -161,10 +161,15 @@ not the recompilation:
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
-      The score now measures 148,294 / 184,201 creditable bytes (P2 81.48%, overall 93.64%); the earlier
-      87.43% used only the old census. No matching was removed. The remaining 7,089 bytes in the static
+      A second tranche on 18 October adds 1,322 bytes in seven further reviewed ranges
+      (23 ranges total). The score now measures 148,294 / 185,523 creditable bytes
+      (P2 80.94%, overall 93.48%); the earlier
+      87.43% used only the old census. No matching was removed. The remaining 5,767 bytes in the static
       inventory need review; speculative table/padding decodes and independent-decoder disagreements
-      prevent blindly adding every translated byte. These and 18,469 validated executed bytes in other modules
+      prevent blindly adding every translated byte. The second review trims PLAYER
+      `1AD4` before the partially covered `1B9B` instruction and defers MPS_LOGO
+      `00DA:04DA..05BF` because the discovery includes an overlapping operand decode.
+      Evidence: `D:/f117-gate/census-gap-20261018/review.json`. These and 18,469 validated executed bytes in other modules
       remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
       counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
       records agree with an independent decoder. VGAME `09EFA` is screened: 1,628 instructions / 4,552
