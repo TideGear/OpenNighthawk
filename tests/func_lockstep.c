@@ -573,6 +573,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x35FC, 0x35FC, 0x0045 },
+    { "START.EXE", 0x0F4E, 0x0F4E, 0x0055 },
     { "START.EXE", 0x9E3E, 0x9E3E, 0x005C },
     { "VGAME.EXE", 0xD826, 0xD826, 0x0056 },
     { "END.EXE", 0x26A9, 0x26A9, 0x005A },
@@ -1022,6 +1024,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "END.EXE", 0x0000, 0x26A9, 0x005A, 44, 44, "END continue-prompt screen: restore area, wrapped text, prompt" },
     { "VGAME.EXE", 0x0000, 0xD826, 0x0056, 30, 30, "set the view, camera matrices and scene origin, then draw the sky bands when asked" },
     { "START.EXE", 0x0000, 0x9E3E, 0x005C, 41, 41, "the formatter's conversion dispatch" },
+    { "START.EXE", 0x0000, 0x0F4E, 0x0055, 38, 38, "reset briefing selection, load its pictures and palette, decode orders and position the pointer" },
+    { "START.EXE", 0x0000, 0x35FC, 0x0045, 28, 28, "format the selected picture filename, load it and transfer it to the selected page" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -16773,6 +16777,91 @@ int main(int argc, char **argv)
 #undef XRAND
 #undef XW16
 #undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x0F4E) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define KW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define KW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);KW8((s_),(o_),v__);KW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define KRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)KW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),KRAND());
+                KW8(dg,0xD096,KRAND());KW8(dg,0xB284,KRAND());
+                KW8(dg,0xB285,KRAND());KW8(dg,0xB2E8,KRAND());
+                const uint16_t ptrs[]={0x8000,0xFFC8,0xFFFE,0xEFC0};
+                const uint16_t ptr=ptrs[KRAND()&3];
+                const uint16_t recsegs[]={0x7000,dg,0x6000};
+                const uint16_t recseg=recsegs[KRAND()%3];
+                KW16(dg,0xCACA,ptr);KW16(dg,0xCACC,recseg);
+                const uint16_t words[]={0,1,0x7FFF,0xFFF0,0xFFFF,(uint16_t)KRAND()};
+                KW16(recseg,(uint16_t)(ptr+0x38),words[KRAND()%6]);
+                for(unsigned j=0;j<5;j++) {KW16(dg,0xF810+2*j,KRAND());KW16(dg,0xF830+2*j,KRAND());}
+#define KSTUB(sg_,off_,cell_,nargs_,retcell_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    KW8(sgx_,out_++,0x55);KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0xEC);KW8(sgx_,out_++,0x53); \
+    KW8(sgx_,out_++,0xFF);KW8(sgx_,out_++,0x06);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x46);KW8(sgx_,out_++,(far_)?6+2*j_:4+2*j_); \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+        KW8(sgx_,out_++,0xD1);KW8(sgx_,out_++,0xC3);KW8(sgx_,out_++,0x33);KW8(sgx_,out_++,0xD8); \
+        KW8(sgx_,out_++,0x89);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); } \
+    KW8(sgx_,out_++,0x5B);KW8(sgx_,out_++,0xA1);KW8(sgx_,out_++,(retcell_));KW8(sgx_,out_++,(retcell_)>>8); \
+    KW8(sgx_,out_++,0x5D);KW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,cell,ret; unsigned args; } near_[5]={
+                        {0x3088,0xF200,0xF810,0xF830,1},{0x35FC,0xF280,0xF812,0xF832,2},
+                        {0x826C,0xF300,0xF814,0xF834,1},{0x1308,0xF380,0xF816,0xF836,0},
+                        {0x3E84,0xF400,0xF818,0xF838,2}};
+                    for(unsigned k=0;k<5;k++) {
+                        KW8(0,near_[k].slot,0xE9);KW16(0,near_[k].slot+1,(uint16_t)(near_[k].code-near_[k].slot-3));
+                        KSTUB(0,near_[k].code,near_[k].cell,near_[k].args,near_[k].ret,0);
+                    }
+                }
+#undef KSTUB
+#undef KRAND
+#undef KW16
+#undef KW8
+            }
+            if(!strcmp(o->module,"START.EXE")&&o->seg==0&&o->ip==0x35FC) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define KW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define KW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);KW8((s_),(o_),v__);KW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define KRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)KW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),KRAND());
+                const uint16_t indices[]={0,1,2,3,0x7FFF,0x8000,0xFFFF,(uint16_t)KRAND()};
+                const uint16_t a0=indices[KRAND()&7],a1=indices[KRAND()&7];
+                KW16(dg,(uint16_t)(0x0CBA+2*a0),KRAND());
+                KW16(dg,(uint16_t)(0xCAB0+2*a1),KRAND());
+                KW16(dg,0xD336,KRAND());KW16(dg,0xD338,KRAND());KW16(dg,0xE086,KRAND());
+                for(unsigned j=0;j<3;j++){KW16(dg,0xF810+2*j,KRAND());KW16(dg,0xF830+2*j,KRAND());}
+                KW16(seg[S_SS],r[R_SP],a0);small[0]=a0;
+                KW16(seg[S_SS],r[R_SP]+2,a1);small[1]=a1;
+#define KSTUB(sg_,off_,cell_,nargs_,retcell_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    KW8(sgx_,out_++,0x55);KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0xEC);KW8(sgx_,out_++,0x53); \
+    KW8(sgx_,out_++,0xFF);KW8(sgx_,out_++,0x06);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x46);KW8(sgx_,out_++,(far_)?6+2*j_:4+2*j_); \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+        KW8(sgx_,out_++,0xD1);KW8(sgx_,out_++,0xC3);KW8(sgx_,out_++,0x33);KW8(sgx_,out_++,0xD8); \
+        KW8(sgx_,out_++,0x89);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); } \
+    KW8(sgx_,out_++,0x5B);KW8(sgx_,out_++,0xA1);KW8(sgx_,out_++,(retcell_));KW8(sgx_,out_++,(retcell_)>>8); \
+    KW8(sgx_,out_++,0x5D);KW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct{uint16_t slot,code,cell,ret;unsigned args;}near_[3]={
+                        {0x959E,0xF200,0xF810,0xF830,3},{0x2864,0xF300,0xF812,0xF832,3},
+                        {0x8782,0xF400,0xF814,0xF834,2}};
+                    for(unsigned k=0;k<3;k++){
+                        KW8(0,near_[k].slot,0xE9);KW16(0,near_[k].slot+1,(uint16_t)(near_[k].code-near_[k].slot-3));
+                        KSTUB(0,near_[k].code,near_[k].cell,near_[k].args,near_[k].ret,0);
+                    }
+                }
+#undef KSTUB
+#undef KRAND
+#undef KW16
+#undef KW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

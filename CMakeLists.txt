@@ -781,6 +781,10 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:D826)
     add_test(NAME matched_start_format_dispatch COMMAND func_lockstep --states 5000
       --only START.EXE:9E3E)
+    add_test(NAME matched_start_briefing_page_setup COMMAND func_lockstep --states 5000
+      --only START.EXE:F4E)
+    add_test(NAME matched_start_load_picture_for_page COMMAND func_lockstep --states 5000
+      --only START.EXE:35FC)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

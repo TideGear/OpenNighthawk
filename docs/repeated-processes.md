@@ -1,5 +1,33 @@
 # Repeated processes
 
+**18 Oct batch p and third static-code tranche:** private proofs at
+`D:/f117-gate/p2-start-{0f4e,35fc}/`, acceptance at `p2-batch-p-accept/`.
+Both bounded bodies cover every instruction at five seeds, catch all 55
+mutations and match current-key real-route/boot references. Full gate passes
+in 1,387.55 s: 244 CTests, all 45 routes /44 fresh interpreter sessions,
+both instruction profiles, all 1,008 matched routines at three seeds,
+reachability and event limits. No complete keyed baseline corpus existed,
+so the established sequential presentation fallback was used. N=1 takes
+413.02 s (259,240 frames /259,166 pairs exact); boot N=4/9 takes 80.28 s
+(736 /732 exact). Ten optimized seeds and the independent +154-byte credit
+audit pass. The initial --only address was padded and selected zero states;
+`optimized.py` corrects it and requires positive comparisons. `finalize.py`
+uses the old registration table for old coverage; it validates existing
+successful gate outputs instead of repeating them. Combined acceptance is
+1,833.46 s, including reporting recovery; no source or threshold changed.
+
+Third static tranche: `census-gap-20261018-tranche3/` holds 12 reviewed ranges /
+1,619 new static bytes /764 canonical instructions. Seven bounded logo mouse
+walks resolve its earlier operand overlap; VGAME uses canonical segment
+0FB2 for its span wrapper. Hashes, boundaries, counts, independent lengths
+and non-overlap validate after application. The census refresh (about five
+seconds) uses batch-p named coverage and batch-h interpreter captures;
+37 classifier, eight progress, six dossier and nine defaults tests pass.
+The separate `p2-end-1708` future proof ran beside the gate at BelowNormal
+priority on CPUs 16-23; its test-clock wrap investigation is private, not a
+production bug fix. All its five seeds, 25 mutations and route/boot checks
+pass; it is not integrated in batch p.
+
 **18 Oct static-code scope review, second tranche:** evidence is
 `D:/f117-gate/census-gap-20261018/{review.py,review.json}`. Read candidate
 ranges in full; independently decode every accepted instruction with Capstone,

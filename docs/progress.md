@@ -94,15 +94,24 @@ stays on the roadmap.
   that code has a named equivalent.
   **Second tranche (18 October):** seven more reviewed ranges add 1,322 bytes:
   packed-picture wrappers, formatter parser arms, runtime handler replacement
-  and a model-bounds scan. The 23 ranges now supply 9,663 additional static bytes.
-  The current count is **148,294 / 185,523**, P2 **80.94%**, overall **93.48%**.
+  and a model-bounds scan. Those 23 ranges supplied 9,663 additional static bytes.
+  The count then was **148,294 / 185,523**, P2 **80.94%**, overall **93.48%**.
   PLAYER `1AD4` stops at `1B9B`, before an instruction bisected by the census
-  boundary. MPS_LOGO `00DA:04DA..05BF` remains pending: its discovery lists
+  boundary. MPS_LOGO `00DA:04DA..05BF` was left pending: its discovery lists
   overlapping starts at linear `1307` and `1308`, despite both individual
   decodes agreeing with Capstone. Thus decoder agreement alone is insufficient.
-  Evidence: `D:/f117-gate/census-gap-20261018/review.json`. The remaining
-  5,767 static-discovery bytes still need review, including speculative table
-  decodes and independent-decoder disagreements.
+  Evidence: `D:/f117-gate/census-gap-20261018/review.json`.
+  **Third tranche and batch p (18 October):** twelve further ranges add 1,619
+  uncredited static bytes; two proved named routines add 154 credited bytes.
+  Seven bounded logo mouse-helper walks establish all 230 bytes of the deferred
+  range as canonical code, without entering the overlapping operand decode.
+  Canonical VGAME `0FB2:02B4` also resolves its segment-zero operand aliases.
+  Across 35 reviewed ranges, 11,282 static bytes supplement the executed-code
+  scope. The current total is **148,448 /187,142**, P2 **80.36%**, overall
+  **93.30%**. The remaining 4,148 discovery bytes and the other-module scope
+  still need review. Evidence: `D:/f117-gate/census-gap-20261018-tranche3/`
+  and `D:/f117-gate/p2-batch-p-accept/`; hashes, boundaries, independent
+  instruction lengths and the unchanged prior named credit are verified.
   The launcher, resident graphics library and
   sound drivers have 18,469 validated executed bytes reported separately; extending matching and the
   score to these modules remains open. Thus the score measures the expanded seven-program scope,

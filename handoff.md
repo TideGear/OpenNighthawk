@@ -8,7 +8,7 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 18 October 2026.
 
-17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
+18 October: batch p is the latest accepted matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
 **Start here:** after broader validation, the owner approved the new normal-play
 default on 18 October: **15 Hz /60 MIPS**, all fifteen fixes on. The app uses
@@ -20,9 +20,54 @@ CTests and ten Machine API regressions pass. Local user config and the 4K
 preset inherit the new defaults. No fullscreen run is needed for promotion;
 the selected mode was already validated below.
 
+**18 Oct batch p accepted locally:** START `0F4E` (`start_briefing_page_setup`,
+38 instructions /85 bytes) and `35FC` (`start_load_picture_for_page`, 28 /69)
+add 154 named bytes: 1,008 accepted addresses. All 55 private mutations,
+five private seeds each, exact real-route proofs (66 checkpoints, 2/17 calls),
+boot (26 checkpoints, 0/4 calls) and ten optimized seeds pass. Current-source
+interpreter references were executed afresh, not relabelled. Full gate:
+244 CTests, 45 identical routes /44 fresh interpreter sessions, both
+5,718,848-state instruction profiles, all 1,008 names at three seeds,
+reachability and event limits clean. Gate time 1,387.55 s. All 45 N=1
+presentation cases pass (259,240 exact frames /259,166 pairs, 413.02 s),
+boot N=4/9 passes (736 /732, 80.28 s). No runtime worker or screen test remains.
+Evidence: `D:/f117-gate/p2-batch-p-accept/final-gate-verdict.json` and its
+raw gate/presentation/optimized logs. The initial private wrapper selected
+zero states with a padded --only address; corrected `optimized.py` uses
+hex without padding and asserts positive comparisons. `finalize.py` validates
+old batch-o coverage against its own 1,006 registrations, then checks every
+new byte against the dossiers. All expensive successful checks are retained.
+Source hashes remain identical to the tested manifest. All 60 tooling/default
+regressions pass after the final refresh. Commit/push and CI status belong
+in the next update once available.
+
+**Static-code third tranche applied:** 12 ranges /1,619 new static bytes /
+764 canonical instructions. `docs/census-code.tsv` now has 35 ranges. The
+logo mouse helper's seven bounded walks establish every byte in its 230-byte
+range without entering the overlapping ENTER; canonical VGAME `0FB2:02B4`
+avoids operand aliases. Evidence:
+`D:/f117-gate/census-gap-20261018-tranche3/{review.json,applied.json,logo-mouse-resolution.json}`.
+Current scope: 148,448 /187,142, P2 80.36%, All 93.30%. 4,148 static-discovery
+bytes and 18,469 executed bytes in other modules remain open. No scope is
+silently declared complete.
+
+**Next private candidate:** `D:/f117-gate/p2-end-1708`,
+`end_wait_ticks_with_callback`, 77 bytes /30 instructions. Private proof and
+root audit pass: five seeds (6005/6000/6035/6047/6018 comparisons), no skips
+or differences, all 25 mutations caught, full_cycle 66 exact checkpoints /
+one call, boot 26 exact checkpoints /zero calls. NOT integrated or credited.
+Its bases include batch p. The initial monotonic timer fixture had 161
+long-run skips: unsigned comparison can wait across a 32-bit overshoot.
+The final scripted clock keeps those inputs and comparisons, then supplies
+an independently computed deadline after eight observations to permit a
+compared return. Rejected fixture and diagnostic evidence are preserved;
+no production timing fix or relaxed cap was used. Refresh proof-kit libraries
+from the current optimized build before the next batch; gate and run five
+optimized seeds after integration, as usual. The roadmap goal stays active.
+
 **18 Oct Phase 2 static-code review, second tranche:** seven ranges add
 1,322 bytes of confirmed code to the workload, with no new matching credit.
-`docs/census-code.tsv` now has 23 reviewed ranges; current scope is
+At that checkpoint `docs/census-code.tsv` had 23 reviewed ranges; scope was
 148,294 /185,523 bytes, P2 80.94%, All 93.48%. Evidence:
 `D:/f117-gate/census-gap-20261018/{review.py,review.json}`. Full ranges were
 read and independently decoded; every hash, complete instruction boundary,
@@ -30,8 +75,8 @@ count and non-overlap check passes. The PLAYER formatter inventory ends in
 half of CMP AL,4Eh at 1B9B: trim the reviewed range to 199 bytes. The logo
 mouse-helper inventory has an alternate ENTER beginning inside MOV CX,AX
 (linear 1308 versus 1307); defer that range rather than accept it from length
-agreement alone. 5,767 static-inventory bytes and the other-module scope
-remain open. All 37 classifier, eight progress and six dossier tests pass.
+agreement alone. 5,767 static-inventory bytes remained at that checkpoint; the third tranche
+above reduces that backlog to 4,148. All 37 classifier, eight progress and six dossier tests pass.
 The 15/60 default commit `6cd99c4` has green Windows and Munt CI. No runtime
 code changed in this scope review.
 
@@ -313,10 +358,10 @@ All private runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
 https://github.com/TideGear/OpenNighthawk/actions/runs/39083815431.
 Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
-Scoreboard: P1 100.00%, P2 80.94%, P3 97.22%, All 93.48% (P4 and the decided-against P3 items are no longer scored)
-(`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
-147,448 of 169,933 creditable historical census bytes, plus 846 of 15,590 proven bytes outside its rows:
-**148,294 / 185,523 in the expanded seven-program scope** (credit by byte since 16 October).
+Scoreboard: P1 100.00%, P2 80.36%, P3 97.22%, All 93.30% (P4 and the decided-against P3 items are no longer scored)
+(`py tools/progress.py --title`). Phase 2: 1,008 addresses matched; named code runs
+147,602 of 169,933 creditable historical census bytes, plus 846 of 17,209 proven bytes outside its rows:
+**148,448 / 187,142 in the expanded seven-program scope** (credit by byte since 16 October).
 **The denominator was split on 17 October (owner):** 9,280 of the 179,213 census bytes are data or code that stays original and no longer count
 (`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
 The jump from 83.02% to 87.28% at the change was the metric, not new matching. The 842 bytes of unused
@@ -349,7 +394,7 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   reviews are checked at every refresh; all lengths independently agree with Capstone. Private evidence:
   `D:/f117-gate/census-gap-20261017/static-audit/{approve.py,reviewed-verdict.json,inventory.json}`.
   Scope after the first tranche was 148,294 / 184,201, P2 81.48%, overall 93.64%; the reduction records more work, not lost matching.
-- **Still outside the score (after the second tranche above):** 5,767 static-discovery bytes remain unreviewed, including speculative table/padding
+- **Still outside the score (after the third tranche above):** 4,148 static-discovery bytes remain unreviewed, including speculative table/padding
   decodes and decoder disagreements; do not blindly add them. Also **18,469 validated executed bytes in other
   modules**, individually reported by the classifier. Matching the launcher, resident graphics and sound drivers needs module/segment support.
   The score explicitly describes the expanded seven-program scope, not all game code.
@@ -772,7 +817,7 @@ role, the panel review; the coastline and the other decided-against items left t
    ignored during a replay, but other load on the machine would disturb the timing); whether Stage 3's remaining skips and slower machines, and
    Stage 4's slower CPUs/GPUs and long career flights, are worth pursuing (see the P3 table in this conversation:
    Stage 3 93.3%, Stage 4 90%, Stage 2 96.7%).
-1. **Phase 2 first (owner).** `p2-batch-o` is gated and landed. END `400F` is proved privately (`p2-end-400f`)
+1. **Phase 2 first (owner).** Batch p is gated; the next privately proved candidate is END `1708` (above). END `400F` is proved privately (`p2-end-400f`)
    but held back (stand-in fatal tail, one uncaught mutation, coverage counts 21 of 39); new screened leads are in
    `D:/f117-gate/p2-next-after-n/screened.tsv` (FREE rows; `kit/DECLINED.tsv` now also lists END `57B0` and START
    `01285` as interior arms).

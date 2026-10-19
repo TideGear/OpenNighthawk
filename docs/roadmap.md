@@ -151,25 +151,27 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,006 addresses matched; named code runs 147,448 of the
+      **Now:** 1,008 addresses matched; named code runs 147,602 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)): 964 census rows
+      [progress.md](progress.md#what-is-measured)): 966 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239 and batch o 268.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268 and batch p 154.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
-      A second tranche on 18 October adds 1,322 bytes in seven further reviewed ranges
-      (23 ranges total). The score now measures 148,294 / 185,523 creditable bytes
-      (P2 80.94%, overall 93.48%); the earlier
-      87.43% used only the old census. No matching was removed. The remaining 5,767 bytes in the static
-      inventory need review; speculative table/padding decodes and independent-decoder disagreements
-      prevent blindly adding every translated byte. The second review trims PLAYER
-      `1AD4` before the partially covered `1B9B` instruction and defers MPS_LOGO
-      `00DA:04DA..05BF` because the discovery includes an overlapping operand decode.
-      Evidence: `D:/f117-gate/census-gap-20261018/review.json`. These and 18,469 validated executed bytes in other modules
+      The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
+      (35 ranges total, 11,282 additional static bytes). With batch p's new names,
+      the score measures 148,448 /187,142 creditable bytes (P2 80.36%, overall 93.30%);
+      the earlier 87.43% used only the old census. No matching was removed.
+      The remaining 4,148 static-inventory bytes need review; speculative table/padding
+      decodes and independent-decoder disagreements prevent blindly adding translated bytes.
+      The second review trims PLAYER `1AD4` before the bisected `1B9B` instruction.
+      The third resolves the logo mouse-helper range: seven canonical walks cover
+      all 230 bytes without entering the overlapping operand decode. Canonical
+      VGAME `0FB2:02B4` likewise avoids segment-zero aliases inside operands.
+      Evidence: `D:/f117-gate/census-gap-20261018-tranche3/applied.json`. These and 18,469 validated executed bytes in other modules
       remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
       counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
       records agree with an independent decoder. VGAME `09EFA` is screened: 1,628 instructions / 4,552
@@ -228,6 +230,27 @@ routes alone; *thin* marks one a real route calls only once or a seed barely
 reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
+
+### Latest batch: briefing setup and picture loading (18 October 2026, batch p)
+
+Two routines add 154 named census bytes, bringing the accepted count to 1,008
+addresses. Five private seeds each cover every instruction with no skips or
+differences; all 55 mutations are caught. Ten optimized seed runs also pass.
+Both bodies match all 66 `full_cycle` checkpoints and final state (2 and 17
+calls); boot matches all 26 checkpoints (0 and 4 calls). The full gate passes
+244 CTests, all 45 routes /44 fresh interpreter sessions, both instruction
+profiles, all 1,008 matched routines at three seeds, reachability and event
+limits. N=1 presentation preserves all 259,240 frames /259,166 pairs; boot
+N=4/9 preserves 736 /732. Evidence: `D:/f117-gate/p2-batch-p-accept/`.
+
+- START `0F4E`, `start_briefing_page_setup`: reset selection/UI flags, start
+  the fade, load the briefing and aircraft pictures, select the palette,
+  decode orders and position the pointer. 38 instructions /85 bytes;
+  31 mutations caught.
+- START `35FC`, `start_load_picture_for_page`: format the picture filename,
+  load it through the image buffers and unpack it to the selected page.
+  Preserve near-pointer, stack-alias and index-wrap behavior. 28 instructions
+  /69 bytes; 24 mutations caught.
 
 ### Latest batch: report text, view and sky, formatter dispatch (17 October 2026, batch o)
 

@@ -66991,7 +66991,114 @@ char_arm:
 #undef XB
 }
 
+/* START 0F4E prepares the briefing page. Reset the old selection and UI flags,
+ * start fade form B, load pictures 2/3 and the selected aircraft's picture
+ * (record word 38h plus 10h, destination 4), copy palette bank 2, decode the
+ * orders, and put the pointer at (110h,77h). Picture arguments are pushed
+ * last to first; all six near calls leave their arguments for this caller.
+ * Preserve the original LES/read/add sequence and each cleanup POP because
+ * the record can alias the stack and callees determine registers and flags. */
+static int start_briefing_page_setup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define BB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define BC(target_,ret_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c,7)) return 0;
+    BB(7,0x0F4E);
+    ds_put8(c,0xD096,0);
+    ds_put8(c,0xB284,0);
+    set_r8(c,R_AL,1);
+    ds_put8(c,0xB285,get_r8(c,R_AL));
+    ds_put8(c,0xB2E8,get_r8(c,R_AL));
+    c->r[R_AX]=1; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x0F64); BC(0x3088,0x0F67);
+    BB(5,0x0F67);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_AX]=3; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=2; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x0F70); BC(0x35FC,0x0F73);
+    BB(8,0x0F73);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_AX]=4; cpu_push16(c,c->r[R_AX]);
+    c->r[R_BX]=ds_get(c,0xCACA);
+    c->seg[S_ES]=ds_get(c,0xCACC);
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x38));
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x10,1);
+    cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x0F85); BC(0x35FC,0x0F88);
+    BB(4,0x0F88);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_AX]=2; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x0F8E); BC(0x826C,0x0F91);
+    BB(1,0x0F91);
+    c->r[R_BX]=cpu_pop16(c);
+    SM4_NEED(1,0x0F92); BC(0x1308,0x0F95);
+    BB(4,0x0F95);
+    c->r[R_AX]=0x77; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x110; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x0F9D); BC(0x3E84,0x0FA0);
+    BB(3,0x0FA0);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_BX]=cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef BC
+#undef BB
+}
+
+/* START 35FC takes a picture index and a destination-page index. Format the
+ * filename into the original 16-byte local buffer using the word table at
+ * 0CBA and format string 0CB2. Load it through the current image buffers
+ * (D336/D338), then transfer the page selected from CAB0 with E086.
+ * The original reserves 18 local bytes and passes near pointers even when
+ * SS and DS differ; retain that behavior, table-index wrapping and cleanup. */
+static int start_load_picture_for_page(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define PB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PC(target_,ret_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,10))return 0;
+    PB(10,0x35FC);
+    cpu_push16(c,c->r[R_BP]);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],0x12,1);
+    c->r[R_BX]=bp_get(c,4);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x0CBA)));
+    c->r[R_AX]=0x0CB2;cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)(c->r[R_BP]-0x10);cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x3613);PC(0x959E,0x3616);
+    PB(5,0x3616);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);
+    cpu_push16(c,ds_get(c,0xD338));
+    cpu_push16(c,ds_get(c,0xD336));
+    c->r[R_AX]=(uint16_t)(c->r[R_BP]-0x10);cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1,0x3625);PC(0x2864,0x3628);
+    PB(5,0x3628);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);
+    c->r[R_BX]=bp_get(c,6);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0xCAB0)));
+    cpu_push16(c,ds_get(c,0xE086));
+    SM4_NEED(1,0x3638);PC(0x8782,0x363B);
+    PB(5,0x363B);
+    c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);
+    near_ret(c);return 1;
+#undef PC
+#undef PB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x35FC, start_load_picture_for_page, "format the selected picture filename, load it and transfer it to the selected page", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0F4E, start_briefing_page_setup, "reset briefing selection, load its pictures and palette, decode orders and position the pointer", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9E3E, start_format_dispatch, "the formatter's conversion dispatch", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD826, vgame_set_view_and_sky, "set the view, camera matrices and scene origin, then draw the sky bands when asked", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x26A9, end_report_page_text, "END continue-prompt screen: restore area, wrapped text, prompt", 1 },
