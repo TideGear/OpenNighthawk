@@ -95,7 +95,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch r): **148,744 / 187,351**, P2 **80.42%**, overall **93.47%** (P3 97.79% after Stage 2 moved).
+  **Current total** (after batch t): **149,706 / 187,351**, P2 **80.91%**, overall **93.61%** (P3 97.79% after Stage 2 moved).
   Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus

@@ -61,8 +61,8 @@ recorded sessions restore their recorded fix set (older logs mean no fixes).
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,012 routine addresses have explained C equivalents
-  checked against their original bodies, covering 148,744 of 187,351 creditable
+- **Named and matched:** 1,015 routine addresses have explained C equivalents
+  checked against their original bodies, covering 149,706 of 187,351 creditable
   bytes in the expanded seven-program scope. The historical census has 970
   rows wholly covered and 293 in part; executed code outside its rows now
   counts too, along with reviewed static code. Unreviewed discoveries and other modules remain an explicit

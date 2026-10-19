@@ -151,20 +151,20 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,012 addresses matched; named code runs 147,898 of the
+      **Now:** 1,015 addresses matched; named code runs 148,859 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154 and batch r 142.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142 and batch t 962.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 148,744 /187,351 creditable bytes (P2 80.42%, overall 93.47%);
+      the score measures 149,706 /187,351 creditable bytes (P2 80.91%, overall 93.61%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -258,6 +258,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | p | 18 Oct | 1,008 | 154 | START `0F4E` briefing page setup; START `35FC` load picture for page |
 | q | 18 Oct | 1,010 | 154 | END `1708` and START `31AD` wait-ticks-with-callback helpers; they keep the original unsigned deadline comparison and wrap, so they add names, not a timing fix |
 | r | 18 Oct | 1,012 | 142 | VGAME `1A98` driver call with scaled arguments (33 instructions; no route runs its `[0348] != 0` branch, the fixture does; proved on `cargo_pilot`, 127 checkpoints); VGAME `114A:02FF` two far driver calls (23 instructions; `full_cycle`). VGAME `137C:000E` (`1377:005E`) is declined: an observer sits at the same address |
+| t | 18 Oct | 1,015 | 962 | VGAME `0FB2:0012` low-detail sky horizon line (164 instructions; the census's `0000:FB32` is the same address, and only `0FB2:0012` is ever entered); VGAME `CE65` key-arm selection (the jump table and key chain of the flight key dispatcher; it hands back to the original arm, so only the chain counts) and `CD7E` panel-state cycle (proved on `strike_training`). The 58 `FATAL_JUMPS` hand-back rows and a `SHARED_ENDINGS` row are in `tests/func_lockstep.c`. Batch s (`0FB2:0012` alone) failed step 7c at a rotating seed (see the handoff's open harness issue) and was folded into t |
 
 Notes that still matter:
 

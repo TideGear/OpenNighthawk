@@ -793,6 +793,12 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:1A98)
     add_test(NAME matched_vgame_driver_two_calls_far COMMAND func_lockstep --states 5000
       --only VGAME.EXE:2FF)
+    add_test(NAME matched_vgame_sky_horizon_line COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:12)
+    add_test(NAME matched_vgame_key_arm_select COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CE65)
+    add_test(NAME matched_vgame_key_cycle_panel_state COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CD7E)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

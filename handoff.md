@@ -15,31 +15,39 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 80.42%, P3 97.79%, All 93.47%
+- **Scoreboard:** P1 100.00%, P2 80.91%, P3 97.79%, All 93.61%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,012 addresses matched. Scope is the expanded seven-program
-  one: **148,744 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,015 addresses matched. Scope is the expanded seven-program
+  one: **149,706 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
   modules (launcher, resident graphics and sound drivers; they need
   module/segment support). `docs/census-code.tsv` has 37 reviewed static ranges;
   SETUP `1E4F` (142 bytes, opaque mixed range) stays deferred.
-- **Latest accepted batch (r):** VGAME `1A98` (`vgame_driver_call_scaled_args`,
-  proved on `cargo_pilot`: no route takes its `[0348] != 0` branch, only the
-  fixture does) and VGAME `114A:02FF` (`vgame_driver_two_calls_far`; the game
-  spells this far wrapper `114A:02FF`, and a body registered under another
-  segment spelling of the same linear address is never entered: check the
-  spelling of neighbouring rows). 142 bytes. Gate + overlapped presentation
-  1,697 s: 248 CTests, 1,012 routines, 65 mutations, ten optimized seeds;
-  evidence `D:/f117-gate/p2-batch-r-accept/`. VGAME `137C:000E` (`1377:005E`)
-  was proved privately but is declined: an observer (`hook_fill_rows`) sits at
-  that address (`kit/DECLINED.tsv`). Batch r's scripts adapt batch q's: copy the
-  directory, swap the routine names, `finalize.py` adds `segment*16` to dossier
-  ips, `audit_private.py` accepts `callfar` kinds and `FAR(` call macros, and
-  `baseline-group-verdict.json` must be regenerated from the frozen baseline.
-  Earlier batches are in [docs/roadmap.md](docs/roadmap.md).
+- **Latest accepted batches (r, t):** r = VGAME `1A98`, `114A:02FF` (142 bytes). t = VGAME
+  `0FB2:0012` (the game's spelling of census `0000:FB32`; a body registered under a different
+  segment spelling of the same address is never entered: check neighbouring rows), `CE65` (key-arm
+  chain, hands back to the original arm: only the chain earns credit) and `CD7E`: 962 bytes, 1,015
+  addresses. Batch t gate with the new order: parity done at 1,381 s (was 1,643), whole acceptance
+  1,597 s (was 1,697). VGAME `137C:000E` (`1377:005E`) is declined (an observer sits there). Scripts:
+  `D:/f117-gate/accept-kit/` (`new_batch.py LETTER PREV BASE_COMMIT DIR[:PREFIX[:partial]]...`; mark
+  hand-back routines `partial`; `finish_all.py` for checkpoints/boot/verdict). Evidence
+  `D:/f117-gate/p2-batch-{r,t}-accept/`. Earlier batches: [docs/roadmap.md](docs/roadmap.md).
+- **VGAME `09EFA` (4,552 bytes):** proved privately as a mechanical transcript
+  (`p2-vgame-9efa-body`: lockstep 1,628/1,628, 126 mutations, `full_cycle` 275 calls) but NOT
+  integrated: the owner wants named, explained code. An agent is rewriting it into named sections in
+  `D:/f117-gate/p2-vgame-9efa-named/` (same proof bar; the one harness hunk is raising the
+  `g_cov_*` arrays to `0x2000`). Integrate only that version.
+- **New route found (`D:/f117-gate/route-research/display_tour/`):** one interpreter session
+  (2.55 G clocks) that selects the navigation (F7/F8), armament (F5), objectives (F10) and compass
+  displays with the function keys, uses the keypad cursor chain with NumLock on, and clicks every START
+  briefing-map site; it runs 255/257 of VGAME `8F71..9215`, all of `93E9..94AD`, 84/84 of `825D`, 55/56
+  of the compass and 737/784 bytes of START `1C2F` (hover entry `129D`, click entry `11D1`). Add it as
+  `tools/routes/display_tour.*` (regenerate with its `regen.txt`), then prove `8F71`
+  (`p2-vgame-8f71`, done privately), `93E9`, `8342` and `1C2F` on it. Each new route adds one
+  interpreter session to every gate.
 - **Large lead, not started:** VGAME `09EFA` (`prepass_display_body`), 1,628
   instructions / 4,552 bytes, RET at `B0C1`; dossier only in
   `D:/f117-gate/p2-vgame-9efa/` (config still has placeholder names). Routes

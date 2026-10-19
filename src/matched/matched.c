@@ -67310,7 +67310,427 @@ static int vgame_driver_two_calls_far(machine_t *m)
 #undef XB
 }
 
+/* VGAME 0FB2:0012 (image 0x0FB32), near: the low-detail sky's horizon
+ * painter (the Reimp's sky_low_mul2). From the camera's roll (the cosine and
+ * sine words [49BA], [49BC]) and pitch ([49B6] over the focal length [49B8])
+ * it finds where the horizon crosses the window ([2293] wide, [2295] high,
+ * centre [0D1E], [0D20]) and paints the ground and the sky either side of it
+ * through the span tables.
+ *
+ * Set-up: [0D44] = -[49BA]. The pitch term is [49B6] * 256 / [49B8] (a signed
+ * 24-bit dividend; 3FFh when the focal length is 1F0Bh or less), shifted left
+ * by the count [4368] when that byte is non-zero and halved when [294B] is
+ * non-zero (BP). The two ends of the horizon are then built in 32-bit fixed
+ * point (each product doubled through the carry and rounded with ADC 0) and
+ * stored in the cells [2299],[229D] (one end, x then y) and [229B],[229F]
+ * (the other end); each y is reduced by a quarter of itself and offset by
+ * the centre row [0D20].
+ *
+ * Paint: [0D48] = 0, the pen byte [0D46] is selected (1E42:01BA, AH), the span
+ * tables are cleared (051F) and the raster clipper 0330 is run (carry set =
+ * the horizon line misses the window). Then:
+ *  - missed, or the two y ends equal and 0 or the window height: the whole
+ *    window is one colour. The colour is the pen unless the pitch [49B6] is
+ *    not negative, when it is 78h (sky). Two 0555 column stores (value 0, then
+ *    [2293], rows 0..[2295]) and the span fill 1E42:01D3 over the rows
+ *    [2615]..[2617] follow, and the routine returns.
+ *  - otherwise the four cells go to 06A6 on the stack (it clips the edge and
+ *    edits them in place) and are popped back in reverse. The signs of
+ *    [0D48]^[0D44] and [0D48]^[49BC] pick the side: SI = 0 or [2293] (cell
+ *    [0D42]) and BX/BP = 0 and [2295], swapped by the second sign. For each end
+ *    (the y in DI) 0555 stores a column unless the y is already BX (when it
+ *    is BP the column uses the other side's SI); then the span fill 01D3.
+ *    [0D48] is inverted; the first time through (it becomes non-zero) the
+ *    colour becomes 78h, the tables are cleared again and the same painting
+ *    repeats for the other side; the second time the routine returns.
+ * Callees: 1E42:01BA and 1E42:01D3 are far thunks (RETF, no cleanup); 051F,
+ * 0330, 0555 and 06A6 are near and return with a plain RET (the caller pops
+ * 06A6's four cells itself). */
+static int vgame_sky_horizon_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if (m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(uint16_t)((at_)+3),0)); } while (0)
+#define XFAR(at_) do { SM4_NEED(1,(at_)); XRUN(guest_call_far(m,(at_),(uint16_t)((at_)+5))); } while (0)
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define SI c->r[R_SI]
+#define DI c->r[R_DI]
+#define BP c->r[R_BP]
+#define OP(op_,a_,b_) ((uint16_t)alu_op(c,(op_),(a_),(b_),1))
+#define SHL1(r_) ((r_)=(uint16_t)x86_shift(c,4,(r_),1,1))
+#define RCL1(r_) ((r_)=(uint16_t)x86_shift(c,2,(r_),1,1))
+#define SAR1(r_) ((r_)=(uint16_t)x86_shift(c,7,(r_),1,1))
+    if (!room(c, 11)) return 0;
+    XB(11, 0x0012);
+    AX = ds_get(c, 0x49BA);
+    AX = (uint16_t)alu_sub(c, 0, AX, 1, 0);                       /* neg ax */
+    ds_put(c, 0x0D44, AX);
+    AX = ds_get(c, 0x49B6);
+    DX = (AX & 0x8000) ? 0xFFFF : 0x0000;                         /* cwd */
+    set_r8(c, R_DL, get_r8(c, R_AH));
+    set_r8(c, R_AH, get_r8(c, R_AL));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), get_r8(c, R_AL), 0));
+    CX = ds_get(c, 0x49B8);
+    (void)OP(7, CX, 0x1F0B);
+    if (x86_cond(c, 15)) goto L0034;
+    XB(2, 0x002E);
+    AX = 0x03FF;
+    goto L0036;
+L0034:
+    XB(1, 0x0034);
+    c->ip = 0x0036;
+    if (!x86_idiv16(c, CX, 0)) return 1;
+L0036:
+    XB(2, 0x0036);
+    (void)alu_op(c, 7, ds_get8(c, 0x4368), 0x00, 0);
+    if (!x86_cond(c, 4)) {
+        XB(2, 0x003D);
+        set_r8(c, R_CL, ds_get8(c, 0x4368));
+        AX = (uint16_t)x86_shift(c, 4, AX, get_r8(c, R_CL), 1);
+    }
+    XB(2, 0x0043);
+    (void)alu_op(c, 7, ds_get8(c, 0x294B), 0x00, 0);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x004A);
+        SAR1(AX);
+    }
+    XB(61, 0x004C);
+    BP = AX;
+    x86_imul16(c, ds_get(c, 0x0D44));
+    SHL1(AX); RCL1(DX);
+    BX = AX; CX = DX;
+    AX = ds_get(c, 0x0D1E);
+    SHL1(AX);
+    x86_imul16(c, ds_get(c, 0x49BC));
+    SHL1(AX); RCL1(DX);
+    SI = AX; DI = DX;
+    AX = OP(5, AX, BX);
+    DX = OP(3, DX, CX);
+    SHL1(AX);
+    DX = OP(2, DX, ds_get(c, 0x0D1E));
+    ds_put(c, 0x2299, DX);
+    BX = OP(0, BX, SI);
+    CX = OP(2, CX, DI);
+    SHL1(BX);
+    CX = OP(2, CX, 0);
+    DX = ds_get(c, 0x0D1E);
+    DX = OP(5, DX, CX);
+    ds_put(c, 0x229B, DX);
+    AX = BP;
+    x86_imul16(c, ds_get(c, 0x49BC));
+    SHL1(AX); RCL1(DX);
+    SI = AX; DI = DX;
+    AX = ds_get(c, 0x0D1E);
+    SHL1(AX);
+    x86_imul16(c, ds_get(c, 0x0D44));
+    SHL1(AX); RCL1(DX);
+    BX = AX; CX = DX;
+    AX = OP(5, AX, SI);
+    DX = OP(3, DX, DI);
+    SHL1(AX);
+    DX = OP(2, DX, 0);
+    AX = DX;
+    SAR1(AX); SAR1(AX);
+    DX = OP(5, DX, AX);
+    DX = OP(0, DX, ds_get(c, 0x0D20));
+    ds_put(c, 0x229F, DX);
+    SI = OP(0, SI, BX);
+    DI = OP(2, DI, CX);
+    SHL1(SI);
+    DI = OP(2, DI, 0);
+    SI = DI;
+    SAR1(SI); SAR1(SI);
+    DI = OP(5, DI, SI);
+    DX = ds_get(c, 0x0D20);
+    DX = OP(5, DX, DI);
+    ds_put(c, 0x229D, DX);
+    ds_put(c, 0x0D48, 0x0000);
+    set_r8(c, R_AH, ds_get8(c, 0x0D46));
+    XFAR(0x00E9);                                                 /* 1E42:01BA: the pen */
+    XNEAR(0x00EE, 0x051F);                                        /* clear the span tables */
+    XNEAR(0x00F1, 0x0330);                                        /* clip: carry set = outside */
+    XB(1, 0x00F4);
+    if (x86_cond(c, 3)) goto L0130;
+L00F6:
+    XB(2, 0x00F6);
+    (void)alu_op(c, 7, ds_get(c, 0x49B6), 0x0000, 1);
+    if (x86_cond(c, 8)) goto L0104;
+    XB(1, 0x00FD);
+    set_r8(c, R_AH, 0x78);
+    XFAR(0x00FF);                                                 /* 1E42:01BA: the sky colour */
+L0104:
+    XB(3, 0x0104);
+    SI = OP(5, SI, SI);
+    DI = SI;
+    DX = ds_get(c, 0x2295);
+    XNEAR(0x010C, 0x0555);                                        /* column 0 */
+    XB(3, 0x010F);
+    SI = ds_get(c, 0x2293);
+    DI = OP(5, DI, DI);
+    DX = ds_get(c, 0x2295);
+    XNEAR(0x0119, 0x0555);                                        /* column [2293] */
+    XB(4, 0x011C);
+    AX = ds_get(c, 0x2615);
+    CX = ds_get(c, 0x2617);
+    BX = 0x22A1;
+    DX = OP(5, DX, DX);
+    XFAR(0x0128);                                                 /* 1E42:01D3: fill the spans */
+    XB(1, 0x012D);
+    goto L01E5;
+L0130:
+    XB(3, 0x0130);
+    AX = ds_get(c, 0x229D);
+    (void)OP(7, AX, ds_get(c, 0x229F));
+    if (!x86_cond(c, 4)) goto L0143;
+    XB(2, 0x0139);
+    AX = OP(1, AX, AX);
+    if (x86_cond(c, 4)) goto L00F6;
+    XB(2, 0x013D);
+    (void)OP(7, AX, ds_get(c, 0x2295));
+    if (x86_cond(c, 4)) goto L00F6;
+L0143:
+    XB(4, 0x0143);
+    cpu_push16(c, ds_get(c, 0x2299));
+    cpu_push16(c, ds_get(c, 0x229D));
+    cpu_push16(c, ds_get(c, 0x229B));
+    cpu_push16(c, ds_get(c, 0x229F));
+    XNEAR(0x0153, 0x06A6);                                        /* clip the edge (cells on the stack) */
+    XB(8, 0x0156);
+    ds_put(c, 0x229F, cpu_pop16(c));
+    ds_put(c, 0x229B, cpu_pop16(c));
+    ds_put(c, 0x229D, cpu_pop16(c));
+    ds_put(c, 0x2299, cpu_pop16(c));
+    AX = OP(5, AX, AX);
+    SI = ds_get(c, 0x0D48);
+    SI = OP(6, SI, ds_get(c, 0x0D44));
+    if (x86_cond(c, 9)) goto L0175;
+    XB(1, 0x0172);
+    AX = ds_get(c, 0x2293);
+L0175:
+    XB(6, 0x0175);
+    ds_put(c, 0x0D42, AX);
+    BX = OP(5, BX, BX);
+    BP = ds_get(c, 0x2295);
+    SI = ds_get(c, 0x0D48);
+    SI = OP(6, SI, ds_get(c, 0x49BC));
+    if (x86_cond(c, 9)) goto L018A;
+    XB(1, 0x0188);
+    { const uint16_t t_ = BP; BP = BX; BX = t_; }
+L018A:
+    XB(4, 0x018A);
+    SI = ds_get(c, 0x2299);
+    DI = ds_get(c, 0x229D);
+    (void)OP(7, DI, BX);
+    if (x86_cond(c, 4)) goto L01A5;
+    XB(2, 0x0196);
+    (void)OP(7, DI, BP);
+    if (!x86_cond(c, 4)) goto L01A0;
+    XB(2, 0x019A);
+    DI = BP;
+    SI = ds_get(c, 0x0D42);
+L01A0:
+    XB(1, 0x01A0);
+    DX = BX;
+    XNEAR(0x01A2, 0x0555);
+L01A5:
+    XB(4, 0x01A5);
+    SI = ds_get(c, 0x229B);
+    DI = ds_get(c, 0x229F);
+    (void)OP(7, DI, BX);
+    if (x86_cond(c, 4)) goto L01C0;
+    XB(2, 0x01B1);
+    (void)OP(7, DI, BP);
+    if (!x86_cond(c, 4)) goto L01BB;
+    XB(2, 0x01B5);
+    DI = BP;
+    SI = ds_get(c, 0x0D42);
+L01BB:
+    XB(1, 0x01BB);
+    DX = BX;
+    XNEAR(0x01BD, 0x0555);
+L01C0:
+    XB(4, 0x01C0);
+    AX = ds_get(c, 0x2615);
+    CX = ds_get(c, 0x2617);
+    BX = 0x22A1;
+    DX = OP(5, DX, DX);
+    XFAR(0x01CC);                                                 /* 1E42:01D3: fill the spans */
+    XB(2, 0x01D1);
+    {
+        const uint16_t v_ = OP(6, ds_get(c, 0x0D48), 0xFFFF);
+        ds_put(c, 0x0D48, v_);
+    }
+    if (x86_cond(c, 4)) goto L01E5;
+    XB(1, 0x01D8);
+    set_r8(c, R_AH, 0x78);
+    XFAR(0x01DA);                                                 /* 1E42:01BA: the pen */
+    XNEAR(0x01DF, 0x051F);                                        /* clear the span tables */
+    XB(1, 0x01E2);
+    goto L0143;
+L01E5:
+    XB(1, 0x01E5);
+    c->ip = cpu_pop16(c);
+    return 1;
+#undef SAR1
+#undef RCL1
+#undef SHL1
+#undef OP
+#undef BP
+#undef DI
+#undef SI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+#undef XFAR
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* VGAME CE65: the flight key dispatcher's choice of an arm (keys_dispatch, which
+ * C8CA enters with ENTER 10h; the key is at bp+4). The dispatcher's opening jumps here
+ * with AX = the key. This routine finds the key's arm and jumps to it: it reads
+ * nothing but the jump table in the code segment and calls nothing, and the arm, with
+ * the common exit at C8FA every arm ends in, stays the original's (the body hands back
+ * at the arm's address).
+ *
+ * - The key 0A39h goes to C993 at once.
+ * - Keys 0231h..0938h in steps of 101h (AX - 0231h an exact multiple of 101h, at most
+ *   707h) take the table of eight words at CE8D, indexed by that multiple: C968, C96F,
+ *   C961, C944, C973, C977, CB77 and C9AE. Any other key below 0A39h goes to C8FA.
+ * - Keys above 0A39h are compared by running subtraction, each step taking the
+ *   difference from the key before it in the chain: 0E08h goes to CBBE, 1100h to C9CE,
+ *   1400h to CB27, 1A5Bh and 1A7Bh to CC93, 1B5Dh and 1B7Dh to CC4C, then forty-three
+ *   function and keypad keys (1C0Dh up to 5D00h), each to its own arm. A key in none of
+ *   them goes to C8FA.
+ *
+ * AX, BX, DX and the flags are what the original's SUB, CMP, DIV, OR and SHL leave: the
+ * arm that gets the jump may read them. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XSUBAX(v_) (c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], (v_), 1))
+static int vgame_key_arm_select(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* The chain from CECF on: SUB AX,difference / JNE next / JMP arm, eight bytes a step. */
+    static const struct { uint16_t diff, arm; } chain[43] = {
+        {0x0090,0xCBD5}, {0x01F3,0xC9BE}, {0x0200,0xCA0A}, {0x0100,0xCA8E}, {0x0200,0xC9C6},
+        {0x095A,0xCAC7}, {0x0020,0xC93A}, {0x00DE,0xCAE4}, {0x0020,0xC93F}, {0x0088,0xC9DE},
+        {0x0100,0xCAEA}, {0x0076,0xCBA8}, {0x00EC,0xCB95}, {0x010C,0xC8E6}, {0x0092,0xC9D6},
+        {0x004D,0xCC02}, {0x0020,0xCC0B}, {0x00BF,0xCC19}, {0x0010,0xCBF9}, {0x00F2,0xCC20},
+        {0x0010,0xCBF0}, {0x00F1,0xCC12}, {0x0010,0xCBE7}, {0x03E1,0xCB42}, {0x01E0,0xCBDE},
+        {0x0100,0xCD7E}, {0x0100,0xCDB8}, {0x0100,0xCDCB}, {0x0100,0xCDD6}, {0x0100,0xCDDB},
+        {0x0100,0xCDE9}, {0x0100,0xCDF3}, {0x0100,0xCE55}, {0x0100,0xCE5D}, {0x0E00,0xCA50},
+        {0x0200,0xCCE0}, {0x0100,0xCCCE}, {0x0100,0xCCD7}, {0x0100,0xCCE9}, {0x0100,0xCCF2},
+        {0x0100,0xCCFB}, {0x0200,0xCE01}, {0x0200,0xCD04}
+    };
+    if (!room(c, 2)) return 0;
+    XB(2, 0xCE65); alu_op(c, 7, c->r[R_AX], 0x0A39, 1);                 /* cmp ax,0A39h / jne CE6D */
+    if (x86_cond(c, 5)) goto above_a39;
+    XB(1, 0xCE6A); c->ip = 0xC993; return 1;
+above_a39:
+    XB(1, 0xCE6D); if (x86_cond(c, 7)) goto long_chain;                 /* ja CE9D */
+    XB(3, 0xCE6F); XSUBAX(0x0231); alu_op(c, 7, c->r[R_AX], 0x0707, 1); /* sub ax,231h / cmp ax,707h / ja CE82 */
+    if (x86_cond(c, 7)) goto no_arm;
+    XB(5, 0xCE77);
+    c->r[R_BX] = 0x0101;
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);     /* xor dx,dx */
+    if (!x86_div16(c, c->r[R_BX])) return 1;                            /* div bx (AX <= 707h: cannot fault) */
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);     /* or dx,dx / je CE85 */
+    if (x86_cond(c, 4)) goto table;
+no_arm:
+    XB(1, 0xCE82); c->ip = 0xC8FA; return 1;
+table:
+    XB(3, 0xCE85);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);           /* shl ax,1 */
+    { const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t; }   /* xchg bx,ax */
+    c->ip = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0xCE8D)); /* jmp cs:[bx+CE8D] */
+    return 1;
+long_chain:
+    XB(2, 0xCE9D); XSUBAX(0x0E08); if (x86_cond(c, 5)) goto not_0e08;
+    XB(1, 0xCEA2); c->ip = 0xCBBE; return 1;
+not_0e08:
+    XB(2, 0xCEA5); XSUBAX(0x02F8); if (x86_cond(c, 5)) goto not_1100;
+    XB(1, 0xCEAA); c->ip = 0xC9CE; return 1;
+not_1100:
+    XB(2, 0xCEAD); XSUBAX(0x0300); if (x86_cond(c, 5)) goto not_1400;
+    XB(1, 0xCEB2); c->ip = 0xCB27; return 1;
+not_1400:
+    XB(2, 0xCEB5); XSUBAX(0x065B); if (x86_cond(c, 4)) goto to_cc93;   /* je CEBF */
+    XB(2, 0xCEBA); XSUBAX(0x0020); if (x86_cond(c, 5)) goto not_1a7b;
+to_cc93:
+    XB(1, 0xCEBF); c->ip = 0xCC93; return 1;
+not_1a7b:
+    XB(2, 0xCEC2); XSUBAX(0x00E2); if (x86_cond(c, 4)) goto to_cc4c;   /* je CECC */
+    XB(2, 0xCEC7); XSUBAX(0x0020); if (x86_cond(c, 5)) goto function_keys;
+to_cc4c:
+    XB(1, 0xCECC); c->ip = 0xCC4C; return 1;
+function_keys:
+    for (unsigned i = 0; i < 43; i++) {
+        const uint16_t at = (uint16_t)(0xCECF + 8 * i);
+        XB(2, at); XSUBAX(chain[i].diff);
+        if (x86_cond(c, 5)) continue;
+        XB(1, (uint16_t)(at + 5)); c->ip = chain[i].arm; return 1;
+    }
+    XB(1, 0xD027); c->ip = 0xC8FA; return 1;
+}
+#undef XSUBAX
+#undef XB
+
+/* VGAME CD7E: one key's arm of the flight key dispatcher (keys_dispatch, entered at
+ * C8CA, which has built its frame): the word [E32A], a three-state panel setting, steps
+ * 0 -> 1 -> 2 -> 0. Reaching state 1 or 2 also marks display words [3D92] and [3D94]
+ * (both set to FFFFh for 1, only [3D94] for 2); the step back to 0 marks nothing; any
+ * other value is left alone. The arm then jumps to the dispatcher's common exit at C8FA,
+ * which stays the original's (the body hands back there).
+ *
+ * AX is left as the original leaves it: [E32A] decremented once or twice, or FFFFh
+ * after state 0. The flags are those of the OR or DEC that decided the arm. */
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+static int vgame_key_cycle_panel_state(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    XB(3, 0xCD7E);
+    c->r[R_AX] = ds_get(c, 0xE32A);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);        /* or ax,ax / je CD97 */
+    if (x86_cond(c, 4)) goto state0;
+    XB(2, 0xCD85);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                      /* dec ax / je CDA9 */
+    if (x86_cond(c, 4)) goto state1;
+    XB(2, 0xCD88);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                      /* dec ax / je CD8E */
+    if (x86_cond(c, 4)) goto state2;
+    XB(1, 0xCD8B); c->ip = 0xC8FA; return 1;                               /* another value: nothing */
+state2:
+    XB(2, 0xCD8E);
+    ds_put(c, 0xE32A, 0);
+    c->ip = 0xC8FA; return 1;
+state0:
+    XB(5, 0xCD97);
+    ds_put(c, 0xE32A, 1);
+    c->r[R_AX] = 0xFFFF;
+    ds_put(c, 0x3D92, c->r[R_AX]);
+    ds_put(c, 0x3D94, c->r[R_AX]);
+    c->ip = 0xC8FA; return 1;
+state1:
+    XB(3, 0xCDA9);
+    ds_put(c, 0xE32A, 2);
+    ds_put(c, 0x3D94, 0xFFFF);
+    c->ip = 0xC8FA; return 1;
+}
+#undef XB
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCD7E, vgame_key_cycle_panel_state, "key dispatcher arm: step the panel state [E32A] 0, 1, 2, 0", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE65, vgame_key_arm_select, "key dispatcher: pick the key's arm (jump table and key chain)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0012, vgame_sky_horizon_line, "paint the low-detail sky and ground either side of the horizon", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x02FF, vgame_driver_two_calls_far, "far-call the driver entry twice with the caller's four words and mode 2 then 1", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1A98, vgame_driver_call_scaled_args, "call the driver with a table pair and scaled offsets", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x31AD, start_wait_ticks_with_callback, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations", 1 },

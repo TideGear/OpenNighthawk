@@ -151,12 +151,12 @@
     "functions": 1535,
     "bytes": 179213,
     "matched_functions": 970,
-    "matched_bytes": 147898,
-    "partial_functions": 293,
+    "matched_bytes": 148859,
+    "partial_functions": 294,
     "classes": {
-      "credited": 147898,
-      "ran": 5041,
-      "never_run": 15122,
+      "credited": 148859,
+      "ran": 4229,
+      "never_run": 14973,
       "unreached": 1030,
       "slots": 842,
       "data": 6906,
@@ -166,7 +166,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
       "bytes": 17418,
-      "credited": 846,
+      "credited": 847,
       "reviewed_static_bytes": 11491,
       "by_module": {
         "DSWAP": {
@@ -201,7 +201,7 @@
         },
         "VGAME": {
           "bytes": 7929,
-          "credited": 311,
+          "credited": 312,
           "reviewed_static_bytes": 3869
         }
       },
