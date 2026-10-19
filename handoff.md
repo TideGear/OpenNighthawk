@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 84.06%, P3 98.49%, All 94.75%
+- **Scoreboard:** P1 100.00%, P2 84.06%, P3 98.79%, All 94.83%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,019 addresses matched. Scope is the expanded seven-program
@@ -56,10 +56,9 @@ Consolidate it instead of appending to it.
 - **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
   freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes
   `drawfeed.c`, so full gate plus `presentation_check --mode rerun` on all routes).
-- **Stage 3/4 (owner approved 18 Oct):** Stage 4 capacity measurements are done and recorded
-  (docs/presentation.md "Capacity on long flights and on fewer cores"; Stage 4 at 0.97); left: one
-  announced fullscreen long-flight run on the owner's screen (announce first, hidden workers finished),
-  the `DF03`/`C2C8` vertex group and the clock default for Stage 3. Visual judgement stays with the
+- **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
+  measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
+  left in Stage 3: the clock default (pending his yes) and the `DF03`/`C2C8` vertex group. Visual judgement stays with the
   owner; hardware-only parts are a Phase 4 maybe.
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,

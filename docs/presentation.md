@@ -809,6 +809,15 @@ window on four cores would reach p99 16.67 ms with a core about 7% slower and 20
 combat densities, flights over 30 minutes, Roland, per-core speed of an older CPU and a weaker GPU's fill rate. Evidence,
 commands and raw logs: `D:/f117-gate/stage4-capacity/` (`results.md`).
 
+**Announced fullscreen long-flight run (19 October 2026, the owner's 4K screen).** The 15 Hz / 60 MIPS landing pilot
+recording (17.9 minutes of guest flight, 24 minutes of wall time), `f117a.exe --present rerun --present-age interp
+--present-scale 9 --scale 9 --fullscreen`, D3D11 3840x2160 at 59.99 Hz, vsync on, sound off: 64,338 flight pictures,
+interval median 16.6676 ms, p99 16.9513 ms, maximum 21.4635 ms, zero missed intervals, 10 ms guest drift, 48,252
+interpolation advances; all 16,088 logic frames equal to the display at their close and the final guest clock and hash
+(`79698609194`, `a0f5585e5728c15f`) equal to the original's. Passes the checker unchanged. This is submitted-picture
+timing: the look of the motion on the panel stays the owner's judgement. Evidence
+`D:/f117-gate/stage4-capacity/display-long-landing/` (`display_long.py`, `summary.json`).
+
 **The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
 with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so
 the first palette the threaded path captured was carried forward for as long as pictures kept coming. Every palette
