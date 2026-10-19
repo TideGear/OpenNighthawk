@@ -573,6 +573,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x1C2F, 0x1C2F, 0x0310 },
     { "VGAME.EXE", 0x93E9, 0x93E9, 0x00C4 },
     { "VGAME.EXE", 0x8F71, 0x8F71, 0x02A5 },
     { "VGAME.EXE", 0x9EFA, 0x9EFA, 0x11C8 },
@@ -1047,6 +1048,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0x0000, 0x9EFA, 0x11C8, 1628, 1628, "flight display pass: weapon markers, tracers, blast, weapon lock, target camera, bomb and beacon symbology" },
     { "VGAME.EXE", 0x0000, 0x8F71, 0x02A5, 258, 258, "draw the navigation display (legs, times, clock bar)" },
     { "VGAME.EXE", 0x0000, 0x93E9, 0x00C4, 75, 75, "redraw the armament panel: background, then each station's count and rack name" },
+    { "START.EXE", 0x0000, 0x1C2F, 0x0310, 303, 303, "info popup text of a briefing-map airbase or radar site" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -18022,6 +18024,117 @@ int main(int argc, char **argv)
                 }
 #undef XSTUB
 #undef XSTR
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x1C2F) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The frame is 15Ah bytes plus the pushes: keep SP well above zero so
+                 * that, with SS = DS, the stack never reaches the callee cells at F400. */
+                static const uint16_t stacks[]={0xF000,0x8000,0x4000,0x0600};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x300;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x300+j),XRAND());
+                /* The argument: the site number.  Mostly small (the slot table is
+                 * indexed 2 * site); sometimes with bit 15, which SHL SI,1 drops. */
+                const uint16_t site=(uint16_t)(XPICK(5)?XPICK(0x40):(0x8000+XPICK(0x40)));
+                uint16_t arg[4];
+                arg[0]=site;arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* The site's two slots: record numbers, signed bytes.  Mostly small
+                 * (and often the same record twice); sometimes any byte. */
+                int8_t rec[2];
+                for(unsigned k=0;k<2;k++) {
+                    rec[k]=(int8_t)(XPICK(5)?(int)XPICK(10)-2:(int)(int8_t)XRAND());
+                    if(k==1&&XPICK(5)==0)rec[1]=rec[0];
+                    const uint16_t slot_at=(uint16_t)(0xB286+(uint16_t)(2*site)+k);
+                    XW8(dg,slot_at,(uint8_t)rec[k]);
+                }
+                /* The two location records: random bytes, then the fields the routine
+                 * reads set so that radar and airbase each appear in about half the
+                 * records, with name word / name byte, status, squadrons all varied. */
+                for(unsigned k=0;k<2;k++) {
+                    const uint16_t rb=(uint16_t)(0xCBDE+16*(int)rec[k]);
+                    for(unsigned j=0;j<16;j++)XW8(dg,(uint16_t)(rb+j),XRAND());
+                    XW16(dg,(uint16_t)(rb+0),XPICK(2)?0:(XPICK(4)?(uint16_t)(1+XPICK(0x30)):(uint16_t)XRAND()));
+                    XW16(dg,(uint16_t)(rb+6),XPICK(3)==0?0:(XPICK(5)?(uint16_t)XPICK(8):(uint16_t)XRAND()));
+                    {
+                        static const uint8_t flagset[]={0x00,0x01,0x20,0x21,0x40,0x41,0x60,0x61,0x80,0x81,0xFF,0xFE};
+                        XW8(dg,(uint16_t)(rb+8),XPICK(4)?flagset[XPICK(12)]:(uint8_t)XRAND());
+                        static const uint8_t statuses[]={0x00,0x01,0x04,0x05,0x02,0xFA,0xFF,0x08};
+                        XW8(dg,(uint16_t)(rb+9),XPICK(4)?statuses[XPICK(8)]:(uint8_t)XRAND());
+                    }
+                    XW16(dg,(uint16_t)(rb+0x0A),XPICK(4)?(uint16_t)XPICK(16):(uint16_t)XRAND());
+                    XW16(dg,(uint16_t)(rb+0x0C),XPICK(3)==0?0:(XPICK(2)?(uint16_t)(1+XPICK(12)):(uint16_t)XRAND()));
+                }
+                /* Place names (pointers) the records index by word or byte. */
+                for(unsigned j=0;j<0x180;j++)XW16(dg,(uint16_t)(0xDC70+2*j),XRAND());
+                /* Radar types 0..8: 14-byte records (name, range, factor, flags) and
+                 * 18-byte missile records.  Range and factor: small, negative or any. */
+                for(unsigned t=0;t<9;t++) {
+                    for(unsigned j=0;j<14;j++)XW8(dg,(uint16_t)(0x15C6+14*t+j),XRAND());
+                    XW16(dg,(uint16_t)(0x15C6+14*t+8),XPICK(3)?(uint16_t)XPICK(500):(uint16_t)XRAND());
+                    {
+                        static const uint16_t factors[]={0,1,3,5,0xFFFF,0xFFFD,0x7FFF,0x8000};
+                        XW16(dg,(uint16_t)(0x15C6+14*t+10),XPICK(3)?factors[XPICK(8)]:(uint16_t)XRAND());
+                    }
+                    for(unsigned j=0;j<18;j++)XW8(dg,(uint16_t)(0x1AB0+18*t+j),XRAND());
+                }
+                /* The range toggle: 1 shows the maximum, anything else the average. */
+                {
+                    static const uint8_t modes[]={0,1,1,2,0xFF,0x81};
+                    XW8(dg,0xB284,XPICK(5)?modes[XPICK(6)]:(uint8_t)XRAND());
+                }
+                /* The pointer position the box is placed from. */
+                XW16(dg,0xE08A,XRAND());XW16(dg,0xE08C,XRAND());
+                /* Callee probes: fold every argument in order into F800, count the
+                 * call, return the next word of a list.  strcat, sprintf, text box. */
+                for(unsigned k=0;k<3;k++) {
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xF400+0x40*k+2*j,XRAND());
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,(uint16_t)(2*XPICK(32)));
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(4+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* strcat (946C), sprintf (959E; four words read, the longest
+                     * call here pushes four), the text box (2B1B; six arguments) */
+                    static const struct { uint16_t entry; uint8_t args; } calls[]={
+                        {0x946C,2},{0x959E,4},{0x2B1B,6}};
+                    for(unsigned k=0;k<3;k++) {
+                        const uint16_t code=(uint16_t)(0xF000+0x100*k);
+                        XW8(0,calls[k].entry,0xE9);XW16(0,calls[k].entry+1,(uint16_t)(code-calls[k].entry-3));
+                        XSTUB(0,code,k,0x1234+0x1111*k,calls[k].args);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
 #undef XRAND
 #undef XW16
 #undef XW8

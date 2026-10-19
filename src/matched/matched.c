@@ -71528,7 +71528,450 @@ test:
 #undef CALL_FAR
 }
 
+/* START 0000:1C2F - the information popup of a briefing-map site (census name
+ * startmap_site_popup_text).
+ *
+ * The briefing map of the front end shows the theatre's airbases and radar sites.
+ * When a site is chosen, the briefing page's key loop (START 0FA3, start_brief_key_loop)
+ * calls this routine at 11D1 with the event code minus 9 as its only argument: the
+ * site's number.  It builds the text of the popup in a local buffer and draws it in a
+ * box beside the mouse position.  It returns nothing (AX is whatever the last call left).
+ *
+ * Where the text comes from.  A site number has two record numbers in the byte table
+ * SITE_SLOTS (two signed bytes per site).  Each number indexes a 16-byte location
+ * record in LOCATIONS.  The routine takes the last of the two records whose word +6
+ * (the radar type) is nonzero as the site's RADAR, and the last whose flag byte +8 has
+ * bit 0 set as its AIRBASE; either may be missing (the pointer stays 0), and a
+ * record that is both fills both.  Both pointers and the loop counter are kept in the
+ * frame, in memory, as the original does.
+ *
+ *   AIRBASE (when there is one):
+ *     "AIRBASE DATA:", "LOC: <name>", then "STATUS: Neutral" when bit 0 of the
+ *     status byte +9 is set, "STATUS: Friendly" when bit 2 is, else "STATUS: Hostile";
+ *     when the squadron count (word +0Ch) is nonzero also "FGTR TYPE: <fighter>"
+ *     (the 32-byte names at FIGHTER_NAMES, indexed by word +0Ah) and "SQDRNS: <n>".
+ *     The name is the string pointer at LOCATION_NAMES indexed by the record's first
+ *     word when that is nonzero, else by its byte +0Eh.
+ *   RADAR (when there is one):
+ *     a blank line first when an airbase was printed, then "RADAR DATA:"; a site
+ *     with no airbase also names its location ("LOC: <name>", and "STATUS: Neutral"
+ *     when byte +9 bit 0 is set).  Then "TYPE: <radar>, Doppler|Pulse" (the 14-byte
+ *     radar type record RADAR_TYPES[type]: name at +0, range at +8, range factor at
+ *     +10, byte +12 bit 0 = Doppler), "RDR RNG: <n>km (max)|(avg)" - the range when
+ *     the toggle cell RANGE_MODE is 1, else |range * factor| / 16 with the sign put
+ *     back - and "MSL RNG: <n>km (max)" from the 18-byte missile table
+ *     MISSILE_TABLE[type].  Flag bit 40h of byte +8 adds "NOTE: Believed to be
+ *     under repair", bit 20h "NOTE: Occasionally is off the air".
+ *   Then the text is drawn (START 2B1B) as a box 120 wide at (x + 16, y - 16) of the
+ *   cells [E08A], [E08C] (the mouse position - inferred from the use); its two other
+ *   arguments are 3 and 0.
+ *
+ * Callees (all plain RET, cdecl, this code removes the arguments): strcat (946C, run
+ * as original code; (destination, source) pushed last first, the two words popped into
+ * BX afterwards), sprintf (959E, destination, format, values...), and the text box
+ * (2B1B).
+ *
+ * Frame: [BP+4] site number; [BP-102h] airbase record pointer; [BP-15Ah] radar record
+ * pointer; [BP-154h] loop counter; [BP-100h] the popup text; [BP-152h] scratch for
+ * sprintf; [BP-156h] the last sprintf value (a name pointer, or the string
+ * "Doppler"/"Pulse", "(max)"/"(avg)"); [BP-158h] the range.
+ *
+ * The clock: each OB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the runs are the original's (they start at every branch target
+ * and after every conditional jump and call). */
+static int start_site_popup_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Frame offsets. */
+    enum { SITE = 4, AIRBASE = -0x102, RADAR = -0x15A, SLOT = -0x154,
+           TEXT = -0x100, SCRATCH = -0x152, VALUE = -0x156, RANGE = -0x158 };
+    /* Data segment tables. */
+    enum { SITE_SLOTS = 0xB286,      /* two signed record numbers per site */
+           LOCATIONS = 0xCBDE,       /* 16-byte location records */
+           LOCATION_NAMES = 0xDC70,  /* word pointers to place names */
+           FIGHTER_NAMES = 0x1708,   /* 32 bytes each */
+           RADAR_TYPES = 0x15C6,     /* 14 bytes each */
+           MISSILE_TABLE = 0x1AB0,   /* 18 bytes each, range word first */
+           RANGE_MODE = 0xB284,      /* byte: 1 = show the maximum range */
+           MOUSE_X = 0xE08A, MOUSE_Y = 0xE08C };
+    /* Location record fields. */
+    enum { LOC_NAME_INDEX = 0,       /* word, nonzero = name index */
+           LOC_RADAR_TYPE = 6,       /* word, nonzero = a radar site */
+           LOC_FLAGS = 8,            /* bit 0 airbase; 20h off the air; 40h under repair */
+           LOC_STATUS = 9,           /* bit 0 neutral, bit 2 friendly, else hostile */
+           LOC_FIGHTER = 0x0A,       /* word: fighter type */
+           LOC_SQUADRONS = 0x0C,     /* word */
+           LOC_NAME_BYTE = 0x0E };   /* byte: name index when the word is zero */
+    enum { RADAR_RANGE = 8, RADAR_FACTOR = 10, RADAR_FLAGS = 12 };
+    /* Strings in the data segment. */
+    enum { S_AIRBASE_DATA = 0x058B, S_LOC = 0x059A, S_NEUTRAL = 0x05A3,
+           S_FRIENDLY = 0x05B4, S_HOSTILE = 0x05C6, S_FGTR_TYPE = 0x05D7,
+           S_SQDRNS = 0x05E6, S_NEWLINE = 0x05F2, S_RADAR_DATA = 0x05F4,
+           S_RADAR_LOC = 0x0601, S_RADAR_NEUTRAL = 0x060A, S_DOPPLER = 0x061B,
+           S_PULSE = 0x0623, S_TYPE = 0x0629, S_MAX = 0x0637, S_AVG = 0x063D,
+           S_RDR_RNG = 0x0643, S_MSL_RNG = 0x0655, S_REPAIR = 0x066A,
+           S_OFF_AIR = 0x068C };
+#define OB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c,(v_))
+#define OPOP_BX() (c->r[R_BX] = cpu_pop16(c))
+#define OADD_SP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); ORUN(guest_call_pop(m,(target_),(ret_),0)); } while (0)
+#define STRCAT(at_,ret_) ONEAR((at_), 0x946C, (ret_))
+#define SPRINTF(at_,ret_) ONEAR((at_), 0x959E, (ret_))
+    /* mov ax,imm / push ax */
+#define PUSH_IMM(v_) do { c->r[R_AX] = (v_); OP(c->r[R_AX]); } while (0)
+    /* lea ax,[bp+d] / push ax, and the same through CX where the original uses CX */
+#define PUSH_LEA_AX(d_) do { c->r[R_AX] = (uint16_t)(c->r[R_BP] + (d_)); OP(c->r[R_AX]); } while (0)
+#define PUSH_LEA_CX(d_) do { c->r[R_CX] = (uint16_t)(c->r[R_BP] + (d_)); OP(c->r[R_CX]); } while (0)
+    /* The record a site slot names: SI = 2 * site, AL = SITE_SLOTS[SI + slot] sign
+     * extended to AX, BX = 16 * that (the record's offset from LOCATIONS); CL is
+     * left 4. */
+#define SLOT_RECORD() do { \
+    c->r[R_SI] = bp_get(c, SITE); \
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1); \
+    c->r[R_BX] = bp_get(c, SLOT); \
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + SITE_SLOTS))); \
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); \
+    c->r[R_BX] = c->r[R_AX]; \
+    set_r8(c, R_CL, 4); \
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1); } while (0)
+    /* Pushes the arguments of sprintf(SCRATCH, format, name) for the place name that
+     * BX indexes: BX is doubled, the name pointer is the LOCATION_NAMES word, and it
+     * is also kept in VALUE.  The run starts at the SHL (1CC5 / 1DB4). */
+#define PUSH_NAME_FORMAT(format_) do { \
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1); \
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + LOCATION_NAMES)); \
+    bp_put(c, VALUE, c->r[R_AX]); OP(c->r[R_AX]); \
+    PUSH_IMM(format_); PUSH_LEA_AX(SCRATCH); } while (0)
+
+    if (!room(c, 8)) return 0;
+
+    /* --- entry: frame of 15Ah bytes, SI saved, the three locals cleared --- */
+    OB(8, 0x1C2F);
+    OP(c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x015A, 1);
+    OP(c->r[R_SI]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    bp_put(c, AIRBASE, c->r[R_AX]); bp_put(c, RADAR, c->r[R_AX]); bp_put(c, SLOT, c->r[R_AX]);
+
+    /* --- find the site's radar record and airbase record among its two slots --- */
+    for (;;) {
+        /* radar: the record's word +6 is nonzero */
+        OB(10, 0x1C45);
+        SLOT_RECORD();
+        alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + LOCATIONS + LOC_RADAR_TYPE)), 0, 1);
+        if (!x86_cond(c, 4)) {
+            OB(2, 0x1C60);
+            c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], LOCATIONS, 1);
+            bp_put(c, RADAR, c->r[R_BX]);
+        }
+        /* airbase: the record's flag byte +8 has bit 0 */
+        OB(10, 0x1C68);
+        SLOT_RECORD();
+        alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOCATIONS + LOC_FLAGS)) & 0x01, 0);
+        if (!x86_cond(c, 4)) {
+            OB(2, 0x1C83);
+            c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], LOCATIONS, 1);
+            bp_put(c, AIRBASE, c->r[R_BX]);
+        }
+        OB(3, 0x1C8B);
+        { const uint16_t slot_ = bp_get(c, SLOT); bp_put(c, SLOT, (uint16_t)alu_inc(c, slot_, 1)); }
+        alu_op(c, 7, bp_get(c, SLOT), 0x0002, 1);
+        if (!x86_cond(c, 12)) break;
+    }
+
+    /* --- the text starts empty; no airbase skips straight to the radar part --- */
+    OB(3, 0x1C96);
+    bp_put8(c, TEXT, 0);
+    alu_op(c, 7, bp_get(c, AIRBASE), 0, 1);
+    if (x86_cond(c, 5)) goto airbase_text;
+    OB(1, 0x1CA2);
+    goto after_airbase;
+
+airbase_text:
+    /* strcat(text, "AIRBASE DATA:\n") */
+    OB(4, 0x1CA5);
+    PUSH_IMM(S_AIRBASE_DATA); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1CAE, 0x1CB1);
+    /* the place name: first word of the record if nonzero, else its byte +0Eh */
+    OB(5, 0x1CB1);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, AIRBASE);
+    alu_op(c, 7, ds_get(c, c->r[R_BX]), 0, 1);
+    if (x86_cond(c, 4)) goto airbase_name_byte;
+    OB(2, 0x1CBC);
+    c->r[R_BX] = ds_get(c, c->r[R_BX]);
+    goto airbase_name_ready;
+airbase_name_byte:
+    OB(2, 0x1CC0);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_NAME_BYTE)));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+airbase_name_ready:
+    /* sprintf(scratch, "LOC: %s\n", name); strcat(text, scratch) */
+    OB(8, 0x1CC5);
+    PUSH_NAME_FORMAT(S_LOC);
+    SPRINTF(0x1CD9, 0x1CDC);
+    OB(5, 0x1CDC);
+    OADD_SP(6);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1CE9, 0x1CEC);
+    /* the status line: neutral (bit 0), else friendly (bit 2), else hostile */
+    OB(5, 0x1CEC);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, AIRBASE);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_STATUS)) & 0x01, 0);
+    if (x86_cond(c, 4)) goto airbase_not_neutral;
+    OB(2, 0x1CF8);
+    c->r[R_AX] = S_NEUTRAL;
+    goto airbase_status_ready;
+airbase_not_neutral:
+    OB(2, 0x1CFD);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_STATUS)) & 0x04, 0);
+    if (x86_cond(c, 4)) goto airbase_hostile;
+    OB(2, 0x1D03);
+    c->r[R_AX] = S_FRIENDLY;
+    goto airbase_status_ready;
+airbase_hostile:
+    OB(1, 0x1D08);
+    c->r[R_AX] = S_HOSTILE;
+airbase_status_ready:
+    OB(3, 0x1D0B);
+    OP(c->r[R_AX]); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1D11, 0x1D14);
+    /* no squadrons: the airbase part ends here */
+    OB(5, 0x1D14);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, AIRBASE);
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_SQUADRONS)), 0, 1);
+    if (x86_cond(c, 4)) goto after_airbase;
+    /* sprintf(scratch, "FGTR TYPE: %s\n", FIGHTER_NAMES + 32 * type); strcat */
+    OB(9, 0x1D20);
+    set_r8(c, R_CL, 5);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + LOC_FIGHTER));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], FIGHTER_NAMES, 1);
+    OP(c->r[R_AX]); PUSH_IMM(S_FGTR_TYPE); PUSH_LEA_AX(SCRATCH);
+    SPRINTF(0x1D34, 0x1D37);
+    OB(5, 0x1D37);
+    OADD_SP(6);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_CX(TEXT);
+    STRCAT(0x1D44, 0x1D47);
+    /* sprintf(scratch, "SQDRNS: %d\n", squadrons); strcat */
+    OB(8, 0x1D47);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, AIRBASE);
+    OP(ds_get(c, (uint16_t)(c->r[R_BX] + LOC_SQUADRONS)));
+    PUSH_IMM(S_SQDRNS); PUSH_LEA_AX(SCRATCH);
+    SPRINTF(0x1D59, 0x1D5C);
+    OB(5, 0x1D5C);
+    OADD_SP(6);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1D69, 0x1D6C);
+    OB(2, 0x1D6C);
+    OPOP_BX(); OPOP_BX();
+
+after_airbase:
+    /* no radar: nothing more to say, draw what there is */
+    OB(2, 0x1D6E);
+    alu_op(c, 7, bp_get(c, RADAR), 0, 1);
+    if (x86_cond(c, 5)) goto radar_text;
+    OB(1, 0x1D75);
+    goto draw_popup;
+
+radar_text:
+    /* a blank line separates the radar block from the airbase block */
+    OB(2, 0x1D78);
+    alu_op(c, 7, bp_get(c, AIRBASE), 0, 1);
+    if (x86_cond(c, 4)) goto radar_header;
+    OB(4, 0x1D7F);
+    PUSH_IMM(S_NEWLINE); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1D88, 0x1D8B);
+    OB(2, 0x1D8B);
+    OPOP_BX(); OPOP_BX();
+radar_header:
+    OB(4, 0x1D8D);
+    PUSH_IMM(S_RADAR_DATA); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1D96, 0x1D99);
+    /* a radar site that is also an airbase has named its location already */
+    OB(4, 0x1D99);
+    OPOP_BX(); OPOP_BX();
+    alu_op(c, 7, bp_get(c, AIRBASE), 0, 1);
+    if (x86_cond(c, 5)) goto radar_type_line;
+    OB(3, 0x1DA2);
+    c->r[R_BX] = bp_get(c, RADAR);
+    alu_op(c, 7, ds_get(c, c->r[R_BX]), 0, 1);
+    if (x86_cond(c, 4)) goto radar_name_byte;
+    OB(2, 0x1DAB);
+    c->r[R_BX] = ds_get(c, c->r[R_BX]);
+    goto radar_name_ready;
+radar_name_byte:
+    OB(2, 0x1DAF);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_NAME_BYTE)));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+radar_name_ready:
+    /* sprintf(scratch, "LOC: %s\n", name); strcat(text, scratch) */
+    OB(8, 0x1DB4);
+    PUSH_NAME_FORMAT(S_RADAR_LOC);
+    SPRINTF(0x1DC8, 0x1DCB);
+    OB(5, 0x1DCB);
+    OADD_SP(6);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1DD8, 0x1DDB);
+    OB(5, 0x1DDB);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, RADAR);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_STATUS)) & 0x01, 0);
+    if (x86_cond(c, 4)) goto radar_type_line;
+    OB(4, 0x1DE7);
+    PUSH_IMM(S_RADAR_NEUTRAL); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1DF0, 0x1DF3);
+    OB(2, 0x1DF3);
+    OPOP_BX(); OPOP_BX();
+
+radar_type_line:
+    /* VALUE = "Doppler" or "Pulse" by bit 0 of the radar type's byte +12 */
+    OB(6, 0x1DF5);
+    c->r[R_AX] = 0x000E;
+    c->r[R_BX] = bp_get(c, RADAR);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_RADAR_TYPE)));
+    c->r[R_BX] = c->r[R_AX];
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + RADAR_TYPES + RADAR_FLAGS)) & 0x01, 0);
+    if (x86_cond(c, 4)) goto pulse_radar;
+    OB(2, 0x1E08);
+    bp_put(c, VALUE, S_DOPPLER);
+    goto radar_type_format;
+pulse_radar:
+    OB(1, 0x1E10);
+    bp_put(c, VALUE, S_PULSE);
+radar_type_format:
+    /* sprintf(scratch, "TYPE: %s, %s\n", radar name, VALUE); strcat */
+    OB(10, 0x1E16);
+    OP(bp_get(c, VALUE));
+    c->r[R_AX] = 0x000E;
+    c->r[R_BX] = bp_get(c, RADAR);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_RADAR_TYPE)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], RADAR_TYPES, 1);
+    OP(c->r[R_AX]); PUSH_IMM(S_TYPE); PUSH_LEA_AX(SCRATCH);
+    SPRINTF(0x1E31, 0x1E34);
+    OB(5, 0x1E34);
+    OADD_SP(8);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1E41, 0x1E44);
+    /* the range: the maximum, or the average |range * factor| / 16 */
+    OB(4, 0x1E44);
+    OPOP_BX(); OPOP_BX();
+    alu_op(c, 7, ds_get8(c, RANGE_MODE), 0x01, 0);
+    if (x86_cond(c, 5)) goto average_range;
+    OB(8, 0x1E4D);
+    c->r[R_AX] = 0x000E;
+    c->r[R_BX] = bp_get(c, RADAR);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_RADAR_TYPE)));
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + RADAR_TYPES + RADAR_RANGE));
+    bp_put(c, RANGE, c->r[R_AX]);
+    bp_put(c, VALUE, S_MAX);
+    goto range_format;
+average_range:
+    OB(15, 0x1E69);
+    c->r[R_AX] = 0x000E;
+    c->r[R_BX] = bp_get(c, RADAR);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_RADAR_TYPE)));
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + RADAR_TYPES + RADAR_RANGE));
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + RADAR_TYPES + RADAR_FACTOR)));
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;               /* cwd */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);      /* abs */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);
+    c->r[R_CX] = 0x0004;
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);      /* sign back */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);
+    bp_put(c, RANGE, c->r[R_AX]);
+    bp_put(c, VALUE, S_AVG);
+range_format:
+    /* sprintf(scratch, "RDR RNG: %dkm %s\n", range, VALUE); strcat; AX carries the range */
+    OB(6, 0x1E95);
+    OP(bp_get(c, VALUE)); OP(c->r[R_AX]); PUSH_IMM(S_RDR_RNG); PUSH_LEA_AX(SCRATCH);
+    SPRINTF(0x1EA3, 0x1EA6);
+    OB(5, 0x1EA6);
+    OADD_SP(8);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_CX(TEXT);
+    STRCAT(0x1EB3, 0x1EB6);
+    /* sprintf(scratch, "MSL RNG: %dkm (max)\n", MISSILE_TABLE[type].range); strcat */
+    OB(11, 0x1EB6);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_AX] = 0x0012;
+    c->r[R_BX] = bp_get(c, RADAR);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + LOC_RADAR_TYPE)));
+    c->r[R_SI] = c->r[R_AX];
+    OP(ds_get(c, (uint16_t)(c->r[R_SI] + MISSILE_TABLE)));
+    PUSH_IMM(S_MSL_RNG); PUSH_LEA_AX(SCRATCH);
+    SPRINTF(0x1ED1, 0x1ED4);
+    OB(5, 0x1ED4);
+    OADD_SP(6);
+    PUSH_LEA_AX(SCRATCH); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1EE1, 0x1EE4);
+    /* notes: flag 40h = under repair, flag 20h = occasionally off the air */
+    OB(5, 0x1EE4);
+    OPOP_BX(); OPOP_BX();
+    c->r[R_BX] = bp_get(c, RADAR);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_FLAGS)) & 0x40, 0);
+    if (x86_cond(c, 4)) goto radar_note_off_air;
+    OB(4, 0x1EF0);
+    PUSH_IMM(S_REPAIR); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1EF9, 0x1EFC);
+    OB(2, 0x1EFC);
+    OPOP_BX(); OPOP_BX();
+radar_note_off_air:
+    OB(3, 0x1EFE);
+    c->r[R_BX] = bp_get(c, RADAR);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + LOC_FLAGS)) & 0x20, 0);
+    if (x86_cond(c, 4)) goto draw_popup;
+    OB(4, 0x1F08);
+    PUSH_IMM(S_OFF_AIR); PUSH_LEA_AX(TEXT);
+    STRCAT(0x1F11, 0x1F14);
+    OB(2, 0x1F14);
+    OPOP_BX(); OPOP_BX();
+
+draw_popup:
+    /* the text box: draw(text, mouse x + 16, mouse y - 16, 3, 0, 120); leave */
+    OB(14, 0x1F16);
+    PUSH_IMM(0x0078);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); OP(c->r[R_AX]);
+    PUSH_IMM(0x0003);
+    c->r[R_AX] = ds_get(c, MOUSE_Y);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], 0x0010, 1); OP(c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, MOUSE_X);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x0010, 1); OP(c->r[R_AX]);
+    PUSH_LEA_AX(TEXT);
+    ONEAR(0x1F34, 0x2B1B, 0x1F37);
+    OB(5, 0x1F37);
+    OADD_SP(0x0C);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OPOP_BX
+#undef OADD_SP
+#undef ORUN
+#undef ONEAR
+#undef STRCAT
+#undef SPRINTF
+#undef PUSH_IMM
+#undef PUSH_LEA_AX
+#undef PUSH_LEA_CX
+#undef SLOT_RECORD
+#undef PUSH_NAME_FORMAT
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x1C2F, start_site_popup_text, "info popup text of a briefing-map airbase or radar site", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x93E9, vgame_armament_panel_refresh, "redraw the armament panel: background, then each station's count and rack name", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8F71, vgame_navigation_display, "draw the navigation display (legs, times, clock bar)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9EFA, vgame_display_pass, "flight display pass: weapon markers, tracers, blast, weapon lock, target camera, bomb and beacon symbology", 1 },

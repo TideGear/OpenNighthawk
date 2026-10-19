@@ -151,20 +151,20 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,018 addresses matched; named code runs 149,732 of the
+      **Now:** 1,019 addresses matched; named code runs 150,516 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552 and batch v 873.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873 and batch w 784.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 155,131 /187,351 creditable bytes (P2 83.66%, overall 94.45%);
+      the score measures 155,915 /187,351 creditable bytes (P2 84.06%, overall 94.75%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -261,6 +261,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | t | 18 Oct | 1,015 | 962 | VGAME `0FB2:0012` low-detail sky horizon line (164 instructions; the census's `0000:FB32` is the same address, and only `0FB2:0012` is ever entered); VGAME `CE65` key-arm selection (the jump table and key chain of the flight key dispatcher; it hands back to the original arm, so only the chain counts) and `CD7E` panel-state cycle (proved on `strike_training`). The 58 `FATAL_JUMPS` hand-back rows and a `SHARED_ENDINGS` row are in `tests/func_lockstep.c`. Batch s (`0FB2:0012` alone) failed step 7c at a rotating seed (see the handoff's open harness issue) and was folded into t |
 | u | 19 Oct | 1,016 | 4,552 | VGAME `9EFA` `vgame_display_pass`, the flight display pass (1,628 instructions): weapon markers, gun tracers and their hit tests, the impact blast, the weapon locks, the target and reconnaissance cameras, bomb symbology and the supply-drop radio beacons. Written as named sections (a first mechanical transcript was rejected). Also in this batch: the `display_tour` route (46 routes now), and a harness fix for returns reached through misaligned fuzzed code (CTest `matched_projectile_misaligned_return`) |
 | v | 19 Oct | 1,018 | 873 | VGAME `8F71` the navigation display (legs, times and clock bar; 258 instructions) and VGAME `93E9` the armament panel refresh (75): both reached only by the new `display_tour` route (51 checkpoints; 15 and 1 calls). `8F71` misses two instructions there (damage bit 5 of `[3664]`), covered by the fixture |
+| w | 19 Oct | 1,019 | 784 | START `1C2F` `start_site_popup_text`: the info popup text of a briefing-map airbase or radar site (303 instructions; two-slot loop; proved on `display_tour`, 51 checkpoints / 40 calls; the route misses 23 instructions that need flagged sites in a theatre briefing, covered by the fixture) |
 
 Notes that still matter:
 

@@ -133,9 +133,9 @@
       {
         "item": "Stage 4: live feed, pacing, threading and 4K throughput",
         "weight": 10.0,
-        "done": 0.9,
+        "done": 0.97,
         "kind": "estimate",
-        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Fullscreen 4K/59.99 Hz timing of the latest build (rerun, 17 Oct 2026, owner screen): strike and landing pass (p99 16.95 and 17.38 ms); air-to-air fails the p99 limit on a short sample (22.15 ms, 0.42% over 25 ms), so no credit yet. The authorized longer air-to-air check (17 Oct) also fails: 17,241 pictures, p99 28.6976 ms, 3.7022% over 25 ms; all 3,679 logic frames exact and guest drift 0.005819 s. No score increase. Open: diagnose pacing, slower CPUs/weaker GPUs, cargo/career flights. Evidence: D:/f117-gate/present-v2/stage4-airair-long-20261017. Reused by the new 60+ fps method."
+        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Fullscreen 4K/59.99 Hz timing of the latest build (rerun, 17 Oct 2026, owner screen): strike and landing pass (p99 16.95 and 17.38 ms); air-to-air fails the p99 limit on a short sample (22.15 ms, 0.42% over 25 ms), so no credit yet. The authorized longer air-to-air check (17 Oct) also fails: 17,241 pictures, p99 28.6976 ms, 3.7022% over 25 ms; all 3,679 logic frames exact and guest drift 0.005819 s. No score increase. Open: diagnose pacing, slower CPUs/weaker GPUs, cargo/career flights. Evidence: D:/f117-gate/present-v2/stage4-airair-long-20261017. Reused by the new 60+ fps method. Capacity on long flights and fewer cores (19 Oct 2026, hidden, this machine): four whole flights (cargo_return and career_promotion legacy; landing and strike at 15 Hz / 60 MIPS, 17.9-30 min) keep per-minute median main work 5.2-10.2 ms with worst one-minute p99 18.4 ms and nothing over 25 ms in the heaviest combat minute; pinned to 4/2 CPUs p99 15.6/16.0 ms, to 1 CPU 20.87 ms (a proxy for a slower machine); a software renderer fails (p99 43 ms; a proxy for no GPU acceleration). Raised from 0.90 to 0.97 on 19 Oct: what is left in this item is one announced fullscreen long-flight run on the owner's screen. Other physical machines, other refresh rates and the owner's visual judgement moved to Phase 4 as a maybe (owner, 18 Oct). See presentation.md."
       },
       {
         "item": "Stage 3: smooth in-between frames (60+ fps)",
@@ -150,13 +150,13 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed instruction bytes outside those rows, within the same seven programs; added to numerator and denominator for scoring. Other modules are reported separately. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 972,
-    "matched_bytes": 149732,
+    "matched_functions": 973,
+    "matched_bytes": 150516,
     "partial_functions": 294,
     "classes": {
-      "credited": 149732,
+      "credited": 150516,
       "ran": 4229,
-      "never_run": 14100,
+      "never_run": 13316,
       "unreached": 1030,
       "slots": 842,
       "data": 6906,

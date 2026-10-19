@@ -778,6 +778,37 @@ measured on the type-5 workload. Earlier hidden throughput: 3840x2160 D3D11 runs
 occasional ~100 ms upload stalls (`D:/f117-gate/present-v2/hud2`). Not established: the picture on a physical panel
 (tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
 
+**Capacity on long flights and on fewer cores (19 October 2026, hidden).** Timing only: the visual judgement stays
+with the owner. A frozen private build of the app's main loop with phase timers (the 18 Oct profile harness; hidden
+3840x2160 Direct3D 11 window, vsync off, a 60 Hz sleep cap, dummy audio, `--present rerun --present-age interp
+--present-scale 9`, BelowNormal priority, machine load 1.1-1.4% beyond the harness) ran four whole flights once each and
+one-minute windows were cut from them (about 330,000 pictures). Every full run ended on the original's guest hash. The
+legacy recordings (`cargo_return`, `career_promotion`) are keyed to 9 MIPS / 8 Hz and cannot be replayed at the app
+default, so the two long flights recorded at 15 Hz / 60 MIPS with all fifteen fixes (adaptive-pilot landing and strike
+from `cadence15-broad-20261018/pilots`) were added; no cargo or career flight exists at the default. *Main work* is the
+main thread's wall time per picture; the checker's limits are p99 20.83 ms and nothing over 25 ms.
+
+| flight | length | per-minute median main work | worst one-minute p99 | outliers |
+|---|---|---|---|---|
+| cargo_return (legacy) | 25.4 min | 7.2-8.0 ms | about 11.9 ms | one 4-picture episode at 28-32 ms |
+| career_promotion (legacy) | 20.7 min | 7.0-8.4 ms | about 12.5 ms | one 4-picture episode at 28-31 ms |
+| landing, 15 Hz / 60 MIPS | 17.9 min | 5.2-7.2 ms | 16.34 ms (final approach) | one 104 ms texture-upload stall |
+| strike, 15 Hz / 60 MIPS | 30 min | 5.9-10.2 ms | 18.4 ms (combat, 76.4-83.7 G) | one 104 ms texture-upload stall |
+
+Medians are flat from takeoff to landing and the emulated clock never falls behind (ratio 1.000). The heaviest minute
+(strike combat) has median 10.2 ms and p99 18.4 ms unpinned: about 3% of pictures over 16.67 ms, 0.1-0.2% over
+20.83 ms, none over 25 ms. **Fewer cores, same window (a proxy for a slower machine, not the same as one):** 4 CPUs
+median 8.75 / p99 15.6 ms; 2 CPUs 9.29 / 16.0 ms (4 pictures over 16.67 ms); 1 CPU 13.6 / 20.87 ms (954 over 16.67 ms
+and 37 over 20.83 ms, 1.2%). The landing approach on one CPU is p99 18.4 ms. **Software renderer (a proxy for having no
+GPU acceleration):** fails, median 30 ms and p99 43 ms, because the present call costs 17.4 ms against 0.08 ms with
+Direct3D 11; the emulated clock keeps pace and only the picture rate collapses. Unpinned runs were slower than runs
+pinned to a few cores (p99 18.4-18.9 against 15.6-16.1 ms); the cause is untested (frequency ramp or thread migration are
+suspects), and the unpinned figure is the realistic one on this CPU. If every phase scaled with core speed, the combat
+window on four cores would reach p99 16.67 ms with a core about 7% slower and 20.83 ms with one about 33% slower
+(an estimate, not a measurement). Not shown: tearing, the look of motion, the real fullscreen swapchain path, other
+combat densities, flights over 30 minutes, Roland, per-core speed of an older CPU and a weaker GPU's fill rate. Evidence,
+commands and raw logs: `D:/f117-gate/stage4-capacity/` (`results.md`).
+
 **The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
 with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so
 the first palette the threaded path captured was carried forward for as long as pictures kept coming. Every palette

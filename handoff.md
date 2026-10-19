@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 83.66%, P3 97.79%, All 94.45%
+- **Scoreboard:** P1 100.00%, P2 84.06%, P3 98.49%, All 94.75%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,018 addresses matched. Scope is the expanded seven-program
-  one: **155,131 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,019 addresses matched. Scope is the expanded seven-program
+  one: **155,915 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -48,16 +48,19 @@ Consolidate it instead of appending to it.
   Gate with the frozen 46-route baseline: 1,855 s under heavy load from proof agents. Evidence
   `D:/f117-gate/p2-batch-v-accept/`. The keyed baseline for 46 routes is in `p2-batch-u-accept/baseline`
   (use `new_batch.py LETTER u BASE_COMMIT ...` for the next batch).
-- **Ready for batch w:** START `1C2F` (`p2-start-1c2f`, `start_site_popup_text`, 784 bytes; proved on
-  `display_tour`, 51 checkpoints / 40 calls; the route runs 280 of its 303 instructions, the rest needs a
-  theatre briefing with flagged sites: Korea, Central America or North Cape). Also pending the owner's
-  yes: adopt playback clock alpha 0.4 / pull 0.025 (simulation: freezes 1 to 0, skips 8 to 0, speed
-  changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms at 60 Hz; `drawfeed.c`, so full gate plus
-  `presentation_check --mode rerun` on all routes).
-- **Stage 3/4 work in progress (owner approved 18 Oct):** long cargo/career flight capacity (hidden
-  profile harness in `D:/f117-gate/4k60-fix-20261018/F/profile/`), constrained-core runs as a labelled
-  slower-CPU proxy, `DF03`/`C2C8` group, then one announced fullscreen run on his screen. Visual
-  judgement stays with the owner; the hardware-only parts are a Phase 4 maybe.
+- **Batch w (accepted):** START `1C2F` `start_site_popup_text` (784 bytes) on `display_tour` (the route
+  misses 23 instructions that need flagged sites: Korea, Central America or North Cape briefings).
+  Evidence `D:/f117-gate/p2-batch-w-accept/`. `new_batch.py LETTER PREV BASE_COMMIT ...` now takes the
+  keyed baseline from the newest batch that froze one and the named coverage from PREV (a wrong PREV made
+  finalize report named coverage missing two routines once).
+- **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
+  freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes
+  `drawfeed.c`, so full gate plus `presentation_check --mode rerun` on all routes).
+- **Stage 3/4 (owner approved 18 Oct):** Stage 4 capacity measurements are done and recorded
+  (docs/presentation.md "Capacity on long flights and on fewer cores"; Stage 4 at 0.97); left: one
+  announced fullscreen long-flight run on the owner's screen (announce first, hidden workers finished),
+  the `DF03`/`C2C8` vertex group and the clock default for Stage 3. Visual judgement stays with the
+  owner; hardware-only parts are a Phase 4 maybe.
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,
   recorded per-machine cadence; legacy recordings keep eight. Do not promote

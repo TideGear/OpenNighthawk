@@ -809,6 +809,8 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:8F71)
     add_test(NAME matched_vgame_armament_panel_refresh COMMAND func_lockstep --states 5000
       --only VGAME.EXE:93E9)
+    add_test(NAME matched_start_site_popup_text COMMAND func_lockstep --states 5000
+      --only START.EXE:1C2F)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
