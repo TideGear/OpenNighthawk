@@ -68,11 +68,10 @@ Consolidate it instead of appending to it.
   [docs/cadence15-validation.md](docs/cadence15-validation.md). Core, API and
   headless runs start with fixes off and parity commands prepend `--fix none`;
   `--fix none` clears them and further IDs select a subset.
-- **Phase 3 (97.79%):** held down by Stage 3 smooth in-between frames (93.3%;
-  accepted by the owner for now; clock tuning and slower machines remain),
-  Stage 4 infrastructure (90%: slower machines, cargo/career flights). Stage 2's
-  open parts (widths by role, panel review) became a Phase 4 "maybe" on 18 Oct
-  (owner). Refresh rates above 60 Hz are unscored Phase 4 (the owner cannot test them). Details:
+- **Phase 3 (98.79%):** only Stage 3 (smooth in-between frames, 93.3%) is open: the playback-clock default
+  (pending the owner's yes) and the `DF03`/`C2C8` vertex group; its hardware-only parts and the owner's visual
+  judgement are a Phase 4 maybe. Stage 2's open parts became a Phase 4 maybe on 18 Oct; Stage 4 is complete for
+  what can be tested here. Refresh rates above 60 Hz are unscored Phase 4. Details:
   [docs/progress.md](docs/progress.md), [docs/presentation.md](docs/presentation.md).
 
 ### Presentation facts worth keeping
