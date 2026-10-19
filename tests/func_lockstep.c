@@ -573,6 +573,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x9EFA, 0x9EFA, 0x11C8 },
     { "VGAME.EXE", 0xCD7E, 0xCD7E, 0x003A },
     { "VGAME.EXE", 0xCE65, 0xCE65, 0x0594 },
     { "VGAME.EXE", 0x0012, 0x0012, 0x01D4 },
@@ -1041,6 +1042,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0x0FB2, 0x0012, 0x01D4, 164, 164, "paint the low-detail sky and ground either side of the horizon" },
     { "VGAME.EXE", 0x0000, 0xCE65, 0x0594, 476, 476, "key dispatcher: pick the key's arm (jump table and key chain)" },
     { "VGAME.EXE", 0x0000, 0xCD7E, 0x003A, 18, 18, "key dispatcher arm: step the panel state [E32A] 0, 1, 2, 0" },
+    { "VGAME.EXE", 0x0000, 0x9EFA, 0x11C8, 1628, 1628, "flight display pass: weapon markers, tracers, blast, weapon lock, target camera, bomb and beacon symbology" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1206,19 +1208,33 @@ static int g_cov = -1;                  /* the COVERED entry under test, or -1 *
 static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
 static unsigned long long g_cov_skips[6];   /* fault, long run, bad return, code written, declined, unfinished */
-static uint8_t g_cov_seen[0x1000], g_cov_cover[0x1000], g_cov_whole[0x1000];
+static uint8_t g_cov_seen[0x2000], g_cov_cover[0x2000], g_cov_whole[0x2000];
 /* A fuzzed write can turn a callee's RET into RET n, or destroy it entirely.
  * The original then returns at a different stack depth, or falls through
  * neighboring code, so the normal trap cannot catch it. Keep exact original
  * states at those changed instructions: an earlier iteration
  * reaching the same IP at the normal depth is not evidence of an escape.
  * A full record falls back to the conservative escaped-call check. */
-static struct { uint64_t clock; uint16_t from_cs, from_ip, r[8], seg[4], flags, ip; } g_changed_ret[128];
+static struct { uint64_t clock; uint16_t from_cs, from_ip, r[8], seg[4], flags, ip; } g_changed_ret[4096];
 static unsigned g_changed_ret_n;
 static int g_callee_finished;
 
+/* Code a fuzzed write altered, then executed, can decode differently from the pristine bytes: a RET (or
+ * RET n) is reached in the middle of what was another instruction, at a stack depth the call never
+ * expected, while its own bytes are still pristine. The instruction stream is no longer the program's,
+ * so every RET after the first executed modified instruction takes the changed-return path: it is
+ * accepted only through the exact original state the original recorded at that RET. */
+static int g_dirty_exec[2];
+static int dirty_side(const cpu_t *c) { return c->mem == g_mem[0] ? 0 : 1; }
+static void note_exec_dirty(const cpu_t *c, uint16_t cs, uint16_t ip)
+{
+    const uint32_t at = phys(cs, ip);
+    if (g_cov >= 0 && c->mem[at] != g_pristine[at]) g_dirty_exec[dirty_side(c)] = 1;
+}
+
 static int changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
 {
+    if (g_dirty_exec[dirty_side(c)]) return 1;
     const uint8_t op = c->mem[phys(cs, ip)];
     if (op != 0xC3 && op != 0xC2 && op != 0xCB && op != 0xCA) return 0;
     const unsigned len = op == 0xC2 || op == 0xCA ? 3 : 1;
@@ -1250,8 +1266,8 @@ static int same_changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
  * five means more): a callee return the original reached at the call's
  * depth, or up to 16 bytes above it (what the callee's RET n removed),
  * must be reached by the named code too. */
-static uint16_t g_cov_sp[0x1000][4];
-static uint8_t g_cov_nsp[0x1000];
+static uint16_t g_cov_sp[0x2000][4];
+static uint8_t g_cov_nsp[0x2000];
 
 static int cov_reached(uint16_t ip, uint16_t lo, uint16_t span)
 {
@@ -1379,6 +1395,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         const uint16_t sp_before = a->r[R_SP];
         const int depth_before = a->int_depth;
         const uint16_t from_cs = a->seg[S_CS];
+        if (a->mem == g_mem[0] && !own) note_exec_dirty(a, from_cs, here);
         const int destroyed = g_cov >= 0 && a->mem == g_mem[0] && !own && destroyed_return(a, from_cs, here);
         const int changed = destroyed || (g_cov >= 0 && a->mem == g_mem[0] && !own && changed_return(a, from_cs, here));
         int nc_call = 0;
@@ -1500,6 +1517,7 @@ static int step_runner(machine_t *mm)
         const uint64_t limit = c->stop_at;
         const uint16_t from_cs = c->seg[S_CS], from_ip = c->ip;
         const uint8_t op = mem_read8(c, phys(from_cs, from_ip));
+        note_exec_dirty(c, from_cs, from_ip);
         const int changed = g_cov >= 0 && changed_return(c, from_cs, from_ip);
         const int destroyed = g_cov >= 0 && destroyed_return(c, from_cs, from_ip);
         cpu_step(c);
@@ -1817,7 +1835,7 @@ int main(int argc, char **argv)
              * pitch recovery, ground braking and touchdown. Everything else
              * stays random. */
             g_state_index = s;
-            g_changed_ret_n = 0; g_callee_finished = 0;
+            g_changed_ret_n = 0; g_callee_finished = 0; g_dirty_exec[0] = g_dirty_exec[1] = 0;
             if (g_flight_fixture) {
                 static const uint8_t poll[] = { 0xA1, 0x9C, 0x92, 0xFF, 0x0E, 0x9C, 0x92, 0xC3 };
                 static const uint16_t deltas[] = { 0x011B, 0x0A15, 0x00FD, 0x0032, 0x00CC, 0x0012, 0x02C3, 0x0900, 0x0600, 0x0F63, 0x019D };
@@ -17603,6 +17621,225 @@ int main(int argc, char **argv)
 #undef XSTUB
 #undef PICK
 #undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x9EFA) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(arr_) (arr_)[XRAND()%(sizeof(arr_)/sizeof((arr_)[0]))]
+#define D16(a_,v_) XW16(dg,(a_),(v_))
+                /* Stack words below SP and the (unused) argument words above it. */
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                uint16_t arg[4];
+                for(unsigned j=0;j<4;j++){arg[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* Everything the routine can read: random data, then the fields it tests. */
+                for(unsigned j=0x2000;j<0xF000;j++)XW8(dg,j,XRAND());
+                /* ---- scalar fields ---- */
+                static const uint16_t kZeroNz[]={0,0,0,1,0xFFFF,0x0100,0x8000};
+                static const uint16_t kMode3[]={0,1,2,2,1,0,2,1,0,2};
+                static const uint16_t kSmall4[]={0,1,2,3};
+                static const uint16_t kDiff[]={0,1,2,3,5,0,1,2,3};
+                static const uint16_t kTimer[]={0,0,1,2,3,3,3,3,4,4,5};
+                static const uint16_t k9D3C[]={0,0,1,2,3,0x10,0x10,0xFFFF,0xFFFF,4,0xF};
+                static const uint16_t kIdx[]={0xFFFF,0xFFFF,0,1,2,3,4,5,6,7,0x80,0x81,0x82};
+                static const uint16_t k368E[]={1,2,3,4,5,7,8,0x10,0x20,0x30,0x40,0x80,0x100,0x7FF,0x1FFF};
+                const uint16_t sel94=(XRAND()%5==0)?(uint16_t)XRAND():XPICK(kIdx);
+                const uint16_t sel92=(XRAND()%4==0)?(uint16_t)XRAND():XPICK(kIdx);
+                D16(0x3D94,sel94); D16(0x3D92,sel92);
+                D16(0x368E,(XRAND()%6==0)?(uint16_t)(1+XRAND()%0x1FFF):XPICK(k368E));
+                D16(0x3686,XPICK(kDiff)); D16(0x3688,XPICK(kSmall4));
+                const unsigned sel680=XRAND()%4; D16(0x3680,sel680);
+                D16(0x368C,(XRAND()%10==0)?0:(uint16_t)(1+XRAND()%0xFFFF));
+                D16(0x3D8E,(XRAND()%3==0)?(uint16_t)(XRAND()%64):(uint16_t)XRAND());
+                D16(0x3D96,XPICK(kZeroNz)); D16(0x3D98,(XRAND()%3==0)?0:(XRAND()%5==0)?(uint16_t)(0u-XRAND()%8):(uint16_t)(1+XRAND()%0x300));
+                D16(0xC0AA,(XRAND()%2)?(uint16_t)(0xFFFF-XRAND()%3):(uint16_t)(XRAND()%4));
+                D16(0xC0A6,XPICK(kZeroNz));
+                D16(0x4010,0xF900); D16(0x4028,0xF940);
+                D16(0x4220,XRAND()%6); D16(0x4222,XPICK(kTimer));
+                D16(0x43E0,XPICK(kZeroNz)); D16(0x43E2,XPICK(kZeroNz));
+                D16(0x9534,XPICK(kZeroNz)); D16(0x990E,XPICK(kZeroNz));
+                D16(0x9D3C,XPICK(k9D3C)); D16(0x9D38,(uint16_t)XRAND());
+                D16(0x992E,(XRAND()%3==0)?0xFFFF:(uint16_t)(XRAND()%5));
+                D16(0xB07C,XRAND()%0x11);
+                D16(0xB198,XRAND()%4); D16(0xDEFC,XRAND()%4);
+                D16(0xE008,(XRAND()%5)?0x13:(uint16_t)XRAND());
+                D16(0xE32A,XPICK(kMode3));
+                D16(0xE304,XRAND()%9);
+                D16(0xE306,(XRAND()%3==0)?sel94:(uint16_t)(XRAND()%4));
+                D16(0xE318,(XRAND()%3==0)?sel94:(uint16_t)(XRAND()%4));
+                D16(0xDEBE,(XRAND()%3==0)?(uint16_t)(0u-(1+XRAND()%0xFF)):(XRAND()%4==0)?(uint16_t)(1+XRAND()%0x40):(uint16_t)(1+XRAND()%0xFFFE));
+                D16(0xDEB4,(uint16_t)XRAND()); D16(0x9912,(XRAND()%2)?(uint16_t)(XRAND()%0x100):(uint16_t)XRAND());
+                D16(0x9F40,(uint16_t)(0x3000+2*(XRAND()%0x3000)));
+                XW8(dg,0x294B,XPICK(kSmall4)); XW8(dg,0x40B6,(XRAND()%3==0)?0:(uint8_t)XRAND());
+                XW8(dg,0x9B34,(XRAND()%2)?(uint8_t)(XRAND()|4):(uint8_t)XRAND());
+                XW8(dg,0x9B35,(uint8_t)XRAND());
+                D16(0x2DEE,(XRAND()%2)?(uint16_t)(XRAND()%0x400):(uint16_t)XRAND());
+                D16(0x2DF0,(XRAND()%2)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x300));
+                D16(0x2DF2,(XRAND()%2)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x400));
+                D16(0x2DF4,(XRAND()%2)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x1000));
+                D16(0xC6B0,(uint16_t)XRAND()); D16(0xE588,(uint16_t)XRAND());
+                /* ---- tables ---- */
+                /* 3670 + 4 * [3680]: record number and flag; 36A6 + 0x1A * record: weapon id. */
+                static const uint16_t kWeapon[]={0x1C,0x1D,0x1E,0xFFFF,0xFFFF,7,0x1C,0x1E,0x1D,0,1,2,3,4,5,6,8,9,0x1A,0x1B,0x1F};
+                for(unsigned j=0;j<4;j++){
+                    D16(0x3670+4*j,XRAND()%6); D16(0x3672+4*j,(XRAND()%3)?(uint16_t)(1+XRAND()%3):0);
+                }
+                for(unsigned j=0;j<8;j++) D16(0x36A6+0x1A*j,XPICK(kWeapon));
+                /* 33A0 + 0x12 * weapon: type, 339C: strength */
+                static const uint16_t kWType[]={4,5,7,7,4,5,0,1,2,3,6,8};
+                for(unsigned w=0;w<0x20;w++){
+                    D16(0x33A0+0x12*w,(XRAND()%6==0)?(uint16_t)XRAND():XPICK(kWType));
+                    D16(0x339C+0x12*w,(XRAND()%2)?(uint16_t)(XRAND()%0x40):(uint16_t)(0u-XRAND()%0x40));
+                }
+                /* the 12 tracked-shot records (0x1C bytes from 3C3A): live flag at +0x0E, marker at +0x10 */
+                for(unsigned j=0;j<17;j++){
+                    D16(0x3C48+0x1C*j,(XRAND()%3)?(uint16_t)(1+XRAND()%0xFFFF):0);
+                    D16(0x3C4A+0x1C*j,(XRAND()%3==0)?0x1B:(uint16_t)XRAND());
+                }
+                /* markers (12 bytes from E47A): x is zero when the slot is free */
+                for(unsigned j=0;j<8;j++){
+                    D16(0xE47A+12*j,(XRAND()%3==0)?0:(uint16_t)(XRAND()%0x4000));
+                    D16(0xE47C+12*j,(XRAND()%4==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x4000));
+                    D16(0xE47E +12*j,(XRAND()%4==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x4000));
+                    D16(0xE480+12*j,(uint16_t)XRAND());
+                }
+                /* objects (0x24 bytes from C16C): near the camera some of the time */
+                for(unsigned j=0;j<4;j++){
+                    D16(0xC16C+0x24*j,(XRAND()%3==0)?(uint16_t)(XRAND()%0x300):(uint16_t)XRAND());
+                    D16(0xC16E +0x24*j,(XRAND()%3==0)?(uint16_t)(XRAND()%0x300):(uint16_t)XRAND());
+                    D16(0xC170+0x24*j,(XRAND()%3==0)?(uint16_t)(XRAND()%0x300):(uint16_t)XRAND());
+                    XW8(dg,0xC182+0x24*j,(XRAND()%2)?(uint8_t)(XRAND()|2):(uint8_t)(XRAND()&0xFD));
+                }
+                /* enemy slots (0x12 bytes from E304): in-use word, object index, flags */
+                for(unsigned j=0;j<2;j++){
+                    D16(0xE304+0x12*j,(XRAND()%3)?1:(uint16_t)XRAND());
+                    D16(0xE306+0x12*j,(XRAND()%2)?(uint16_t)(sel94&0x7F):(uint16_t)(XRAND()%4));
+                    XW8(dg,0xE30A+0x12*j,(XRAND()%2)?(uint8_t)(XRAND()|0x10):(uint8_t)(XRAND()&0xEF));
+                }
+                /* the 16-byte object table from B2D0: positions and flags */
+                for(unsigned j=0;j<8;j++){
+                    D16(0xB2D0+0x10*j,(XRAND()%3==0)?(uint16_t)(XRAND()%0x4000):(uint16_t)XRAND());
+                    D16(0xB2D2+0x10*j,(XRAND()%3==0)?(uint16_t)(XRAND()%0x4000):(uint16_t)XRAND());
+                    D16(0xB2D4+0x10*j,(XRAND()%2)?0:(uint16_t)XRAND());
+                    D16(0xB2D6+0x10*j,(uint16_t)XRAND());
+                }
+                /* ---- directed scenarios: two long chains of conditions random data seldom completes ---- */
+                {
+                    const unsigned recn=XRAND()%6;
+                    const unsigned scen=XRAND()%5;
+                    D16(0x3670+4*sel680,recn);
+                    const uint16_t sidx=(uint16_t)(1+XRAND()%7);
+                    if(scen==0) {           /* the empty-hand weapon: pylon cue chain through the 4222 timer */
+                        D16(0x368C,1); D16(0xE008,0x13); D16(0xE32A,(XRAND()%2)?2:0);
+                        D16(0x3D94,sidx); D16(0x4222,(XRAND()%3==0)?1:4);
+                        D16(0x36A6+0x1A*recn,0xFFFF);
+                        XW8(dg,0x9B34,(uint8_t)(XRAND()|4));
+                        for(unsigned j=0;j<2;j++){ D16(0xE304+0x12*j,1); D16(0xE306+0x12*j,sidx); }
+                        for(unsigned j=0;j<8;j++) XW8(dg,0xB2D6+0x10*j,(uint8_t)(XRAND()&0x7F));
+                    } else if(scen==1) {    /* weapon 1Ch (the gun) with the target close and the descent rate negative */
+                        D16(0x368C,1); D16(0xE32A,2); D16(0xC0A6,0);
+                        D16(0x3D94,sidx);
+                        D16(0x36A6+0x1A*recn,0x1C);
+                        D16(0x3672+4*sel680,1+XRAND()%3);
+                        D16(0x33A0+0x12*0x1C,1);
+                        D16(0x339C+0x12*0x1C,0x7000);
+                        D16(0xDEBE,(uint16_t)(0u-(1+XRAND()%0x40)));
+                        D16(0x2DF4,(uint16_t)(XRAND()%0x400));
+                    } else if(scen==2) {    /* the second-slot tracking chain: object 0, slot flag 5 or more */
+                        D16(0x368C,1); D16(0xE008,0x13); D16(0xE32A,1); D16(0xC0A6,0);
+                        D16(0x3D92,(XRAND()%2)?0:sidx);
+                        D16(0xE304,(uint16_t)(5+XRAND()%4)); D16(0x43E0,(XRAND()%2)?0:(uint16_t)1);
+                    } else if(scen==3) {    /* weapon 1Eh or 1Dh with the cue conditions: 2DF2 small, a target chosen */
+                        D16(0x368C,1); D16(0xE32A,2); D16(0xC0A6,0);
+                        D16(0x36A6+0x1A*recn,(XRAND()%3)?0x1E:0x1D);
+                        D16(0x3D94,(XRAND()%4==0)?0xFFFF:sidx);
+                        D16(0x2DF2,(uint16_t)(XRAND()%0x400));
+                        D16(0x3D8E,(uint16_t)XRAND());
+                    }
+                }
+                /* ---- call list: id, arguments and the return list of every callee ---- */
+                D16(0xFFF0,(uint16_t)XRAND()); D16(0xFFF2,0);
+                enum { KANY, KSQRT, KDIST, KBOOL, KIDX, KWIDTH, KMUL, KSAME, KPAIR };
+                static const struct { uint16_t target; uint8_t far_; uint8_t kind; uint16_t foff; } callee_[]={
+                    {0xB171,0,KANY,0},{0xB5DC,0,KPAIR,0},{0x2F5B,0,KSQRT,0},{0x886A,0,KANY,0},{0xEE0C,0,KDIST,0},
+                    {0xC818,0,KMUL,0},{0xC831,0,KANY,0},{0x898F,0,KANY,0},{0x8A4F,0,KANY,0},{0xEB10,0,KANY,0},
+                    {0xEB50,0,KANY,0},{0xEB82,0,KWIDTH,0},{0xEB9E,0,KANY,0},{0xC6B3,0,KDIST,0},{0xB905,0,KDIST,0},
+                    {0xB435,0,KANY,0},{0xBCEF,0,KANY,0},{0xB991,0,KANY,0},{0xB4F5,0,KANY,0},{0xB0C2,0,KANY,0},
+                    {0xC89C,0,KBOOL,0},{0xB850,0,KIDX,0},{0x792E,0,KBOOL,0},{0xBA2B,0,KBOOL,0},{0xBA56,0,KANY,0},
+                    {0xB96C,0,KANY,0},{0xB577,0,KANY,0},{0xB13C,0,KANY,0},{0x761A,0,KANY,0},{0x73C8,0,KANY,0},
+                    {0x72D8,0,KANY,0},{0x7594,0,KANY,0},{0x4ABA,0,KANY,0},{0xD3F9,0,KANY,0},{0x881F,0,KANY,0},
+                    {0x89C0,0,KANY,0},{0x1A98,0,KANY,0},{0x8A67,0,KDIST,0},{0xC863,0,KSAME,0},{0xC67A,0,KANY,0},
+                    {0xC702,0,KANY,0},
+                    {0x0006,1,KANY,0x114A},{0x0280,1,KANY,0x114A},{0x0246,1,KANY,0x0FB2}};
+                enum { NCALLEE = sizeof callee_/sizeof callee_[0] };
+                static const uint16_t kAny[]={0,0,1,2,0xFFFF,0x8000,0x7FFF,0x10,0x20,0x30};
+                static const uint16_t kBound[]={0x20,0x1F,0x21,0x30,0x2F,0x31,0x2000,0x1FFF,0xC80,0xC7F,0x100,0xFF,0,1};
+                for(unsigned k=0;k<NCALLEE;k++) {
+                    for(unsigned j=0;j<16;j++) {
+                        uint16_t v;
+                        switch(callee_[k].kind) {
+                        case KSQRT: v=(XRAND()%4==0)?(uint16_t)(10+XRAND()%40):(uint16_t)(1+XRAND()%9); break;
+                        case KDIST: v=(XRAND()%5==0)?(uint16_t)(XRAND()%0x7FFF):(XRAND()%3==0)?XPICK(kBound):(XRAND()%2)?(uint16_t)(XRAND()%0x40):(uint16_t)(XRAND()%0x400); break;
+                        case KBOOL: v=(XRAND()%2)?0:(uint16_t)(1+XRAND()%0xFFFF); break;
+                        case KIDX:  v=(XRAND()%4==0)?0xFFFF:(XRAND()%5==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%8); break;
+                        case KWIDTH:v=(XRAND()%4==0)?0:(uint16_t)(1+XRAND()%0x60); break;
+                        case KMUL:  v=(XRAND()%2)?(uint16_t)(XRAND()%0x300):(uint16_t)XRAND(); if(v>=0xFFFE)v=1; break;
+                        case KSAME: v=(XRAND()%3)?XPICK(k9D3C):(uint16_t)XRAND(); break;
+                        case KPAIR: v=(j&1)?((XRAND()%6==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%200)):((XRAND()%4==0)?0xFFFF:(XRAND()%6==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%320)); break;
+                        default:    v=(XRAND()%3==0)?XPICK(kAny):(uint16_t)XRAND(); break;
+                        }
+                        D16(0xF100+32*k+2*j,v);
+                    }
+                    D16(0xF700+32*k,2*(XRAND()%16));
+                }
+                /* Shared stub bodies (near and far, with and without the screen-position side effect),
+                 * then one ten-byte entry per callee.  A stub folds the callee's number, the twelve
+                 * stack words from its first argument up, and the mode word of both page blocks
+                 * ([[4010]+2] and [[4028]+2], which the real text routines read) into [FFF0], counts the call in [FFF2] and
+                 * returns the next word of the callee's list in AX; the position probe also stores its
+                 * first two list words in [4A10] and [4A18].  Every register but AX is preserved. */
+#define EB_(b_) XW8(sx_,o_++,(b_))
+#define XCOMMON(base_,far_,side_) do { unsigned o_=(base_); const uint16_t sx_=0; \
+    EB_(0x51);EB_(0x56);EB_(0xA1);EB_(0xF0);EB_(0xFF);EB_(0xD1);EB_(0xC0);EB_(0x33);EB_(0xC3); \
+    EB_(0x8D);EB_(0x76);EB_((far_)?6:4);EB_(0xB9);EB_(12);EB_(0); \
+    EB_(0xD1);EB_(0xC0);EB_(0x36);EB_(0x33);EB_(0x04);EB_(0x83);EB_(0xC6);EB_(2);EB_(0xE2);EB_(0xF6); \
+    EB_(0x8B);EB_(0x36);EB_(0x10);EB_(0x40);EB_(0x33);EB_(0x44);EB_(0x02); \
+    EB_(0x8B);EB_(0x36);EB_(0x28);EB_(0x40);EB_(0x33);EB_(0x44);EB_(0x02); \
+    EB_(0xA3);EB_(0xF0);EB_(0xFF);EB_(0xFF);EB_(0x06);EB_(0xF2);EB_(0xFF); \
+    EB_(0x8B);EB_(0xB7);EB_(0x00);EB_(0xF7);EB_(0x8B);EB_(0x80);EB_(0x00);EB_(0xF1); \
+    if(side_){ EB_(0xA3);EB_(0x10);EB_(0x4A);EB_(0x83);EB_(0xC6);EB_(2);EB_(0x83);EB_(0xE6);EB_(0x1E); \
+               EB_(0x8B);EB_(0x80);EB_(0x00);EB_(0xF1);EB_(0xA3);EB_(0x18);EB_(0x4A); } \
+    EB_(0x83);EB_(0xC6);EB_(2);EB_(0x83);EB_(0xE6);EB_(0x1E);EB_(0x89);EB_(0xB7);EB_(0x00);EB_(0xF7); \
+    EB_(0x5E);EB_(0x59);EB_(0x5B);EB_(0x5D);EB_((far_)?0xCB:0xC3); } while(0)
+                {
+                    const unsigned c_near=0xF500,c_far=0xF580,c_side=0xF600;
+                    XCOMMON(c_near,0,0); XCOMMON(c_far,1,0); XCOMMON(c_side,0,1);
+                    for(unsigned k=0;k<NCALLEE;k++) {
+                        const unsigned st=0xF200+0x10*k;
+                        unsigned o_=callee_[k].far_?callee_[k].target:st;
+                        const uint16_t sx_=callee_[k].far_?callee_[k].foff:0;
+                        const unsigned tgt=(callee_[k].kind==KPAIR)?c_side:callee_[k].far_?c_far:c_near;
+                        EB_(0x55);EB_(0x8B);EB_(0xEC);EB_(0x53);EB_(0xBB);EB_(32*k);EB_(32*k>>8);
+                        if(callee_[k].far_) { EB_(0xEA);EB_(tgt);EB_(tgt>>8);EB_(0);EB_(0); }
+                        else { const uint16_t rel_=(uint16_t)(tgt-(o_+3)); EB_(0xE9);EB_(rel_);EB_(rel_>>8); }
+                        if(!callee_[k].far_) {
+                            /* patch the callee's entry (segment 0) with a jump to the stub */
+                            const unsigned e_=callee_[k].target;
+                            XW8(0,e_,0xE9);XW16(0,e_+1,(uint16_t)(st-e_-3));
+                        }
+                    }
+                }
+#undef XCOMMON
+#undef EB_
+#undef D16
+#undef XPICK
 #undef XRAND
 #undef XW16
 #undef XW8

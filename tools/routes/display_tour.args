@@ -1,0 +1,15 @@
+# expect-world LB
+# expect-exit VGAME.EXE 0 200000000
+# Boots the default Libya mission from the recorded boot inputs in display_tour.input (the boot_to_flight
+# click script as a log), plus: on the START briefing map, hover and click all 15 site markers, Space
+# (toggles [B284]) and a hover pass (START 1C2F via 11D1 and 129D); in flight the multi-function displays:
+# throttle ('=' x6) and brake-less run on the runway, NumLock, F7 (navigation display 14h), keypad 3/8/3
+# (steps [2EAE], waypoint cursor), F8, keypad 2 8 4 6 9, F5 (armament 15h), F6, ',' (compass 13h), F5, ','
+# F10 (objectives 18h), '.', 'm', '/', Shift+'<' (external view, [368C]=0) and F5, F1 (cockpit), F7 again
+# once the airspeed [B07E] is above 2000, then Alt+Q, Y. Raw scancodes, so the keys are in the log.
+--replay
+display_tour.input
+--steps
+5000000000
+--time-us
+700000000000000

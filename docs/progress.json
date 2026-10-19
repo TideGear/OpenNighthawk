@@ -166,8 +166,8 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
       "bytes": 17418,
-      "credited": 847,
-      "reviewed_static_bytes": 11491,
+      "credited": 5399,
+      "reviewed_static_bytes": 10426,
       "by_module": {
         "DSWAP": {
           "bytes": 1860,
@@ -201,8 +201,8 @@
         },
         "VGAME": {
           "bytes": 7929,
-          "credited": 312,
-          "reviewed_static_bytes": 3869
+          "credited": 4864,
+          "reviewed_static_bytes": 2804
         }
       },
       "other_modules_executed_bytes": {

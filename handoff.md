@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 80.91%, P3 97.79%, All 93.61%
+- **Scoreboard:** P1 100.00%, P2 83.22%, P3 97.79%, All 94.32%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,015 addresses matched. Scope is the expanded seven-program
-  one: **149,706 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,016 addresses matched. Scope is the expanded seven-program
+  one: **154,258 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -35,23 +35,22 @@ Consolidate it instead of appending to it.
   `D:/f117-gate/accept-kit/` (`new_batch.py LETTER PREV BASE_COMMIT DIR[:PREFIX[:partial]]...`; mark
   hand-back routines `partial`; `finish_all.py` for checkpoints/boot/verdict). Evidence
   `D:/f117-gate/p2-batch-{r,t}-accept/`. Earlier batches: [docs/roadmap.md](docs/roadmap.md).
-- **VGAME `09EFA` (4,552 bytes):** proved privately as a mechanical transcript
-  (`p2-vgame-9efa-body`: lockstep 1,628/1,628, 126 mutations, `full_cycle` 275 calls) but NOT
-  integrated: the owner wants named, explained code. An agent is rewriting it into named sections in
-  `D:/f117-gate/p2-vgame-9efa-named/` (same proof bar; the one harness hunk is raising the
-  `g_cov_*` arrays to `0x2000`). Integrate only that version.
-- **New route found (`D:/f117-gate/route-research/display_tour/`):** one interpreter session
-  (2.55 G clocks) that selects the navigation (F7/F8), armament (F5), objectives (F10) and compass
-  displays with the function keys, uses the keypad cursor chain with NumLock on, and clicks every START
-  briefing-map site; it runs 255/257 of VGAME `8F71..9215`, all of `93E9..94AD`, 84/84 of `825D`, 55/56
-  of the compass and 737/784 bytes of START `1C2F` (hover entry `129D`, click entry `11D1`). Add it as
-  `tools/routes/display_tour.*` (regenerate with its `regen.txt`), then prove `8F71`
-  (`p2-vgame-8f71`, done privately), `93E9`, `8342` and `1C2F` on it. Each new route adds one
-  interpreter session to every gate.
-- **Large lead, not started:** VGAME `09EFA` (`prepass_display_body`), 1,628
-  instructions / 4,552 bytes, RET at `B0C1`; dossier only in
-  `D:/f117-gate/p2-vgame-9efa/` (config still has placeholder names). Routes
-  run 3,487 of its bytes; 154 call sites, 46 targets, no matched entry inside.
+- **Batch u (accepted):** VGAME `9EFA` `vgame_display_pass` (4,552 bytes), written as named
+  sections after a mechanical transcript was rejected (header, named constants, loops, strings
+  read from the data segment; four cells and the divide-error path are marked unknown/untested);
+  the `display_tour` route (46 routes / 45 sessions now: `tools/routes/display_tour.*`); and the
+  lockstep fix for a RET reached through misaligned fuzzed code (CTest
+  `matched_projectile_misaligned_return`, which closes the open issue of 18 Oct; the old/new
+  harness agreed on every routine at three seeds). Gate with no keyed baseline (new route),
+  presentation sequential: 1,694 s. Evidence `D:/f117-gate/p2-batch-u-accept/`.
+- **Next on the new route:** the interpreter cache now holds `display_tour`; prove on it
+  (`kit.py DIR checkpoints --route display_tour`) VGAME `8F71` (`p2-vgame-8f71`, proved
+  privately), the armament display `93E9`, the compass `8342` and the START map popup `1C2F`
+  (737/784 bytes; the rest needs a theatre briefing with flag 0x40 sites, which Korea, Central
+  America and North Cape have). Before the next gate re-freeze the keyed baseline for all 46 routes
+  (`py D:/f117-gate/p2-batch-u-accept/overlap_accept.py --snapshot-only` once the cache exists, then
+  copy `baseline/` and `baseline-manifest.json` into the new batch directory, or run `new_batch.py`
+  without `--no-baseline` after copying them into `p2-batch-u-accept`).
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,
   recorded per-machine cadence; legacy recordings keep eight. Do not promote
@@ -84,8 +83,8 @@ Consolidate it instead of appending to it.
   pair (no startup reversal); normal-width strokes are clipped to the original
   endpoint cells (map-edge specks). 4K60 fullscreen passes unchanged limits
   (p99 16.92 ms, zero intervals over 25 ms).
-- Baselines every presentation change must keep: all 45 N=1 routes 259,240
-  exact frames / 259,166 pairs; boot N=4/9 736 frames / 732 pairs (two runs);
+- Baselines every presentation change must keep: all 46 N=1 routes 259,493
+  exact frames / 259,417 pairs (259,240 / 259,166 over the original 45); boot N=4/9 736 frames / 732 pairs (two runs);
   the owner's complete N=9 flight 69 checkpoints / final `31c259b992340414`.
 - Verification scope: `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot
   machines, so they need the full gate plus
@@ -213,21 +212,17 @@ C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache`, via
 `D:/f117-gate/affinity_launch.py`; about 22-30 min) before it is pushed. Read
 the tally (`N ok, 0 failed`), not the exit code. Check GitHub CI after pushing.
 
-## Open harness issue (found 18 Oct, batch s gate)
+## Lockstep harness: misaligned fuzzed returns (fixed 19 Oct)
 
-Step 7c at the rotating seed `0x904ceaac77b9` (HEAD `904ceaa`) fails with one mismatch:
-`projectiles: 1 calls escaped their return`, VGAME `683E` state 1799 (`trap 6EE4 sp 34E0, at E83E
-sp 3522`). Reproduce: `build/func_lockstep.exe --states 5000 --seed 0x904ceaac77b9 --only
-VGAME.EXE:683E` (all 6,056 compared states are equal; the escape counter alone fails the run). It
-is in the same family as the 18 Oct false escape and the 16 Oct changed-return fix
-(`destroyed_return`, `same_changed_return`, `g_changed_ret` in `tests/func_lockstep.c`): a nested
-original run reaches the routine's own return from inside a callee (the trace shows the C818
-helper returning into the routine and the original finishing it, ending `leave; ret` at 7242 with
-SP 3520), so the escape guard cannot tell a harness gap from a real divergence. It does not depend
-on batch s (the seed is derived from HEAD, and the routine's stream from its address). Find the
-cause with `DBGSTATE`-style tracing (set `g_trace` for one `g_state_index` in `step_runner`), then
-fix with exact original-state evidence and keep the seed as a CTest, as for the earlier cases. Until
-then a gate can fail at 7c on an unlucky HEAD; committing anything new changes the seed.
+A rotating seed (`0x904ceaac77b9`) failed step 7c with `projectiles: 1 calls escaped their return`
+(VGAME `683E`, state 1799). A fuzzed write had altered the code of the `abs` helper (`EE0C`), so the
+original decoded on misaligned and reached a `ret 0xC22B` that was really the tail of `xor ax,dx`: a
+return at the wrong stack depth whose own bytes were pristine, which `changed_return` (bytes of the RET
+only) could not see. `tests/func_lockstep.c` now marks a side dirty when it executes an instruction whose
+first byte differs from the pristine image, and from then on every RET takes the changed-return path
+(accepted only through the exact original state recorded at that RET; no named-region credit); the
+record table is 4,096 entries. Old and new harness agree on all 1,016 routines at three seeds except this
+state. Permanent CTest: `matched_projectile_misaligned_return`.
 
 ## Traps
 

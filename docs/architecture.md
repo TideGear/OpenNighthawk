@@ -359,7 +359,7 @@ are in [roadmap.md](roadmap.md).
    under `--engine interp` and `--engine recomp` and hashes all of memory,
    the registers and everything the machine sent out (every port write with
    its value and clock, every file write) every 50 million clocks. Every
-   route in `tools/routes/` (45, run as 44 sessions) must be identical at
+   route in `tools/routes/` (46, run as 45 sessions) must be identical at
    every checkpoint; `tools/build_recomp.py` (the gate) repeats this on every
    change. Routes also declare milestones - `# expect-world`, `# expect-exit`,
    `# expect-open`, `# expect-save`, `# seed-roster` - so two engines that
@@ -748,7 +748,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,015 addresses are matched in all seven programs (the census totals are in
+1,016 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries

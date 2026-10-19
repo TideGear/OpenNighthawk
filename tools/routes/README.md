@@ -15,7 +15,7 @@ and so the inputs.
 interpreter and the recompiled code at 50-million-clock checkpoints and the
 final state. Routes with identical options play one session per engine
 (today `recon_return` and `recon_career`), and each is held to its own
-milestones on it: 45 routes, 44 sessions. Every replay starts from a fresh
+milestones on it: 46 routes, 45 sessions. Every replay starts from a fresh
 `save-*` directory holding the install's roster, so coverage runs or an
 earlier pipeline's edited pilot cannot change its starting state.
 
@@ -91,6 +91,7 @@ proofs for matched routines; call counts are in
 | `hud_layout_toggle` | C twice: the small, then the full HUD |
 | `objectives_panel` | F10, C, F10 again in each HUD layout, then quit |
 | `navigation_grid` | F3 repeatedly in both HUD layouts, then quit |
+| `display_tour` | the multi-function displays and the briefing map, from a log with raw scancodes (`display_tour.input`: the `boot_to_flight` boot and menu inputs as a log, plus the events below): on the START briefing map it hovers and clicks all 15 site markers, Space, and a hover pass; in flight it runs the throttle and brake-less runway roll, NumLock, F7/F8 (navigation display 14h), keypad 3/8/2/4/6/9 (waypoint cursor), F5 (armament 15h), F6, `,` `.` `m` `/` (compass 13h), Shift+`<` (external view), F10 (objectives 18h), F1 (cockpit view), F7 again once airspeed passes 2,000, then Alt+Q, Y. 2.55 G clocks; the grey arrow keys and the keypad with NumLock off do not reach the navigation display |
 
 **Recorded sorties.** Each replays a recorded flight flown with normal keys
 and mouse (most by an adaptive pilot tool), so a timing change that moves

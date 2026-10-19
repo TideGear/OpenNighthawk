@@ -489,6 +489,10 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:393D,END.EXE:1C3B)
     add_test(NAME matched_projectile_changed_return COMMAND func_lockstep --states 4000
       --seed 0x3ad6ecf4e53b --only VGAME.EXE:683E)
+    # A fuzzed write altered the abs helper's code (EE0C), so a RET n is reached in the middle of another
+    # instruction at the wrong stack depth while its own bytes are original (state 1799 at this seed).
+    add_test(NAME matched_projectile_misaligned_return COMMAND func_lockstep --states 5000
+      --seed 0x904ceaac77b9 --only VGAME.EXE:683E)
     add_test(NAME matched_projectile_stub_overwrite COMMAND func_lockstep --states 4000 --seed 0x1894deb34178
       --only VGAME.EXE:683E)
     add_test(NAME matched_set_pointer_alias COMMAND func_lockstep --states 5000 --seed 0x7721a2f2bd17
@@ -799,6 +803,8 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:CE65)
     add_test(NAME matched_vgame_key_cycle_panel_state COMMAND func_lockstep --states 5000
       --only VGAME.EXE:CD7E)
+    add_test(NAME matched_vgame_display_pass COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:9EFA)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

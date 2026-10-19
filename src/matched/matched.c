@@ -67727,7 +67727,3305 @@ state1:
 }
 #undef XB
 
+/* VGAME 0000:9EFA - the flight display pass (census name prepass_display_body).
+ *
+ * The last thing the frame draws.  The renderer's dispatcher calls it from its tail
+ * (at 04B7, no arguments) after the 3-D scene, the cockpit readouts and the HUD, and
+ * it does three unrelated jobs:
+ *
+ *   - the weapons in the air: a marker on every missile or bomb in flight, the gun
+ *     tracers (drawn, and tested for hits on air units, the player and the ground),
+ *     and the impact blast;
+ *   - the right-hand display: the weapon lock (what [WEAPON_LOCK] and the marker
+ *     show), the designation of a target, and the target camera in all its forms
+ *     (the reconnaissance camera and its shutter, the weapon's own seeker view, the
+ *     ordinary target view, the air target view);
+ *   - the symbology: the detection ring, the free-fall bomb's impact point and
+ *     steering bracket, and the radio beacons of the supply-drop objectives.
+ *
+ * It was understood from three sources: the disassembly; the project's
+ * reimplementation (F-117A Reimp, src/core: effects.c, frame_weapons.c, recon.c,
+ * panel.c, camimage.c), which transcribes the same code in pieces and gave most of the
+ * names; and the strings the code draws, read from the data segment.  The last
+ * corrected two readings: the loop at AF7A is the supply-drop radio beacons ("Radio
+ * Beacon", "Radio beacon bearing", "Drop supplies now"), not guided weapons in flight
+ * and not enemy slots; and CAMERA_DRAWN is "the camera picture was drawn", not a
+ * tracking flag.  Where a name is a guess from the way a cell is used the comment says
+ * (inferred) or (unknown).
+ *
+ * Sections, in execution order:
+ *   0  entry; CAMERA_DRAWN is saved in CAMERA_DRAWN_LAST and cleared
+ *   1  a marker on every weapon in flight
+ *   2  the gun tracers: line, hit on an air unit / the player / the ground
+ *   3  the impact blast and its countdown
+ *   4  nothing more unless IN_COCKPIT; 4a the weapon lock on a ground target,
+ *      4b the detection ring of a ground site
+ *   5  the target camera: designation (5a), cool-down and no-target lamp (5b), the
+ *      reconnaissance camera, shutter and judging (5c), the other views (5d)
+ *   6  the release trigger is read and kept for the next pass
+ *   7  the weapon lock on an air target
+ *   8  the air target camera
+ *   9  both text blocks back to MODE_NORMAL; the detection ring of an air unit
+ *  10  bomb symbology: impact point and steering bracket
+ *  11  radio beacons
+ *  12  the camera page is refilled when the camera went quiet
+ *  13  exit
+ * When the displays are not live the pass jumps from 4 straight to the exit; the early
+ * exits inside the later sections lead to the labels trigger_latch (6), air_camera (8),
+ * window_modes (9) and beacons (11).
+ *
+ * The routine keeps 0x46 bytes of locals (ENTER) and saves SI and DI.  Every callee
+ * returns with a plain RET (RETF for the three far ones, RET 8 for the 32-bit
+ * multiply); the arguments are pushed last to first and removed by the caller, which
+ * does it with ADD SP (DROP_ARGS) or with POP BX (DISCARD_ARG, which also clobbers BX).
+ * The divisions are IDIV exactly as written; a zero divisor takes the divide error.
+ *
+ * What the body preserves from the original, and what the lockstep checks: the order
+ * of every read and write, every flag-setting instruction through the same ALU helper
+ * (the flags are compared at every stop), the push and pop sequence, and the clock:
+ * each BLOCK(n, at) claims room for the n instructions of one straight run starting at
+ * `at` and charges them.  The blocks are the original's - a run starts at every branch
+ * target and after every conditional jump and call - so the body can stop wherever the
+ * original can.  A call claims and charges itself.
+ *
+ * Quirks kept on purpose:
+ *   - The call at A153 (FN_OBJECT_STANDS) pushes no argument; the callee reads the word
+ *     above its return address, which is the SI that this routine saved on entry.
+ *   - AX carries the target index from A60E to the target views at A811 and A89B, which
+ *     use it without reloading.
+ *   - Marker, tracer and caption positions are screen pixels of the 320 x 200 mode.
+ */
+static int vgame_display_pass(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* ------------------------------------------------------------------
+     * Names.  Everything below is block-scoped to this routine.  "Reimp" is the
+     * project's reimplementation (F-117A Reimp, src/core), which transcribes this
+     * routine in pieces; a name taken from there says which file.  (inferred)
+     * marks a meaning read from how the code uses a cell and nothing better;
+     * (unknown) marks a cell whose role is not established.
+     * ---------------------------------------------------------------- */
+
+    /* Record sizes and counts. */
+    /* @const */
+    enum sizes {
+        WEAPON_COUNT = 12,        /* weapons in flight */
+        WEAPON_SIZE = 0x1C,
+        FIRST_PLAYER_WEAPON = 8,  /* slots 0..7 are fired at the player, 8..11 by the player (Reimp frame_weapons.c) */
+        TRACER_SIZE = 12,         /* gun tracer records */
+        UNIT_SIZE = 0x24,         /* air unit records */
+        TARGET_SHIFT = 4,         /* ground target records are 16 bytes: index << 4 */
+        OBJECTIVE_SIZE = 0x12,    /* mission objectives, two of them */
+        RACK_SIZE = 0x1A,         /* rack table entries */
+        WEAPON_TYPE_SIZE = 0x12   /* weapon table entries */
+    };
+
+    /* Table bases; a field is base + offset. */
+    /* @const */
+    enum tables {
+        WEAPONS = 0x3C3A,         /* [12] weapons in flight */
+        TRACERS = 0xE47A,         /* [PLAYER_TRACER_SLOTS + 4] gun tracers: position, then velocity */
+        UNITS = 0xC16A,           /* [UNIT_COUNT] air units (Reimp ai.h) */
+        TARGETS = 0xB2CE,         /* ground targets (Reimp ai.h) */
+        OBJECTIVES = 0xE304,      /* the two mission objectives */
+        STATIONS = 0x3670,        /* weapon stations: kind, count */
+        RACKS = 0x36A6,           /* rack table, indexed by station kind */
+        WEAPON_TABLE = 0x3394,    /* weapon types: name, range, speed, class, agility */
+        UNIT_TYPES = 0x2FF4,      /* air unit types: two name strings, model */
+        NAME_TABLE = 0xDF08,      /* word pointers to target and place names */
+        OBJECT_CLASS = 0xC630,    /* one byte per scene object */
+        GROUND_GRID = 0xB1A0      /* 16 x 16 map cells, one byte each */
+    };
+
+    /* @const */
+    enum weapon_fields {
+        WP_X = 0, WP_Y = 2, WP_Z = 4,
+        WP_TTL = 0x0E,            /* time to live; zero = slot unused */
+        WP_TYPE = 0x10
+    };
+
+    /* @const */
+    enum tracer_fields {
+        TR_X = 0, TR_Y = 2, TR_Z = 4,         /* x == 0 marks a free slot */
+        TR_VX = 6, TR_VY = 8, TR_VZ = 10
+    };
+
+    /* @const */
+    enum unit_fields {
+        U_X = 2, U_Y = 4, U_Z = 6,
+        U_HEADING = 0x10, U_PITCH = 0x12, U_ROLL = 0x14,
+        U_TYPE = 0x16,
+        U_FLAGS = 0x18,           /* byte; bit 1 = engaged; bit 4 is reused here as "hit by gunfire" */
+        U_ENDURANCE = 0x1A
+    };
+
+    /* @const */
+    enum target_fields {
+        T_NAME = 0, T_X = 2, T_Y = 4,
+        T_VARIANT = 6,
+        T_FLAGS = 8,              /* word; bit 7 = destroyed; bits 8 and 10 are tested through 0x501 */
+        T_OBJECT = 0x0E
+    };
+
+    /* @const */
+    enum objective_fields {
+        O_KIND = 0,               /* 1 = photograph, 3 = supply drop, >= 5 = air */
+        O_TARGET = 2,
+        O_FLAGS = 6               /* bit 4 = radio beacon on (inferred from the strings it draws) */
+    };
+
+    /* @const */
+    enum weapon_type_fields {
+        RK_MODEL = 0,             /* rack table: first word is the weapon table index (-1 = camera) */
+        WT_RANGE = 8, WT_CLASS = 0x0C,
+        ST_KIND = 0, ST_COUNT = 2,
+        UT_MODEL = 0x1A,
+        UT_NAME2 = 7              /* offset of the second name string */
+    };
+
+    /* Page parameter block (pointed to by BLOCK_PTR_0/1) and world record fields. */
+    /* @const */
+    enum block_fields {
+        PB_MODE = 2, PB_PEN = 4, PB_BACKDROP = 6,
+        WR_X32_LO = 4, WR_X32_HI = 6, WR_Y32_LO = 8, WR_Y32_HI = 0x0A
+    };
+
+    /* Weapon table indices and classes that this routine singles out (names are
+     * the weapon table's own strings, read from the data segment). */
+    /* @const */
+    enum weapons {
+        WEAPON_AGM65 = 0x1B,      /* "AGM-65": the weapon whose seeker view is shown */
+        WEAPON_LGBOMB = 0x1C,     /* "LGBOMB": aimed by range from altitude */
+        WEAPON_RTBOMB = 0x1D,     /* "RTBOMB" */
+        WEAPON_FFBOMB = 0x1E,     /* "FFBOMB": free-fall bomb, impact point is drawn */
+        CLASS_ANTI_RADAR = 4,     /* HARM: needs the target's variant word */
+        CLASS_ANTI_SHIP = 5,      /* Penguin, Harpoon */
+        CLASS_AIR_TO_AIR = 7      /* AIM-120, AIM-9: excluded from the ground lock */
+    };
+
+    /* Data segment cells. */
+    /* @ds */
+    enum cells {
+        SMALL_HUD = 0x294B,        /* byte; nonzero = small cockpit view (Reimp camimage.c) */
+        HUD_PEN = 0x2CA0,          /* byte; the HUD's drawing colour, read as a signed byte */
+        PLAYER_HEADING = 0x2DEE,   /* 16-bit angle (Reimp vgame_ds.h V_HEADING) */
+        PLAYER_PITCH = 0x2DF0,
+        PLAYER_ROLL = 0x2DF2,
+        PLAYER_ALTITUDE = 0x2DF4,  /* above ground, scaled (V_ALT_AGL) */
+        STATION0_COUNT = STATIONS + ST_COUNT,  /* stores left on station 0 */
+        SELECTED_STATION = 0x3680, /* index of the selected weapon station */
+        DIFFICULTY = 0x3686,       /* pilot level word; aircraft_damage hits DIFFICULTY + 1 systems (Reimp) */
+        SETTING_3688 = 0x3688,     /* second level word of the pilot record (role unknown; gates "No Target") */
+        IN_COCKPIT = 0x368C,       /* nonzero while the cockpit displays are live (inferred: game.c gates the pass on it) */
+        FRAME_RATE = 0x368E,       /* S, the frame-rate class (Reimp vgame_ds.h V_S) */
+        FRAME_COUNT = 0x3D8E,      /* frame counter; bit 0 is the blink phase */
+        AIR_TARGET = 0x3D92,       /* selected air unit, -1 none; display mode 1 (Reimp recon.c) */
+        GROUND_TARGET = 0x3D94,    /* selected ground target, -1 none; low 7 bits = index (modes 0 and 2) */
+        LAST_DAMAGED_TARGET = 0x3D96, /* set by target damage, -1 by an air unit kill (inferred, Reimp frame_weapons.c) */
+        DETECT_COUNTDOWN = 0x3D98, /* frames left on the "you were detected" ring (Reimp frame_weapon_lock) */
+        BLOCK_PTR_0 = 0x4010,      /* pointers to the two page parameter blocks */
+        BLOCK_PTR_1 = 0x4028,
+        SHOWN_PAGE = 0x40B6,       /* byte; the page the driver reports (Reimp panel.c) */
+        PHOTO_COUNT = 0x4220,      /* "Frame N": photographs taken */
+        SHUTTER_TIMER = 0x4222,    /* camera cool-down in frames; at 3 the picture is judged */
+        LOW_DETAIL = 0x43E0,       /* nonzero: text and symbology are drawn in colour 0 */
+        SEEKER_VIEW_OFF = 0x43E2,  /* (unknown) must be zero for the weapon's own seeker view (Reimp camera.h) */
+        SCREEN_X = 0x4A10,         /* where the last projected point landed; -1 = not visible */
+        SCREEN_Y = 0x4A18,
+        TARGET_BEARING = 0x952E,   /* bearing left by the target range routine */
+        CAMERA_DRAWN_LAST = 0x9530,/* CAMERA_DRAWN as it was at the start of this pass */
+        BEARING_MARK = 0x9532,     /* (unknown) written at the end of the air target tail (Reimp recon.c) */
+        TRIGGER_LAST = 0x9534,     /* the release trigger as read at the end of the previous pass */
+        LABEL_COLOUR = 0x98A2,     /* colour of marker labels, left by the detection code */
+        MESSAGE = 0x98A6,          /* cockpit message text buffer */
+        CAMERA_PITCH = 0x98FE,     /* pitch the camera picture is drawn at */
+        DETAIL_LEVEL = 0x990E,     /* pilot's detail setting */
+        MISSION_CLOCK = 0x9912,
+        BLAST_UNIT = 0x992E,       /* air unit the blast follows; -1 = none */
+        SWITCHES = 0x9B34,         /* byte; bit 2 = weapon bay open (Reimp frame_weapons.c 0x076A5) */
+        DISPLAY_FLAGS = 0x9B35,    /* byte; bit 0 designate request, 1 camera live, 5 / 6 secondary / primary photographed */
+        CAMERA_DRAWN = 0x9D38,     /* nonzero if the camera picture was drawn on this pass */
+        BLAST_CLOCK = 0x9D3C,      /* 0x10 after a hit, counts down to 0; negative after a ground hit */
+        TARGET_KILLED = 0x9D3E,    /* set when the displayed target died; cleared here when no blast is pending */
+        WORLD_RECORD_PTR = 0x9F40, /* the scene record found by the last world lookup */
+        SEEKER_SLOT = 0xB07C,      /* weapon slot whose seeker view is shown (Reimp camera.h) */
+        AIRSPEED_KTS = 0xB194,
+        PLAYER_TRACER_SLOTS = 0xB198, /* tracer slots owned by the player; four enemy slots follow */
+        PHOTO_SUITABLE = 0xB2B8,   /* bit 0 primary, bit 1 secondary objective satisfied by the photograph */
+        VIEW_CODE = 0xC0A6,        /* 0 = forward cockpit view; keys.c stores 0x87.. for the others */
+        DETECTOR = 0xC0AA,         /* what detected the aircraft: >= 0 ground target, < 0 air unit (~index) */
+        IMPACT_X = 0xC0CC,         /* where the last effect happened */
+        PLAYER_X = 0xC0D0,         /* V_MAP_X */
+        IMPACT_Y = 0xC0D6,
+        IMPACT_Z = 0xC0DC,
+        PLAYER_Y = 0xC0DE,         /* V_MAP_Y */
+        PATH_MARKER_ROW = 0xC6B0,  /* row of the flight path marker (Reimp panel.c) */
+        OBJECTIVE_DEADLINE = 0xDEB4,
+        POINT_DEPTH = 0xDEBE,      /* depth of the last projected point; negative in front of the camera */
+        UNIT_COUNT = 0xDEFC,
+        RIGHT_DISPLAY = 0xE008,    /* display shown on the right: 0x13 target camera, 0x14 navigation */
+        OBJECTIVE0_KIND = OBJECTIVES + O_KIND,
+        OBJECTIVE0_TARGET = OBJECTIVES + O_TARGET,
+        OBJECTIVE1_TARGET = OBJECTIVES + OBJECTIVE_SIZE + O_TARGET,
+        TARGET_MODE = 0xE32A,      /* F2 cycles 0 (ground), 1 (air), 2 (mixed) (Reimp docs 47, 43) */
+        WEAPON_LOCK = 0xE588       /* cleared at A306, set when a weapon locks on (Reimp frame_weapons.c) */
+    };
+
+    /* Callees (entry points in this segment; Reimp names where it has them). */
+    /* @callee */
+    enum callees {
+        FN_ISQRT = 0x2F5B,         /* square root (fl_isqrt) */
+        FN_LOG_EVENT = 0x4ABA,     /* eventlog_add(kind, arg) */
+        FN_AIRUNIT_KILL = 0x72D8,  /* airunit_kill(unit) */
+        FN_DAMAGE_TARGET = 0x73C8, /* target_damage(target) */
+        FN_MARK_OBJECTIVE = 0x7594,/* frame_objective_mark(i) */
+        FN_AIRCRAFT_DAMAGE = 0x761A,
+        FN_OBJECT_STANDS = 0x792E, /* nonzero if the object at WORLD_RECORD_PTR can still be destroyed */
+        FN_SET_PEN = 0x886A,       /* pen(colour) into both page blocks */
+        FN_HUD_LINE = 0x881F,      /* panel_hud_line(x0, y0, x1, y1) */
+        FN_MESSAGE = 0x8A4F,       /* cockpit_message(string) */
+        FN_EFFECTIVENESS = 0x8A67, /* weapon_effectiveness(kind, target) */
+        FN_TEXT = 0x898F,          /* panel_text(string, x, y, colour) */
+        FN_TEXT_IN_BLOCK = 0x89C0, /* panel_emit(block, string, x, y, colour) */
+        FN_MARKER = 0xB171,        /* weapon lock marker(x, y, size, locked, colour) */
+        FN_DIAMOND = 0xB0C2,       /* the projected diamond at SCREEN_X/Y */
+        FN_CAMERA_VIEW = 0xB13C,   /* panel_camera_view: the view caption */
+        FN_SEEKER_LAMP = 0xB435,   /* panel_seeker_lamp(mode_flag, tight) */
+        FN_MARKER_LABEL = 0xB4F5,  /* panel_marker_label(string, colour, margin) */
+        FN_RANGE_TEXT = 0xB577,    /* "Range n.n km" into MESSAGE */
+        FN_PROJECT = 0xB5DC,       /* camera_effect_point(x, y, z) -> SCREEN_X/Y, POINT_DEPTH */
+        FN_SCENE_HIT = 0xB850,     /* scene_hit_lookup(x, y) -> target index or -1 */
+        FN_TARGET_RANGE = 0xB905,  /* range to a ground target; leaves the bearing in TARGET_BEARING */
+        FN_RELEASE_ANGLE = 0xB96C, /* class1E_release_angle */
+        FN_IMAGE_MODEL = 0xB991,   /* camimage_target_model(target) */
+        FN_AIR_GROUND = 0xBA56,    /* recon_air_ground(unit) */
+        FN_CLASS5_LOCK = 0xBA2B,   /* class5_takes_lock(target) */
+        FN_CAMERA_IMAGE = 0xBCEF,  /* camimage_draw(model, x, y, z, a1, a2, a3, mode, zoom) */
+        FN_DIST = 0xC6B3,          /* octagonal distance of (dx, dy) */
+        FN_CLAMP3 = 0xC67A,        /* clamp(value, low, high) */
+        FN_BEARING = 0xC702,       /* bearing of (dx, dy) */
+        FN_VSIN = 0xC818,          /* sin(angle) * magnitude */
+        FN_VCOS = 0xC831,          /* cos(angle) * magnitude */
+        FN_SIGN = 0xC863,          /* -1, 0 or 1 */
+        FN_BUTTON = 0xC89C,        /* state of button n (keyboard word + joystick) */
+        FN_SOUND = 0xD3F9,         /* sound(id, priority) */
+        FN_STRCAT = 0xEB10,
+        FN_STRCPY = 0xEB50,
+        FN_STRLEN = 0xEB82,
+        FN_ITOA = 0xEB9E,
+        FN_ABS = 0xEE0C,
+        FN_MUL32 = 0xEF36,         /* 32 x 32 multiply, RET 8 */
+        FN_SAR32 = 0xEF74,         /* DX:AX >>= CL, arithmetic */
+        FN_BLAST_SPRITE = 0x1A98   /* blast sprite(x, y, size, phase); the call at A2D5 wraps from 0x11A98 */
+    };
+
+    /* Text and buffers pushed as immediates (strings read from the data segment). */
+    /* @imm */
+    enum texts {
+        TXT_DESTROYED_BY_GUNFIRE = 0x4224,  /* " destroyed by gunfire" */
+        TXT_HIT_BY_GUNFIRE = 0x423A,        /* "Hit by gunfire" */
+        TXT_GROUND_DESTROYED_BY_GUNFIRE = 0x4249, /* " destroyed by gunfire" (a second copy) */
+        TXT_FRAME = 0x425F,                 /* "Frame " */
+        TXT_SIX_SPACES = 0x4266,
+        TXT_CAMERA = 0x426D,                /* "Camera" */
+        TXT_PHOTOGRAPHED = 0x4274,          /* "Target photographed." */
+        TXT_SEVEN_SPACES = 0x4289,
+        TXT_MISSILE = 0x4291,               /* "Missile" */
+        TXT_AT = 0x4299,                    /* " at " */
+        TXT_EMPTY = 0x429E,
+        TXT_PRIMARY_TARGET = 0x429F,        /* "Primary Target" */
+        TXT_SECONDARY_TARGET = 0x42AE,      /* "Secondary Target" */
+        TXT_NO_TARGET = 0x42BF,             /* "No Target" */
+        TXT_PRIMARY_TARGET_AIR = 0x42C9,    /* "Primary Target" (second copy) */
+        TXT_RADIO_BEACON = 0x42D8,          /* "Radio Beacon" */
+        TXT_BEACON_BEARING = 0x42E5,        /* "Radio beacon bearing " */
+        TXT_DROP_SUPPLIES = 0x42FB,         /* "Drop supplies now" */
+        NUMBER_BUFFER = 0xDED6              /* scratch buffer for the digits */
+    };
+
+    /* Values the routine compares with or stores.  The screen is 320 x 200; the 3-D
+     * window is the top 0x5C rows and its centre is about (0xA0, 0x34). */
+    /* @const */
+    enum values {
+        NOT_VISIBLE = 0xFFFF,     /* SCREEN_X when the point did not project */
+        NO_TARGET = 0xFFFF,       /* GROUND_TARGET / AIR_TARGET when nothing is selected */
+        CAMERA_MODEL = 0xFFFF,    /* rack model -1: the camera store */
+        UNLOCKED = 0,             /* marker argument: draw the box, not the hexagon */
+        LOCKED = 1,
+        WEAPON_MARKER_SIZE = 6,   /* size of a weapon-in-flight marker */
+        MARKER_PEN_ENEMY = 0x11,  /* weapon marker colours: enemy weapons */
+        MARKER_PEN_OWN = 0x0A,    /* ... the player's */
+        TRACER_PEN_PLAYER = 0x0D, /* tracer line colours */
+        TRACER_PEN_ENEMY = 0x29,
+        HIT_RADIUS_BASE = 0x17A,  /* tracer hit distance at S = 0 is 0x17A / isqrt(4 * (S + 2)) */
+        NEAR_MISS_DISTANCE = 0x20,/* an enemy tracer this close to the player is "Hit by gunfire" */
+        DIFFICULTY_RANGE = 4,     /* damage needs distance < NEAR_MISS_DISTANCE / (4 - DIFFICULTY) */
+        BLAST_START = 0x10,       /* BLAST_CLOCK after a hit */
+        BLAST_GROUND = 0xFFFF,    /* BLAST_CLOCK after a ground hit or a near miss: -1, counts up */
+        BLAST_SIZE_BASE = 0x100,  /* blast width = 0x100 / depth */
+        WARHEAD_GUN = 0x12,       /* the cannon's row in the effectiveness table (Reimp frame_cannon_ground_hit) */
+        STRENGTH_FACTOR = 6,      /* ground hit reach = effectiveness * 6 / (DIFFICULTY + 2) */
+        Y_FLIP = 0x8000,          /* scene y runs the other way: map y = 0x8000 - y */
+        X32_SHIFT = 5,            /* 32-bit scene coordinates are the map's << 5 */
+        Z_SHIFT = 5,              /* heights count 32 to a map unit: z >> 5 */
+        TARGET_MODE_GROUND = 0,   /* F2 mode 0 */
+        TARGET_MODE_AIR = 1,
+        TARGET_MODE_MIXED = 2,
+        DISPLAY_TARGET_CAMERA = 0x13, /* RIGHT_DISPLAY: the target camera */
+        LOCK_RANGE_DIVISOR = 0xFFF9,  /* -7: the weapon's range must exceed depth / -7 */
+        REACH_FACTOR = 5,         /* the laser-guided bomb reaches 5 * (altitude >> 5) */
+        AIM_CENTRE_X = 0xA0,      /* the aim window is centred on (0xA0, 0x34), 0x38 for the air arm */
+        AIM_CENTRE_Y = 0x34,
+        AIR_AIM_CENTRE_Y = 0x38,
+        AIM_RADIUS = 0x30,        /* ... and is 0x30 wide by the octagonal distance */
+        LOCK_PEN_TIGHT = 0x29,    /* marker colour when the lock is tight */
+        LOCK_PEN_INEFFECTIVE = 6, /* marker colour when the weapon is no use here */
+        LOCK_SIZE_INEFFECTIVE = 9,/* marker size with no effect (otherwise effect + 5) */
+        AIR_LOCK_SIZE = 9,
+        LEAD_DISTANCE = 0x80,     /* a guided bomb's lead point is 0x80 ahead along the heading */
+        MODE_NORMAL = 2,          /* page block mode: ordinary text */
+        MODE_OPAQUE = 1,          /* page block mode: text on an opaque background (caption) */
+        MODE_IN_PASS = 4,         /* page block mode during this pass (Reimp recon.c: nothing outside sees it) */
+        SIGHT_SLOPE_SCALE = 0x20, /* range to the ground ahead = alt * cos(pitch) / (0x20 * sin(-pitch) + 1) */
+        DEFAULT_AIM_RANGE = 0x280,/* when not looking down */
+        PHOTO_TARGET_MASK = 0x501,/* a target in mode 0 must have (flags & 0x501) > 1 */
+        CAMERA_TILT = 0x6EF,      /* the camera looks this far below the nose */
+        ERROR_SHIFT = 4,          /* heading and depression errors count 1/16 */
+        TOLERANCE_SHIFT = 7,      /* photograph tolerance is (4 - DIFFICULTY) << 7 */
+        SHUTTER_COOLDOWN = 4,
+        SHUTTER_JUDGE = 3,        /* the frame on which the photograph is judged */
+        OBJECTIVE_KIND_PHOTO = 1,
+        OBJECTIVE_KIND_AIR = 5,
+        EVENT_PHOTO_PRIMARY = 0x8A,
+        EVENT_PHOTO_SECONDARY = 0x4A,
+        PRIMARY_DONE = 0x40,      /* DISPLAY_FLAGS: primary objective already photographed */
+        SECONDARY_DONE = 0x20,
+        SEEKER_SLOT_FLOOR = 8,    /* the seeker view needs SEEKER_SLOT > 8 (as written) */
+        AIR_TARGET_INVALID = 0x80,/* bit 7 of AIR_TARGET's low byte */
+        OBJECT_HIDDEN_BITS = 0xC0,/* OBJECT_CLASS bits that suppress "No Target" (role not established) */
+        TARGET_FLAGS_HI_MASK = 5, /* T_FLAGS high byte bits 0 and 2, tested on "No Target" */
+        MAP_CELL_SHIFT = 11,      /* map coordinate >> 11 = cell column */
+        GRID_ROW_SHIFT = 4,       /* GROUND_GRID row = 16 cells */
+        TEXT_BACKDROP = 0x2E,     /* backdrop colour of the camera and missile captions */
+        CAPTION_PEN = 0x2F,
+        CAPTION_X = 0xC5,
+        CAPTION_Y = 0xC1,
+        PHOTO_BOX_X0 = 0xA9, PHOTO_BOX_Y0 = 0x6E, PHOTO_BOX_X1 = 0xF5, PHOTO_BOX_Y1 = 0xA9,
+        FRAME_TEXT_X = 0xD1, FRAME_TEXT_Y = 0x8E, FRAME_TEXT_PEN = 0x0F,
+        STATION_SHIFT = 2,        /* station records are 4 bytes */
+        UNIT_TYPE_SHIFT = 5,      /* unit type records are 32 bytes */
+        IMPACT_MARKER_PEN = 0x29,
+        BRACKET_MAX_SMALL = 0x3A, /* with BRACKET_SIZE_STEP: the bracket limit is 0x3A, or 0x40 when not SMALL_HUD */
+        BRACKET_SIZE_STEP = 6,
+        BUTTON_RELEASE = 1,       /* button 1: the release trigger */
+        IMAGE_MODE_TARGET = 1,    /* camera_image modes (Reimp camimage_args) */
+        IMAGE_MODE_PHOTO = 3,
+        IMAGE_MODE_SEEKER = 4,
+        ZOOM_CAMERA = 0,
+        ZOOM_AIR = 1,
+        ZOOM_TARGET_VIEW = 0xFFFF,  /* -1 */
+        UNIT_NAME1 = UNIT_TYPES,    /* a unit type's first name string */
+        UNIT_NAME2 = UNIT_TYPES + UT_NAME2,
+        DECIMAL = 10,
+        SOUND_SHUTTER = 0x12,
+        SOUND_PRIORITY = 2,
+        RANGE_TEXT_X = 0xB5, RANGE_TEXT_Y = 0x9B,
+        NAME_CENTRE_X = 0xCD,     /* names are centred on x = 0xCD - 2 * length */
+        NAME_Y = 0x70,
+        PLACE_Y = 0x76,
+        TARGET_CAPTION_Y = 0x7C,
+        PRIMARY_CAPTION_X = 0xB3, SECONDARY_CAPTION_X = 0xAD, NO_TARGET_CAPTION_X = 0xBD,
+        AIR_NAME_X = 0xB9, AIR_NAME_Y = 0x74,
+        FIXED_SHIFT = 15,         /* 16.15 fixed point */
+        STEEP_ROLL = 0x2000,      /* the free-fall bomb's impact point is not computed at this roll or more */
+        FALL_ANGLE_SCALE = 0x20,
+        WINDOW_BOTTOM = 0x5A,     /* an off-screen impact point is pinned to this row */
+        IMPACT_MARKER_SIZE = 5,
+        FLIGHT_PATH_X = 0xA0,
+        BRACKET_ALTITUDE = 0x5DC, /* bracket blinks while 2 * (0x5DC - airspeed) > altitude (free-fall bomb) */
+        BRACKET_PEN = 0x29,
+        BRACKET_TOP_Y = 0x1E, BRACKET_BOTTOM_Y = 0x21,
+        BRACKET_LEFT_X = 0x9F, BRACKET_RIGHT_X = 0xA0,
+        BRACKET_MAX = 0x40,       /* half width limit; 0x3A on the small HUD */
+        BEACON_RANGE_LIMIT = 0xC80,
+        BEACON_PEN = 10,
+        SUPPLY_DROP_RANGE = 0x100,
+        BEARING_PERIOD_SHIFT = 3, /* the bearing is announced every 8 * S frames */
+        DEGREE = 0xB6,            /* bearing units per degree */
+        PAGE_FILL_COLOUR = 0x9F,
+        CAMERA_PAGE = 2
+    };
+
+    /* The frame (ENTER 0x46) holds 35 words of locals.  The compiler reuses a slot
+     * for unrelated things in different parts of the routine, so the slots are
+     * named once per section that uses them; the enums are listed in execution
+     * order and the address range says where each one applies.  The names are
+     * mine (inferred from the use), not the original's. */
+
+    /* @frame_default */
+    enum frame_common {
+        FR_TIGHT = -0x0C,          /* set when the lock is inside half the weapon's range; handed to the seeker lamp */
+        FR_TARGET = -0x34          /* index of the displayed target (low 7 bits of GROUND_TARGET / AIR_TARGET) */
+    };
+
+    /* @frame 9EFA 9F5E */
+    enum frame_weapon_markers {
+        FR_WEAPON_INDEX = -0x24
+    };
+
+    /* @frame 9F5E A257 */
+    enum frame_tracers {
+        FR_TRACER_INDEX = -0x24,   /* tracer slot being handled */
+        FR_UNIT_INDEX = -0x26,     /* air unit being tested against the tracer */
+        FR_NEAR_PLAYER = -0x1E,    /* set when an enemy tracer came within 0x20 of the player */
+        FR_GROUND_TARGET = -0x0A,  /* target the tracer hit on the ground */
+        FR_RECORD_X = -0x2E,       /* position of that target's scene record */
+        FR_RECORD_Y = -0x30,
+        FR_HIT_DISTANCE = -0x36,   /* tracer to unit / player distance, then tracer to record */
+        FR_HIT_RADIUS = -0x3A,     /* 0x17A / isqrt(4 * (S + 2)) */
+        FR_TAIL_X = -0x38,         /* the tracer's own projected point (the second projection, half a step ahead, replaces SCREEN_X/Y) */
+        FR_TAIL_Y = -0x3E,
+        FR_DX = -0x40,             /* |dx|, |dy| partial sums of the distance */
+        FR_DY = -0x42
+    };
+
+    /* @frame A257 A2F7 */
+    enum frame_blast {
+        FR_BLAST_SIZE = -0x2C
+    };
+
+    /* @frame A2F7 A4CB */
+    enum frame_ground_lock {
+        FR_MARKER_PEN = -0x04,     /* colour of the lock marker */
+        FR_LOCKED = -0x08,         /* marker is the locked hexagon rather than the box */
+        FR_WEAPON_MODEL = -0x20,   /* weapon table index of the selected rack */
+        FR_WEAPON_CLASS = -0x28,
+        FR_EFFECT = -0x3C,         /* weapon effectiveness against the target (signed byte from the table) */
+        FR_RANGE = -0x36,          /* range to the target (model 0x1C only) */
+        FR_REACH = -0x1E           /* 5 * (altitude >> 5): how far the bomb can carry */
+    };
+
+    /* @frame A4CB A6C4 */
+    enum frame_designation {
+        FR_CANDIDATE = -0x0A,      /* target found under the aim point */
+        FR_AIM_PITCH = -0x18,
+        FR_AIM_RANGE = -0x2E,      /* range ahead of the aircraft, then the aim point's x */
+        FR_AIM_Y = -0x30,
+        FR_OBJECTIVE = -0x24,      /* objective being tested for the photograph */
+        FR_TARGET_RANGE = -0x1A    /* range to the photographed target */
+    };
+
+    /* @frame A6C4 AAB3 */
+    enum frame_camera {
+        FR_TEXT_PEN = -0x40,       /* pen saved for the second text line */
+        FR_TARGET_RECORD = -0x46   /* saved SI: the target's record offset */
+    };
+
+    /* @frame AAB3 ACEA */
+    enum frame_air_lock {
+        FR_AIR_MARKER_PEN = -0x04,
+        FR_AIR_LOCKED = -0x08,
+        FR_AIR_MODEL = -0x20,
+        FR_UNIT_TYPE = -0x24       /* type index of the unit shown on the camera */
+    };
+
+    /* @frame ACEA AF7A */
+    enum frame_symbology {
+        FR_TOO_LOW = -0x02,        /* set while the bomb is below its steering altitude */
+        FR_DETECTOR_UNIT = -0x24,  /* air unit that detected the aircraft */
+        FR_BOMB_MODEL = -0x12,
+        FR_RELEASE = -0x10,        /* release angle of the free-fall bomb */
+        FR_FALL = -0x1A,           /* distance the bomb falls ahead */
+        FR_IMPACT_X = -0x2E,
+        FR_IMPACT_Y = -0x30
+    };
+
+    /* @frame AF7A B0BE */
+    enum frame_beacons {
+        FR_BEACON_OBJECTIVE = -0x24,
+        FR_BEACON_TARGET = -0x26,
+        FR_BEACON_RANGE = -0x2A
+    };
+    /* Earlier routines in this file define macros with some of these names; most
+     * #undef theirs, so make sure none is left over before the definitions below. */
+#undef AX
+#undef BX
+#undef CX
+#undef DX
+#undef SI
+#undef DI
+#undef SP
+#undef AL
+#undef BL
+#undef CL
+#undef DS
+#undef CALL
+#undef CMP
+#undef CMP8
+#undef TEST
+#undef PUSH
+#undef POP
+#undef ADD
+#undef SUB
+#undef AND
+#undef OR
+#undef XOR
+#undef SBB
+#undef NEG
+#undef INC
+#undef DEC
+#undef SHL
+#undef SHR
+#undef SAR
+#define AX (c->r[R_AX])
+#define BX (c->r[R_BX])
+#define CX (c->r[R_CX])
+#define DX (c->r[R_DX])
+#define SI (c->r[R_SI])
+#define DI (c->r[R_DI])
+#define SP (c->r[R_SP])
+#define AL get_r8(c, R_AL)
+#define BL get_r8(c, R_BL)
+#define CL get_r8(c, R_CL)
+#define SET_AL(v_) set_r8(c, R_AL, (uint8_t)(v_))
+#define SET_BL(v_) set_r8(c, R_BL, (uint8_t)(v_))
+#define SET_CL(v_) set_r8(c, R_CL, (uint8_t)(v_))
+#define BLOCK(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define DS(a_) ds_get(c, (uint16_t)(a_))
+#define PUT_DS(a_, v_) ds_put(c, (uint16_t)(a_), (uint16_t)(v_))
+#define DS8(a_) ds_get8(c, (uint16_t)(a_))
+#define PUT_DS8(a_, v_) ds_put8(c, (uint16_t)(a_), (uint8_t)(v_))
+#define LOC(o_) bp_get(c, (o_))
+#define PUT_LOC(o_, v_) bp_put(c, (o_), (uint16_t)(v_))
+#define DS_AT(r_, d_) ds_get(c, (uint16_t)(c->r[r_] + (d_)))
+#define PUT_DS_AT(r_, d_, v_) ds_put(c, (uint16_t)(c->r[r_] + (d_)), (uint16_t)(v_))
+#define DS8_AT(r_, d_) ds_get8(c, (uint16_t)(c->r[r_] + (d_)))
+#define PUT_DS8_AT(r_, d_, v_) ds_put8(c, (uint16_t)(c->r[r_] + (d_)), (uint8_t)(v_))
+#define DS8_AT2(d_) ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + (d_)))
+#define PUSH(v_) cpu_push16(c, (uint16_t)(v_))
+#define POP() cpu_pop16(c)
+#define DISCARD_ARG() (BX = cpu_pop16(c))
+#define DROP_ARGS(n_) (SP = ADD(SP, (n_)))
+#define CMP(a_, b_) ((void)alu_op(c, 7, (a_), (b_), 1))
+#define CMP8(a_, b_) ((void)alu_op(c, 7, (a_), (b_), 0))
+#define TEST(a_, b_) ((void)alu_logic(c, (uint32_t)(a_) & (uint32_t)(b_), 1))
+#define TEST8(a_, b_) ((void)alu_logic(c, (uint32_t)(a_) & (uint32_t)(b_), 0))
+#define ADD(a_, b_) ((uint16_t)alu_op(c, 0, (a_), (b_), 1))
+#define SUB(a_, b_) ((uint16_t)alu_op(c, 5, (a_), (b_), 1))
+#define AND(a_, b_) ((uint16_t)alu_op(c, 4, (a_), (b_), 1))
+#define OR(a_, b_) ((uint16_t)alu_op(c, 1, (a_), (b_), 1))
+#define XOR(a_, b_) ((uint16_t)alu_op(c, 6, (a_), (b_), 1))
+#define SBB(a_, b_) ((uint16_t)alu_op(c, 3, (a_), (b_), 1))
+#define AND8(a_, b_) ((uint8_t)alu_op(c, 4, (a_), (b_), 0))
+#define OR8(a_, b_) ((uint8_t)alu_op(c, 1, (a_), (b_), 0))
+#define NEG(a_) ((uint16_t)alu_sub(c, 0, (a_), 1, 0))
+#define INC(a_) ((uint16_t)alu_inc(c, (a_), 1))
+#define DEC(a_) ((uint16_t)alu_dec(c, (a_), 1))
+#define SHL(a_, n_) ((uint16_t)x86_shift(c, 4, (a_), (n_), 1))
+#define SHR(a_, n_) ((uint16_t)x86_shift(c, 5, (a_), (n_), 1))
+#define SAR(a_, n_) ((uint16_t)x86_shift(c, 7, (a_), (n_), 1))
+#define IMUL3(a_, imm_) x86_imul3(c, (a_), (uint16_t)(imm_))
+#define SIGN_EXTEND_AL() (AX = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL))
+#define SIGN_EXTEND_AX() (DX = (AX & 0x8000) ? 0xFFFF : 0x0000)
+#define IDIV(v_, at_, next_) do { const uint16_t divisor_ = (v_); \
+    c->op_ip = (at_); c->op_cs = c->seg[S_CS]; c->ip = (next_); \
+    if (!x86_idiv16(c, divisor_, 0)) return 1; } while (0)
+#define DIV(v_, at_, next_) do { const uint16_t divisor_ = (v_); \
+    c->op_ip = (at_); c->op_cs = c->seg[S_CS]; c->ip = (next_); \
+    if (!x86_div16(c, divisor_)) return 1; } while (0)
+#define ENTER(size_, level_) x86_enter(c, (size_), (level_))
+#define LEAVE() x86_leave(c)
+#define RETURN_NEAR() do { near_ret(c); return 1; } while (0)
+#define JE x86_cond(c, 4)
+#define JNE x86_cond(c, 5)
+#define JB x86_cond(c, 2)
+#define JAE x86_cond(c, 3)
+#define JBE x86_cond(c, 6)
+#define JA x86_cond(c, 7)
+#define JS x86_cond(c, 8)
+#define JNS x86_cond(c, 9)
+#define JL x86_cond(c, 12)
+#define JGE x86_cond(c, 13)
+#define JLE x86_cond(c, 14)
+#define JG x86_cond(c, 15)
+#define RUN_CALLEE(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define CALL(at_, fn_, ret_) do { SM4_NEED(1, (at_)); RUN_CALLEE(guest_call_pop(m, (fn_), (ret_), 0)); } while (0)
+#define CALL_POP8(at_, fn_, ret_) do { SM4_NEED(1, (at_)); RUN_CALLEE(guest_call_pop(m, (fn_), (ret_), 8)); } while (0)
+#define CALL_FAR(at_, ret_) do { SM4_NEED(1, (at_)); RUN_CALLEE(guest_call_far(m, (at_), (ret_))); } while (0)
+
+    /* ==================================================================
+     * 0. Entry.  ENTER 0x46 makes the frame; DI and SI are saved (they are
+     *    restored at the exit, and SI as entered is what FN_OBJECT_STANDS
+     *    reads as its "argument", see section 2).  The camera flag of the
+     *    previous pass is kept in CAMERA_DRAWN_LAST and CAMERA_DRAWN is
+     *    cleared; whatever draws the camera picture sets it again.
+     * ================================================================ */
+    if (!room(c, 9)) return 0;
+    BLOCK(9, 0x9EFA);
+    ENTER(0x46, 0);
+    PUSH(DI);
+    PUSH(SI);
+    AX = DS(CAMERA_DRAWN);
+    PUT_DS(CAMERA_DRAWN_LAST, AX);
+    AX = SUB(AX, AX);
+    PUT_DS(CAMERA_DRAWN, AX);
+    PUT_LOC(FR_WEAPON_INDEX, AX);
+
+    /* ==================================================================
+     * 1. A marker over every weapon in flight.  The twelve weapon records are
+     *    projected one by one with FN_PROJECT; one that is in use (time to live
+     *    non-zero) and lands on the screen gets a small unlocked box (size 6):
+     *    in colour 0x11 for slots 0..7 (fired at the player), 0x0A for 8..11.
+     *    (Reimp effects.c effects_weapons_in_flight.)
+     * ================================================================ */
+    for (;;) {
+        BLOCK(2, 0x9F29);
+        CMP(LOC(FR_WEAPON_INDEX), WEAPON_COUNT);
+        if (JGE) break;
+        BLOCK(3, 0x9F2F);
+        BX = IMUL3(LOC(FR_WEAPON_INDEX), WEAPON_SIZE);
+        CMP(DS_AT(R_BX, WEAPONS + WP_TTL), 0);
+        if (JE) goto next_weapon;
+        BLOCK(3, 0x9F3A);
+        /* the weapon's position, z pushed first */
+        PUSH(DS_AT(R_BX, WEAPONS + WP_Z));
+        PUSH(DS_AT(R_BX, WEAPONS + WP_Y));
+        PUSH(DS_AT(R_BX, WEAPONS + WP_X));
+        CALL(0x9F46, FN_PROJECT, 0x9F49);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(3, 0x9F49);
+        DROP_ARGS(6);
+        CMP(DS(SCREEN_X), NOT_VISIBLE);
+        if (JE) goto next_weapon;
+        BLOCK(2, 0x9F53);
+        CMP(LOC(FR_WEAPON_INDEX), FIRST_PLAYER_WEAPON);
+        if (JL) {
+            BLOCK(1, 0x9F10);
+            AX = MARKER_PEN_ENEMY;
+        } else {
+            BLOCK(2, 0x9F59);
+            AX = MARKER_PEN_OWN;
+        }
+        BLOCK(5, 0x9F13);
+        PUSH(AX);
+        PUSH(UNLOCKED);
+        PUSH(WEAPON_MARKER_SIZE);
+        PUSH(DS(SCREEN_Y));
+        PUSH(DS(SCREEN_X));
+        CALL(0x9F20, FN_MARKER, 0x9F23);   /* marker(x, y, size, locked, colour) */
+        BLOCK(1, 0x9F23);
+        DROP_ARGS(0x0A);
+    next_weapon:
+        BLOCK(1, 0x9F26);
+        PUT_LOC(FR_WEAPON_INDEX, INC(LOC(FR_WEAPON_INDEX)));
+    }
+
+    /* ==================================================================
+     * 2. The gun tracers.  HIT_RADIUS = 0x17A / isqrt(4 * (S + 2)) shrinks as
+     *    the frame rate class S grows (the tracers move less per frame), and
+     *    the walk below goes over PLAYER_TRACER_SLOTS + 4 records.  The first
+     *    PLAYER_TRACER_SLOTS belong to the player, the last four to enemy guns.
+     *    A slot is used when its x is non-zero.  (Reimp effects.c effects_tracers.)
+     *
+     *    For a used slot the tracer's point and the point half a velocity step
+     *    ahead are both projected; if either is off screen the slot is skipped
+     *    entirely - nothing is drawn and nothing can be hit, so the gun's reach
+     *    is the window.  Otherwise the pen is set (0x0D for the player's
+     *    tracers, 0x29 for an enemy's), a line is drawn from the tail to the
+     *    head, and the hit tests run.
+     * ================================================================ */
+    BLOCK(5, 0x9F5E);
+    AX = DS(FRAME_RATE);
+    AX = INC(AX);
+    AX = INC(AX);
+    /* (S + 2) * 4 */
+    AX = SHL(AX, 2);
+    PUSH(AX);
+    CALL(0x9F67, FN_ISQRT, 0x9F6A);   /* isqrt(n) */
+    BLOCK(5, 0x9F6A);
+    DISCARD_ARG();
+    CX = AX;
+    AX = HIT_RADIUS_BASE;
+    SIGN_EXTEND_AX();
+    /* hit radius = 0x17A / isqrt(4 * (S + 2)) */
+    IDIV(CX, 0x9F71, 0x9F73);
+    BLOCK(3, 0x9F73);
+    PUT_LOC(FR_HIT_RADIUS, AX);
+    PUT_LOC(FR_TRACER_INDEX, 0);
+    for (;;) {
+        BLOCK(4, 0xA1DC);
+        AX = DS(PLAYER_TRACER_SLOTS);
+        /* PLAYER_TRACER_SLOTS + 4 slots in all */
+        AX = ADD(AX, 4);
+        CMP(AX, LOC(FR_TRACER_INDEX));
+        if (JLE) break;
+        BLOCK(3, 0xA1E7);
+        BX = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+        CMP(DS_AT(R_BX, TRACERS + TR_X), 0);
+        if (JE) goto next_tracer;
+        BLOCK(4, 0xA1F2);
+        PUSH(DS_AT(R_BX, TRACERS + TR_Z));
+        PUSH(DS_AT(R_BX, TRACERS + TR_Y));
+        PUSH(DS_AT(R_BX, TRACERS + TR_X));
+        SI = BX;
+        /* the tracer's own point */
+        CALL(0xA200, FN_PROJECT, 0xA203);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(17, 0xA203);
+        DROP_ARGS(6);
+        AX = DS(SCREEN_X);
+        /* keep it: the second projection overwrites SCREEN_X/Y */
+        PUT_LOC(FR_TAIL_X, AX);
+        AX = DS(SCREEN_Y);
+        PUT_LOC(FR_TAIL_Y, AX);
+        /* the point half a velocity step ahead: position + (velocity >> 1) */
+        AX = DS_AT(R_SI, TRACERS + TR_VZ);
+        AX = SAR(AX, 1);
+        AX = ADD(AX, DS_AT(R_SI, TRACERS + TR_Z));
+        PUSH(AX);
+        AX = DS_AT(R_SI, TRACERS + TR_VY);
+        AX = SAR(AX, 1);
+        AX = ADD(AX, DS_AT(R_SI, TRACERS + TR_Y));
+        PUSH(AX);
+        AX = DS_AT(R_SI, TRACERS + TR_VX);
+        AX = SAR(AX, 1);
+        AX = ADD(AX, DS_AT(R_SI, TRACERS + TR_X));
+        PUSH(AX);
+        /* the tracer's head */
+        CALL(0xA233, FN_PROJECT, 0xA236);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(3, 0xA236);
+        DROP_ARGS(6);
+        CMP(DS(SCREEN_X), NOT_VISIBLE);
+        if (JE) goto next_tracer;
+        BLOCK(2, 0xA240);
+        CMP(LOC(FR_TAIL_X), NOT_VISIBLE);
+        if (JE) goto next_tracer;
+        BLOCK(3, 0xA246);
+        /* slots before PLAYER_TRACER_SLOTS are the player's */
+        AX = DS(PLAYER_TRACER_SLOTS);
+        CMP(LOC(FR_TRACER_INDEX), AX);
+        if (JGE) {
+            BLOCK(2, 0xA251);
+            AX = TRACER_PEN_ENEMY;
+        } else {
+            BLOCK(1, 0xA24E);
+            BLOCK(1, 0x9F7E);
+            AX = TRACER_PEN_PLAYER;
+        }
+        BLOCK(1, 0x9F81);
+        PUSH(AX);
+        CALL(0x9F82, FN_SET_PEN, 0x9F85);   /* set_pen(colour): both page blocks */
+        BLOCK(5, 0x9F85);
+        DISCARD_ARG();
+        PUSH(LOC(FR_TAIL_Y));
+        PUSH(LOC(FR_TAIL_X));
+        PUSH(DS(SCREEN_Y));
+        PUSH(DS(SCREEN_X));
+        /* the line from the head (SCREEN_X/Y) to the tail */
+        CALL_FAR(0x9F94, 0x9F99);   /* line_in_block(x0, y0, x1, y1): a line clipped to the active block */
+
+        /* ---- hit tests.  FR_NEAR_PLAYER starts clear. ---- */
+        BLOCK(5, 0x9F99);
+        DROP_ARGS(8);
+        /* FR_NEAR_PLAYER = 0 */
+        PUT_LOC(FR_NEAR_PLAYER, 0);
+        AX = DS(PLAYER_TRACER_SLOTS);
+        CMP(LOC(FR_TRACER_INDEX), AX);
+        if (JL) {
+            /* A player's tracer: is any engaged air unit within the hit
+             * distance?  The distance is |dx| + |dy| + (|dz| >> 5), and it
+             * must be under HIT_RADIUS / (DIFFICULTY + 1).  (Reimp
+             * frame_cannon_air_hit.)  The unit is marked hit (bit 4 of its
+             * flags), killed, its name gets " destroyed by gunfire" and the
+             * message is shown; the tracer slot is freed and the point is
+             * kept for the blast.  The scan goes on over the other units. */
+            BLOCK(2, 0x9FAC);
+            PUT_LOC(FR_UNIT_INDEX, 0);
+            for (;;) {
+                BLOCK(3, 0x9FB6);
+                AX = DS(UNIT_COUNT);
+                CMP(LOC(FR_UNIT_INDEX), AX);
+                if (!JL) { BLOCK(1, 0x9FBE); break; }
+                BLOCK(3, 0x9FC1);
+                BX = IMUL3(LOC(FR_UNIT_INDEX), UNIT_SIZE);
+                /* only engaged units (flag bit 1) can be hit */
+                TEST8(DS8_AT(R_BX, UNITS + U_FLAGS), 2);
+                if (JE) goto next_unit;
+                BLOCK(5, 0x9FCC);
+                SI = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+                AX = DS_AT(R_SI, TRACERS + TR_X);
+                AX = SUB(AX, DS_AT(R_BX, UNITS + U_X));
+                PUSH(AX);
+                DI = BX;
+                /* |dx| */
+                CALL(0x9FDB, FN_ABS, 0x9FDE);   /* abs(v) */
+                BLOCK(5, 0x9FDE);
+                DISCARD_ARG();
+                /* the three differences are tracer minus unit */
+                CX = DS_AT(R_SI, TRACERS + TR_Y);
+                CX = SUB(CX, DS_AT(R_DI, UNITS + U_Y));
+                PUSH(CX);
+                PUT_LOC(FR_DX, AX);
+                /* |dy| */
+                CALL(0x9FEB, FN_ABS, 0x9FEE);   /* abs(v) */
+                BLOCK(5, 0x9FEE);
+                DISCARD_ARG();
+                CX = DS_AT(R_SI, TRACERS + TR_Z);
+                CX = SUB(CX, DS_AT(R_DI, UNITS + U_Z));
+                PUSH(CX);
+                PUT_LOC(FR_DY, AX);
+                /* |dz| */
+                CALL(0x9FFB, FN_ABS, 0x9FFE);   /* abs(v) */
+                BLOCK(5, 0x9FFE);
+                DISCARD_ARG();
+                /* |dz| >> 5 */
+                AX = SAR(AX, Z_SHIFT);
+                AX = ADD(AX, LOC(FR_DY));
+                AX = ADD(AX, LOC(FR_DX));
+                PUSH(AX);
+                /* distance = |dx| + |dy| + (|dz| >> 5) */
+                CALL(0xA009, FN_ABS, 0xA00C);   /* abs(v) */
+                BLOCK(7, 0xA00C);
+                DISCARD_ARG();
+                PUT_LOC(FR_HIT_DISTANCE, AX);
+                AX = LOC(FR_HIT_RADIUS);
+                CX = DS(DIFFICULTY);
+                CX = INC(CX);
+                SIGN_EXTEND_AX();
+                /* reach = hit radius / (DIFFICULTY + 1) */
+                IDIV(CX, 0xA019, 0xA01B);
+                BLOCK(2, 0xA01B);
+                CMP(AX, LOC(FR_HIT_DISTANCE));
+                if (JLE) goto next_unit;
+                BLOCK(2, 0xA020);
+                /* mark the unit as hit */
+                PUT_DS8_AT(R_DI, UNITS + U_FLAGS, OR8(DS8_AT(R_DI, UNITS + U_FLAGS), 0x10));
+                PUSH(LOC(FR_UNIT_INDEX));
+                /* the kill is accounted and the unit's name goes into MESSAGE */
+                CALL(0xA028, FN_AIRUNIT_KILL, 0xA02B);   /* airunit_kill(unit) */
+                BLOCK(3, 0xA02B);
+                DISCARD_ARG();
+                PUSH(TXT_DESTROYED_BY_GUNFIRE);
+                PUSH(MESSAGE);
+                /* MESSAGE += " destroyed by gunfire" */
+                CALL(0xA032, FN_STRCAT, 0xA035);   /* strcat(dest, src) */
+                BLOCK(3, 0xA035);
+                DISCARD_ARG();
+                DISCARD_ARG();
+                PUSH(MESSAGE);
+                /* show MESSAGE */
+                CALL(0xA03A, FN_MESSAGE, 0xA03D);   /* message(string) */
+                BLOCK(10, 0xA03D);
+                DISCARD_ARG();
+                /* free the tracer slot */
+                PUT_DS_AT(R_SI, TRACERS + TR_X, 0);
+                /* the unit's position becomes the effect position */
+                AX = DS_AT(R_DI, UNITS + U_X);
+                PUT_DS(IMPACT_X, AX);
+                AX = DS_AT(R_DI, UNITS + U_Y);
+                PUT_DS(IMPACT_Y, AX);
+                AX = DS_AT(R_DI, UNITS + U_Z);
+                PUT_DS(IMPACT_Z, AX);
+                /* start the blast */
+                PUT_DS(BLAST_CLOCK, BLAST_START);
+            next_unit:
+                BLOCK(1, 0x9FB3);
+                PUT_LOC(FR_UNIT_INDEX, INC(LOC(FR_UNIT_INDEX)));
+            }
+        } else {
+            /* An enemy tracer: is it within 0x20 of the player?  If so the
+             * message "Hit by gunfire" is shown, and if it is closer than
+             * 0x20 / (4 - DIFFICULTY) the aircraft is damaged.  FR_NEAR_PLAYER
+             * is set for the code that follows.  (Reimp frame_cannon_air_hit,
+             * else branch.) */
+            BLOCK(1, 0x9FA9);
+            BLOCK(5, 0xA062);
+            BX = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+            AX = DS_AT(R_BX, TRACERS + TR_X);
+            AX = SUB(AX, DS(PLAYER_X));
+            PUSH(AX);
+            SI = BX;
+            /* |dx| (tracer minus player) */
+            CALL(0xA071, FN_ABS, 0xA074);   /* abs(v) */
+            BLOCK(5, 0xA074);
+            DISCARD_ARG();
+            CX = DS_AT(R_SI, TRACERS + TR_Y);
+            CX = SUB(CX, DS(PLAYER_Y));
+            PUSH(CX);
+            DI = AX;
+            /* |dy| */
+            CALL(0xA080, FN_ABS, 0xA083);   /* abs(v) */
+            BLOCK(5, 0xA083);
+            DISCARD_ARG();
+            CX = DS_AT(R_SI, TRACERS + TR_Z);
+            CX = SUB(CX, DS(PLAYER_ALTITUDE));
+            PUSH(CX);
+            SI = AX;
+            /* |dz| */
+            CALL(0xA08F, FN_ABS, 0xA092);   /* abs(v) */
+            BLOCK(5, 0xA092);
+            DISCARD_ARG();
+            AX = SAR(AX, Z_SHIFT);
+            SI = ADD(SI, AX);
+            DI = ADD(DI, SI);
+            PUSH(DI);
+            /* distance = |dx| + |dy| + (|dz| >> 5) */
+            CALL(0xA09B, FN_ABS, 0xA09E);   /* abs(v) */
+            BLOCK(4, 0xA09E);
+            DISCARD_ARG();
+            PUT_LOC(FR_HIT_DISTANCE, AX);
+            /* within 0x20 of the player? */
+            CMP(AX, NEAR_MISS_DISTANCE);
+            if (!JGE) {
+                BLOCK(2, 0xA0A7);
+                PUT_LOC(FR_NEAR_PLAYER, 1);
+                PUSH(TXT_HIT_BY_GUNFIRE);
+                /* message "Hit by gunfire" */
+                CALL(0xA0AF, FN_MESSAGE, 0xA0B2);   /* message(string) */
+                BLOCK(6, 0xA0B2);
+                DISCARD_ARG();
+                AX = NEAR_MISS_DISTANCE;
+                CX = DIFFICULTY_RANGE;
+                CX = SUB(CX, DS(DIFFICULTY));
+                SIGN_EXTEND_AX();
+                /* damage needs distance < 0x20 / (4 - DIFFICULTY) */
+                IDIV(CX, 0xA0BE, 0xA0C0);
+                BLOCK(2, 0xA0C0);
+                CMP(LOC(FR_HIT_DISTANCE), AX);
+                if (!JGE) {
+                    /* damage the aircraft */
+                    CALL(0xA0C5, FN_AIRCRAFT_DAMAGE, 0xA0C8);   /* aircraft_damage() */
+                }
+            }
+        }
+
+        /* An enemy tracer that came near leaves its point as the effect's
+         * position, starts the "near miss" blast (-1) and frees the slot. */
+        BLOCK(2, 0xA0C8);
+        CMP(LOC(FR_NEAR_PLAYER), 0);
+        if (!JE) {
+            BLOCK(9, 0xA0CE);
+            BX = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+            AX = DS_AT(R_BX, TRACERS + TR_X);
+            PUT_DS(IMPACT_X, AX);
+            AX = DS_AT(R_BX, TRACERS + TR_Y);
+            PUT_DS(IMPACT_Y, AX);
+            AX = DS_AT(R_BX, TRACERS + TR_Z);
+            PUT_DS(IMPACT_Z, AX);
+            PUT_DS(BLAST_CLOCK, BLAST_GROUND);
+            PUT_DS_AT(R_BX, TRACERS + TR_X, 0);
+        }
+
+        /* A tracer below ground level (z < 0) hit the ground: the blast is
+         * started if none is running, the slot is freed, and the world is
+         * asked what stands there (Reimp frame_cannon_ground_hit).  A target
+         * that is not already destroyed and that FN_OBJECT_STANDS accepts
+         * takes damage if the tracer is within effectiveness * 6 / (DIFFICULTY
+         * + 2) of the scene record's position. */
+        BLOCK(3, 0xA0F3);
+        BX = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+        /* z < 0: the tracer has gone below ground */
+        CMP(DS_AT(R_BX, TRACERS + TR_Z), 0);
+        if (!JL) { BLOCK(1, 0xA0FE); goto next_tracer; }
+        BLOCK(2, 0xA101);
+        /* a blast already running (BLAST_CLOCK > 0) is kept */
+        CMP(DS(BLAST_CLOCK), 0);
+        if (!JG) {
+            BLOCK(7, 0xA108);
+            AX = DS_AT(R_BX, TRACERS + TR_X);
+            PUT_DS(IMPACT_X, AX);
+            AX = DS_AT(R_BX, TRACERS + TR_Y);
+            PUT_DS(IMPACT_Y, AX);
+            AX = DS_AT(R_BX, TRACERS + TR_Z);
+            PUT_DS(IMPACT_Z, AX);
+            PUT_DS(BLAST_CLOCK, BLAST_GROUND);
+        }
+        BLOCK(4, 0xA123);
+        BX = IMUL3(LOC(FR_TRACER_INDEX), TRACER_SIZE);
+        PUT_DS_AT(R_BX, TRACERS + TR_X, 0);
+        PUSH(DS(IMPACT_Y));
+        PUSH(DS(IMPACT_X));
+        /* what is at the hit point? */
+        CALL(0xA135, FN_SCENE_HIT, 0xA138);   /* scene_hit(x, y) -> target index or -1 */
+        BLOCK(5, 0xA138);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        PUT_LOC(FR_GROUND_TARGET, AX);
+        AX = INC(AX);
+        if (!JNE) { BLOCK(1, 0xA140); goto next_tracer; }
+        BLOCK(4, 0xA143);
+        /* a target already destroyed (flag bit 7) is ignored */
+        BX = LOC(FR_GROUND_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        TEST8(DS8_AT(R_BX, TARGETS + T_FLAGS), 0x80);
+        if (!JE) { BLOCK(1, 0xA150); goto next_tracer; }
+        /* the original pushes nothing: the callee reads the caller's saved SI */
+        CALL(0xA153, FN_OBJECT_STANDS, 0xA156);   /* object_can_be_destroyed(); its argument is the caller's saved SI */
+        BLOCK(2, 0xA156);
+        AX = OR(AX, AX);
+        if (JE) goto next_tracer;
+        BLOCK(4, 0xA15A);
+        BX = DS(WORLD_RECORD_PTR);
+        AX = DS_AT(R_BX, WR_X32_LO);
+        DX = DS_AT(R_BX, WR_X32_HI);
+        SET_CL(X32_SHIFT);
+        /* x32 >> 5 */
+        CALL(0xA166, FN_SAR32, 0xA169);   /* DX:AX >>= CL, arithmetic */
+        BLOCK(6, 0xA169);
+        PUT_LOC(FR_RECORD_X, AX);
+        SET_CL(X32_SHIFT);
+        BX = DS(WORLD_RECORD_PTR);
+        SI = AX;
+        AX = DS_AT(R_BX, WR_Y32_LO);
+        DX = DS_AT(R_BX, WR_Y32_HI);
+        /* y32 >> 5 */
+        CALL(0xA17A, FN_SAR32, 0xA17D);   /* DX:AX >>= CL, arithmetic */
+        BLOCK(9, 0xA17D);
+        /* y = 0x8000 - (y32 >> 5) */
+        AX = SUB(AX, Y_FLIP);
+        AX = NEG(AX);
+        PUT_LOC(FR_RECORD_Y, AX);
+        AX = SUB(AX, DS(IMPACT_Y));
+        AX = NEG(AX);
+        PUSH(AX);
+        SI = SUB(SI, DS(IMPACT_X));
+        SI = NEG(SI);
+        PUSH(SI);
+        /* distance from the hit point to the scene record */
+        CALL(0xA193, FN_DIST, 0xA196);   /* distance(dx, dy) */
+        BLOCK(5, 0xA196);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        PUSH(LOC(FR_GROUND_TARGET));
+        PUSH(WARHEAD_GUN);
+        SI = AX;
+        /* effectiveness of the gun against this target */
+        CALL(0xA19F, FN_EFFECTIVENESS, 0xA1A2);   /* effectiveness(kind, target) */
+        BLOCK(8, 0xA1A2);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        /* reach = effectiveness * 6 / (DIFFICULTY + 2) */
+        AX = IMUL3(AX, STRENGTH_FACTOR);
+        CX = DS(DIFFICULTY);
+        CX = INC(CX);
+        CX = INC(CX);
+        SIGN_EXTEND_AX();
+        IDIV(CX, 0xA1AE, 0xA1B0);
+        BLOCK(2, 0xA1B0);
+        /* a miss when reach <= distance */
+        CMP(AX, SI);
+        if (JLE) goto next_tracer;
+        BLOCK(1, 0xA1B4);
+        PUSH(LOC(FR_GROUND_TARGET));
+        CALL(0xA1B7, FN_DAMAGE_TARGET, 0xA1BA);   /* target_damage(target) */
+        BLOCK(3, 0xA1BA);
+        DISCARD_ARG();
+        PUSH(TXT_GROUND_DESTROYED_BY_GUNFIRE);
+        PUSH(MESSAGE);
+        CALL(0xA1C1, FN_STRCAT, 0xA1C4);   /* strcat(dest, src) */
+        BLOCK(3, 0xA1C4);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        PUSH(MESSAGE);
+        CALL(0xA1C9, FN_MESSAGE, 0xA1CC);   /* message(string) */
+        BLOCK(3, 0xA1CC);
+        DISCARD_ARG();
+        /* start the blast, at ground level */
+        PUT_DS(BLAST_CLOCK, BLAST_START);
+        PUT_DS(IMPACT_Z, 0);
+    next_tracer:
+        BLOCK(1, 0xA1D9);
+        PUT_LOC(FR_TRACER_INDEX, INC(LOC(FR_TRACER_INDEX)));
+    }
+
+    /* ==================================================================
+     * 3. The impact blast.  BLAST_CLOCK is 0x10 after a hit and counts down to
+     *    zero; a ground hit leaves it negative and it counts up.  While it runs
+     *    the blast is drawn at the effect's position (projected; while the
+     *    effect is above ground and a unit is named the position follows that
+     *    unit) with a size of 0x100 / depth (doubled on the ground), and the
+     *    sprite phase is 0x10 - |BLAST_CLOCK|.  (Reimp effects.c effects_blast.)
+     *    When the count reaches zero the named unit is dropped.  With no blast
+     *    pending TARGET_KILLED is cleared.
+     * ================================================================ */
+    BLOCK(2, 0xA257);
+    CMP(DS(BLAST_CLOCK), 0);
+    if (!JNE) {
+        BLOCK(1, 0xA25E);
+        BLOCK(1, 0xA2F1);
+        PUT_DS(TARGET_KILLED, 0);
+    } else {
+        BLOCK(2, 0xA261);
+        CMP(DS(IMPACT_Z), 0);
+        if (!JLE) {
+            BLOCK(2, 0xA268);
+            CMP(DS(BLAST_UNIT), 0);
+            if (!JL) {
+                BLOCK(7, 0xA26F);
+                /* a blast above ground follows the unit named in BLAST_UNIT */
+                BX = IMUL3(DS(BLAST_UNIT), UNIT_SIZE);
+                AX = DS_AT(R_BX, UNITS + U_X);
+                PUT_DS(IMPACT_X, AX);
+                AX = DS_AT(R_BX, UNITS + U_Y);
+                PUT_DS(IMPACT_Y, AX);
+                AX = DS_AT(R_BX, UNITS + U_Z);
+                PUT_DS(IMPACT_Z, AX);
+            }
+        }
+        BLOCK(3, 0xA289);
+        /* project the effect position */
+        PUSH(DS(IMPACT_Z));
+        PUSH(DS(IMPACT_Y));
+        PUSH(DS(IMPACT_X));
+        CALL(0xA295, FN_PROJECT, 0xA298);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(3, 0xA298);
+        DROP_ARGS(6);
+        CMP(DS(SCREEN_X), NOT_VISIBLE);
+        if (!JE) {
+            BLOCK(3, 0xA2A2);
+            AX = BLAST_SIZE_BASE;
+            SIGN_EXTEND_AX();
+            /* blast width = 0x100 / depth */
+            IDIV(DS(POINT_DEPTH), 0xA2A6, 0xA2AA);
+            BLOCK(1, 0xA2AA);
+            PUSH(AX);
+            CALL(0xA2AB, FN_ABS, 0xA2AE);   /* abs(v) */
+            BLOCK(4, 0xA2AE);
+            DISCARD_ARG();
+            PUT_LOC(FR_BLAST_SIZE, AX);
+            CMP(DS(IMPACT_Z), 0);
+            if (!JNE) {
+                BLOCK(1, 0xA2B9);
+                /* a ground blast is twice as wide */
+                PUT_LOC(FR_BLAST_SIZE, SHL(LOC(FR_BLAST_SIZE), 1));
+            }
+            BLOCK(1, 0xA2BC);
+            PUSH(DS(BLAST_CLOCK));
+            CALL(0xA2C0, FN_ABS, 0xA2C3);   /* abs(v) */
+            BLOCK(7, 0xA2C3);
+            DISCARD_ARG();
+            /* phase = 0x10 - |BLAST_CLOCK| */
+            AX = SUB(AX, BLAST_START);
+            AX = NEG(AX);
+            PUSH(AX);
+            PUSH(LOC(FR_BLAST_SIZE));
+            PUSH(DS(SCREEN_Y));
+            PUSH(DS(SCREEN_X));
+            CALL(0xA2D5, FN_BLAST_SPRITE, 0xA2D8);   /* blast_sprite(x, y, size, phase) */
+            BLOCK(1, 0xA2D8);
+            DROP_ARGS(8);
+        }
+        BLOCK(1, 0xA2DB);
+        PUSH(DS(BLAST_CLOCK));
+        CALL(0xA2DF, FN_SIGN, 0xA2E2);   /* sign(v) */
+        BLOCK(3, 0xA2E2);
+        DISCARD_ARG();
+        PUT_DS(BLAST_CLOCK, SUB(DS(BLAST_CLOCK), AX));
+        if (!JNE) {
+            BLOCK(2, 0xA2E9);
+            /* finished: forget the unit */
+            PUT_DS(BLAST_UNIT, NO_TARGET);
+        }
+    }
+
+
+    /* ==================================================================
+     * 4. The displays proper.  Nothing more is done unless the cockpit's
+     *    displays are live (IN_COCKPIT); outside it the pass jumps to its exit.
+     *    WEAPON_LOCK and FR_TIGHT are cleared first.  (Reimp
+     *    recon.c / frame_weapons.c frame_weapon_lock.)
+     * ================================================================ */
+    BLOCK(2, 0xA2F7);
+    CMP(DS(IN_COCKPIT), 0);
+    if (!JNE) { BLOCK(1, 0xA2FE); goto leave_pass; }
+    BLOCK(5, 0xA301);
+    AX = SUB(AX, AX);
+    PUT_LOC(FR_TIGHT, AX);
+    /* WEAPON_LOCK = 0 (AX is zero here) */
+    PUT_DS(WEAPON_LOCK, AX);
+    CMP(DS(TARGET_MODE), TARGET_MODE_MIXED);
+
+    /* ------------------------------------------------------------------
+     * 4a. Weapon lock on a ground target.  Only in display mode 2 (mixed),
+     *     with the forward view and a target selected.  A refusal about the
+     *     station (nothing effective, no stores, wrong target for the class)
+     *     goes to weapon_unusable, which recolours the marker 6 unless the
+     *     rack is the camera; a refusal about the geometry (out of range, off
+     *     the aim window) leaves the HUD pen.  Either way the marker is drawn if
+     *     the target projected, and everything ends at the detection ring.
+     *     (Reimp frame_weapon_lock, frame_weapon_lock_ground.)
+     * ---------------------------------------------------------------- */
+    if (!JE) { BLOCK(1, 0xA310); goto detection_ring; }
+    BLOCK(2, 0xA313);
+    CMP(DS(VIEW_CODE), AX);
+    if (JNE) goto no_ground_arm;
+    BLOCK(2, 0xA319);
+    CMP(DS(GROUND_TARGET), AX);
+    if (JGE) {
+        /* The target is projected at z = 0; the selected station's rack gives
+         * the weapon model, the weapon table its class, FR_MARKER_PEN starts as
+         * the HUD pen and FR_LOCKED as 0, and FN_EFFECTIVENESS says how well
+         * the weapon works against this target (0 = not at all). */
+        BLOCK(5, 0xA322);
+        PUSH(AX);
+        BX = DS(GROUND_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        PUSH(DS_AT(R_BX, TARGETS + T_Y));
+        PUSH(DS_AT(R_BX, TARGETS + T_X));
+        /* project the target at z = 0 (AX = 0) */
+        CALL(0xA332, FN_PROJECT, 0xA335);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(15, 0xA335);
+        DROP_ARGS(6);
+        BX = DS(SELECTED_STATION);
+        BX = SHL(BX, STATION_SHIFT);
+        SI = IMUL3(DS_AT(R_BX, STATIONS + ST_KIND), RACK_SIZE);
+        /* the selected rack's model */
+        AX = DS_AT(R_SI, RACKS + RK_MODEL);
+        PUT_LOC(FR_WEAPON_MODEL, AX);
+        SI = IMUL3(AX, WEAPON_TYPE_SIZE);
+        /* its class */
+        AX = DS_AT(R_SI, WEAPON_TABLE + WT_CLASS);
+        PUT_LOC(FR_WEAPON_CLASS, AX);
+        /* marker colour = HUD pen */
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+        PUT_LOC(FR_MARKER_PEN, AX);
+        /* unlocked marker */
+        PUT_LOC(FR_LOCKED, 0);
+        PUSH(DS(GROUND_TARGET));
+        PUSH(DS_AT(R_BX, STATIONS + ST_KIND));
+        /* effectiveness of the selected kind against the target */
+        CALL(0xA369, FN_EFFECTIVENESS, 0xA36C);   /* effectiveness(kind, target) */
+        BLOCK(5, 0xA36C);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        PUT_LOC(FR_EFFECT, AX);
+        AX = OR(AX, AX);
+        if (JE) goto stores_exhausted;
+        BLOCK(4, 0xA375);
+        BX = DS(SELECTED_STATION);
+        BX = SHL(BX, STATION_SHIFT);
+        /* stores left on the station */
+        CMP(DS_AT(R_BX, STATIONS + ST_COUNT), 0);
+        if (JNE) goto has_stores;
+    stores_exhausted:
+        BLOCK(1, 0xA383);
+        goto weapon_unusable;
+    has_stores:
+        /* Class 4 (anti-radar) needs the target's variant word non-zero;
+         * class 5 (anti-ship) needs FN_CLASS5_LOCK to accept the target. */
+        BLOCK(2, 0xA386);
+        CMP(LOC(FR_WEAPON_CLASS), CLASS_ANTI_RADAR);
+        if (JE) {
+            BLOCK(4, 0xA38C);
+            BX = DS(GROUND_TARGET);
+            BX = SHL(BX, TARGET_SHIFT);
+            /* class 4: the target's variant word */
+            CMP(DS_AT(R_BX, TARGETS + T_VARIANT), 0);
+            if (!JNE) { BLOCK(1, 0xA39A); goto weapon_unusable; }
+        }
+        BLOCK(2, 0xA39D);
+        CMP(LOC(FR_WEAPON_CLASS), CLASS_ANTI_SHIP);
+        if (JE) {
+            BLOCK(1, 0xA3A3);
+            PUSH(DS(GROUND_TARGET));
+            CALL(0xA3A7, FN_CLASS5_LOCK, 0xA3AA);   /* class5_lock(target) */
+            BLOCK(3, 0xA3AA);
+            DISCARD_ARG();
+            AX = OR(AX, AX);
+            if (JE) { BLOCK(1, 0xA3AF); goto weapon_unusable; }
+        }
+        /* The weapon's range must exceed depth / -7. */
+        BLOCK(4, 0xA3B2);
+        AX = DS(POINT_DEPTH);
+        CX = LOCK_RANGE_DIVISOR;
+        /* depth / -7 */
+        SIGN_EXTEND_AX();
+        IDIV(CX, 0xA3B9, 0xA3BB);
+        BLOCK(3, 0xA3BB);
+        BX = IMUL3(LOC(FR_WEAPON_MODEL), WEAPON_TYPE_SIZE);
+        /* the weapon's range must exceed it */
+        CMP(DS_AT(R_BX, WEAPON_TABLE + WT_RANGE), AX);
+        if (!JG) { BLOCK(1, 0xA3C5); goto lock_decided; }
+        BLOCK(2, 0xA3C8);
+        CMP(LOC(FR_WEAPON_MODEL), WEAPON_LGBOMB);
+        if (!JNE) {
+            /* Model 0x1C (the laser-guided bomb) aims by range: the target
+             * must be nearer than 5 * (altitude >> 5), and below the aircraft
+             * (depth negative); it locks, and is "tight" inside half of that. */
+            BLOCK(1, 0xA3CE);
+            PUSH(DS(GROUND_TARGET));
+            /* range to the target */
+            CALL(0xA3D2, FN_TARGET_RANGE, 0xA3D5);   /* target_range(target) */
+            BLOCK(8, 0xA3D5);
+            DISCARD_ARG();
+            PUT_LOC(FR_RANGE, AX);
+            AX = DS(PLAYER_ALTITUDE);
+            AX = SHR(AX, Z_SHIFT);
+            /* reach = 5 * (altitude >> 5) */
+            AX = IMUL3(AX, REACH_FACTOR);
+            PUT_LOC(FR_REACH, AX);
+            CMP(AX, LOC(FR_RANGE));
+            if (JLE) goto lock_decided;
+            BLOCK(2, 0xA3EA);
+            /* the target must be below the aircraft */
+            CMP(DS(POINT_DEPTH), 0);
+            if (JGE) goto lock_decided;
+            BLOCK(6, 0xA3F1);
+            CX = 1;
+            /* WEAPON_LOCK = 1, FR_LOCKED = 1 */
+            PUT_DS(WEAPON_LOCK, CX);
+            PUT_LOC(FR_LOCKED, CX);
+            /* half the reach (not stored back) */
+            AX = SAR(AX, 1);
+            CMP(AX, LOC(FR_RANGE));
+            if (JLE) goto lock_decided;
+            BLOCK(1, 0xA402);
+            /* tight lock */
+            PUT_LOC(FR_TIGHT, CX);
+            goto tight_lock;
+        }
+        /* Every other model except class 7 (air to air) aims by the window:
+         * the projected point must be within 0x30 of (0xA0, 0x34); it locks,
+         * and is "tight" when the range is under depth / -4. */
+        BLOCK(2, 0xA40C);
+        CMP(LOC(FR_WEAPON_CLASS), CLASS_AIR_TO_AIR);
+        if (JE) goto lock_decided;
+        BLOCK(6, 0xA412);
+        AX = DS(SCREEN_Y);
+        AX = SUB(AX, AIM_CENTRE_Y);
+        PUSH(AX);
+        AX = DS(SCREEN_X);
+        AX = SUB(AX, AIM_CENTRE_X);
+        PUSH(AX);
+        /* distance of the point from the aim window's centre */
+        CALL(0xA420, FN_DIST, 0xA423);   /* distance(dx, dy) */
+        BLOCK(4, 0xA423);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        CMP(AX, AIM_RADIUS);
+        if (JGE) goto lock_decided;
+        BLOCK(9, 0xA42A);
+        AX = 1;
+        /* WEAPON_LOCK = 1, FR_LOCKED = 1 */
+        PUT_DS(WEAPON_LOCK, AX);
+        PUT_LOC(FR_LOCKED, AX);
+        /* (-depth) >> 2 */
+        AX = DS(POINT_DEPTH);
+        AX = NEG(AX);
+        AX = SAR(AX, 2);
+        BX = IMUL3(LOC(FR_WEAPON_MODEL), WEAPON_TYPE_SIZE);
+        CMP(DS_AT(R_BX, WEAPON_TABLE + WT_RANGE), AX);
+        if (JLE) goto lock_decided;
+        BLOCK(2, 0xA445);
+        /* tight lock */
+        PUT_LOC(FR_TIGHT, 1);
+    tight_lock:
+        BLOCK(2, 0xA405);
+        PUT_LOC(FR_MARKER_PEN, LOCK_PEN_TIGHT);
+        goto lock_decided;
+    weapon_unusable:
+        BLOCK(2, 0xA44C);
+        CMP(LOC(FR_WEAPON_MODEL), CAMERA_MODEL);
+        if (JE) goto lock_decided;
+        BLOCK(1, 0xA452);
+        PUT_LOC(FR_MARKER_PEN, LOCK_PEN_INEFFECTIVE);
+    lock_decided:
+        /* The marker, if the target projected: size effect + 5 (9 when the
+         * weapon is ineffective), locked or not, in FR_MARKER_PEN. */
+        BLOCK(2, 0xA457);
+        CMP(DS(SCREEN_X), NOT_VISIBLE);
+        if (!JE) {
+            BLOCK(4, 0xA45E);
+            PUSH(LOC(FR_MARKER_PEN));
+            PUSH(LOC(FR_LOCKED));
+            CMP(LOC(FR_EFFECT), 0);
+            if (JE) {
+                BLOCK(1, 0xA472);
+                /* no effect: size 9 */
+                AX = LOCK_SIZE_INEFFECTIVE;
+            } else {
+                BLOCK(3, 0xA46A);
+                AX = LOC(FR_EFFECT);
+                /* size = effect + 5 */
+                AX = ADD(AX, 5);
+            }
+            BLOCK(3, 0xA475);
+            PUSH(AX);
+            PUSH(DS(SCREEN_Y));
+            PUSH(DS(SCREEN_X));
+            CALL(0xA47E, FN_MARKER, 0xA481);   /* marker(x, y, size, locked, colour) */
+            BLOCK(1, 0xA481);
+            DROP_ARGS(0x0A);
+        }
+        /* Model 0x1C also marks the point 0x80 ahead of the target along the
+         * aircraft's heading, at the aircraft's own altitude, with the diamond. */
+        BLOCK(2, 0xA484);
+        CMP(LOC(FR_WEAPON_MODEL), WEAPON_LGBOMB);
+        if (!JNE) {
+            BLOCK(3, 0xA48A);
+            /* the lead point: 0x80 ahead along the heading at the aircraft's altitude */
+            PUSH(DS(PLAYER_ALTITUDE));
+            PUSH(LEAD_DISTANCE);
+            PUSH(DS(PLAYER_HEADING));
+            CALL(0xA495, FN_VCOS, 0xA498);   /* cos(angle) * magnitude */
+            BLOCK(10, 0xA498);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            BX = DS(GROUND_TARGET);
+            BX = SHL(BX, TARGET_SHIFT);
+            AX = SUB(AX, DS_AT(R_BX, TARGETS + T_Y));
+            AX = NEG(AX);
+            PUSH(AX);
+            PUSH(LEAD_DISTANCE);
+            PUSH(DS(PLAYER_HEADING));
+            SI = BX;
+            CALL(0xA4B1, FN_VSIN, 0xA4B4);   /* sin(angle) * magnitude */
+            BLOCK(4, 0xA4B4);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            AX = ADD(AX, DS_AT(R_SI, TARGETS + T_X));
+            PUSH(AX);
+            CALL(0xA4BB, FN_PROJECT, 0xA4BE);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+            BLOCK(3, 0xA4BE);
+            DROP_ARGS(6);
+            CMP(DS(SCREEN_X), NOT_VISIBLE);
+            if (!JE) {
+                /* the diamond goes there */
+                CALL(0xA4C8, FN_DIAMOND, 0xA4CB);   /* diamond() at SCREEN_X, SCREEN_Y */
+            }
+        }
+    } else {
+    no_ground_arm:
+        BLOCK(1, 0xA31F);
+    }
+
+    /* ------------------------------------------------------------------
+     * 4b. The detection ring.  When something detected the aircraft
+     *     (DETECT_COUNTDOWN > 0) and it was a ground site (DETECTOR >= 0), the
+     *     site is projected and ringed with a marker that closes as the
+     *     countdown runs, labelled with its name.  (Reimp frame_weapon_lock,
+     *     0x0A4CB.)  For an air unit (DETECTOR < 0) the same is done at the end,
+     *     in section 9.
+     * ---------------------------------------------------------------- */
+detection_ring:
+    BLOCK(2, 0xA4CB);
+    CMP(DS(DETECT_COUNTDOWN), 0);
+    if (!JLE) {
+        BLOCK(2, 0xA4D2);
+        CMP(DS(DETECTOR), 0);
+        if (!JL) {
+            BLOCK(5, 0xA4D9);
+            /* the ringed site, projected at z = 0 */
+            PUSH(0);
+            BX = DS(DETECTOR);
+            BX = SHL(BX, TARGET_SHIFT);
+            PUSH(DS_AT(R_BX, TARGETS + T_Y));
+            PUSH(DS_AT(R_BX, TARGETS + T_X));
+            CALL(0xA4EA, FN_PROJECT, 0xA4ED);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+            BLOCK(10, 0xA4ED);
+            DROP_ARGS(6);
+            /* margin = S - DETECT_COUNTDOWN: the marker closes in as the countdown runs */
+            AX = DS(FRAME_RATE);
+            AX = SUB(AX, DS(DETECT_COUNTDOWN));
+            PUSH(AX);
+            PUSH(DS(LABEL_COLOUR));
+            BX = DS(DETECTOR);
+            BX = SHL(BX, TARGET_SHIFT);
+            BX = DS_AT(R_BX, TARGETS + T_NAME);
+            BX = SHL(BX, 1);
+            PUSH(DS_AT(R_BX, NAME_TABLE));
+            /* the site's name */
+            CALL(0xA50D, FN_MARKER_LABEL, 0xA510);   /* marker_label(string, colour, margin) */
+            BLOCK(1, 0xA510);
+            DROP_ARGS(6);
+        }
+    }
+
+
+    /* ==================================================================
+     * 5. The target camera display (the right-hand display, 0x13).  Both text
+     *    blocks' mode is set to 4 for the length of the pass (restored to 2 in
+     *    section 9); the camera-live bit is cleared.  Everything here needs the
+     *    right display to be 0x13 and the target mode to be 0 or 2; otherwise
+     *    it goes straight to the trigger latch.  (Reimp recon.c recon_prepare
+     *    and recon_step.)
+     * ================================================================ */
+    BLOCK(7, 0xA513);
+    /* camera not live, text modes for this pass */
+    PUT_DS8(DISPLAY_FLAGS, AND8(DS8(DISPLAY_FLAGS), 0xFD));
+    BX = DS(BLOCK_PTR_0);
+    PUT_DS_AT(R_BX, PB_MODE, MODE_IN_PASS);
+    BX = DS(BLOCK_PTR_1);
+    PUT_DS_AT(R_BX, PB_MODE, MODE_IN_PASS);
+    CMP(DS(RIGHT_DISPLAY), DISPLAY_TARGET_CAMERA);
+    if (!JE) { BLOCK(1, 0xA531); goto trigger_latch; }
+    BLOCK(2, 0xA534);
+    CMP(DS(TARGET_MODE), TARGET_MODE_MIXED);
+    if (!JE) {
+        BLOCK(2, 0xA53B);
+        CMP(DS(TARGET_MODE), TARGET_MODE_GROUND);
+        if (!JE) { BLOCK(1, 0xA542); goto trigger_latch; }
+    }
+
+    /* ------------------------------------------------------------------
+     * 5a. The designation request (bit 0 of DISPLAY_FLAGS, the "n" key): a
+     *     point is taken ahead of the aircraft along its heading - 640 units, or
+     *     when looking down the distance at which the line of sight meets the
+     *     ground, alt * cos(pitch) / (0x20 * sin(-pitch) + 1) - and the scene
+     *     is asked what is there.  In mode 2 any target found is taken; in mode
+     *     0 only one whose flags (bits 8 and 10) say it can be photographed
+     *     (flags & 0x501 > 1).  A taken target becomes GROUND_TARGET and the
+     *     request is cleared; a miss keeps the request for the next pass.
+     * ---------------------------------------------------------------- */
+    BLOCK(2, 0xA545);
+    TEST8(DS8(DISPLAY_FLAGS), 1);
+    if (JNE) {
+        BLOCK(5, 0xA54F);
+        /* FR_CANDIDATE = none */
+        PUT_LOC(FR_CANDIDATE, NO_TARGET);
+        AX = DS(PLAYER_PITCH);
+        PUT_LOC(FR_AIM_PITCH, AX);
+        AX = OR(AX, AX);
+        if (!JGE) {
+            BLOCK(3, 0xA55E);
+            PUSH(SIGHT_SLOPE_SCALE);
+            AX = NEG(AX);
+            PUSH(AX);
+            CALL(0xA563, FN_VSIN, 0xA566);   /* sin(angle) * magnitude */
+            BLOCK(7, 0xA566);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            CX = AX;
+            CX = INC(CX);
+            PUSH(DS(PLAYER_ALTITUDE));
+            PUSH(LOC(FR_AIM_PITCH));
+            SI = CX;
+            CALL(0xA574, FN_VCOS, 0xA577);   /* cos(angle) * magnitude */
+            BLOCK(4, 0xA577);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            SIGN_EXTEND_AX();
+            /* range to the ground along the sight line */
+            IDIV(SI, 0xA57A, 0xA57C);
+            BLOCK(2, 0xA57C);
+            PUT_LOC(FR_AIM_RANGE, AX);
+        } else {
+            BLOCK(1, 0xA581);
+            PUT_LOC(FR_AIM_RANGE, DEFAULT_AIM_RANGE);
+        }
+        BLOCK(2, 0xA586);
+        /* the aim point ahead: y first */
+        PUSH(LOC(FR_AIM_RANGE));
+        PUSH(DS(PLAYER_HEADING));
+        CALL(0xA58D, FN_VCOS, 0xA590);   /* cos(angle) * magnitude */
+        BLOCK(8, 0xA590);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        AX = SUB(AX, DS(PLAYER_Y));
+        AX = NEG(AX);
+        PUT_LOC(FR_AIM_Y, AX);
+        PUSH(AX);
+        PUSH(LOC(FR_AIM_RANGE));
+        PUSH(DS(PLAYER_HEADING));
+        CALL(0xA5A3, FN_VSIN, 0xA5A6);   /* sin(angle) * magnitude */
+        BLOCK(5, 0xA5A6);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        /* and x */
+        AX = ADD(AX, DS(PLAYER_X));
+        PUT_LOC(FR_AIM_RANGE, AX);
+        PUSH(AX);
+        /* what is there? */
+        CALL(0xA5B0, FN_SCENE_HIT, 0xA5B3);   /* scene_hit(x, y) -> target index or -1 */
+        BLOCK(5, 0xA5B3);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        PUT_LOC(FR_CANDIDATE, AX);
+        AX = INC(AX);
+        if (!JE) {
+            BLOCK(2, 0xA5BB);
+            CMP(DS(TARGET_MODE), TARGET_MODE_GROUND);
+            if (JNE) goto accept_target;
+            BLOCK(6, 0xA5C2);
+            BX = LOC(FR_CANDIDATE);
+            BX = SHL(BX, TARGET_SHIFT);
+            AX = DS_AT(R_BX, TARGETS + T_FLAGS);
+            /* mode 0 needs (flags & 0x501) > 1 */
+            AX = AND(AX, PHOTO_TARGET_MASK);
+            CMP(AX, 1);
+            if (!JLE) {
+            accept_target:
+                BLOCK(4, 0xA5D4);
+                /* take it as the target */
+                AX = LOC(FR_CANDIDATE);
+                PUT_DS(GROUND_TARGET, AX);
+                CMP(DS(LAST_DAMAGED_TARGET), 0);
+                if (JE) { BLOCK(1, 0xA5E1); PUT_DS(LAST_DAMAGED_TARGET, NO_TARGET); }
+                BLOCK(1, 0xA5E7);
+                /* request cleared */
+                PUT_DS8(DISPLAY_FLAGS, AND8(DS8(DISPLAY_FLAGS), 0xFE));
+            }
+        }
+    } else {
+        BLOCK(1, 0xA54C);
+    }
+
+    /* ------------------------------------------------------------------
+     * 5b. The shutter's cool-down runs down by one each pass.  With no target
+     *     designated the seeker lamp is drawn (mode flag 1) and the display is
+     *     done.
+     * ---------------------------------------------------------------- */
+    BLOCK(2, 0xA5EC);
+    CMP(DS(SHUTTER_TIMER), 0);
+    if (!JE) {
+        BLOCK(1, 0xA5F3);
+        /* the shutter cool-down runs down */
+        PUT_DS(SHUTTER_TIMER, DEC(DS(SHUTTER_TIMER)));
+    }
+    BLOCK(2, 0xA5F7);
+    CMP(DS(GROUND_TARGET), NO_TARGET);
+    if (!JNE) {
+        BLOCK(2, 0xA5FE);
+        /* no target: the seeker lamp only */
+        PUSH(LOC(FR_TIGHT));
+        PUSH(1);
+        CALL(0xA603, FN_SEEKER_LAMP, 0xA606);   /* seeker_lamp(mode_flag, tight) */
+    lamp_done:
+        BLOCK(3, 0xA606);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        goto trigger_latch;
+    }
+    BLOCK(8, 0xA60B);
+    SET_AL(DS8(GROUND_TARGET));
+    /* FR_TARGET = target index */
+    AX = AND(AX, 0x7F);
+    PUT_LOC(FR_TARGET, AX);
+    BX = DS(SELECTED_STATION);
+    BX = SHL(BX, STATION_SHIFT);
+    BX = IMUL3(DS_AT(R_BX, STATIONS + ST_KIND), RACK_SIZE);
+    CMP(DS_AT(R_BX, RACKS + RK_MODEL), CAMERA_MODEL);
+    if (JNE) goto not_the_camera;
+    BLOCK(2, 0xA627);
+    TEST8(DS8(SWITCHES), 4);
+    if (JNE) {
+        /* --------------------------------------------------------------
+         * 5c. The reconnaissance camera: the selected rack's model is -1 (the
+         *     camera store) and the bay is open.  The camera is live (bit 1 of
+         *     DISPLAY_FLAGS) and CAMERA_DRAWN is set.  PHOTO_SUITABLE is built
+         *     from the two objectives: bit i is set when objective i is a
+         *     photograph of this target (kind 1, not destroyed) and the
+         *     aircraft is lined up on it - the sum of the heading error, the
+         *     depression error and the range, each scaled, must be below
+         *     (4 - DIFFICULTY) << 7.  (Reimp recon.c recon_prepare,
+         *     docs/re/43-reconnaissance.md.)
+         * ------------------------------------------------------------ */
+        BLOCK(6, 0xA631);
+        /* the camera is live */
+        PUT_DS8(DISPLAY_FLAGS, OR8(DS8(DISPLAY_FLAGS), 2));
+        /* CAMERA_DRAWN = 1 */
+        PUT_DS(CAMERA_DRAWN, 1);
+        /* PHOTO_SUITABLE = 0, objective index = 0 */
+        AX = SUB(AX, AX);
+        PUT_DS(PHOTO_SUITABLE, AX);
+        PUT_LOC(FR_OBJECTIVE, AX);
+        for (;;) {
+            BLOCK(2, 0xA6BE);
+            CMP(LOC(FR_OBJECTIVE), 2);
+            if (!JL) break;
+            BLOCK(3, 0xA646);
+            BX = IMUL3(LOC(FR_OBJECTIVE), OBJECTIVE_SIZE);
+            /* a photograph objective? */
+            CMP(DS_AT(R_BX, OBJECTIVES + O_KIND), OBJECTIVE_KIND_PHOTO);
+            if (JNE) goto next_objective;
+            BLOCK(3, 0xA651);
+            AX = LOC(FR_TARGET);
+            /* of this target? */
+            CMP(DS_AT(R_BX, OBJECTIVES + O_TARGET), AX);
+            if (JNE) goto next_objective;
+            BLOCK(4, 0xA65A);
+            BX = AX;
+            BX = SHL(BX, TARGET_SHIFT);
+            /* not already destroyed? */
+            TEST8(DS8_AT(R_BX, TARGETS + T_FLAGS), 0x80);
+            if (JNE) goto next_objective;
+            BLOCK(1, 0xA666);
+            PUSH(AX);
+            /* range to the target (also leaves its bearing) */
+            CALL(0xA667, FN_TARGET_RANGE, 0xA66A);   /* target_range(target) */
+            BLOCK(5, 0xA66A);
+            DISCARD_ARG();
+            PUT_LOC(FR_TARGET_RANGE, AX);
+            AX = DS(TARGET_BEARING);
+            /* heading error = |bearing - heading| >> 4 */
+            AX = SUB(AX, DS(PLAYER_HEADING));
+            PUSH(AX);
+            CALL(0xA676, FN_ABS, 0xA679);   /* abs(v) */
+            BLOCK(8, 0xA679);
+            DISCARD_ARG();
+            AX = SAR(AX, ERROR_SHIFT);
+            PUSH(LOC(FR_TARGET_RANGE));
+            CX = DS(PLAYER_ALTITUDE);
+            CX = SHR(CX, Z_SHIFT);
+            CX = NEG(CX);
+            PUSH(CX);
+            SI = AX;
+            /* bearing of (-(altitude >> 5), range) */
+            CALL(0xA68C, FN_BEARING, 0xA68F);   /* bearing(dx, dy) */
+            BLOCK(5, 0xA68F);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            /* depression error = |that - pitch + CAMERA_TILT| >> 4 */
+            AX = SUB(AX, DS(PLAYER_PITCH));
+            AX = ADD(AX, CAMERA_TILT);
+            PUSH(AX);
+            CALL(0xA699, FN_ABS, 0xA69C);   /* abs(v) */
+            BLOCK(9, 0xA69C);
+            DISCARD_ARG();
+            AX = SAR(AX, ERROR_SHIFT);
+            /* sum = heading error + depression error + range */
+            SI = ADD(SI, AX);
+            SI = ADD(SI, LOC(FR_TARGET_RANGE));
+            AX = DIFFICULTY_RANGE;
+            AX = SUB(AX, DS(DIFFICULTY));
+            /* tolerance = (4 - DIFFICULTY) << 7 */
+            AX = SHL(AX, TOLERANCE_SHIFT);
+            CMP(SI, AX);
+            if (JGE) goto next_objective;
+            BLOCK(3, 0xA6B3);
+            /* objective i is satisfied */
+            AX = LOC(FR_OBJECTIVE);
+            AX = INC(AX);
+            PUT_DS(PHOTO_SUITABLE, OR(DS(PHOTO_SUITABLE), AX));
+        next_objective:
+            BLOCK(1, 0xA6BB);
+            PUT_LOC(FR_OBJECTIVE, INC(LOC(FR_OBJECTIVE)));
+        }
+
+        /* The shutter.  With the cool-down at zero, a page showing, and the
+         * release trigger pressed now or at the end of the previous pass: the
+         * cool-down is set to 4, the picture area (0xA9,0x6E)-(0xF5,0xA9) is
+         * blanked, "Frame N" is written at (0xD1, 0x8E) in colour 0x0F, and
+         * sound 0x12 (priority 2) is requested.  (Reimp recon_step.) */
+        BLOCK(2, 0xA6C4);
+        CMP(DS(SHUTTER_TIMER), 0);
+        if (JE) {
+            BLOCK(2, 0xA6CB);
+            CMP8(DS8(SHOWN_PAGE), 0);
+            if (!JE) {
+                BLOCK(1, 0xA6D2);
+                /* the release trigger */
+                PUSH(BUTTON_RELEASE);
+                CALL(0xA6D4, FN_BUTTON, 0xA6D7);   /* button(n) */
+                BLOCK(3, 0xA6D7);
+                DISCARD_ARG();
+                AX = OR(AX, AX);
+                if (JNE) goto shutter;
+                BLOCK(2, 0xA6DC);
+                CMP(DS(TRIGGER_LAST), AX);
+                if (!JE) {
+                shutter:
+                    BLOCK(2, 0xA6E2);
+                    /* cool-down = 4 */
+                    PUT_DS(SHUTTER_TIMER, SHUTTER_COOLDOWN);
+                    PUSH(0);
+                    CALL(0xA6EA, FN_SET_PEN, 0xA6ED);   /* set_pen(colour): both page blocks */
+                    BLOCK(6, 0xA6ED);
+                    DISCARD_ARG();
+                    PUSH(PHOTO_BOX_Y1);
+                    PUSH(PHOTO_BOX_X1);
+                    PUSH(PHOTO_BOX_Y0);
+                    PUSH(PHOTO_BOX_X0);
+                    PUSH(DS(BLOCK_PTR_1));
+                    CALL_FAR(0xA6FD, 0xA702);   /* box(block, x0, y0, x1, y1): a filled rectangle in the pen colour */
+                    BLOCK(3, 0xA702);
+                    DROP_ARGS(0x0A);
+                    /* "Frame " + counter */
+                    PUSH(TXT_FRAME);
+                    PUSH(MESSAGE);
+                    CALL(0xA70B, FN_STRCPY, 0xA70E);   /* strcpy(dest, src) */
+                    BLOCK(6, 0xA70E);
+                    DISCARD_ARG();
+                    DISCARD_ARG();
+                    PUSH(DECIMAL);
+                    PUSH(NUMBER_BUFFER);
+                    /* one more photograph */
+                    PUT_DS(PHOTO_COUNT, INC(DS(PHOTO_COUNT)));
+                    PUSH(DS(PHOTO_COUNT));
+                    CALL(0xA71D, FN_ITOA, 0xA720);   /* itoa(value, buffer, radix) */
+                    BLOCK(3, 0xA720);
+                    DROP_ARGS(6);
+                    PUSH(AX);
+                    PUSH(MESSAGE);
+                    CALL(0xA727, FN_STRCAT, 0xA72A);   /* strcat(dest, src) */
+                    BLOCK(6, 0xA72A);
+                    DISCARD_ARG();
+                    DISCARD_ARG();
+                    PUSH(FRAME_TEXT_PEN);
+                    PUSH(FRAME_TEXT_Y);
+                    PUSH(FRAME_TEXT_X);
+                    PUSH(MESSAGE);
+                    /* drawn at (0xD1, 0x8E) */
+                    CALL(0xA737, FN_TEXT, 0xA73A);   /* text(string, x, y, colour) */
+                    BLOCK(3, 0xA73A);
+                    DROP_ARGS(8);
+                    PUSH(SOUND_PRIORITY);
+                    PUSH(SOUND_SHUTTER);
+                    CALL(0xA741, FN_SOUND, 0xA744);   /* sound(id, priority) */
+                    BLOCK(2, 0xA744);
+                    DISCARD_ARG();
+                    DISCARD_ARG();
+                }
+            }
+        }
+
+        /* With the cool-down at zero the live picture is drawn: the target's
+         * image (model from FN_IMAGE_MODEL, drawn in mode 3) and the caption
+         * "Camera" / six spaces blinking at (0xC5, 0xC1) in an opaque block. */
+        BLOCK(2, 0xA746);
+        CMP(DS(SHUTTER_TIMER), 0);
+        if (JE) {
+            BLOCK(14, 0xA74D);
+            AX = DS(PLAYER_PITCH);
+            /* CAMERA_PITCH = pitch - CAMERA_TILT */
+            AX = SUB(AX, CAMERA_TILT);
+            PUT_DS(CAMERA_PITCH, AX);
+            PUSH(ZOOM_CAMERA);
+            PUSH(IMAGE_MODE_PHOTO);
+            PUSH(0);
+            PUSH(0);
+            PUSH(0);
+            PUSH(0);
+            BX = LOC(FR_TARGET);
+            BX = SHL(BX, TARGET_SHIFT);
+            PUSH(DS_AT(R_BX, TARGETS + T_Y));
+            PUSH(DS_AT(R_BX, TARGETS + T_X));
+            PUSH(LOC(FR_TARGET));
+            /* the target's model */
+            CALL(0xA773, FN_IMAGE_MODEL, 0xA776);   /* image_model(target) */
+            BLOCK(2, 0xA776);
+            DISCARD_ARG();
+            PUSH(AX);
+            /* the live picture: mode 3, no zoom */
+            CALL(0xA778, FN_CAMERA_IMAGE, 0xA77B);   /* camera_image(model, x, y, z, heading, pitch, roll, mode, zoom) */
+            BLOCK(10, 0xA77B);
+            DROP_ARGS(0x12);
+            /* caption in an opaque block */
+            BX = DS(BLOCK_PTR_0);
+            PUT_DS_AT(R_BX, PB_BACKDROP, TEXT_BACKDROP);
+            BX = DS(BLOCK_PTR_0);
+            PUT_DS_AT(R_BX, PB_MODE, MODE_OPAQUE);
+            PUSH(CAPTION_PEN);
+            PUSH(CAPTION_Y);
+            PUSH(CAPTION_X);
+            /* blinks */
+            TEST8(DS8(FRAME_COUNT), 1);
+            if (JE) {
+                BLOCK(1, 0xA7A4);
+                AX = TXT_CAMERA;
+            } else {
+                BLOCK(2, 0xA79F);
+                AX = TXT_SIX_SPACES;
+            }
+            BLOCK(2, 0xA7A7);
+            PUSH(AX);
+            PUSH(DS(BLOCK_PTR_0));
+            CALL(0xA7AC, FN_TEXT_IN_BLOCK, 0xA7AF);   /* text_in_block(block, string, x, y, colour) */
+            BLOCK(1, 0xA7AF);
+            DROP_ARGS(0x0A);
+        }
+
+        /* One frame after the shutter (cool-down 3) the picture is judged: if
+         * PHOTO_SUITABLE is non-zero, "Target photographed." is shown and each
+         * objective whose bit is set is marked done and logged (event 0x8A for
+         * the primary, 0x4A for the secondary), once only. */
+        BLOCK(2, 0xA7B2);
+        CMP(DS(SHUTTER_TIMER), SHUTTER_JUDGE);
+        if (!JE) { BLOCK(1, 0xA7B9); goto trigger_latch; }
+        BLOCK(2, 0xA7BC);
+        CMP(DS(PHOTO_SUITABLE), 0);
+        if (!JNE) { BLOCK(1, 0xA7C3); goto trigger_latch; }
+        BLOCK(1, 0xA7C6);
+        /* message "Target photographed." */
+        PUSH(TXT_PHOTOGRAPHED);
+        CALL(0xA7C9, FN_MESSAGE, 0xA7CC);   /* message(string) */
+        BLOCK(3, 0xA7CC);
+        DISCARD_ARG();
+        TEST8(DS8(PHOTO_SUITABLE), 1);
+        if (!JE) {
+            BLOCK(2, 0xA7D4);
+            TEST8(DS8(DISPLAY_FLAGS), PRIMARY_DONE);
+            if (JE) {
+                BLOCK(1, 0xA7DB);
+                PUSH(0);
+                /* mark the primary objective */
+                CALL(0xA7DD, FN_MARK_OBJECTIVE, 0xA7E0);   /* mark_objective(i): 0 if already marked */
+                BLOCK(3, 0xA7E0);
+                DISCARD_ARG();
+                PUSH(LOC(FR_TARGET));
+                PUSH(EVENT_PHOTO_PRIMARY);
+                /* and log it */
+                CALL(0xA7E7, FN_LOG_EVENT, 0xA7EA);   /* log_event(kind, arg) */
+                BLOCK(2, 0xA7EA);
+                DISCARD_ARG();
+                DISCARD_ARG();
+            }
+        }
+        BLOCK(2, 0xA7EC);
+        TEST8(DS8(PHOTO_SUITABLE), 2);
+        if (!JNE) { BLOCK(1, 0xA7F3); goto trigger_latch; }
+        BLOCK(2, 0xA7F6);
+        TEST8(DS8(DISPLAY_FLAGS), SECONDARY_DONE);
+        if (!JE) { BLOCK(1, 0xA7FD); goto trigger_latch; }
+        BLOCK(1, 0xA800);
+        PUSH(1);
+        /* mark the secondary objective */
+        CALL(0xA802, FN_MARK_OBJECTIVE, 0xA805);   /* mark_objective(i): 0 if already marked */
+        BLOCK(3, 0xA805);
+        DISCARD_ARG();
+        PUSH(LOC(FR_TARGET));
+        PUSH(EVENT_PHOTO_SECONDARY);
+        /* and log it */
+        CALL(0xA80B, FN_LOG_EVENT, 0xA80E);   /* log_event(kind, arg) */
+        BLOCK(1, 0xA80E);
+        goto lamp_done;
+    }
+
+    /* ------------------------------------------------------------------
+     * 5d. Any other store, or the bay closed: the designated target's image
+     *     is drawn in the display.  If a weapon of type 0x1B (the AGM-65) is in
+     *     flight in the slot SEEKER_SLOT (> 8) and SEEKER_VIEW_OFF is clear,
+     *     the picture is the weapon's own seeker view (mode 4, caption
+     *     "Missile" blinking); otherwise it is the ordinary view (mode 1) with
+     *     the target's range, name and place.  AX still holds the target index
+     *     from A611.  (Reimp recon.c recon_target_image, recon_target_tail.)
+     * ---------------------------------------------------------------- */
+not_the_camera:
+    BLOCK(1, 0xA62E);
+    BLOCK(2, 0xA811);
+    CMP(DS(SEEKER_VIEW_OFF), 0);
+    if (!JE) { BLOCK(1, 0xA818); goto ordinary_view; }
+    BLOCK(2, 0xA81B);
+    CMP(DS(SEEKER_SLOT), SEEKER_SLOT_FLOOR);
+    if (JLE) goto ordinary_view;
+    BLOCK(3, 0xA822);
+    BX = IMUL3(DS(SEEKER_SLOT), WEAPON_SIZE);
+    CMP(DS_AT(R_BX, WEAPONS + WP_TTL), 0);
+    if (JE) goto ordinary_view;
+    BLOCK(2, 0xA82E);
+    CMP(DS_AT(R_BX, WEAPONS + WP_TYPE), WEAPON_AGM65);
+    if (JNE) goto ordinary_view;
+    BLOCK(11, 0xA835);
+    /* the seeker view: mode 4, zoom -1 */
+    PUSH(ZOOM_TARGET_VIEW);
+    PUSH(IMAGE_MODE_SEEKER);
+    PUSH(0);
+    PUSH(0);
+    PUSH(0);
+    PUSH(0);
+    BX = AX;
+    BX = SHL(BX, TARGET_SHIFT);
+    PUSH(DS_AT(R_BX, TARGETS + T_Y));
+    PUSH(DS_AT(R_BX, TARGETS + T_X));
+    PUSH(AX);
+    CALL(0xA84F, FN_IMAGE_MODEL, 0xA852);   /* image_model(target) */
+    BLOCK(2, 0xA852);
+    DISCARD_ARG();
+    PUSH(AX);
+    /* draw it */
+    CALL(0xA854, FN_CAMERA_IMAGE, 0xA857);   /* camera_image(model, x, y, z, heading, pitch, roll, mode, zoom) */
+    BLOCK(3, 0xA857);
+    DROP_ARGS(0x12);
+    PUSH(LOC(FR_TIGHT));
+    PUSH(0);
+    /* the seeker lamp, mode flag 0 */
+    CALL(0xA85F, FN_SEEKER_LAMP, 0xA862);   /* seeker_lamp(mode_flag, tight) */
+    BLOCK(11, 0xA862);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    BX = DS(BLOCK_PTR_0);
+    PUT_DS_AT(R_BX, PB_BACKDROP, TEXT_BACKDROP);
+    BX = DS(BLOCK_PTR_0);
+    PUT_DS_AT(R_BX, PB_MODE, MODE_OPAQUE);
+    PUSH(CAPTION_PEN);
+    PUSH(CAPTION_Y);
+    PUSH(CAPTION_X);
+    TEST8(DS8(FRAME_COUNT), 1);
+    if (JE) {
+        BLOCK(1, 0xA88A);
+        AX = TXT_MISSILE;
+    } else {
+        BLOCK(2, 0xA885);
+        AX = TXT_SEVEN_SPACES;
+    }
+    BLOCK(2, 0xA88D);
+    PUSH(AX);
+    PUSH(DS(BLOCK_PTR_0));
+    CALL(0xA892, FN_TEXT_IN_BLOCK, 0xA895);   /* text_in_block(block, string, x, y, colour) */
+view_close:
+    BLOCK(2, 0xA895);
+    DROP_ARGS(0x0A);
+    goto trigger_latch;
+
+    /* The ordinary view: image (mode 1), seeker lamp, view caption, "Range
+     * n.n km" at (0xB5, 0x9B), the target's name centred at y 0x70, and when the
+     * target's place has a name " at <place>" centred at y 0x76; each text in
+     * the HUD pen, or colour 0 when LOW_DETAIL (every group that tests LOW_DETAIL
+     * and then loads HUD_PEN or zeroes AX is that choice).  Then, by target mode: mode 0
+     * draws the size-8 marker on the target; otherwise the caption "Primary
+     * Target" / "Secondary Target" for the objectives' targets, or a blinking
+     * "No Target" for a target that is neither. */
+ordinary_view:
+    BLOCK(11, 0xA89B);
+    /* the ordinary view: mode 1, zoom -1 */
+    PUSH(ZOOM_TARGET_VIEW);
+    PUSH(IMAGE_MODE_TARGET);
+    PUSH(0);
+    PUSH(0);
+    PUSH(0);
+    PUSH(0);
+    BX = AX;
+    BX = SHL(BX, TARGET_SHIFT);
+    PUSH(DS_AT(R_BX, TARGETS + T_Y));
+    PUSH(DS_AT(R_BX, TARGETS + T_X));
+    PUSH(AX);
+    CALL(0xA8B5, FN_IMAGE_MODEL, 0xA8B8);   /* image_model(target) */
+    BLOCK(2, 0xA8B8);
+    DISCARD_ARG();
+    PUSH(AX);
+    /* draw it */
+    CALL(0xA8BA, FN_CAMERA_IMAGE, 0xA8BD);   /* camera_image(model, x, y, z, heading, pitch, roll, mode, zoom) */
+    BLOCK(3, 0xA8BD);
+    DROP_ARGS(0x12);
+    PUSH(LOC(FR_TIGHT));
+    PUSH(1);
+    /* the seeker lamp, mode flag 1 */
+    CALL(0xA8C5, FN_SEEKER_LAMP, 0xA8C8);   /* seeker_lamp(mode_flag, tight) */
+    BLOCK(2, 0xA8C8);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    /* the view caption */
+    CALL(0xA8CA, FN_CAMERA_VIEW, 0xA8CD);   /* view_caption() */
+    BLOCK(1, 0xA8CD);
+    /* range to the target */
+    PUSH(LOC(FR_TARGET));
+    CALL(0xA8D0, FN_TARGET_RANGE, 0xA8D3);   /* target_range(target) */
+    BLOCK(2, 0xA8D3);
+    DISCARD_ARG();
+    PUSH(AX);
+    /* "Range n.n km" */
+    CALL(0xA8D5, FN_RANGE_TEXT, 0xA8D8);   /* range_text(range) into MESSAGE */
+    BLOCK(3, 0xA8D8);
+    DISCARD_ARG();
+    CMP(DS(LOW_DETAIL), 0);
+    if (JE) {
+        BLOCK(2, 0xA8E4);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+    } else {
+        BLOCK(2, 0xA8E0);
+        AX = SUB(AX, AX);
+    }
+    BLOCK(4, 0xA8E8);
+    PUSH(AX);
+    PUSH(RANGE_TEXT_Y);
+    PUSH(RANGE_TEXT_X);
+    PUSH(MESSAGE);
+    /* at (0xB5, 0x9B) */
+    CALL(0xA8F2, FN_TEXT, 0xA8F5);   /* text(string, x, y, colour) */
+    BLOCK(8, 0xA8F5);
+    DROP_ARGS(8);
+    BX = LOC(FR_TARGET);
+    BX = SHL(BX, TARGET_SHIFT);
+    SET_BL(DS8_AT(R_BX, TARGETS + T_OBJECT));
+    BX = AND(BX, 0x7F);
+    BX = SHL(BX, 1);
+    PUSH(DS_AT(R_BX, NAME_TABLE));
+    PUSH(MESSAGE);
+    /* MESSAGE = the target's name */
+    CALL(0xA90E, FN_STRCPY, 0xA911);   /* strcpy(dest, src) */
+    BLOCK(4, 0xA911);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    CMP(DS(LOW_DETAIL), 0);
+    if (JE) {
+        BLOCK(2, 0xA91E);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+    } else {
+        BLOCK(2, 0xA91A);
+        AX = SUB(AX, AX);
+    }
+    BLOCK(4, 0xA922);
+    PUT_LOC(FR_TEXT_PEN, AX);
+    PUSH(AX);
+    PUSH(NAME_Y);
+    PUSH(MESSAGE);
+    /* centred at y 0x70: x = 0xCD - 2 * length */
+    CALL(0xA92B, FN_STRLEN, 0xA92E);   /* strlen(s) */
+    BLOCK(6, 0xA92E);
+    DISCARD_ARG();
+    AX = SHL(AX, 1);
+    AX = SUB(AX, NAME_CENTRE_X);
+    AX = NEG(AX);
+    PUSH(AX);
+    PUSH(MESSAGE);
+    CALL(0xA93A, FN_TEXT, 0xA93D);   /* text(string, x, y, colour) */
+    BLOCK(7, 0xA93D);
+    DROP_ARGS(8);
+    BX = LOC(FR_TARGET);
+    BX = SHL(BX, TARGET_SHIFT);
+    SI = DS_AT(R_BX, TARGETS + T_NAME);
+    SI = SHL(SI, 1);
+    PUSH(DS_AT(R_SI, NAME_TABLE));
+    SI = BX;
+    /* is there a place name? */
+    CALL(0xA952, FN_STRLEN, 0xA955);   /* strlen(s) */
+    BLOCK(3, 0xA955);
+    DISCARD_ARG();
+    AX = OR(AX, AX);
+    if (!JE) {
+        BLOCK(4, 0xA95A);
+        SET_BL(DS8_AT(R_SI, TARGETS + T_OBJECT));
+        BX = AND(BX, 0x7F);
+        BX = SHL(BX, 1);
+        PUSH(DS_AT(R_BX, NAME_TABLE));
+        CALL(0xA967, FN_STRLEN, 0xA96A);   /* strlen(s) */
+        BLOCK(4, 0xA96A);
+        DISCARD_ARG();
+        PUT_LOC(FR_TARGET_RECORD, SI);
+        AX = OR(AX, AX);
+        if (JE) { BLOCK(1, 0xA977); AX = TXT_EMPTY; } else { BLOCK(2, 0xA972); AX = TXT_AT; }
+        BLOCK(2, 0xA97A);
+        PUSH(AX);
+        PUSH(MESSAGE);
+        CALL(0xA97E, FN_STRCPY, 0xA981);   /* strcpy(dest, src) */
+        BLOCK(7, 0xA981);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        BX = LOC(FR_TARGET_RECORD);
+        BX = DS_AT(R_BX, TARGETS + T_NAME);
+        BX = SHL(BX, 1);
+        PUSH(DS_AT(R_BX, NAME_TABLE));
+        PUSH(MESSAGE);
+        /* MESSAGE += place name */
+        CALL(0xA993, FN_STRCAT, 0xA996);   /* strcat(dest, src) */
+        BLOCK(4, 0xA996);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        CMP(DS(LOW_DETAIL), 0);
+        if (JE) {
+            BLOCK(2, 0xA9A3);
+            SET_AL(DS8(HUD_PEN));
+            SIGN_EXTEND_AL();
+        } else {
+            BLOCK(2, 0xA99F);
+            AX = SUB(AX, AX);
+        }
+        BLOCK(3, 0xA9A7);
+        PUSH(AX);
+        PUSH(PLACE_Y);
+        PUSH(MESSAGE);
+        CALL(0xA9AD, FN_STRLEN, 0xA9B0);   /* strlen(s) */
+        BLOCK(6, 0xA9B0);
+        DISCARD_ARG();
+        AX = SHL(AX, 1);
+        AX = SUB(AX, NAME_CENTRE_X);
+        AX = NEG(AX);
+        PUSH(AX);
+        PUSH(MESSAGE);
+        /* centred at y 0x76 */
+        CALL(0xA9BC, FN_TEXT, 0xA9BF);   /* text(string, x, y, colour) */
+        BLOCK(1, 0xA9BF);
+        DROP_ARGS(8);
+    }
+    BLOCK(2, 0xA9C2);
+    CMP(DS(TARGET_MODE), TARGET_MODE_GROUND);
+    if (!JNE) {
+        BLOCK(5, 0xA9C9);
+        PUSH(0);
+        BX = DS(GROUND_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        PUSH(DS_AT(R_BX, TARGETS + T_Y));
+        PUSH(DS_AT(R_BX, TARGETS + T_X));
+        /* mode 0: the target projected at z = 0 */
+        CALL(0xA9DA, FN_PROJECT, 0xA9DD);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(8, 0xA9DD);
+        DROP_ARGS(6);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+        PUSH(AX);
+        PUSH(0);
+        PUSH(8);
+        PUSH(DS(SCREEN_Y));
+        PUSH(DS(SCREEN_X));
+        /* a marker of size 8 in the HUD pen */
+        CALL(0xA9F1, FN_MARKER, 0xA9F4);   /* marker(x, y, size, locked, colour) */
+        BLOCK(1, 0xA9F4);
+        goto view_close;
+    }
+    BLOCK(3, 0xA9F7);
+    /* the primary objective's target? */
+    AX = DS(OBJECTIVE0_TARGET);
+    /* (only while OBJECTIVE0_KIND < 5) */
+    CMP(DS(GROUND_TARGET), AX);
+    if (!JNE) {
+        BLOCK(2, 0xAA00);
+        CMP(DS(OBJECTIVE0_KIND), OBJECTIVE_KIND_AIR);
+        if (!JGE) {
+            BLOCK(2, 0xAA07);
+            CMP(DS(LOW_DETAIL), 0);
+            if (JE) {
+                BLOCK(2, 0xAA12);
+                SET_AL(DS8(HUD_PEN));
+                SIGN_EXTEND_AL();
+            } else {
+                BLOCK(2, 0xAA0E);
+                AX = SUB(AX, AX);
+            }
+            BLOCK(5, 0xAA16);
+            PUSH(AX);
+            PUSH(TARGET_CAPTION_Y);
+            PUSH(PRIMARY_CAPTION_X);
+            PUSH(TXT_PRIMARY_TARGET);
+            goto show_caption;
+        }
+    }
+    BLOCK(3, 0xAA22);
+    /* the secondary objective's target? */
+    AX = DS(OBJECTIVE1_TARGET);
+    CMP(DS(GROUND_TARGET), AX);
+    if (!JNE) {
+        BLOCK(2, 0xAA2B);
+        CMP(DS(LOW_DETAIL), 0);
+        if (JE) {
+            BLOCK(2, 0xAA36);
+            SET_AL(DS8(HUD_PEN));
+            SIGN_EXTEND_AL();
+        } else {
+            BLOCK(2, 0xAA32);
+            AX = SUB(AX, AX);
+        }
+        BLOCK(5, 0xAA3A);
+        PUSH(AX);
+        PUSH(TARGET_CAPTION_Y);
+        PUSH(SECONDARY_CAPTION_X);
+        PUSH(TXT_SECONDARY_TARGET);
+        goto show_caption;
+    }
+    BLOCK(2, 0xAA45);
+    /* otherwise "No Target", blinking: only on even frames */
+    TEST8(DS8(FRAME_COUNT), 1);
+    if (JNE) goto trigger_latch;
+    BLOCK(2, 0xAA4C);
+    /* when SETTING_3688 < 2 an object with OBJECT_HIDDEN_BITS counts */
+    CMP(DS(SETTING_3688), 2);
+    if (!JGE) {
+        BLOCK(6, 0xAA53);
+        BX = LOC(FR_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        SET_BL(DS8_AT(R_BX, TARGETS + T_OBJECT));
+        BX = AND(BX, 0x7F);
+        TEST8(DS8_AT(R_BX, OBJECT_CLASS), OBJECT_HIDDEN_BITS);
+        if (JNE) goto no_target_caption;
+    }
+    BLOCK(4, 0xAA67);
+    BX = LOC(FR_TARGET);
+    BX = SHL(BX, TARGET_SHIFT);
+    /* or a target whose flags say so */
+    TEST8(DS8_AT(R_BX, TARGETS + T_FLAGS + 1), TARGET_FLAGS_HI_MASK);
+    if (JNE) goto no_target_caption;
+    BLOCK(7, 0xAA74);
+    SI = DS_AT(R_BX, TARGETS + T_Y);
+    SI = SHR(SI, MAP_CELL_SHIFT);
+    SI = SHL(SI, GRID_ROW_SHIFT);
+    BX = DS_AT(R_BX, TARGETS + T_X);
+    BX = SHR(BX, MAP_CELL_SHIFT);
+    /* or one whose map cell has bit 0 set */
+    TEST8(DS8_AT2(GROUND_GRID), 1);
+    if (JE) goto trigger_latch;
+no_target_caption:
+    BLOCK(2, 0xAA8C);
+    CMP(DS(LOW_DETAIL), 0);
+    if (JE) {
+        BLOCK(2, 0xAA97);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+    } else {
+        BLOCK(2, 0xAA93);
+        AX = SUB(AX, AX);
+    }
+    BLOCK(4, 0xAA9B);
+    PUSH(AX);
+    PUSH(TARGET_CAPTION_Y);
+    PUSH(NO_TARGET_CAPTION_X);
+    PUSH(TXT_NO_TARGET);
+show_caption:
+    CALL(0xAAA4, FN_TEXT, 0xAAA7);   /* text(string, x, y, colour) */
+    BLOCK(1, 0xAAA7);
+    DROP_ARGS(8);
+
+    /* ==================================================================
+     * 6. The release trigger is read (button 1) and kept for the next pass:
+     *    the shutter above fires on the trigger now or then.
+     * ================================================================ */
+trigger_latch:
+    BLOCK(1, 0xAAAA);
+    /* the release trigger, kept for the next pass */
+    PUSH(BUTTON_RELEASE);
+    CALL(0xAAAC, FN_BUTTON, 0xAAAF);   /* button(n) */
+    BLOCK(4, 0xAAAF);
+    DISCARD_ARG();
+    /* TRIGGER_LAST */
+    PUT_DS(TRIGGER_LAST, AX);
+    CMP(DS(TARGET_MODE), TARGET_MODE_AIR);
+    if (!JE) { BLOCK(1, 0xAABA); goto air_camera; }
+
+    /* ==================================================================
+     * 7. Weapon lock on an air target (display mode 1).  Needs the forward
+     *    view and a selected air unit (AIR_TARGET, bit 7 of its low byte
+     *    clear) that projects on the screen.  The marker's size is 9; a
+     *    selected station that holds stores and whose weapon is class 7 (air
+     *    to air) colours it with the HUD pen when the point is within 0x30 of
+     *    (0xA0, 0x38), locks (WEAPON_LOCK = 1) when the range exceeds
+     *    depth / -8, and is "tight" past depth / -4 (the pen turns 0x29).
+     *    (Reimp frame_weapon_lock_air.)
+     * ================================================================ */
+    BLOCK(2, 0xAABD);
+    CMP(DS(VIEW_CODE), 0);
+    if (JNE) goto no_air_lock;
+    BLOCK(2, 0xAAC4);
+    TEST8(DS8(AIR_TARGET), AIR_TARGET_INVALID);
+    if (JNE) goto no_air_lock;
+    BLOCK(4, 0xAACB);
+    /* the selected air unit, projected */
+    BX = IMUL3(DS(AIR_TARGET), UNIT_SIZE);
+    PUSH(DS_AT(R_BX, UNITS + U_Z));
+    PUSH(DS_AT(R_BX, UNITS + U_Y));
+    PUSH(DS_AT(R_BX, UNITS + U_X));
+    CALL(0xAADC, FN_PROJECT, 0xAADF);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+    BLOCK(3, 0xAADF);
+    DROP_ARGS(6);
+    CMP(DS(SCREEN_X), NOT_VISIBLE);
+    if (JNE) {
+        BLOCK(9, 0xAAEC);
+        PUT_LOC(FR_AIR_MARKER_PEN, LOCK_PEN_INEFFECTIVE);
+        PUT_LOC(FR_AIR_LOCKED, 0);
+        BX = DS(SELECTED_STATION);
+        BX = SHL(BX, STATION_SHIFT);
+        SI = IMUL3(DS_AT(R_BX, STATIONS + ST_KIND), RACK_SIZE);
+        /* the selected rack's model */
+        AX = DS_AT(R_SI, RACKS + RK_MODEL);
+        PUT_LOC(FR_AIR_MODEL, AX);
+        /* stores left on the station */
+        CMP(DS_AT(R_BX, STATIONS + ST_COUNT), 0);
+        if (JE) goto air_marker;
+        BLOCK(3, 0xAB10);
+        BX = IMUL3(AX, WEAPON_TYPE_SIZE);
+        /* only class 7 (air to air) is marked in the pen */
+        CMP(DS_AT(R_BX, WEAPON_TABLE + WT_CLASS), CLASS_AIR_TO_AIR);
+        if (JNE) goto air_marker;
+        BLOCK(9, 0xAB1A);
+        /* marker colour = HUD pen */
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+        PUT_LOC(FR_AIR_MARKER_PEN, AX);
+        AX = DS(SCREEN_Y);
+        AX = SUB(AX, AIR_AIM_CENTRE_Y);
+        PUSH(AX);
+        AX = DS(SCREEN_X);
+        AX = SUB(AX, AIM_CENTRE_X);
+        PUSH(AX);
+        /* distance of the point from (0xA0, 0x38) */
+        CALL(0xAB2F, FN_DIST, 0xAB32);   /* distance(dx, dy) */
+        BLOCK(4, 0xAB32);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        CMP(AX, AIM_RADIUS);
+        if (JGE) goto air_marker;
+        BLOCK(7, 0xAB39);
+        AX = DS(POINT_DEPTH);
+        /* -depth */
+        AX = NEG(AX);
+        CX = AX;
+        /* (-depth) >> 3 */
+        AX = SAR(AX, 3);
+        BX = IMUL3(LOC(FR_AIR_MODEL), WEAPON_TYPE_SIZE);
+        CMP(DS_AT(R_BX, WEAPON_TABLE + WT_RANGE), AX);
+        if (JLE) goto air_marker;
+        BLOCK(6, 0xAB4D);
+        /* WEAPON_LOCK = 1, FR_AIR_LOCKED = 1 */
+        AX = 1;
+        PUT_DS(WEAPON_LOCK, AX);
+        PUT_LOC(FR_AIR_LOCKED, AX);
+        /* (-depth) >> 2 */
+        CX = SAR(CX, 2);
+        CMP(DS_AT(R_BX, WEAPON_TABLE + WT_RANGE), CX);
+        if (JLE) goto air_marker;
+        BLOCK(2, 0xAB5F);
+        /* tight lock */
+        PUT_LOC(FR_TIGHT, AX);
+        PUT_LOC(FR_AIR_MARKER_PEN, LOCK_PEN_TIGHT);
+    air_marker:
+        BLOCK(5, 0xAB67);
+        PUSH(LOC(FR_AIR_MARKER_PEN));
+        PUSH(LOC(FR_AIR_LOCKED));
+        PUSH(AIR_LOCK_SIZE);
+        PUSH(DS(SCREEN_Y));
+        PUSH(DS(SCREEN_X));
+        CALL(0xAB77, FN_MARKER, 0xAB7A);   /* marker(x, y, size, locked, colour) */
+        BLOCK(1, 0xAB7A);
+        DROP_ARGS(0x0A);
+    } else {
+    no_air_lock:
+        BLOCK(1, 0xAAE9);
+    }
+
+    /* ==================================================================
+     * 8. The air target camera: with the right display on 0x13 and mode 1, the
+     *    designated unit's image (mode 1, zoom 1, the unit's own position and
+     *    angles) is drawn, the seeker lamp, the view caption, the range, the
+     *    unit's two name strings at y 0x74 and, for unit 0 once the theatre is
+     *    hot (OBJECTIVE0_KIND >= 5), "Primary Target".  On odd frames, with
+     *    DETAIL_LEVEL non-zero, BEARING_MARK = ((0x8000 - pitch) * U_ENDURANCE)
+     *    >> 15, less half of |sin(roll) * that| (what reads it is not
+     *    established; the Reimp calls it the bearing marker's position).
+     *    (Reimp recon.c recon_target_image, recon_target_tail_air.)
+     * ================================================================ */
+air_camera:
+    BLOCK(2, 0xAB7D);
+    CMP(DS(RIGHT_DISPLAY), DISPLAY_TARGET_CAMERA);
+    if (!JE) { BLOCK(1, 0xAB84); goto window_modes; }
+    BLOCK(2, 0xAB87);
+    CMP(DS(TARGET_MODE), TARGET_MODE_AIR);
+    if (!JE) { BLOCK(1, 0xAB8E); goto window_modes; }
+    BLOCK(2, 0xAB91);
+    CMP(DS(AIR_TARGET), NO_TARGET);
+    if (!JNE) {
+        BLOCK(2, 0xAB98);
+        PUSH(LOC(FR_TIGHT));
+        PUSH(1);
+        CALL(0xAB9D, FN_SEEKER_LAMP, 0xABA0);   /* seeker_lamp(mode_flag, tight) */
+        BLOCK(3, 0xABA0);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        goto window_modes;
+    }
+    BLOCK(4, 0xABA5);
+    SET_AL(DS8(AIR_TARGET));
+    AX = AND(AX, 0x7F);
+    PUT_LOC(FR_TARGET, AX);
+    PUSH(AX);
+    /* ground class under the unit */
+    CALL(0xABAF, FN_AIR_GROUND, 0xABB2);   /* air_ground_class(unit) */
+    BLOCK(14, 0xABB2);
+    DISCARD_ARG();
+    /* zoom 1, mode 1 */
+    PUSH(ZOOM_AIR);
+    PUSH(IMAGE_MODE_TARGET);
+    BX = IMUL3(LOC(FR_TARGET), UNIT_SIZE);
+    PUSH(DS_AT(R_BX, UNITS + U_ROLL));
+    PUSH(DS_AT(R_BX, UNITS + U_PITCH));
+    PUSH(DS_AT(R_BX, UNITS + U_HEADING));
+    PUSH(DS_AT(R_BX, UNITS + U_Z));
+    PUSH(DS_AT(R_BX, UNITS + U_Y));
+    PUSH(DS_AT(R_BX, UNITS + U_X));
+    /* the unit type's model */
+    SI = DS_AT(R_BX, UNITS + U_TYPE);
+    SI = SHL(SI, UNIT_TYPE_SHIFT);
+    PUSH(DS_AT(R_SI, UNIT_TYPES + UT_MODEL));
+    SI = BX;
+    /* draw the unit's picture */
+    CALL(0xABE0, FN_CAMERA_IMAGE, 0xABE3);   /* camera_image(model, x, y, z, heading, pitch, roll, mode, zoom) */
+    BLOCK(3, 0xABE3);
+    DROP_ARGS(0x12);
+    PUSH(LOC(FR_TIGHT));
+    PUSH(1);
+    CALL(0xABEB, FN_SEEKER_LAMP, 0xABEE);   /* seeker_lamp(mode_flag, tight) */
+    BLOCK(2, 0xABEE);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    /* the view caption */
+    CALL(0xABF0, FN_CAMERA_VIEW, 0xABF3);   /* view_caption() */
+    BLOCK(6, 0xABF3);
+    /* range to the unit */
+    AX = DS(PLAYER_Y);
+    AX = SUB(AX, DS_AT(R_SI, UNITS + U_Y));
+    PUSH(AX);
+    AX = DS(PLAYER_X);
+    AX = SUB(AX, DS_AT(R_SI, UNITS + U_X));
+    PUSH(AX);
+    CALL(0xAC03, FN_DIST, 0xAC06);   /* distance(dx, dy) */
+    BLOCK(3, 0xAC06);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    PUSH(AX);
+    /* "Range n.n km" */
+    CALL(0xAC09, FN_RANGE_TEXT, 0xAC0C);   /* range_text(range) into MESSAGE */
+    BLOCK(3, 0xAC0C);
+    DISCARD_ARG();
+    CMP(DS(LOW_DETAIL), 0);
+    if (JE) {
+        BLOCK(2, 0xAC18);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+    } else {
+        BLOCK(2, 0xAC14);
+        AX = SUB(AX, AX);
+    }
+    BLOCK(4, 0xAC1C);
+    PUSH(AX);
+    PUSH(RANGE_TEXT_Y);
+    PUSH(RANGE_TEXT_X);
+    PUSH(MESSAGE);
+    CALL(0xAC26, FN_TEXT, 0xAC29);   /* text(string, x, y, colour) */
+    BLOCK(8, 0xAC29);
+    DROP_ARGS(8);
+    BX = IMUL3(LOC(FR_TARGET), UNIT_SIZE);
+    /* unit type */
+    AX = DS_AT(R_BX, UNITS + U_TYPE);
+    PUT_LOC(FR_UNIT_TYPE, AX);
+    AX = SHL(AX, UNIT_TYPE_SHIFT);
+    AX = ADD(AX, UNIT_NAME1);
+    PUSH(AX);
+    PUSH(MESSAGE);
+    /* MESSAGE = the type's first name */
+    CALL(0xAC41, FN_STRCPY, 0xAC44);   /* strcpy(dest, src) */
+    BLOCK(7, 0xAC44);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    AX = LOC(FR_UNIT_TYPE);
+    AX = SHL(AX, UNIT_TYPE_SHIFT);
+    AX = ADD(AX, UNIT_NAME2);
+    PUSH(AX);
+    PUSH(MESSAGE);
+    /* MESSAGE += the second name */
+    CALL(0xAC53, FN_STRCAT, 0xAC56);   /* strcat(dest, src) */
+    BLOCK(4, 0xAC56);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    CMP(DS(LOW_DETAIL), 0);
+    if (JE) {
+        BLOCK(2, 0xAC63);
+        SET_AL(DS8(HUD_PEN));
+        SIGN_EXTEND_AL();
+    } else {
+        BLOCK(2, 0xAC5F);
+        AX = SUB(AX, AX);
+    }
+    BLOCK(4, 0xAC67);
+    PUSH(AX);
+    PUSH(AIR_NAME_Y);
+    PUSH(AIR_NAME_X);
+    PUSH(MESSAGE);
+    /* at (0xB9, 0x74) */
+    CALL(0xAC70, FN_TEXT, 0xAC73);   /* text(string, x, y, colour) */
+    BLOCK(3, 0xAC73);
+    DROP_ARGS(8);
+    CMP(LOC(FR_TARGET), 0);
+    if (JNE) goto bearing_mark;
+    BLOCK(2, 0xAC7C);
+    CMP(DS(OBJECTIVE0_KIND), OBJECTIVE_KIND_AIR);
+    if (!JL) {
+        BLOCK(2, 0xAC83);
+        CMP(DS(LOW_DETAIL), 0);
+        if (JE) {
+            BLOCK(2, 0xAC8E);
+            SET_AL(DS8(HUD_PEN));
+            SIGN_EXTEND_AL();
+        } else {
+            BLOCK(2, 0xAC8A);
+            AX = SUB(AX, AX);
+        }
+        BLOCK(4, 0xAC92);
+        PUSH(AX);
+        PUSH(TARGET_CAPTION_Y);
+        PUSH(PRIMARY_CAPTION_X);
+        PUSH(TXT_PRIMARY_TARGET_AIR);
+        /* "Primary Target" for unit 0 in a hot theatre */
+        CALL(0xAC9B, FN_TEXT, 0xAC9E);   /* text(string, x, y, colour) */
+        BLOCK(1, 0xAC9E);
+        DROP_ARGS(8);
+    }
+bearing_mark:
+    BLOCK(2, 0xACA1);
+    CMP(DS(DETAIL_LEVEL), 0);
+    if (JE) goto window_modes;
+    BLOCK(2, 0xACA8);
+    TEST8(DS8(FRAME_COUNT), 1);
+    if (JE) goto window_modes;
+    BLOCK(10, 0xACAF);
+    BX = IMUL3(LOC(FR_TARGET), UNIT_SIZE);
+    /* sign-extended U_ENDURANCE as the high word */
+    AX = DS_AT(R_BX, UNITS + U_ENDURANCE);
+    SIGN_EXTEND_AX();
+    PUSH(DX);
+    PUSH(AX);
+    /* 0x8000 - U_PITCH */
+    AX = Y_FLIP;
+    AX = SUB(AX, DS_AT(R_BX, UNITS + U_PITCH));
+    PUSH(0);
+    PUSH(AX);
+    SI = BX;
+    /* long multiply */
+    CALL_POP8(0xACC6, FN_MUL32, 0xACC9);   /* multiply 32 x 32 (arguments: two longs on the stack) */
+    BLOCK(1, 0xACC9);
+    /* >> 15 */
+    SET_CL(FIXED_SHIFT);
+    CALL(0xACCB, FN_SAR32, 0xACCE);   /* DX:AX >>= CL, arithmetic */
+    BLOCK(4, 0xACCE);
+    /* BEARING_MARK */
+    PUT_DS(BEARING_MARK, AX);
+    PUSH(AX);
+    PUSH(DS_AT(R_SI, UNITS + U_ROLL));
+    SI = AX;
+    /* sin(roll) * that */
+    CALL(0xACD8, FN_VSIN, 0xACDB);   /* sin(angle) * magnitude */
+    BLOCK(3, 0xACDB);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    PUSH(AX);
+    CALL(0xACDE, FN_ABS, 0xACE1);   /* abs(v) */
+    BLOCK(4, 0xACE1);
+    DISCARD_ARG();
+    /* BEARING_MARK minus half of |sin term| */
+    AX = SAR(AX, 1);
+    SI = SUB(SI, AX);
+    PUT_DS(BEARING_MARK, SI);
+
+    /* ==================================================================
+     * 9. Both text blocks go back to mode 2.  Then, for an air unit that
+     *    detected the aircraft (DETECT_COUNTDOWN > 0, DETECTOR < 0), the same
+     *    closing marker and name as the ground site's ring in section 4b.
+     *    (Reimp frame_weapon_symbology.)
+     * ================================================================ */
+window_modes:
+    BLOCK(6, 0xACEA);
+    /* both text blocks back to MODE_NORMAL */
+    BX = DS(BLOCK_PTR_0);
+    PUT_DS_AT(R_BX, PB_MODE, MODE_NORMAL);
+    BX = DS(BLOCK_PTR_1);
+    PUT_DS_AT(R_BX, PB_MODE, MODE_NORMAL);
+    CMP(DS(DETECT_COUNTDOWN), 0);
+    if (!JLE) {
+        BLOCK(2, 0xAD03);
+        CMP(DS(DETECTOR), 0);
+        if (!JGE) {
+            BLOCK(7, 0xAD0A);
+            /* air unit number = ~DETECTOR */
+            AX = 0xFFFF;
+            AX = SUB(AX, DS(DETECTOR));
+            PUT_LOC(FR_DETECTOR_UNIT, AX);
+            BX = IMUL3(AX, UNIT_SIZE);
+            PUSH(DS_AT(R_BX, UNITS + U_Z));
+            PUSH(DS_AT(R_BX, UNITS + U_Y));
+            PUSH(DS_AT(R_BX, UNITS + U_X));
+            /* project it */
+            CALL(0xAD23, FN_PROJECT, 0xAD26);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+            BLOCK(10, 0xAD26);
+            DROP_ARGS(6);
+            AX = DS(FRAME_RATE);
+            AX = SUB(AX, DS(DETECT_COUNTDOWN));
+            PUSH(AX);
+            PUSH(DS(LABEL_COLOUR));
+            /* the unit type's name */
+            BX = IMUL3(LOC(FR_DETECTOR_UNIT), UNIT_SIZE);
+            AX = DS_AT(R_BX, UNITS + U_TYPE);
+            AX = SHL(AX, UNIT_TYPE_SHIFT);
+            AX = ADD(AX, UNIT_NAME1);
+            PUSH(AX);
+            CALL(0xAD44, FN_MARKER_LABEL, 0xAD47);   /* marker_label(string, colour, margin) */
+            BLOCK(1, 0xAD47);
+            DROP_ARGS(6);
+        }
+    }
+
+    /* ==================================================================
+     * 10. Bomb symbology, in the cockpit view with target mode 2.  The station's
+     *     weapon model decides:
+     *       0x1E (free-fall bomb), roll under 0x2000: the impact point - the
+     *         release angle, the distance the bomb falls ahead at that angle and
+     *         the aircraft's altitude, along the heading - is projected and
+     *         marked (size 5, locked, 0x29), or pinned to the bottom of the window
+     *         when it falls off the screen, and a line is drawn to it from the
+     *         flight path marker (0xA0, PATH_MARKER_ROW).
+     *       0x1E or 0x1D (FFBOMB, RTBOMB: the two bomb kinds that get a bombing cue)
+     *         with a target selected: the target is projected 0x80 ahead and a
+     *         bracket is drawn: the distance (0x1E: from the impact point to the
+     *         target, 0x1D: the target's range), shifted right by 3 and clamped to
+     *         0..0x40 (0x3A on the small HUD), gives the bracket's half width
+     *         about x = 0x9F - 0xA0, and it blinks while the aircraft is below
+     *         the cue's altitude; the diamond goes on the target.  The half
+     *         width is kept in POINT_DEPTH, which the original reuses as scratch.
+     *     (Reimp frame_weapon_symbology.)
+     * ================================================================ */
+    BLOCK(2, 0xAD4A);
+    CMP(DS(TARGET_MODE), TARGET_MODE_MIXED);
+    if (!JE) { BLOCK(1, 0xAD51); goto beacons; }
+    BLOCK(2, 0xAD54);
+    CMP(DS(VIEW_CODE), 0);
+    if (!JE) { BLOCK(1, 0xAD5B); goto beacons; }
+    BLOCK(7, 0xAD5E);
+    BX = DS(SELECTED_STATION);
+    BX = SHL(BX, STATION_SHIFT);
+    BX = IMUL3(DS_AT(R_BX, STATIONS + ST_KIND), RACK_SIZE);
+    AX = DS_AT(R_BX, RACKS + RK_MODEL);
+    PUT_LOC(FR_BOMB_MODEL, AX);
+    /* model 0x1E: free-fall bomb */
+    CMP(AX, WEAPON_FFBOMB);
+    if (!JE) { BLOCK(1, 0xAD76); goto steering; }
+    BLOCK(1, 0xAD79);
+    PUSH(DS(PLAYER_ROLL));
+    /* |roll| */
+    CALL(0xAD7D, FN_ABS, 0xAD80);   /* abs(v) */
+    BLOCK(3, 0xAD80);
+    DISCARD_ARG();
+    CMP(AX, STEEP_ROLL);
+    if (!JL) { BLOCK(1, 0xAD86); goto steering; }
+    /* release angle */
+    CALL(0xAD89, FN_RELEASE_ANGLE, 0xAD8C);   /* release_angle() */
+    BLOCK(4, 0xAD8C);
+    PUT_LOC(FR_RELEASE, AX);
+    PUSH(FALL_ANGLE_SCALE);
+    AX = NEG(AX);
+    PUSH(AX);
+    CALL(0xAD94, FN_VSIN, 0xAD97);   /* sin(angle) * magnitude */
+    BLOCK(7, 0xAD97);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    CX = AX;
+    CX = INC(CX);
+    PUSH(DS(PLAYER_ALTITUDE));
+    PUSH(LOC(FR_RELEASE));
+    SI = CX;
+    CALL(0xADA5, FN_VCOS, 0xADA8);   /* cos(angle) * magnitude */
+    BLOCK(4, 0xADA8);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    SIGN_EXTEND_AX();
+    IDIV(SI, 0xADAB, 0xADAD);
+    BLOCK(3, 0xADAD);
+    PUT_LOC(FR_FALL, AX);
+    PUSH(AX);
+    PUSH(DS(PLAYER_HEADING));
+    CALL(0xADB5, FN_VSIN, 0xADB8);   /* sin(angle) * magnitude */
+    BLOCK(7, 0xADB8);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    /* impact x = sin(heading) * fall + player x */
+    AX = ADD(AX, DS(PLAYER_X));
+    PUT_LOC(FR_IMPACT_X, AX);
+    PUSH(0);
+    PUSH(LOC(FR_FALL));
+    PUSH(DS(PLAYER_HEADING));
+    CALL(0xADCA, FN_VCOS, 0xADCD);   /* cos(angle) * magnitude */
+    BLOCK(7, 0xADCD);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    /* impact y = player y - cos(heading) * fall */
+    AX = SUB(AX, DS(PLAYER_Y));
+    AX = NEG(AX);
+    PUT_LOC(FR_IMPACT_Y, AX);
+    PUSH(AX);
+    PUSH(LOC(FR_IMPACT_X));
+    /* project the impact point at z = 0 */
+    CALL(0xADDC, FN_PROJECT, 0xADDF);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+    BLOCK(3, 0xADDF);
+    DROP_ARGS(6);
+    CMP(DS(SCREEN_X), NOT_VISIBLE);
+    if (JNE) {
+        BLOCK(5, 0xAE11);
+        /* an impact marker (size 5, locked, 0x29) */
+        PUSH(IMPACT_MARKER_PEN);
+        PUSH(LOCKED);
+        PUSH(IMPACT_MARKER_SIZE);
+        PUSH(DS(SCREEN_Y));
+        PUSH(DS(SCREEN_X));
+        CALL(0xAE1F, FN_MARKER, 0xAE22);   /* marker(x, y, size, locked, colour) */
+        BLOCK(1, 0xAE22);
+        DROP_ARGS(0x0A);
+    } else {
+        BLOCK(4, 0xADE9);
+        /* off the window: pinned to the bottom row, across by the roll */
+        AX = WINDOW_BOTTOM;
+        AX = SUB(AX, DS(PATH_MARKER_ROW));
+        PUSH(AX);
+        PUSH(DS(PLAYER_ROLL));
+        CALL(0xADF5, FN_VSIN, 0xADF8);   /* sin(angle) * magnitude */
+        BLOCK(6, 0xADF8);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        AX = SHL(AX, 2);
+        CX = 3;
+        SIGN_EXTEND_AX();
+        IDIV(CX, 0xAE01, 0xAE03);
+        BLOCK(4, 0xAE03);
+        AX = ADD(AX, AIM_CENTRE_X);
+        PUT_DS(SCREEN_X, AX);
+        PUT_DS(SCREEN_Y, WINDOW_BOTTOM);
+    }
+    BLOCK(3, 0xAE25);
+    /* a line from the flight path marker to it */
+    SET_AL(DS8(HUD_PEN));
+    SIGN_EXTEND_AL();
+    PUSH(AX);
+    CALL(0xAE2A, FN_SET_PEN, 0xAE2D);   /* set_pen(colour): both page blocks */
+    BLOCK(5, 0xAE2D);
+    DISCARD_ARG();
+    PUSH(DS(SCREEN_Y));
+    PUSH(DS(SCREEN_X));
+    PUSH(DS(PATH_MARKER_ROW));
+    PUSH(FLIGHT_PATH_X);
+    CALL(0xAE3D, FN_HUD_LINE, 0xAE40);   /* hud_line(x0, y0, x1, y1) */
+    BLOCK(1, 0xAE40);
+    DROP_ARGS(8);
+steering:
+    BLOCK(2, 0xAE43);
+    /* the two bomb kinds that get a bombing cue */
+    CMP(LOC(FR_BOMB_MODEL), WEAPON_FFBOMB);
+    if (JE) goto guided_kind;
+    BLOCK(2, 0xAE49);
+    CMP(LOC(FR_BOMB_MODEL), WEAPON_RTBOMB);
+    if (!JE) { BLOCK(1, 0xAE4F); goto beacons; }
+guided_kind:
+    BLOCK(2, 0xAE52);
+    /* with a target selected */
+    CMP(DS(GROUND_TARGET), 0);
+    if (JL) goto no_bracket;
+    BLOCK(3, 0xAE59);
+    /* the target 0x80 ahead along the heading */
+    PUSH(DS(PLAYER_ALTITUDE));
+    PUSH(LEAD_DISTANCE);
+    PUSH(DS(PLAYER_HEADING));
+    CALL(0xAE64, FN_VCOS, 0xAE67);   /* cos(angle) * magnitude */
+    BLOCK(10, 0xAE67);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    BX = DS(GROUND_TARGET);
+    BX = SHL(BX, TARGET_SHIFT);
+    AX = SUB(AX, DS_AT(R_BX, TARGETS + T_Y));
+    AX = NEG(AX);
+    PUSH(AX);
+    PUSH(LEAD_DISTANCE);
+    PUSH(DS(PLAYER_HEADING));
+    SI = BX;
+    CALL(0xAE80, FN_VSIN, 0xAE83);   /* sin(angle) * magnitude */
+    BLOCK(4, 0xAE83);
+    DISCARD_ARG();
+    DISCARD_ARG();
+    AX = ADD(AX, DS_AT(R_SI, TARGETS + T_X));
+    PUSH(AX);
+    CALL(0xAE8A, FN_PROJECT, 0xAE8D);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+    BLOCK(3, 0xAE8D);
+    DROP_ARGS(6);
+    CMP(DS(SCREEN_X), NOT_VISIBLE);
+    if (JNE) goto bracket;
+no_bracket:
+    BLOCK(1, 0xAE97);
+    goto beacons;
+bracket:
+    BLOCK(3, 0xAE9A);
+    /* FR_TOO_LOW = 0 */
+    PUT_LOC(FR_TOO_LOW, 0);
+    CMP(LOC(FR_BOMB_MODEL), WEAPON_FFBOMB);
+    if (!JNE) {
+        BLOCK(14, 0xAEA5);
+        /* model 0x1E: clamp(distance(impact - target) >> 3, 0, 0x40 or 0x3A) */
+        CMP8(DS8(SMALL_HUD), 1);
+        AX = SBB(AX, AX);
+        AX = AND(AX, BRACKET_SIZE_STEP);
+        AX = ADD(AX, BRACKET_MAX_SMALL);
+        PUSH(AX);
+        PUSH(0);
+        AX = LOC(FR_IMPACT_Y);
+        BX = DS(GROUND_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        AX = SUB(AX, DS_AT(R_BX, TARGETS + T_Y));
+        PUSH(AX);
+        AX = LOC(FR_IMPACT_X);
+        AX = SUB(AX, DS_AT(R_BX, TARGETS + T_X));
+        PUSH(AX);
+        CALL(0xAECC, FN_DIST, 0xAECF);   /* distance(dx, dy) */
+        BLOCK(4, 0xAECF);
+        DISCARD_ARG();
+        DISCARD_ARG();
+        AX = SAR(AX, 3);
+        PUSH(AX);
+        CALL(0xAED5, FN_CLAMP3, 0xAED8);   /* clamp(value, low, high) */
+        BLOCK(7, 0xAED8);
+        DROP_ARGS(6);
+        PUT_DS(POINT_DEPTH, AX);
+        AX = BRACKET_ALTITUDE;
+        AX = SUB(AX, DS(AIRSPEED_KTS));
+        AX = SHL(AX, 1);
+        CMP(AX, DS(PLAYER_ALTITUDE));
+    } else {
+        BLOCK(7, 0xAEED);
+        /* other kinds: clamp(target_range >> 3, 0, 0x40 or 0x3A) */
+        CMP8(DS8(SMALL_HUD), 1);
+        AX = SBB(AX, AX);
+        AX = AND(AX, BRACKET_SIZE_STEP);
+        AX = ADD(AX, BRACKET_MAX_SMALL);
+        PUSH(AX);
+        PUSH(0);
+        PUSH(DS(GROUND_TARGET));
+        CALL(0xAF01, FN_TARGET_RANGE, 0xAF04);   /* target_range(target) */
+        BLOCK(3, 0xAF04);
+        DISCARD_ARG();
+        AX = SAR(AX, 3);
+        PUSH(AX);
+        CALL(0xAF09, FN_CLAMP3, 0xAF0C);   /* clamp(value, low, high) */
+        BLOCK(4, 0xAF0C);
+        DROP_ARGS(6);
+        PUT_DS(POINT_DEPTH, AX);
+        AX = DS(PLAYER_ALTITUDE);
+        CMP(DS(AIRSPEED_KTS), AX);
+    }
+    BLOCK(1, 0xAF19);
+    if (!JBE) {
+        BLOCK(1, 0xAF1B);
+        /* FR_TOO_LOW = 1 */
+        PUT_LOC(FR_TOO_LOW, 1);
+    }
+    BLOCK(2, 0xAF20);
+    /* drawn unless too low and on an off frame */
+    CMP(LOC(FR_TOO_LOW), 0);
+    if (JE) goto draw_bracket;
+    BLOCK(2, 0xAF26);
+    TEST8(DS8(FRAME_COUNT), 1);
+    if (JE) goto bracket_done;
+draw_bracket:
+    BLOCK(1, 0xAF2D);
+    PUSH(BRACKET_PEN);
+    CALL(0xAF2F, FN_SET_PEN, 0xAF32);   /* set_pen(colour): both page blocks */
+    BLOCK(7, 0xAF32);
+    DISCARD_ARG();
+    PUSH(BRACKET_TOP_Y);
+    AX = BRACKET_LEFT_X;
+    AX = SUB(AX, DS(POINT_DEPTH));
+    PUSH(AX);
+    PUSH(BRACKET_BOTTOM_Y);
+    PUSH(AX);
+    CALL_FAR(0xAF40, 0xAF45);   /* line_in_block(x0, y0, x1, y1): a line clipped to the active block */
+    BLOCK(7, 0xAF45);
+    DROP_ARGS(8);
+    PUSH(BRACKET_TOP_Y);
+    AX = DS(POINT_DEPTH);
+    AX = ADD(AX, BRACKET_RIGHT_X);
+    PUSH(AX);
+    PUSH(BRACKET_BOTTOM_Y);
+    PUSH(AX);
+    CALL_FAR(0xAF54, 0xAF59);   /* line_in_block(x0, y0, x1, y1): a line clipped to the active block */
+    BLOCK(9, 0xAF59);
+    DROP_ARGS(8);
+    PUSH(BRACKET_TOP_Y);
+    AX = DS(POINT_DEPTH);
+    AX = ADD(AX, BRACKET_RIGHT_X);
+    PUSH(AX);
+    PUSH(BRACKET_TOP_Y);
+    AX = BRACKET_LEFT_X;
+    AX = SUB(AX, DS(POINT_DEPTH));
+    PUSH(AX);
+    CALL_FAR(0xAF6F, 0xAF74);   /* line_in_block(x0, y0, x1, y1): a line clipped to the active block */
+    BLOCK(1, 0xAF74);
+    DROP_ARGS(8);
+bracket_done:
+    /* the diamond on the target */
+    CALL(0xAF77, FN_DIAMOND, 0xAF7A);   /* diamond() at SCREEN_X, SCREEN_Y */
+
+    /* ==================================================================
+     * 11. The radio beacons.  For each of the two objectives with the beacon bit
+     *     (0x10) set in its flags, while the mission clock is before
+     *     OBJECTIVE_DEADLINE and the beacon's target is within 0xC80 of the
+     *     aircraft: if it is the selected target the diamond is drawn on it
+     *     (0x80 ahead, as above); the target is projected at z = 0 and labelled
+     *     "Radio Beacon" in colour 10 with a marker that pulses (margin =
+     *     FRAME_COUNT % S).  Every 8 * S frames
+     *     (FRAME_COUNT % (8 * S) == 0) the message "Radio beacon bearing <n>" is
+     *     shown, n being the bearing in units of 0xB6; and when the target is
+     *     within 0x100 and station 0 still holds stores, "Drop supplies now".
+     *     (Reimp frame_weapon_symbology.  The Reimp reads these as guided
+     *     weapons; the strings say they are the supply-drop beacons.)
+     * ================================================================ */
+beacons:
+    BLOCK(1, 0xAF7A);
+    PUT_LOC(FR_BEACON_OBJECTIVE, 0);
+    for (;;) {
+        BLOCK(3, 0xAF7F);
+        BX = IMUL3(LOC(FR_BEACON_OBJECTIVE), OBJECTIVE_SIZE);
+        /* objective flag 0x10 (radio beacon) */
+        TEST8(DS8_AT(R_BX, OBJECTIVES + O_FLAGS), 0x10);
+        if (!JNE) { BLOCK(1, 0xAF8A); goto next_beacon; }
+        BLOCK(3, 0xAF8D);
+        /* before the objective deadline */
+        AX = DS(OBJECTIVE_DEADLINE);
+        CMP(DS(MISSION_CLOCK), AX);
+        if (JGE) goto beacon_skip;
+        BLOCK(3, 0xAF96);
+        AX = DS_AT(R_BX, OBJECTIVES + O_TARGET);
+        PUT_LOC(FR_BEACON_TARGET, AX);
+        PUSH(AX);
+        /* range to the beacon's target */
+        CALL(0xAF9E, FN_TARGET_RANGE, 0xAFA1);   /* target_range(target) */
+        BLOCK(4, 0xAFA1);
+        DISCARD_ARG();
+        PUT_LOC(FR_BEACON_RANGE, AX);
+        /* within 0xC80 */
+        CMP(AX, BEACON_RANGE_LIMIT);
+        if (!JL) {
+        beacon_skip:
+            BLOCK(1, 0xAFAA);
+            goto next_beacon;
+        }
+        BLOCK(3, 0xAFAD);
+        AX = DS(GROUND_TARGET);
+        /* is it the selected target? */
+        CMP(LOC(FR_BEACON_TARGET), AX);
+        if (JE) {
+            BLOCK(3, 0xAFB5);
+            PUSH(DS(PLAYER_ALTITUDE));
+            PUSH(LEAD_DISTANCE);
+            PUSH(DS(PLAYER_HEADING));
+            CALL(0xAFC0, FN_VCOS, 0xAFC3);   /* cos(angle) * magnitude */
+            BLOCK(10, 0xAFC3);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            BX = DS(GROUND_TARGET);
+            BX = SHL(BX, TARGET_SHIFT);
+            AX = SUB(AX, DS_AT(R_BX, TARGETS + T_Y));
+            AX = NEG(AX);
+            PUSH(AX);
+            PUSH(LEAD_DISTANCE);
+            PUSH(DS(PLAYER_HEADING));
+            SI = BX;
+            CALL(0xAFDC, FN_VSIN, 0xAFDF);   /* sin(angle) * magnitude */
+            BLOCK(4, 0xAFDF);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            AX = ADD(AX, DS_AT(R_SI, TARGETS + T_X));
+            PUSH(AX);
+            CALL(0xAFE6, FN_PROJECT, 0xAFE9);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+            BLOCK(3, 0xAFE9);
+            DROP_ARGS(6);
+            CMP(DS(SCREEN_X), NOT_VISIBLE);
+            if (!JE) {
+                /* then the diamond is on it */
+                CALL(0xAFF3, FN_DIAMOND, 0xAFF6);   /* diamond() at SCREEN_X, SCREEN_Y */
+            }
+        }
+        BLOCK(6, 0xAFF6);
+        PUSH(0);
+        BX = LOC(FR_BEACON_TARGET);
+        BX = SHL(BX, TARGET_SHIFT);
+        PUSH(DS_AT(R_BX, TARGETS + T_Y));
+        PUSH(DS_AT(R_BX, TARGETS + T_X));
+        SI = BX;
+        /* the target projected at z = 0 */
+        CALL(0xB008, FN_PROJECT, 0xB00B);   /* project(x, y, z) -> SCREEN_X, SCREEN_Y, POINT_DEPTH */
+        BLOCK(4, 0xB00B);
+        DROP_ARGS(6);
+        AX = DS(FRAME_COUNT);
+        SIGN_EXTEND_AX();
+        IDIV(DS(FRAME_RATE), 0xB012, 0xB016);
+        BLOCK(5, 0xB016);
+        PUSH(DX);
+        AX = BEACON_PEN;
+        /* LABEL_COLOUR = 10 */
+        PUT_DS(LABEL_COLOUR, AX);
+        PUSH(AX);
+        PUSH(TXT_RADIO_BEACON);
+        /* "Radio Beacon", margin = FRAME_COUNT % S */
+        CALL(0xB021, FN_MARKER_LABEL, 0xB024);   /* marker_label(string, colour, margin) */
+        BLOCK(6, 0xB024);
+        DROP_ARGS(6);
+        AX = DS(FRAME_COUNT);
+        CX = DS(FRAME_RATE);
+        CX = SHL(CX, BEARING_PERIOD_SHIFT);
+        SIGN_EXTEND_AX();
+        /* every 8 * S frames */
+        IDIV(CX, 0xB032, 0xB034);
+        BLOCK(2, 0xB034);
+        DX = OR(DX, DX);
+        if (JE) {
+            BLOCK(2, 0xB038);
+            PUSH(TXT_BEACON_BEARING);
+            PUSH(MESSAGE);
+            /* MESSAGE = "Radio beacon bearing " */
+            CALL(0xB03E, FN_STRCPY, 0xB041);   /* strcpy(dest, src) */
+            BLOCK(10, 0xB041);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            PUSH(DECIMAL);
+            PUSH(NUMBER_BUFFER);
+            AX = DS(PLAYER_Y);
+            AX = SUB(AX, DS_AT(R_SI, TARGETS + T_Y));
+            PUSH(AX);
+            AX = DS_AT(R_SI, TARGETS + T_X);
+            AX = SUB(AX, DS(PLAYER_X));
+            PUSH(AX);
+            /* bearing from the aircraft */
+            CALL(0xB059, FN_BEARING, 0xB05C);   /* bearing(dx, dy) */
+            BLOCK(5, 0xB05C);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            CX = DEGREE;
+            DX = SUB(DX, DX);
+            /* in degrees (0xB6 units each) */
+            DIV(CX, 0xB063, 0xB065);
+            BLOCK(1, 0xB065);
+            PUSH(AX);
+            /* itoa(degrees, buffer, 10) */
+            CALL(0xB066, FN_ITOA, 0xB069);   /* itoa(value, buffer, radix) */
+            BLOCK(3, 0xB069);
+            DROP_ARGS(6);
+            PUSH(AX);
+            PUSH(MESSAGE);
+            /* MESSAGE += the number */
+            CALL(0xB070, FN_STRCAT, 0xB073);   /* strcat(dest, src) */
+            BLOCK(3, 0xB073);
+            DISCARD_ARG();
+            DISCARD_ARG();
+            PUSH(MESSAGE);
+            /* show it */
+            CALL(0xB078, FN_MESSAGE, 0xB07B);   /* message(string) */
+            BLOCK(3, 0xB07B);
+            DISCARD_ARG();
+            /* within 0x100 and still holding stores on station 0: */
+            CMP(LOC(FR_BEACON_RANGE), SUPPLY_DROP_RANGE);
+            if (!JGE) {
+                BLOCK(2, 0xB083);
+                CMP(DS(STATION0_COUNT), 0);
+                if (!JE) {
+                    BLOCK(1, 0xB08A);
+                    PUSH(TXT_DROP_SUPPLIES);
+                    /* "Drop supplies now" */
+                    CALL(0xB08D, FN_MESSAGE, 0xB090);   /* message(string) */
+                    BLOCK(1, 0xB090);
+                    DISCARD_ARG();
+                }
+            }
+        }
+    next_beacon:
+        BLOCK(3, 0xB091);
+        PUT_LOC(FR_BEACON_OBJECTIVE, INC(LOC(FR_BEACON_OBJECTIVE)));
+        CMP(LOC(FR_BEACON_OBJECTIVE), 2);
+        if (JGE) break;
+        BLOCK(1, 0xB09A);
+    }
+
+    /* ==================================================================
+     * 12. The camera page.  The right display is the target camera, the camera
+     *     picture was drawn on the previous pass (CAMERA_DRAWN_LAST) but not on
+     *     this one: the display page is filled with its background (driver
+     *     call 114A:0280 with 2, 0x9F).
+     * ================================================================ */
+    BLOCK(2, 0xB09D);
+    /* the camera page: drawn last pass, not this one */
+    CMP(DS(RIGHT_DISPLAY), DISPLAY_TARGET_CAMERA);
+    if (!JNE) {
+        BLOCK(2, 0xB0A4);
+        CMP(DS(CAMERA_DRAWN_LAST), 0);
+        if (!JE) {
+            BLOCK(2, 0xB0AB);
+            CMP(DS(CAMERA_DRAWN), 0);
+            if (JE) {
+                BLOCK(2, 0xB0B2);
+                PUSH(PAGE_FILL_COLOUR);
+                PUSH(CAMERA_PAGE);
+                CALL_FAR(0xB0B7, 0xB0BC);   /* fill_page(page, colour) */
+                BLOCK(2, 0xB0BC);
+                DISCARD_ARG();
+                DISCARD_ARG();
+            }
+        }
+    }
+
+    /* ==================================================================
+     * 13. Exit: SI and DI restored, LEAVE, RET.
+     * ================================================================ */
+leave_pass:
+    BLOCK(4, 0xB0BE);
+    SI = POP();
+    DI = POP();
+    LEAVE();
+    RETURN_NEAR();
+
+#undef AX
+#undef BX
+#undef CX
+#undef DX
+#undef SI
+#undef DI
+#undef SP
+#undef AL
+#undef BL
+#undef CL
+#undef SET_AL
+#undef SET_BL
+#undef SET_CL
+#undef BLOCK
+#undef DS
+#undef PUT_DS
+#undef DS8
+#undef PUT_DS8
+#undef LOC
+#undef PUT_LOC
+#undef DS_AT
+#undef PUT_DS_AT
+#undef DS8_AT
+#undef PUT_DS8_AT
+#undef DS8_AT2
+#undef PUSH
+#undef POP
+#undef DISCARD_ARG
+#undef DROP_ARGS
+#undef CMP
+#undef CMP8
+#undef TEST
+#undef TEST8
+#undef ADD
+#undef SUB
+#undef AND
+#undef OR
+#undef XOR
+#undef SBB
+#undef AND8
+#undef OR8
+#undef NEG
+#undef INC
+#undef DEC
+#undef SHL
+#undef SHR
+#undef SAR
+#undef IMUL3
+#undef SIGN_EXTEND_AL
+#undef SIGN_EXTEND_AX
+#undef IDIV
+#undef DIV
+#undef ENTER
+#undef LEAVE
+#undef RETURN_NEAR
+#undef JE
+#undef JNE
+#undef JB
+#undef JAE
+#undef JBE
+#undef JA
+#undef JS
+#undef JNS
+#undef JL
+#undef JGE
+#undef JLE
+#undef JG
+#undef RUN_CALLEE
+#undef CALL
+#undef CALL_POP8
+#undef CALL_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9EFA, vgame_display_pass, "flight display pass: weapon markers, tracers, blast, weapon lock, target camera, bomb and beacon symbology", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCD7E, vgame_key_cycle_panel_state, "key dispatcher arm: step the panel state [E32A] 0, 1, 2, 0", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE65, vgame_key_arm_select, "key dispatcher: pick the key's arm (jump table and key chain)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0012, vgame_sky_horizon_line, "paint the low-detail sky and ground either side of the horizon", 1 },
