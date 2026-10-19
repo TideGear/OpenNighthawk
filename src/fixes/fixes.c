@@ -92,7 +92,7 @@ static uint64_t weapon_epoch(const machine_t *m)
     return m->nproc ? m->procs[m->nproc - 1].start_icount : 0;
 }
 
-/* D1REAL: real-time simulation, eight steps by default or opt-in fifteen.
+/* D1REAL: real-time simulation, fifteen steps for normal play or legacy eight.
  * Enter at D441 rather than inside it so the whole-routine matched override
  * cannot bypass this correction. The original code derives every S rate.
  * Eight uses S4 for 2x compression; fifteen keeps S15 and doubles cadence.
@@ -680,7 +680,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
     { "D1SLOT", "cancelled incoming missiles release their launcher slots instead of underflowing life to FFFF" },
     { "D1PROX", "incoming proximity uses a swept band calibrated to terminal speed at S=9" },
-    { "D1REAL", "real-time simulation (default eight steps/s; --sim-hz 15 selects fifteen/thirty)" },
+    { "D1REAL", "real-time simulation (app default fifteen/thirty steps/s; --sim-hz 8 selects legacy cadence)" },
     { "D1ACCEL", "incoming missile acceleration uses the S=9 rate per simulated second" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },

@@ -9,8 +9,10 @@ evidence is; a superseded result says so. Private evidence lives under
 
 ## Current conclusions
 
-- **Speed default.** The app (`f117a`) runs at 20 million instructions a
-  second; `f117run` and every recorded route keep GOG DOSBox's 9 million. No
+- **Speed default (18 October).** The app (`f117a`) runs at 60 million
+  instructions a second, with D1REAL at 15 normal /30 compressed updates/s
+  after the [broader validation](cadence15-validation.md); the reference runner
+  defaults to GOG DOSBox's 9 million and routes keep their recorded settings. No
   limiter was shipped at the time of these measurements. Since 17 October,
   normal application play enables all fixes, including D1REAL and D1PROX;
   use `--fix none` to reproduce the original measurements
@@ -124,11 +126,11 @@ the official 86Box ROM collection; game data and BIOS images stay private.
 the timing/capacity checks and both native 4K60 captures, including actual
 30-update/s compressed flight. It adds a successful landing and primary
 strike credit; unsuccessful mission pilots remain documented. The technical
-recommendation is now 15/60 for normal play. Defaults remain eight/20 in
-this validation-only change. The chronology below retains earlier failures.
+recommendation is now 15/60 for normal play, and the owner approved it as
+the application default after validation. The chronology below retains earlier failures.
 
 `--sim-hz 15` now selects explicit per-machine cadence state rather than the
-private prototype's packed metadata. Normal play remains at eight by default.
+private prototype's packed metadata. Normal play now defaults to fifteen/60.
 The candidate uses S15 at 15/30 actual updates/s, rescales phase on compression
 changes and bypasses D1's independent cap when D1REAL is active at fifteen.
 Eight retains its old limiter behavior and legacy log format. Input recordings
@@ -174,7 +176,7 @@ North Cape has an undamaged airborne compressed window with 272/300 updates
 and 18/20 mission seconds over ten seconds. Altitude stays 1,547-2,367.
 The later terminal-window failure is retained separately. A 60-MIPS probe
 keeps the same 15/30 update cap while testing computation reserve; that budget
-is not a claimed period-hardware equivalent. The default remains eight/20.
+is not a claimed period-hardware equivalent. The default remained eight/20 at this checkpoint; it was later promoted to fifteen/60 after broader validation.
 Both engines subsequently pass ten minutes of compression at 40 MIPS with
 18,000 updates and 1,200 mission seconds; all seven case results agree. The
 15-Hz scan/interp/rerun replay and hidden interp/rerun app also pass with 991
@@ -451,7 +453,7 @@ than the default's 1.12. A cap also cannot raise slower scenes to 15 fps.
 
 ## Fast-machine default (9 October 2026)
 
-**CPU-speed decision (still current; fix defaults changed 17 October).** The app (`f117a`) runs at 20 million instructions a
+**Historical CPU-speed decision (superseded by 15/60 on 18 October).** The app (`f117a`) runs at 20 million instructions a
 second (`MACHINE_APP_IPS` in `src/machine/machine.h`; `--ips` and `ips =`
 override it). `f117run` and every recorded route keep GOG DOSBox's 9
 million, so no route hash changes. At this decision fixes stayed off and no limiter was added: on
@@ -461,8 +463,8 @@ At 9 MIPS a recompiled flight ran at about 68.7 million instructions a
 second on the development machine, so 20 million is about 3.4 times real
 time there.
 
-Since 17 October normal play enables all fixes, including D1REAL's eight-step
-cadence. The figures below describe the unfixed controller; reproduce them
+Since 17 October normal play enables all fixes; on 18 October its D1REAL
+default changed from eight steps to fifteen, with a 60-MIPS instruction budget. The figures below describe the unfixed controller; reproduce them
 with `--fix none`. CPU speed and simulation cadence are separate settings.
 
 **Matrix.** Nine typed routes, eight boot-clock offsets (0, 3, 7, 11, 15, 19,

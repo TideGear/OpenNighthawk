@@ -1,5 +1,22 @@
 # Repeated processes
 
+**18 Oct normal-play default promotion:** after the broader validation below,
+the owner approved 15 Hz /60 MIPS as the application default. Only the app's
+initial cadence and instruction budget change; headless/API defaults and
+recorded-session metadata remain authoritative. `test_fix_defaults.py` now
+runs nine ROM-free tests, including six synthetic-COM session cases: fresh
+defaults, explicit eight/20, config eight/20, command-line precedence,
+legacy replay and recorded fifteen-step replay overriding live options.
+Use dummy SDL video/audio; no display occupation or game data is needed.
+Rebuild the application/runner and run the pacing, input-log, config and
+playback-clock tests. The earlier full gates and broad mission/display checks
+validate this same selected 15/60 mode; a default selection does not change
+its simulation implementation. Local verification passes: all nine defaults
+tests (5.44 s), six pacing/input-log/config/playback CTests (0.19 s), and
+all ten Machine API regressions (0.11 s). The defaults test fails against
+the pre-change executable and passes after rebuilding. The local user config
+and 4K preset contain no timing overrides and inherit the new defaults.
+
 **18 Oct broader 15/60 validation:**
 `D:/f117-gate/cadence15-broad-20261018/` freezes the `2245c14` API/runner.
 `run.py`, `clock.py`, `pilots.py` and `cruise.py` run paired interpreter /
@@ -256,7 +273,7 @@ explicitly prepend `--fix none`; subsequent fix-specific route options or
 recorded headers select the intended test cases. The headless runner also
 starts with fixes off. Do not enable every fix for ordinary parity: both
 original behavior and repaired behavior need their separate checks.
-`tests/test_fix_defaults.py --app APP --runner RUNNER` is a ROM-free six-case
+`tests/test_fix_defaults.py --app APP --runner RUNNER` is a ROM-free defaults
 process check, also in Windows CI. Private recording/replay checks verify all,
 none, a recorded subset and explicit replay additions; old logs retain none.
 Evidence: `D:/f117-gate/default-fixes-20261017/headers/verdict.json`.

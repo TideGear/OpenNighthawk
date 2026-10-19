@@ -1,7 +1,8 @@
 """Normal play repairs defects; parity and legacy replays retain original behavior.
 
-ROM-free process checks: listing fixes exits before opening a window or loading
-game data. Actual recorded-session playback is checked separately by app replays.
+ROM-free process checks: fix listing exits before opening a window or loading
+game data. Timing checks record a synthetic infinite-loop COM through dummy SDL
+drivers, covering session defaults, overrides and replay metadata precedence.
 """
 import argparse
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 
 REPAIRS = {"D1", "D1TTL", "D1SLOT", "D1ACCEL", "D2", "D3", "D4", "D5", "D6", "D8", "D11", "D12", "D34"}
@@ -29,6 +31,41 @@ def enabled(exe, args, app=False):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_session_timing_defaults_overrides_and_replay_compatibility(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            data = root / "data"
+            data.mkdir()
+            (data / "F117.COM").write_bytes(b"\xeb\xfe")
+            config = root / "fallback.ini"
+            config.write_text("ips = 20000000\nsim-hz = 8\n")
+            legacy = root / "legacy.input"
+            legacy.write_text("# f117r-input ips=9000000 time_us=1000000\n")
+            modern = root / "modern.input"
+            modern.write_text("# f117r-input ips=40000000 time_us=1000000\n"
+                              "# f117r-sim-hz 15\n")
+            cases = [
+                (["--no-config"], 60_000_000, 15),
+                (["--no-config", "--sim-hz", "8", "--ips", "20000000"], 20_000_000, 8),
+                (["--config", str(config)], 20_000_000, 8),
+                (["--config", str(config), "--sim-hz", "15", "--ips", "60000000"], 60_000_000, 15),
+                (["--no-config", "--replay", str(legacy)], 9_000_000, 8),
+                (["--no-config", "--sim-hz", "8", "--ips", "20000000",
+                  "--replay", str(modern)], 40_000_000, 15),
+            ]
+            for index, (options, ips, cadence) in enumerate(cases):
+                with self.subTest(options=options):
+                    record = root / ("session-%d.input" % index)
+                    result = subprocess.run([str(APP), *options, "--data", str(data),
+                        "--save", str(root / ("save-%d" % index)), "--roland", "off",
+                        "--engine", "interp", "--record", str(record), "--exit-after", "600000"],
+                        capture_output=True, text=True, timeout=15,
+                        env=dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy"))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    headers = record.read_text()
+                    self.assertIn("# f117r-input ips=%d " % ips, headers)
+                    self.assertEqual("# f117r-sim-hz 15\n" in headers, cadence == 15)
+
     def test_normal_play_enables_every_fix(self):
         self.assertEqual(enabled(APP, [], app=True), REPAIRS | OPTIONS)
 

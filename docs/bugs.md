@@ -102,7 +102,7 @@ Status values:
   [D1ACCEL](#d1accel-incoming-missile-acceleration-depends-on-s).
 - **In this recompilation.** The original controller and frame wait both
   run. `f117run` and the recorded routes run at 9 million instructions a
-  second (GOG DOSBox's `cycles=9000`); the app `f117a` runs at 20 million;
+  second (GOG DOSBox's `cycles=9000`); the app `f117a` runs at 60 million;
   `--ips` changes either.
 - **Measured.** On `boot_to_flight` (the parked jet), GOG's 9 MIPS settles
   at S 9 and draws 11.6 frames a second, so the mission clock runs 1.29
@@ -133,18 +133,18 @@ Status values:
 
 ### D1REAL. Real-time simulation cadence
 
-- **Candidate cadence:** `--sim-hz 15` selects S15 in both modes, with 15
+- **Normal-play cadence:** `--sim-hz 15` selects S15 in both modes, with 15
   updates/s normally and 30 during 2x compression. It rescales the remaining
   deadline or overdue work when compression changes; the older D1 limiter
-  yields to D1REAL in this mode. The eight-step default retains its existing
+  yields to D1REAL in this mode. The optional eight-step mode retains its existing
   limiter behavior for replay compatibility. The choice is per machine and
   recorded in input logs; an absent header means eight. Core/headless/API
   still require explicit fix selection. Forty MIPS fails an undamaged
-  compressed-flight capacity check; the 60-MIPS candidate passes the
+  compressed-flight capacity check; the 60-MIPS default passes the
   [broader timing and mission checks](cadence15-validation.md). Fifteen is
-  not a recovered developer target or the normal-play default. Twenty MIPS
-  also failed to sustain the prototype's compressed rate.
-- **Switchable timing change: `--fix D1REAL` (on for normal play).** Pins the simulation divisor S
+  not a recovered developer target; it is the validated normal-play default.
+  Twenty MIPS also failed to sustain the prototype's compressed rate.
+- **Legacy eight-step timing: `--fix D1REAL --sim-hz 8`.** Pins the simulation divisor S
   at 8 and admits eight frames per machine second; under the original's 2x
   time compression S becomes 4 at the same frame cadence. The original
   `0x0D441` code still derives every dependent rate. The frame counter at

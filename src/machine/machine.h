@@ -38,9 +38,9 @@
 #define DOS_MAX_PROCS  8
 
 #define MACHINE_DEFAULT_IPS 9000000ull
-/* The app's default (f117a): the game's own frame cap of 15 holds in flight, so a parked jet draws
- * 16.7 frames a second instead of 11.6 at GOG's pace (docs/speed-sweep.md). */
-#define MACHINE_APP_IPS 20000000ull
+/* Normal play: reserve for D1REAL's 15 normal /30 compressed updates/s.
+ * See docs/cadence15-validation.md; reference runners keep MACHINE_DEFAULT_IPS. */
+#define MACHINE_APP_IPS 60000000ull
 
 typedef struct machine machine_t;
 
@@ -162,7 +162,7 @@ struct machine {
     machine_weapon_sweep fix_weapon_sweep[8];
     machine_weapon_accel fix_weapon_accel[8];
     frame_pacer fix_real_pacer;
-    unsigned sim_hz;                 /* D1REAL: zero/8 is legacy, 15 is opt-in */
+    unsigned sim_hz;                 /* D1REAL: zero/8 is legacy, app defaults to 15 */
 
     machine_hooks hooks;
     FILE    *log;            /* diagnostics; NULL for none */

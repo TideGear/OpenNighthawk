@@ -348,7 +348,7 @@ int main(int argc, char **argv)
     const char *audio_queue_log_path = NULL;
     const char *audio_dump_path = NULL;
     uint64_t ips = MACHINE_APP_IPS;
-    unsigned sim_hz = 8;
+    unsigned sim_hz = 15;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL;
@@ -453,7 +453,7 @@ int main(int argc, char **argv)
             sim_hz = (unsigned)atoi(v); i++;
         }
         else if (!strcmp(a, "--timing") && v) {
-            /* dosbox (the default): this machine's instruction model, run by the app at 20 million
+            /* dosbox (the default): this machine's instruction model, run by the app at 60 million
              * instructions a second (--ips); GOG DOSBox ran 9 million (--ips 9000000), at which a
              * parked jet draws 11.6 frames a second (docs/bugs.md D1). 386: the 386DX/33 profile,
              * the pace of a 1991 PC (src/cpu/timing386.h) */
@@ -515,7 +515,7 @@ int main(int argc, char **argv)
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
-                "             [--sim-hz 8|15] (D1REAL cadence; default 8; replay restores recorded choice)\n"
+                "             [--sim-hz 8|15] (D1REAL cadence; default 15 at 60000000 ips; replay restores recorded choice)\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"

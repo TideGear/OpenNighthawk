@@ -861,8 +861,10 @@ Each is fixed; the named regressions keep the failing seed or case.
       ([legacy-reports.md](legacy-reports.md)). No speculative fix is offered;
       D96 is the Reimp's own UI wait, not a patch for this START. A session
       recorded with fixes on names them in its log and replays with them.
-  - *Speed* ([speed-sweep.md](speed-sweep.md)): the app runs at 20 million
-    instructions a second with no limiter
+  - *Speed* ([speed-sweep.md](speed-sweep.md)): normal play now defaults to
+    60 million instructions/s and D1REAL at 15 normal /30 compressed updates/s,
+    approved after [broader validation](cadence15-validation.md). The historical
+    20-million setting without repairs was selected
     ([why](speed-sweep.md#fast-machine-default-9-october-2026)): the game's
     own clamp holds S at 15, no swings in 214 flights. D1's 11.6 fps cap gives
     a 1.2882x mission clock rather than real time
@@ -914,8 +916,8 @@ Each is fixed; the named regressions keep the failing seed or case.
     limits. The separate native 4K60 compressed-flight capture also passes:
     21,565 pictures, p99 16.92 ms, zero intervals over 25 ms, 21.84 ms
     drift and all 8,992 logic frames/final state exact. The technical
-    recommendation is now 15/60 for normal play; this validation-only change
-    leaves the default at eight/20. Original 486/ET4000
+    recommendation is now 15/60 for normal play; after validation, the owner
+    approved making it the application default. Original 486/ET4000
     parked references reach about 16.5 actual updates/s with S around 13,
     supporting period-hardware responsiveness without establishing S15 intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default
@@ -982,7 +984,8 @@ Each is fixed; the named regressions keep the failing seed or case.
     passes: 21,330 flight pictures, p99 16.94 ms, zero intervals over 25 ms,
     no rewind, 15.94 ms clock drift and all 5,396 frames/final state exact.
     Evidence is under `4k60-fix-20261018/observer/`. Visual assessment and
-    all-scene acceptance remain open; defaults stay 8 Hz /20 MIPS. The owner
+    all-scene acceptance remained open at that checkpoint; broader validation
+    subsequently passed and the owner approved 15 Hz /60 MIPS as default. The owner
     watched part of a later replay and found flight fine apart from map-edge
     specks. Fine integer line caps were escaping their endpoint cells; the
     clipping repair removes the reproduced remnants (22/32/38 pixels to zero)

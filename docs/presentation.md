@@ -17,11 +17,11 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
 
 - **Frame rate.** The app presents one picture per display refresh (vsync on), so the rate is whatever refresh the
   display is set to: 60 Hz gives 60 pictures a second, 144 Hz gives 144, if the PC keeps up. The game itself still
-  steps eight times a second with the default D1REAL fix (17 October); `interp` and `rerun` fill the gaps.
-  With `--fix none`, the original controller gives about 17 steps a second at the app's 20 MIPS speed,
+  steps fifteen times a second normally and thirty during 2x compression with the default D1REAL fix (18 October); `interp` and `rerun` fill the gaps.
+  With `--fix none`, the original controller gives about 17 steps a second at the historical 20 MIPS setting,
   fewer in slow scenes. The presentation modes do not require D1REAL.
 - **The price of in-between pictures** is age: they show the game one logic step late (about 60 ms at 17 steps a
-  second, or 125 ms at the default eight), plus one display frame for the threaded drawing,
+  second, or about 67 ms at the default fifteen), plus one display frame for the threaded drawing,
   plus about a third of a step for `rerun`'s smoothed clock.
 - **What never changes.** Original text, sprites and cockpit artwork keep their pixels (each becomes an N x N block);
   nothing is replaced with new graphics. The finer modes keep the original renderer's quirks: road and coastline
@@ -44,7 +44,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
 - **The original runs at a low, speed-dependent rate.** The flight model steps once per drawn frame and divides
   every per-second rate by S = `[0x368E]`, which the frame-rate controller clamps to at most 15
   ([bugs.md](bugs.md) D1). Pacing varies with scene and flight state: the nine-route study averages 16.27 drawn
-  frames a second at GOG's 9 MIPS and 16.75 at the app's default 20 MIPS; a parked jet draws 11.6
+  frames a second at GOG's 9 MIPS and 16.75 at the former 20 MIPS default; a parked jet draws 11.6
   ([speed-sweep.md](speed-sweep.md)). 60 fps cannot come from the original drawing faster; it must come from
   pictures *between its states*, about 4 to 7 per step at 60 Hz. Raising S is not an option: the flight model is 16-bit
   integer and rates smaller than S round to zero.
@@ -52,7 +52,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   correction unless `--no-aspect`). A 4K display already works as a scaled 320x200 picture; every scene edge stays
   on the 320x200 grid.
 - **Presentation uses the machine clock.** The host keeps emulated time level with real time; the original's mission
-  clock runs faster than real time at every speed measured (about 1.12 times at the default 20 MIPS;
+  clock runs faster than real time at every speed measured (about 1.12 times at the former 20 MIPS default;
   [speed-sweep.md](speed-sweep.md)). In-between pictures follow the machine's frame timestamps without changing that.
 - **A logic frame closes at the drawing phase that presents** (graphics entry 44): one `game_draw` (`0x01450`)
   phase a step, or two with a sensor display up (the main scene in the 64 KB page at origin 0, then the inset scene,
@@ -934,8 +934,8 @@ instruction profiles and three matched seeds), all-route rerun, N=4/9 boot
 and the same-record copy-isolation checks pass. Evidence:
 `D:/f117-gate/4k60-fix-20261018/observer/`. Capture still times out after one
 window-selection recovery; this validates logged submission pacing, not
-physical visibility or perceived motion. Defaults remain 8 Hz /20 MIPS;
-15 Hz /60 MIPS is opt-in. This encounter does not establish all-scene pacing.
+physical visibility or perceived motion. At that checkpoint defaults remained 8 Hz /20 MIPS; the owner subsequently
+approved 15 Hz /60 MIPS after the broader checks below. This encounter does not establish all-scene pacing.
 
 The [broader 15/60 validation](cadence15-validation.md) also passes a six-minute
 native compression excerpt (230 checked seconds actually compressed):

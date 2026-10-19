@@ -4,9 +4,11 @@ The candidate is **15 updates/s at normal speed, 30 during 2x compression,
 S=15 and a 60-MIPS virtual instruction budget**, with all fifteen repairs.
 This checks capacity, determinism and presentation. It does not recover an
 undocumented historical fixed target or equate virtual MIPS with a period CPU.
-Normal defaults remain eight/20 in this validation-only change. The completed
-technical checks support promoting **15/60** for normal play; no runtime
-code or default changes were needed to obtain these results.
+The completed technical checks support **15/60** for normal play. After this
+validation, the owner approved making it the application default on 18 October.
+The results below were obtained before promotion, without runtime changes.
+The previous eight/20 mode remains available explicitly; reference runners
+and legacy recordings retain their original defaults.
 
 Evidence: `D:/f117-gate/cadence15-broad-20261018/` (B). The API and runners
 are frozen from `2245c14`; production code is unchanged. Ordinary controls
@@ -80,8 +82,8 @@ match the interpreter's checkpoints/final state: 8,992 exact logic frames,
 The first native attempt (`B/display-4k60-compression/`) is invalid: its
 renderer briefly changed from 3840x2160 /59.99 Hz to 1920x1080 /50 Hz and
 back during setup. It was stopped and preserved; the unchanged checker
-rejects ambiguous display metadata. The cause is not established. A fresh
-retry under `B/display-4k60-compression-retry1/` passes the unchanged checker:
+rejects ambiguous display metadata. The owner subsequently confirmed connecting
+through remote desktop during that attempt. A fresh retry under `B/display-4k60-compression-retry1/` passes the unchanged checker:
 21,565 flight pictures, median 16.6678 ms, p99 **16.9220 ms**, maximum
 17.8535 ms, zero intervals over 25 ms, 21.84 ms guest drift and no
 interpolation reversals. The target stays D3D11 3840x2160 /59.990002 Hz,

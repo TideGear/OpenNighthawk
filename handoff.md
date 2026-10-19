@@ -10,11 +10,15 @@ more than once, what it costs). State as of 18 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** the owner resumed validation on 18 October. Normal play still
-uses **8 Hz /20 MIPS**, all fifteen fixes on. `--sim-hz 15` remains opt-in:
+**Start here:** after broader validation, the owner approved the new normal-play
+default on 18 October: **15 Hz /60 MIPS**, all fifteen fixes on. The app uses
 S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
 per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
-it fails active compressed-flight capacity.
+it fails active compressed-flight capacity. App/runner rebuild succeeds;
+all nine default-selection tests (six synthetic sessions), six timing/config
+CTests and ten Machine API regressions pass. Local user config and the 4K
+preset inherit the new defaults. No fullscreen run is needed for promotion;
+the selected mode was already validated below.
 
 **18 Oct broader 15/60 validation (passed):** owner requested broader
 validation after the 4K60 and map-edge repairs. New evidence is
@@ -36,11 +40,12 @@ corrected runs pass. Original home-orbit attempts never compress; clean
 away-course cruises do so for 1,070 checked seconds each in two regions.
 Only normal controls and read-only observations are used. B/README.md states
 criteria and private harness details; [the case report](docs/cadence15-validation.md)
-has results. All hidden workers finished. `B/display.py` is now running the
+has results. All hidden workers finished before `B/display.py` ran the
 announced native scale-9 4K60 six-minute compression excerpt (230 confirmed
 compressed seconds). The first attempt changed renderer target briefly to
 1080p/50 during setup, then back to 4K60; it is stopped and preserved, not
-accepted. The cause is unknown; an optional owner question is pending.
+accepted. The owner confirmed connecting through remote desktop during
+that attempt.
 The fresh `display-4k60-compression-retry1/` run passes in 700.30 host seconds:
 constant D3D11 3840x2160 /59.99 Hz, vsync 1, scale 9; 21,565 pictures,
 p99 16.9220 ms, maximum 17.8535 ms, zero intervals over 25 ms, 21.84 ms
@@ -50,8 +55,10 @@ also pass: 8,992 frames, 8,990 pairs and 25,189 isolated extra draws.
 `B/acceptance.json` passes technical acceptance and recommends 15/60 for
 normal play, while preserving the mission/capture limitations. No new visual
 assessment is claimed. No workers or game windows remain running. This
-validation-only change leaves defaults eight/20; promoting them is a separate
-runtime change. Do not relax thresholds or promote the failed 15/40 budget.
+validation originally left defaults eight/20. The owner then explicitly approved
+promoting normal play to fifteen/60; headless reference defaults and legacy
+replay metadata are unchanged. The previous mode is `--sim-hz 8 --ips 20000000`.
+Do not relax thresholds or promote the failed 15/40 budget.
 
 **18 Oct map-edge specks:** the owner watched a fullscreen replay, closed it
 early, and reported that flight looked fine apart from tiny dots around the
@@ -229,7 +236,8 @@ All hidden workers finished before launch. All 5,396 logic frames are exact,
 final clock/hash match both scan engines and the API pilot, guest drift is
 only 5.2 ms. However p99 is 32.9292 ms (limit 20.8333), 2,404/18,559 intervals
 exceed 25 ms (12.9533%, limit 1%), and one startup pair goes backward from
-0.677266 to 0.352496. This blocks the planned default change. Keep eight/20.
+0.677266 to 0.352496. This blocked the planned default change at that checkpoint; subsequent
+repairs and broader validation passed, and the owner approved fifteen/60.
 The six-minute adaptive type-5 pursuit ends airborne with 13 air units;
 no weapon release/objective/landing completion is claimed. Mission failures
 are retained separately. Both full scan engines reproduce its API final
