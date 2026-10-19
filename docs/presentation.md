@@ -101,8 +101,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   devices. Met: [the rerun mode](#the-rerun-mode-in-between-pictures-drawn-by-the-original).
 - **Status:** integrated as `--present rerun` and gated (15 October). Defaults are unchanged; `interp` remains.
 - **Next:** tune the clock's skips against picture age; make the observer, recompiled-code runtime and fix state per
-  machine so copies can run in parallel (needed above 60 Hz); inspect the small `DF03`/`C2C8` vertex group that
-  nudges less well; the owner's verdict on a physical display (ask first).
+  machine so copies can run in parallel (needed above 60 Hz); the owner's verdict on a physical display (ask first).
 - **In reserve:** camera reprojection of one step's own draw list. This project's own scene renderer (the
   unconnected `src/present/scene_mesh.c` draft;
   [world geometry](#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)) is no longer the
@@ -614,7 +613,12 @@ unmodified drawing code.
   heading, pitch, roll, height and altitude (`2DEE`-`2DF6`); computer-flown aircraft (24h-byte slots at `C16A`,
   `[DEFC]` of them; only a slot of the same type and state in both steps); weapons in flight (twelve 1Ch-byte records
   at `3C3A`; only one alive with the same type in both). A slot that changed occupant is not nudged, so it steps
-  instead of gliding.
+  instead of gliding. A slot's heading, pitch and roll move as one orientation: the game keeps pitch within a quarter
+  turn, so a unit pitching through the vertical (an aircraft in a dive) is stored with heading and roll half a
+  turn away and the pitch reflected (`psi + 8000h`, `8000h - theta`, `phi + 8000h`), and its heading and roll flip by about
+  half a turn at every step while the model barely moves. Each angle moved by its own shortest difference would twist the
+  model half a turn about the vertical between two steps, so the later attitude is taken in whichever spelling is
+  nearer the earlier one (`nudge_att`).
 - The copy runs under its own observer until the frame closes (the phase after its present), with a watchdog of a
   quarter emulated second or 4 million instructions, whichever is more. Its records, from its first phase on, are
   replayed on a's start pages and refined at the chosen scale like any logic frame; the HUD and bands come from the
@@ -650,7 +654,9 @@ records exactly apart from the observer's own lazy line records; the real machin
 Nudging halfway put 97.2% of vertices within tolerance of the two real frames' midpoint (98.0% of those matched to an
 object in both frames). Nudging aircraft slots raised air-to-air scene-walk objects at the midpoint from 97.7% to
 98.9%; a small deferred-object group (`DF03`, upstream `C2C8`, about 1,700 vertices; the generic deferred-object draw
-in a secondary camera's nested terrain view) fell from 98.6% to 96.6% and is open. Cost per extra draw: 1.08M
+in a secondary camera's nested terrain view) fell from 98.6% to 96.6%; that group is the air-target camera's inset, and the
+fall was one target in a vertical dive (see the nudge above; with the attitude nudged as one orientation the same flight's
+group is 100% within tolerance, `D:/f117-gate/df03-research/`). Cost per extra draw: 1.08M
 instructions (max 1.63M), **6.2 ms (max 8.8 ms) on one core**; at a 57 ms step, 60 Hz needs about 2.5 extra draws a
 step (~27% of a core) and 144 Hz about 7.5 (~80%), so high refresh rates need parallel copies. `F117_RERUN_PICS` on
 that branch dumped the copy's own 320x200 pictures beside the two real frames
@@ -929,7 +935,7 @@ These are correctness checks; they do not establish physical refresh or the look
 
 - **`rerun` motion.** The smoothed clock still skips; its tuning against picture age, the owner's verdict on a physical
   display remains open. Parallel copies for refresh rates above 60 Hz (per-machine observer, runtime and fix state)
-  moved to the unscored Phase 4 on 17 October 2026: the owner has no convenient way to test above 60 Hz. The `DF03`/`C2C8` group nudges less well.
+  moved to the unscored Phase 4 on 17 October 2026: the owner has no convenient way to test above 60 Hz.
 - **`interp`.** Batch pairing covers 86-99% of painted polygons in the study windows, but unpaired shapes switch and
   wrongly paired ones deform; pairing is frozen.
 - **Things that are not smooth** (explosions, tracers, discrete HUD readouts, a cut between views) are left alone:

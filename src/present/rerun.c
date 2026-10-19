@@ -152,11 +152,33 @@ static uint32_t nudge32(uint8_t *dst, uint16_t ds, const uint8_t *amem, const ui
     return v;
 }
 
+static int16_t sdiff(uint16_t a, uint16_t b) { return (int16_t)(uint16_t)(b - a); }
+
+/* An orientation (heading, pitch and roll, 16-bit angles of a full turn) moved t of the way. The game keeps pitch within
+ * a quarter turn, so a model that pitches through the vertical is stored as the same orientation spelled with heading
+ * and roll half a turn away and the pitch reflected (psi + 8000h, 8000h - theta, phi + 8000h): each step then changes
+ * heading and roll by nearly half a turn while the model barely moves. Moving each angle by its own shortest difference
+ * would twist the model half a turn about the vertical between the two steps, so b is taken in whichever of the two
+ * spellings is nearer a. */
+static void nudge_att(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds,
+                      uint16_t hdg, uint16_t pit, uint16_t rol, double t)
+{
+    const uint16_t ha = rd16(amem, ds, hdg), pa = rd16(amem, ds, pit), ra = rd16(amem, ds, rol);
+    uint16_t hb = rd16(bmem, bds, hdg), pb = rd16(bmem, bds, pit), rb = rd16(bmem, bds, rol);
+    const int direct = abs(sdiff(ha, hb)) + abs(sdiff(pa, pb)) + abs(sdiff(ra, rb));
+    const uint16_t h2 = (uint16_t)(hb + 0x8000), p2 = (uint16_t)(0x8000 - pb), r2 = (uint16_t)(rb + 0x8000);
+    if (abs(sdiff(ha, h2)) + abs(sdiff(pa, p2)) + abs(sdiff(ra, r2)) < direct) { hb = h2; pb = p2; rb = r2; }
+    wr16(dst, ds, hdg, (uint16_t)(ha + lerp_i(sdiff(ha, hb), t)));
+    wr16(dst, ds, pit, (uint16_t)(pa + lerp_i(sdiff(pa, pb), t)));
+    wr16(dst, ds, rol, (uint16_t)(ra + lerp_i(sdiff(ra, rb), t)));
+}
+
 /* The inputs the composition reads, moved t of the way: the aircraft (32-bit X/Y at BA3C/C056; heading, pitch, roll,
  * height above ground and altitude at 2DEE..2DF6); the computer-flown aircraft (VGAME 5852: 24h-byte slots at C16A,
- * [DEFC] of them; +2/+4 the X/Y at 1/32 of +8/+0C, +6 height, +10/+12/+14 attitude, only a slot of the same type
- * and state in both); the weapons in flight (VGAME 683E: twelve 1Ch-byte records at 3C3A; +0/+2/+4 X/Y/height,
- * +6 pitch, +8 heading, +0E life, +10 type, only one alive with the same type in both). */
+ * [DEFC] of them; +2/+4 the X/Y at 1/32 of +8/+0C, +6 height, +10/+12/+14 attitude moved as one orientation, only a
+ * slot of the same type and state in both); the weapons in flight (VGAME 683E: twelve 1Ch-byte records at 3C3A;
+ * +0/+2/+4 X/Y/height, +6 speed, +8/+0A/+0C heading/pitch/roll, +0E life, +10 type, only one alive with the same type
+ * in both). */
 static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds, double t)
 {
     nudge32(dst, ds, amem, bmem, bds, 0xBA3C, t);
@@ -173,15 +195,15 @@ static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t 
             const uint32_t y = nudge32(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x0C), t);
             wr16(dst, ds, (uint16_t)(at + 2), (uint16_t)(x >> 5));
             wr16(dst, ds, (uint16_t)(at + 4), (uint16_t)(y >> 5));
-            static const uint16_t f[] = { 0x06, 0x10, 0x12, 0x14 };
-            for (int k = 0; k < 4; k++) nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + f[k]), t);
+            nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x06), t);
+            nudge_att(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x10), (uint16_t)(at + 0x12), (uint16_t)(at + 0x14), t);
         }
     for (int i = 0; i < 12; i++) {
         const uint16_t at = (uint16_t)(0x3C3A + 0x1C * i);
         if (!rd16(amem, ds, (uint16_t)(at + 0x0E)) || !rd16(bmem, bds, (uint16_t)(at + 0x0E)) ||
             rd16(amem, ds, (uint16_t)(at + 0x10)) != rd16(bmem, bds, (uint16_t)(at + 0x10))) continue;
-        static const uint16_t f[] = { 0x00, 0x02, 0x04, 0x06, 0x08 };
-        for (int k = 0; k < 5; k++) nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + f[k]), t);
+        for (int k = 0; k < 3; k++) nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + 2 * k), t);
+        nudge_att(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x08), (uint16_t)(at + 0x0A), (uint16_t)(at + 0x0C), t);
     }
 }
 

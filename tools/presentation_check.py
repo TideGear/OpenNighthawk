@@ -59,7 +59,10 @@ def rerun_presentation(text, paired):
         raise ValueError("missing rerun checks")
     copies, changed, blocked = map(int, isolation.groups())
     drawn, fallback, exact, wrong = map(int, rerun.groups())
-    if changed or blocked or wrong or copies < drawn + exact + wrong or (paired and (not drawn or not exact)):
+    # A copy that reaches a DOS call (a display change loads its picture file in flight) is blocked, discarded and
+    # replaced by interpolation (rerun.c: the copy's result is used only when nothing was blocked), so a blocked copy
+    # must be one of the fallbacks; more blocked copies than fallbacks would mean a discarded copy was drawn.
+    if changed or blocked > fallback or wrong or copies < drawn + exact + wrong or (paired and (not drawn or not exact)):
         raise ValueError("rerun isolation, unchanged-copy equality or drawing failed")
     return dict(copies=copies, copy_exact=exact, rerun_drawn=drawn, rerun_fell_back=fallback)
 

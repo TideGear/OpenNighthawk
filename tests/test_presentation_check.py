@@ -45,12 +45,18 @@ class Verdict(unittest.TestCase):
         self.assertEqual(rerun_presentation(RERUN, 2)["rerun_drawn"], 10)
         for text in ("", RERUN.replace("10 in-between", "0 in-between"),
                      RERUN.replace("exactly 3", "exactly 0"), RERUN.replace("15 copies", "1 copies"),
-                     RERUN.replace("0 changed", "1 changed"), RERUN.replace("0 DOS", "1 DOS"),
+                     RERUN.replace("0 changed", "1 changed"), RERUN.replace("0 DOS", "3 DOS"),
                      RERUN.replace("not 0", "not 1")):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 rerun_presentation(text, 2)
         empty = RERUN.replace("10 in-between", "0 in-between").replace("exactly 3", "exactly 0").replace("15 copies", "0 copies")
         self.assertEqual(rerun_presentation(empty, 0)["copies"], 0)
+
+    def test_blocked_copies_must_be_fallbacks(self):
+        # a display change loads a picture file in flight: the copy is blocked and replaced by interpolation
+        self.assertEqual(rerun_presentation(RERUN.replace("0 DOS", "2 DOS"), 2)["rerun_drawn"], 10)
+        with self.assertRaises(ValueError):
+            rerun_presentation(RERUN.replace("0 DOS", "3 DOS"), 2)
 
     def test_machine_copies_cannot_use_the_read_only_light_check(self):
         paths = ["src/present/drawfeed.c", "src/present/drawfeed.h", "src/present/rerun.c", "src/present/rerun.h"]

@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 84.28%, P3 98.79%, All 94.90%
+- **Scoreboard:** P1 100.00%, P2 84.28%, P3 99.46%, All 95.06%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,020 addresses matched. Scope is the expanded seven-program
@@ -72,10 +72,10 @@ Consolidate it instead of appending to it.
   [docs/cadence15-validation.md](docs/cadence15-validation.md). Core, API and
   headless runs start with fixes off and parity commands prepend `--fix none`;
   `--fix none` clears them and further IDs select a subset.
-- **Phase 3 (98.79%):** only Stage 3 (smooth in-between frames, 93.3%) is open: the playback-clock default
-  (pending the owner's yes) and the `DF03`/`C2C8` vertex group; its hardware-only parts and the owner's visual
-  judgement are a Phase 4 maybe. Stage 2's open parts became a Phase 4 maybe on 18 Oct; Stage 4 is complete for
-  what can be tested here. Refresh rates above 60 Hz are unscored Phase 4. Details:
+- **Phase 3 (99.46%):** only Stage 3 (97%) is open: the playback-clock default (pending the owner's yes) and
+  his visual judgement (a Phase 4 maybe). The `DF03`/`C2C8` group is fixed (`rerun.c` attitude spelling; gate, all 46
+  routes in rerun mode and boot exact). Stage 2's open parts became a Phase 4 maybe; Stage 4 is complete for what
+  can be tested here. Refresh rates above 60 Hz are unscored Phase 4. Details:
   [docs/progress.md](docs/progress.md), [docs/presentation.md](docs/presentation.md).
 
 ### Presentation facts worth keeping
