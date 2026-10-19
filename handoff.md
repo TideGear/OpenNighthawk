@@ -38,8 +38,10 @@ hex without padding and asserts positive comparisons. `finalize.py` validates
 old batch-o coverage against its own 1,006 registrations, then checks every
 new byte against the dossiers. All expensive successful checks are retained.
 Source hashes remain identical to the tested manifest. All 60 tooling/default
-regressions pass after the final refresh. Commit/push and CI status belong
-in the next update once available.
+regressions pass after the final refresh. `f409a0a` is committed and pushed;
+both Windows and Munt CI pass:
+https://github.com/TideGear/OpenNighthawk/actions/runs/39189208946.
+The runtime source still equals the gated manifest; no local worker remains.
 
 **Static-code third tranche applied:** 12 ranges /1,619 new static bytes /
 764 canonical instructions. `docs/census-code.tsv` now has 35 ranges. The
@@ -51,7 +53,8 @@ Current scope: 148,448 /187,142, P2 80.36%, All 93.30%. 4,148 static-discovery
 bytes and 18,469 executed bytes in other modules remain open. No scope is
 silently declared complete.
 
-**Next private candidate:** `D:/f117-gate/p2-end-1708`,
+**Next private candidates (both ready, neither integrated):**
+`D:/f117-gate/p2-end-1708`,
 `end_wait_ticks_with_callback`, 77 bytes /30 instructions. Private proof and
 root audit pass: five seeds (6005/6000/6035/6047/6018 comparisons), no skips
 or differences, all 25 mutations caught, full_cycle 66 exact checkpoints /
@@ -61,9 +64,21 @@ long-run skips: unsigned comparison can wait across a 32-bit overshoot.
 The final scripted clock keeps those inputs and comparisons, then supplies
 an independently computed deadline after eight observations to permit a
 compared return. Rejected fixture and diagnostic evidence are preserved;
-no production timing fix or relaxed cap was used. Refresh proof-kit libraries
-from the current optimized build before the next batch; gate and run five
-optimized seeds after integration, as usual. The roadmap goal stays active.
+no production timing fix or relaxed cap was used.
+The START twin is at `D:/f117-gate/p2-start-31ad`,
+`start_wait_ticks_with_callback`, also 77 bytes /30 instructions. Its five
+seeds compare 6027/6005/6017/6004/6004 states, all instructions, zero skips
+or differences; all 25 mutations are caught. Full_cycle matches all 66
+checkpoints /two calls, boot all 26 /one call; its root audit passes. The
+initial fixture translation's callback jump operand was corrected before
+any lockstep test. Kit libraries are already refreshed from the optimized
+`f409a0a` build (`kit-libs/manifest.json`; older libraries preserved).
+Both private bases include batch p. Integrate them together only after
+checking their verdict/source hashes, then run five optimized seeds and a
+fresh full machine/presentation gate. No new timing fix is proposed.
+`D:/f117-gate/census-gap-20261018-tranche4/review.json` also prepares two
+more static ranges /209 bytes, not applied; SETUP 1E4F's opaque mixed range
+remains deferred. The roadmap goal stays active.
 
 **18 Oct Phase 2 static-code review, second tranche:** seven ranges add
 1,322 bytes of confirmed code to the workload, with no new matching credit.
