@@ -95,7 +95,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch r): **148,744 / 187,351**, P2 **80.42%**, overall **93.32%**.
+  **Current total** (after batch r): **148,744 / 187,351**, P2 **80.42%**, overall **93.47%** (P3 97.79% after Stage 2 moved).
   Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus
@@ -130,3 +130,4 @@ stays on the roadmap.
 17 Oct 2026 the owner removed the work he had decided against from the score
 (roadmap, "Possible future work" and the coastline item under Phase 4): Stage
 2's open share fell by the coastline item, 0.95 to 0.967, and P3 went to 96.62%; moving the refresh rates above 60 Hz to Phase 4 (Stage 3, 0.9 to 0.933) made it 97.22%.
+On 18 Oct 2026 the owner moved Stage 2's two open parts (line widths by drawing role, the physical-panel review) to Phase 4 as a "maybe": Stage 2 became 1.0 and P3 went to 97.79%.

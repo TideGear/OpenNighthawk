@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 80.42%, P3 97.22%, All 93.32%
+- **Scoreboard:** P1 100.00%, P2 80.42%, P3 97.79%, All 93.47%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,012 addresses matched. Scope is the expanded seven-program
@@ -52,11 +52,11 @@ Consolidate it instead of appending to it.
   [docs/cadence15-validation.md](docs/cadence15-validation.md). Core, API and
   headless runs start with fixes off and parity commands prepend `--fix none`;
   `--fix none` clears them and further IDs select a subset.
-- **Phase 3 (97.22%):** held down by Stage 3 smooth in-between frames (93.3%;
+- **Phase 3 (97.79%):** held down by Stage 3 smooth in-between frames (93.3%;
   accepted by the owner for now; clock tuning and slower machines remain),
-  Stage 4 infrastructure (90%: slower machines, cargo/career flights) and
-  Stage 2 (96.7%: widths by role, panel review). Refresh rates above 60 Hz are
-  unscored Phase 4 (the owner cannot test them). Details:
+  Stage 4 infrastructure (90%: slower machines, cargo/career flights). Stage 2's
+  open parts (widths by role, panel review) became a Phase 4 "maybe" on 18 Oct
+  (owner). Refresh rates above 60 Hz are unscored Phase 4 (the owner cannot test them). Details:
   [docs/progress.md](docs/progress.md), [docs/presentation.md](docs/presentation.md).
 
 ### Presentation facts worth keeping

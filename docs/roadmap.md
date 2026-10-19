@@ -164,7 +164,7 @@ not the recompilation:
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 148,744 /187,351 creditable bytes (P2 80.42%, overall 93.32%);
+      the score measures 148,744 /187,351 creditable bytes (P2 80.42%, overall 93.47%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -786,7 +786,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     clipping repair removes the reproduced remnants (22/32/38 pixels to zero)
     with all 953 captured logic frames and the interpreter reference exact.
     Evidence is under `D:/f117-gate/map-specks-20261018/`;
-    line widths by drawing role; weapon and target symbology; long
+    weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.
 
@@ -831,6 +831,14 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       issue of the original game itself (the owner, 17 Oct 2026; its jitter
       shows in the GOG DOSBox release too). Not planned for the finer modes; a
       person judges whether it is ever worth changing.
+
+- [ ] **Maybe: line widths by drawing role, and a physical-panel review of the
+      finer modes.** The remaining open parts of the high-resolution re-draw
+      (Stage 2). One perpendicular-width pen serves HUD, outlines and strips
+      today; widths by reliable drawing role (HUD tape, outline, strip) are a
+      tuning task, not a fixed class list, and the look on a real screen is a
+      person's judgement. Moved here on 18 Oct 2026 (owner): not scored, taken
+      up only if wanted.
 
 ## Housekeeping
 
