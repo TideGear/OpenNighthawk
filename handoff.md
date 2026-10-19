@@ -163,6 +163,22 @@ Consolidate it instead of appending to it.
    fixtures), VGAME `09EFA`.
 2. **Presentation:** the owner's physical-panel verdict; whether to adopt clock
    alpha 0.4 / pull 0.025; Stage 3's last skips and slower machines.
+   *Live clock comparison (approved by the owner, 19 Oct; not yet run):* repeat
+   the hidden app replay of `D:/f117-gate/present-v2/rerun-accept/app_smoke.py`
+   (dummy SDL drivers, `--present rerun --present-scale 2 --present-log`, the
+   `owner-roads-20261015/input.log` flight; also `owner-sharp-20261015`) twice, with
+   `F117_PRESENT_CLOCK_ALPHA/_PULL` = 0.2/0.05 and 0.4/0.025, and count freezes,
+   skips, >20% speed changes and picture age from `present.log` (columns
+   `host_ns icount older newer t replayed`; the earlier counts are in
+   `present-v2/clock-tune`, which has no analyser, so write one). If 0.4/0.025
+   wins, change the defaults in `src/present/drawfeed.c`, fix every doc copy, run
+   the full gate and `presentation_check.py --mode rerun`, then commit.
+   **Open proof agents:** four small-row agents (ta VGAME/SETUP/DSWAP, tb END,
+   tc START, td MPS_LOGO/PLAYER) died on the session rate limit with their work
+   saved in their `p2-*` directories; their ids do not survive a new session, so
+   re-launch them from `kit/AGENT_PROMPT.txt` over the remaining 66 "ran" rows
+   (3,840 bytes, `census_classify.py`), then integrate with `integrate_many.py`
+   and gate as batch `ab` (`new_batch.py ab aa 4281dd8 ...`).
 3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
 4. **Branch housekeeping:** merged branches are retained; not merged:
    `flight-input` (its worktree `D:/f117-wt/span-emitter` has uncommitted edits)
