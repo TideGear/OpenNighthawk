@@ -151,20 +151,20 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,019 addresses matched; named code runs 150,516 of the
+      **Now:** 1,020 addresses matched; named code runs 150,952 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873 and batch w 784.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784 and batch x 301.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 155,915 /187,351 creditable bytes (P2 84.06%, overall 94.75%);
+      the score measures 156,351 /187,351 creditable bytes (P2 84.28%, overall 94.90%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -198,6 +198,17 @@ not the recompilation:
       The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
       the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
       reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
+      **What the never-run code is (19 Oct 2026, a static reading of all 334 rows / 12,972 bytes; evidence
+      `D:/f117-gate/neverrun-research/`, rows in `table.tsv`, mostly medium confidence):** dead code with no path in
+      the shipped files 5,201 bytes (the START quiz, which GOG's file patches out at START `0x1D`, 633; printf
+      conversions no format string uses, about 736; `_flsbuf` 689 and `_write` 679; about 1,200 bytes of unused END
+      graphics/UI functions; unused MPS_LOGO and PLAYER helpers); error and fatal paths 3,657 (C runtime exits,
+      allocation and file errors, command-line misuse, banners); paths a player can reach with normal input 2,321
+      (VGAME's key dispatcher 945 bytes of it, the Alt+Q dialogs of START and END about 654, ejection flights about 360,
+      the ILS panel about 175, career thresholds, a few small ones); setup or hardware paths 1,306 (DSWAP's floppy-swap
+      path about 1,000, joystick port timeouts, retrace and monochrome probes); about 487 unknown. Routes are being built
+      for the player-reachable groups (`display_tour` was the first); the dead and error groups are listed for an owner
+      decision on whether they leave the denominator as code that stays original.
       **Stays original code:** the timer interrupts (VGAME 0x1C9B, START
       0x8D0B, END 0x4BEF) open with STI, after which the run loop admits one
       more instruction before it looks at events, so a matched body could do
@@ -262,6 +273,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | u | 19 Oct | 1,016 | 4,552 | VGAME `9EFA` `vgame_display_pass`, the flight display pass (1,628 instructions): weapon markers, gun tracers and their hit tests, the impact blast, the weapon locks, the target and reconnaissance cameras, bomb symbology and the supply-drop radio beacons. Written as named sections (a first mechanical transcript was rejected). Also in this batch: the `display_tour` route (46 routes now), and a harness fix for returns reached through misaligned fuzzed code (CTest `matched_projectile_misaligned_return`) |
 | v | 19 Oct | 1,018 | 873 | VGAME `8F71` the navigation display (legs, times and clock bar; 258 instructions) and VGAME `93E9` the armament panel refresh (75): both reached only by the new `display_tour` route (51 checkpoints; 15 and 1 calls). `8F71` misses two instructions there (damage bit 5 of `[3664]`), covered by the fixture |
 | w | 19 Oct | 1,019 | 784 | START `1C2F` `start_site_popup_text`: the info popup text of a briefing-map airbase or radar site (303 instructions; two-slot loop; proved on `display_tour`, 51 checkpoints / 40 calls; the route misses 23 instructions that need flagged sites in a theatre briefing, covered by the fixture) |
+| x | 19 Oct | 1,020 | 301 | START `11DB` `start_map_hover_light`: the briefing-map hover handler (127 instructions, 301 bytes: relights the palette entry of the item under the pointer, the help line and the site popup; the census rows `11DB`, `1285` and `12DB` are parts of it). Proved on `display_tour` (1,301 calls) |
 
 Notes that still matter:
 

@@ -573,6 +573,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x11DB, 0x11DB, 0x012D },
     { "START.EXE", 0x1C2F, 0x1C2F, 0x0310 },
     { "VGAME.EXE", 0x93E9, 0x93E9, 0x00C4 },
     { "VGAME.EXE", 0x8F71, 0x8F71, 0x02A5 },
@@ -1049,6 +1050,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0x0000, 0x8F71, 0x02A5, 258, 258, "draw the navigation display (legs, times, clock bar)" },
     { "VGAME.EXE", 0x0000, 0x93E9, 0x00C4, 75, 75, "redraw the armament panel: background, then each station's count and rack name" },
     { "START.EXE", 0x0000, 0x1C2F, 0x0310, 303, 303, "info popup text of a briefing-map airbase or radar site" },
+    { "START.EXE", 0x0000, 0x11DB, 0x012D, 127, 127, "briefing-map hover: relight the palette entry of the item under the pointer, help line and site popup" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -18134,6 +18136,120 @@ int main(int argc, char **argv)
                     }
                 }
 #undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x11DB) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x4000,0x0600};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x300;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x300+j),XRAND());
+                uint16_t arg[4];
+                for(unsigned j=0;j<4;j++){arg[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* An item number: nothing, a button, a site box (mostly a low box
+                 * number, sometimes a high one that reads past the slot table), any byte. */
+#define XITEM(var_) do { unsigned q_=XPICK(12); \
+    if(q_==0)var_=0; else if(q_<=4)var_=(uint8_t)(1+XPICK(8)); \
+    else if(q_<=9)var_=(uint8_t)(9+XPICK(6)); else if(q_==10)var_=(uint8_t)(9+XPICK(60)); \
+    else var_=(uint8_t)XRAND(); } while(0)
+                uint8_t hover,lit;
+                XITEM(hover);
+                if(XPICK(4)==0)lit=hover; else XITEM(lit);
+                /* The chosen button: the lit item, the hovered one, or anything. */
+                uint8_t chosen;
+                {
+                    const unsigned q=XPICK(6);
+                    if(q==0)chosen=lit; else if(q==1)chosen=hover;
+                    else if(q<=3)chosen=(uint8_t)XPICK(10); else if(q==4)chosen=(uint8_t)(0xF0+XPICK(16));
+                    else chosen=(uint8_t)XRAND();
+                }
+                /* The two slots of the lit box and of the hovered box: signed record
+                 * numbers, mostly small, sometimes the same record twice, sometimes
+                 * any byte (negative ones address records below the table base). */
+                int8_t rec[4];
+                for(unsigned b=0;b<2;b++) {
+                    const uint8_t item=b?hover:lit;
+                    for(unsigned k=0;k<2;k++) {
+                        rec[2*b+k]=(int8_t)(XPICK(5)?(int)XPICK(10)-2:(int)(int8_t)XRAND());
+                        if(k==1&&XPICK(5)==0)rec[2*b+1]=rec[2*b];
+                    }
+                    if(item>8)for(unsigned k=0;k<2;k++)XW8(dg,0xB286+2*(unsigned)(item-9)+k,(uint8_t)rec[2*b+k]);
+                }
+                /* The location records those numbers name: random bytes, the radar
+                 * type word (+6) zero about half the time, and now and then a word
+                 * with only its high byte set (a compare of the low byte alone fails). */
+                for(unsigned k=0;k<4;k++) {
+                    const uint16_t rb=(uint16_t)(0xCBDE+16*(int)rec[k]);
+                    for(unsigned j=0;j<16;j++)XW8(dg,(uint16_t)(rb+j),XRAND());
+                    {
+                        const unsigned q=XPICK(8);
+                        const uint16_t t=q<4?0:(q==4?0x0100:(q==5?0x0001:(uint16_t)(1+XRAND())));
+                        XW16(dg,(uint16_t)(rb+6),t);
+                    }
+                }
+                /* The cells the routine reads directly. */
+                XW8(dg,0x6D21,XRAND());
+                XW8(dg,0xB2E8,chosen);
+                XW8(dg,0xD096,lit);
+                /* Callee probes: fold every argument in order into F800, count the
+                 * call, return the next word of a list.  The hit test (393D) returns
+                 * the hovered item first; the rest are stubs that only fold. */
+                for(unsigned k=0;k<5;k++) {
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xF400+0x40*k+2*j,XRAND());
+                    XW16(dg,0xF802+2*k,XRAND());
+                }
+                XW16(dg,0xF800,XRAND());
+                for(unsigned k=0;k<5;k++) {
+                    const unsigned p=XPICK(32);
+                    XW16(dg,0xF820+2*k,2*p);
+                    if(k==0)XW16(dg,0xF400+2*p,(uint16_t)((XRAND()&0xFF00)|hover));
+                }
+#define XSTUB(sg_,off_,k_,id_,nargs_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(4+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    /* the popup restore (k 3) leaves BX holding a stray word, as the original's far call does */ \
+    if((k_)==3){cb_[n_++]=0x58;cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8;} else cb_[n_++]=0x5B; \
+    cb_[n_++]=0x5D;cb_[n_++]=0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* hit test (393D; the list and the count), help line (1B37; the
+                     * item), site popup (1C2F; the box), popup restore (3588; none),
+                     * DAC request (3517; register, table, count) */
+                    static const struct { uint16_t entry; uint8_t args; } calls[]={
+                        {0x393D,2},{0x1B37,1},{0x1C2F,1},{0x3588,0},{0x3517,3}};
+                    for(unsigned k=0;k<5;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x100*k);
+                        XW8(0,calls[k].entry,0xE9);XW16(0,calls[k].entry+1,(uint16_t)(code-calls[k].entry-3));
+                        XSTUB(0,code,k,0x1234+0x1111*k,calls[k].args);
+                    }
+                }
+#undef XSTUB
+#undef XITEM
 #undef XPICK
 #undef XRAND
 #undef XW16

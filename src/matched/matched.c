@@ -71970,7 +71970,254 @@ draw_popup:
 #undef PUSH_NAME_FORMAT
 }
 
+/* START 0000:11DB - the hover of the briefing map (census name startmap_hover).
+ *
+ * The briefing page of the front end (START 0FA3, start_brief_key_loop) calls this
+ * routine each time the pointer may have moved.  The page's clickable things are
+ * numbered from 1 by one hit-test list (the rectangles at HIT_LIST, count + 8 of them
+ * in [HIT_COUNT]): items 1..8 are the eight buttons along the side, items 9 and up are
+ * the site boxes drawn on the map, box number = item - 9.  Item 0 is "nothing".  The
+ * item that is lit now is kept in LIT_ITEM.
+ *
+ *   1. The hit test (START 393D, game_menu_read, arguments: the list, the count) gives
+ *      the item under the pointer, HOVER (a byte kept in the frame).
+ *   2. When HOVER is the lit item, nothing changes: the routine only stores it again.
+ *   3. Otherwise the help line is redrawn for HOVER (START 1B37, one argument; item 0
+ *      has a default text) and the lit item is put back to its normal colour:
+ *        - item 0: nothing to put back;
+ *        - a site box (item > 8): the popup of the box is removed (START 3588,
+ *          startmap_popup_restore).  When the box has a radar - the radar type word
+ *          (+6) of the record named by either of its two slots is nonzero, the same
+ *          test as the popup's - its palette entry (register B7h + item, the three
+ *          bytes at PALETTE + 3 * register) is queued back to its own colours;
+ *        - a button (item 1..8): unless it is the button chosen on the page
+ *          (SELECTED_BUTTON), its palette entry (register 100h - item) is queued
+ *          back from the normal-colour triple BUTTON_NORMAL.
+ *      "Queued" is the DAC request START 3517 (first register, table, count 1), whose
+ *      arguments the caller removes (add sp,6).
+ *   4. Then HOVER is lit the same way: a site box gets its popup text (START 1C2F,
+ *      startmap_site_popup_text, argument: the box number) and, when it has a radar,
+ *      the triple SITE_LIT in register B7h + item; a button that is not the chosen one
+ *      gets the triple BUTTON_LIT in register 100h - item.  Item 0 does nothing.
+ *   5. HOVER becomes the lit item.  Nothing is returned.
+ *
+ * The two slots of a box are two signed bytes at SITE_SLOTS + 2 * box; each names a
+ * 16-byte record of LOCATIONS (record number * 16, sign extended).  The radar test
+ * looks at the first slot's record and, only when that has no radar, at the second's.
+ *
+ * Callees (all plain RET, so this code removes the arguments): the hit test pops its two
+ * words into BX, the help line its one word, the popup text its one word (into BX), the
+ * popup restore has none, and the DAC request's six bytes are removed by ADD SP,6.  The
+ * frame is 6 bytes below BP plus the saved SI: [BP-4] HOVER (byte), [BP-6] the box
+ * number (written, then read back after the popup call; the original keeps it in memory
+ * across the call).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the runs are the original's (they start at every branch target
+ * and after every conditional jump and call). */
+static int start_map_hover_light(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Frame offsets. */
+    enum { HOVER = -4, BOX = -6 };
+    /* Data segment cells and tables. */
+    enum { HIT_COUNT = 0x6D21,       /* byte: number of rectangles in the list */
+           HIT_LIST = 0x6D22,        /* the rectangles, 8 bytes each */
+           LIT_ITEM = 0xD096,        /* byte: the item whose colour is lit */
+           SELECTED_BUTTON = 0xB2E8, /* byte: the button chosen on the page (signed) */
+           SITE_SLOTS = 0xB286,      /* two signed record numbers per box */
+           LOCATIONS = 0xCBDE,       /* 16-byte location records */
+           PALETTE = 0x64E3 };       /* three bytes per DAC register */
+    enum { LOC_RADAR_TYPE = 6 };     /* word of a location record: nonzero = a radar */
+    /* Palette registers and colour triples. */
+    enum { SITE_REGISTER = 0xB7,     /* + item: the register of a site box */
+           BUTTON_REGISTER = 0x100,  /* - item: the register of a button */
+           SITE_LIT = 0x11AF, BUTTON_LIT = 0x11BE, BUTTON_NORMAL = 0x11C4 };
+    /* Callees. */
+    enum { HIT_TEST = 0x393D, HELP_LINE = 0x1B37, POPUP_TEXT = 0x1C2F,
+           POPUP_RESTORE = 0x3588, DAC_REQUEST = 0x3517 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XP(v_) cpu_push16(c,(v_))
+#define XPOP_BX() (c->r[R_BX] = cpu_pop16(c))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while (0)
+    /* sub ah,ah */
+#define AH0() set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0))
+    /* The record a box's first slot names: BX = box * 2 (kept: the second slot is read
+     * through it), AL = SITE_SLOTS[BX] sign extended into AX, SI = 16 * that, CL = 4;
+     * the flags are those of the compare of the record's radar type word with 0. */
+#define FIRST_SLOT_RECORD() do { \
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1); \
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + SITE_SLOTS))); \
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); \
+    c->r[R_SI] = c->r[R_AX]; \
+    set_r8(c, R_CL, 4); \
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1); \
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_SI] + LOCATIONS + LOC_RADAR_TYPE)), 0, 1); } while (0)
+    /* The same for the second slot, SITE_SLOTS + 1, through BX (CL is still 4). */
+#define SECOND_SLOT_RECORD() do { \
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + SITE_SLOTS + 1))); \
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); \
+    c->r[R_BX] = c->r[R_AX]; \
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1); \
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + LOCATIONS + LOC_RADAR_TYPE)), 0, 1); } while (0)
+
+    if (!room(c, 9)) return 0;
+
+    /* --- entry: the hit test names the item under the pointer --- */
+    XB(9, 0x11DB);
+    XP(c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 6, 1);
+    XP(c->r[R_SI]);
+    set_r8(c, R_AL, ds_get8(c, HIT_COUNT)); AH0(); XP(c->r[R_AX]);
+    c->r[R_AX] = HIT_LIST; XP(c->r[R_AX]);
+    XNEAR(0x11EC, HIT_TEST, 0x11EF);
+
+    /* --- the item changed? --- */
+    XB(6, 0x11EF);
+    XPOP_BX(); XPOP_BX();
+    bp_put8(c, HOVER, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, LIT_ITEM));
+    alu_op(c, 7, bp_get8(c, HOVER), get_r8(c, R_AL), 0);
+    if (x86_cond(c, 5)) goto changed;
+    XB(1, 0x11FC);
+    goto store;
+
+changed:                                                          /* 0x11FF */
+    /* the help line for the new item */
+    XB(3, 0x11FF);
+    set_r8(c, R_AL, bp_get8(c, HOVER)); AH0(); XP(c->r[R_AX]);
+    XNEAR(0x1205, HELP_LINE, 0x1208);
+
+    /* --- put the lit item back --- */
+    XB(3, 0x1208);
+    XPOP_BX();
+    alu_op(c, 7, ds_get8(c, LIT_ITEM), 0, 0);
+    if (x86_cond(c, 4)) goto light_new;
+    XB(2, 0x1210);
+    alu_op(c, 7, ds_get8(c, LIT_ITEM), 8, 0);
+    if (x86_cond(c, 6)) goto restore_button;
+
+    /* a site box: its popup goes away, then its radar entry */
+    XNEAR(0x1217, POPUP_RESTORE, 0x121A);
+    XB(12, 0x121A);
+    set_r8(c, R_BL, ds_get8(c, LIT_ITEM));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], 9, 1);
+    bp_put(c, BOX, c->r[R_BX]);
+    FIRST_SLOT_RECORD();
+    if (x86_cond(c, 5)) goto restore_site;
+    XB(6, 0x123A);
+    SECOND_SLOT_RECORD();
+    if (x86_cond(c, 4)) goto light_new;
+restore_site:                                                     /* 0x124A */
+    XB(11, 0x124A);
+    c->r[R_AX] = 1; XP(c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, LIT_ITEM)); AH0();
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], SITE_REGISTER, 1);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], PALETTE, 1);
+    XP(c->r[R_AX]);
+    goto request_old;
+
+restore_button:                                                   /* 0x1262 */
+    XB(6, 0x1262);
+    set_r8(c, R_AL, ds_get8(c, SELECTED_BUTTON));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    set_r8(c, R_CL, ds_get8(c, LIT_ITEM));
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 5, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto light_new;
+    XB(6, 0x1270);
+    c->r[R_AX] = 1; XP(c->r[R_AX]);
+    c->r[R_AX] = BUTTON_NORMAL; XP(c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], BUTTON_REGISTER, 1);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);      /* neg cx */
+request_old:                                                      /* 0x127E */
+    XB(1, 0x127E);
+    XP(c->r[R_CX]);
+    XNEAR(0x127F, DAC_REQUEST, 0x1282);
+    XB(1, 0x1282);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+
+    /* --- light the item under the pointer --- */
+light_new:                                                        /* 0x1285 */
+    XB(2, 0x1285);
+    alu_op(c, 7, bp_get8(c, HOVER), 0, 0);
+    if (x86_cond(c, 4)) goto store;
+    XB(2, 0x128B);
+    alu_op(c, 7, bp_get8(c, HOVER), 8, 0);
+    if (x86_cond(c, 6)) goto light_button;
+
+    /* a site box: its popup text, then its radar entry */
+    XB(5, 0x1291);
+    set_r8(c, R_AL, bp_get8(c, HOVER)); AH0();
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], 9, 1);
+    bp_put(c, BOX, c->r[R_AX]);
+    XP(c->r[R_AX]);
+    XNEAR(0x129D, POPUP_TEXT, 0x12A0);
+    XB(10, 0x12A0);
+    XPOP_BX();
+    c->r[R_BX] = bp_get(c, BOX);
+    FIRST_SLOT_RECORD();
+    if (x86_cond(c, 5)) goto light_site;
+    XB(6, 0x12B8);
+    SECOND_SLOT_RECORD();
+    if (x86_cond(c, 4)) goto store;
+light_site:                                                       /* 0x12C8 */
+    XB(9, 0x12C8);
+    c->r[R_AX] = 1; XP(c->r[R_AX]);
+    c->r[R_AX] = SITE_LIT; XP(c->r[R_AX]);
+    set_r8(c, R_AL, bp_get8(c, HOVER)); AH0();
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], SITE_REGISTER, 1);
+    XP(c->r[R_AX]);
+    goto request_new;
+
+light_button:                                                     /* 0x12DB */
+    XB(6, 0x12DB);
+    set_r8(c, R_AL, ds_get8(c, SELECTED_BUTTON));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    set_r8(c, R_CL, bp_get8(c, HOVER));
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 5, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto store;
+    XB(7, 0x12E8);
+    c->r[R_AX] = 1; XP(c->r[R_AX]);
+    c->r[R_AX] = BUTTON_LIT; XP(c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], BUTTON_REGISTER, 1);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);      /* neg cx */
+    XP(c->r[R_CX]);
+request_new:                                                      /* 0x12F7 */
+    XNEAR(0x12F7, DAC_REQUEST, 0x12FA);
+    XB(1, 0x12FA);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+
+    /* --- the item under the pointer is now the lit one; leave --- */
+store:                                                            /* 0x12FD */
+    XB(6, 0x12FD);
+    set_r8(c, R_AL, bp_get8(c, HOVER));
+    ds_put8(c, LIT_ITEM, get_r8(c, R_AL));
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XP
+#undef XPOP_BX
+#undef XRUN
+#undef XNEAR
+#undef AH0
+#undef FIRST_SLOT_RECORD
+#undef SECOND_SLOT_RECORD
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x11DB, start_map_hover_light, "briefing-map hover: relight the palette entry of the item under the pointer, help line and site popup", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x1C2F, start_site_popup_text, "info popup text of a briefing-map airbase or radar site", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x93E9, vgame_armament_panel_refresh, "redraw the armament panel: background, then each station's count and rack name", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8F71, vgame_navigation_display, "draw the navigation display (legs, times, clock bar)", 1 },
