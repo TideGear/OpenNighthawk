@@ -151,21 +151,22 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,008 addresses matched; named code runs 147,602 of the
+      **Now:** 1,010 addresses matched; named code runs 147,756 of the
       169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)): 966 census rows
+      [progress.md](progress.md#what-is-measured)): 968 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268 and batch p 154.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154 and batch q 154.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
-      (35 ranges total, 11,282 additional static bytes). With batch p's new names,
-      the score measures 148,448 /187,142 creditable bytes (P2 80.36%, overall 93.30%);
+      (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
+      wrappers (37 ranges, 11,491). With batch q's new names,
+      the score measures 148,602 /187,351 creditable bytes (P2 80.35%, overall 93.30%);
       the earlier 87.43% used only the old census. No matching was removed.
-      The remaining 4,148 static-inventory bytes need review; speculative table/padding
+      The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
       The second review trims PLAYER `1AD4` before the bisected `1B9B` instruction.
       The third resolves the logo mouse-helper range: seven canonical walks cover
@@ -231,7 +232,21 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: briefing setup and picture loading (18 October 2026, batch p)
+### Latest batch: tick-wait helpers (18 October 2026, batch q)
+
+END `1708` (`end_wait_ticks_with_callback`) and START `31AD`
+(`start_wait_ticks_with_callback`), 30 instructions /77 bytes each, add 154
+named bytes (1,010 addresses). Five private seeds each cover every
+instruction with no skips or differences; all 50 mutations are caught; both
+match full_cycle (66 checkpoints, 1 and 2 calls) and boot (26, 0 and 1). The
+original unsigned deadline comparisons and wrap behaviour are kept: this adds
+names, not a timing fix. The full gate passes 246 CTests, 45 routes /44 fresh
+interpreter sessions, both instruction profiles, all 1,010 matched routines
+at three seeds, reachability and event limits. N=1 presentation (596.49 s)
+and boot N=4/9 (49.66 s) are exact; ten optimized seeds pass. Evidence:
+`D:/f117-gate/p2-batch-q-accept/final-gate-verdict.json`.
+
+### Previous batch: briefing setup and picture loading (18 October 2026, batch p)
 
 Two routines add 154 named census bytes, bringing the accepted count to 1,008
 addresses. Five private seeds each cover every instruction with no skips or

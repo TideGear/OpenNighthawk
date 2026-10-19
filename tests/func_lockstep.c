@@ -573,6 +573,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x31AD, 0x31AD, 0x004D },
+    { "END.EXE", 0x1708, 0x1708, 0x004D },
     { "START.EXE", 0x35FC, 0x35FC, 0x0045 },
     { "START.EXE", 0x0F4E, 0x0F4E, 0x0055 },
     { "START.EXE", 0x9E3E, 0x9E3E, 0x005C },
@@ -1026,6 +1028,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x9E3E, 0x005C, 41, 41, "the formatter's conversion dispatch" },
     { "START.EXE", 0x0000, 0x0F4E, 0x0055, 38, 38, "reset briefing selection, load its pictures and palette, decode orders and position the pointer" },
     { "START.EXE", 0x0000, 0x35FC, 0x0045, 28, 28, "format the selected picture filename, load it and transfer it to the selected page" },
+    { "END.EXE", 0x0000, 0x1708, 0x004D, 30, 30, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations" },
+    { "START.EXE", 0x0000, 0x31AD, 0x004D, 30, 30, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -16862,6 +16866,96 @@ int main(int argc, char **argv)
 #undef KRAND
 #undef KW16
 #undef KW8
+            }
+            if(!strcmp(o->module,"END.EXE")&&o->seg==0&&o->ip==0x1708) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define TW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define TW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);TW8((s_),(o_),v__);TW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define TRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)TW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),TRAND());
+                const uint16_t lows[]={0,1,0xFFFA,0xFFFB,0xFFFC,0xFFFD,0xFFFE,0xFFFF};
+                const uint16_t highs[]={0,1,0x7FFF,0xFFFF};
+                const uint16_t lo=lows[TRAND()&7],hi=highs[TRAND()&3];
+                TW16(0x40,0x6C,lo);TW16(0x40,0x6E,hi);
+                const uint32_t deadline=(((uint32_t)hi<<16)|lo)+4u;
+                TW16(dg,0xF824,0);TW16(dg,0xF826,(uint16_t)deadline);TW16(dg,0xF828,(uint16_t)(deadline>>16));
+                const uint16_t arg=(uint16_t)TRAND();
+                TW16(seg[S_SS],r[R_SP],arg);small[0]=arg;
+                const uint8_t counters[]={0,1,0xFE,0xFF,(uint8_t)TRAND()};
+                TW8(dg,0x55BA,counters[TRAND()%5]);
+                TW16(dg,0xF810,TRAND());TW16(dg,0xF812,TRAND());
+                TW16(dg,0xF820,1+TRAND()%7);
+                /* Returning ES-call stand-in: fold its argument and advance
+                 * both BIOS words explicitly, preserving the 16-bit carry.
+                 * Across a 32-bit overshoot the original can wait billions
+                 * of callbacks. After eight observations the scripted clock
+                 * supplies the independently computed exact deadline, so
+                 * that same wrap path is compared through a normal return. */
+                static const uint8_t code[]={
+                    0x55,0x8B,0xEC,0x53,0x06,
+                    0xFF,0x06,0x10,0xF8,
+                    0x8B,0x46,0x04,0x8B,0x1E,0x12,0xF8,
+                    0xD1,0xC3,0x33,0xD8,0x89,0x1E,0x12,0xF8,
+                    0xB8,0x40,0x00,0x8E,0xC0,
+                    0xA1,0x20,0xF8,0x26,0x01,0x06,0x6C,0x00,
+                    0x26,0x83,0x16,0x6E,0x00,0x00,
+                    0xFF,0x06,0x24,0xF8,0x83,0x3E,0x24,0xF8,0x08,0x72,0x0E,
+                    0xA1,0x26,0xF8,0x26,0xA3,0x6C,0x00,
+                    0xA1,0x28,0xF8,0x26,0xA3,0x6E,0x00,
+                    0x07,0x5B,0x5D,0xC3};
+                TW8(0,0x42D0,0xE9);TW16(0,0x42D1,(uint16_t)(0xF200-0x42D0-3));
+                for(unsigned j=0;j<sizeof code;j++)TW8(0,0xF200+j,code[j]);
+#undef TRAND
+#undef TW16
+#undef TW8
+            }
+            if(!strcmp(o->module,"START.EXE")&&o->seg==0&&o->ip==0x31AD) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define TW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define TW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);TW8((s_),(o_),v__);TW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define TRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)TW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),TRAND());
+                const uint16_t lows[]={0,1,0xFFFA,0xFFFB,0xFFFC,0xFFFD,0xFFFE,0xFFFF};
+                const uint16_t highs[]={0,1,0x7FFF,0xFFFF};
+                const uint16_t lo=lows[TRAND()&7],hi=highs[TRAND()&3];
+                TW16(0x40,0x6C,lo);TW16(0x40,0x6E,hi);
+                const uint32_t deadline=(((uint32_t)hi<<16)|lo)+4u;
+                TW16(dg,0xF824,0);TW16(dg,0xF826,(uint16_t)deadline);TW16(dg,0xF828,(uint16_t)(deadline>>16));
+                const uint16_t arg=(uint16_t)TRAND();
+                TW16(seg[S_SS],r[R_SP],arg);small[0]=arg;
+                const uint8_t counters[]={0,1,0xFE,0xFF,(uint8_t)TRAND()};
+                TW8(dg,0xB304,counters[TRAND()%5]);
+                TW16(dg,0xF810,TRAND());TW16(dg,0xF812,TRAND());
+                TW16(dg,0xF820,1+TRAND()%7);
+                /* Returning ES-call stand-in: fold its argument and advance
+                 * both BIOS words explicitly, preserving the 16-bit carry.
+                 * Across a 32-bit overshoot the original can wait billions
+                 * of callbacks. After eight observations the scripted clock
+                 * supplies the independently computed exact deadline, so
+                 * that same wrap path is compared through a normal return. */
+                static const uint8_t code[]={
+                    0x55,0x8B,0xEC,0x53,0x06,
+                    0xFF,0x06,0x10,0xF8,
+                    0x8B,0x46,0x04,0x8B,0x1E,0x12,0xF8,
+                    0xD1,0xC3,0x33,0xD8,0x89,0x1E,0x12,0xF8,
+                    0xB8,0x40,0x00,0x8E,0xC0,
+                    0xA1,0x20,0xF8,0x26,0x01,0x06,0x6C,0x00,
+                    0x26,0x83,0x16,0x6E,0x00,0x00,
+                    0xFF,0x06,0x24,0xF8,0x83,0x3E,0x24,0xF8,0x08,0x72,0x0E,
+                    0xA1,0x26,0xF8,0x26,0xA3,0x6C,0x00,
+                    0xA1,0x28,0xF8,0x26,0xA3,0x6E,0x00,
+                    0x07,0x5B,0x5D,0xC3};
+                TW8(0,0x8364,0xE9);TW16(0,0x8365,(uint16_t)(0xF200-0x8364-3));
+                for(unsigned j=0;j<sizeof code;j++)TW8(0,0xF200+j,code[j]);
+#undef TRAND
+#undef TW16
+#undef TW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

@@ -785,6 +785,10 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:F4E)
     add_test(NAME matched_start_load_picture_for_page COMMAND func_lockstep --states 5000
       --only START.EXE:35FC)
+    add_test(NAME matched_end_wait_ticks_with_callback COMMAND func_lockstep --states 5000
+      --only END.EXE:1708)
+    add_test(NAME matched_start_wait_ticks_with_callback COMMAND func_lockstep --states 5000
+      --only START.EXE:31AD)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

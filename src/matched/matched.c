@@ -67096,7 +67096,113 @@ static int start_load_picture_for_page(machine_t *m)
 #undef PB
 }
 
+/* END 1708 takes a near callback address. Snapshot the 32-bit BIOS tick
+ * counter at 0040:006C and add four, preserving the original carry behavior.
+ * Poll the high then low deadline words; while the deadline is later, call
+ * the ES=DS wrapper with the callback and increment the byte counter 55BA.
+ * The original unsigned high-word comparison exits immediately across a
+ * 32-bit wrap; retain it rather than replacing it with elapsed arithmetic.
+ * Reads and local writes stay in instruction order, with no cached memory. */
+static int end_wait_ticks_with_callback(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define WB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define WC(target_,ret_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,12))return 0;
+    WB(12,0x1708);
+    cpu_push16(c,c->r[R_BP]);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    c->r[R_BX]=0x40;c->seg[S_ES]=c->r[R_BX];c->r[R_BX]=0x6C;
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_BX]);
+    c->r[R_DX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+2));
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],4,1);
+    c->r[R_DX]=(uint16_t)alu_op(c,2,c->r[R_DX],0,1);
+    bp_put(c,-4,c->r[R_AX]);bp_put(c,-2,c->r[R_DX]);
+l_poll:
+    WB(7,0x1729);
+    c->r[R_BX]=0x40;c->seg[S_ES]=c->r[R_BX];c->r[R_BX]=0x6C;
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_BX]);
+    c->r[R_DX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+2));
+    (void)alu_op(c,7,bp_get(c,-2),c->r[R_DX],1);
+    if(x86_cond(c,2))goto l_done;
+    WB(1,0x173D);
+    if(x86_cond(c,7))goto l_callback;
+    WB(2,0x173F);
+    (void)alu_op(c,7,bp_get(c,-4),c->r[R_AX],1);
+    if(x86_cond(c,6))goto l_done;
+l_callback:
+    WB(1,0x1744);cpu_push16(c,bp_get(c,4));
+    SM4_NEED(1,0x1747);WC(0x42D0,0x174A);
+    WB(3,0x174A);
+    c->r[R_BX]=cpu_pop16(c);
+    ds_put8(c,0x55BA,(uint8_t)alu_inc(c,ds_get8(c,0x55BA),0));
+    goto l_poll;
+l_done:
+    WB(3,0x1751);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef WC
+#undef WB
+}
+
+/* START 31AD takes a near callback address. Snapshot the 32-bit BIOS tick
+ * counter at 0040:006C and add four, preserving the original carry behavior.
+ * Poll the high then low deadline words; while the deadline is later, call
+ * the ES=DS wrapper with the callback and increment the byte counter B304.
+ * The original unsigned high-word comparison exits immediately across a
+ * 32-bit wrap; retain it rather than replacing it with elapsed arithmetic.
+ * Reads and local writes stay in instruction order, with no cached memory. */
+static int start_wait_ticks_with_callback(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define WB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define WC(target_,ret_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,12))return 0;
+    WB(12,0x31AD);
+    cpu_push16(c,c->r[R_BP]);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    c->r[R_BX]=0x40;c->seg[S_ES]=c->r[R_BX];c->r[R_BX]=0x6C;
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_BX]);
+    c->r[R_DX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+2));
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],4,1);
+    c->r[R_DX]=(uint16_t)alu_op(c,2,c->r[R_DX],0,1);
+    bp_put(c,-4,c->r[R_AX]);bp_put(c,-2,c->r[R_DX]);
+l_poll:
+    WB(7,0x31CE);
+    c->r[R_BX]=0x40;c->seg[S_ES]=c->r[R_BX];c->r[R_BX]=0x6C;
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_BX]);
+    c->r[R_DX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+2));
+    (void)alu_op(c,7,bp_get(c,-2),c->r[R_DX],1);
+    if(x86_cond(c,2))goto l_done;
+    WB(1,0x31E2);
+    if(x86_cond(c,7))goto l_callback;
+    WB(2,0x31E4);
+    (void)alu_op(c,7,bp_get(c,-4),c->r[R_AX],1);
+    if(x86_cond(c,6))goto l_done;
+l_callback:
+    WB(1,0x31E9);cpu_push16(c,bp_get(c,4));
+    SM4_NEED(1,0x31EC);WC(0x8364,0x31EF);
+    WB(3,0x31EF);
+    c->r[R_BX]=cpu_pop16(c);
+    ds_put8(c,0xB304,(uint8_t)alu_inc(c,ds_get8(c,0xB304),0));
+    goto l_poll;
+l_done:
+    WB(3,0x31F6);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef WC
+#undef WB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x31AD, start_wait_ticks_with_callback, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1708, end_wait_ticks_with_callback, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x35FC, start_load_picture_for_page, "format the selected picture filename, load it and transfer it to the selected page", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0F4E, start_briefing_page_setup, "reset briefing selection, load its pictures and palette, decode orders and position the pointer", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9E3E, start_format_dispatch, "the formatter's conversion dispatch", 1 },

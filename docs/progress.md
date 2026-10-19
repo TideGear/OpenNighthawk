@@ -107,8 +107,10 @@ stays on the roadmap.
   range as canonical code, without entering the overlapping operand decode.
   Canonical VGAME `0FB2:02B4` also resolves its segment-zero operand aliases.
   Across 35 reviewed ranges, 11,282 static bytes supplement the executed-code
-  scope. The current total is **148,448 /187,142**, P2 **80.36%**, overall
-  **93.30%**. The remaining 4,148 discovery bytes and the other-module scope
+  scope. Batch q (18 October) adds 154 more named bytes and a fourth tranche
+  adds two reviewed wrappers (DSWAP `033E`, START `87F6`; 209 static bytes,
+  37 ranges). The current total is **148,602 /187,351**, P2 **80.35%**, overall
+  **93.30%**. The remaining 3,939 discovery bytes and the other-module scope
   still need review. Evidence: `D:/f117-gate/census-gap-20261018-tranche3/`
   and `D:/f117-gate/p2-batch-p-accept/`; hashes, boundaries, independent
   instruction lengths and the unchanged prior named credit are verified.

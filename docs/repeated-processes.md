@@ -1,5 +1,13 @@
 # Repeated processes
 
+**18 Oct batch q:** private proofs `D:/f117-gate/p2-{end-1708,start-31ad}/`,
+acceptance `p2-batch-q-accept/`. Gate and overlapped presentation total
+1,720 s (gate 246 CTests, 45 routes /44 fresh interpreter sessions, 1,010
+routines at three seeds; N=1 596.49 s, boot 49.66 s). Frozen per-route
+baselines let presentation start 1,052 s into the gate. Census refresh with
+batch-q named coverage takes seconds; the fourth static tranche (209 bytes)
+validates by hash at the same step.
+
 **18 Oct batch p and third static-code tranche:** private proofs at
 `D:/f117-gate/p2-start-{0f4e,35fc}/`, acceptance at `p2-batch-p-accept/`.
 Both bounded bodies cover every instruction at five seeds, catch all 55

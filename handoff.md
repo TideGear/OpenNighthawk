@@ -20,6 +20,24 @@ CTests and ten Machine API regressions pass. Local user config and the 4K
 preset inherit the new defaults. No fullscreen run is needed for promotion;
 the selected mode was already validated below.
 
+**18 Oct batch q accepted:** END `1708` and START `31AD` (tick-wait helpers with
+callback, 30 instructions /77 bytes each) add 154 named bytes: 1,010 accepted
+addresses. Five private seeds each, all 50 mutations, full_cycle (66 checkpoints,
+1/2 calls) and boot (26, 0/1) pass; ten optimized seeds pass. Full gate in
+1,720 s: 246 CTests, 45 routes /44 fresh interpreter sessions, both instruction
+profiles, all 1,010 names at three seeds, reachability/event limits clean; N=1
+presentation exact (596.49 s), boot N=4/9 exact (49.66 s). Original deadline
+comparisons and wrap behaviour are preserved: names, not a timing fix.
+Evidence: `D:/f117-gate/p2-batch-q-accept/final-gate-verdict.json`. Source hashes
+equal the frozen manifest. The reviewed fourth static tranche (DSWAP `033E`
+105 bytes, START `87F6` 104 bytes) is applied: 37 ranges, 11,491 static bytes;
+SETUP `1E4F` (142 bytes, opaque mixed range) stays deferred. Scope now
+**148,602 /187,351, P2 80.35%, All 93.30%**; 3,939 static-discovery bytes and
+18,469 executed bytes in other modules remain open. Next: pick the next
+candidate (screen leads first; `D:/f117-gate/p2-vgame-9efa/` has a dossier for
+the 4,552-byte VGAME `09EFA` prepass body, no body yet), prove it privately,
+then a batch gate. The full roadmap goal remains active.
+
 **18 Oct batch p accepted locally:** START `0F4E` (`start_briefing_page_setup`,
 38 instructions /85 bytes) and `35FC` (`start_load_picture_for_page`, 28 /69)
 add 154 named bytes: 1,008 accepted addresses. All 55 private mutations,
@@ -53,12 +71,12 @@ Current scope: 148,448 /187,142, P2 80.36%, All 93.30%. 4,148 static-discovery
 bytes and 18,469 executed bytes in other modules remain open. No scope is
 silently declared complete.
 
-**Next private candidates (both ready, neither integrated):**
+**Batch-q private proof details (now integrated locally above):**
 `D:/f117-gate/p2-end-1708`,
 `end_wait_ticks_with_callback`, 77 bytes /30 instructions. Private proof and
 root audit pass: five seeds (6005/6000/6035/6047/6018 comparisons), no skips
 or differences, all 25 mutations caught, full_cycle 66 exact checkpoints /
-one call, boot 26 exact checkpoints /zero calls. NOT integrated or credited.
+one call, boot 26 exact checkpoints /zero calls. Not yet accepted or credited.
 Its bases include batch p. The initial monotonic timer fixture had 161
 long-run skips: unsigned comparison can wait across a 32-bit overshoot.
 The final scripted clock keeps those inputs and comparisons, then supplies
@@ -373,7 +391,7 @@ All private runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
 https://github.com/TideGear/OpenNighthawk/actions/runs/39083815431.
 Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
-Scoreboard: P1 100.00%, P2 80.36%, P3 97.22%, All 93.30% (P4 and the decided-against P3 items are no longer scored)
+Scoreboard: P1 100.00%, P2 80.35%, P3 97.22%, All 93.30% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,008 addresses matched; named code runs
 147,602 of 169,933 creditable historical census bytes, plus 846 of 17,209 proven bytes outside its rows:
 **148,448 / 187,142 in the expanded seven-program scope** (credit by byte since 16 October).
