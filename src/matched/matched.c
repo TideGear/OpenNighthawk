@@ -67200,7 +67200,119 @@ l_done:
 #undef WB
 }
 
+/* VGAME 1A98: hand a table pair, a scaled coordinate, two derived offsets and
+ * a selector to the driver's far routine 1E42:0188, cdecl, seven words in all.
+ * Arguments (cdecl, near): a = [bp+4], b = [bp+6], c = [bp+8], k = [bp+10].
+ * With t = c - (c >> 2) (arithmetic shift, so about 3c/4), the words pushed,
+ * first to last, are:
+ *   [k * 4 + 91BA], [k * 4 + 91B8]   the k-th pair of a four-byte table,
+ *   t,
+ *   c,
+ *   b - half(t)                      half(x) = (x - sign(x)) >> 1, which
+ *                                    divides by two toward zero (CDQ, SUB, SAR),
+ *   a - half(c),
+ *   the selector: [0344] when [0348] is zero, [4070] when it is not.
+ * The far routine returns with a plain RETF and the caller removes the
+ * fourteen bytes; nothing is returned here (AX/DX are whatever the last
+ * instruction left, as are the flags of the last SUB/NEG/CMP). The two
+ * locals reserved by ENTER 4,0 are never used. */
+static int vgame_driver_call_scaled_args(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define DB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define DSUB(a_,b_) ((uint16_t)alu_op(c,5,(a_),(b_),1))
+#define DNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define DCDQ() (c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000)
+    if (!room(c, 26)) return 0;
+    DB(26, 0x1A98);
+    x86_enter(c, 4, 0);
+    c->r[R_AX] = bp_get(c, 8);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1);
+    c->r[R_AX] = DSUB(c->r[R_AX], bp_get(c, 8));
+    c->r[R_AX] = DNEG(c->r[R_AX]);                       /* t = c - (c >> 2) */
+    c->r[R_BX] = bp_get(c, 10);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 2, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x91BA)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x91B8)));
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 8));
+    DCDQ();
+    c->r[R_AX] = DSUB(c->r[R_AX], c->r[R_DX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1);
+    c->r[R_AX] = DSUB(c->r[R_AX], bp_get(c, 6));
+    c->r[R_AX] = DNEG(c->r[R_AX]);                       /* b - half(t) */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 8);
+    DCDQ();
+    c->r[R_AX] = DSUB(c->r[R_AX], c->r[R_DX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1);
+    c->r[R_AX] = DSUB(c->r[R_AX], bp_get(c, 4));
+    c->r[R_AX] = DNEG(c->r[R_AX]);                       /* a - half(c) */
+    cpu_push16(c, c->r[R_AX]);
+    alu_op(c, 7, ds_get(c, 0x0348), 0, 1);
+    if (x86_cond(c, 4)) {
+        DB(1, 0x1ADE);
+        c->r[R_AX] = ds_get(c, 0x0344);
+    } else {
+        DB(2, 0x1AD9);
+        c->r[R_AX] = ds_get(c, 0x4070);
+    }
+    DB(1, 0x1AE1);
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x1AE2);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_far(m, 0x1AE2, 0x1AE7);
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    DB(2, 0x1AE7);
+    x86_leave(c);
+    near_ret(c);
+    return 1;
+#undef DB
+#undef DSUB
+#undef DNEG
+#undef DCDQ
+}
+
+/* VGAME 114A:02FF (linear 0x1179F), far: ask the 1E42:01EC driver entry twice using the
+ * caller's four argument words (a, b, c, d at BP+6, +8, +0Ah, +0Ch).
+ * It makes a frame, then pushes eight words: d, c, b, a, 0, b, a, then the
+ * mode 2, and far-calls the driver. The driver is cdecl and the routine does
+ * not clean those words: "mov sp,bp" throws them away. The second call pushes
+ * d, c, b, a, then 1, b, a and the mode 2 again, calls the driver, and leaves
+ * the frame and returns far. Nothing is read or written outside the stack.
+ * The driver's result in AX and its register changes are left as it set them. */
+static int vgame_driver_two_calls_far(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { A=6,B=8,C=10,D=12 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,10))return 0;
+    XB(10,0x02FF);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    cpu_push16(c,bp_get(c,D));cpu_push16(c,bp_get(c,C));cpu_push16(c,bp_get(c,B));cpu_push16(c,bp_get(c,A));
+    cpu_push16(c,0);cpu_push16(c,bp_get(c,B));cpu_push16(c,bp_get(c,A));cpu_push16(c,2);
+    FAR(0x0318,0x031D);
+    XB(9,0x031D);c->r[R_SP]=c->r[R_BP];
+    cpu_push16(c,bp_get(c,D));cpu_push16(c,bp_get(c,C));cpu_push16(c,bp_get(c,B));cpu_push16(c,bp_get(c,A));
+    cpu_push16(c,1);cpu_push16(c,bp_get(c,B));cpu_push16(c,bp_get(c,A));cpu_push16(c,2);
+    FAR(0x0335,0x033A);
+    XB(2,0x033A);x86_leave(c);
+    c->ip=cpu_pop16(c);c->seg[S_CS]=cpu_pop16(c);return 1;
+#undef FAR
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x02FF, vgame_driver_two_calls_far, "far-call the driver entry twice with the caller's four words and mode 2 then 1", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1A98, vgame_driver_call_scaled_args, "call the driver with a table pair and scaled offsets", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x31AD, start_wait_ticks_with_callback, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x1708, end_wait_ticks_with_callback, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x35FC, start_load_picture_for_page, "format the selected picture filename, load it and transfer it to the selected page", 1 },

@@ -789,6 +789,10 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:1708)
     add_test(NAME matched_start_wait_ticks_with_callback COMMAND func_lockstep --states 5000
       --only START.EXE:31AD)
+    add_test(NAME matched_vgame_driver_call_scaled_args COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:1A98)
+    add_test(NAME matched_vgame_driver_two_calls_far COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:2FF)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

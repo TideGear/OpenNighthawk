@@ -753,82 +753,30 @@ same input. An isolated N=9 strike run after the state-driven bands (15 October)
 17.0385, same hash), and the strike flight passes pinned to four logical CPUs (p99 16.71 ms), so the thread design has
 headroom on core count.
 
-**Fullscreen timing of `rerun` (17 October 2026, the owner's 4K 60 Hz screen).** The owner's `4k-rerun.bat` settings
-(`--present rerun --present-age interp`, scale 9, fullscreen, Direct3D 11, 3840x2160 at 59.99 Hz, vsync on, sound off),
-flown by the recorded inputs of the 13 October runs and cut at 3.3 billion instructions (evidence
-`D:/f117-gate/present-v2/stage4-fullscreen-20261017`, built from `aa8991b`). Strike: 6,380 flight pictures, median
-16.668 ms, p99 16.948, worst 31.7, 0.09% over 25 ms: passes. Landing: 6,378 pictures, p99 17.381, worst 38.5, 0.08%
-over 25 ms: passes. Air-to-air (type 6): 1,658 pictures, median 16.686, p99 22.150, worst 38.0, 0.42% over 25 ms:
-**fails the p99 limit** (20.8 ms). Its late intervals are not missed vsyncs (those would be 33 ms): seven pictures of
-34-38 ms in the first 1.3 s of flight, then 25 single pictures of 21-25 ms spread over the next 16 s, against the
-others' near-constant 16.7 ms. The sample is short (the flight starts late in that replay), so a longer air-to-air run
-was authorized and completed below. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
-The batch that completed the HUD (15 October) had no fullscreen acceptance at the time: the owner stopped the visible
-run. A hidden Direct3D 11 3840x2160 target measured 119-150 fps uncapped, with occasional upload stalls
-of about 100 ms (`D:/f117-gate/present-v2/hud2`); that is throughput, not steady-refresh acceptance.
-`tools/presentation_timing.py` checks the logged display settings (a log that changes display
-mid-run is rejected), intervals, interpolation and guest drift. Not established: the picture on a physical panel
+**Fullscreen pacing of `rerun`, and how the 4K60 failures were repaired (17-18 October 2026, the owner's 4K 60 Hz
+screen).** Settings: the owner's `4k-rerun.bat` (`--present rerun --present-age interp`, scale 9, fullscreen,
+Direct3D 11, 3840x2160 at 59.99 Hz, vsync on, sound off), flown by recorded inputs; `tools/presentation_timing.py`
+checks the logged display settings (a log that changes display mid-run is rejected), intervals, interpolation and
+guest drift. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
+
+| date | scene | result | cause / change |
+|---|---|---|---|
+| 17 Oct | strike, landing (3.3B instructions) | pass (p99 16.95 / 17.38 ms, 0.09% / 0.08% over 25 ms) | |
+| 17 Oct | air-to-air type 6, short and then 5.9B | fail: p99 22.15 ms; long run p99 28.70 ms, 3.70% over 25 ms, sustained 150-270 s into the flight | CPU, not GPU: hidden profile shows main work rising from median 11.8 to 18.0 ms, copied-machine redraw 7.0 to 12.3 ms, 46% of samples in `recomp_override_step` (two linear scans of the override table) |
+| 18 Oct | 15 Hz/60 MIPS type-5 pursuit, 6 minutes | fail: p99 32.93 ms, 12.95% over 25 ms, one startup rewind | same cost plus a startup playback-clock reversal |
+| 18 Oct | same, after dispatch lookup + clock fix | p99 21.58 ms, 0.033% over 25 ms, no rewind: fails p99 only | override placements are now sorted with a binary lookup (1,000,000-call benchmark 501 to 27 ms); the playback clock keeps the first usable pair |
+| 18 Oct | same, after observer row copies | **pass**: 21,330 pictures, p99 16.94 ms, max 21.05 ms, zero over 25 ms, drift 15.94 ms | observer snapshots/line-flush scans were 906 of 4,645 app samples; bulk row copies split at both address wraps, delta scans skip unchanged 64-byte blocks (benchmark 79 to 4 ms), span-record buffer fixed at 220 rows |
+| 18 Oct | compression excerpt (230 compressed seconds) from the broader validation | **pass**: 21,565 pictures, p99 16.92 ms, max 17.85 ms, zero over 25 ms, drift 21.84 ms | constant 4K/59.99-Hz target (an attempt that switched to 1080p/50 during setup is retained as invalid) |
+
+Every row keeps all logic frames exact and the final guest hash equal to a headless replay. Each repair also passed
+the full gate, the 45-route rerun check, boot N=4/9 and the same-record copy-isolation checks; evidence is under
+`D:/f117-gate/present-v2/stage4-fullscreen-20261017`, `stage4-airair-long-20261017`, `cadence15-production-20261018/`,
+`4k60-fix-20261018/` and `airair-profile-20261017/` (instrumented sources, executable and matching PDB; offline symbol
+resolution needs the preferred base 0x140000000 and `SymSetOptions(0)`). Window capture timed out on every fresh
+selection, so visible motion is unverified; one encounter does not establish all-scene pacing. Eight was never
+measured on the type-5 workload. Earlier hidden throughput: 3840x2160 D3D11 runs at 119-150 fps uncapped with
+occasional ~100 ms upload stalls (`D:/f117-gate/present-v2/hud2`). Not established: the picture on a physical panel
 (tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
-
-**Longer fullscreen air-to-air check (17 October 2026).** Same display and original fix selection, replayed to
-5.9B instructions: 17,241 timed flight pictures, median 16.6941 ms, p99 28.6976 ms, worst 34.5699 ms;
-638 intervals over 25 ms (3.7022%). This fails both the p99 and missed-refresh limits. All 3,679 logic frames
-remain exact, guest drift is 0.005819 seconds, and the final guest hash `b050542466c9a616` matches a separate
-headless replay. Of the 638 late intervals, 615 occur 150-270 seconds after the first flight picture;
-the 180-210 second window has 14.91% late intervals (`interval-bins.json`). The slowdown is sustained
-within this run, rather than confined to startup; its CPU/GPU cause and repeatability across runs remain
-unestablished. Stage 4 remains incomplete and no score is raised. Evidence:
-`D:/f117-gate/present-v2/stage4-airair-long-20261017/{command.json,timing-verdict.json,machine.log,reference.log}`.
-
-**Fifteen-step candidate fullscreen assessment (18 October 2026).** D1REAL
-at 15 normal /30 compressed updates passes its 60-MIPS clock and flight checks;
-40 MIPS misses an active compressed North Cape window. Full rerun N=1 over all
-45 routes and boot N=4/9 pass. The full 60-MIPS North Cape scan/interp/rerun also
-matches its API final state, with 6,681 exact logic frames and 29,729 isolated
-extra draws. These correctness checks do not establish display pacing.
-
-The new native capture uses an adaptive type-5 pursuit recording with all fixes,
-six flight minutes and 13 air units at its end; no weapon release, objective
-completion or landing is claimed. Both scan engines match the recording's API
-final clock/hash, objective and S15. The earlier type-6 fixed controls end this
-candidate flight early, so that derived fixture is retained as failed and is not
-substituted for a full stress flight. The new type-5 scene is a different engagement.
-
-D3D11 3840x2160 at 59.99 Hz, vsync 1 and scale 9 produces 18,606 interpolated
-flight pictures. All 5,396 logic frames are exact and final state matches the
-scan/API baseline; guest drift is 5.2 ms. Pacing fails: median 17.36 ms,
-p99 32.93 ms (20.83-ms limit), 2,404/18,559 intervals over 25 ms
-(12.95%, 1% limit), and one startup pair's t falls from 0.677266 to 0.352496.
-Startup fallback to the smoothed clock is a hypothesis to investigate, not an
-established cause. Eight was not measured on this workload. Default stays eight;
-no renderer optimization has landed. The Windows capture helper times out twice,
-including after refreshed selection, so visual-motion inspection remains open.
-Evidence: `D:/f117-gate/cadence15-production-20261018/display60-airair-live/`
-(`command.json`, `summary.json`, `timing-verdict.json`, `interpolation-analysis.json`,
-`ui-inspection.json`); recording/engine proofs are in the same root's
-`live-airair60-{fixture-review,baseline-verdict}.json`.
-
-**Hidden CPU diagnosis (17 October).** An isolated private instrumented build
-fast-seeks through the unchanged replay, then draws hidden 4K Direct3D 11
-pictures without vsync. Two 33.33-guest-second windows end at the exact
-unmodified gate checkpoint hashes: 3.6B `791c5f60fa5fdfc9`, 5.0B
-`97d33a3597b92150`. Main-thread work rises from median 11.804 ms / p99
-14.561 ms in the earlier window to 18.020 / 21.702 ms in the slow window.
-Copied-machine redraw preparation accounts for the increase: median
-6.984 to 12.348 ms; actual simulation remains about 2.5 ms. The slow
-window exceeds the 16.667 ms CPU budget on 88.59% of sampled pictures.
-
-Deeper private timers put the cost inside execution of the copied draw,
-not copying/restoring memory or packing the draw records. Median draw
-records grow from 1,900 to 6,000; interpreted instructions stay modest
-(1,179 to 1,752). A 20-second sample of the slow window's main thread
-attributes 3,674 of 7,986 samples (46.01%) to `recomp_override_step`.
-Its two linear searches over placed overrides are the next optimization
-lead; no lookup change has been implemented or validated. This establishes
-a CPU bottleneck but does not exclude additional fullscreen GPU costs or
-prove physical refresh acceptance. All instrumentation is private, in
-`D:/f117-gate/present-v2/airair-profile-20261017/`; `archive/` retains the
-instrumented sources, executable and matching PDB.
 
 **The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
 with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so
@@ -911,39 +859,7 @@ preparation is not independent. Evidence: `D:/f117-gate/present-v2/scene`.
 
 ## Verification
 
-18 October dispatch/startup repair: override calls now use a sorted address
-lookup rather than scanning the module twice. The one-million-call lookup
-benchmark drops from 501 to 27 ms; this is not a whole-frame speedup. The
-same six-minute type-5 combat recording at 15 Hz /60 MIPS, fullscreen scale 9,
-keeps all 5,396 logic frames and final state exact. p99 improves from 32.9292
-to 21.5797 ms and intervals above 25 ms from 12.9533% to 0.03291%; the startup
-rewind is gone. **It still fails the 20.8333-ms p99 limit.** Full gate (241
-CTests), all 45 rerun routes, boot at N=4/9 and the combat copy-isolation check
-pass. Evidence: `D:/f117-gate/4k60-fix-20261018/`. Desktop activation/capture
-failed, so physical visibility and perceived motion remain unverified.
-
-The observer follow-up passes the same six-minute combat capture at the same
-settings: 21,330 flight pictures, median 16.6674 ms, p99 16.9439 ms, maximum
-21.0506 ms, zero intervals above 25 ms, 15.94 ms clock drift and no rewind.
-All 5,396 logic frames and final hash `e7c25ace6a591e92` match the reference.
-Bulk row snapshots split at both address wraps; delta scans skip unchanged
-rows/blocks while preserving record order and the 2,000-point cap. The span
-record buffer also now accommodates its page/origin fields at 220 rows.
-Fresh full gate (242 CTests, 45 routes, 44 fresh interpreter sessions, both
-instruction profiles and three matched seeds), all-route rerun, N=4/9 boot
-and the same-record copy-isolation checks pass. Evidence:
-`D:/f117-gate/4k60-fix-20261018/observer/`. Capture still times out after one
-window-selection recovery; this validates logged submission pacing, not
-physical visibility or perceived motion. At that checkpoint defaults remained 8 Hz /20 MIPS; the owner subsequently
-approved 15 Hz /60 MIPS after the broader checks below. This encounter does not establish all-scene pacing.
-
-The [broader 15/60 validation](cadence15-validation.md) also passes a six-minute
-native compression excerpt (230 checked seconds actually compressed):
-21,565 flight pictures, p99 16.9220 ms, maximum 17.8535 ms, zero intervals
-over 25 ms, 21.84 ms guest drift and no rewind. All 8,992 logic frames and
-final state match both scan engines. The accepted retry keeps a constant
-4K/59.99-Hz D3D11 target; an earlier attempt changed briefly to 1080p/50 and
-is preserved as invalid. No fresh perceived-motion assessment is claimed.
+The fullscreen results are in the pacing table above.
 
 A presentation change is held to these checks (commands and costs: [repeated-processes.md](repeated-processes.md);
 the latest full-gate tally: the handoff):

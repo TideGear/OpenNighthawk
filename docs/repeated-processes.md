@@ -1,308 +1,89 @@
 # Repeated processes
 
-**18 Oct batch q:** private proofs `D:/f117-gate/p2-{end-1708,start-31ad}/`,
-acceptance `p2-batch-q-accept/`. Gate and overlapped presentation total
-1,720 s (gate 246 CTests, 45 routes /44 fresh interpreter sessions, 1,010
-routines at three seeds; N=1 596.49 s, boot 49.66 s). Frozen per-route
-baselines let presentation start 1,052 s into the gate. Census refresh with
-batch-q named coverage takes seconds; the fourth static tranche (209 bytes)
-validates by hash at the same step.
-
-**18 Oct batch p and third static-code tranche:** private proofs at
-`D:/f117-gate/p2-start-{0f4e,35fc}/`, acceptance at `p2-batch-p-accept/`.
-Both bounded bodies cover every instruction at five seeds, catch all 55
-mutations and match current-key real-route/boot references. Full gate passes
-in 1,387.55 s: 244 CTests, all 45 routes /44 fresh interpreter sessions,
-both instruction profiles, all 1,008 matched routines at three seeds,
-reachability and event limits. No complete keyed baseline corpus existed,
-so the established sequential presentation fallback was used. N=1 takes
-413.02 s (259,240 frames /259,166 pairs exact); boot N=4/9 takes 80.28 s
-(736 /732 exact). Ten optimized seeds and the independent +154-byte credit
-audit pass. The initial --only address was padded and selected zero states;
-`optimized.py` corrects it and requires positive comparisons. `finalize.py`
-uses the old registration table for old coverage; it validates existing
-successful gate outputs instead of repeating them. Combined acceptance is
-1,833.46 s, including reporting recovery; no source or threshold changed.
-
-Third static tranche: `census-gap-20261018-tranche3/` holds 12 reviewed ranges /
-1,619 new static bytes /764 canonical instructions. Seven bounded logo mouse
-walks resolve its earlier operand overlap; VGAME uses canonical segment
-0FB2 for its span wrapper. Hashes, boundaries, counts, independent lengths
-and non-overlap validate after application. The census refresh (about five
-seconds) uses batch-p named coverage and batch-h interpreter captures;
-37 classifier, eight progress, six dossier and nine defaults tests pass.
-The separate `p2-end-1708` future proof ran beside the gate at BelowNormal
-priority on CPUs 16-23; its test-clock wrap investigation is private, not a
-production bug fix. All its five seeds, 25 mutations and route/boot checks
-pass; it is not integrated in batch p.
-
-**18 Oct static-code scope review, second tranche:** evidence is
-`D:/f117-gate/census-gap-20261018/{review.py,review.json}`. Read candidate
-ranges in full; independently decode every accepted instruction with Capstone,
-then use `reviewed_code_bytes` to verify image hashes, complete boundaries,
-counts and non-overlap. Seven ranges add 1,322 uncredited static bytes; no
-runtime change. The initial all-or-nothing check rejects PLAYER 1AD4's
-partial final instruction before writing the table; the accepted range stops
-at 1B9B (199 bytes). Defer the logo mouse helpers' overlapping 1307/1308
-starts even though isolated lengths agree. Refresh with the existing census,
-batch-o named coverage and batch-h route coverage (about five seconds).
-All 37 classifier, eight progress and six dossier tests pass (under four
-seconds wall time in parallel). The broad machine/presentation gates are not
-rerun for a scope-table-only update; no executable behavior changes.
-
-**18 Oct normal-play default promotion:** after the broader validation below,
-the owner approved 15 Hz /60 MIPS as the application default. Only the app's
-initial cadence and instruction budget change; headless/API defaults and
-recorded-session metadata remain authoritative. `test_fix_defaults.py` now
-runs nine ROM-free tests, including six synthetic-COM session cases: fresh
-defaults, explicit eight/20, config eight/20, command-line precedence,
-legacy replay and recorded fifteen-step replay overriding live options.
-Use dummy SDL video/audio; no display occupation or game data is needed.
-Rebuild the application/runner and run the pacing, input-log, config and
-playback-clock tests. The earlier full gates and broad mission/display checks
-validate this same selected 15/60 mode; a default selection does not change
-its simulation implementation. Local verification passes: all nine defaults
-tests (5.44 s), six pacing/input-log/config/playback CTests (0.19 s), and
-all ten Machine API regressions (0.11 s). The defaults test fails against
-the pre-change executable and passes after rebuilding. The local user config
-and 4K preset contain no timing overrides and inherit the new defaults.
-
-**18 Oct broader 15/60 validation:**
-`D:/f117-gate/cadence15-broad-20261018/` freezes the `2245c14` API/runner.
-`run.py`, `clock.py`, `pilots.py` and `cruise.py` run paired interpreter /
-recompiled normal-control cases; `review.py` compares inputs, timing rows,
-full mission telemetry, capacity windows and final hashes. Twelve pairs
-pass all 960 airborne windows (160 unique checked minutes, including
-35 min 40 s actually compressed, 176,100 updates); dedicated exposure
-flights record 183 enemy launches. Both 30-minute compression soaks and all
-twenty clock/transition case hashes agree (781 s interpreter /402 s recompiled
-under shared load; not a throughput benchmark). A separate normal landing
-succeeds; strike records releases/hit/credit but no completed return, and
-air pilots fail without releases. The first landing harness double-scaled
-its takeoff strings; retain it as invalid evidence and use the corrected
-case. Home-orbit attempts provide normal combat, not compression coverage.
-Clean away-course cruises provide 1,070 compressed seconds each in Central
-America and North Cape. `display_prep.py` freezes six flight minutes of the
-former (230 compressed seconds), verifies both scan engines and rerun
-(8,992 frames, 8,990 pairs, 25,189 isolated extra draws; max 298 s under
-shared load), then `display.py` runs the announced native scale-9 4K60
-capture after hidden workers exit. Use unchanged timing limits.
-The first display attempt changed target briefly to 1080p/50 and back during
-setup; it is retained as invalid and was stopped. A fresh constant-target
-retry passes in 700.30 host seconds: 21,565 pictures, p99 16.9220 ms, maximum
-17.8535 ms, zero intervals over 25 ms, 21.84 ms drift, no rewind, all 8,992
-logic frames and final state exact. No workers or game windows remain.
-See [the case report](cadence15-validation.md) for outcomes and limitations.
-
-**18 Oct map-edge clipping:** evidence is under
-`D:/f117-gate/map-specks-20261018/`. Replay the frozen combat record through
-24 billion clocks with six shots starting at 21 billion, every 600 million:
-original-resolution scan, then N=9 interpolation before/after. Keep the
-pre-fix executable frozen. Pixel-origin diagnostics identify the lower-border
-remnants as `DT_HUD_FINE`; `verify.py` compares all checkpoints/final state,
-953 exact frames /951 exact pairs and border counts (22/32/38 before, zero
-after). A captured 23.4-billion frame changes only 57 fine pixels, all old
-line strokes. These hidden captures are correctness checks, not display
-pacing measurements. The octant/origin test fails before and passes after.
-The presentation-only acceptance against `a3bd400` passes all 243 CTests in
-937 s. All 45 N=1 routes pass in 456 s (259,240 exact frames /259,166 pairs),
-and N=4/9 boot passes (736 frames /732 pairs), using the frozen interpreter
-baselines from the preceding full gate. Total check time is 1,449 s; runner
-hashes are unchanged. This is the documented read-only presentation check,
-not a new full machine-execution gate or fullscreen pacing measurement.
-
-**18 Oct 4K60 repair:** fresh evidence goes in
-`D:/f117-gate/4k60-fix-20261018/`. Before/after override lookup benchmark
-uses one million calls across 1,009 shuffled addresses; it is a dispatcher
-microbenchmark, not a display result. ROM-free startup-clock regression runs
-before and after the repair. After source freezes, run the complete parity
-gate and all-route rerun checks, then the frozen six-minute air-combat record
-from `cadence15-production-20261018/live-airair60-fixture/input.log` at the
-same scale-9 fullscreen settings, with hidden workers finished. Keep the
-original failed display trace immutable; compare exact state and unchanged
-pacing limits. No default promotion follows from the microbenchmark alone.
-
-The first repair gate (`gate-initial-escape/`) passed 240 CTests, all 45
-route comparisons with 44 fresh interpreter sessions and both instruction
-profiles, but the rotating seed exposed a pre-existing harness false escape:
-state 3618 overwrites an ABS helper's RET with data. A private pre-change
-dispatcher reproduces it. The harness now matches the exact original state
-at that destroyed return, still compares the complete final state and gives
-no named-code completion credit. The regression retains all 4,864 comparisons,
-50 skips and 886 covered instructions. The final gate reuses the freshly
-verified interpreter cache (production source unchanged) and reruns CTests,
-all recompiled routes, all three matched seeds and reachability/event checks.
-A private negative control offsets only the recorded destroyed-return clock
-by one; the same seed must still fail the escape guard. This checks that the
-repair requires exact original-state evidence rather than suppressing escapes.
-
-The first repaired fullscreen capture (`display60-airair-live/`) still fails
-only p99: 21.5797 ms against 20.8333, versus 32.9292 before. Intervals over
-25 ms fall from 12.9533% to 0.03291% (7); no rewind, all 5,396 frames/final
-state exact. Retain this failure. A private `profile/` executable links the
-frozen production libraries with host phase timers, fast seek, a hidden
-3840x2160 D3D11 window, vsync off and a 60-Hz sleep cap. It profiles a short
-window of the same record; it is diagnostic, never display acceptance.
-The follow-up profile separates emulation from collection and times copied
-execution, with main-thread RIP sampling on the owned process. Its 30-second
-window ends at the exact pre-repair checkpoint (25.2 billion clocks).
-Observer span snapshots and line-flush scans account for 906 of 4,645 active
-app samples. Row-copy/delta regressions exercise the registered hooks without
-game bytes, including both address wraps, clipped rows and record truncation;
-their 1,000-pair snapshot/unchanged-flush benchmark measures only that work.
-The updated observer passes its ordered-record/whole-machine tests and cuts
-that benchmark from 79 to 4 ms. The isolated follow-up profile (`window3`)
-matches the old checkpoint; main work p99 falls from 19.63 to 17.83 ms,
-copy preparation from 7.96 to 6.39 ms. These are diagnostic phase timings,
-not fullscreen acceptance. Fresh full gate, presentation/fixture checks and
-then the same fullscreen capture run under `4k60-fix-20261018/observer/`.
-The fresh full gate passes in 1,216 s (242 CTests, 45 routes and 44 fresh
-interpreter sessions); full presentation passes in 1,137 s, and the combat
-fixture passes both scan engines and rerun. The 745.38-second fullscreen
-run passes all unchanged timing limits: 21,330 flight pictures, p99
-16.9439 ms, zero intervals over 25 ms, 15.94 ms drift, no rewind, all 5,396
-logic frames and the final state exact. Screenshot capture times out on
-the freshly selected window and one recovery, so visible motion remains
-unverified. No test workers or game processes remain running afterward.
-
-**18 Oct completed validation:** evidence is under
-`D:/f117-gate/cadence15-production-20261018/` (P). Full gate passes in
-1,802 s with 239 CTests, 45 identical routes, both instruction profiles and
-three matched seeds; frozen source unchanged. Full rerun N=1 and boot N=4/9
-passes in 2,400 s with frozen runner/baselines unchanged, sharing the machine
-with correctness probes. These concurrent timings are not throughput comparisons.
-The recorded-fix consumer repairs have ten passing API/header/entry-point tests.
-
-Twelve fresh 40-MIPS flights agree between engines, but compressed North Cape
-fails an undamaged airborne window (272/300 updates, 18/20 mission seconds).
-The 40-MIPS secondary checks pass: both-engine ten-minute compression, 991-frame
-scan/interp/rerun and hidden app. Retain the active capacity failure and keep
-`flight-review.json`'s display guard false. No 40-MIPS screen test was launched.
-
-`clock60.py` passes in both engines: 600 compressed seconds, seven clock/dialog
-cases, twelve settled transitions and 120 rapid changes, all case hashes equal.
-`demand60.py` runs four mixed normal/compression-requested regions, both engines,
-up to 1,200 seconds with six workers. All states/inputs/CSVs/windows agree;
-176 airborne windows pass, including four compressed ones. The four unique
-traces total 1,906.8 observed seconds /73 enemy launches, with raw crash/terminal
-failures retained. The short `probe60.py` and 165-ms delayed seed attempt have
-different combat seeds from 40; do not call them identical engagements.
-A MIPS budget is not a literal period-hardware equivalence.
-
-`headless60.py` uses the actual complete North Cape record: scan/interp/rerun
-and API final state agree, 6,681 exact frames, 29,729 isolated extra draws.
-The expensive rerun takes 922 s under shared load; do not repeat that whole
-check for every new input fixture. The derived `airair60_check.py` fixed controls
-end in END after about 161 flight seconds, so the final objective-memory
-assertion fails; retain this invalid long-flight fixture.
-`live_airair60.py` uses the existing adaptive air-combat pilot at 60 MIPS /15 Hz,
-scaling nine-MIPS front/startup deadlines but retaining normal holds and 5-Hz
-feedback. It records 360 seconds at the established 11,000 pursuit floor,
-ends airborne in type 5 with 13 air units, but never fires or completes/lands.
-Mission errors are preserved; it is a bounded display fixture only.
-`live_airair60_baseline.py` freezes that actual record, verifies S15/objective
-and matches both scan engines to the API final clock/hash (244/330 s under
-light concurrent load). No direct memory staging or invulnerability is used.
-
-`display60_live_airair.py` runs only after all hidden workers finish. The native
-scale-9 fullscreen D3D11 3840x2160 /59.99-Hz vsync capture finishes in 740.7 s;
-all 5,396 logic frames and final state are exact, guest drift 5.2 ms. Pacing
-fails: 18,606 flight pictures, p99 32.93 ms, 12.95% of intervals over 25 ms
-and one startup t rewind of 0.325. No threshold was relaxed. Sky capture times
-out twice, so visual-motion assessment is unavailable. This type-5 pursuit is
-a different engagement from the older type-6 trace; eight was not timed here.
-No workers or game windows remain running. Default stays eight/20 MIPS.
-Next investigate presentation startup continuity and copied-draw cost; the old
-profile's linear dispatch lead remains a hypothesis for the new trace.
-
-**17 Oct handoff:** the opt-in fifteen-step production candidate is saved but
-not accepted. Build/239 CTests, both-engine all-fixes clock/transition checks
-and recording guards passed. The owner then requested wrap up, commit, push
-and stop; all remaining workers and the queued presentation launcher were
-terminated. `D:/f117-gate/cadence15-production-20261017/stopped-for-handoff.json`
-identifies incomplete runs. Restart in a fresh evidence directory; partial
-coverage, flight/app logs and stopped wrappers are not acceptance verdicts.
-Keep eight/20 MIPS as default. See handoff.md for completed original 486
-references and the qualified Middle East combat results.
-
 Every process this project runs more than once, what it costs, what it
 duplicates and what has been done about it. Update this page whenever a
 process is added, measured or changed; a new repeated step goes here first.
 Replace a figure when a newer measurement supersedes it: this is a ledger of
-current costs, not a log (the git history keeps the old ones).
+current costs and practice, not a log (the git history keeps the old ones, and
+results live in the docs and `D:/f117-gate/` evidence directories they name).
 Timings are wall clock on the development machine (32 threads) and say
 whether they were measured or estimated. A timing taken while other heavy work
 shared the machine is a ceiling, not a speed comparison.
-
-**Cadence experiment (17 October):** private builds compare D1REAL at 8,
-14 and 15 updates/s without changing production defaults. First prove the
-experimental eight-step build identical to the original eight-step build in
-both engines. Then check normal/compressed/pause/dialog clocks, normal-input
-flight and input response, isolated staged weapons, and exploratory combat.
-D1's separate 11.6 Hz limiter must be excluded from the higher-rate comparison;
-retain its conflicting results separately. Fifteen cannot halve to an integer
-S under 2x compression, so retain the resulting failed clock assertion rather
-than redefining success. The private scripts, binaries and results live in
-`D:/f117-gate/cadence-20261017/`; final timings and findings follow in the
-speed study. These API runs are hidden correctness/behavior experiments;
-concurrent jobs do not establish fullscreen performance or subjective feel.
-Completed runs spanned about eleven minutes with overlap, including retained
-confounded controls and unsuccessful probes; six valid exploratory flights
-took 143.7-241.0 s each while sharing the machine. Forty-six consistency
-checks agree, with candidate clock failures retained in `verdict.json`.
-Before repeating, inspect active limiters and verify a fixture actually fires
-or steers; engine equality of an inactive fixture is not coverage. Restoring
-a source by copying can preserve its old timestamp and fool Ninja into
-reusing an experimental object: touch the restored source and confirm a
-recompile in the build log. Production source/defaults did not change.
-
-**15 Hz follow-up (17 October, owner):** private prototypes keep normal S=15
-and test compression separately. The first uses 14 Hz/S7 under 2x; the
-second keeps S15 and doubles actual updates to 30 Hz. In addition to the
-seven clock/dialog cases at 20 and 40 MIPS, test six settled compression
-round trips and a 120-transition normal-input stress run, integrating the
-observed compression mode over time. Settled windows alone missed the
-first prototype's clock-boundary error. Keep failed candidates and the
-eight-step stress control. Normal-only physics, input and flight hashes
-are compared with the earlier fifteen-step experiment, and fixes-off
-boot/quit runs compare before/after and both engines. Private evidence:
-`D:/f117-gate/cadence15-followup-20261017/`; `constant-step/` holds the second
-prototype. No production change or fullscreen acceptance is implied.
-The first constant-step variant retains the old deadline and also fails
-rapid transitions, despite passing steady and settled cases at 40 MIPS.
-The `constant-step/phase-corrected/` variant scales remaining time (or
-overdue work) by old/new cadence at the existing rate-change hook.
-Pacer logs redirected by PowerShell are UTF-16; decode them explicitly
-before evaluating a captured success line. The original-reference harness
-must accept actual stops beyond a requested checkpoint and compare those
-stops; the complete boot/quit scenario has 54 checkpoints, not 100.
-Final phase-corrected 15/30 Hz cases pass at 40 MIPS: seven clock/dialog
-cases, twelve settled windows and 120 rapid transitions, identical between
-engines. Twelve final verdict checks pass; 20 MIPS was insufficient for the
-earlier constant-step compressed case. The initial normal/clock group took
-532.375 s, the first constant-step group 267.765 s, the corrected clock/
-transition group 253.797 s; auxiliary probes overlapped (about twenty
-minutes overall, not a scheduling comparison). Source and normal API are
-restored; experimental DLLs are archived privately. The unchanged fractional
-pacer body reuses its 32 simulated hour-long invariant checks by byte
-identity; the new phase-change hook is exercised by the in-game stress run.
-
-**Air-to-air diagnosis (17 October):** two isolated hidden app windows took
-147.28 s combined, including fast seeks. Their final hashes match original
-gate checkpoints. Separate deep timers and a 20.06 s main-thread sample
-identify copied-draw execution and linear override dispatch as the lead;
-see presentation.md. The deeper runs shared spare CPUs with 86Box and are
-diagnostic, not timing acceptance. Private evidence and matching exe/PDB:
-`D:/f117-gate/present-v2/airair-profile-20261017/`. Offline DbgHelp symbol
-resolution needed the executable's preferred 0x140000000 base and
-`SymSetOptions(0)`; the first option set left symbols unresolved. Any lookup
-optimization still needs correctness tests, the full gate and presentation
-checks before a further isolated performance comparison.
 
 The rule behind the page: an optimisation must leave every check's inputs,
 outputs and verdicts identical, and the proof is the same verdicts before and
 after. A change that alters what a check tests (different states, a skipped
 verification) is not an optimisation; it needs the owner's approval.
+
+## Current practice by kind of change
+
+- **Matched routine batch (Phase 2).** Private proofs per routine in
+  `D:/f117-gate/p2-*`, then one acceptance directory per batch
+  (`p2-batch-<letter>-accept/`: `accept.py`, `overlap_accept.py`,
+  `optimized.py`, `audit_private.py`, `finalize.py`). Batch q: gate and
+  overlapped presentation 1,720 s in total (246 CTests, 45 routes / 44 fresh
+  interpreter sessions, N=1 596.49 s, boot N=4/9 49.66 s). Freeze keyed
+  per-route baselines before integrating: the presentation checks then start
+  about 1,050 s into the gate; without a valid keyed baseline they run
+  sequentially (batch p: 1,833 s in all). `optimized.py` passes `--only` with
+  unpadded hex (a padded address once selected zero states) and requires
+  positive comparison counts; `finalize.py` validates old coverage against the
+  previous batch's own registration table and every new byte against the
+  dossiers. The census refresh afterwards takes seconds.
+- **Static-code scope review.** Read each candidate range in full, decode every
+  instruction independently with Capstone, then let `reviewed_code_bytes`
+  verify image hashes, complete instruction boundaries, counts and
+  non-overlap before `docs/census-code.tsv` is written (all-or-nothing). Defer
+  ranges whose discovery lists overlap, even when isolated lengths agree
+  (logo mouse helpers; SETUP `1E4F`). Refresh with the existing census file,
+  the latest named coverage and batch-h route coverage. No gate is rerun for a
+  scope-table-only change; the classifier, progress and dossier tests are
+  enough (`tests/test_census_classify.py` and the progress tests).
+- **Normal-play default changes.** `tests/test_fix_defaults.py` (ROM-free,
+  dummy SDL video/audio, six synthetic COM session cases) must fail against the
+  pre-change executable and pass after rebuilding the app and runner; run the
+  pacing, input-log, config and playback-clock CTests and the Machine API
+  regressions. A default selection does not change the simulation code, so it
+  relies on the earlier full gates and validation of the same mode.
+- **Cadence / capacity validation.** Paired interpreter vs recompiled runs
+  with normal controls only, comparing inputs, timing rows, full telemetry,
+  capacity windows and final hashes; clock/dialog/transition cases for
+  compression; announced fullscreen display captures only after every hidden
+  worker has finished. Results and limits:
+  [cadence15-validation.md](cadence15-validation.md). Do not repeat the 922 s
+  rerun-engine check for every new input fixture; check that a fixture really
+  fires or steers (engine equality of an inactive fixture is not coverage);
+  home-orbit attempts give combat, not compression, coverage.
+- **Presentation-only changes** (`src/present`, observer, drawlist): full
+  CTests, all 45 N=1 routes and boot N=4/9 against the frozen interpreter
+  baselines of the preceding full gate (about 1,450 s in all); changes to
+  `drawfeed`/`rerun` need the full gate too. Diagnostics that replay a frozen
+  record (pixel-origin `DT_HUD_FINE` counts, before/after frames) are
+  correctness checks, not pacing measurements. Dispatcher or observer
+  micro-benchmarks never promote a default.
+- **Harness changes after an unexpected rotating-seed failure.** Reproduce on
+  the pre-change tree first. An escape-guard repair must keep exact
+  original-state evidence (clock, registers, segments, flags) at the destroyed
+  return, still compare the whole final state and grant no named-code credit;
+  a one-tick negative control must still fail. If production source is
+  unchanged, a rerun may reuse the freshly verified interpreter cache while
+  tests and registration are the only amendment.
+
+## Practical traps
+
+- PowerShell-redirected pacer logs are UTF-16: decode them explicitly before
+  looking for a success line. Restoring a source by copying can keep its old
+  timestamp and fool Ninja into reusing an experimental object: touch it and
+  confirm a recompile in the build log.
+- Offline DbgHelp symbol resolution needs the executable's preferred
+  0x140000000 base and `SymSetOptions(0)`.
+- The original-reference harness must accept actual stops beyond a requested
+  checkpoint and compare those stops (the boot/quit scenario has 54
+  checkpoints). Settled windows alone can miss a clock-boundary error: also
+  integrate observed compression mode over time across rapid transitions.
+- A failed or stopped run is retained as evidence in its own directory and is
+  never an acceptance verdict; restart in a fresh directory. Keep failed display
+  captures and invalid fixtures immutable and labelled.
 
 ## The gate (`tools/build_recomp.py`)
 
@@ -343,8 +124,8 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (18 October 2026, batch q):** 246 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 1,010
+**Current figures (18 October 2026, batch r):** 248 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 1,012
 matched routines at three seeds; reachability and event limits clean. The 17 October default-fixes
 full gate took 1,557.30 s, with every interpreter session verified fresh (0 reused,
 44 run), coverage refreshed and no new translated code. Correctness-only app and

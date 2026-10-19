@@ -72,53 +72,36 @@ stays on the roadmap.
   loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
   byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
   that is only hard, blocked by tooling or not yet proved belongs in the denominator.
-  **Executed code outside the census is now included** (17 October 2026). The old census rows and
+  **Executed code outside the census is included** (17 October 2026). The old census rows and
   their figures stay available for comparison. A separate `census.supplemental` count adds each byte
   outside them once when an interpreter route or a matched body's proof executes its instruction,
   within the same seven programs. The score uses `(matched_bytes + supplemental.credited) /
-  (creditable_bytes + supplemental.bytes)`. Initially this adds 5,927 bytes, 846 already named:
-  148,294 / 175,860 creditable bytes, P2 85.11% and overall 94.75%, versus 87.43% and 95.46%
-  before the scope correction. This is a denominator change, not lost matched work.
-  The route captures store four-byte windows, **not instruction lengths**: the tool decodes the
-  instruction, checks the module's file hash and its captured opcode/operand bytes against the image,
-  allows relocated words and the known bound jump vectors, and rejects changed or undecodable code.
-  The 127 rejected unique records are reported alongside 57,646 accepted records; they add no bytes.
-  Fixture-only named bytes count by the same proof rule as inside the old census.
-  **Static-code review, first tranche (17 October):** 16 ranges across all seven programs add another
-  8,341 bytes, with no new matching credit: the expanded count became **148,294 / 184,201**, P2 **81.48%**
-  and overall **93.64%**. `docs/census-code.tsv` records each range's segment/IP, length, instruction
-  count, SHA256 and review evidence. Every refresh verifies the hash, complete instruction boundaries,
-  count and absence of overlapping reviews. The private review also checks every instruction's length
-  with Capstone. The ranges cover text and DOS helpers, printf branches, arithmetic, pixel/span drawing,
-  object spawning and the complete VGAME `09EFA` body. They identify code to match; they do not claim
-  that code has a named equivalent.
-  **Second tranche (18 October):** seven more reviewed ranges add 1,322 bytes:
-  packed-picture wrappers, formatter parser arms, runtime handler replacement
-  and a model-bounds scan. Those 23 ranges supplied 9,663 additional static bytes.
-  The count then was **148,294 / 185,523**, P2 **80.94%**, overall **93.48%**.
-  PLAYER `1AD4` stops at `1B9B`, before an instruction bisected by the census
-  boundary. MPS_LOGO `00DA:04DA..05BF` was left pending: its discovery lists
-  overlapping starts at linear `1307` and `1308`, despite both individual
-  decodes agreeing with Capstone. Thus decoder agreement alone is insufficient.
-  Evidence: `D:/f117-gate/census-gap-20261018/review.json`.
-  **Third tranche and batch p (18 October):** twelve further ranges add 1,619
-  uncredited static bytes; two proved named routines add 154 credited bytes.
-  Seven bounded logo mouse-helper walks establish all 230 bytes of the deferred
-  range as canonical code, without entering the overlapping operand decode.
-  Canonical VGAME `0FB2:02B4` also resolves its segment-zero operand aliases.
-  Across 35 reviewed ranges, 11,282 static bytes supplement the executed-code
-  scope. Batch q (18 October) adds 154 more named bytes and a fourth tranche
-  adds two reviewed wrappers (DSWAP `033E`, START `87F6`; 209 static bytes,
-  37 ranges). The current total is **148,602 /187,351**, P2 **80.35%**, overall
-  **93.30%**. The remaining 3,939 discovery bytes and the other-module scope
-  still need review. Evidence: `D:/f117-gate/census-gap-20261018-tranche3/`
-  and `D:/f117-gate/p2-batch-p-accept/`; hashes, boundaries, independent
-  instruction lengths and the unchanged prior named credit are verified.
-  The launcher, resident graphics library and
-  sound drivers have 18,469 validated executed bytes reported separately; extending matching and the
-  score to these modules remains open. Thus the score measures the expanded seven-program scope,
-  not all game code. `census_classify.py` prints the supplement, module counts and rejected-record counts;
-  the existing `progress.py --census ...` command refreshes both old and expanded counts together.
+  (creditable_bytes + supplemental.bytes)`. This was a denominator change, not lost matched work:
+  P2 fell from 87.43% to 85.11% at the first correction. The route captures store four-byte
+  windows, **not instruction lengths**, so the tool decodes each instruction, checks the module's
+  file hash and its captured opcode/operand bytes against the image, allows relocated words and the
+  known bound jump vectors, and rejects changed or undecodable code (127 unique records rejected
+  against 57,646 accepted; they add no bytes). Fixture-only named bytes count by the same proof rule
+  as inside the old census.
+  **Reviewed static code** (`docs/census-code.tsv`, four tranches on 17-18 October): 37 ranges add
+  11,491 bytes to the workload with no matching credit (text and DOS helpers, printf arms, arithmetic,
+  pixel/span drawing, object spawning, picture wrappers, runtime handler shims, the complete VGAME
+  `09EFA` body, the logo mouse helpers). Each row records segment/IP, length, instruction count,
+  SHA256 and review evidence; every refresh verifies the hash, complete instruction boundaries,
+  count and absence of overlapping reviews, and the private review also checks each instruction's
+  length with Capstone. The reviews identify code to match; they do not claim a named equivalent.
+  Lessons that shaped the rules: decoder agreement alone is insufficient (the logo mouse helpers'
+  discovery lists overlapped at linear `1307`/`1308` until seven bounded walks resolved them);
+  a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
+  census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
+  Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
+  **Current total** (after batch r): **148,744 / 187,351**, P2 **80.42%**, overall **93.32%**.
+  Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
+  bytes in the launcher, resident graphics library and sound drivers, reported separately by the
+  classifier; extending matching and the score to those modules needs module/segment support. Thus
+  the score measures the expanded seven-program scope, not all game code. `census_classify.py` prints
+  the supplement, module counts and rejected-record counts; the existing `progress.py --census ...`
+  command refreshes the old and expanded counts together.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

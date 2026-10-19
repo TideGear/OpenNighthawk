@@ -15,29 +15,31 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 80.35%, P3 97.22%, All 93.30%
+- **Scoreboard:** P1 100.00%, P2 80.42%, P3 97.22%, All 93.32%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,010 addresses matched. Scope is the expanded seven-program
-  one: **148,602 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,012 addresses matched. Scope is the expanded seven-program
+  one: **148,744 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
   modules (launcher, resident graphics and sound drivers; they need
   module/segment support). `docs/census-code.tsv` has 37 reviewed static ranges;
   SETUP `1E4F` (142 bytes, opaque mixed range) stays deferred.
-- **Latest accepted batch (q, `08fedfc`):** END `1708` and START `31AD`, the
-  tick-wait helpers with callback. Gate 1,720 s with overlapped presentation;
-  evidence `D:/f117-gate/p2-batch-q-accept/final-gate-verdict.json`. Earlier
-  batches are in [docs/roadmap.md](docs/roadmap.md).
-- **In flight (batch r, private proofs only, nothing integrated):** three
-  small VGAME routines screened on 18 Oct, one agent each, steps 1-7 of the kit
-  brief only: `1A98` (`D:/f117-gate/p2-vgame-1a98`, near, 33 instructions),
-  `1179:000F` (`p2-vgame-1179f`, far wrapper, 23) and `137C:000E`
-  (`p2-vgame-137ce`, a 3-instruction table thunk that may be declined as too
-  small to prove). When they report: verify every verdict yourself, run
-  `kit.py checkpoints` and `verdict`, integrate, one full gate, docs, commit,
-  push.
+- **Latest accepted batch (r):** VGAME `1A98` (`vgame_driver_call_scaled_args`,
+  proved on `cargo_pilot`: no route takes its `[0348] != 0` branch, only the
+  fixture does) and VGAME `114A:02FF` (`vgame_driver_two_calls_far`; the game
+  spells this far wrapper `114A:02FF`, and a body registered under another
+  segment spelling of the same linear address is never entered: check the
+  spelling of neighbouring rows). 142 bytes. Gate + overlapped presentation
+  1,697 s: 248 CTests, 1,012 routines, 65 mutations, ten optimized seeds;
+  evidence `D:/f117-gate/p2-batch-r-accept/`. VGAME `137C:000E` (`1377:005E`)
+  was proved privately but is declined: an observer (`hook_fill_rows`) sits at
+  that address (`kit/DECLINED.tsv`). Batch r's scripts adapt batch q's: copy the
+  directory, swap the routine names, `finalize.py` adds `segment*16` to dossier
+  ips, `audit_private.py` accepts `callfar` kinds and `FAR(` call macros, and
+  `baseline-group-verdict.json` must be regenerated from the frozen baseline.
+  Earlier batches are in [docs/roadmap.md](docs/roadmap.md).
 - **Large lead, not started:** VGAME `09EFA` (`prepass_display_body`), 1,628
   instructions / 4,552 bytes, RET at `B0C1`; dossier only in
   `D:/f117-gate/p2-vgame-9efa/` (config still has placeholder names). Routes
@@ -119,7 +121,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-1. **Phase 2 (owner's priority).** Finish batch r (above), then screen again.
+1. **Phase 2 (owner's priority).** Screen new leads for batch s.
    Screening: join current named-byte credit and registered entries before
    selecting a lead (a "FREE" lead can be interior to a body written with
    block macros: START `665B` was inside `64E5`); `D:/f117-gate/p2-batch-g-accept/screen_leads.py`

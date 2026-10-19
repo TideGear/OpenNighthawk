@@ -120,97 +120,58 @@ equivalence with the project's 40 MIPS budget. Evidence:
 `D:/f117-gate/clock486-et4000-20261017/`. Its video BIOS was obtained from
 the official 86Box ROM collection; game data and BIOS images stay private.
 
-### Production fifteen-step candidate (validation resumed 18 October)
+### Production fifteen-step candidate (accepted 18 October)
 
-**Latest result:** [broader 15/60 validation](cadence15-validation.md) passes
-the timing/capacity checks and both native 4K60 captures, including actual
-30-update/s compressed flight. It adds a successful landing and primary
-strike credit; unsuccessful mission pilots remain documented. The technical
-recommendation is now 15/60 for normal play, and the owner approved it as
-the application default after validation. The chronology below retains earlier failures.
+**Outcome:** after the [broader validation](cadence15-validation.md) the owner
+approved 15 Hz / 60 MIPS as the application default. `--sim-hz 15` selects an
+explicit per-machine cadence state: S15 at 15 normal / 30 compressed actual
+updates/s, phase rescaled on compression changes, D1's independent cap
+bypassed while D1REAL runs at fifteen. Eight keeps its old limiter behaviour
+and legacy log format. Input recordings carry the cadence; replay headers
+take precedence over CLI/config, and absent headers mean eight; unsupported or
+duplicate headers fail.
 
-`--sim-hz 15` now selects explicit per-machine cadence state rather than the
-private prototype's packed metadata. Normal play now defaults to fifteen/60.
-The candidate uses S15 at 15/30 actual updates/s, rescales phase on compression
-changes and bypasses D1's independent cap when D1REAL is active at fifteen.
-Eight retains its old limiter behavior and legacy log format. Input recordings
-carry the candidate cadence; replay headers take precedence over CLI/config,
-and absent headers mean eight. Unsupported/duplicate cadence headers fail.
-
-The first production build passes 239 CTests. All-fixes clock checks at eight
-(20 MIPS) and fifteen (40 MIPS) agree between interpreter and recompiled engines:
-seven normal/compressed/dialog cases, twelve settled transition windows and
-120 rapid changes in each mode. Fifteen gives 450 updates/30 mission seconds
-in 30 seconds normally and 2,100/140 over 70 compressed seconds. Its rapid
-test records 69 mission seconds against 68.083 integrated observed-mode
-seconds, within the one-second counter/sample resolution. Eight's first seven
-case hashes exactly retain the earlier default-fixes results. Separate API/CLI
-record/replay checks pass, including legacy headers, conflicting CLI cadence,
-invalid selections and disallowing API cadence changes after recording/execution.
-
-The owner subsequently requested a handoff, commit, push and stop. The full
-gate stopped during coverage/fresh interpreter routes after its build and
-239 CTests passed. Long compression, candidate presentation and hidden-app
-checks stopped without final verdicts; the queued full presentation suite
-never started. No new physical-display assessment occurred. These checks
-remain pending, not passed or rejected. Private evidence:
-`D:/f117-gate/cadence15-production-20261017/`, including `stopped-for-handoff.json`.
-
-Four Middle East normal/compression-requested flights completed with identical
-results between engines and 34 enemy launches over about 692 observed seconds.
-One raw compression-requested window fails (142/150 updates), includes impact,
-zero altitude and full damage; all 66 fully airborne windows pass. This
-qualified analysis retains the raw failure rather than accepting the whole
-trace. Compression did not remain active: original enemy-awareness and weapon
-events call the normal-time routine. It is not sustained 30-Hz combat coverage.
-Korea was interrupted and the remaining regions did not start. Do not treat
-the candidate as accepted or as recovered developer intent.
-
-On 18 October the fresh full gate passed: 239 tests, all 45 routes identical,
-5,718,848 instruction states under each timing profile and 1,006 matched
-routines at three seeds, without mismatches. The twelve additional flights
-(Korea, Kuwait and North Cape; normal/compression-requested; both engines)
-have identical final states, capacity windows, input logs and sample CSVs.
-This nevertheless **rejects 40 MIPS as sufficient reserve** for the candidate:
-North Cape has an undamaged airborne compressed window with 272/300 updates
-and 18/20 mission seconds over ten seconds. Altitude stays 1,547-2,367.
-The later terminal-window failure is retained separately. A 60-MIPS probe
-keeps the same 15/30 update cap while testing computation reserve; that budget
-is not a claimed period-hardware equivalent. The default remained eight/20 at this checkpoint; it was later promoted to fifteen/60 after broader validation.
-Both engines subsequently pass ten minutes of compression at 40 MIPS with
-18,000 updates and 1,200 mission seconds; all seven case results agree. The
-15-Hz scan/interp/rerun replay and hidden interp/rerun app also pass with 991
-exact logic frames and identical headless checkpoints/final state. These do
-not erase North Cape's active capacity failure. At 60 MIPS both engines pass
-ten compressed minutes, seven clock/dialog cases, twelve settled transitions
-and 120 rapid changes with identical case results. The short North Cape
-probes pass but have different combat seeds from 40, including after the
-launch-delay alignment attempt, so they do not establish identical engagements.
-The longer four-region 60-MIPS flight pairs have identical engine states,
-input logs, sample CSVs and timing windows. All 176 airborne windows pass,
-including four fully compressed windows. Raw crash/terminal failures remain.
-The four unique traces cover 1,906.8 observed seconds and 73 enemy launches.
-Full North Cape scan/interp/rerun agrees with its API final state and keeps
-6,681 logic frames exact, with 29,729 extra isolated draws. Full 45-route
-rerun N=1 plus boot N=4/9 also passes with frozen baselines unchanged.
-
-The initial native 4K/60 assessment nevertheless fails, keeping the default eight/20 at that checkpoint.
-A different, adaptive type-5 pursuit recording flies for six minutes and ends
-with 13 air units; it does not release a weapon or complete the mission.
-Both scan engines reproduce its API final clock/hash, objective and S15.
-On D3D11 3840x2160 /59.99 Hz, scale 9 /vsync, all 5,396 logic frames are exact
-and final state matches, with 5.2 ms guest drift. Pacing fails: p99 32.93 ms
-(limit 20.83), 12.95% over 25 ms (limit 1%), plus one startup interpolation
-rewind of 0.325 within a frame pair. Sky screenshots time out after one retry,
-so no visual-motion judgment is claimed. This is not the earlier unfixed
-type-6 engagement, and it does not establish that cadence caused the failure.
-The derived old fixed-control fixture ended early in END and remains failed;
-its final objective-memory assertion was no longer reading VGAME data.
-
-Evidence: `D:/f117-gate/cadence15-production-20261018/`, especially
+What the evidence shows (private evidence under
+`D:/f117-gate/cadence15-production-20261017/` and `...-20261018/`, notably
 `flight60-review.json`, `clock60-verdict.json`,
 `candidate60-presentation-verdict.json`, `gate-final/presentation-verdict.json`,
-`live-airair60-baseline-verdict.json` and `display60-airair-live/`.
+`live-airair60-baseline-verdict.json`, `display60-airair-live/`):
+
+- **Clock.** All-fixes checks at eight (20 MIPS) and fifteen (40 and 60 MIPS)
+  agree between the interpreter and the recompiled code: seven
+  normal/compressed/dialog cases, twelve settled transitions and 120 rapid
+  changes. Fifteen gives 450 updates / 30 mission seconds in 30 seconds
+  normally and 2,100 / 140 over 70 compressed seconds; its rapid test records
+  69 mission seconds against 68.083 integrated seconds (within counter
+  resolution). Eight's case hashes equal the earlier default-fixes results.
+- **40 MIPS is not enough.** Twelve flights (Korea, Kuwait, North Cape;
+  normal and compression-requested; both engines) agree exactly, but North
+  Cape has an undamaged airborne compressed window with 272/300 updates and
+  18/20 mission seconds. The 40-MIPS ten-minute compression, 991-frame
+  scan/interp/rerun and hidden app checks pass; they do not erase that failure.
+- **60 MIPS passes.** Both engines pass ten compressed minutes (18,000 updates,
+  1,200 mission seconds), seven clock/dialog cases, twelve settled transitions
+  and 120 rapid changes; four-region mixed flights (1,906.8 observed seconds,
+  73 enemy launches) agree in states, inputs, CSVs and windows, all 176
+  airborne windows passing, four fully compressed. Compression is usually
+  cancelled by the original's enemy-awareness and weapon code, so this is not
+  sustained 30-Hz combat coverage. Full North Cape scan/interp/rerun keeps
+  6,681 logic frames exact (29,729 extra isolated draws). More instruction
+  reserve is not a literal period-hardware equivalence.
+- **Display.** The first native 4K60 capture (a six-minute adaptive type-5
+  pursuit, scale 9, vsync, D3D11 3840x2160/59.99 Hz) kept all 5,396 logic
+  frames exact but failed pacing (p99 32.93 ms against 20.83; 12.95% of
+  intervals over 25 ms; one startup rewind). The dispatch, observer-copy,
+  playback-clock and map-stroke repairs in [presentation.md](presentation.md)
+  fixed it: later captures pass unchanged limits (p99 16.92 ms, zero intervals
+  over 25 ms). Sky screenshots timed out, so no visual-motion judgement is
+  claimed; the type-5 engagement is not the older type-6 trace, and the
+  results do not show that cadence caused the earlier failure.
+- **Retained failures and limits.** The 17 October run was stopped for a
+  handoff and gave no verdicts. One Middle East compression-requested window
+  failed (142/150 updates; impact and full damage) while the 66 fully airborne
+  windows passed. The derived old fixed-control fixture ends in END after about
+  161 flight seconds and is invalid for the objective-memory assertion.
 
 ## Historical intent and faster-than-real-time simulation (17 October 2026)
 

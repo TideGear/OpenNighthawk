@@ -573,6 +573,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x02FF, 0x02FF, 0x003D },
+    { "VGAME.EXE", 0x1A98, 0x1A98, 0x0051 },
     { "START.EXE", 0x31AD, 0x31AD, 0x004D },
     { "END.EXE", 0x1708, 0x1708, 0x004D },
     { "START.EXE", 0x35FC, 0x35FC, 0x0045 },
@@ -1030,6 +1032,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x35FC, 0x0045, 28, 28, "format the selected picture filename, load it and transfer it to the selected page" },
     { "END.EXE", 0x0000, 0x1708, 0x004D, 30, 30, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations" },
     { "START.EXE", 0x0000, 0x31AD, 0x004D, 30, 30, "call the supplied function until four BIOS ticks have elapsed, counting callback iterations" },
+    { "VGAME.EXE", 0x0000, 0x1A98, 0x0051, 33, 33, "call the driver with a table pair and scaled offsets" },
+    { "VGAME.EXE", 0x114A, 0x02FF, 0x003D, 23, 23, "far-call the driver entry twice with the caller's four words and mode 2 then 1" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -16956,6 +16960,107 @@ int main(int argc, char **argv)
 #undef TRAND
 #undef TW16
 #undef TW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x1A98) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* Coordinates: exact boundaries of the halving arithmetic
+                 * (negative, odd, 0, +-1, 0x7FFF, 0x8000, 0xFFFF) or any word. */
+                static const uint16_t edge_[14]={0,1,2,3,0xFFFF,0xFFFE,0xFFFD,0x7FFF,0x8000,0x8001,0x7FFE,0x0004,0xFFFC,0x0005};
+#define XCOORD() ((XRAND()%3==0)?(uint16_t)XRAND():(XRAND()%5==0)?(uint16_t)(XRAND()%0x100):edge_[XRAND()%14])
+                uint16_t arg[4];
+                arg[0]=XCOORD();arg[1]=XCOORD();arg[2]=XCOORD();
+                { const unsigned kp_=XRAND()%8; arg[3]=(kp_==0)?(uint16_t)XRAND():(kp_<3)?(uint16_t)(XRAND()%4):(uint16_t)(XRAND()%0x20); }
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* The four-byte table at 91B8, the selector cells. */
+                for(unsigned j=0;j<0x100;j++)XW16(dg,0x91B8+2*j,XRAND());
+                { const uint16_t k_=arg[3]; const uint16_t at_=(uint16_t)(k_*4);
+                  XW16(dg,(uint16_t)(at_+0x91B8),XRAND());XW16(dg,(uint16_t)(at_+0x91BA),XRAND()); }
+                XW16(dg,0x0348,(XRAND()%2)?0:(XRAND()%2)?1:(uint16_t)XRAND());
+                XW16(dg,0x0344,XRAND());
+                XW16(dg,0x4070,XRAND());
+                XW16(dg,0xE008,XRAND());
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+#define XSTUB(sg_,off_,id_,nargs_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x81);XW8(sgx_,out_++,0xF3);XW8(sgx_,out_++,(id_)&0xFF);XW8(sgx_,out_++,(id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+        XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x5E);XW8(sgx_,out_++,((far_)?6:4)+2*j_); } \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x08);XW8(sgx_,out_++,0xE0); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,0x02);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                XSTUB(0x1E42,0x0188,0x1E42,7,1);
+#undef XSTUB
+#undef XCOORD
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x114A && o->ip==0x02FF) {
+                r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The two far-call operands are read from live code. */
+                XW16(0x114A,0x0319,0x01EC);XW16(0x114A,0x031B,0x1E42);
+                XW16(0x114A,0x0336,0x01EC);XW16(0x114A,0x0338,0x1E42);
+                seg[S_DS]=(XRAND()&1)?0x5000:0x6000;seg[S_SS]=(XRAND()&1)?0x6000:0x7000;
+                if(XRAND()&1)seg[S_SS]=seg[S_DS];
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The caller's four words: random, all different. */
+                uint16_t arg[4];
+                for(unsigned j=0;j<4;j++){
+                    const uint16_t a_=(uint16_t)XRAND();const uint16_t b_=(uint16_t)XRAND();
+                    arg[j]=(uint16_t)((a_<<1)^b_);
+                }
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* Call log: the stub folds its id, DI, SI, BP, BX, SP, its return
+                 * address and all eight pushed words, in order, into [F800] of DS,
+                 * counts at [F802], answers AX = the log word and changes some registers. */
+                XW16(seg[S_DS],0xF800,XRAND());XW16(seg[S_DS],0xF802,0);
+                {
+                    unsigned out_=0xF200;
+                    const unsigned clob_=XRAND()&0x17;
+                    XW8(0,out_++,0xA1);XW8(0,out_++,0x00);XW8(0,out_++,0xF8);
+                    XW8(0,out_++,0xD1);XW8(0,out_++,0xC0);
+                    XW8(0,out_++,0x35);XW8(0,out_++,0xEC);XW8(0,out_++,0x01);
+                    { static const uint8_t rm_[5]={7,6,5,3,4};
+                      for(unsigned j_=0;j_<5;j_++) { XW8(0,out_++,0xD1);XW8(0,out_++,0xC0);XW8(0,out_++,0x33);XW8(0,out_++,0xC0|rm_[j_]); } }
+                    XW8(0,out_++,0x53);XW8(0,out_++,0x8B);XW8(0,out_++,0xDC);
+                    for(unsigned k_=0;k_<10;k_++) {
+                        XW8(0,out_++,0xD1);XW8(0,out_++,0xC0);
+                        XW8(0,out_++,0x36);XW8(0,out_++,0x33);XW8(0,out_++,0x47);XW8(0,out_++,2+2*k_);
+                    }
+                    XW8(0,out_++,0x5B);
+                    XW8(0,out_++,0xA3);XW8(0,out_++,0x00);XW8(0,out_++,0xF8);
+                    XW8(0,out_++,0xFF);XW8(0,out_++,0x06);XW8(0,out_++,0x02);XW8(0,out_++,0xF8);
+                    if(clob_&1) { XW8(0,out_++,0x8B);XW8(0,out_++,0xF8); }
+                    if(clob_&2) { XW8(0,out_++,0x8B);XW8(0,out_++,0xF0); }
+                    if(clob_&4) { XW8(0,out_++,0x8B);XW8(0,out_++,0xD8); }
+                    if(clob_&8) { XW8(0,out_++,0x8B);XW8(0,out_++,0xE8); }
+                    if(clob_&16) { XW8(0,out_++,0x8E);XW8(0,out_++,0xC0); }
+                    XW8(0,out_++,0xCB);
+                    /* The driver entry 1E42:01EC is a far jump to the stub. */
+                    XW8(0x1E42,0x01EC,0xEA);XW16(0x1E42,0x01ED,0xF200);XW16(0x1E42,0x01EF,0);
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
