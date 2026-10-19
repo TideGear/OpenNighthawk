@@ -1,0 +1,14 @@
+# expect-world LB
+# expect-exit VGAME.EXE 0 100000000
+# Boots the default Libya mission from the boot inputs of key_tour.input (the boot_to_flight click script as a log) plus one click
+# in START on the roster screen: the 'Lockheed F117A' realism checkbox at (277,165). In flight the aircraft stays on the ramp
+# (no throttle: with throttle the training nudge keys Alt+I/J/K/L crash it) and every key is a separate frame (VGAME 01F08 keeps
+# only the first queued key per frame): 3 4 5 7 7 9 v v v, z x, Shift+F8 and '[' with no page up, Shift+? > M views, F1, F5 Space
+# Backspace F4 F9, Alt+A H M C C D D D D F V, the camera page keys , . m / [ ] { } F2 [ ] { }, Insert, Shift+F1..F6, F1 F7
+# Shift+F8, Shift+Z Shift+X, Alt+T twice (the training bit starts set), Alt+R I K J L N, then Alt+Q, Y.
+--replay
+key_tour.input
+--steps
+5000000000
+--time-us
+700000000000000

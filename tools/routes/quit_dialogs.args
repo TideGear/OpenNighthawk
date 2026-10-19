@@ -1,0 +1,11 @@
+# expect-exit START.EXE 0 50000000
+# Boots through SETUP, the title and the PLAYER intro to START's first screen (the squadron bulletin board) with the boot
+# inputs of quit_dialogs.input, then START's quit confirmation (07611, the ADV.PIC panel) twice: Alt+Q then 'n' (resume),
+# Alt+Q then 'y' (START's exit function 076D1 with argument 0 and its INT 10h text-mode call, row 09520). START exits
+# with code 0 and F117.COM ends; no game file is read beyond the front end.
+--replay
+quit_dialogs.input
+--steps
+5000000000
+--time-us
+700000000000000

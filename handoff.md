@@ -52,11 +52,16 @@ Consolidate it instead of appending to it.
   301 bytes), both on `display_tour`. Evidence `D:/f117-gate/p2-batch-{w,x}-accept/`. `new_batch.py LETTER PREV
   BASE_COMMIT ...` takes the keyed baseline from the newest batch that froze one and the named coverage from PREV.
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
-  5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown (roadmap). An agent is
-  building routes for the player groups (`D:/f117-gate/route-research2/`: `key_tour`, `ejection`, `quit_dialogs`);
-  when they exist add them like `display_tour` (copy into `tools/routes/`, README row, gate to create the cache,
-  re-freeze the baseline with `overlap_accept.py --snapshot-only`), then prove the key arms etc. on them. Owner
-  decision pending: whether dead (and error/setup) code leaves the denominator.
+  5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown (roadmap). Three
+  routes for the player groups are now in `tools/routes/` and gated (batch z: 49 routes / 48 sessions, keyed
+  baseline in `p2-batch-z-accept/baseline`): `key_tour` (the flight key dispatcher's arms, the ILS panel, the
+  Lockheed checkbox; coverage `D:/f117-gate/route-research2/key_tour/`), `quit_dialogs` (START's Alt+Q panel) and
+  `ejection_tass` (Shift+F10, END's TASS page). `ejection` (END's rescue page, +264 bytes for 2.5 G) is built but
+  not adopted. **Next:** prove on them, with the kit's `checkpoints --route NAME`: the key-dispatcher arms (VGAME
+  `0C9AE` family and `0CB77` rows: dozens of small arms; one proof per arm or per group), the ILS panel `0971A`,
+  the eject arm `0CD04`, START `07611` and `09520`, END `03BBF`, `03E61`, `0519E` and the icon rows `008EA`/`00936`.
+  Refresh the score's route coverage first: `D:/f117-gate/route-cover-20261019` + the three new captures.
+  Owner decision pending: whether dead (and error/setup) code leaves the denominator.
 - **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
   freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes
   `drawfeed.c`, so full gate plus `presentation_check --mode rerun` on all routes).
@@ -95,8 +100,8 @@ Consolidate it instead of appending to it.
   pair (no startup reversal); normal-width strokes are clipped to the original
   endpoint cells (map-edge specks). 4K60 fullscreen passes unchanged limits
   (p99 16.92 ms, zero intervals over 25 ms).
-- Baselines every presentation change must keep: all 46 N=1 routes 259,493
-  exact frames / 259,417 pairs (259,240 / 259,166 over the original 45); boot N=4/9 736 frames / 732 pairs (two runs);
+- Baselines every presentation change must keep: all 49 N=1 routes 259,741
+  exact frames / 259,661 pairs (259,240 / 259,166 over the original 45); boot N=4/9 736 frames / 732 pairs (two runs);
   the owner's complete N=9 flight 69 checkpoints / final `31c259b992340414`.
 - Verification scope: `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot
   machines, so they need the full gate plus

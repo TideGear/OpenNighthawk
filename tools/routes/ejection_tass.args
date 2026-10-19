@@ -1,0 +1,15 @@
+# expect-world LB
+# expect-exit VGAME.EXE 129 80000000
+# expect-exit END.EXE 0 60000000
+# expect-open tass.pic END.EXE 1
+# Boots the default Libya (training) mission from the boot inputs of ejection_tass.input and stays on the ramp (no throttle).
+# Training key Alt+K (raw 38,25) x5 moves the aircraft's y by 1024 each (1E08h -> 3208h): map cell column 15, row 6 of the 16x16 terrain-class
+# map (END DS:55EA), class 0; Shift+F10 (raw 2A,44) ejects (sortie result 2, VGAME exits 129); a second Shift+F10 a frame later runs the already-ejected exit (VGAME 0CD0B). END shows TASS.PIC (the
+# capture page, 03BBF), the flag page with the capture remark, then the debrief map: Enter x3 steps the map events to 'Mission
+# end: Captured'; Alt+Q, Y quits END with code 0.
+--replay
+ejection_tass.input
+--steps
+5000000000
+--time-us
+700000000000000

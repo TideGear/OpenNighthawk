@@ -67,7 +67,7 @@ recorded sessions restore their recorded fix set (older logs mean no fixes).
   rows wholly covered and 293 in part; executed code outside its rows now
   counts too, along with reviewed static code. Unreviewed discoveries and other modules remain an explicit
   scope backlog ([how progress is measured](docs/progress.md)).
-- **Parity, measured:** 46 scripted routes, run as 45 sessions, end in
+- **Parity, measured:** 49 scripted routes, run as 48 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the
   palette, MIDI and the disk - checked every 50 million clocks along the

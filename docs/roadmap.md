@@ -21,7 +21,7 @@ make (Phase 4).
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
-- **Engine parity.** 46 scripted routes (45 sessions) are identical between
+- **Engine parity.** 49 scripted routes (48 sessions) are identical between
   the interpreter and the recompiled code at every 50-million-clock checkpoint
   and at the end; every translated instruction is held to the interpreter from
   random states (5,718,848 comparisons under each of the two timing profiles,
