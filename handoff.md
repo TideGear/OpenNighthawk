@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 84.06%, P3 98.79%, All 94.83%
+- **Scoreboard:** P1 100.00%, P2 84.28%, P3 98.79%, All 94.90%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,019 addresses matched. Scope is the expanded seven-program
-  one: **155,915 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,020 addresses matched. Scope is the expanded seven-program
+  one: **156,351 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -48,11 +48,15 @@ Consolidate it instead of appending to it.
   Gate with the frozen 46-route baseline: 1,855 s under heavy load from proof agents. Evidence
   `D:/f117-gate/p2-batch-v-accept/`. The keyed baseline for 46 routes is in `p2-batch-u-accept/baseline`
   (use `new_batch.py LETTER u BASE_COMMIT ...` for the next batch).
-- **Batch w (accepted):** START `1C2F` `start_site_popup_text` (784 bytes) on `display_tour` (the route
-  misses 23 instructions that need flagged sites: Korea, Central America or North Cape briefings).
-  Evidence `D:/f117-gate/p2-batch-w-accept/`. `new_batch.py LETTER PREV BASE_COMMIT ...` now takes the
-  keyed baseline from the newest batch that froze one and the named coverage from PREV (a wrong PREV made
-  finalize report named coverage missing two routines once).
+- **Batches w, x (accepted):** w = START `1C2F` (784 bytes), x = START `11DB` (the briefing-map hover handler,
+  301 bytes), both on `display_tour`. Evidence `D:/f117-gate/p2-batch-{w,x}-accept/`. `new_batch.py LETTER PREV
+  BASE_COMMIT ...` takes the keyed baseline from the newest batch that froze one and the named coverage from PREV.
+- **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
+  5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown (roadmap). An agent is
+  building routes for the player groups (`D:/f117-gate/route-research2/`: `key_tour`, `ejection`, `quit_dialogs`);
+  when they exist add them like `display_tour` (copy into `tools/routes/`, README row, gate to create the cache,
+  re-freeze the baseline with `overlap_accept.py --snapshot-only`), then prove the key arms etc. on them. Owner
+  decision pending: whether dead (and error/setup) code leaves the denominator.
 - **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
   freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes
   `drawfeed.c`, so full gate plus `presentation_check --mode rerun` on all routes).
