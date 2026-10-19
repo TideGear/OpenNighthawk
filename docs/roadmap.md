@@ -232,294 +232,44 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: tick-wait helpers (18 October 2026, batch q)
+### Batches e to q (16-18 October 2026)
 
-END `1708` (`end_wait_ticks_with_callback`) and START `31AD`
-(`start_wait_ticks_with_callback`), 30 instructions /77 bytes each, add 154
-named bytes (1,010 addresses). Five private seeds each cover every
-instruction with no skips or differences; all 50 mutations are caught; both
-match full_cycle (66 checkpoints, 1 and 2 calls) and boot (26, 0 and 1). The
-original unsigned deadline comparisons and wrap behaviour are kept: this adds
-names, not a timing fix. The full gate passes 246 CTests, 45 routes /44 fresh
-interpreter sessions, both instruction profiles, all 1,010 matched routines
-at three seeds, reachability and event limits. N=1 presentation (596.49 s)
-and boot N=4/9 (49.66 s) are exact; ten optimized seeds pass. Evidence:
-`D:/f117-gate/p2-batch-q-accept/final-gate-verdict.json`.
+Every batch below passed the same proof (see above): five seeds per routine
+with every instruction reached, all mutations caught, exact boot (26
+checkpoints) and real-route proofs, optimized seed runs, then a fresh full gate
+(about 22-32 minutes), the 45-route N=1 presentation check and boot N=4/9.
+Per-batch evidence is in `D:/f117-gate/p2-batch-<letter>-accept/` (usually
+`final-gate-verdict.json`); the commit title carries the scoreboard. Counts are
+census bytes by byte credit unless noted; "addresses" is the registered total.
 
-### Previous batch: briefing setup and picture loading (18 October 2026, batch p)
+| Batch | Date | Addresses | Added | Routines |
+|---|---|---|---|---|
+| e | 16 Oct | | 2,062 | VGAME `450A` key dispatch and radar signature; PLAYER `0738` timer picture/fade step; START `038C` launch prompt, `3CEA` modal dialog, `7272` roster save, `A31A` handle write; MPS_LOGO `00DA:0352` sound-overlay loader, `0146:0BCC` stream refill; C runtime init START `8FC6`, END `4EBC` (`sm4_cinit`), MPS_LOGO `0146:010E` |
+| f | 16 Oct | | 331 | START `020F` front-end menu loop; PLAYER `0696` intro control poll |
+| g | 16 Oct | 967 | 6,181 | 21 routines: VGAME `00F0`, `01C1`, `825D`, `7663`, `C9AE`, `D9FE`, `4657`; START `5BF0`, `2696`, `A015`, `9EB3`, `644A`; END `5825`, `3887`, `099D`, `372F`, `5987`, `34EA`, `2A01`, `0A98`; PLAYER `0D0C`. Added `LIVE_FRAMES` (entries inside a built frame) |
+| h | 16 Oct | 985 | 3,894 | 18 routines: VGAME `ED10`, `4973`, `0235`, `EC12`; PLAYER `026B:0272`, `13CE`, `07EA`; START `20D6`, `38AC`, `8DD8`, `141D`, `0B49`, `76D1`, `7312`; END `4CBC`, `1901`, `3CD0`, `4722`. Added `POPF_STOPS` |
+| i | 17 Oct | 991 | 602 | END `3F44`, `4648`; START `8782`, `9094` (new `PROGRAM_ENDS` row, alternate-entry return rule); PLAYER `019A` (last two bytes uncredited); VGAME `0FB2:0246` |
+| j | 17 Oct | 995 | 1,349 | START `6AB3` roster edit, `0010`; END `2703` medals and ribbons, `0010` (last two bytes uncredited). Also fixed START `76C0`'s RNG bound read order (aliased stack; permanent CTest `matched_start_rnd_stack_alias`) |
+| k | 17 Oct | 1,000 | 802 | END `3BF4` (with shared tail `4B8C`), `2265`, `1BAA`; SETUP `111A` (gap `1182` uncredited; `POPF_STOPS` row); START `3EA5` |
+| l | 17 Oct | 1,001 | 314 | VGAME `11D8:000A` far picture-to-page wrapper; START `58DF` complete nine-arm grid formatter (replaces its six-instruction opening) |
+| m | 17 Oct | 1,002 | 262 | END `2200` awards-page callback; END `22EB` complete ribbon collector (replaces its opening) |
+| n | 17 Oct | 1,003 | 1,239 | END `3021` complete debrief scorer (579 instructions, 12-way switch; `34EA` kept as an alias); VGAME `11B8:0008` far picture opener with terminal DOS exit (`PROGRAM_ENDS`, native INT 10h) |
+| o | 17 Oct | 1,006 | 268 | END `26A9` report page text; VGAME `D826` set view and sky; START `9E3E` formatter dispatch (any `FATAL_JUMPS` row of a routine now ends its named code) |
+| p | 18 Oct | 1,008 | 154 | START `0F4E` briefing page setup; START `35FC` load picture for page |
+| q | 18 Oct | 1,010 | 154 | END `1708` and START `31AD` wait-ticks-with-callback helpers; they keep the original unsigned deadline comparison and wrap, so they add names, not a timing fix |
 
-Two routines add 154 named census bytes, bringing the accepted count to 1,008
-addresses. Five private seeds each cover every instruction with no skips or
-differences; all 55 mutations are caught. Ten optimized seed runs also pass.
-Both bodies match all 66 `full_cycle` checkpoints and final state (2 and 17
-calls); boot matches all 26 checkpoints (0 and 4 calls). The full gate passes
-244 CTests, all 45 routes /44 fresh interpreter sessions, both instruction
-profiles, all 1,008 matched routines at three seeds, reachability and event
-limits. N=1 presentation preserves all 259,240 frames /259,166 pairs; boot
-N=4/9 preserves 736 /732. Evidence: `D:/f117-gate/p2-batch-p-accept/`.
+Notes that still matter:
 
-- START `0F4E`, `start_briefing_page_setup`: reset selection/UI flags, start
-  the fade, load the briefing and aircraft pictures, select the palette,
-  decode orders and position the pointer. 38 instructions /85 bytes;
-  31 mutations caught.
-- START `35FC`, `start_load_picture_for_page`: format the picture filename,
-  load it through the image buffers and unpack it to the selected page.
-  Preserve near-pointer, stack-alias and index-wrap behavior. 28 instructions
-  /69 bytes; 24 mutations caught.
-
-### Latest batch: report text, view and sky, formatter dispatch (17 October 2026, batch o)
-
-Batch o adds three addresses: 1,006 addresses, 268 more census bytes. Five
-seeds each reach every instruction of the three bodies (111 in all); all 104
-mutations are caught. END proves on the exact `recon_career` route (344
-checkpoints, 1 call); VGAME and START on the exact `full_cycle` route (66
-checkpoints, 276 and 89 calls); fifteen optimized seed runs pass. Evidence
-`D:/f117-gate/p2-batch-o-accept`.
-
-- END `26A9`, `end_report_page_text`: the continue-prompt screen of the
-  debrief: restore the text area from page 1, draw the wrapped text, wait at the prompt.
-  44 instructions / 90 bytes, 27 mutations.
-- VGAME `D826`, `vgame_set_view_and_sky`: set the view, camera matrices and
-  scene origin, then draw the sky bands when asked (the wait on the timer flag
-  runs only on the route; lockstep delivers no interrupt). 30 instructions /
-  86 bytes, 37 mutations.
-- START `9E3E`, `start_format_dispatch`: the printf formatter's conversion
-  dispatch (an interior arm with eleven exits). 41 instructions / 92 bytes,
-  40 mutations. The lockstep harness now lets any `FATAL_JUMPS` row of a
-  routine end its named code; END `400F` (DOS open with a fatal tail) was
-  proved privately but is held back until its tail is verified.
-
-### Latest batch: the debrief scorer and a packed picture opener (17 October 2026, batch n)
-
-Batch n adds one address and expands an existing one: 1,003 addresses,
-1,239 more census bytes. Five seeds each reach all 646 instructions across
-both bodies; all 199 mutations are caught, and fifteen optimized seed runs
-pass (five of them on the existing END `34EA` entry). Evidence
-`D:/f117-gate/p2-batch-n-accept`.
-
-- END `3021`, `end_debrief_log_score`: the complete scorer with its
-  12-way switch (579 instructions / 1,608 bytes, 152 mutations). The registered
-  `34EA` entry is preserved as an alias that resumes after the increment;
-  the initial jump to `34ED` does not increment. Exact `recon_career`
-  (344 checkpoints, 3 calls) and a 26-checkpoint boot proof.
-- VGAME `11B8:0008`, `vgame_picture_open_far`: the far picture opener with
-  its terminal DOS-error exit (67 instructions / 152 bytes, 47 mutations).
-  The harness gained terminal-entry (`PROGRAM_ENDS`) and native INT 10h
-  support for it. Exact `full_cycle` (66 checkpoints, 2 calls).
-
-Fresh evidence replaces the inherited `3021`/`34EA` opening coverage.
-The census denominator is unchanged; switch data `34D2..34E9` stays uncredited.
-
-### Awards page callback and complete ribbon collector (17 October 2026, batch m)
-
-Batch m adds one address and expands an existing one: 1,002 addresses,
-262 more census bytes. Five seeds each reach all 138 instructions across
-both bodies; all 74 mutations are caught. Each has one call on the exact
-344-checkpoint `recon_career` route and a 26-checkpoint boot proof; ten
-optimized seed runs pass. Evidence `D:/f117-gate/p2-batch-m-accept`.
-
-- END `2200`, `end_awards_page_callback`: compose the awards page with
-  three full-page driver copies, the ribbon and report callbacks. All
-  arguments, register setup, returns and caller cleanup are preserved.
-  52 instructions / 101 bytes, 28 caught mutations.
-- END `22EB`, `end_collect_award_ribbons`: replace the existing opening
-  with the complete ribbon collector and draw loop. Scan six then five
-  award words, append up to three further indices within twelve slots,
-  and draw them through the original row helper. Offset wrap, byte
-  counters and the DS-based clear when SS differs are preserved.
-  86 instructions / 235 bytes, 46 caught mutations. An equivalent
-  comparison-width mutation was replaced; the first attempt is retained.
-
-Fresh evidence replaces the old END `22EB` opening: +161 bytes there,
-+101 from the callback. No duplicate entry or credit is added; the same
-census TSV and denominator are retained.
-
-### A far picture wrapper and a complete grid formatter (17 October 2026, batch l)
-
-Batch l adds one address and expands an existing one: 1,001 matched addresses,
-314 more census bytes. Both bodies have five seed proofs, full instruction
-coverage, 115 caught mutations in all, exact real-route and boot proofs, and
-ten optimized seed runs. Evidence `D:/f117-gate/p2-batch-l-accept`.
-
-- VGAME `11D8:000A` (linear `11D8A`), `vgame_pic_rows_to_page_far`: the far
-  picture/page wrapper, 40 instructions, 41 mutations, `full_cycle` 2 calls
-  and 66 exact checkpoints. Its 200-row loop reads the relocated DS operand
-  and driver call targets from live code. Probes fold return IP/CS as well
-  as registers; a first missed return-address mutation was preserved, then
-  all seeds and mutations were repeated with the strengthened probes.
-- START `58DF`, `start_onc_grid_reference`: the full nine-arm theatre grid
-  formatter replaces the former six-instruction opening at the same address.
-  91 instructions, 74 mutations, `korea_strike` 2 calls and 76 exact
-  checkpoints. The fixture permutes the live switch table and covers signed
-  coordinates and the original uninitialized-bias behavior above theatre 8.
-  END's shared opening helper is retained; no duplicate START entry is added.
-
-Fresh coverage replaces the old START opening's evidence: +197 bytes there,
-+117 for the picture wrapper. The eighteen switch-table bytes `5963..5974`
-and VGAME `11DFF` stay uncredited; the same TSV/denominator is retained.
-
-### 5 routines (17 October 2026, batch k)
-
-Batch k reaches 1,000 matched addresses and adds 802 census bytes. Five seeds
-per routine reach every instruction; all 267 mutations are caught. Exact
-real-route and boot proofs pass, as do 25 optimized seed runs. The final
-private proofs were repeated against batch j's normal optimized libraries;
-source and library hashes are frozen in `p2-batch-k-accept/refresh-verdict.json`.
-
-END `3BF4` includes the shared timer-install tail `4B8C` (235 bytes in two
-ranges); its wide test envelope also includes nine fixture callee JMPs, so
-95 covered instructions represent 86 original instructions. Code-operand
-stores keep separate stop boundaries. SETUP `111A` adds one `POPF_STOPS`
-row, using the existing completion rule. Its unreachable gap at `1182`
-remains uncredited; the census denominator is unchanged.
-Evidence `D:/f117-gate/p2-batch-k-accept`.
-
-- END `3BF4` prepare drivers memory devices report pages and the clock hook: 86 original instructions (95 including fixture probes), 58 mutations, `full_cycle` 1 call (`p2-end-3bf4`).
-- SETUP `111A` set the timer rate from the refresh: 54 instructions, 52 mutations, `setup_calibration` 2 calls (`p2-setup-111a`).
-- END `2265` run the awards report pages and announcements when enabled: 46 instructions, 52 mutations, `full_cycle` 1 call (`p2-end-2265`).
-- END `1BAA` wait for report widget selection cancel or matching input: 58 instructions, 50 mutations, `full_cycle` 1 call (`p2-end-1baa`).
-- START `3EA5` wait for confirm or cancel through buttons or keyboard: 56 instructions, 55 mutations, `career_serge` 2 calls (`p2-start-3ea5`).
-
-### 4 routines (17 October 2026, batch j)
-
-Batch j adds four routines and 1,349 census bytes. Five seeds per routine
-reach every instruction, all 203 mutations are caught, and exact real-route
-and boot proofs pass. All 20 optimized seed runs pass. END `0010`'s final two
-bytes remain uncredited because the fixture patches the following callee.
-Evidence `D:/f117-gate/p2-batch-j-accept`.
-
-The first gate exposed a pre-existing START `76C0` RNG error: the generator
-can update its caller's divisor through aliased memory. The named routine
-now reads the bound after that call, as the original does. Five private
-seeds, nine-instruction coverage, 28 mutations, exact boot/route proofs and
-six optimized generic seed runs prove the correction; the failing seed is
-retained as `matched_start_rnd_stack_alias`. The full gate was rerun.
-
-- START `6AB3` edit a pilot name with prefix backspace acceptance and roster update: 254 instructions, 64 mutations, `roster_edit` 3 calls (`p2-start-6ab3`).
-- END `2703` announce granted and deferred medals special awards and service ribbons: 196 instructions, 69 mutations, `recon_career` 1 call (`p2-end-2703`).
-- START `0010` run the front end prepare the mission block and choose its exit code: 40 instructions, 33 mutations, `full_cycle` 2 calls (`p2-start-0010`).
-- END `0010` run the debrief update sorties and terminal pilot status then shut down: 51 instructions, 37 mutations, `full_cycle` 1 call (`p2-end-0010`).
-
-### 6 routines (17 October 2026, batch i)
-
-Batch i adds six routines and 602 census bytes. Each has five seed proofs
-with every instruction reached, 207 mutations caught in all, an exact boot
-proof (26 checkpoints) and an exact `full_cycle` proof (66 checkpoints) that
-calls it. All 30 optimized seed runs pass too. START `9094` gains a
-`PROGRAM_ENDS` row and a return rule for its alternate-entry stack layout.
-PLAYER `019A`'s returning fixture covers six terminal cleanup bytes; the last
-two stay uncredited by the named-byte measurement.
-Evidence `D:/f117-gate/p2-batch-i-accept`.
-
-- END `3F44` shut the drivers and hooks down and exit with the code: 36 instructions, 42 mutations, `full_cycle` 1 call (`p2-end-3f44`).
-- START `8782` unpack a compressed picture onto a page row by row: 38 instructions, 38 mutations, `full_cycle` 17 calls (`p2-start-8782`).
-- PLAYER `019A` wait for the last picture (and the sound driver), then finish: 36 instructions, 31 mutations, `full_cycle` 2 calls (`p2-player-019a`).
-- END `4648` decode a picture onto a page row by row: 38 instructions, 32 mutations, `full_cycle` 4 calls (`p2-end-4648`).
-- VGAME `0FB2:0246` fill a box through the span tables: 45 instructions, 39 mutations, `full_cycle` 304 calls (`p2-vgame-fd66`).
-- START `9094` end the program: 43 instructions, 25 mutations, `full_cycle` 1 call (`p2-start-9094`).
-
-### 18 routines (16 October 2026, batch h)
-
-Batch h adds 18 routines. Each has five seed proofs with every instruction
-reached, 803 mutations caught in all, and an exact boot proof (26 checkpoints)
-plus an exact real route that calls it. The harness gained `POPF_STOPS` for
-routines whose named code ends with a POPF that restores the caller's IF, and a
-`LIVE_FRAMES` row for START `0B49`. Evidence
-`D:/f117-gate/p2-batch-h-accept`.
-
-- VGAME `ED10` call software interrupt n with register structures (int86x): 64 instructions, 39 mutations, `full_cycle` 4 calls (`p2-vgame-ed10`).
-- PLAYER `026B:0272` calibrate the clock hook timer from the refresh: 54 instructions, 48 mutations, `full_cycle` 2 calls (`p2-player-026b-0272`).
-- START `20D6` draw the orders folder pages and wait on each: 449 instructions, 74 mutations, `career_serge` 1 call (`p2-start-20d6`).
-- END `4CBC` set the timer rate from the refresh: 54 instructions, 52 mutations, `full_cycle` 5 calls (`p2-end-4cbc`).
-- END `1901` show a picture and its palette, run the optional callback, fade in: 64 instructions, 36 mutations, `full_cycle` 1 call (`p2-end-1901`).
-- START `38AC` wait for an event on a button table: 58 instructions, 45 mutations, `full_cycle` 9 calls (`p2-start-38ac`).
-- VGAME `4973` a mission's seed, opening display, frame counter, clock and palette: 46 instructions, 37 mutations, `full_cycle` 1 call (`p2-vgame-4973`).
-- START `8DD8` set the timer rate from the refresh: 54 instructions, 52 mutations, `full_cycle` 17 calls (`p2-start-8dd8`).
-- VGAME `0235` run a flight between the clock hook and unhook: 45 instructions, 44 mutations, `full_cycle` 1 call (`p2-vgame-0235`).
-- START `141D` copy the generated map, draw sites, route, view overlay and sprite, show the briefing page: 66 instructions, 34 mutations, `full_cycle` 2 calls (`p2-start-141d`).
-- START `0B49` arms page hover change: relight the hovered item, restore the one left: 59 instructions, 47 mutations, `full_cycle` 1,425 calls (`p2-start-0b49`).
-- END `3CD0` allocate page memory, make the five pages: 47 instructions, 43 mutations, `full_cycle` 1 call (`p2-end-3cd0`).
-- END `4722` unpack a compressed picture onto a page, row by row: 38 instructions, 30 mutations, `full_cycle` 2 calls (`p2-end-4722`).
-- START `76D1` shut the drivers and hooks down and exit with the code: 43 instructions, 45 mutations, `full_cycle` 1 call (`p2-start-76d1`).
-- START `7312` front-end start-up: shared block, shape sets, pages, art, timer, joystick, mouse, random seed: 42 instructions, 36 mutations, `full_cycle` 2 calls (`p2-start-7312`).
-- VGAME `EC12` call software interrupt n with a register structure (int86): 52 instructions, 42 mutations, `boot_to_flight` 1 call (`p2-vgame-ec12`).
-- PLAYER `13CE` call software interrupt n with register structures (int86): 52 instructions, 43 mutations, `full_cycle` 2 calls (`p2-player-13ce`).
-- PLAYER `07EA` show one picture of the intro stream and return the next one's address: 117 instructions, 56 mutations, `full_cycle` 1,592 calls (`p2-player-07ea`).
-
-### 21 routines (16 October 2026, batch g)
-
-Batch g adds 21 routines. Each has five seed proofs with every instruction
-reached, 1,017 mutations caught in all, and an exact boot proof (26 checkpoints)
-plus an exact real route that calls it. Several are interior entries
-(arms of a switch, a loop's continue point, the second half of a routine
-another matched body hands back to); the harness gained `LIVE_FRAMES` for
-entries whose function frame is already built. Evidence
-`D:/f117-gate/p2-batch-g-accept`.
-
-- VGAME `00F0` flight start-up: mission, models, mode, sound file, palette, cockpit pages and HUD recolour (tail 01C1): 105 instructions, 54 mutations, `full_cycle` 1 call (`p2-vgame-00f0`).
-- VGAME `01C1` recolour three HUD bitmap rectangles for the current pilot mode: 37 instructions, 34 mutations, `full_cycle` 1 call (`p2-vgame-01c1`).
-- START `5BF0` world options: theatre, tension, mission, roster save and exit wipe: 251 instructions, 64 mutations, `central_europe_airair` 1 call (`p2-start-5bf0`).
-- VGAME `825D` put a multi-function display up: 84 instructions, 38 mutations, `strike_training_d8` 1 call (`p2-vgame-825d`).
-- START `2696` objective line for a photograph or destroy target: 83 instructions, 44 mutations, `full_cycle` 4 calls (`p2-start-2696`).
-- VGAME `7663` release the selected store: 218 instructions, 68 mutations, `korea_strike` 2 calls (`p2-vgame-7663g`).
-- START `A015` the formatter's integer conversion: 98 instructions, 40 mutations, `full_cycle` 8 calls (`p2-start-a015`).
-- VGAME `C9AE` 8 key bay doors, then the key dispatcher tail: map pan, nav cursor, release and lamps: 343 instructions, 52 mutations, `korea_strike` 1 call (`p2-vgame-c9ae`).
-- START `9EB3` the formatter's string field: 66 instructions, 42 mutations, `full_cycle` 81 calls (`p2-start-9eb3`).
-- END `5825` the formatter's string length: 11 instructions, 28 mutations, `full_cycle` 7 calls (`p2-end-5825`).
-- END `3887` show the landed screen: picture, three panels, four animation frames, prompt: 122 instructions, 45 mutations, `airair_type6` 1 call (`p2-end-3887`).
-- END `099D` place and draw a debriefing map icon: 97 instructions, 41 mutations, `full_cycle` 1 call (`p2-end-099d`).
-- VGAME `D9FE` measure an object from the eye, cull it and defer it for drawing: 114 instructions, 74 mutations, `airair_type6` 848 calls (`p2-vgame-d9fe`).
-- START `644A` roster hover: detail strip, colours, record sheet: 69 instructions, 47 mutations, `full_cycle` 2 calls (`p2-start-644a`).
-- END `372F` landing pictures and palette fade rates: 145 instructions, 37 mutations, `landing` 1 call (`p2-end-372f`).
-- END `5987` the formatter's integer conversion: 98 instructions, 40 mutations, `full_cycle` 2 calls (`p2-end-5987`).
-- END `34EA` debrief score: next log record, or scale and return the total: 170 instructions, 53 mutations, `full_cycle` 5 calls (`p2-end-34ea`).
-- END `2A01` announce a promotion, a held-back one or a plain debrief: 80 instructions, 44 mutations, `career_promotion` 1 call (`p2-end-2a01`).
-- VGAME `4657` place a released countermeasure in a slot and announce it: 83 instructions, 40 mutations, `korea_strike` 2 calls (`p2-vgame-4657`).
-- PLAYER `0D0C` palette to its copy and the DAC (black during a fade): 46 instructions, 33 mutations, `full_cycle` 7 calls (`p2-player-0d0c`).
-- END `0A98` format and draw a replay event caption: 282 instructions, 99 mutations, `full_cycle` 1 call (`p2-end-0a98`).
-
-### Front-end menu and intro controls (16 October 2026, batch f)
-
-Batch f adds two routines / 331 census bytes. Both have five seed proofs,
-full instruction coverage, 80 mutations caught and exact boot (26 checkpoints)
-and full-cycle (66 checkpoints) proofs. Evidence `D:/f117-gate/p2-batch-f-accept`.
-
-- START `020F` front-end menu loop: dispatches world, pilot, mission,
-  briefing and launch choices, retaining the original event and redraw logic.
-  67 instructions, 41 mutations, two full-cycle calls (`p2-start-020f`).
-- PLAYER `0696` intro control poll: pending key dispatch, joystick/mouse
-  buttons and keyboard handling with the original busy flag around handlers.
-  61 instructions, 39 mutations, 2,310,066 full-cycle calls
-  (`p2-player-0696`). The 161-byte watch span includes the RET; census credit
-  remains 160 bytes.
-
-### Runtime, intro and front end (16 October 2026, batch e)
-
-Batch e adds eleven routines / 2,062 census bytes. Each has five seed proofs,
-full instruction coverage, detected mutations (476 total), and exact boot
-(26 checkpoints) and full-cycle (66 checkpoints) proofs. Evidence:
-`D:/f117-gate/p2-batch-e-accept` and the private directories named below.
-
-- VGAME `450A` key dispatch and radar signature: 74 instructions, 40
-  mutations, 275 full-cycle calls (`p2-vgame-450a`).
-- PLAYER `0738` timer-driven picture, fade and stream-position step: 53
-  instructions, 42 mutations, 7,355 calls (`p2-player-0738`).
-- START `038C` launch prompt and animation: 88 instructions, 45 mutations,
-  one call; `3CEA` modal dialog and backdrop restore: 83 instructions, 40
-  mutations, one call; `7272` roster save: 69 instructions, 46 mutations,
-  three calls (`p2-start-{038c,3cea,7272}`). D11 remains a DOS-layer option.
-- START `A31A` file-handle write with text translation: 77 instructions,
-  53 mutations, six calls (`p2-start-a31a`).
-- MPS_LOGO `00DA:0352` sound-overlay loader: 98 instructions, 66 mutations,
-  one call; `0146:0BCC` stream refill: 65 instructions, 46 mutations, 25
-  calls (`p2-logo-{00da-0352,0bcc}`).
-- C runtime initialization: START `8FC6` / END `4EBC` reuse `sm4_cinit`
-  (84 instructions, 26 mutations each, two / one calls); MPS_LOGO
-  `0146:010E` is the far-code variant (82 instructions, 46 mutations, one
-  call). The harness recognizes the three fatal-hook jump targets as the
-  end of the named region; original code still executes the fatal exit.
-  The overlay loader's DOS-exit arm has the same scoped completion rule.
-  Proofs `p2-start-8fc6`, `p2-end-4ebc`, `p2-logo-010e`.
+- END `3BF4`'s wide test envelope includes nine fixture callee JMPs: 95 covered
+  instructions represent 86 original ones. Code-operand stores keep separate
+  stop boundaries.
+- Batches l-n replaced inherited opening coverage with fresh coverage of the
+  complete body; no duplicate entry or credit was added. Switch-data bytes
+  (`5963..5974`, `34D2..34E9`) and VGAME `11DFF` stay uncredited.
+- END `400F` (DOS open with a fatal tail) was proved privately but is held back:
+  stand-in tail, one uncaught mutation, coverage counts 21 of 39 instructions.
+- Batch q's full gate: 246 CTests, 45 routes / 44 fresh interpreter sessions,
+  1,010 routines at three seeds, N=1 596.49 s, boot 49.66 s.
 
 ### Matched: VGAME flight, weapons and world
 
