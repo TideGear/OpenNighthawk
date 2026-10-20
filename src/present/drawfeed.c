@@ -200,7 +200,7 @@ void drawlive_set_rerun(drawlive *r)
     r->rerun = 1;
     const char *clock = getenv("F117_PRESENT_CLOCK");
     r->smooth = !(clock && !strcmp(clock, "raw"));      /* the smoothed clock, unless F117_PRESENT_CLOCK=raw */
-    r->ema_alpha = 0.2; r->pull_in = 0.05;
+    r->ema_alpha = 0.4; r->pull_in = 0.025;
     const char *a = getenv("F117_PRESENT_CLOCK_ALPHA"), *p = getenv("F117_PRESENT_CLOCK_PULL");   /* tuning only */
     if (a && atof(a) > 0 && atof(a) <= 1) r->ema_alpha = atof(a);
     if (p && atof(p) > 0 && atof(p) <= 1) r->pull_in = atof(p);

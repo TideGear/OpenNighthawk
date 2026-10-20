@@ -74951,7 +74951,2416 @@ redraw:
 #undef XRUN
 #undef XB
 
+/* DSWAP 0000:1BD0 - the C library's atol: a decimal text to a signed 32-bit number.
+ * (Census row 1B9C, "first free stream", is 135 bytes long because this function
+ * follows it directly; the row's first 51 bytes are dswap_free_stream.)
+ *
+ * The one argument, at [BP+4], is a near pointer to the text in the data segment. The
+ * routine skips blanks and tabs, takes the first other character, steps over it when it
+ * is '-' or '+', then accumulates digits into the 32-bit number DX:BX as
+ * value * 10 + digit (computed as value * 8 + value * 2 + digit, so a number past 32
+ * bits wraps, with the carries going through the flag chain the original uses) until
+ * the first character that is not '0'..'9'. A '-' first character negates the result.
+ * The result is in DX:AX (the C ABI's long return); BX, CX and DI are scratch and are
+ * left holding the last step's values, exactly as the original leaves them.
+ *
+ *   AL after LODSB   the character just read: the sign slot, then each digit
+ *   AX               its high byte stays 0 all the way (cleared at the start)
+ *   [stack]          the first non-blank character is pushed before the number and
+ *                    popped at the end to decide the sign
+ *
+ * No callees. Plain RET: the caller removes the argument.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the runs are the original's (they start at every branch target
+ * and after every conditional jump). */
+static int dswap_string_to_long(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { TEXT = 4 };                                    /* [BP+4]: near pointer to the text */
+    enum { CH_TAB = 0x09, CH_BLANK = 0x20, CH_PLUS = 0x2B, CH_MINUS = 0x2D, CH_ZERO = 0x30,
+           CH_NINE = 0x39 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 8)) return 0;
+    /* Frame, the text pointer, and the number cleared (DX:BX = 0, AX = 0). */
+    XB(8, 0x1BD0);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_SI] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + TEXT));
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;                    /* CWD */
+    c->r[R_BX] = (uint16_t)alu_op(c, 6, c->r[R_BX], c->r[R_BX], 1);
+skip_blanks:
+    XB(3, 0x1BDD);
+    x86_lods(c, 0, c->seg[S_DS]);
+    alu_op(c, 7, get_r8(c, R_AL), CH_BLANK, 0);
+    if (x86_cond(c, 4)) goto skip_blanks;
+    XB(2, 0x1BE2);
+    alu_op(c, 7, get_r8(c, R_AL), CH_TAB, 0);
+    if (x86_cond(c, 4)) goto skip_blanks;
+    /* The first character is kept for the sign test; '-' and '+' are stepped over. */
+    XB(3, 0x1BE6);
+    x86_push_reg(c, R_AX);
+    alu_op(c, 7, get_r8(c, R_AL), CH_MINUS, 0);
+    if (x86_cond(c, 4)) goto next_char;
+    XB(2, 0x1BEB);
+    alu_op(c, 7, get_r8(c, R_AL), CH_PLUS, 0);
+    if (x86_cond(c, 5)) goto test_digit;
+next_char:
+    XB(1, 0x1BEF);
+    x86_lods(c, 0, c->seg[S_DS]);
+test_digit:
+    XB(2, 0x1BF0);
+    alu_op(c, 7, get_r8(c, R_AL), CH_NINE, 0);
+    if (x86_cond(c, 7)) goto finish;
+    XB(2, 0x1BF4);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), CH_ZERO, 0));
+    if (x86_cond(c, 2)) goto finish;
+    /* value * 10 + digit in DX:BX, as (value * 2) + (value * 8) + digit. */
+    XB(13, 0x1BF8);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    c->r[R_CX] = c->r[R_BX];
+    c->r[R_DI] = c->r[R_DX];                                                  /* value * 2 */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);                 /* value * 8 */
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_CX], 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_DI], 1);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);           /* + the digit */
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    goto next_char;
+finish:
+    /* The first character comes back; the number moves to DX:AX and is negated for '-'. */
+    XB(4, 0x1C13);
+    c->r[R_AX] = cpu_pop16(c);
+    alu_op(c, 7, get_r8(c, R_AL), CH_MINUS, 0);
+    { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t_; }
+    if (x86_cond(c, 5)) goto leave;
+    XB(3, 0x1C19);
+    { const uint16_t v_ = c->r[R_AX]; c->r[R_AX] = (uint16_t)alu_sub(c, 0, v_, 1, 0); }   /* NEG AX */
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    { const uint16_t v_ = c->r[R_DX]; c->r[R_DX] = (uint16_t)alu_sub(c, 0, v_, 1, 0); }   /* NEG DX */
+leave:
+    XB(4, 0x1C20);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* SETUP 0000:0512 - move the text cursor (BIOS video function 2).
+ *
+ * Two arguments, the row at [BP+4] and the column at [BP+6]; only their low bytes
+ * are used. The routine fills the register block VIDEO_REQUEST that the setup program
+ * keeps for its BIOS calls (AX, BX, CX, DX as four words at 0FC0) so that AH = 2 (set
+ * cursor position), BH = 0 (page 0), DH = the row and DL = the column, then calls
+ * the software-interrupt routine 1387 with the interrupt number 10h and the same block
+ * as both the input and the output block. AL, CX and the rest of the block are left
+ * as they were.
+ *
+ * Callee: 1387 (setup_interrupt_call), plain RET; the three arguments (block, block,
+ * interrupt number) are cleaned by the epilogue's MOV SP,BP.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the call is not counted (it charges its own). */
+static int setup_set_cursor(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ROW = 4, COLUMN = 6 };                          /* [BP+4], [BP+6] */
+    enum { VIDEO_REQUEST = 0x0FC0,                         /* the register block: AX, BX, CX, DX */
+           REQ_AH = VIDEO_REQUEST + 1, REQ_BH = VIDEO_REQUEST + 3,
+           REQ_DL = VIDEO_REQUEST + 6, REQ_DH = VIDEO_REQUEST + 7 };
+    enum { BIOS_VIDEO = 0x10, SET_CURSOR = 2, INTERRUPT_CALL = 0x1387 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 13)) return 0;
+    XB(13, 0x0512);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    ds_put8(c, REQ_AH, SET_CURSOR);
+    ds_put8(c, REQ_BH, 0);
+    set_r8(c, R_AL, bp_get8(c, ROW));
+    ds_put8(c, REQ_DH, get_r8(c, R_AL));
+    set_r8(c, R_AL, bp_get8(c, COLUMN));
+    ds_put8(c, REQ_DL, get_r8(c, R_AL));
+    c->r[R_AX] = VIDEO_REQUEST;
+    cpu_push16(c, c->r[R_AX]);                              /* the output block */
+    cpu_push16(c, c->r[R_AX]);                              /* the input block */
+    c->r[R_AX] = BIOS_VIDEO;
+    cpu_push16(c, c->r[R_AX]);                              /* the interrupt number */
+    SM4_NEED(1, 0x0534);
+    XRUN(guest_call_pop(m, INTERRUPT_CALL, 0x0537, 0));
+    XB(3, 0x0537);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:053B - leave the setup program with a return code.
+ *
+ * One argument, the exit code, at [BP+4]. The routine undoes what the setup program
+ * installed, then ends the process through the C run-time exit routine:
+ *   1. 0C58 gives the Ctrl+Break vector back (setup_restore_control_break);
+ *   2. 0BFB frees the memory block whose segment is kept in MISC_SEGMENT
+ *      (setup_free_block; its one word argument is popped by the caller);
+ *   3. when the timer hook is installed (TIMER_HOOKED is 1) 0FFE restores the BIOS timer
+ *      rate and the INT 8 vector (setup_timer_restore);
+ *   4. 16CE, the C run-time exit, gets the code as a word with a zero high byte (the
+ *      caller pops it). It ends the process and does not come back; the instructions
+ *      after it (POP BX, the epilogue and RET) are the compiler's and never run on the
+ *      real machine, but are kept here as they are.
+ *
+ * All callees are plain RET near routines.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the calls are not counted (they charge their own). */
+static int setup_shut_down(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { EXIT_CODE = 4 };                                /* [BP+4] */
+    enum { MISC_SEGMENT = 0x0FBE,                          /* word: the block to free */
+           TIMER_HOOKED = 0x0E29 };                        /* byte: 1 once the timer hook is in */
+    enum { RESTORE_CONTROL_BREAK = 0x0C58, FREE_BLOCK = 0x0BFB, RESTORE_TIMER = 0x0FFE,
+           EXIT = 0x16CE };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x053B);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    XNEAR(0x053E, RESTORE_CONTROL_BREAK, 0x0541);
+    XB(1, 0x0541);
+    cpu_push16(c, ds_get(c, MISC_SEGMENT));
+    XNEAR(0x0545, FREE_BLOCK, 0x0548);
+    XB(3, 0x0548);
+    c->r[R_BX] = cpu_pop16(c);
+    (void)alu_op(c, 7, ds_get8(c, TIMER_HOOKED), 1, 0);
+    if (!x86_cond(c, 5)) {
+        XNEAR(0x0550, RESTORE_TIMER, 0x0553);
+    }
+    XB(3, 0x0553);
+    set_r8(c, R_AL, bp_get8(c, EXIT_CODE));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x0559, EXIT, 0x055C);
+    XB(4, 0x055C);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0A4B - wait for a number of timer ticks.
+ *
+ * One argument, the tick count, at [BP+4]. The routine clears the tick counter byte
+ * TICKS (the timer hook advances it every tick, through the routine at 0A8C), installs
+ * the timer hook with 0FC0 (setup_timer_hook_install: it calibrates the rate and points
+ * INT 8 at the hook), then polls TICKS until it is above the count (an unsigned compare
+ * of the byte, widened to a word, against the whole argument word: a count of 255 or
+ * more never ends), and restores the BIOS timer with 0FFE (setup_timer_restore).
+ * Nothing is returned.
+ *
+ * Callees: 0FC0 and 0FFE, both plain RET with no arguments.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the calls are not counted (they charge their own). The polling
+ * pass is one block of four instructions. */
+static int setup_wait_ticks(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { COUNT = 4 };                                    /* [BP+4]: ticks to wait */
+    enum { TICKS = 0x0782 };                               /* byte: advanced by the timer hook */
+    enum { HOOK_TIMER = 0x0FC0, RESTORE_TIMER = 0x0FFE };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0A4B);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    ds_put8(c, TICKS, 0);
+    XNEAR(0x0A53, HOOK_TIMER, 0x0A56);
+poll:
+    XB(4, 0x0A56);
+    set_r8(c, R_AL, ds_get8(c, TICKS));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    (void)alu_op(c, 7, c->r[R_AX], bp_get(c, COUNT), 1);
+    if (x86_cond(c, 6)) goto poll;                          /* JBE: not above yet */
+    XNEAR(0x0A60, RESTORE_TIMER, 0x0A63);
+    XB(3, 0x0A63);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* VGAME 0000:02C4 - register the display pages with the graphics library (named by
+ * what the code does; the library's side is inferred from its use here).
+ *
+ * Called once from the start-up of the flight program (VGAME main, at 0087), after the
+ * graphics driver is up and the shell's data block is known. No arguments.
+ *
+ *   1. Library entry 0 (the jump slot 1E42:011A) is asked about page 0: the answer is
+ *      kept in PAGE0 and, a second time, in PAGE0_COPY.
+ *   2. Entry 0 is asked about page 1: the answer is kept in PAGE1, and entry 75 (slot
+ *      1E42:0291) is given (1, that answer): page slot 1 now stands for it.
+ *   3. The shell's data block is the far pointer SHELL_BLOCK (it was set up from the
+ *      intra-application communication area, 0000:04F0, by main). Its word at +20h
+ *      is kept in SHELL_PAGE and entry 75 is given (2, that word): page slot 2.
+ *
+ * Every callee is a jump slot of the library (a JMP FAR patched at load), run as a far
+ * call; the caller pops the arguments (POP BX per word). The word read from the block
+ * is read twice, as the original does, once for the store and once for the push.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the calls are not counted (they charge their own). */
+static int vgame_register_display_pages(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PAGE0 = 0x8612, PAGE1 = 0x8614, SHELL_PAGE = 0x8616, PAGE0_COPY = 0x861A,
+           SHELL_BLOCK = 0xE574,       /* far pointer: offset at +0, segment at +2 */
+           BLOCK_PAGE = 0x20 };        /* the block's page word */
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 1)) return 0;
+    /* Page 0. */
+    XB(1, 0x02C4);
+    cpu_push16(c, 0);
+    XFAR(0x02C6, 0x02CB);
+    XB(4, 0x02CB);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, PAGE0, c->r[R_AX]);
+    ds_put(c, PAGE0_COPY, c->r[R_AX]);
+    cpu_push16(c, 1);
+    /* Page 1, and slot 1. */
+    XFAR(0x02D4, 0x02D9);
+    XB(4, 0x02D9);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, PAGE1, c->r[R_AX]);
+    cpu_push16(c, 1);
+    cpu_push16(c, c->r[R_AX]);
+    XFAR(0x02E0, 0x02E5);
+    /* The shell block's page word, and slot 2. */
+    XB(7, 0x02E5);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = ds_get(c, SHELL_BLOCK);
+    c->seg[S_ES] = ds_get(c, SHELL_BLOCK + 2);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + BLOCK_PAGE));
+    ds_put(c, SHELL_PAGE, c->r[R_AX]);
+    cpu_push16(c, 2);
+    cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + BLOCK_PAGE)));
+    XFAR(0x02F8, 0x02FD);
+    XB(3, 0x02FD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XFAR
+#undef XRUN
+#undef XB
+}
+
+/* VGAME 0FB2:04FE - fill the polygon spans of the background through the graphics
+ * library (named after the one caller the census knows, camimage_background_raster).
+ *
+ * The clipper and rasterizer of segment 0FB2 leave a span table behind: the left edges
+ * of every row, then the right edges, at SPAN_TABLE in the data segment, for the rows
+ * from [FIRST_ROW] to [LAST_ROW]. This far routine hands that table to the library's
+ * span filler, graphics entry 37 (the jump slot 1E42:01D3): the first row in AX, the
+ * last row in CX, the table's address in BX, and in DX the one argument of this
+ * routine, the combine mode (0 set, 1 OR, 2 AND, 3 darken).  The filler's answer is not
+ * used and nothing else is touched; the caller removes its argument after the far
+ * return.
+ *
+ * Callee: the library slot is a JMP FAR patched at load, run as a far call with its
+ * return address at the next instruction; whatever it leaves in the registers goes
+ * back to the caller. Frame: [BP+6] the combine mode (BP+2 and BP+4 are the far return).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the call is not counted (it charges its own). */
+static int vgame_background_span_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MODE = 6 };                                     /* [BP+6]: the combine mode */
+    enum { FIRST_ROW = 0x2615, LAST_ROW = 0x2617,          /* data segment cells */
+           SPAN_TABLE = 0x22A1 };                          /* left words, then right words */
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 8)) return 0;
+    XB(8, 0x04FE);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], FIRST_ROW);
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], LAST_ROW);
+    c->r[R_BX] = SPAN_TABLE;
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + MODE));
+    SM4_NEED(1, 0x0510);
+    XRUN(guest_call_far(m, 0x0510, 0x0515));
+    XB(4, 0x0515);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* VGAME 11B8:00C4 - close a packed picture's DOS file (far routine).
+ *
+ * One argument, the DOS handle, at [BP+6] of the frame this routine builds (far return
+ * address, then the argument). With DS set to the program's data segment (a relocated
+ * immediate at CS:00CD), it closes the handle with DOS function 3Eh. On success it
+ * restores its registers and returns. When DOS answers with the carry flag set, the
+ * routine sets DX to the error message at ERROR_MESSAGE and CX to FFFFh and jumps into
+ * the picture routines' shared error printer at 01E8 (the part of vgame_picture_open_far
+ * after it has printed the file name: it writes the message with function 9, ends the
+ * program with function 4Ch and does not return). That jump is where the named code ends.
+ *
+ * Callee: INT 21h, run as original code (the machine's DOS). The saved BP is pushed twice
+ * (the original saves it for its own frame and for the error printer).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the INT charges its own. */
+static int vgame_picture_close_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HANDLE = 6 };                                    /* [BP+6] */
+    enum { DATA_SEGMENT_IMMEDIATE = 0x00CD,                 /* CS offset of the relocated MOV AX,imm */
+           ERROR_MESSAGE = 0x4630, SHARED_ERROR_PRINTER = 0x01E8, DOS_CLOSE = 0x3E };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XINT(at_) do { SM4_NEED(1, (at_)); const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; const int returned_ = sm4_int(m, (at_)); \
+    m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 11)) return 0;
+    XB(11, 0x00C4);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    cpu_push16(c, c->seg[S_ES]);
+    x86_push_reg(c, R_BP);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], DATA_SEGMENT_IMMEDIATE);
+    c->seg[S_DS] = c->r[R_AX];
+    set_r8(c, R_AH, DOS_CLOSE);
+    c->r[R_BX] = bp_get(c, HANDLE);
+    XINT(0x00D6);
+    XB(1, 0x00D8);
+    if (x86_cond(c, 3)) goto closed;                        /* JAE: no carry */
+    XB(3, 0x00DA);
+    c->r[R_DX] = ERROR_MESSAGE;
+    c->r[R_CX] = 0xFFFF;
+    c->ip = SHARED_ERROR_PRINTER;
+    return 1;
+closed:
+    XB(8, 0x00E3);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    sm4_ret(c, 1);
+    return 1;
+#undef XINT
+#undef XB
+}
+
+/* VGAME 11B8:0153 - read the next 512-byte block of a packed picture (far routine).
+ *
+ * No arguments. With DS set to the program's data segment (a relocated immediate at
+ * CS:0157), the routine reads CX = 200h bytes from the open picture file, whose DOS
+ * handle is kept in HANDLE, to DS:BLOCK_BUFFER with DOS function 3Fh, and returns with
+ * DS restored. The byte count DOS answers is not looked at. When DOS answers with the
+ * carry flag set, the routine sets DX to the error message at ERROR_MESSAGE and CX to
+ * FFFFh and jumps into the picture routines' shared error printer at 01E8 (the part of
+ * vgame_picture_open_far after it has printed the file name: it writes the message with
+ * function 9, ends the program with function 4Ch and does not return). That jump is
+ * where the named code ends.
+ *
+ * Callee: INT 21h, run as original code (the machine's DOS).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the INT charges its own. */
+static int vgame_picture_read_block_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DATA_SEGMENT_IMMEDIATE = 0x0157,                 /* CS offset of the relocated MOV BX,imm */
+           HANDLE = 0x4662, BLOCK_BUFFER = 0x43F8, BLOCK_SIZE = 0x200,
+           ERROR_MESSAGE = 0x4643, SHARED_ERROR_PRINTER = 0x01E8, DOS_READ = 0x3F };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XINT(at_) do { SM4_NEED(1, (at_)); const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; const int returned_ = sm4_int(m, (at_)); \
+    m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x0153);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, DOS_READ);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], DATA_SEGMENT_IMMEDIATE);
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = ds_get(c, HANDLE);
+    c->r[R_CX] = BLOCK_SIZE;
+    c->r[R_DX] = BLOCK_BUFFER;
+    XINT(0x0165);
+    XB(1, 0x0167);
+    if (x86_cond(c, 3)) goto read;                          /* JAE: no carry */
+    XB(3, 0x0169);
+    c->r[R_DX] = ERROR_MESSAGE;
+    c->r[R_CX] = 0xFFFF;
+    c->ip = SHARED_ERROR_PRINTER;
+    return 1;
+read:
+    XB(2, 0x0172);
+    c->seg[S_DS] = cpu_pop16(c);
+    sm4_ret(c, 1);
+    return 1;
+#undef XINT
+#undef XB
+}
+
+/* VGAME 0000:1BCE - the flight's frame loop: one pass per frame until the end flag is set.
+ * No arguments, nothing returned. (The roles of the callees below are read from their
+ * code and from how their results are used; none of them is called by name anywhere
+ * else in this routine.)
+ *
+ * One pass:
+ *   1. 2F9D, the start of the frame (it copies the 32-bit clock BA3C:BA3E into the frame's
+ *      clock cell, among other things);
+ *   2. 79BE, the controls: it reads the pilot's input through library entry 45 and keeps
+ *      the answer in INPUT_BYTE;
+ *   3. unless PAUSED is nonzero: the far routine 1058:000A, then 17B4 and, between them,
+ *      D6DD called with INPUT_BYTE as a word argument (the caller pops it) - the
+ *      pilot's input is applied and the frame's displays are drawn;
+ *   4. the present step: library entry 44 (1E42:01F6, the whole-page copy, which
+ *      takes its operands in registers) with DX:AX = ROW_START * 160 (the one-operand
+ *      IMUL BX, signed, with BX = 160) and BX = 160;
+ *   5. FRAME_DONE is set to 1, then 1EB0 (the frame's world update) and 3ADA
+ *      (the frame's scene) run.
+ * The loop repeats while END_FLAG is zero; a nonzero END_FLAG (the shell's request to
+ * leave the flight, which is what makes the shell start END.EXE) returns.
+ *
+ * Callees: the near ones are plain RET (D6DD's one argument is popped here); the far ones
+ * are RETF routines (1058:000A) or a jump slot of the graphics library (1E42:01F6).
+ * Observers sit on library slots only (1E42:01F6 is one), not inside this routine.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the calls are not counted (they charge their own). */
+static int vgame_frame_loop(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PAUSED = 0xC0A6,            /* word: nonzero skips step 3 */
+           INPUT_BYTE = 0x40B6,        /* byte: the pilot's input from 79BE */
+           ROW_START = 0x2E66,         /* word: multiplied by 160 for the present step */
+           FRAME_DONE = 0x262A,        /* byte: set to 1 after the present step */
+           END_FLAG = 0xE57E };        /* byte: nonzero ends the loop */
+    enum { ROW_BYTES = 0xA0 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 1)) return 0;
+frame:
+    XNEAR(0x1BCE, 0x2F9D, 0x1BD1);                           /* the start of the frame */
+    XNEAR(0x1BD1, 0x79BE, 0x1BD4);                           /* the controls */
+    XB(2, 0x1BD4);
+    (void)alu_op(c, 7, ds_get(c, PAUSED), 0, 1);
+    if (!x86_cond(c, 4)) goto present;                       /* paused: skip the input and displays */
+    XFAR(0x1BDB, 0x1BE0);
+    XB(3, 0x1BE0);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    set_r8(c, R_AL, ds_get8(c, INPUT_BYTE));
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x1BE6, 0xD6DD, 0x1BE9);
+    XNEAR(0x1BE9, 0x17B4, 0x1BEC);
+    XB(1, 0x1BEC);
+    c->r[R_AX] = cpu_pop16(c);
+present:
+    XB(3, 0x1BED);
+    c->r[R_BX] = ROW_BYTES;
+    c->r[R_AX] = ds_get(c, ROW_START);
+    x86_imul16(c, c->r[R_BX]);
+    XFAR(0x1BF5, 0x1BFA);
+    XB(1, 0x1BFA);
+    ds_put8(c, FRAME_DONE, 1);
+    XNEAR(0x1BFF, 0x1EB0, 0x1C02);
+    XNEAR(0x1C02, 0x3ADA, 0x1C05);
+    XB(2, 0x1C05);
+    (void)alu_op(c, 7, ds_get8(c, END_FLAG), 0, 0);
+    if (x86_cond(c, 4)) goto frame;
+    XB(1, 0x1C0C);
+    near_ret(c);
+    return 1;
+#undef XFAR
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* END 0FA4: read a whole file into a far buffer. Arguments (cdecl): the file name's offset [bp+4], the
+ * buffer's offset [bp+6] and the buffer's segment [bp+8]. Returns the number of bytes DOS read, in AX.
+ *   - 400F opens the file (the name, access mode 0 = read only) and answers the handle; it ends the program
+ *     itself when DOS refuses. The two pushed words are popped by this routine.
+ *   - 4109 reads from the handle (DOS function 3Fh) at most FFFFh bytes into the buffer segment:offset. It
+ *     takes four words (handle, count, buffer offset, buffer segment) which this routine's ADD SP,8 removes.
+ *     Its answer, the byte count, is kept in the frame.
+ *   - 40BD closes the handle (one word, popped by this routine).
+ * The routine pushes the arguments it has not yet used before the open, so the words below the name stay in
+ * place for the read: the open takes the top two (name, mode), the read takes the handle on top of the three
+ * words left (FFFFh, offset, segment). Every callee returns with a plain RET. */
+static int end_read_file_to_far_buffer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Arguments and locals (offsets from BP). */
+    enum { ARG_NAME = 4, ARG_BUFFER_OFFSET = 6, ARG_BUFFER_SEGMENT = 8 };
+    enum { HANDLE = -4, BYTES_READ = -2 };
+    /* Callees and constants. */
+    enum { DOS_OPEN = 0x400F, DOS_READ_FAR = 0x4109, DOS_CLOSE = 0x40BD };
+    enum { READ_LIMIT = 0xFFFF, READ_ONLY = 0 };
+#define RB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define RCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); RRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 10)) return 0;
+    RB(10, 0x0FA4);
+    frame_open(c, 4);
+    cpu_push16(c, bp_get(c, ARG_BUFFER_SEGMENT));
+    cpu_push16(c, bp_get(c, ARG_BUFFER_OFFSET));
+    c->r[R_AX] = READ_LIMIT;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);       /* SUB AX,AX: the read-only mode */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, ARG_NAME));
+    RCALL(0x0FBA, DOS_OPEN, 0x0FBD);
+    /* The open's two arguments are dropped; its handle is kept and passed on. */
+    RB(4, 0x0FBD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, HANDLE, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    RCALL(0x0FC3, DOS_READ_FAR, 0x0FC6);
+    RB(3, 0x0FC6);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 8, 1);
+    bp_put(c, BYTES_READ, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, HANDLE));
+    RCALL(0x0FCF, DOS_CLOSE, 0x0FD2);
+    RB(5, 0x0FD2);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, BYTES_READ);
+    frame_close_ret(c);
+    return 1;
+#undef RCALL
+#undef RRUN
+#undef RB
+}
+
+/* END 0FDA: read a whole file into a buffer in the program's own data segment. Arguments (cdecl): the file
+ * name's offset [bp+4] and the buffer's offset [bp+6]. Returns the number of bytes DOS read, in AX. The twin
+ * of 0FA4, whose buffer is a far pointer.
+ *   - 400F opens the file (the name, access mode 0 = read only) and answers the handle; it ends the program
+ *     itself when DOS refuses. The two pushed words are popped by this routine.
+ *   - 40DE reads from the handle (DOS function 3Fh, into the stack segment, which is the data segment) at
+ *     most FFFFh bytes into the buffer offset. It takes three words (handle, count, buffer offset) which this
+ *     routine's ADD SP,6 removes. Its answer, the byte count, is kept in the frame.
+ *   - 40BD closes the handle (one word, popped by this routine).
+ * The routine pushes the arguments it has not yet used before the open: the open takes the top two (name,
+ * mode), the read takes the handle on top of the two words left (FFFFh, offset). Every callee returns with a
+ * plain RET. */
+static int end_read_file_to_near_buffer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Arguments and locals (offsets from BP). */
+    enum { ARG_NAME = 4, ARG_BUFFER_OFFSET = 6 };
+    enum { HANDLE = -4, BYTES_READ = -2 };
+    /* Callees and constants. */
+    enum { DOS_OPEN = 0x400F, DOS_READ_NEAR = 0x40DE, DOS_CLOSE = 0x40BD };
+    enum { READ_LIMIT = 0xFFFF, READ_ONLY = 0 };
+#define RB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define RCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); RRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 9)) return 0;
+    RB(9, 0x0FDA);
+    frame_open(c, 4);
+    cpu_push16(c, bp_get(c, ARG_BUFFER_OFFSET));
+    c->r[R_AX] = READ_LIMIT;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);       /* SUB AX,AX: the read-only mode */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, ARG_NAME));
+    RCALL(0x0FED, DOS_OPEN, 0x0FF0);
+    /* The open's two arguments are dropped; its handle is kept and passed on. */
+    RB(4, 0x0FF0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, HANDLE, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    RCALL(0x0FF6, DOS_READ_NEAR, 0x0FF9);
+    RB(3, 0x0FF9);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    bp_put(c, BYTES_READ, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, HANDLE));
+    RCALL(0x1002, DOS_CLOSE, 0x1005);
+    RB(5, 0x1005);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, BYTES_READ);
+    frame_close_ret(c);
+    return 1;
+#undef RCALL
+#undef RRUN
+#undef RB
+}
+
+/* END 2BA0: allocate memory from DOS or end the program. Argument (cdecl): the size in bytes [bp+4].
+ * Returns the allocated block's segment in AX.
+ *   - 3FA4 asks DOS (function 48h) for the size, rounded up to whole paragraphs, and answers DOS's AX: the
+ *     new block's segment, or on failure an error code (7 or 8), always below 10h. The size word is popped by
+ *     this routine; the answer is kept in the frame.
+ *   - An answer of 10h or more is a segment and is returned as it is.
+ *   - A smaller one is a failure: the message at 0734h goes through the program's formatted printer
+ *     (505A, one word popped by this routine) and the program is left through 3F44 with the code 0. 3F44
+ *     closes the program down and ends it; if it did return, this routine would go on and return the
+ *     answer all the same.
+ * Every callee returns with a plain RET. */
+static int end_allocate_or_quit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Arguments and locals (offsets from BP). */
+    enum { ARG_SIZE = 4 };
+    enum { ANSWER = -2 };
+    /* Callees and constants. */
+    enum { DOS_ALLOCATE = 0x3FA4, PRINT_FORMATTED = 0x505A, LEAVE_PROGRAM = 0x3F44 };
+    enum { FIRST_SEGMENT = 0x0010, OUT_OF_MEMORY_MESSAGE = 0x0734, EXIT_CODE_OK = 0 };
+#define AB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define ARUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ACALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); ARUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    AB(4, 0x2BA0);
+    frame_open(c, 2);
+    cpu_push16(c, bp_get(c, ARG_SIZE));
+    ACALL(0x2BA9, DOS_ALLOCATE, 0x2BAC);
+    AB(4, 0x2BAC);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, ANSWER, c->r[R_AX]);
+    (void)alu_op(c, 7, c->r[R_AX], FIRST_SEGMENT, 1);
+    if (x86_cond(c, 3)) goto done;                            /* JAE: a segment */
+    /* A failure code: print the message and leave the program. */
+    AB(2, 0x2BB5);
+    c->r[R_AX] = OUT_OF_MEMORY_MESSAGE;
+    cpu_push16(c, c->r[R_AX]);
+    ACALL(0x2BB9, PRINT_FORMATTED, 0x2BBC);
+    AB(3, 0x2BBC);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);       /* SUB AX,AX */
+    cpu_push16(c, c->r[R_AX]);
+    ACALL(0x2BC0, LEAVE_PROGRAM, 0x2BC3);
+    AB(1, 0x2BC3);
+    c->r[R_BX] = cpu_pop16(c);
+done:
+    AB(4, 0x2BC4);
+    c->r[R_AX] = bp_get(c, ANSWER);
+    frame_close_ret(c);
+    return 1;
+#undef ACALL
+#undef ARUN
+#undef AB
+}
+
+/* END 370A: put up the debriefing picture. No arguments, no locals, no result of its own.
+ *   - 1901 loads a picture (the file name's number is its first argument, 0FDEh) and draws it, and then
+ *     calls the routine given as its second argument, 3682, the debriefing's drawing step (it draws on the
+ *     picture according to how the flight ended). 1901 takes the two words pushed here and this routine
+ *     pops both.
+ *   - The far routine 05FA:25F3 is called with 25h (one word, popped here).
+ *   - 206A is called with 0ACh pushed first and then 0EBh, so its first argument (the word on top of the
+ *     stack) is 0EBh and its second 0ACh; this routine pops both words. 206A writes a line of text.
+ * Every callee returns with a plain RET (a RETF for the far one). */
+static int end_show_debrief_picture(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Callees and their arguments. */
+    enum { LOAD_PICTURE = 0x1901, DEBRIEF_DRAW_STEP = 0x3682, PICTURE_NUMBER = 0x0FDE };
+    enum { FAR_CALL_AT = 0x371B, FAR_ARGUMENT = 0x0025 };
+    enum { WRITE_LINE = 0x206A, LINE_SECOND_ARGUMENT = 0x00AC, LINE_FIRST_ARGUMENT = 0x00EB };
+#define PB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define PRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define PNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); PRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    PB(4, 0x370A);
+    c->r[R_AX] = DEBRIEF_DRAW_STEP;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = PICTURE_NUMBER;
+    cpu_push16(c, c->r[R_AX]);
+    PNEAR(0x3712, LOAD_PICTURE, 0x3715);
+    PB(4, 0x3715);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = FAR_ARGUMENT;
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, FAR_CALL_AT);
+    PRUN(guest_call_far(m, FAR_CALL_AT, 0x3720));
+    PB(5, 0x3720);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = LINE_SECOND_ARGUMENT;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = LINE_FIRST_ARGUMENT;
+    cpu_push16(c, c->r[R_AX]);
+    PNEAR(0x3729, WRITE_LINE, 0x372C);
+    PB(3, 0x372C);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PNEAR
+#undef PRUN
+#undef PB
+}
+
+/* END 0000:400F, the C runtime's DOS open: open the file named by the string at [bp+4] (DS is first made equal to
+ * SS) in the access mode given by the byte at [bp+6] through DOS function 3Dh, and answer the handle in AX.
+ *   - It saves BP, DI, SI and ES, and sets AH = 3Dh, AL = the mode, DS = SS, DX = the name's offset. The INT 21h is
+ *     the machine's own DOS call.
+ *   - No carry: the DOS error cell [1EDF] is set to 200h, the registers are restored and the routine returns with
+ *     the handle in AX (the old DS is not restored: DS stays equal to SS).
+ *   - Carry: DOS's error code in AX picks a message and a code for the program's fatal-error exit: error 2 or 3
+ *     (file or path not found) messages at 1E77 with code -1, error 4 (too many open files) at 1E87 with code -1,
+ *     any other error the message at 1EA2 with the error number itself as the code. BX is loaded with the name's
+ *     pointer, then every such arm jumps to 41CA. 41CA is not part of this routine: it is the shared tail that
+ *     switches to text mode, prints the name and message and ends the program (DOS function 4Ch). The body hands
+ *     over to the original code at 41CA with the registers set for it. */
+static int end_dos_open_or_report(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* A block of n instructions starting at at_: claim the room and charge them. */
+#define OB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+    /* A block of n instructions ending in an INT 21h: charge all but the INT (it charges itself). */
+#define OBI(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_) - 1; } while (0)
+#define OINT(int_at_) do { if (!st4_int21(m, (int_at_))) return 1; } while (0)
+    if (!room(c, 12)) return 0;
+    OBI(12, 0x400F);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    cpu_push16(c, c->seg[S_ES]);
+    x86_push_reg(c, R_BP);
+    set_r8(c, R_AH, 0x3D);
+    set_r8(c, R_AL, bp_get8(c, 6));                               /* the access mode */
+    c->r[R_BX] = c->seg[S_SS];
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_DX] = bp_get(c, 4);                                    /* the file name */
+    OINT(0x4022);                                                 /* open */
+    OB(1, 0x4024);
+    if (x86_cond(c, 3)) goto opened;
+    OB(2, 0x4026);
+    alu_op(c, 7, c->r[R_AX], 0x0002, 1);
+    if (x86_cond(c, 5)) goto not_two;
+not_found:
+    OB(4, 0x402B);
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_AX] = 0x1E77;
+    c->r[R_CX] = 0xFFFF;
+    goto report;
+not_two:
+    OB(2, 0x4037);
+    alu_op(c, 7, c->r[R_AX], 0x0003, 1);
+    if (x86_cond(c, 4)) goto not_found;
+    OB(2, 0x403C);
+    alu_op(c, 7, c->r[R_AX], 0x0004, 1);
+    if (x86_cond(c, 5)) goto other_error;
+    OB(4, 0x4041);
+    c->r[R_CX] = 0xFFFF;
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_AX] = 0x1E87;
+    goto report;
+other_error:
+    OB(4, 0x404D);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = 0x1EA2;
+    c->r[R_BX] = bp_get(c, 4);
+report:
+    c->ip = 0x41CA;                                               /* the fatal-error tail is original code */
+    return 1;
+opened:
+    OB(8, 0x4058);
+    ds_put(c, 0x1EDF, 0x0200);
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OBI
+#undef OINT
+}
+
+/* END 04F8A, the run-time's exit(code): END's copy of the exit that sm4_exit (above) already names for
+ * VGAME, PLAYER, DSWAP, SETUP and START, with END's addresses and the same instruction for instruction
+ * shape. CX 0 (exit, not _exit): the exit tables run first (the near-pointer walker 05038 over 055CAh..055CAh
+ * and 05354h..05356h, then the console hook at [0533Eh] when [05338h] holds D6D6h); then the terminator
+ * tables (near 05038 and far 05047, both over 05356h..05356h) and the null-pointer check 05400, whose nonzero
+ * answer turns exit(0) into exit(FFh). The vectors are put back (0500B) and, with the saved CH clear, the
+ * code in [bp+4] goes to DOS function 4Ch: the matched code stops at that INT 21h (05005), left to the
+ * original. With CH set (only when a callee changes the saved word) it pops DI, SI, BP and returns.
+ * END's _exit/_cexit/_c_exit entries at +7, +0Fh and +19h (04F91, 04F99, 04FA3) lie in the gap the JMP at
+ * 04F8F crosses; the census rows 04F93 and 04FA4 are those entries' interiors, and the shared body from
+ * 04FAB on is what the routes run. */
+static const sm4_exit_t SM4_EXIT_END = { 0x4F8A, 0x55CA, 0x5354, 0x5356, 0x5356, 0x5338, 0x5400 };
+static int end_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_END, 0); }
+
+/* START 0x0311 (census rows 0x0311 and 0x0339), the launch screen's hangar
+ * scene: the painting callback the launch prompt (038C) hands to the picture
+ * routine 3641, which calls it (near, no arguments, plain RET) once the
+ * hangar picture is on page 1. It takes no frame; registers are free to use
+ * and AX, BX and CX end as its last instructions leave them. The graphics
+ * driver's far entry 0A95:6A8A copies a rectangle between pages and takes
+ * eight words, cdecl, pushed last argument first: (source page, destination
+ * x, destination y, destination page, source x, source y, width, height);
+ * ADD SP, 10h follows each call.
+ *
+ *   - 35FC(1Eh, 3): load picture 1Eh, the hangar sprite sheet, onto page 3
+ *     (35FC formats the file name, loads it and transfers it; plain RET, the
+ *     two arguments popped here).
+ *   - 6A8A(1, 0, 0, 4, 0, 0, 140h, 0C8h): keep the whole 320 by 200 hangar
+ *     picture from page 1 on page 4.
+ *   - 6A8A(3, ...) twice with the cel record at [006A..0074] (destination x
+ *     and y, source x and y, width and height): that cel of the sprite sheet
+ *     on page 3 is copied to page 0 (the visible page), then to page 1. The
+ *     two calls differ only in the destination page word, 0 then 1; the
+ *     record is read again for each call. */
+static int start_hangar_scene(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CEL_X = 0x006A, CEL_Y = 0x006C, CEL_SRC_X = 0x006E, CEL_SRC_Y = 0x0070, CEL_WIDTH = 0x0072, CEL_HEIGHT = 0x0074 };
+#define HB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define HRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define HCEL(off_) cpu_push16(c, ds_get(c, (off_)))
+    if (!room(c, 4)) return 0;
+    HB(4, 0x0311);
+    c->r[R_AX] = 0x0003;                                          /* the page */
+    x86_push_reg(c, R_AX);
+    c->r[R_CX] = 0x001E;                                          /* the picture */
+    x86_push_reg(c, R_CX);
+    SM4_NEED(1, 0x0319);
+    HRUN(guest_call_pop(m, 0x35FC, 0x031C, 0));
+    HB(15, 0x031C);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 0x00C8;                                          /* height */
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = 0x0140;                                          /* width */
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);                                        /* source y */
+    x86_push_reg(c, R_AX);                                        /* source x */
+    c->r[R_CX] = 0x0004;                                          /* destination page */
+    x86_push_reg(c, R_CX);
+    x86_push_reg(c, R_AX);                                        /* destination y */
+    x86_push_reg(c, R_AX);                                        /* destination x */
+    c->r[R_CX] = 0x0001;                                          /* source page */
+    x86_push_reg(c, R_CX);
+    SM4_NEED(1, 0x0334);
+    HRUN(guest_call_far(m, 0x0334, 0x0339));
+    HB(11, 0x0339);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x10, 1);
+    HCEL(CEL_HEIGHT);
+    HCEL(CEL_WIDTH);
+    HCEL(CEL_SRC_Y);
+    HCEL(CEL_SRC_X);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);                                        /* destination page 0 */
+    HCEL(CEL_Y);
+    HCEL(CEL_X);
+    c->r[R_AX] = 0x0003;                                          /* source page */
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x035B);
+    HRUN(guest_call_far(m, 0x035B, 0x0360));
+    HB(11, 0x0360);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x10, 1);
+    HCEL(CEL_HEIGHT);
+    HCEL(CEL_WIDTH);
+    HCEL(CEL_SRC_Y);
+    HCEL(CEL_SRC_X);
+    c->r[R_AX] = 0x0001;                                          /* destination page 1 */
+    x86_push_reg(c, R_AX);
+    HCEL(CEL_Y);
+    HCEL(CEL_X);
+    c->r[R_AX] = 0x0003;
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0383);
+    HRUN(guest_call_far(m, 0x0383, 0x0388));
+    HB(2, 0x0388);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x10, 1);
+    near_ret(c);
+    return 1;
+#undef HCEL
+#undef HRUN
+#undef HB
+}
+
+/* START 0x02760, the objective sentence for a supply drop at a beacon: arm 3
+ * of the objective-line switch (0x02651 jumps to it through its table at
+ * 0x0284E). It runs inside 2651's frame: [BP+4] is the objective record and
+ * [BP+6] the output string. The sentence is sprintf(out, 094Bh, record + 0Ah,
+ * 0D7Ch) - "Reach the beacon at ONC %s and drop the supplies before %s
+ * hours." with the record's ONC code (the string at offset 0Ah) and the time
+ * text in the buffer at 0D7C - and the tail string at 098Dh (" The beacon will
+ * be on ONLY during this period.") is appended through the shared strcat at
+ * 0x02754 (which pushes the tail's address, left in AX, and the output, and
+ * calls strcat 946C). 2651's shared exit at 0x0285E (pop si; mov sp, bp; pop
+ * bp; ret) follows. sprintf (959E) and strcat (946C) are cdecl near calls run
+ * as original code; this code removes their arguments. */
+static int start_objective_beacon_drop(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, OUT = 6, ONC_CODE = 0x0A, TIME_TEXT = 0x0D7C, FORMAT = 0x094B, TAIL = 0x098D };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OPOP() (c->r[R_BX] = cpu_pop16(c))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 8)) return 0;
+    OB(8, 0x2760);
+    c->r[R_AX] = TIME_TEXT; OP(c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, RECORD);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ONC_CODE, 1); OP(c->r[R_AX]);
+    c->r[R_AX] = FORMAT; OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x2772, 0x959E, 0x2775);
+    OB(3, 0x2775);
+    OSP(8);
+    c->r[R_AX] = TAIL;
+    OB(2, 0x2754);
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x2758, 0x946C, 0x275B);
+    OB(3, 0x275B);
+    OPOP(); OPOP();
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OPOP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x0277D, the objective sentence for a flight to a secret airstrip:
+ * arm 4 of the objective-line switch (0x02651 jumps to it through its table at
+ * 0x0284E), the shape of arm 3 (0x02760) with its own texts. It runs inside
+ * 2651's frame: [BP+4] is the objective record and [BP+6] the output string.
+ * The sentence is sprintf(out, 09BDh, record + 0Ah, 0D7Ch) - "Reach the secret
+ * airstrip at ONC %s before %s hours." with the record's ONC code (the string
+ * at offset 0Ah) and the time text in the buffer at 0D7C - and the tail string
+ * at 09F2h (" The airstrip will be lighted ONLY during this period.") is
+ * appended through the shared strcat at 0x02754 (which pushes the tail's
+ * address, left in AX, and the output, and calls strcat 946C). 2651's shared
+ * exit at 0x0285E (pop si; mov sp, bp; pop bp; ret) follows. sprintf (959E) and
+ * strcat (946C) are cdecl near calls run as original code; this code removes
+ * their arguments. */
+static int start_objective_secret_airstrip(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, OUT = 6, ONC_CODE = 0x0A, TIME_TEXT = 0x0D7C, FORMAT = 0x09BD, TAIL = 0x09F2 };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OPOP() (c->r[R_BX] = cpu_pop16(c))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 8)) return 0;
+    OB(8, 0x277D);
+    c->r[R_AX] = TIME_TEXT; OP(c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, RECORD);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ONC_CODE, 1); OP(c->r[R_AX]);
+    c->r[R_AX] = FORMAT; OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x278F, 0x959E, 0x2792);
+    OB(3, 0x2792);
+    OSP(8);
+    c->r[R_AX] = TAIL;
+    OB(2, 0x2754);
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x2758, 0x946C, 0x275B);
+    OB(3, 0x275B);
+    OPOP(); OPOP();
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OPOP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x0279A, the objective sentence for a Coaler intercept with a known
+ * route: arm 5 of the objective-line switch (0x02651 jumps to it through its
+ * table at 0x0284E). It runs inside 2651's frame: [BP+6] is the output string
+ * and [BP-4] the target's name (2651 took it from the object-name table DC70).
+ * The sentence is sprintf(out, 0A29h, base, 0D88h, name, 0D7Ch) - "Destroy the
+ * AN-72 Coaler leaving %s airbase at %s hours and arriving at %s airbase at %s
+ * hours." - where base is the airbase named by the 16-byte target record the
+ * word [CBDC] indexes (records at CBDE, name index = its first word, DC70 the
+ * name table), 0D88 the departure time text, the name the destination and 0D7C
+ * the arrival time text. The format's address is also kept at [BP-5Ah] (the
+ * routine's scratch word). 2651's shared exit at 0x0285E (pop si; mov sp, bp;
+ * pop bp; ret) follows. sprintf (959E) is a cdecl near call run as original
+ * code; this code removes its arguments. The block at 0x027BA is shared with
+ * arm 6 (0x027E3), which enters it with its own format in AX. */
+static int start_objective_coaler_route(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OUT = 6, NAME = -4, FORMAT_KEPT = -0x5A, ARRIVAL_TIME = 0x0D7C, DEPARTURE_TIME = 0x0D88,
+           BASE_INDEX = 0xCBDC, RECORDS = 0xCBDE, NAME_TABLE = 0xDC70, FORMAT = 0x0A29 };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 12)) return 0;
+    OB(12, 0x279A);
+    c->r[R_AX] = ARRIVAL_TIME; OP(c->r[R_AX]);
+    OP(bp_get(c, NAME));
+    c->r[R_AX] = DEPARTURE_TIME; OP(c->r[R_AX]);
+    set_r8(c, R_CL, 4);
+    c->r[R_BX] = ds_get(c, BASE_INDEX);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] + RECORDS));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    OP(ds_get(c, (uint16_t)(c->r[R_BX] + NAME_TABLE)));
+    c->r[R_AX] = FORMAT;
+    OB(3, 0x27BA);
+    bp_put(c, FORMAT_KEPT, c->r[R_AX]);
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x27C1, 0x959E, 0x27C4);
+    OB(2, 0x27C4);
+    OSP(0x0C);
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x027CA, the objective sentence for a Coaler intercept whose
+ * destination is unknown: arm 7 of the objective-line switch (0x02651 jumps
+ * to it through its table at 0x0284E), the only arm with no time over the
+ * target. It runs inside 2651's frame: [BP+6] is the output string and [BP-4]
+ * the target's name (2651 took it from the object-name table DC70). The
+ * sentence is sprintf(out, 0A89h, name, 0D88h) - "Intercept and destroy the
+ * AN-72 Coaler leaving %s airbase, at %s hours.  Destination unknown." - with
+ * the departure time text at 0D88. The format's address is also kept at
+ * [BP-5Ah] (the routine's scratch word). 2651's shared exit at 0x0285E (pop
+ * si; mov sp, bp; pop bp; ret) follows. sprintf (959E) is a cdecl near call
+ * run as original code; this code removes its arguments. */
+static int start_objective_coaler_unknown_destination(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OUT = 6, NAME = -4, FORMAT_KEPT = -0x5A, DEPARTURE_TIME = 0x0D88, FORMAT = 0x0A89 };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    OB(7, 0x27CA);
+    c->r[R_AX] = DEPARTURE_TIME; OP(c->r[R_AX]);
+    OP(bp_get(c, NAME));
+    c->r[R_AX] = FORMAT;
+    bp_put(c, FORMAT_KEPT, c->r[R_AX]);
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x27DB, 0x959E, 0x27DE);
+    OB(2, 0x27DE);
+    OSP(8);
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x027E3, the objective sentence for a Tu-95 intercept: arm 6 of the
+ * objective-line switch (0x02651 jumps to it through its table at 0x0284E).
+ * It runs inside 2651's frame: [BP+6] is the output string and [BP-4] the
+ * target's name (2651 took it from the object-name table DC70). The sentence
+ * is sprintf(out, 0AE7h, 0D8Eh, 0D88h, name, 0D7Ch) - "Intercept and destroy
+ * the Tu-95, last seen at ONC %s at %s hours. It is probably heading for %s
+ * airbase, and will arrive at %s hours." - with the ONC text at 0D8E, the
+ * sighting time text at 0D88, the destination's name and the arrival time text
+ * at 0D7C. The routine loads the format and joins arm 5's block at 0x027BA,
+ * which keeps the format's address at [BP-5Ah], pushes it and the output, calls
+ * sprintf (959E, a cdecl near call run as original code), removes the six words
+ * and leaves through 2651's shared exit at 0x0285E (pop si; mov sp, bp; pop bp;
+ * ret). */
+static int start_objective_tu95_intercept(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OUT = 6, NAME = -4, FORMAT_KEPT = -0x5A, ARRIVAL_TIME = 0x0D7C, SIGHTING_TIME = 0x0D88,
+           ONC_TEXT = 0x0D8E, FORMAT = 0x0AE7 };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 9)) return 0;
+    OB(9, 0x27E3);
+    c->r[R_AX] = ARRIVAL_TIME; OP(c->r[R_AX]);
+    OP(bp_get(c, NAME));
+    c->r[R_AX] = SIGHTING_TIME; OP(c->r[R_AX]);
+    c->r[R_AX] = ONC_TEXT; OP(c->r[R_AX]);
+    c->r[R_AX] = FORMAT;
+    OB(3, 0x27BA);
+    bp_put(c, FORMAT_KEPT, c->r[R_AX]);
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x27C1, 0x959E, 0x27C4);
+    OB(2, 0x27C4);
+    OSP(0x0C);
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x027F7, the objective sentence for a fighter intercept: arm 8 of the
+ * objective-line switch (0x02651 jumps to it through its table at 0x0284E).
+ * It runs inside 2651's frame: [BP+4] is the objective record, [BP+6] the
+ * output string and [BP-58h] a scratch string. The record's word +8 indexes
+ * the 12-byte type records at 11DE; when the word at +6 of that record (the
+ * "extra" word, 11E4) is FFFEh (-2) the scratch string is " fighter patrol"
+ * (0B6D), otherwise the empty string (0B7D); it is strcpy'd (94AC). The
+ * sentence is sprintf(out, 0B7Eh, plane, scratch, record + 0Ah) - "Intercept
+ * and destroy the %s%s at ONC %s." - where the plane's text is at
+ * 1708h + 32 * [D3D4] (a 32-byte name table) and the ONC code is the string at
+ * offset 0Ah of the record. 2651's shared exit at 0x0285E (pop si; mov sp, bp;
+ * pop bp; ret) follows. strcpy (94AC) and sprintf (959E) are cdecl near calls
+ * run as original code; this code removes their arguments. */
+static int start_objective_fighter_patrol(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, OUT = 6, SCRATCH = -0x58, TYPE_RECORD_SIZE = 12, EXTRA = 0x11E4, PATROL = 0x0B6D,
+           NO_PATROL = 0x0B7D, FORMAT = 0x0B7E, PLANE_INDEX = 0xD3D4, PLANE_NAMES = 0x1708, ONC_CODE = 0x0A };
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OP(v_) cpu_push16(c, (v_))
+#define OPOP() (c->r[R_BX] = cpu_pop16(c))
+#define OSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ONEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ORUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 6)) return 0;
+    OB(6, 0x27F7);
+    c->r[R_AX] = TYPE_RECORD_SIZE;
+    c->r[R_BX] = bp_get(c, RECORD);
+    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 8)));
+    c->r[R_BX] = c->r[R_AX];
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + EXTRA)), (uint16_t)-2, 1);
+    if (x86_cond(c, 5)) goto no_patrol;
+    OB(2, 0x2809);
+    c->r[R_AX] = PATROL;
+    goto copy;
+no_patrol:
+    OB(1, 0x280E);
+    c->r[R_AX] = NO_PATROL;
+copy:
+    OB(3, 0x2811);
+    OP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SCRATCH);
+    OP(c->r[R_AX]);
+    ONEAR(0x2816, 0x94AC, 0x2819);
+    OB(15, 0x2819);
+    OPOP(); OPOP();
+    c->r[R_AX] = bp_get(c, RECORD);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ONC_CODE, 1);
+    OP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SCRATCH);
+    OP(c->r[R_AX]);
+    set_r8(c, R_CL, 5);
+    c->r[R_AX] = ds_get(c, PLANE_INDEX);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], PLANE_NAMES, 1);
+    OP(c->r[R_AX]);
+    c->r[R_AX] = FORMAT;
+    OP(c->r[R_AX]);
+    OP(bp_get(c, OUT));
+    ONEAR(0x2838, 0x959E, 0x283B);
+    OB(2, 0x283B);
+    OSP(0x0A);
+    OB(4, 0x285E);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OP
+#undef OPOP
+#undef OSP
+#undef ORUN
+#undef ONEAR
+}
+
+/* START 0x02864, load_file_far(name, offset, segment): read a whole file into
+ * a buffer given as a far pointer; the answer is the number of bytes read.
+ * The arguments are cdecl and stay on the caller's stack: [BP+4] the file
+ * name (DS), [BP+6] the buffer's offset and [BP+8] its segment. Its locals:
+ * [BP-4] the file's handle and [BP-2] the byte count.
+ *   - open: 8075(name, 0) opens the file for reading (it takes two words; the
+ *     two words that follow it, 0FFFFh and the offset, are the next call's);
+ *   - read: 816F(handle, 0FFFFh, offset, segment) reads up to 64K - 1 bytes
+ *     to segment:offset (four words, cleaned with ADD SP, 8);
+ *   - close: 8123(handle).
+ * The count from the read is the answer. All three callees are the C
+ * runtime's DOS file layer (cdecl near calls ending with a plain RET, run as
+ * original code); this code removes their arguments. It does not look at a
+ * failed open (handle and counts are the callees' business). The picture loader
+ * 35FC calls it with the image buffer at [D336]:[D338]. */
+static int start_load_file_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NAME = 4, OFFSET = 6, SEGMENT = 8, HANDLE = -4, COUNT = -2, WHOLE_FILE = 0xFFFF };
+#define LB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define LP(v_) cpu_push16(c, (v_))
+#define LRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define LNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); LRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 10)) return 0;
+    LB(10, 0x2864);
+    frame_open(c, 4);
+    LP(bp_get(c, SEGMENT));
+    LP(bp_get(c, OFFSET));
+    c->r[R_AX] = WHOLE_FILE;
+    LP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    LP(c->r[R_AX]);                                               /* the open mode: read */
+    LP(bp_get(c, NAME));
+    LNEAR(0x287A, 0x8075, 0x287D);
+    LB(4, 0x287D);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, HANDLE, c->r[R_AX]);
+    LP(c->r[R_AX]);
+    LNEAR(0x2883, 0x816F, 0x2886);
+    LB(3, 0x2886);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 8, 1);
+    bp_put(c, COUNT, c->r[R_AX]);
+    LP(bp_get(c, HANDLE));
+    LNEAR(0x288F, 0x8123, 0x2892);
+    LB(5, 0x2892);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, COUNT);
+    frame_close_ret(c);
+    return 1;
+#undef LNEAR
+#undef LRUN
+#undef LP
+#undef LB
+}
+
+/* START 0x040A4, alloc_buffer(bytes): the front end's DOS memory allocator.
+ * The argument is cdecl and stays on the caller's stack: [BP+4] the size in
+ * bytes. Its local: [BP-2] the answer.
+ *   - 800A(bytes) asks DOS for a block (INT 21h function 48h, the size rounded
+ *     up to paragraphs) and answers its segment, or an error code (7 or 8)
+ *     when it fails; plain RET, one word popped here. The answer is kept.
+ *   - An answer below 10h is a failure: the message at 0CFC ("Insufficient
+ *     system memory - AllocBuffer$") is written through 9430 (a printf-style
+ *     call with one word, popped here) and the program is ended with
+ *     76D1(0). That call never comes back in the game (it frees the buffers
+ *     and ends the program); the POP BX after it is the compiler's cleanup
+ *     of the argument and is carried out here as the instructions have it.
+ *   - The answer is returned.
+ * Every callee is a cdecl near call ending with a plain RET, run as original
+ * code; this code removes the arguments. */
+static int start_alloc_buffer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BYTES = 4, ANSWER = -2, MESSAGE = 0x0CFC, FIRST_SEGMENT = 0x10 };
+#define AB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define AP(v_) cpu_push16(c, (v_))
+#define ARUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ANEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); ARUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    AB(4, 0x40A4);
+    frame_open(c, 2);
+    AP(bp_get(c, BYTES));
+    ANEAR(0x40AD, 0x800A, 0x40B0);
+    AB(4, 0x40B0);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, ANSWER, c->r[R_AX]);
+    alu_op(c, 7, c->r[R_AX], FIRST_SEGMENT, 1);
+    if (x86_cond(c, 3)) goto done;                                /* at or above 10h: a block */
+    AB(2, 0x40B9);
+    c->r[R_AX] = MESSAGE;
+    AP(c->r[R_AX]);
+    ANEAR(0x40BD, 0x9430, 0x40C0);
+    AB(3, 0x40C0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    AP(c->r[R_AX]);
+    ANEAR(0x40C4, 0x76D1, 0x40C7);
+    AB(1, 0x40C7);
+    c->r[R_BX] = cpu_pop16(c);
+done:
+    AB(4, 0x40C8);
+    c->r[R_AX] = bp_get(c, ANSWER);
+    frame_close_ret(c);
+    return 1;
+#undef ANEAR
+#undef ARUN
+#undef AP
+#undef AB
+}
+
+/* START 0x08CA8, install the clock hook: start the front end's tick counter
+ * and put its timer interrupt in place. No arguments, plain RET; AX, BX, CX,
+ * DX and ES are free to use (DS is restored). The hook itself (0x08D0B) adds
+ * the tick step [AE03] to the long [ADFD] : [ADFF] and counts [AE11] down from
+ * [AE07]; the cells it works on are started here:
+ *   - [AE07] and [AE11] (the reload value and the countdown) are set to 1 and
+ *     the long tick total [ADFD] : [ADFF] to 0;
+ *   - 08DD8 (near, plain RET) calibrates the timer's rate from the screen's
+ *     refresh;
+ *   - DOS function 35h gets the old vector of interrupt 8, which is kept in
+ *     the code segment at CS:8D6D (offset) and CS:8D6F (segment) for the hook
+ *     to chain to and for the shutdown to put back;
+ *   - DOS function 25h sets interrupt 8 to the far pointer held at CS:8D07
+ *     (offset, then segment), loaded into DS:DX with LDS (DS is saved
+ *     before and popped after, so the program's DS is back);
+ *   - [ADFB] = 1 says the hook is installed.
+ * Both DOS calls are made as translated code makes them (the machine's DOS
+ * answers); 0x08DD8 runs as original code. */
+static int start_install_clock_hook(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RELOAD = 0xAE07, COUNTDOWN = 0xAE11, TICKS_LOW = 0xADFD, TICKS_HIGH = 0xADFF, INSTALLED = 0xADFB,
+           OLD_VECTOR_OFFSET = 0x8D6D, OLD_VECTOR_SEGMENT = 0x8D6F, HOOK_OFFSET = 0x8D07, HOOK_SEGMENT = 0x8D09,
+           TIMER_VECTOR = 0x08, GET_VECTOR = 0x35, SET_VECTOR = 0x25, CALIBRATE = 0x8DD8 };
+#define HB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define HINT(at_) do { if (!st4_int21(m, (at_))) return 1; } while (0)
+#define HRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define HNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); HRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    HB(4, 0x8CA8);
+    ds_put(c, RELOAD, 1);
+    ds_put(c, COUNTDOWN, 1);
+    ds_put(c, TICKS_LOW, 0);
+    ds_put(c, TICKS_HIGH, 0);
+    HNEAR(0x8CC0, CALIBRATE, 0x8CC3);
+    HB(2, 0x8CC3);
+    set_r8(c, R_AH, GET_VECTOR);
+    set_r8(c, R_AL, TIMER_VECTOR);
+    HINT(0x8CC7);
+    HB(6, 0x8CC9);
+    seg_write16(c, c->seg[S_CS], OLD_VECTOR_OFFSET, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], OLD_VECTOR_SEGMENT, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, SET_VECTOR);
+    set_r8(c, R_AL, TIMER_VECTOR);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], HOOK_OFFSET);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], HOOK_SEGMENT);
+    HINT(0x8CDD);
+    HB(3, 0x8CDF);
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put8(c, INSTALLED, 1);
+    near_ret(c);
+    return 1;
+#undef HNEAR
+#undef HRUN
+#undef HINT
+#undef HB
+}
+
+/* START 0xA458, the C runtime's ltoa core: ltoa(value, buffer, radix) writes
+ * the text of a 32-bit value in the given radix and answers the buffer. It is
+ * the code the entries 0x9516 (ltoa, which jumps to 0xA458) and 0x94FA (itoa,
+ * which jumps to 0xA464 with the arguments already in registers) run, inside
+ * their frame: they have pushed BP, SI and DI and set BL to 1 (BL = 0 would
+ * make the value unsigned), and the cdecl arguments are [BP+4] the value's low
+ * word, [BP+6] its high word, [BP+8] the buffer in DS and [BP+10] the radix.
+ *
+ * The buffer pointer is saved (it is the answer) and ES is made DS for the
+ * string stores. A signed value (BL not 0) in radix 10 with its sign bit set
+ * gets a '-' stored first and is negated (NEG of the low word, ADC 0 into the
+ * high word, NEG of the high word). Digits are then produced least
+ * significant first: the 32-bit value is divided by the radix in two steps (the
+ * high word, skipped when zero, then its remainder with the low word), the
+ * remainder becomes '0'..'9' or, past 9, 'a' onwards (+27h), and the loop runs
+ * until the quotient is zero. A zero byte ends the text and the digits are
+ * reversed in place: SI walks up from the first digit, DI down from the last,
+ * swapping through XCHG, until SI + 1 is no longer below DI. The routine leaves
+ * through the frame's exit: it pops the buffer into AX, then DI and SI, and
+ * returns with MOV SP, BP / POP BP / RET.
+ *
+ * A radix of 0 makes the first division fault (the original traps; the radix
+ * is looked at before anything changes and the original is left to run); a
+ * radix of 1 never ends, as in the original (the claims run out and the
+ * original carries on). Every other radix divides without overflow: the first
+ * quotient has a zero high word and the second remainder is below the radix. */
+static int start_long_to_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VALUE_LOW = 4, VALUE_HIGH = 6, BUFFER = 8, RADIX = 10 };
+#define TB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define SWAP(a_, b_) do { const uint16_t t_ = c->r[a_]; c->r[a_] = c->r[b_]; c->r[b_] = t_; } while (0)
+    if (!room(c, 11)) return 0;
+    if (bp_get(c, RADIX) == 0) return 0;
+    TB(11, 0xA458);
+    c->r[R_CX] = bp_get(c, RADIX);
+    c->r[R_AX] = bp_get(c, VALUE_LOW);
+    c->r[R_DX] = bp_get(c, VALUE_HIGH);
+    c->r[R_DI] = bp_get(c, BUFFER);
+    x86_push_reg(c, R_DI);                                        /* the answer */
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_flag(c, F_DF, 0);
+    SWAP(R_BX, R_AX);                                             /* BX the low word, AL the signed flag */
+    alu_logic(c, get_r8(c, R_AL), 0);
+    if (x86_cond(c, 4)) goto digits;                              /* unsigned */
+    TB(2, 0xA46D);
+    alu_op(c, 7, c->r[R_CX], 10, 1);
+    if (x86_cond(c, 5)) goto digits;                              /* only radix 10 has a sign */
+    TB(2, 0xA472);
+    c->r[R_DX] = (uint16_t)alu_logic(c, c->r[R_DX], 1);
+    if (x86_cond(c, 9)) goto digits;                              /* not negative */
+    TB(5, 0xA476);
+    set_r8(c, R_AL, '-');
+    x86_stos(c, 0);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+digits:
+    TB(1, 0xA480);
+    c->r[R_SI] = c->r[R_DI];                                      /* the first digit's place */
+next_digit:
+    TB(4, 0xA482);
+    SWAP(R_DX, R_AX);                                             /* AX the high word */
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 4)) goto low_word;                            /* nothing to divide up there */
+    TB(1, 0xA489);
+    x86_div16(c, c->r[R_CX]);                                     /* no overflow: DX is 0 */
+low_word:
+    TB(7, 0xA48B);
+    SWAP(R_BX, R_AX);                                             /* AX the low word, BX the high quotient */
+    x86_div16(c, c->r[R_CX]);                                     /* no overflow: DX is below the radix */
+    SWAP(R_DX, R_AX);                                             /* AL the remainder, DX the low quotient */
+    SWAP(R_BX, R_DX);                                             /* BX low, DX high quotient */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x30, 0));
+    alu_op(c, 7, get_r8(c, R_AL), 0x39, 0);
+    if (x86_cond(c, 6)) goto store_digit;                         /* '0'..'9' */
+    TB(1, 0xA497);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x27, 0));
+store_digit:
+    TB(4, 0xA499);
+    x86_stos(c, 0);
+    c->r[R_AX] = c->r[R_DX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_BX], 1);
+    if (x86_cond(c, 5)) goto next_digit;                          /* a quotient is left */
+    TB(1, 0xA4A0);
+    ds_put8(c, c->r[R_DI], get_r8(c, R_AL));                      /* AL is 0 here: the terminator */
+reverse:
+    TB(7, 0xA4A2);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    x86_lods(c, 0, c->seg[S_DS]);
+    {
+        const uint8_t back = ds_get8(c, c->r[R_DI]);              /* XCHG [DI], AL */
+        ds_put8(c, c->r[R_DI], get_r8(c, R_AL));
+        set_r8(c, R_AL, back);
+    }
+    ds_put8(c, (uint16_t)(c->r[R_SI] - 1), get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)(c->r[R_SI] + 1);
+    alu_op(c, 7, c->r[R_AX], c->r[R_DI], 1);
+    if (x86_cond(c, 2)) goto reverse;                             /* the two ends have not met */
+    TB(6, 0xA4B0);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef SWAP
+#undef TB
+}
+
+/* START 0x0A768, malloc(size): the C runtime's near-heap allocator (the heap
+ * described at AE1E, whose free() is 0x0A76C). The entry is a JMP to the body at
+ * 0x0A791; the argument is cdecl, [BP+4] the size in bytes. SI and DI are kept.
+ * A size above FFE8h fails at once (the heap's headers would overflow);
+ * otherwise a free block is looked for (0x0A7BA, with BX the heap descriptor
+ * and CX the size; carry clear when found, the block in AX), and when there is
+ * none the heap is grown (0x0A836, carry set when it cannot be) and looked
+ * through again. A failure answers 0 in DX:AX. Both callees take their
+ * arguments in registers and end with a plain RET; they run as original code. */
+static int start_malloc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SIZE = 4, LARGEST = 0xFFE8, HEAP = 0xAE1E };
+#define MB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define MRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define MNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); MRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 8)) return 0;
+    MB(8, 0xA768);                                                /* the JMP, then the frame and the size test */
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_CX] = bp_get(c, SIZE);
+    alu_sub(c, c->r[R_CX], (uint16_t)-0x18, 1, 0);
+    if (x86_cond(c, 7)) goto none;                                /* above FFE8h */
+    MB(1, 0xA79E);
+    c->r[R_BX] = HEAP;
+    MNEAR(0xA7A1, 0xA7BA, 0xA7A4);                                /* a free block? */
+    MB(1, 0xA7A4);
+    if (x86_cond(c, 3)) goto done;
+    MNEAR(0xA7A6, 0xA836, 0xA7A9);                                /* grow the heap */
+    MB(1, 0xA7A9);
+    if (x86_cond(c, 2)) goto none;                                /* it cannot be grown */
+    MNEAR(0xA7AB, 0xA7BA, 0xA7AE);                                /* and look again */
+    MB(1, 0xA7AE);
+    if (x86_cond(c, 3)) goto done;
+none:
+    MB(3, 0xA7B0);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    cwd(c);
+done:
+    MB(4, 0xA7B5);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef MNEAR
+#undef MRUN
+#undef MB
+}
+
+/* MPS_LOGO 0006:033A, far (RETF): load a whole palette into the VGA DAC, write_palette(buffer).
+ * The one argument, at [bp+6], is a far pointer (offset, then segment) to 768 bytes: red, green and
+ * blue (six bits each) for the 256 colours. It is the partner of read_palette (0006:038E), in the
+ * logo program's own graphics code (segment 0006):
+ *   - reserves a frame of 4 bytes through the C run-time's stack check (0146:0296, a far call
+ *     that takes the frame size in AX, checks it against the stack limit and lowers SP by it), and
+ *     copies the pointer into the two local words [bp-4] (offset) and [bp-2] (segment) through
+ *     ES = SS, as the compiler does for a far pointer argument;
+ *   - with interrupts off, writes 0 to the DAC write-index port 3C8h, so the next colour written is
+ *     colour 0, then writes the bytes at ES:SI one after the other to the DAC data port 3C9h
+ *     (the port after 3C8h), 768 of them, three for each of the 256 colours;
+ *   - turns interrupts back on, restores ES, DI, SI and the frame, and returns far. AX is left
+ *     as the last byte written, AH 0.
+ * The STI lets interrupts in, so the routine stops right after it; the original's POP ES and the
+ * return follow. A port access can cost the original clocks beyond its instruction (the ISA bus
+ * delay), so every stretch with accesses claims IO_SLACK for them. Only the stack check is called. */
+static int mps_logo_write_palette(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BUFFER = 6, LOCAL_OFF = -4, LOCAL_SEG = -2, FRAME_BYTES = 4,
+           DAC_WRITE_INDEX = 0x03C8, LOOP = 0x0373, AFTER_STI = 0x0387 };
+    if (!room(c, 3)) return 0;
+    /* push bp / mov bp, sp / mov ax, 4: the frame size for the stack check */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FRAME_BYTES;
+    c->icount += 3;
+    SM4_NEED(1, 0x0340);
+    {   /* The stack check lowers SP by AX before its RETF, so the return is not at the caller's SP:
+         * the trap that sees the call come back waits for SP - AX. */
+        const uint16_t caller_cs = c->seg[S_CS], reserve = c->r[R_AX];
+        const uint16_t target_off = seg_read16(c, caller_cs, 0x0341), target_seg = seg_read16(c, caller_cs, 0x0343);
+        const uint8_t trap_on = m->trap_on;
+        const uint16_t trap_cs = m->trap_cs, trap_ip = m->trap_ip, trap_sp = m->trap_sp;
+        const uint64_t until = m->run_until;
+        cpu_push16(c, caller_cs);
+        cpu_push16(c, 0x0345);
+        c->seg[S_CS] = target_seg;
+        c->ip = target_off;
+        c->icount++;                                              /* the CALL FAR */
+        m->trap_on = 1;
+        m->trap_cs = caller_cs;
+        m->trap_ip = 0x0345;
+        m->trap_sp = (uint16_t)(c->r[R_SP] + 4 - reserve);
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int rc = matched_runner(m);
+        m->run_until = until; m->trap_on = trap_on; m->trap_cs = trap_cs; m->trap_ip = trap_ip; m->trap_sp = trap_sp;
+        c->io_cross = 0;
+        if (rc != RUN_TRAP) return 1;
+    }
+    /* The pointer into the locals through ES = SS, the buffer's segment into ES, the write index
+     * set to colour 0 with interrupts off (the OUT is the 19th instruction). */
+    if (!room(c, 21 + IO_SLACK(1))) { c->ip = 0x0345; return 1; }
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_BX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    c->r[R_CX] = c->seg[S_SS];
+    c->seg[S_ES] = c->r[R_CX];
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    bp_put(c, LOCAL_OFF, c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    c->r[R_CX] = c->seg[S_SS];
+    c->seg[S_ES] = c->r[R_CX];
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 2));
+    bp_put(c, LOCAL_SEG, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->seg[S_ES] = bp_get(c, LOCAL_SEG);
+    c->r[R_SI] = bp_get(c, LOCAL_OFF);
+    c->r[R_DX] = DAC_WRITE_INDEX;
+    set_r8(c, R_AL, 0);
+    x86_cli(c);
+    c->icount += 18;
+    x86_out(c, c->r[R_DX], 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* the data port, 3C9h */
+    set_r8(c, R_AH, 0);
+    c->icount += 3;
+    /* 256 colours: three bytes loaded and written, three increments, the count and the branch. */
+    for (;;) {
+        if (!room(c, 11 + IO_SLACK(3))) { c->ip = LOOP; return 1; }
+        for (int component = 0; component < 3; component++) {
+            set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+            c->icount += 1;
+            x86_out(c, c->r[R_DX], 0);
+            c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+            c->icount += 2;
+        }
+        set_r8(c, R_AH, (uint8_t)alu_dec(c, get_r8(c, R_AH), 0));
+        c->icount += 2;
+        if (c->flags & F_ZF) break;
+    }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = AFTER_STI;
+    return 1;
+}
+
+/* MPS_LOGO 0006:038E, far (RETF): read the whole VGA palette into a buffer, read_palette(buffer).
+ * The one argument, at [bp+6], is a far pointer (offset, then segment) to 768 bytes. The routine
+ * (the logo program's own graphics code, in segment 0006):
+ *   - reserves a frame of 4 bytes through the C run-time's stack check (0146:0296, a far call
+ *     that takes the frame size in AX, checks it against the stack limit and lowers SP by it), and
+ *     copies the pointer into the two local words [bp-4] (offset) and [bp-2] (segment) through
+ *     ES = SS, as the compiler does for a far pointer argument;
+ *   - with interrupts off, writes 0 to the DAC read-index port 3C7h, so the next colour read is
+ *     colour 0, then reads the DAC data port 3C9h 768 times: three bytes (red, green, blue, six
+ *     bits each) for each of the 256 colours, stored in order at buffer ES:DI;
+ *   - turns interrupts back on, restores ES, DI, SI and the frame, and returns far. AX is left
+ *     as the last byte read, AH 0.
+ * The STI lets interrupts in, so the routine stops right after it; the original's POP ES and the
+ * return follow. A port access can cost the original clocks beyond its instruction (the ISA bus
+ * delay), so every stretch with accesses claims IO_SLACK for them. Only the stack check is called. */
+static int mps_logo_read_palette(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BUFFER = 6, LOCAL_OFF = -4, LOCAL_SEG = -2, FRAME_BYTES = 4,
+           DAC_READ_INDEX = 0x03C7, DAC_DATA = 0x03C9, LOOP = 0x03C9, AFTER_STI = 0x03DD };
+    if (!room(c, 3)) return 0;
+    /* push bp / mov bp, sp / mov ax, 4: the frame size for the stack check */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FRAME_BYTES;
+    c->icount += 3;
+    SM4_NEED(1, 0x0394);
+    {   /* The stack check lowers SP by AX before its RETF, so the return is not at the caller's SP:
+         * the trap that sees the call come back waits for SP - AX. */
+        const uint16_t caller_cs = c->seg[S_CS], reserve = c->r[R_AX];
+        const uint16_t target_off = seg_read16(c, caller_cs, 0x0395), target_seg = seg_read16(c, caller_cs, 0x0397);
+        const uint8_t trap_on = m->trap_on;
+        const uint16_t trap_cs = m->trap_cs, trap_ip = m->trap_ip, trap_sp = m->trap_sp;
+        const uint64_t until = m->run_until;
+        cpu_push16(c, caller_cs);
+        cpu_push16(c, 0x0399);
+        c->seg[S_CS] = target_seg;
+        c->ip = target_off;
+        c->icount++;                                              /* the CALL FAR */
+        m->trap_on = 1;
+        m->trap_cs = caller_cs;
+        m->trap_ip = 0x0399;
+        m->trap_sp = (uint16_t)(c->r[R_SP] + 4 - reserve);
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int rc = matched_runner(m);
+        m->run_until = until; m->trap_on = trap_on; m->trap_cs = trap_cs; m->trap_ip = trap_ip; m->trap_sp = trap_sp;
+        c->io_cross = 0;
+        if (rc != RUN_TRAP) return 1;
+    }
+    /* The pointer into the locals through ES = SS, the buffer's segment into ES, the DAC's read
+     * index set to colour 0 with interrupts off (the OUT is the 19th instruction). */
+    if (!room(c, 21 + IO_SLACK(1))) { c->ip = 0x0399; return 1; }
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_BX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    c->r[R_CX] = c->seg[S_SS];
+    c->seg[S_ES] = c->r[R_CX];
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    bp_put(c, LOCAL_OFF, c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    c->r[R_CX] = c->seg[S_SS];
+    c->seg[S_ES] = c->r[R_CX];
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 2));
+    bp_put(c, LOCAL_SEG, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->seg[S_ES] = bp_get(c, LOCAL_SEG);
+    c->r[R_DI] = bp_get(c, LOCAL_OFF);
+    c->r[R_DX] = DAC_READ_INDEX;
+    set_r8(c, R_AL, 0);
+    x86_cli(c);
+    c->icount += 18;
+    x86_out(c, c->r[R_DX], 0);
+    c->r[R_DX] = DAC_DATA;
+    set_r8(c, R_AH, 0);
+    c->icount += 3;
+    /* 256 colours: three reads, three stores, three increments, the count and the branch. */
+    for (;;) {
+        if (!room(c, 11 + IO_SLACK(3))) { c->ip = LOOP; return 1; }
+        for (int component = 0; component < 3; component++) {
+            x86_in(c, c->r[R_DX], 0);
+            mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+            c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+            c->icount += 3;
+        }
+        set_r8(c, R_AH, (uint8_t)alu_dec(c, get_r8(c, R_AH), 0));
+        c->icount += 2;
+        if (c->flags & F_ZF) break;
+    }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = AFTER_STI;
+    return 1;
+}
+
+/* MPS_LOGO 0045:00BC, far (RETF): allocate DOS memory for a byte count and return it as a far pointer,
+ * far_alloc(bytes). The argument, at [bp+6], is a 32-bit byte count (low word, then high word). The
+ * routine (the logo program's own memory code, segment 0045) works in paragraphs of 16 bytes:
+ *   - the size is shifted right four places as a signed 32-bit number (SAR on the high word, RCR on
+ *     the low word, four times; only the low word is kept) and one is added: the paragraph count,
+ *     a word, so a request over 1 MB wraps like the original's;
+ *   - the DOS allocator (0146:070C, a far call, the runtime's dos_allocmem(paragraphs, &segment))
+ *     gets the count and the address of the local word [bp-2] where the block's segment goes; it
+ *     answers 0 when it got the block and a positive error code when it did not; the routine
+ *     removes the two arguments itself (ADD SP, 4);
+ *   - an answer above zero (signed) returns the null pointer, DX:AX = 0:0; otherwise the pointer
+ *     is the block's segment with offset 0: DX = [bp-2], AX = 0 (built through the locals
+ *     [bp-4] and [bp-6], a far pointer variable of the compiler).
+ * The frame is entered with ENTER 6, 0 and left with LEAVE. */
+static int mps_logo_far_alloc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SIZE_LO = 6, SIZE_HI = 8, SEGMENT_OUT = -2, POINTER_SEG = -4, POINTER_OFF = -6 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 15)) return 0;
+    /* enter / lea ax, [bp-2] / push ax / the size shifted into paragraphs, plus one / push ax */
+    XB(15, 0x00BC);
+    x86_enter(c, 6, 0);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + SEGMENT_OUT);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, SIZE_LO);
+    c->r[R_DX] = bp_get(c, SIZE_HI);
+    for (int place = 0; place < 4; place++) {
+        c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 1, 1);     /* sar dx, 1 */
+        c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);     /* rcr ax, 1 */
+    }
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x00DC);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_far(m, 0x00DC, 0x00E1);
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    XB(3, 0x00E1);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 4, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);     /* or ax, ax */
+    if (!x86_cond(c, 14)) {                                           /* jle not taken: the allocator failed */
+        XB(4, 0x00E8);
+        c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+        c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cdq */
+        x86_leave(c);
+        c->ip = cpu_pop16(c);
+        c->seg[S_CS] = cpu_pop16(c);
+        return 1;
+    }
+    XB(7, 0x00EE);
+    c->r[R_AX] = bp_get(c, SEGMENT_OUT);
+    bp_put(c, POINTER_SEG, c->r[R_AX]);
+    bp_put(c, POINTER_OFF, 0);
+    c->r[R_AX] = bp_get(c, POINTER_OFF);
+    c->r[R_DX] = bp_get(c, POINTER_SEG);
+    x86_leave(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    return 1;
+#undef XB
+}
+
+/* MPS_LOGO 0146:1B8B, far: malloc(size), the C run-time's allocator for the near heap whose descriptor
+ * is at 0x01C4. The one argument, at [bp+6] (a far call), is the size in bytes (a word).
+ *   - A size above FFE8h cannot be satisfied and fails at once (the compare is unsigned).
+ *   - Otherwise a free block of that size is looked for (0x1E2E, the descriptor in BX, CX the size;
+ *     carry clear when it found one, the block in AX). When there is none, the heap is grown
+ *     (0x1BB4; carry set when it cannot) and searched again.
+ *   - The answer is the block's address in AX, or 0 (and DX:AX = 0:0, by the CDQ) when none could be
+ *     made. SI and DI are saved and restored; the frame is BP's.
+ * The two helpers are plain near calls taking their input in registers and no stack arguments. */
+static int mps_logo_malloc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SIZE = 6, HEAP = 0x01C4, SEARCH = 0x1E2E, GROW = 0x1BB4, LARGEST = 0xFFE8 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    /* push bp / mov bp, sp / push si / push di / mov cx, size / cmp cx, -18h / ja */
+    XB(7, 0x1B8B);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_CX] = bp_get(c, SIZE);
+    alu_op(c, 7, c->r[R_CX], (uint16_t)(int16_t)(int8_t)0xE8, 1);
+    if (x86_cond(c, 7)) goto none;                                /* above FFE8h */
+    XB(1, 0x1B98);
+    c->r[R_BX] = HEAP;
+    XNEAR(0x1B9B, SEARCH, 0x1B9E);                            /* a free block? */
+    XB(1, 0x1B9E);
+    if (x86_cond(c, 3)) goto done;                                /* jae: found */
+    XNEAR(0x1BA0, GROW, 0x1BA3);                              /* grow the heap */
+    XB(1, 0x1BA3);
+    if (x86_cond(c, 2)) goto none;                                /* jb: it could not */
+    XNEAR(0x1BA5, SEARCH, 0x1BA8);                            /* and look again */
+    XB(1, 0x1BA8);
+    if (x86_cond(c, 3)) goto done;
+none:
+    XB(3, 0x1BAA);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cdq */
+done:
+    XB(4, 0x1BAF);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0000:0583, near: take over the two break interrupts, player_hook_break_vectors().
+ * No arguments and no frame of its own. The player program must not be stopped by Ctrl-Break or
+ * Ctrl-C while it is playing, so at start-up it:
+ *   - clears the break flag [2092] (the handler at 0560 sets it to 3 when a break comes);
+ *   - reads the current vector of interrupt 1Bh (BIOS Ctrl-Break) with the run-time's get_vector
+ *     (14B8, INT 21h function 35h; the vector comes back in DX:AX) and keeps it at [1E76]:[1E78],
+ *     then does the same for interrupt 23h (DOS Ctrl-C) into [208E]:[2090];
+ *   - sets both vectors to the program's own handler, the far pointer CS:0560, with the
+ *     run-time's set_vector (14CA, INT 21h function 25h; arguments the number, the handler's
+ *     offset and its segment). The segment is a relocated immediate (the instruction's operand
+ *     is read from the code, as the loader leaves it).
+ * (05D0 puts the saved vectors back at the end.) The four calls are plain near calls and RETs:
+ * the routine removes each call's arguments itself (ADD SP), and AX, CX, DX are free. */
+static int player_hook_break_vectors(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BREAK_FLAG = 0x2092, SAVED_1B_OFF = 0x1E76, SAVED_1B_SEG = 0x1E78,
+           SAVED_23_OFF = 0x208E, SAVED_23_SEG = 0x2090, HANDLER = 0x0560,
+           INT_BREAK = 0x1B, INT_CTRL_C = 0x23, GET_VECTOR = 0x14B8, SET_VECTOR = 0x14CA };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XDROP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+    if (!room(c, 3)) return 0;
+    /* The flag clear, then interrupt 1Bh's old vector. */
+    XB(3, 0x0583);
+    ds_put(c, BREAK_FLAG, 0);
+    c->r[R_AX] = INT_BREAK;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x058D, GET_VECTOR, 0x0590);
+    XB(5, 0x0590);
+    XDROP(2);
+    ds_put(c, SAVED_1B_OFF, c->r[R_AX]);
+    ds_put(c, SAVED_1B_SEG, c->r[R_DX]);
+    c->r[R_AX] = INT_CTRL_C;
+    cpu_push16(c, c->r[R_AX]);
+    /* Interrupt 23h's old vector. */
+    XNEAR(0x059E, GET_VECTOR, 0x05A1);
+    XB(9, 0x05A1);
+    XDROP(2);
+    ds_put(c, SAVED_23_OFF, c->r[R_AX]);
+    ds_put(c, SAVED_23_SEG, c->r[R_DX]);
+    /* Our handler in both: the far pointer (segment as loaded : offset 0560), then the number. */
+    c->r[R_AX] = HANDLER;
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x05AF);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = INT_BREAK;
+    cpu_push16(c, c->r[R_CX]);
+    XNEAR(0x05B7, SET_VECTOR, 0x05BA);
+    XB(7, 0x05BA);
+    XDROP(6);
+    c->r[R_AX] = HANDLER;
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x05C1);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = INT_CTRL_C;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x05C9, SET_VECTOR, 0x05CC);
+    XB(2, 0x05CC);
+    XDROP(6);
+    near_ret(c);
+    return 1;
+#undef XDROP
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0000:23B1, near: malloc(size), the C run-time's allocator for the near heap whose descriptor
+ * is at 0x1A26 (the player's heap). The one argument, at [bp+4], is the size in bytes (a word).
+ *   - A size above FFE8h cannot be satisfied and fails at once (the compare is unsigned).
+ *   - Otherwise a free block of that size is looked for (0x263E, the descriptor in BX, CX the size;
+ *     carry clear when it found one, the block in AX). When there is none, the heap is grown
+ *     (0x23DA; carry set when it cannot) and searched again.
+ *   - The answer is the block's address in AX, or 0 (and DX:AX = 0:0, by the CDQ) when none could be
+ *     made. SI and DI are saved and restored; the frame is BP's.
+ * The two helpers are plain near calls taking their input in registers and no stack arguments. */
+static int player_malloc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SIZE = 4, HEAP = 0x1A26, SEARCH = 0x263E, GROW = 0x23DA, LARGEST = 0xFFE8 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    /* push bp / mov bp, sp / push si / push di / mov cx, size / cmp cx, -18h / ja */
+    XB(7, 0x23B1);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_CX] = bp_get(c, SIZE);
+    alu_op(c, 7, c->r[R_CX], (uint16_t)(int16_t)(int8_t)0xE8, 1);
+    if (x86_cond(c, 7)) goto none;                                /* above FFE8h */
+    XB(1, 0x23BE);
+    c->r[R_BX] = HEAP;
+    XNEAR(0x23C1, SEARCH, 0x23C4);                            /* a free block? */
+    XB(1, 0x23C4);
+    if (x86_cond(c, 3)) goto done;                                /* jae: found */
+    XNEAR(0x23C6, GROW, 0x23C9);                              /* grow the heap */
+    XB(1, 0x23C9);
+    if (x86_cond(c, 2)) goto none;                                /* jb: it could not */
+    XNEAR(0x23CB, SEARCH, 0x23CE);                            /* and look again */
+    XB(1, 0x23CE);
+    if (x86_cond(c, 3)) goto done;
+none:
+    XB(3, 0x23D0);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cdq */
+done:
+    XB(4, 0x23D5);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 026B:000A, far (RETF): install the clock hook's timer interrupt, once, player_timer_install().
+ * The player program counts time with its own handler for the timer interrupt (INT 8, the code at
+ * 026B:01A3, whose far address is stored at 026B:019F). This takes it over, unless it already has:
+ *   - [1A1C] is the "installed" flag; it is set to 1 by an exchange, and when it was already set
+ *     nothing else happens (the original value is tested with OR AL, AL);
+ *   - otherwise the clock hook's state starts afresh: the tick divider [1A0E] and its countdown
+ *     [1A16] are 1, and the 32-bit tick total [1A06]:[1A04] is 0; then the timer is calibrated
+ *     from the screen's refresh (026B:0272, a plain near call, no arguments);
+ *   - the old INT 8 vector is read with DOS function 35h and kept in the code segment, at
+ *     026B:020D (offset) and 026B:020F (segment), where the restore (026B:004D) finds it; DOS
+ *     function 25h then sets INT 8 to the handler at CS:[019F] (DS:DX comes from there, DS being
+ *     restored by the POP DS at the end).
+ * DS is saved and restored around everything, and AH/AL, BX, DX, ES are left as the DOS calls
+ * and the loads leave them. Both DOS calls are run by the original code (INT 21h). */
+static int player_timer_install(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { INSTALLED = 0x1A1C, DIVIDER = 0x1A0E, COUNTDOWN = 0x1A16, TICKS_LO = 0x1A04, TICKS_HI = 0x1A06,
+           OLD_VECTOR_OFF = 0x020D, OLD_VECTOR_SEG = 0x020F, HANDLER_POINTER = 0x019F, CALIBRATE = 0x0272,
+           GET_VECTOR = 0x35, SET_VECTOR = 0x25, TIMER_INTERRUPT = 0x08 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 5)) return 0;
+    /* push ds / mov al, 1 / xchg [1A1C], al / or al, al / jne */
+    XB(5, 0x000A);
+    cpu_push16(c, c->seg[S_DS]);
+    {
+        const uint8_t was = ds_get8(c, INSTALLED);
+        ds_put8(c, INSTALLED, 1);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 1, was, was, 0));      /* or al, al */
+    }
+    if (c->flags & F_ZF) {
+        /* Not installed: the hook's state, then the calibration. */
+        XB(4, 0x0015);
+        ds_put(c, DIVIDER, 1);
+        ds_put(c, COUNTDOWN, 1);
+        ds_put(c, TICKS_LO, 0);
+        ds_put(c, TICKS_HI, 0);
+        SM4_NEED(1, 0x002D);
+        XRUN(guest_call_pop(m, CALIBRATE, 0x0030, 0));
+        /* The old INT 8 vector, kept in the code segment. */
+        XB(2, 0x0030);
+        set_r8(c, R_AH, GET_VECTOR);
+        set_r8(c, R_AL, TIMER_INTERRUPT);
+        if (!sm4_int(m, 0x0034)) return 1;
+        XB(5, 0x0036);
+        seg_write16(c, c->seg[S_CS], OLD_VECTOR_OFF, c->r[R_BX]);
+        seg_write16(c, c->seg[S_CS], OLD_VECTOR_SEG, c->seg[S_ES]);
+        set_r8(c, R_AH, SET_VECTOR);
+        set_r8(c, R_AL, TIMER_INTERRUPT);
+        c->r[R_DX] = seg_read16(c, c->seg[S_CS], HANDLER_POINTER);
+        c->seg[S_DS] = seg_read16(c, c->seg[S_CS], (uint16_t)(HANDLER_POINTER + 2));
+        /* Our handler is the INT 8 vector. */
+        if (!sm4_int(m, 0x0049)) return 1;
+    }
+    XB(2, 0x004B);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 026B:0336, far (RETF): one step of the player's clock hook, called by the timer interrupt
+ * handler (026B:01A3) each time the hook's divided tick comes round: player_clock_hook_step().
+ * No arguments. It works on the hook's cells in DS:
+ *   - [1A10] is the frame length in ticks. When it is 4 (the 60 Hz case) only every seventh call
+ *     does the work: the byte [1A1E] counts down, and while it is still above 0 (signed) the step
+ *     goes on; when it reaches 0 it is reloaded with 7 and this call is skipped (RETF at once);
+ *   - the step: the picture step (0000:0738, the clock hook's frame step, a far call; ES saved
+ *     around it), then the sound driver's tick (a far call through the data-segment thunk
+ *     02A3:13C3) whose answer in AX decides what follows: zero returns (RETF); a negative answer
+ *     goes on to 026B:008B (the timer back to a divider of 1), a positive one to 026B:0073 (the
+ *     divider set from the frame length [1A10]). Both are far JMPs, with the return address
+ *     still on the stack, so those routines return to this one's caller.
+ * The far JMP targets are read from the code (their segment operands are relocated). */
+static int player_clock_hook_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FRAME_TICKS = 0x1A10, SKIP_COUNT = 0x1A1E, EVERY = 7, PER_FRAME_TICKS = 4 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0336);
+    alu_op(c, 7, ds_get(c, FRAME_TICKS), PER_FRAME_TICKS, 1);       /* cmp word [1A10], 4 */
+    if (!x86_cond(c, 5)) {                                        /* jne: another length does every step */
+        XB(2, 0x033D);
+        ds_put8(c, SKIP_COUNT, (uint8_t)alu_op(c, 5, ds_get8(c, SKIP_COUNT), 1, 0));   /* sub byte [1A1E], 1 */
+        if (!x86_cond(c, 15)) {                                   /* jg not taken: this one is skipped */
+            XB(2, 0x0344);
+            ds_put8(c, SKIP_COUNT, EVERY);
+            c->ip = cpu_pop16(c);
+            c->seg[S_CS] = cpu_pop16(c);
+            return 1;
+        }
+    }
+    /* The picture step, with ES kept. */
+    XB(1, 0x034A);
+    cpu_push16(c, c->seg[S_ES]);
+    XFAR(0x034B, 0x0350);
+    XB(1, 0x0350);
+    c->seg[S_ES] = cpu_pop16(c);
+    /* The sound driver's tick, and what its answer asks for. */
+    XFAR(0x0351, 0x0356);
+    XB(2, 0x0356);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);    /* or ax, ax */
+    if (x86_cond(c, 8)) {                                         /* js: to the divider of one */
+        XB(1, 0x035D);
+        c->ip = seg_read16(c, c->seg[S_CS], 0x035E);
+        c->seg[S_CS] = seg_read16(c, c->seg[S_CS], 0x0360);
+        return 1;
+    }
+    XB(1, 0x035A);
+    if (x86_cond(c, 5)) {                                         /* jne: to the divider from [1A10] */
+        XB(1, 0x0362);
+        c->ip = seg_read16(c, c->seg[S_CS], 0x0363);
+        c->seg[S_CS] = seg_read16(c, c->seg[S_CS], 0x0365);
+        return 1;
+    }
+    XB(1, 0x035C);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    return 1;
+#undef XFAR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0FC0 - start the timer hook that counts ticks.
+ *
+ * No arguments. The routine resets the hook's pacing cells, lets 111A calibrate the
+ * timer rate (setup_timer_calibrate), then takes over INT 8:
+ *   1. DIVISOR (the hook's pacing divisor) and COUNTDOWN (its countdown) both become 1,
+ *      and the 32-bit run total RUN_TOTAL becomes 0;
+ *   2. 111A measures the screen refresh and sets the timer count;
+ *   3. DOS function 35h (AL = 8) reads the INT 8 vector into ES:BX, and the old vector is
+ *      saved in the program's own code segment, at OLD_VECTOR (offset, then segment): the
+ *      code is its own variable store, as in the other copies of this routine;
+ *   4. DOS function 25h (AL = 8) installs the hook, the far pointer kept in the code
+ *      segment at HOOK_POINTER (loaded into DS:DX, with DS saved around it);
+ *   5. the flag HOOK_INSTALLED becomes 1 (setup_timer_restore tests it).
+ * The hook (a timer interrupt handler that starts with STI) advances the tick counters
+ * through the routine at 0A8C.
+ *
+ * Callees: 111A, plain RET with no arguments; the two DOS calls run as original code
+ * (INT 21h).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; calls and the INT instructions are not counted (they charge their
+ * own). */
+static int setup_timer_hook_install(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DIVISOR = 0x0E34, COUNTDOWN = 0x0E3E, RUN_TOTAL_LO = 0x0E2A, RUN_TOTAL_HI = 0x0E2C,
+           HOOK_INSTALLED = 0x0E29 };                      /* data segment cells */
+    enum { OLD_VECTOR = 0x10AF, HOOK_POINTER = 0x1049 };   /* code segment cells */
+    enum { CALIBRATE = 0x111A, DOS_GET_VECTOR = 0x35, DOS_SET_VECTOR = 0x25, TIMER_VECTOR = 8 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x0FC0);
+    ds_put(c, DIVISOR, 1);
+    ds_put(c, COUNTDOWN, 1);
+    ds_put(c, RUN_TOTAL_LO, 0);
+    ds_put(c, RUN_TOTAL_HI, 0);
+    XNEAR(0x0FD8, CALIBRATE, 0x0FDB);
+    /* Read the old INT 8 vector and keep it in the code segment. */
+    XB(2, 0x0FDB);
+    set_r8(c, R_AH, DOS_GET_VECTOR);
+    set_r8(c, R_AL, TIMER_VECTOR);
+    if (!support_int(m, 0x0FDF)) return 1;
+    XB(6, 0x0FE1);
+    seg_write16(c, c->seg[S_CS], OLD_VECTOR, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], OLD_VECTOR + 2, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, DOS_SET_VECTOR);
+    set_r8(c, R_AL, TIMER_VECTOR);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], HOOK_POINTER);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], HOOK_POINTER + 2);
+    if (!support_int(m, 0x0FF5)) return 1;
+    XB(3, 0x0FF7);
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put8(c, HOOK_INSTALLED, 1);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* START 0x0289A, load_file(name, buffer): read a whole file into a near
+ * buffer (the other form of 0x02864, which reads to a far pointer); the answer
+ * is the number of bytes read. The arguments are cdecl and stay on the
+ * caller's stack: [BP+4] the file name and [BP+6] the buffer, both in DS. Its
+ * locals: [BP-4] the file's handle and [BP-2] the byte count.
+ *   - open: 8075(name, 0) opens the file for reading (it takes two words; the
+ *     two words that follow it, 0FFFFh and the buffer, are the next call's);
+ *   - read: 8144(handle, 0FFFFh, buffer) reads up to 64K - 1 bytes into the
+ *     buffer (three words, cleaned with ADD SP, 6);
+ *   - close: 8123(handle).
+ * The count from the read is the answer. All three callees are the C
+ * runtime's DOS file layer (cdecl near calls ending with a plain RET, run as
+ * original code); this code removes their arguments. It does not look at a
+ * failed open (handle and counts are the callees' business). The front end
+ * loads its ADV.PAL palette file through it. */
+static int start_load_file(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NAME = 4, BUFFER = 6, HANDLE = -4, COUNT = -2, WHOLE_FILE = 0xFFFF };
+#define LB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define LP(v_) cpu_push16(c, (v_))
+#define LRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define LNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); LRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 9)) return 0;
+    LB(9, 0x289A);
+    frame_open(c, 4);
+    LP(bp_get(c, BUFFER));
+    c->r[R_AX] = WHOLE_FILE;
+    LP(c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    LP(c->r[R_AX]);                                               /* the open mode: read */
+    LP(bp_get(c, NAME));
+    LNEAR(0x28AD, 0x8075, 0x28B0);
+    LB(4, 0x28B0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, HANDLE, c->r[R_AX]);
+    LP(c->r[R_AX]);
+    LNEAR(0x28B6, 0x8144, 0x28B9);
+    LB(3, 0x28B9);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    bp_put(c, COUNT, c->r[R_AX]);
+    LP(bp_get(c, HANDLE));
+    LNEAR(0x28C2, 0x8123, 0x28C5);
+    LB(5, 0x28C5);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, COUNT);
+    frame_close_ret(c);
+    return 1;
+#undef LNEAR
+#undef LRUN
+#undef LP
+#undef LB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x289A, start_load_file, "read a whole file into a near buffer", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0FC0, setup_timer_hook_install, "calibrate the timer and install the tick-counting INT 8 hook", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0336, player_clock_hook_step, "one step of the clock hook: the picture step, then the sound driver's tick and its rate request", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x000A, player_timer_install, "take over the timer interrupt for the clock hook, once", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x23B1, player_malloc, "allocate from the near heap", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0583, player_hook_break_vectors, "take over the Ctrl-Break and Ctrl-C vectors, saving the old ones", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1B8B, mps_logo_malloc, "allocate from the near heap, far", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x00BC, mps_logo_far_alloc, "allocate DOS memory for a byte count and return it as a far pointer", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0006, 0x038E, mps_logo_read_palette, "read the VGA palette into a far buffer", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0006, 0x033A, mps_logo_write_palette, "load a palette from a far buffer into the VGA DAC", 2 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA768, start_malloc, "allocate a block from the near heap", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA458, start_long_to_text, "convert a 32-bit value to text in a radix (the C runtime's ltoa core)", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8CA8, start_install_clock_hook, "start the tick counter and install the timer interrupt hook", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x40A4, start_alloc_buffer, "allocate a DOS buffer, or end the program when there is none", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2864, start_load_file_far, "read a whole file into a far buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x27F7, start_objective_fighter_patrol, "objective sentence for a fighter intercept", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x27E3, start_objective_tu95_intercept, "objective sentence for a Tu-95 intercept", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x27CA, start_objective_coaler_unknown_destination, "objective sentence for a Coaler intercept, destination unknown", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x279A, start_objective_coaler_route, "objective sentence for a Coaler intercept with a known route", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x277D, start_objective_secret_airstrip, "objective sentence for a flight to a secret airstrip", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2760, start_objective_beacon_drop, "objective sentence for a supply drop at a beacon", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0311, start_hangar_scene, "launch screen hangar scene: load the sprite sheet, keep the picture, blit the cel", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4F8A, end_exit, "end the program", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x400F, end_dos_open_or_report, "open a file by DOS (3Dh) and return its handle, or hand the failure to the fatal-error screen", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x370A, end_show_debrief_picture, "load the debriefing picture with its drawing step and write the prompt line", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2BA0, end_allocate_or_quit, "ask DOS for memory; a failure code prints the message and leaves the program", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0FDA, end_read_file_to_near_buffer, "open a file read-only, read it whole into a near buffer, close it", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0FA4, end_read_file_to_far_buffer, "open a file read-only, read it whole into a far buffer, close it", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1BCE, vgame_frame_loop, "the flight's frame loop: controls, displays, present, update, scene until the end flag", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11B8, 0x0153, vgame_picture_read_block_far, "read the next 512-byte block of the packed picture; on a DOS error hand over to the shared error printer", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11B8, 0x00C4, vgame_picture_close_far, "close the packed picture file; on a DOS error hand over to the shared error printer", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x04FE, vgame_background_span_fill, "fill the background polygon spans through the library's span filler", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x02C4, vgame_register_display_pages, "register the display pages with the graphics library", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0A4B, setup_wait_ticks, "wait a number of timer ticks with the timer hook installed", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x053B, setup_shut_down, "undo the setup program's hooks and exit with a code", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0512, setup_set_cursor, "move the text cursor through the BIOS video interrupt call", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1BD0, dswap_string_to_long, "decimal text to a signed 32-bit number (atol)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE01, vgame_key_reset_waypoints, "key dispatcher arm: Shift-F8, reload the four waypoints from the ins table and average the first two", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCB77, vgame_key_toggle_height_hold, "key dispatcher arm: the 7 key, height hold off or on at the current height (500 or more)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCA0A, vgame_key_detail_level, "key dispatcher arm: Alt-D, the detail level counted down and shown", 1 },

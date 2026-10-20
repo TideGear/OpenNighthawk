@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 18 October 2026.
+more than once, what it costs). State as of 19 October 2026.
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 85.50%, P3 99.46%, All 95.44%
+- **Scoreboard:** P1 100.00%, P2 86.53%, P3 99.46%, All 95.75%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,083 addresses matched. Scope is the expanded seven-program
-  one: **158,751 / 187,356 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,120 addresses matched. Scope is the expanded seven-program
+  one: **160,791 / 187,356 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -58,18 +58,30 @@ Consolidate it instead of appending to it.
   proofs and their FATAL_JUMPS/SHARED_ENDINGS rows (SPANS rows and `g_cov_ip` lines of proofs whose code lies
   below the entry, e.g. VGAME `CC93` and END `0977`, are added by hand); `new_batch.py LETTER PREV BASE_COMMIT
   DIR[:PREFIX[:partial]]...` (mark hand-back routines `partial`). Evidence `D:/f117-gate/p2-batch-aa-accept/`.
+- **Batch ab (accepted, 37 routines, 2,040 bytes) and the clock default:** small rows found by four module-group proof
+  agents (SETUP, VGAME, END, START, MPS_LOGO, PLAYER; list in `D:/f117-gate/ab_list.txt`), plus the playback clock
+  default 0.4 / 0.025 (owner delegated, 19 Oct; live evidence in `docs/presentation.md`, runs in
+  `D:/f117-gate/present-v2/clock-live`). Gate 1,809 s, 357 CTests, 49 routes, no keyed baseline (the clock change moved the
+  interpreter key). Traps met: the kit's `checkpoints` reads the interpreter cache for the CURRENT tree key, so refill it
+  with `accept-kit/prefill_cache.py ROUTE...` after any non-matched `src/` edit (and set such edits aside while proofs run);
+  agents miss harness hunks (an arm that joins code below its entry needs a SPANS `from` and a `g_cov_ip` line: START
+  `2760`, `277D`, `27E3`; END `4F8A` needed a PROGRAM_ENDS row; MPS_LOGO `033A`/`038E` POPF_STOPS rows): diff each
+  proof's `tests-base.c` lines against `tests/func_lockstep.c`, and run the new CTests locally before the gate. Not
+  integrated: END `4160` (checkpoints 198 of 200 on `landing`, a real divergence: investigate), END `23D6` and `3682`
+  (whole-function proofs that replace the existing fragment rows `st4_end_ribbon_layout` and
+  `st4_end_debrief_switch_open`; remove those rows, fixtures and CTests when integrating), VGAME `0010` (DECLINED,
+  main), `12A11` (INT 0 handler, second-fault arm unexercised), END `03D9` (fix D12 sites inside, decline path
+  unseen), `57B0`, MPS_LOGO `067C` (declined). Evidence `D:/f117-gate/p2-batch-ab-accept/`; the failed attempts are
+  `p2-batch-ab-failed{1,2}`. Per-proof directories `D:/f117-gate/p2-*-t{a,b,c,d}*`.
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
   5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
   Owner decision pending: whether dead (and error/setup) code leaves the denominator.
-- **Pending the owner's yes:** playback clock alpha 0.4 / pull 0.025 as the default (simulation at 60 Hz:
-  freezes 1 to 0, skips 8 to 0, speed changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms; changes
-  `drawfeed.c`, so full gate plus `presentation_check --mode rerun` on all routes).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
-  left in Stage 3: the clock default (pending his yes) and the `DF03`/`C2C8` vertex group. Visual judgement stays with the
+  left in Stage 3: his visual judgement of the new clock default (0.4 / 0.025, adopted 19 Oct). Visual judgement stays with the
   owner; hardware-only parts are a Phase 4 maybe.
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,
@@ -79,8 +91,7 @@ Consolidate it instead of appending to it.
   [docs/cadence15-validation.md](docs/cadence15-validation.md). Core, API and
   headless runs start with fixes off and parity commands prepend `--fix none`;
   `--fix none` clears them and further IDs select a subset.
-- **Phase 3 (99.46%):** only Stage 3 (97%) is open: the playback-clock default (pending the owner's yes) and
-  his visual judgement (a Phase 4 maybe). The `DF03`/`C2C8` group is fixed (`rerun.c` attitude spelling; gate, all 46
+- **Phase 3 (99.46%):** only Stage 3 (97%) is open: his visual judgement of the new clock default (a Phase 4 maybe). The `DF03`/`C2C8` group is fixed (`rerun.c` attitude spelling; gate, all 46
   routes in rerun mode and boot exact). Stage 2's open parts became a Phase 4 maybe; Stage 4 is complete for what
   can be tested here. Refresh rates above 60 Hz are unscored Phase 4. Details:
   [docs/progress.md](docs/progress.md), [docs/presentation.md](docs/presentation.md).
@@ -161,24 +172,8 @@ Consolidate it instead of appending to it.
    `p2-vgame-11cd3/RESEARCH.txt` (512-byte picture read with terminal DOS error
    path; needs a bounded dossier), PLAYER `026B:0336` (needs returning-helper
    fixtures), VGAME `09EFA`.
-2. **Presentation:** the owner's physical-panel verdict; whether to adopt clock
-   alpha 0.4 / pull 0.025; Stage 3's last skips and slower machines.
-   *Live clock comparison (approved by the owner, 19 Oct; not yet run):* repeat
-   the hidden app replay of `D:/f117-gate/present-v2/rerun-accept/app_smoke.py`
-   (dummy SDL drivers, `--present rerun --present-scale 2 --present-log`, the
-   `owner-roads-20261015/input.log` flight; also `owner-sharp-20261015`) twice, with
-   `F117_PRESENT_CLOCK_ALPHA/_PULL` = 0.2/0.05 and 0.4/0.025, and count freezes,
-   skips, >20% speed changes and picture age from `present.log` (columns
-   `host_ns icount older newer t replayed`; the earlier counts are in
-   `present-v2/clock-tune`, which has no analyser, so write one). If 0.4/0.025
-   wins, change the defaults in `src/present/drawfeed.c`, fix every doc copy, run
-   the full gate and `presentation_check.py --mode rerun`, then commit.
-   **Open proof agents:** four small-row agents (ta VGAME/SETUP/DSWAP, tb END,
-   tc START, td MPS_LOGO/PLAYER) died on the session rate limit with their work
-   saved in their `p2-*` directories; their ids do not survive a new session, so
-   re-launch them from `kit/AGENT_PROMPT.txt` over the remaining 66 "ran" rows
-   (3,840 bytes, `census_classify.py`), then integrate with `integrate_many.py`
-   and gate as batch `ab` (`new_batch.py ab aa 4281dd8 ...`).
+2. **Presentation:** the owner's physical-panel verdict on the 0.4 / 0.025 clock default
+   (adopted 19 Oct after live runs, see batch ab); Stage 3's last skips and slower machines.
 3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
 4. **Branch housekeeping:** merged branches are retained; not merged:
    `flight-input` (its worktree `D:/f117-wt/span-emitter` has uncommitted edits)

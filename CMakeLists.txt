@@ -939,6 +939,80 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:CB77)
     add_test(NAME matched_vgame_key_reset_waypoints COMMAND func_lockstep --states 5000
       --only VGAME.EXE:CE01)
+    add_test(NAME matched_dswap_string_to_long COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:1BD0)
+    add_test(NAME matched_setup_set_cursor COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:512)
+    add_test(NAME matched_setup_shut_down COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:53B)
+    add_test(NAME matched_setup_wait_ticks COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:A4B)
+    add_test(NAME matched_vgame_register_display_pages COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:2C4)
+    add_test(NAME matched_vgame_background_span_fill COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:4FE)
+    add_test(NAME matched_vgame_picture_close_far COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C4)
+    add_test(NAME matched_vgame_picture_read_block_far COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:153)
+    add_test(NAME matched_vgame_frame_loop COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:1BCE)
+    add_test(NAME matched_end_read_file_to_far_buffer COMMAND func_lockstep --states 5000
+      --only END.EXE:FA4)
+    add_test(NAME matched_end_read_file_to_near_buffer COMMAND func_lockstep --states 5000
+      --only END.EXE:FDA)
+    add_test(NAME matched_end_allocate_or_quit COMMAND func_lockstep --states 5000
+      --only END.EXE:2BA0)
+    add_test(NAME matched_end_show_debrief_picture COMMAND func_lockstep --states 5000
+      --only END.EXE:370A)
+    add_test(NAME matched_end_dos_open_or_report COMMAND func_lockstep --states 5000
+      --only END.EXE:400F)
+    add_test(NAME matched_end_exit COMMAND func_lockstep --states 5000
+      --only END.EXE:4F8A)
+    add_test(NAME matched_start_hangar_scene COMMAND func_lockstep --states 5000
+      --only START.EXE:311)
+    add_test(NAME matched_start_objective_beacon_drop COMMAND func_lockstep --states 5000
+      --only START.EXE:2760)
+    add_test(NAME matched_start_objective_secret_airstrip COMMAND func_lockstep --states 5000
+      --only START.EXE:277D)
+    add_test(NAME matched_start_objective_coaler_route COMMAND func_lockstep --states 5000
+      --only START.EXE:279A)
+    add_test(NAME matched_start_objective_coaler_unknown_destination COMMAND func_lockstep --states 5000
+      --only START.EXE:27CA)
+    add_test(NAME matched_start_objective_tu95_intercept COMMAND func_lockstep --states 5000
+      --only START.EXE:27E3)
+    add_test(NAME matched_start_objective_fighter_patrol COMMAND func_lockstep --states 5000
+      --only START.EXE:27F7)
+    add_test(NAME matched_start_load_file_far COMMAND func_lockstep --states 5000
+      --only START.EXE:2864)
+    add_test(NAME matched_start_alloc_buffer COMMAND func_lockstep --states 5000
+      --only START.EXE:40A4)
+    add_test(NAME matched_start_install_clock_hook COMMAND func_lockstep --states 5000
+      --only START.EXE:8CA8)
+    add_test(NAME matched_start_long_to_text COMMAND func_lockstep --states 5000
+      --only START.EXE:A458)
+    add_test(NAME matched_start_malloc COMMAND func_lockstep --states 5000
+      --only START.EXE:A768)
+    add_test(NAME matched_mps_logo_write_palette COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:33A)
+    add_test(NAME matched_mps_logo_read_palette COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:38E)
+    add_test(NAME matched_mps_logo_far_alloc COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:BC)
+    add_test(NAME matched_mps_logo_malloc COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1B8B)
+    add_test(NAME matched_player_hook_break_vectors COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:583)
+    add_test(NAME matched_player_malloc COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:23B1)
+    add_test(NAME matched_player_timer_install COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:A)
+    add_test(NAME matched_player_clock_hook_step COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:336)
+    add_test(NAME matched_setup_timer_hook_install COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:FC0)
+    add_test(NAME matched_start_load_file COMMAND func_lockstep --states 5000
+      --only START.EXE:289A)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

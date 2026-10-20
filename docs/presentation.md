@@ -126,7 +126,7 @@ without its dashes (`present = rerun`).
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` (or `0`, `off`) | the captured-call HUD / sky and ground instead of the state-driven ones |
 | `F117_PRESENT_IDENT=1` | the identity-pairing experiment (off by default) |
 | `F117_PRESENT_CLOCK=raw` | `rerun` uses the plain step clock instead of the smoothed playback clock |
-| `F117_PRESENT_CLOCK_ALPHA`, `F117_PRESENT_CLOCK_PULL` | tuning only, each in (0, 1]: weight of a new step duration (default 0.2) and pull towards one step behind the newest (default 0.05) |
+| `F117_PRESENT_CLOCK_ALPHA`, `F117_PRESENT_CLOCK_PULL` | tuning only, each in (0, 1]: weight of a new step duration (default 0.4) and pull towards one step behind the newest (default 0.025) |
 | `F117_PRESENT_THREADS_OFF` (any value) | app: everything on the main thread, for comparison |
 | `F117_PRESENT_SHOTS=PREFIX`, `_FROM`, `_COUNT` | app: writes the pictures it presents as `PREFIX<clock>.ppm` from machine clock `_FROM`, `_COUNT` of them (default 60); the only capture of the threaded live path |
 | `F117_PRESENT_DIAG=DIR` and its `_HIST`, `_RECT`, `_HIST_ONLY`, `_TRACE` | the pixel-origin diagnostic ([below](#where-the-blockiness-comes-from-the-pixel-origin-diagnostic)) |
@@ -859,7 +859,7 @@ freezes the picture at t = 1 and a shorter one skips forward. Simulated over the
 
 **The smoothed playback clock** (`rerun` only; `plan_smooth` in `drawfeed.c`). Three steps are published instead of
 two. A playback position, counted in steps, advances with the machine's clock over a smoothed step duration (each new
-duration weighted 0.2, `F117_PRESENT_CLOCK_ALPHA`), with its rate pulled towards one step behind the newest (0.05 per
+duration weighted 0.4, `F117_PRESENT_CLOCK_ALPHA`), with its rate pulled towards one step behind the newest (0.025 per
 step of error, `F117_PRESENT_CLOCK_PULL`; never below 0.2 of normal speed). It never passes the newest step nor drops
 behind the oldest published one, and names the two consecutive steps it lies between. At startup, if the first usable
 pair starts ahead of that position, playback starts at its older end. Missing copy snapshots use draw-list interpolation
@@ -871,8 +871,7 @@ the plain clock plans. In simulation it gives 2 freezes, 0 skips and 1.6% (p99 4
 scale-2 runs, the plain clock gave 274 freezes, 12 skips and 18.4% >20% speed changes, the smoothed clock 17-21, 23-34
 and 3.3-5.0% (`rerun-mode/app7`). On the gated build, one run each: defaults 6 freezes and 2.5%; alpha 0.4 / pull
 0.025, 3 and 1.3%; alpha 0.4 / pull 0.05, 4 and 1.3%; picture age not measured (`clock-tune`). A private simulation
-sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz. Defaults stay 0.2 / 0.05 until
-the owner decides; skips against picture age remain to tune. The owner played rerun fullscreen at 4K on 15 October and
+sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz. On 19 October the defaults became 0.4 / 0.025 (the owner delegated the decision). Hidden app replays of the two owner flights, two runs per setting (`D:/f117-gate/present-v2/clock-live`, frames whose speed is under 0.1 of the median count as freezes, over twice the median as skips; picture age was not measured): roads flight 0.2 / 0.05 gave 25 and 25 freezes, 15 and 16 skips, 2.4-2.6% >20% speed changes; 0.4 / 0.025 gave 14 and 15, 8 and 5, 1.3-1.9%. Sharp flight: 21 and 22 freezes, 17 and 16 skips, 3.5-4.5% against 17 and 13, 12 and 5, 3.4% and 1.9%. Skips against picture age remain to tune. The owner played rerun fullscreen at 4K on 15 October and
 accepted the motion "at least for now" (apart from the original's own jitter).
 
 ## Consolidate world geometry before more clipping exceptions (15 October 2026)
