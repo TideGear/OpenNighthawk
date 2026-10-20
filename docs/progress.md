@@ -67,8 +67,8 @@ stays on the roadmap.
   classes that are not credited. `data` needs strong evidence: a zero fill of eight bytes or more, a text
   run of eight or more that is at least 80% letters and spaces and that no walk decodes as code (opcodes
   are printable too: `cmp al,'s'` reads as text), or a range a person has read and listed in
-  `docs/census-data.tsv`. `original` is the table `docs/census-original.tsv`: the STI-first timer
-  interrupts, the never-returning C start-up and its copies, the palette loaders with an STI inside their
+  `docs/census-data.tsv`. `original` is the table `docs/census-original.tsv`: the STI-first timer and keyboard
+  interrupts (VGAME 1132:006C keyboard handler, added 19 Oct: STI-first, never returns), the never-returning C start-up and its copies, the palette loaders with an STI inside their
   loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
   byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
   that is only hard, blocked by tooling or not yet proved belongs in the denominator.
@@ -95,7 +95,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch ab): **160,791 / 187,356**, P2 **86.53%**, overall **95.75%** (P3 98.79% after Stage 2 moved and Stage 4 completed).
+  **Current total** (after batch ab): **160,791 / 187,075**, P2 **86.65%**, overall **95.79%** (P3 98.79% after Stage 2 moved and Stage 4 completed).
   Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus

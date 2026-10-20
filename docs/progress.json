@@ -155,14 +155,14 @@
     "partial_functions": 290,
     "classes": {
       "credited": 155388,
-      "ran": 1973,
-      "never_run": 10700,
+      "ran": 1697,
+      "never_run": 10695,
       "unreached": 1030,
       "slots": 842,
       "data": 6906,
-      "original": 2374
+      "original": 2655
     },
-    "creditable_bytes": 169933,
+    "creditable_bytes": 169652,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
       "bytes": 17423,

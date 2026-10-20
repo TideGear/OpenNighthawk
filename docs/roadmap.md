@@ -152,7 +152,7 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 1,120 addresses matched; named code runs 155,388 of the
-      169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
+      169,652 creditable census bytes (179,213 in all, 9,561 of them data or code that stays original; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
@@ -164,7 +164,7 @@ not the recompilation:
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 160,791 /187,356 creditable bytes (P2 86.53%, overall 95.75%);
+      the score measures 160,791 /187,075 creditable bytes (P2 86.65%, overall 95.79%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.

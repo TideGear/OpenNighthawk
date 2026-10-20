@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 86.53%, P3 99.46%, All 95.75%
+- **Scoreboard:** P1 100.00%, P2 86.65%, P3 99.46%, All 95.79%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,120 addresses matched. Scope is the expanded seven-program
-  one: **160,791 / 187,356 creditable bytes** (credit by byte since 16 Oct;
+  one: **160,791 / 187,075 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other

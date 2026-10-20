@@ -18,3 +18,9 @@ VGAME	0x14C20	palette loader (set_dac): STI inside its colour loop
 START	0x08378	palette loader copy: STI inside its colour loop
 END	0x042E4	palette loader copy: STI inside its colour loop
 VGAME	0x0FFFD	line clipper's divide-error handler 04DD: fixture-proven, no route or input reaches it
+VGAME	0x1138C	STI-first keyboard interrupt 1132:006C (chains to the old INT 9 with a patched far jump): entry row
+VGAME	0x113AD	interior of the keyboard interrupt 1132:006C (port read and prefix filter)
+VGAME	0x113E4	interior of the keyboard interrupt 1132:006C (key-down branch)
+VGAME	0x11420	interior of the keyboard interrupt 1132:006C (speed select)
+VGAME	0x11454	interior of the keyboard interrupt 1132:006C (key-up branch and buffer walk)
+VGAME	0x1149A	interior of the keyboard interrupt 1132:006C (chain to the old handler)
