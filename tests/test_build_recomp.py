@@ -21,7 +21,15 @@ import build_recomp as gate  # noqa: E402
 class SessionGroups(unittest.TestCase):
     def test_identical_sessions_share_a_run(self):
         routes = sorted(glob.glob(os.path.join(ROOT, "tools", "routes", "*.args")))
-        groups = gate.session_groups(routes)
+        # Damaged-install routes stage copies even when only their session
+        # keys are read. Keep this ROM-free check independent of a game install.
+        with tempfile.TemporaryDirectory() as install:
+            for name in ("LABSLOGO.SS", "TITLE-1.PAN", "PALETTES.PAL", "ISOUND.LOG", "START.EXE"):
+                with open(os.path.join(install, name), "wb") as f:
+                    f.write(bytes(64))
+            with patch.object(gate.route_damage, "MASTER", install), \
+                    patch.object(gate.route_damage, "CACHE", os.path.join(install, "damaged")):
+                groups = gate.session_groups(routes)
         self.assertEqual(sorted(r for g in groups for r in g), routes, "every route in exactly one group")
         names = [[os.path.basename(r) for r in g] for g in groups if len(g) > 1]
         self.assertIn(["recon_career.args", "recon_return.args"], names)

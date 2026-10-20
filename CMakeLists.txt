@@ -1030,6 +1030,52 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:30)
     add_test(NAME matched_player_finish COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:1F6)
+    add_test(NAME matched_dswap_dos_close COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:647)
+    add_test(NAME matched_dswap_dos_read COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:668)
+    add_test(NAME matched_dswap_read_picture_block_or_report COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:6EA)
+    add_test(NAME matched_dswap_pic_rows_to_page COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:8F4)
+    add_test(NAME matched_dswap_bios_disk_call COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:10F4)
+    add_test(NAME matched_end_empty_routine_00c7 COMMAND func_lockstep --states 5000
+      --only END.EXE:C7)
+    add_test(NAME matched_end_empty_routine_00c8 COMMAND func_lockstep --states 5000
+      --only END.EXE:C8)
+    add_test(NAME matched_end_empty_routine_22ea COMMAND func_lockstep --states 5000
+      --only END.EXE:22EA)
+    add_test(NAME matched_end_empty_routine_47fe COMMAND func_lockstep --states 5000
+      --only END.EXE:47FE)
+    add_test(NAME matched_end_free_block_or_quit COMMAND func_lockstep --states 5000
+      --only END.EXE:2BCB)
+    add_test(NAME matched_end_load_color_registers COMMAND func_lockstep --states 5000
+      --only END.EXE:42BE)
+    add_test(NAME matched_end_set_mouse_cursor COMMAND func_lockstep --states 5000
+      --only END.EXE:451B)
+    add_test(NAME matched_player_format_string_field COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1C12)
+    add_test(NAME matched_player_format_integer COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1D8D)
+    add_test(NAME matched_player_abort COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1F54)
+    add_test(NAME matched_setup_print_dollar_string COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:1509)
+    add_test(NAME matched_start_empty_hook_057b COMMAND func_lockstep --states 5000
+      --only START.EXE:57B)
+    add_test(NAME matched_start_empty_hook_057c COMMAND func_lockstep --states 5000
+      --only START.EXE:57C)
+    add_test(NAME matched_start_empty_hook_885e COMMAND func_lockstep --states 5000
+      --only START.EXE:885E)
+    add_test(NAME matched_vgame_empty_hook_11d8_0155 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:155)
+    add_test(NAME matched_vgame_empty_hook_02c2 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:2C2)
+    add_test(NAME matched_vgame_empty_hook_02c3 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:2C3)
+    add_test(NAME matched_vgame_run_flight COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:1BC2)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -15,8 +15,10 @@ decision, 17 October 2026). `--fix none` restores the original; follow it with
 ordinary parity routes explicitly clear them. Fix-specific checks enable
 their selected fixes. Replays restore the recorded set; old logs without a
 fix header mean the original. This keeps original behavior independently testable.
-`--list-fixes` prints the fifteen available fixes: D1, D1TTL, D1SLOT, D1PROX,
-D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8, D11, D12 and D34.
+`--list-fixes` prints the fifteen normal-play fixes: D1, D1TTL, D1SLOT, D1PROX,
+D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8, D11, D12 and D34, plus the separate
+`QUIZ` option. `--fix QUIZ` restores the aircraft-identification quiz GOG
+disabled; it requires explicit selection and `--fix all` does not enable it.
 
 Most entries were first established by the Reimp, the author's earlier
 private project (see [provenance.md](provenance.md)). They are restated here

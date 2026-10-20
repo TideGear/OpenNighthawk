@@ -77644,7 +77644,891 @@ static int player_finish(machine_t *m)
 #undef XB
 }
 
+/* DSWAP 0x00647, close(handle): the copy of START 0x08123 and END 0x040BD (st4_dos_close) with DSWAP's data. The
+ * handle at BP+4 goes to DOS function 3Eh in a frame that saves DI, SI, ES and BP (twice). With the carry the
+ * message at 03BFh and the code FFFFh are loaded into DX and CX and the routine jumps to 076F, the shared
+ * fatal-error tail (prints, then DOS exit 4Ch): original code, never returns. Without it the registers come back
+ * and the routine returns. */
+static int dswap_dos_close(machine_t *m) { return st4_dos_close(m, 0x0647, 0x03BF, 0x076F); }
+
+/* DSWAP 0x00668, read(handle, count, buffer): the copy of START 0x08144 and END 0x040DE (st4_dos_read). DS is made
+ * equal to SS, then DOS function 3Fh reads CX = the count (BP+6) bytes from the handle (BP+4) into DS:DX = the
+ * buffer (BP+8), in a frame that saves DI, SI, ES and BP (twice). With the carry the message at 03D2h and the
+ * code FFFFh go to DX and CX and the routine jumps to 076F, the shared fatal-error tail (original code, never
+ * returns); otherwise the registers come back and AX is DOS's byte count. DS stays equal to SS. */
+static int dswap_dos_read(machine_t *m) { return st4_dos_read(m, 0x0668, 0x03D2, 0x076F); }
+
+/* DSWAP 06EA: the picture decoder's reader (the hook the row loop 08F4 stores at [2470]; the copy of END 4160 and
+ * START's): one block of the picture file. No arguments. DS is made the program's data segment (0225h) for the call
+ * and the caller's DS is put back on success.
+ *   - DOS function 3Fh reads 200h bytes from the file whose handle is in [03F1] into 0225:0187. The INT 21h is the
+ *     machine's own DOS call.
+ *   - No carry: the old DS comes back and the routine returns with DOS's answer (the byte count) in AX.
+ *   - Carry: the read failed. DX gets the message at 03D2 and CX the code FFFFh, and the routine jumps to 076F. 076F
+ *     is not part of this routine: it is the fatal-error tail shared with the other DOS calls (prints the message at
+ *     DS:DX, and with a code other than -1 the code too, then ends the program with DOS function 4Ch). The old DS
+ *     is not restored on that path. The body hands over to the original code at 076F with the registers set for it.
+ * The row 0707 of the census (4 bytes) is the operand of this routine's JMP at 0706 and its tail up to the RET at 070A. */
+static int dswap_read_picture_block_or_report(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* The cells and buffer the read uses, and where the code holds the data segment (MOV BX at 06ED; 0225h before the
+     * loader relocates it). */
+    enum { DATA_SEGMENT_IMMEDIATE = 0x06EE, FILE_HANDLE_CELL = 0x03F1, BLOCK_SIZE = 0x0200, BLOCK_BUFFER = 0x0187 };
+    /* The failure: the message, the "no code" value, and the shared fatal-error tail. */
+    enum { READ_FAILED_MESSAGE = 0x03D2, NO_CODE = 0xFFFF, FATAL_ERROR_TAIL = 0x076F };
+    enum { DOS_READ = 0x3F };
+    /* A block of n instructions starting at at_: claim the room and charge them. OBI: the block ends in an
+     * INT 21h, which charges itself. */
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OBI(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_) - 1; } while (0)
+    if (!room(c, 8)) return 0;
+    OBI(8, 0x06EA);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, DOS_READ);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], DATA_SEGMENT_IMMEDIATE);   /* the data segment, an immediate the loader relocates */
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = ds_get(c, FILE_HANDLE_CELL);
+    c->r[R_CX] = BLOCK_SIZE;
+    c->r[R_DX] = BLOCK_BUFFER;
+    if (!st4_int21(m, 0x06FC)) return 1;
+    OB(1, 0x06FE);
+    if (x86_cond(c, 3)) goto read_ok;                         /* JAE: no carry */
+    OB(3, 0x0700);
+    c->r[R_DX] = READ_FAILED_MESSAGE;
+    c->r[R_CX] = NO_CODE;
+    c->ip = FATAL_ERROR_TAIL;                                 /* the fatal-error tail is original code */
+    return 1;
+read_ok:
+    OB(2, 0x0709);
+    c->seg[S_DS] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OBI
+}
+
+/* DSWAP 0x008F4, pic_rows_to_page(handle, page): the disk-swap loader's picture row loop (the copy of END 0x04648
+ * and START 0x08782, with DSWAP's own cells). The frame is BP; DI, SI, ES and BP (a second, plain push) are saved.
+ * The decoder's hook cell [2470] is set to 06EAh, the handle (argument at BP+4) goes to [03F1] and the page
+ * (BP+6) to [2468]. 0x0AAA (a bare RET) is called, then SI = the page and two graphics-driver entries
+ * (0225:09F4, 0225:0A03) are called. Then for each of the 200 rows ([246E] counting up from 0 while [2466]
+ * steps from FA00h down by 140h to zero): the driver entry 0225:09FE with DI = the row gives the row's
+ * address, kept in [246A]; 0x0AAB decodes one row of the picture into the line buffer at 2326h; the entry
+ * 0225:09DB gets DI = the address, BP = the line buffer and BX = the row, and 0225:09E5 DI = the address
+ * again. The near callees return with a plain RET, the driver entries with RETF; none takes stack arguments. */
+static int dswap_pic_rows_to_page(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HANDLE = 4, PAGE = 6 };
+#define PRB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PRRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PRNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); PRRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define PRFAR(at_,ret_) do { SM4_NEED(1,(at_)); PRRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 12)) return 0;
+    PRB(12, 0x08F4);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); cpu_push16(c, c->seg[S_ES]); x86_push_reg(c, R_BP);
+    c->r[R_AX] = 0x06EA; ds_put(c, 0x2470, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, HANDLE); ds_put(c, 0x03F1, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, PAGE); ds_put(c, 0x2468, c->r[R_AX]);
+    PRNEAR(0x090D, 0x0AAA, 0x0910);
+    /* The page to the driver. */
+    PRB(1, 0x0910); c->r[R_SI] = ds_get(c, 0x2468);
+    PRFAR(0x0914, 0x0919);
+    PRFAR(0x0919, 0x091E);
+    PRB(2, 0x091E); ds_put(c, 0x246E, 0); ds_put(c, 0x2466, 0xFA00);
+    /* One row: its address, its pixels decoded, then both put through the driver. */
+row:
+    PRB(1, 0x092A); c->r[R_DI] = ds_get(c, 0x246E);
+    PRFAR(0x092E, 0x0933);
+    PRB(1, 0x0933); ds_put(c, 0x246A, c->r[R_AX]);
+    PRNEAR(0x0936, 0x0AAB, 0x0939);
+    PRB(3, 0x0939); c->r[R_DI] = ds_get(c, 0x246A); c->r[R_BP] = 0x2326; c->r[R_BX] = ds_get(c, 0x246E);
+    PRFAR(0x0944, 0x0949);
+    PRB(1, 0x0949); c->r[R_DI] = ds_get(c, 0x246A);
+    PRFAR(0x094D, 0x0952);
+    PRB(3, 0x0952);
+    ds_put(c, 0x246E, (uint16_t)alu_inc(c, ds_get(c, 0x246E), 1));
+    ds_put(c, 0x2466, (uint16_t)alu_op(c, 5, ds_get(c, 0x2466), 0x0140, 1));
+    if (x86_cond(c, 5)) goto row;
+    PRB(7, 0x095E);
+    c->r[R_BP] = cpu_pop16(c); c->seg[S_ES] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PRB
+#undef PRRUN
+#undef PRNEAR
+#undef PRFAR
+}
+
+/* DSWAP 0x010F4, bios_disk(function, record): the disk-swap program's call of the BIOS disk service (INT 13h).
+ * The first argument (BP+4, a byte) is the function (AH); the second (BP+6) points at a parameter record in the
+ * data segment:
+ *   +0 the drive (DL),
+ *   +2 the head (DH), +4 the track word, +6 the sector (merged into CL), +8 the sector count (AL),
+ *   +0Ah the buffer's far pointer (offset into BX, segment into ES).
+ * Only functions from 2 up (read, write, verify, ...) use the fields after the drive; for 0 and 1 (reset,
+ * status) just DL is loaded. The track word's bytes are swapped, rotated right twice and masked to the top two bits
+ * (the cylinder's high bits in CL's 7-6) and the sector is OR-ed in: the BIOS's CX = cylinder low byte in CH,
+ * high bits and sector in CL. INT 13h is the machine's own interrupt (the original BIOS answers); BP is restored
+ * and the routine returns with the registers as the BIOS left them. */
+static int dswap_bios_disk_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FUNCTION = 4, RECORD = 6, INT_AT = 0x111C, MIN_BLOCK_FUNCTION = 2 };
+#define DB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 7)) return 0;
+    DB(7, 0x10F4);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_AH, bp_get8(c, FUNCTION));
+    c->r[R_BX] = bp_get(c, RECORD);
+    set_r8(c, R_DL, ds_get8(c, c->r[R_BX]));
+    alu_op(c, 7, get_r8(c, R_AH), MIN_BLOCK_FUNCTION, 0);
+    if (x86_cond(c, 2)) goto call;                                /* jb: reset and status take the drive only */
+    DB(9, 0x1104);
+    set_r8(c, R_DH, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    {
+        const uint8_t lo = get_r8(c, R_CL), hi = get_r8(c, R_CH);   /* xchg cl, ch */
+        set_r8(c, R_CL, hi);
+        set_r8(c, R_CH, lo);
+    }
+    set_r8(c, R_CL, (uint8_t)x86_shift(c, 1, get_r8(c, R_CL), 1, 0));    /* ror cl, 1 */
+    set_r8(c, R_CL, (uint8_t)x86_shift(c, 1, get_r8(c, R_CL), 1, 0));    /* ror cl, 1 */
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 4, get_r8(c, R_CL), 0xC0, 0));    /* and cl, 0C0h */
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 1, get_r8(c, R_CL), ds_get8(c, (uint16_t)(c->r[R_BX] + 6)), 0));   /* or cl, sector */
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 8)));
+    {
+        const uint16_t off = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A));
+        c->seg[S_ES] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0C));
+        c->r[R_BX] = off;
+    }
+call:
+    if (!support_int(m, INT_AT)) return 1;
+    DB(2, 0x111E);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef DB
+}
+
+/* END 00C7: an empty routine, a bare RET. No arguments, no locals, no result; nothing is read or written.
+ * It exists as a call target the program reaches through a stored pointer or a fixed call, and does nothing
+ * but return to its caller: the return address comes off the stack (one instruction). */
+static int end_empty_routine_00c7(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* END 00C8: an empty routine, a bare RET. No arguments, no locals, no result; nothing is read or written.
+ * It exists as a call target the program reaches through a stored pointer or a fixed call, and does nothing
+ * but return to its caller: the return address comes off the stack (one instruction). */
+static int end_empty_routine_00c8(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* END 22EA: an empty routine, a bare RET. No arguments, no locals, no result; nothing is read or written.
+ * It exists as a call target the program reaches through a stored pointer or a fixed call, and does nothing
+ * but return to its caller: the return address comes off the stack (one instruction). */
+static int end_empty_routine_22ea(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* END 47FE: an empty routine, a bare RET. No arguments, no locals, no result; nothing is read or written.
+ * It exists as a call target the program reaches through a stored pointer or a fixed call, and does nothing
+ * but return to its caller: the return address comes off the stack (one instruction). */
+static int end_empty_routine_47fe(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* END 2BCB: free a block of DOS memory or end the program. Argument (cdecl): the block's segment [bp+4].
+ * No result of its own (AX is whatever the last callee left).
+ *   - 3FCA asks DOS (function 49h) to release the block whose segment is the argument; the word is popped by
+ *     this routine. It answers zero when DOS accepted the release, and nonzero on failure.
+ *   - Zero: nothing more, the routine returns.
+ *   - Nonzero: the message at 075Eh goes through the program's formatted printer (505A, one word popped by
+ *     this routine) and the program is left through 3F44 with the code 0. 3F44 closes the program down and
+ *     ends it; if it did return, this routine would return all the same.
+ * It is the free counterpart of 2BA0 (allocate or quit). Every callee returns with a plain RET. */
+static int end_free_block_or_quit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Arguments (offsets from BP). */
+    enum { ARG_SEGMENT = 4 };
+    /* Callees and constants. */
+    enum { DOS_FREE = 0x3FCA, PRINT_FORMATTED = 0x505A, LEAVE_PROGRAM = 0x3F44 };
+    enum { FREE_FAILED_MESSAGE = 0x075E };
+#define FB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define FRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define FCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); FRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 3)) return 0;
+    FB(3, 0x2BCB);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, ARG_SEGMENT));
+    FCALL(0x2BD1, DOS_FREE, 0x2BD4);
+    FB(3, 0x2BD4);
+    c->r[R_BX] = cpu_pop16(c);
+    (void)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);            /* OR AX,AX: only the flags */
+    if (x86_cond(c, 4)) goto done;                            /* JE: DOS accepted the release */
+    /* DOS refused: print the message and leave the program. */
+    FB(2, 0x2BD9);
+    c->r[R_AX] = FREE_FAILED_MESSAGE;
+    cpu_push16(c, c->r[R_AX]);
+    FCALL(0x2BDD, PRINT_FORMATTED, 0x2BE0);
+    FB(3, 0x2BE0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);       /* SUB AX,AX */
+    cpu_push16(c, c->r[R_AX]);
+    FCALL(0x2BE4, LEAVE_PROGRAM, 0x2BE7);
+    FB(1, 0x2BE7);
+    c->r[R_BX] = cpu_pop16(c);
+done:
+    FB(3, 0x2BE8);
+    frame_close_ret(c);
+    return 1;
+#undef FCALL
+#undef FRUN
+#undef FB
+}
+
+/* END 42BE: load the whole colour table into the VGA colour registers. No arguments, no result.
+ *   - ES is made equal to DS (the table is in the data segment), and BIOS video function 10h sub-function 12h
+ *     ("set a block of colour registers") is made through INT 10h with BX = 0 (the first register),
+ *     CX = 256 (how many) and ES:DX = DS:1F25 (the table of red, green and blue triplets).
+ *   - On return the routine has AX = 1012h, BX = 0, CX = 100h and DX = 1F25h as it left them (the BIOS
+ *     answers nothing); the flags are those of SUB BX,BX at the INT.
+ * The INT is made through the machine's own interrupt, which charges its own instruction. */
+static int end_load_color_registers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { COLOR_TABLE = 0x1F25, COUNT = 0x100, SET_BLOCK = 0x1012, INT_AT = 0x42CD };
+#define CB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 6)) return 0;
+    CB(6, 0x42BE);
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_BX], 1);                     /* SUB BX,BX */
+    c->r[R_CX] = COUNT;
+    c->r[R_DX] = COLOR_TABLE;
+    c->r[R_AX] = SET_BLOCK;
+    if (!support_int(m, INT_AT)) return 1;
+    CB(1, 0x42CF);
+    near_ret(c);
+    return 1;
+#undef CB
+}
+
+/* END 451B: put the mouse cursor at the pointer position. No arguments.
+ *   - AX = 4 (mouse driver function 4, "set the cursor position"), CX = twice the pointer's x from [7214] (the
+ *     driver counts 640 columns for a 320-wide screen) and DX = the pointer's y from [7216]; the mouse
+ *     interrupt 33h is made. The doubling is a SHL by 1, so its flags are the routine's (carry is the x's top
+ *     bit).
+ * This is the redraw that 2049 (store the pointer position) calls when the pointer is shown. The INT is made
+ * through the machine's own interrupt, which charges its own instruction. */
+static int end_set_mouse_cursor(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { POINTER_X = 0x7214, POINTER_Y = 0x7216, MOUSE_SET_POSITION = 4, INT_AT = 0x4528 };
+#define MB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    MB(4, 0x451B);
+    c->r[R_AX] = MOUSE_SET_POSITION;
+    c->r[R_CX] = ds_get(c, POINTER_X);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 4, c->r[R_CX], 1, 1);                           /* SHL CX,1 */
+    c->r[R_DX] = ds_get(c, POINTER_Y);
+    if (!support_int(m, INT_AT)) return 1;
+    MB(1, 0x452A);
+    near_ret(c);
+    return 1;
+#undef MB
+}
+
+/* PLAYER 0x01C12, the formatter's %s conversion (printf's _output, PLAYER 0x01A7E, Borland C
+ * runtime; the same code as START 0x09E9A and 0x09EB3, on PLAYER's addresses). The dispatch
+ * (0x01BB6) jumps here with the conversion character 's'.
+ *  - The argument: the next pointer (0x01E9C: the word at [[bp+8]], the list moved on) comes back
+ *    in ES:DI. A null pointer (DI and ES both 0) prints the text "(null)" at DS:1C73, whose
+ *    length is the word at DS:1C79, instead.
+ *  - The length: with the precision at [BP-0Ch] zero the string is empty; otherwise REPNE
+ *    SCASB for its zero over at most that many bytes (FFFFh when none was given), the zero
+ *    itself not counted. CX = the length, DI = the start, ES kept.
+ *  - The field (the tail 0x01DFD every conversion shares): with flag 40h of [BP-4] (a signed
+ *    conversion) the sign goes to [BP-0Eh], its length 1 to [BP-10h]: '-' when [BP-3] bit 0 (a
+ *    negative value), else '+' with flag 1, else ' ' with flag 2. The padding is the width at
+ *    [BP-0Ah] less the length and the sign's length, 0 when that is negative (signed compare).
+ *    Without flags 4 (left) or 8 (zeros) the padding is spaces before everything (0x01F00, DL
+ *    20h, CX the count); then the sign (0x01EE2 from SS:[BP-0Eh], CX [BP-10h]); with flag 8 and
+ *    not flag 4 the padding is zeros (DL 30h) after the sign; then the string itself (0x01EE2
+ *    from ES:DI, CX its length); with flag 4 the padding is spaces after it. The padding count
+ *    lives in AX across the calls (pushed around the sign and the string), ES:DI and CX on the
+ *    stack around the leading padding and the sign.
+ *  - Then back to the format scan at 0x01A91 (JMP): the next format character. The routine
+ *    ends with the machine there; the scan is the original's code.
+ * The REPNE SCASB's iterations are counted before it runs (it writes nothing), so the routine
+ * stops before it when the turn would cross the run loop's limit. All three callees end with a
+ * plain RET (no arguments on the stack; CX, DL and ES:DI are theirs). */
+static int player_format_string_field(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NEXT = 0x1E9C, PAD = 0x1F00, PUT = 0x1EE2, SCAN = 0x1A91 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XTEST(off_, mask_) alu_logic(c, (uint32_t)bp_get8(c, (off_)) & (mask_), 0)
+#define XSET() (!(c->flags & F_ZF))
+    if (!room(c, 1)) return 0;
+    XCALL(0x1C12, NEXT, 0x1C15);                                  /* the next pointer argument */
+    XB(2, 0x1C15);
+    c->r[R_DI] = (uint16_t)alu_op(c, 1, c->r[R_DI], c->r[R_DI], 1);   /* or di, di */
+    if (x86_cond(c, 5)) goto have_string;                         /* jne: a pointer */
+    XB(3, 0x1C19);
+    c->r[R_AX] = c->seg[S_ES];                                    /* mov ax, es */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);   /* or ax, ax */
+    if (x86_cond(c, 5)) goto have_string;
+    XB(5, 0x1C1F);                                                /* a null pointer: "(null)" */
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = 0x1C73;
+    c->r[R_CX] = ds_get(c, 0x1C79);
+    goto field;
+have_string:
+    XB(3, 0x1C2B);
+    cpu_push16(c, c->r[R_DI]);                                    /* push di: the string's start */
+    c->r[R_CX] = bp_get(c, -0x0C);                                /* the precision */
+    if (c->r[R_CX]) {                                             /* jcxz 1C38: precision 0 */
+        XB(1, 0x1C31);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* xor al, al */
+        {   /* REPNE SCASB: its iterations first, then the scan and the JNE */
+            unsigned k = 0; uint16_t di = c->r[R_DI], cx = c->r[R_CX];
+            const uint16_t step = (c->flags & F_DF) ? 0xFFFFu : 1u;
+            for (;;) {
+                const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+                k++; cx--; di = (uint16_t)(di + step);
+                if (!cx || !b) break;
+            }
+            SM4_NEED(k + 1, 0x1C33);
+            c->icount += rep_string(c, STR_SCAS, 0, 0, 1) + 1;
+        }
+        if (!x86_cond(c, 5)) {                                    /* jne 1C38 not taken: the zero was found */
+            XB(1, 0x1C37);
+            c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);     /* dec di: not counted */
+        }
+    }
+    XB(4, 0x1C38);
+    c->r[R_CX] = cpu_pop16(c);                                    /* pop cx: the start */
+    c->r[R_DI] = (uint16_t)alu_op(c, 5, c->r[R_DI], c->r[R_CX], 1);   /* sub di, cx: the length */
+    { const uint16_t t = c->r[R_DI]; c->r[R_DI] = c->r[R_CX]; c->r[R_CX] = t; }   /* xchg di, cx */
+field:                                                        /* 01DFD: the shared field */
+    XB(2, 0x1DFD);
+    XTEST(-4, 0x40);
+    if (XSET()) {                                                 /* a signed conversion: its sign */
+        XB(2, 0x1E03);
+        XTEST(-3, 0x01);
+        if (XSET()) {
+            XB(3, 0x1E09);
+            bp_put8(c, -0x0E, 0x2D);                              /* '-' */
+            bp_put(c, -0x10, 1);
+        } else {
+            XB(2, 0x1E14);
+            XTEST(-4, 0x01);
+            if (XSET()) {
+                XB(3, 0x1E1A);
+                bp_put8(c, -0x0E, 0x2B);                          /* '+' */
+                bp_put(c, -0x10, 1);
+            } else {
+                XB(2, 0x1E25);
+                XTEST(-4, 0x02);
+                if (XSET()) {
+                    XB(2, 0x1E2B);
+                    bp_put8(c, -0x0E, 0x20);                      /* ' ' */
+                    bp_put(c, -0x10, 1);
+                }
+            }
+        }
+    }
+    XB(4, 0x1E34);
+    c->r[R_AX] = bp_get(c, -0x0A);                                /* the width */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, -0x10), 1);
+    if (!x86_cond(c, 13)) {                                       /* jge 1E40 not taken: no padding */
+        XB(1, 0x1E3E);
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    }
+    XB(5, 0x1E40);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(-4, 0x0C);
+    if (!XSET()) {                                                /* right-justified with spaces */
+        XB(2, 0x1E49);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0x1E4D, PAD, 0x1E50);
+    }
+    XB(5, 0x1E50);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss / pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x0E);                   /* lea di, [bp-0Eh]: the sign */
+    c->r[R_CX] = bp_get(c, -0x10);
+    XCALL(0x1E59, PUT, 0x1E5C);
+    XB(3, 0x1E5C);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x08);
+    if (XSET()) {
+        XB(2, 0x1E63);
+        XTEST(-4, 0x04);
+        if (!XSET()) {                                            /* zeros after the sign */
+            XB(2, 0x1E69);
+            c->r[R_CX] = c->r[R_AX];
+            set_r8(c, R_DL, 0x30);
+            XCALL(0x1E6D, PAD, 0x1E70);
+        }
+    }
+    XB(4, 0x1E70);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XCALL(0x1E74, PUT, 0x1E77);                                   /* the string */
+    XB(3, 0x1E77);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x04);
+    if (XSET()) {                                                 /* left-justified: spaces after */
+        XB(2, 0x1E7E);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0x1E82, PAD, 0x1E85);
+    }
+    XB(1, 0x1E85);
+    c->ip = SCAN;                                                 /* jmp 1A91: the next format character */
+    return 1;
+#undef XSET
+#undef XTEST
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x01D8D, the formatter's integer conversion (an arm of printf's _output, PLAYER
+ * 0x01A7E, Borland C runtime; the same code as START 0x0A015 on PLAYER's addresses). The
+ * dispatch (0x01BB6) has set the conversion's flags, radix and prefix for d, i, u, o, x and X and
+ * ends here; this code runs inside _output's frame and ends with a JMP back to the scan at
+ * 0x01A91. The conversion state is the frame's:
+ *   [bp-4]  flags: 01h '+', 02h ' ', 04h '-' (left-justify), 08h '0' (zero
+ *           pad), 10h a long argument, 40h a signed conversion;
+ *   [bp-3]  01h the value was negative, 02h '#' (a leading 0);
+ *   [bp-6]  the radix (byte); [bp-0Ah] the width; [bp-0Ch] the precision
+ *           (negative: none); [bp-0Eh] the prefix bytes and [bp-10h] their
+ *           count; [bp-15h] the end of the digit buffer.
+ * The argument is the next dword (0x01E90) for a long, else the next word
+ * (0x01E88), sign-extended (CWD) for a signed conversion and zero-extended
+ * otherwise. A negative signed value sets [bp-3] bit 0 and is negated as
+ * a 32-bit pair (NEG AX / ADC DX,0 / NEG DX). No precision means 1 digit;
+ * a precision cancels '0' padding. A zero value has no prefix. The digits
+ * (0x01F1C: DX:AX in base CX, at least SI of them, backwards from ES:DI)
+ * come back at ES:DI with their count in CX; with '#' a '0' is put in front
+ * unless the first digit is one already. A signed conversion's prefix is
+ * '-', '+' or ' ' (count 1) by the flags. The padding, width less digits
+ * less prefix (0 when negative), goes before the prefix as spaces unless
+ * '-' or '0' was given, between prefix and digits as '0's with '0' and
+ * without '-', and after the digits as spaces with '-'. Runs go out through
+ * 0x01F00 (CX copies of DL) and 0x01EE2 (CX bytes at ES:DI), each adding to
+ * the count at [bp-8]. All callees are near and return by a plain RET with
+ * their arguments in registers. */
+static int player_format_integer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAGS = -4, FLAGS_HI = -3, RADIX = -6, WIDTH = -10, PRECISION = -12,
+           PREFIX = -14, PREFIX_LEN = -16, DIGITS_END = -21 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XTEST(d_,mask_) alu_logic(c, (uint32_t)bp_get8(c, (d_)) & (mask_), 0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x1D8D);
+    XTEST(FLAGS, 0x10);
+    if (x86_cond(c, 4)) goto word_arg;
+    XNEAR(0x1D93, 0x1E90, 0x1D96);                                      /* a long: DX:AX */
+    XB(1, 0x1D96);
+    goto sign;
+word_arg:
+    XNEAR(0x1D98, 0x1E88, 0x1D9B);
+    XB(2, 0x1D9B);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto unsigned_word;
+    XB(2, 0x1DA1);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;              /* cwd */
+    goto sign;
+unsigned_word:
+    XB(1, 0x1DA4);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+sign:
+    XB(2, 0x1DA6);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto precision;
+    XB(2, 0x1DAC);
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);
+    if (x86_cond(c, 13)) goto precision;
+    XB(4, 0x1DB0);                                                      /* negative: note it, negate */
+    bp_put8(c, FLAGS_HI, (uint8_t)alu_op(c, 1, bp_get8(c, FLAGS_HI), 0x01, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+precision:
+    XB(2, 0x1DBB);
+    alu_op(c, 7, bp_get(c, PRECISION), 0, 1);
+    if (x86_cond(c, 13)) goto precision_given;
+    XB(2, 0x1DC1);
+    bp_put(c, PRECISION, 1);
+    goto zero_test;
+precision_given:
+    XB(1, 0x1DC8);                                                      /* no '0' padding */
+    bp_put8(c, FLAGS, (uint8_t)alu_op(c, 4, bp_get8(c, FLAGS), 0xF7, 0));
+zero_test:
+    XB(3, 0x1DCC);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_DX], 1);
+    if (x86_cond(c, 5)) goto digits;
+    XB(1, 0x1DD2);                                                      /* zero: no prefix */
+    bp_put(c, PREFIX_LEN, 0);
+digits:
+    XB(6, 0x1DD7);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + DIGITS_END);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_r8(c, R_CL, bp_get8(c, RADIX));
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 6, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    c->r[R_SI] = bp_get(c, PRECISION);
+    XNEAR(0x1DE4, 0x1F1C, 0x1DE7);
+    XB(2, 0x1DE7);
+    XTEST(FLAGS_HI, 0x02);
+    if (x86_cond(c, 4)) goto alternate_done;
+    XB(1, 0x1DED);                                                      /* '#': a leading 0 */
+    if (c->r[R_CX] == 0) goto put_zero;
+    XB(2, 0x1DEF);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])), 0x30, 0);
+    if (x86_cond(c, 4)) goto alternate_done;
+put_zero:
+    XB(3, 0x1DF5);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), 0x30);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+alternate_done:
+    XB(1, 0x1DFB);                                                      /* jmp to the next instruction */
+    XB(2, 0x1DFD);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0x1E03);
+    XTEST(FLAGS_HI, 0x01);
+    if (x86_cond(c, 4)) goto plus;
+    XB(3, 0x1E09);
+    bp_put8(c, PREFIX, 0x2D);                                           /* '-' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+plus:
+    XB(2, 0x1E14);
+    XTEST(FLAGS, 0x01);
+    if (x86_cond(c, 4)) goto space;
+    XB(3, 0x1E1A);
+    bp_put8(c, PREFIX, 0x2B);                                           /* '+' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+space:
+    XB(2, 0x1E25);
+    XTEST(FLAGS, 0x02);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0x1E2B);
+    bp_put8(c, PREFIX, 0x20);                                           /* ' ' */
+    bp_put(c, PREFIX_LEN, 1);
+padding:
+    XB(4, 0x1E34);
+    c->r[R_AX] = bp_get(c, WIDTH);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, PREFIX_LEN), 1);
+    if (x86_cond(c, 13)) goto keep_digits;
+    XB(1, 0x1E3E);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+keep_digits:
+    XB(5, 0x1E40);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(FLAGS, 0x0C);
+    if (x86_cond(c, 5)) goto prefix;
+    XB(2, 0x1E49);                                                      /* right-justified with spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0x1E4D, 0x1F00, 0x1E50);
+prefix:
+    XB(5, 0x1E50);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + PREFIX);
+    c->r[R_CX] = bp_get(c, PREFIX_LEN);
+    XNEAR(0x1E59, 0x1EE2, 0x1E5C);
+    XB(3, 0x1E5C);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x08);
+    if (x86_cond(c, 4)) goto put_digits;
+    XB(2, 0x1E63);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 5)) goto put_digits;
+    XB(2, 0x1E69);                                                      /* zero padding */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x30);
+    XNEAR(0x1E6D, 0x1F00, 0x1E70);
+put_digits:
+    XB(4, 0x1E70);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x1E74, 0x1EE2, 0x1E77);
+    XB(3, 0x1E77);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 4)) goto next;
+    XB(2, 0x1E7E);                                                      /* left-justified: trailing spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0x1E82, 0x1F00, 0x1E85);
+next:
+    XB(1, 0x1E85);                                                      /* jmp to the scan */
+    c->ip = 0x1A91;
+    return 1;
+#undef XTEST
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x01F54, the C library's abort(): the abnormal-termination message, the abort signal,
+ * and a last exit. A near frame without arguments.
+ *   - message 0Ah (the "abnormal program termination" text) is written by 0x01839, which pops
+ *     its one argument (RET 2);
+ *   - the signal SIGABRT (16h = 22) is raised by 0x0223A (plain RET, the argument stays until
+ *     the frame is dropped); a program that has no handler for it is ended there;
+ *   - if it comes back, the program is ended with exit code 3 by 0x01255 (the run-time's exit;
+ *     plain RET, never returns on the real machine) and, if that came back, the frame unwinds
+ *     (MOV SP, BP).
+ * On the real machine the last two calls never return; the lockstep's callees do. */
+static int player_abort(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MESSAGE = 0x1839, RAISE = 0x223A, EXIT = 0x1255, ABNORMAL = 0x000A, SIGABRT = 0x0016, EXIT_CODE = 3 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_, pops_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), (pops_))); } while (0)
+    if (!room(c, 4)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = ABNORMAL;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    XNEAR(0x1F5B, MESSAGE, 0x1F5E, 2);
+    XB(2, 0x1F5E);
+    c->r[R_AX] = SIGABRT;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x1F62, RAISE, 0x1F65, 0);
+    XB(2, 0x1F65);
+    c->r[R_AX] = EXIT_CODE;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x1F69, EXIT, 0x1F6C, 0);
+    XB(3, 0x1F6C);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 1509: print a DOS string. One argument (cdecl): the offset of the string in the data segment [bp+4].
+ * No result of its own; AX is what DOS leaves.
+ *   - AH = 9 (DOS function 9, "write the string at DS:DX up to a dollar sign to the screen"), DX = the offset
+ *     given, and the DOS interrupt 21h is made.
+ * The INT is made as the translated code makes it (the machine's DOS), which charges its own instruction. */
+static int setup_print_dollar_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ARG_STRING = 4, DOS_PRINT_STRING = 9, INT_AT = 0x1511 };
+#define PB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 5)) return 0;
+    PB(4, 0x1509);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_AH, DOS_PRINT_STRING);
+    c->r[R_DX] = bp_get(c, ARG_STRING);
+    if (!st4_int21(m, INT_AT)) return 1;
+    PB(2, 0x1513);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PB
+}
+
+/* START 057B, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int start_empty_hook_057b(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* START 057C, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int start_empty_hook_057c(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* START 885E, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int start_empty_hook_885e(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 11D8:0155, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int vgame_empty_hook_11d8_0155(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 02C2, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int vgame_empty_hook_02c2(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 02C3, a hook that does nothing: the code is a single RET. Whoever calls it
+ * (a near CALL, nothing on the stack but the return address) gets control straight
+ * back with every register, the flags and the stack as they were. One instruction. */
+static int vgame_empty_hook_02c3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1BC2, run the flight: keep the caller's BP, SI, DI and ES on the stack
+ * around the frame loop 1BCE (vgame_frame_loop: controls, displays, present,
+ * update, scene until the end flag [E57E] is set; plain RET, no arguments) and
+ * give them back in reverse order. Nothing else is touched; the registers the
+ * loop leaves in AX, BX, CX, DX and the flags stay as they are. */
+static int vgame_run_flight(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define RRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while(0)
+    if (!room(c, 4)) return 0;
+    RB(4, 0x1BC2);
+    x86_push_reg(c, R_BP);
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    cpu_push16(c, c->seg[S_ES]);
+    SM4_NEED(1, 0x1BC6); RRUN(guest_call_pop(m, 0x1BCE, 0x1BC9, 0));      /* the frame loop */
+    RB(5, 0x1BC9);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef RB
+#undef RRUN
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1BC2, vgame_run_flight, "save the registers around the flight frame loop", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x02C3, vgame_empty_hook_02c3, "empty near hook: return at once", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x02C2, vgame_empty_hook_02c2, "empty near hook: return at once", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11D8, 0x0155, vgame_empty_hook_11d8_0155, "empty near hook: return at once", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x885E, start_empty_hook_885e, "empty near hook: return at once", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x057C, start_empty_hook_057c, "empty near hook: return at once", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x057B, start_empty_hook_057b, "empty near hook: return at once", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1509, setup_print_dollar_string, "print the dollar-terminated string at DS:[argument] with DOS function 9", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F54, player_abort, "abort: report, raise SIGABRT, exit 3", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1D8D, player_format_integer, "the formatter's integer conversion", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1C12, player_format_string_field, "the formatter's string conversion", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x451B, end_set_mouse_cursor, "set the mouse cursor position (INT 33h, function 4) from the pointer cells", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x42BE, end_load_color_registers, "load all 256 VGA colour registers from the table at DS:1F25 (INT 10h, function 1012h)", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2BCB, end_free_block_or_quit, "release a DOS memory block, or print the failure message and end the program", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x47FE, end_empty_routine_47fe, "an empty routine: return to the caller at once", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x22EA, end_empty_routine_22ea, "an empty routine: return to the caller at once", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x00C8, end_empty_routine_00c8, "an empty routine: return to the caller at once", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x00C7, end_empty_routine_00c7, "an empty routine: return to the caller at once", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x10F4, dswap_bios_disk_call, "call the BIOS disk service (INT 13h) for a function and a parameter record", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x08F4, dswap_pic_rows_to_page, "decode SWAP.PIC onto a page row by row", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x06EA, dswap_read_picture_block_or_report, "read one block of the picture file by DOS (3Fh), or hand the failure to the fatal-error screen", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0668, dswap_dos_read, "read bytes by DOS (3Fh), or hand the failure to the fatal-error screen", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0647, dswap_dos_close, "close a handle by DOS (3Eh), or hand the failure to the fatal-error screen", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x01F6, player_finish, "stop the driver, restore the timer and screen, report, exit", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0000, 0x0030, mps_logo_fread_bytes_far, "read count bytes from a stream into a far buffer", 2 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x36D6, end_death_message_box_draw, "set the debriefing text box record and draw the ending message with the text routine, inside the message routine frame", 1 },

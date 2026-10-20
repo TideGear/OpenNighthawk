@@ -100,8 +100,9 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   machine's memory is byte-identical before and after each extra draw; nothing in the copy may reach files, sound or
   devices. Met: [the rerun mode](#the-rerun-mode-in-between-pictures-drawn-by-the-original).
 - **Status:** integrated as `--present rerun` and gated (15 October). Defaults are unchanged; `interp` remains.
-- **Next:** tune the clock's skips against picture age; make the observer, recompiled-code runtime and fix state per
-  machine so copies can run in parallel (needed above 60 Hz); the owner's verdict on a physical display (ask first).
+- **Next:** Stage 3's clock work is closed (19 October; the owner accepted the A/B). Making the observer,
+  recompiled-code runtime and fix state per machine for parallel copies, higher refresh rates and further
+  hardware checks remain Phase 4 possibilities; visible tests still require the owner's approval.
 - **In reserve:** camera reprojection of one step's own draw list. This project's own scene renderer (the
   unconnected `src/present/scene_mesh.c` draft;
   [world geometry](#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)) is no longer the

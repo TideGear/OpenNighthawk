@@ -2,7 +2,7 @@
 """recomp.py - translate the game's machine code to C.
 
     py recompiler/recomp.py --data INSTALL_DIR --out GEN_DIR [--coverage FILE ...]
-                            [--only NAME ...] [--no-heuristics] [--no-comments]
+                            [--only NAME ...] [--no-heuristics] [--no-comments] [--jobs N]
 
 Reads every code file of the user's own DOS installation, finds the code
 (recompiler/discover.py), and writes one C function per region plus the
@@ -20,6 +20,9 @@ build tree or local/, never in the repository.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import contextlib
+import io
 import os
 import re
 import sys
@@ -80,33 +83,35 @@ def disasm_text(ins):
 
 def read_coverage(paths, mods):
     by_key = {(m.name, m.file_hash): m for m in mods}
+    reloc_bytes = {key: m.reloc_bytes() for key, m in by_key.items()}
     seeds = {m.name: [] for m in mods}
     rejected = 0
     for p in paths:
         if not os.path.exists(p):
             print("coverage file %s does not exist" % p)
             continue
-        for line in open(p):
-            parts = line.split()
-            if len(parts) < 4 or parts[0].startswith("#"):
-                continue
-            name, h, seg, ip = parts[0].upper(), int(parts[1], 16), int(parts[2], 16), int(parts[3], 16)
-            raw = bytes.fromhex(parts[4]) if len(parts) > 4 else b""
-            m = by_key.get((name, h))
-            if not m:
-                continue
-            # The bytes executed must be this image's bytes (allowing for
-            # relocation): a packed program's decompressor runs over the
-            # same addresses before the image exists.
-            off = m.off(seg, ip)
-            if off < 0 or off + len(raw) > len(m.image):
-                rejected += 1
-                continue
-            rb = m.reloc_bytes()
-            if any(m.image[off + k] != raw[k] for k in range(len(raw)) if off + k not in rb):
-                rejected += 1
-                continue
-            seeds[name].append((seg, ip))
+        with open(p) as coverage:
+            for line in coverage:
+                parts = line.split()
+                if len(parts) < 4 or parts[0].startswith("#"):
+                    continue
+                name, h, seg, ip = parts[0].upper(), int(parts[1], 16), int(parts[2], 16), int(parts[3], 16)
+                raw = bytes.fromhex(parts[4]) if len(parts) > 4 else b""
+                m = by_key.get((name, h))
+                if not m:
+                    continue
+                # The bytes executed must be this image's bytes (allowing for
+                # relocation): a packed program's decompressor runs over the
+                # same addresses before the image exists.
+                off = m.off(seg, ip)
+                if off < 0 or off + len(raw) > len(m.image):
+                    rejected += 1
+                    continue
+                rb = reloc_bytes[(name, h)]
+                if any(m.image[off + k] != raw[k] for k in range(len(raw)) if off + k not in rb):
+                    rejected += 1
+                    continue
+                seeds[name].append((seg, ip))
     return seeds, rejected
 
 
@@ -258,6 +263,43 @@ def override_sites(paths=OVERRIDE_TABLES):
     return sites
 
 
+def translate_module(task):
+    """Discover and emit one module in its own process; files are module-specific."""
+    mod, coverage, sites, out_dir, comments, heuristics, mutate = task
+    report = io.StringIO()
+    with contextlib.redirect_stdout(report):
+        regions = Discovery(mod).run(coverage=coverage, heuristics=heuristics, isolate=sites)
+        write_module(mod, regions, out_dir, comments, mutate)
+    return sum(len(r.insns) for r in regions), report.getvalue()
+
+
+def translate_modules(mods, coverage, sites, out_dir, comments=True,
+                      heuristics=True, mutate=None, jobs=1):
+    tasks = [(m, coverage.get(m.name, []), sites.get(m.name, ()), out_dir,
+              comments, heuristics, mutate) for m in mods]
+    if jobs < 1:
+        raise ValueError("translation jobs must be positive")
+    if jobs == 1 or len(tasks) < 2:
+        results = list(map(translate_module, tasks))
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=min(jobs, len(tasks))) as pool:
+            results = list(pool.map(translate_module, tasks))
+    for _, report in results:
+        print(report, end="")
+    # Only the parent writes the list, in load_all order, after every worker
+    # succeeds. Completion order must never change registration order.
+    tags = [tag(m.name) for m in mods]
+    with open(os.path.join(out_dir, "gen_modules.c"), "w", newline="\n") as f:
+        f.write("/* GENERATED - the module list. */\n#include \"recomp_gen.h\"\n\n")
+        for t in tags:
+            f.write("extern const rc_module RCM_%s;\n" % t)
+        f.write("\nconst rc_module *const RC_MODULES[] = {\n")
+        for t in tags:
+            f.write("  &RCM_%s,\n" % t)
+        f.write("};\nconst unsigned RC_NMODULES = %d;\n" % len(tags))
+    return sum(count for count, _ in results)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install directory")
@@ -266,8 +308,12 @@ def main():
     ap.add_argument("--only", action="append", default=[], help="translate only these files")
     ap.add_argument("--no-heuristics", action="store_true")
     ap.add_argument("--no-comments", action="store_true")
+    ap.add_argument("--jobs", type=int, default=min(18, os.cpu_count() or 1),
+                    help="module translation processes (default: up to 18; 1 is serial)")
     ap.add_argument("--mutate", help="NAME:IMAGE_OFFSET:KIND (cf, zf, ax) - plant a defect for mutation testing")
     a = ap.parse_args()
+    if a.jobs < 1:
+        ap.error("--jobs must be positive")
     mutate = None
     if a.mutate:
         name, off, kind = a.mutate.split(":")
@@ -293,23 +339,8 @@ def main():
     sites = override_sites()
     if sites:
         print("override sites: " + ", ".join("%s %04X:%04X" % (n, s, i) for n, v in sorted(sites.items()) for s, i in v))
-    total_insns = 0
-    tags = []
-    for m in mods:
-        d = Discovery(m)
-        regions = d.run(coverage=cov.get(m.name, []), heuristics=not a.no_heuristics,
-                        isolate=sites.get(m.name, ()))
-        total_insns += sum(len(r.insns) for r in regions)
-        write_module(m, regions, a.out, not a.no_comments, mutate)
-        tags.append(tag(m.name))
-    with open(os.path.join(a.out, "gen_modules.c"), "w", newline="\n") as f:
-        f.write("/* GENERATED - the module list. */\n#include \"recomp_gen.h\"\n\n")
-        for t in tags:
-            f.write("extern const rc_module RCM_%s;\n" % t)
-        f.write("\nconst rc_module *const RC_MODULES[] = {\n")
-        for t in tags:
-            f.write("  &RCM_%s,\n" % t)
-        f.write("};\nconst unsigned RC_NMODULES = %d;\n" % len(tags))
+    total_insns = translate_modules(mods, cov, sites, a.out, not a.no_comments,
+                                    not a.no_heuristics, mutate, a.jobs)
     print("%d instructions translated in %d modules in %.1f s -> %s" % (
         total_insns, len(mods), time.time() - t0, a.out))
 

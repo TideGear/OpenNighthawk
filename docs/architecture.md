@@ -271,6 +271,13 @@ cover them.
    boundaries, INT hooks that may wait or switch programs, the TF trap after
    POPF and IRET.
 
+Discovery and emission run in separate processes per module (up to eighteen;
+`recomp.py --jobs 1` keeps the serial path). Each worker writes only its own
+module's files; the parent writes the module list in the original load order
+after every worker succeeds. Serial and parallel output are checked byte for
+byte. Coverage validation builds each module's relocation mask once and still
+checks every captured instruction's hash, bounds and unrelocated bytes.
+
 **Operands the loader patches are read at run time.** Relocated words (the
 segment of a far pointer, `mov ax, seg DGROUP`) and the operands of far
 jumps and calls are read from memory when the instruction runs, exactly as
@@ -748,7 +755,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,125 addresses are matched in all seven programs (the census totals are in
+1,148 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries

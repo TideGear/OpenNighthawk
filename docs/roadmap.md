@@ -17,14 +17,14 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,365
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,369
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
 - **Engine parity.** 58 scripted routes (57 sessions) are identical between
   the interpreter and the recompiled code at every 50-million-clock checkpoint
   and at the end; every translated instruction is held to the interpreter from
-  random states (5,718,848 comparisons under each of the two timing profiles,
+  random states (5,719,104 comparisons under each of the two timing profiles,
   0 differences); the interpreter and the translator are held to 8088 and
   80286 silicon vectors; 144 of 144 planted defects are caught; seeded random
   flights are identical. How:
@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (239),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (385),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
@@ -151,10 +151,10 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,125 addresses matched; named code runs 155,991 of the
+      **Now:** 1,148 addresses matched; named code runs 156,688 of the
       166,988 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
-      [progress.md](progress.md#what-is-measured)): 970 census rows
-      wholly, 293 in part. Credit is by byte since 16 October
+      [progress.md](progress.md#what-is-measured)): 1,070 census rows
+      wholly, 286 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
       batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215, batch ab 2,040 and batch ac 290 (batches ad and ae added routes and an option, no routine).
@@ -164,7 +164,7 @@ not the recompilation:
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 161,439 /184,574 creditable bytes (P2 88.09%, overall 96.37%);
+      the score measures 162,136 /184,574 creditable bytes (P2 88.45%, overall 96.47%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -172,11 +172,11 @@ not the recompilation:
       The third resolves the logo mouse-helper range: seven canonical walks cover
       all 230 bytes without entering the overlapping operand decode. Canonical
       VGAME `0FB2:02B4` likewise avoids segment-zero aliases inside operands.
-      Evidence: `D:/f117-gate/census-gap-20261018-tranche3/applied.json`. These and 18,469 validated executed bytes in other modules
+      Evidence: `D:/f117-gate/census-gap-20261018-tranche3/applied.json`. These and 18,584 validated executed bytes in other modules
       remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
       counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
-      records agree with an independent decoder. VGAME `09EFA` is screened: 1,628 instructions / 4,552
-      bytes, no observer or fix at its entry; the private dossier is prepared, implementation/proof still open.
+      records agree with an independent decoder. VGAME `09EFA`'s display pass
+      (1,628 instructions / 4,552 bytes) was matched in batch u.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -215,8 +215,8 @@ not the recompilation:
       nothing the original does not. The line clipper's divide-error handler
       (`0FB2:04DD`) is fixture-proven but **not integrated**: no input reaches
       it (146,153 real clip divisions across 14 routes stay well under its
-      32,767-unit threshold); it is kept on local branch `irq-divide-fault`
-      until a route reaches it. The C start-up routine (START `8EDC` and its
+      32,767-unit threshold); its patch is archived privately after the owner's
+      branch cleanup on 19 October. The C start-up routine (START `8EDC` and its
       six copies) must stop right after its own STI and never returns to its
       caller's stack, so no lockstep state can complete it; it needs a harness
       completion rule first (`D:/f117-gate/p2-start-8edc/BLOCKED.txt`); its
@@ -224,7 +224,8 @@ not the recompilation:
       `1096` and MPS_LOGO `0146:0016`. The far palette loader VGAME `14C2:0000`
       has STI inside its colour loop, like START `8378` and END `42E4`, whose
       matched bodies stop at the first STI.
-      Excluded as unequal: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82.
+      MPS_LOGO 0x1ADC and 0x1C82 remain excluded as unequal; START 0x11DB
+      was corrected and matched in batch x.
 
 ### How an entry is proved
 
@@ -279,6 +280,14 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | ac | 20 Oct | 1,125 | 290 | 5 routines: END `4160` (DOS block read: its first proof hard-coded END's data segment, which the loader relocates, and failed on `landing`; fixed by reading the immediate from the code), END `2430` and `36D6` (the tails of the ribbon and death-message routines, registered beside their existing fragment rows), MPS_LOGO `0030` (`fread` of bytes into a far buffer) and PLAYER `01F6` (`player_finish`). 127 mutations, all caught. Also: `/Os` on `matched.c` (`/O2` took 90+ minutes to compile it from batch ab on), and 3,299 bytes certified dead left the denominator (`docs/census-dead.tsv`) |
 | ad | 20 Oct | 1,125 | 0 (routes) | seven new routes, no new routine: five damaged-install routes (`err_player_assert`, `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`: the original programs' own error handlers run against a private copy of the install with one file removed or damaged, `tools/route_damage.py`) and two compressed-boot flights (`libya_tour_eject`, `korea_release_eject`). 56 routes / 55 sessions identical between the engines. They run about 3,250 more census bytes (128 rows) that no routine covers yet. Gate 2,184 s (the compile took 5 minutes with `/Os`) |
 | ae | 20 Oct | 1,125 | 0 (option) | the START quiz as an option: `--fix QUIZ` (an override at START `001D` that pushes `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`; off by default, `all` and normal play never switch it on) and the routes `quiz_right` / `quiz_wrong` (both verdict arms, `planes2.pic` milestone). The 633 quiz bytes left `docs/census-dead.tsv` and are back in the denominator, so P2 dipped from 88.38% to 88.09%. 58 routes / 57 sessions identical; gate 2,305 s |
+| af | 20 Oct | 1,148 | 697 census credits | 23 routines: DSWAP `0647`, `0668`, `06EA`, `08F4`, `10F4` (close/read, picture block/rows, BIOS disk); END `00C7`, `00C8`, `22EA`, `47FE`, `2BCB`, `42BE`, `451B` (empty hooks, free-or-quit, palette, mouse); PLAYER `1C12`, `1D8D`, `1F54` (string/integer formatting and abort); SETUP `1509` (DOS string); START `057B`, `057C`, `885E` and VGAME `11D8:0155`, `02C2`, `02C3` (empty hooks); VGAME `1BC2` (flight-loop wrapper). 363 fully covered instructions, 550 caught mutations, 115 optimized seed checks; 385 CTests and all 58 routes pass. Gate 1,555 s; acceptance 1,689 s with presentation overlap. Serial/parallel translation is byte-identical; coverage loading 51.23 to 5.20 s. The harness span alias and the ROM-free scheduling test's install dependency are repaired. |
+
+Batch af's raw audit adds 690 distinct instruction bytes against the older
+route inventory; current captures add DSWAP's two epilogue bytes `111E`/`111F`.
+The unchanged census boundaries repeat five of the newly covered positions
+across rows, giving 697 census-byte credits from 692 distinct bytes. The prior
+registry gains no credit when refreshed alone. Exact reconciliation:
+`D:/f117-gate/p2-batch-af-accept/credit-reconciliation.json`.
 
 Notes that still matter:
 

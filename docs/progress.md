@@ -107,8 +107,14 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch ae): **161,439 / 184,574**, P2 **88.09%**, overall **96.37%** (2,666 never-run bytes certified dead left the denominator on 20 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
-  Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
+  **Current total** (after batch af): **162,136 / 184,574**, P2 **88.45%**, overall **96.47%** (2,666 never-run bytes certified dead left the denominator on 20 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  The historical census retains its recorded row boundaries, including overlapping
+  positions: af adds 697 row-byte credits from 692 distinct instruction bytes
+  (five positions occur in two rows). The separate raw-byte audit reports 690
+  against the older route inventory; current captures supply the other two.
+  `p2-batch-af-accept/credit-reconciliation.json` records both measures against
+  the prior registry; the denominator and scoring method are unchanged.
+  Still outside the score: 3,939 static-discovery bytes needing review, and 18,584 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus
   the score measures the expanded seven-program scope, not all game code. `census_classify.py` prints

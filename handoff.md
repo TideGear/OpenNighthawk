@@ -15,14 +15,14 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.09%, P3 100.00%, All 96.37%
+- **Scoreboard:** P1 100.00%, P2 88.45%, P3 100.00%, All 96.47%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,125 addresses matched. Scope is the expanded seven-program
-  one: **161,439 / 184,574 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,148 addresses matched. Scope is the expanded seven-program
+  one: **162,136 / 184,574 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
-  disagreements; never add them blindly) and 18,469 executed bytes in other
+  disagreements; never add them blindly) and 18,584 executed bytes in other
   modules (launcher, resident graphics and sound drivers; they need
   module/segment support). `docs/census-code.tsv` has 37 reviewed static ranges;
   SETUP `1E4F` (142 bytes, opaque mixed range) stays deferred.
@@ -54,6 +54,19 @@ Consolidate it instead of appending to it.
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
   `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583` 350, `06E0` 50, `0703` 43,
   `072E` 88, `0788` 102 bytes) are back in the denominator, not in `docs/census-dead.tsv`; they need proofs (task below).
+- **Batch af (20 Oct, accepted):** 23 saved drafts: five DSWAP, seven END, three PLAYER, SETUP's DOS printer,
+  three START hooks and four VGAME entries (table in `docs/roadmap.md`). 363 fully covered instructions,
+  550 caught mutations, 115 optimized seed checks; 385 CTests, 58 identical routes / 57 fresh interpreter
+  sessions, both timing profiles, all three full matched seeds and event limits pass. Gate 1,555 s, complete
+  acceptance 1,689 s, presentation overlap valid. Evidence `D:/f117-gate/p2-batch-af-accept/`.
+  The raw audit adds 690 distinct bytes against the older route set; current captures add DSWAP `111E`/`111F`,
+  and five overlapping census positions give 697 census credits from 692 distinct bytes. Same prior registry
+  refreshed alone gains zero; `credit-reconciliation.json` records this without changing the scoring method.
+  Translation now uses up to eighteen module processes and one relocation mask per module: whole-install output
+  is byte-identical to the frozen serial generator, with and without coverage; 51.23 to 5.20 s with coverage
+  (`D:/f117-gate/translate-parallel-20261020/verdict.json`). CI's scheduling test now uses a synthetic install.
+  Deferred: PLAYER `0010` (failing baseline; mutation catches invalid), DSWAP `03A7` (unclamped nested calls),
+  MPS_LOGO `0146:15FA` (needs detailed room/caller review). Do not integrate these on mutation counts alone.
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
   5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
@@ -96,8 +109,8 @@ Consolidate it instead of appending to it.
   pair (no startup reversal); normal-width strokes are clipped to the original
   endpoint cells (map-edge specks). 4K60 fullscreen passes unchanged limits
   (p99 16.92 ms, zero intervals over 25 ms).
-- Baselines every presentation change must keep: all 49 N=1 routes 259,741
-  exact frames / 259,661 pairs (259,240 / 259,166 over the original 45); boot N=4/9 736 frames / 732 pairs (two runs);
+- Baselines every presentation change must keep: all 58 N=1 routes 260,480
+  exact frames / 260,396 pairs (259,741 / 259,661 over the earlier 49; 259,240 / 259,166 over the original 45); boot N=4/9 736 frames / 732 pairs (two runs);
   the owner's complete N=9 flight 69 checkpoints / final `31c259b992340414`.
 - Verification scope: `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot
   machines, so they need the full gate plus
@@ -141,24 +154,22 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (88%+ now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (88.45% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
-1. **Batch ae is accepted** (the quiz option and its two routes; gate 2,305 s, 58 routes / 57 sessions, evidence
-   `D:/f117-gate/p2-batch-ae-accept/`) and committed. **Owner instruction (20 Oct): make the safe gate changes in the next batch.**
-   They are: (a) keep the keyed baseline valid so the presentation checks overlap the gate (about 11-20 minutes saved): run matched-routine batches
-   back to back and do not touch `CMakeLists.txt` outside tests, `src/` or the routes between them (`new_batch.py` without `--no-baseline`;
-   batch ae froze a fresh baseline); (b) run nothing heavy during a gate (the build took 145 s alone and 569 s beside proof agents):
-   collect agent reports first, then gate; (c) translate the 18 modules in parallel in `recompiler/` with a check that the generated files are
-   byte-identical to a serial run (an hour of work for 1-3 minutes on each of two steps: do it only with that check); not safe or declined:
-   splitting routes into checkpoint segments, and shortening existing routes (they are the evidence). Splitting `matched.c` into several
-   files would cut its 5-minute compile to about 1 minute but is a large refactor: only if the compile bothers again.
-2. **Prove the 128 newly runnable rows (3,246 bytes, `D:/f117-gate/phase2-final/ran-rows.tsv`).** Five proof agents (letters va DSWAP, vb MPS_LOGO,
-   vc PLAYER, vd END+SETUP, ve VGAME+START) were stopped when the session wrapped; their work is in `D:/f117-gate/p2-{dswap,mpslogo,player,end,setup,vgame,start}-v?-*`
-   (many have mutation runs; each directory needs its body, fixture, seeds and mutations checked as in `kit/BRIEF.md`). Re-launch them with
-   `kit/AGENT_PROMPT.txt` plus `D:/f117-gate/ac_brief_extra.txt` (six lessons; their agent ids do not survive a session), CPU masks 0x0000F000, 0x000F0000,
-   0x00F00000, 0x0F000000, 0xF0000000 (one each, no other). Then per routine: `finish_all.py DIR:ROUTE` (shortest route from the reports; the damaged-install
-   and `libya`/`korea` routes are in `tools/routes/`), `integrate_many.py`, a local build and `ctest -R` of the new tests (build with
-   `build.cmd` in PowerShell, not bare cmake), `new_batch.py af ae <HEAD> [--no-baseline] DIR...`, the audit loop for `partial` flags, the gate, the score.
+1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
+   no proof worker or unrelated heavy job runs during a gate; af's baseline is keyed for all 58 routes / 57 sessions.
+   Keep it valid by running matched batches back to back without changing `CMakeLists.txt` outside tests, non-matched `src/`, or routes.
+   `new_batch.py ag af <HEAD> DIR...` can reuse it. The wrapper stores each alias route's own key (milestones can differ within one session),
+   validates grouping and all fresh results, and overlaps presentation even when the gate validates its unchanged coverage record.
+   Do not split or shorten routes, drop cache verification, or change the default eight overlap workers. Splitting `matched.c` stays an
+   optional large refactor only if compilation becomes a problem again.
+2. **Continue the newly runnable rows** (original lead list: 128 rows / 3,246 bytes, `D:/f117-gate/phase2-final/ran-rows.tsv`; af's 23 entries are done).
+   Saved drafts are in `D:/f117-gate/p2-{dswap,mpslogo,player,end,setup,vgame,start}-v?-*`. Review every body, fixture, seed log and mutation
+   against `kit/BRIEF.md` and `D:/f117-gate/ac_brief_extra.txt`; many remaining drafts have failed or stale evidence. The kit now refuses
+   mutations/verdicts without five current passing seed logs and current mutation results, and refuses automatic integration where SPANS
+   would alias another segment. Original group masks were 0x0000F000, 0x000F0000, 0x00F00000, 0x0F000000, 0xF0000000; use at most two or
+   three compilers in all. Complete private proofs before the gate. Then `finish_all.py DIR:ROUTE` (cap its six-worker default to two or three
+   when it compiles), `integrate_many.py`, local build and new CTests, the `partial`-claim audit, full acceptance, score, docs and commit/push.
    A sixth task: the START quiz rows (`0583` 350, `06E0` 50, `0703` 43, `072E` 88, `0788` 102) on `quiz_right`/`quiz_wrong` (coverage in `route-cover-20261020/quiz_*.cov`).
 3. **What is left after that (5,305 never-run bytes, `D:/f117-gate/phase2-final/classify-after-routes.txt`):** error paths no file damage can reach
    (out of memory, DOS write errors, other open errors, the `_C_FILE_INFO` environment arm: about 2,500 bytes; the agent's list is in
@@ -202,7 +213,7 @@ Goal in force: finish Phase 2 (88%+ now; see Current state). Everything below is
 `kit/BRIEF.md` and `kit/AGENT_PROMPT.txt` are the agent brief with every trap
 found so far. Agents do steps 1-7 only, in their own `p2-*` directory, every
 command through `kit/pin.py MASK` (CPU set + BelowNormal) with
-`mutations --jobs 2`; while a gate runs they use CPUs outside its affinity.
+`mutations --jobs 2`. Finish proof workers before starting a gate; run no unrelated heavy job beside it.
 Then:
 
 1. Verify each `private-verdict.json` yourself (counts, mutations, source

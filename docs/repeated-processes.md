@@ -86,6 +86,11 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Practical traps
 
+- ROM-free tests that group the real route catalogue must provide a synthetic
+  install: reading damaged-install route arguments stages their private copy.
+  `tests/test_build_recomp.py` now supplies one; all twelve checks pass with
+  `F117_DATA` pointing at a missing install. This repairs the previous CI
+  failure without changing route grouping or its assertions.
 - **`matched.c` must compile with `/Os`.** From batch ab on, MSVC's `/O2` (which includes `/Ot`) took 90+ minutes
   to compile `src/matched/matched.c` (the first batch-ab gate took 108 minutes; later gates only looked fast because the
   object was reused). The slow functions are the big pre-existing VGAME routines (`vgame_draw_model_in_view`,
@@ -148,9 +153,14 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (20 October 2026, batch ad):** 362 CTests; 58 routes identical, run
-as 57 sessions; 5,719,104 instruction states under each timing profile; 1,125
-matched routines at three seeds; reachability and event limits clean. The 17 October default-fixes
+**Current figures (20 October 2026, batch af):** 385 CTests; 58 routes identical, run
+as 57 sessions; 5,719,104 instruction states under each timing profile; 1,148
+matched routines at three seeds; reachability and event limits clean. Batch af's
+gate took 1,554.92 s, complete acceptance 1,688.59 s: all 57 interpreter sessions
+fresh, 58 N=1 presentation routes exact (260,480 frames / 260,396 pairs), boot
+N=4/9 exact (736 frames / 732 pairs), 115 optimized seed checks and 550 caught
+mutations. The first full attempt's span-alias failure is retained separately;
+the corrected complete gate was rerun. The 17 October default-fixes
 full gate took 1,557.30 s, with every interpreter session verified fresh (0 reused,
 44 run), coverage refreshed and no new translated code. Correctness-only app and
 clock probes shared spare CPUs; this is not a controlled scheduling comparison.
@@ -173,6 +183,28 @@ Typical gates take about 1,300-2,000 s; the longest career seed chain sets the r
 Before these changes (6 Oct) a gate took 30-38 minutes; the first round
 alone cut the same code's gate from 1,895 s to 1,365 s with every route's
 clock, hash and verdict and both lockstep tallies identical.
+
+**Translation preparation (20 October).** Discovery and emission now use one
+process per module, up to eighteen (`recomp.py --jobs 1` is serial), with the
+module list and console reports kept in load order. The larger saving came
+from building each module's relocation mask once during coverage loading,
+instead of rebuilding it for every captured instruction. The unchanged serial
+generator and the new parallel generator produced identical sets of 58 files,
+byte for byte, both without coverage and with the current coverage corpus:
+51.23 s became 5.20 s with coverage; without it, 2.05 s and 1.99 s. These were
+sequential runs on four assigned CPUs, beside private proof work, so they
+establish output equality and an observed saving, not a controlled gate timing.
+Evidence: `D:/f117-gate/translate-parallel-20261020/verdict.json`. Windows CI
+also compares actual spawned workers with serial translation on synthetic
+modules, including relocation, coverage, isolation and mutations, and requires
+a worker failure to propagate before a module list is published.
+
+For private proofs of routes shorter than 50 million clocks, the kit adds a
+fresh interpreter reference at one-million-clock intervals. Its final state
+must still match the keyed route result and its milestones must pass; the
+candidate must then match every finer checkpoint and that final state, with
+positive routine calls and no event overrun. This adds checkpoints to short
+proofs; the ordinary gate retains its existing routes and intervals.
 
 **Overlap worker count (15 Oct).** The latest batch tried 16 interpreter
 workers beside coverage: every one of the 44 sessions still ran fresh, all
@@ -214,6 +246,21 @@ N=1 started at +1,087.12 s. These are observed
 concurrent timings, not a controlled speed comparison against batch e. Sequential
 checking remains the fallback if no valid keyed baseline is available. No change
 to the gate's default worker count or fresh interpreter verification.
+
+The wrapper also stores each route's own key within a shared session (20
+October). `recon_career` and `recon_return` run the same inputs but carry
+different milestone comments, so their route keys differ. Comparing both to
+the lead route's key rejected a freshly frozen baseline. The wrapper now
+validates every route's key and the exact session grouping, while retaining
+the lead's cached state, all routes' milestone checks, fresh interpreter
+comparisons and frozen-file checks. Eight guard checks include changed alias
+milestones, wrong lead/alias keys, changed grouping, expired references and
+changed files or interpreter inputs; evidence:
+`D:/f117-gate/p2-batch-af-accept/baseline-key-guards.json`.
+When the gate itself validates and reuses its unchanged coverage record,
+presentation starts after the unit tests instead of waiting for a coverage
+completion line that will not be printed. The final frozen-runner and fresh
+interpreter comparisons still apply.
 
 **What sets the wall time.** `parallel()` prints each stage's wall time,
 work, lower bound (the larger of the longest job and work / workers) and its
@@ -457,8 +504,9 @@ Evidence: `D:/f117-gate/present-v2/band-finish`,
 **Process.** Proofs run in parallel agents, each in its own
 `D:/f117-gate/p2-*` directory, with `D:/f117-gate/kit/kit.py` (init, build,
 lock, seeds, mutations, checkpoints, verdict, integrate; method and traps in
-`D:/f117-gate/kit/BRIEF.md`), while one main-tree gate runs. Verify every
-verdict yourself, then land a batch with one gate.
+`D:/f117-gate/kit/BRIEF.md`). Finish the proof workers and verify every
+verdict before starting the batch's gate; run no other heavy job during it
+(owner, 20 October).
 
 | Step | Cost | Note |
 |---|---|---|
@@ -548,7 +596,23 @@ until every instruction is reached, swap in the named body, run the room-claim
 audit, the mutations, the real route, then the gate. If the first lockstep
 run is already equal, run the mutations before trusting it.
 
+Mutation catches require a passing unmodified baseline. The kit now refuses
+mutations or a verdict unless all five current seed logs show positive
+comparisons, zero skipped states for the selected entry, full instruction
+coverage and zero mismatches. Logs and mutation results must postdate their
+proof inputs. PLAYER `0010` exposed this: its baseline skipped almost every
+state, so its apparent mutation catches were invalid and it was rejected.
+The guard passes all 23 batch-af proofs; ten focused checks cover seed evidence
+and span aliases. Integration now refuses an automatic span for an IP already
+registered in another segment, requiring explicit handling and comparison of both;
+`D:/f117-gate/translate-parallel-20261020/seed-guards-verdict.json`.
+
 **Traps that still apply.**
+- `SPANS` is keyed by module and IP, without a segment. A one-byte span for
+  VGAME `11D8:0155` also shrank `1377:0155` and made it appear untestable;
+  removing the redundant span restored 4,992 comparisons for the older entry
+  while retaining all 5,000 for the new RET. Check every segment sharing an
+  IP after adding a span (`p2-batch-af-accept/segment-alias-verdict.json`).
 - Escaped calls pass vacuously: a callee ending in `RET 8` called as a plain
   near call let the original finish every state. The harness fails such an
   escape where the original returned from the call's stack depth (up to 16
