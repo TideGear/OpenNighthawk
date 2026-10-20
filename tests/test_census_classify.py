@@ -46,8 +46,8 @@ ROWS = [("T", 0x00, 4), ("T", 0x10, 8), ("T", 0x20, 8), ("T", 0x30, 26), ("T", 0
         ("T", 0x78, 16), ("T", 0x90, 8), ("T", 0xA0, 4), ("T", 0xB0, 6)]
 
 
-def run(covered=None, ran=None, original=(), reviewed=None):
-    return cc.classify(ROWS, covered or {}, ran or {}, {"T": MODULE}, set(original), reviewed or {})
+def run(covered=None, ran=None, original=(), reviewed=None, dead=()):
+    return cc.classify(ROWS, covered or {}, ran or {}, {"T": MODULE}, set(original), reviewed or {}, dead=set(dead))
 
 
 class ClassTests(unittest.TestCase):
@@ -95,6 +95,14 @@ class ClassTests(unittest.TestCase):
         _, per = run(covered={"T": {0xA0}}, original={("T", 0xA0)})
         self.assertEqual(per[8]["credited"], 1)
         self.assertEqual(per[8]["original"], 3)
+
+    def test_dead_code_leaves_only_its_never_run_bytes(self):
+        _, per = run(dead={("T", 0x00)})
+        self.assertEqual((per[0]["dead"], per[0]["never_run"]), (4, 0))
+        _, per = run(covered={"T": {0x00}}, ran={"T": {0x01}}, dead={("T", 0x00)})
+        self.assertEqual((per[0]["credited"], per[0]["ran"], per[0]["dead"]), (1, 1, 2))   # run and covered bytes stay
+        _, per = run()
+        self.assertEqual((per[0]["dead"], per[0]["never_run"]), (0, 4))                    # unlisted: stays in the denominator
 
     def test_a_reviewed_range_is_data_but_not_over_a_run_byte(self):
         reviewed = {"T": set(range(0xB0, 0xB6))}

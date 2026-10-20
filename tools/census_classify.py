@@ -26,17 +26,20 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
   original      inside a row of docs/census-original.tsv: code that stays original by design (the STI-first
                 timer interrupts, the never-returning C start-up, the palette loaders that run an STI
                 inside their loop, the divide-error handler no route reaches)
+  dead          never-run code of a row of docs/census-dead.tsv: certified unreachable in the shipped game (no
+                direct, pointer or computed reference, not an installed vector, every caller dead or a guarded
+                arm whose guard cannot hold). Error paths are never listed; each row has a certificate
 
-The historical census share is credited / (bytes - data - original). Phase 2 also includes the separately
+The historical census share is credited / (bytes - data - original - dead). Phase 2 also includes the separately
 reported supplement of executed instructions outside these rows in the same seven programs; add its named
 bytes to the numerator and all its bytes to the denominator. Reviewed static code from docs/census-code.tsv
 also adds workload; unreviewed discoveries and other modules remain a scope backlog.
-`data` and `original` leave only uncredited bytes; a body that
+`data`, `original` and `dead` leave only uncredited bytes; a body that
 does run some of those bytes keeps its credit. Linear census addresses are the image offsets of the loaded
 programs, which is how the rest of the tooling reads them.
 
 The rule that protects the score: when in doubt a byte stays in the denominator. Only `data` (strong evidence
-above) and `original` (a table a person maintains) leave it, and a byte that a matched body does run is
+above), `original` and `dead` (tables a person maintains, `dead` with a certificate per row) leave it, and a byte that a matched body does run is
 credited whatever it was judged to be. docs/census-data.tsv records every data range a person read.
 """
 import argparse
@@ -53,9 +56,10 @@ sys.path.insert(0, os.path.join(ROOT, "recompiler"))
 import progress  # noqa: E402
 
 ORIGINAL = os.path.join(ROOT, "docs", "census-original.tsv")
+DEAD = os.path.join(ROOT, "docs", "census-dead.tsv")
 DATA_TABLE = os.path.join(ROOT, "docs", "census-data.tsv")
 CODE_TABLE = os.path.join(ROOT, "docs", "census-code.tsv")
-CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original")
+CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original", "dead")
 SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run time patches
 
 
@@ -67,6 +71,11 @@ def read_original(path=ORIGINAL):
                 a = line.split("\t")
                 rows.add((a[0].upper().replace(".EXE", ""), int(a[1], 16)))
     return rows
+
+
+def read_dead(path=DEAD):
+    """Rows (module, linear) whose never-run code is certified unreachable in the shipped game (docs/census-dead.tsv)."""
+    return read_original(path)
 
 
 def read_data_table(path=DATA_TABLE):
@@ -253,7 +262,7 @@ def filler_bytes(image):
     return zero, text
 
 
-def classify(rows, covered, ran, mods, original, reviewed=None):
+def classify(rows, covered, ran, mods, original, reviewed=None, dead=()):
     """rows: [(module, linear, size)]. Returns (totals, per_row) with per_row[i] = Counter of class -> bytes."""
     code = code_bytes(rows, mods, ran)
     filler = {m: filler_bytes(mods[m].image) for m in mods}
@@ -275,6 +284,8 @@ def classify(rows, covered, ran, mods, original, reviewed=None):
                 kind = "data"
             elif b in slot:
                 kind = "slots"
+            elif b in cd and (module, linear) in dead:
+                kind = "dead"
             elif b in cd:
                 kind = "never_run"
             else:
@@ -327,7 +338,7 @@ def run(census, cover_dir, route_dir, data_dir, scope=None):
     covered = progress.named_bytes(cover_dir, data_dir, route_dir)
     audit = {}
     ran = route_instructions(route_dir, mods, audit)
-    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table())
+    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead())
     if scope is not None:
         scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods)))
         scope["route_records"] = audit
@@ -347,7 +358,7 @@ def main():
     total = sum(totals.values())
     for k in CLASSES:
         print("%-9s %7d  %5.2f%%" % (k, totals[k], 100.0 * totals[k] / total))
-    creditable = total - totals["data"] - totals["original"]
+    creditable = total - totals["data"] - totals["original"] - totals["dead"]
     print("old census creditable denominator %d; named-byte share %.2f%% (whole census %.2f%%)"
           % (creditable, 100.0 * totals["credited"] / creditable, 100.0 * totals["credited"] / total))
     print("supplement outside census: %d bytes, %d credited; expanded seven-program share %.2f%%"
@@ -360,7 +371,7 @@ def main():
     if a.rows:
         left = sorted(((r["ran"] + r["never_run"], row, r) for row, r in zip(rows, per_row)), key=lambda x: -x[0])
         for n, (module, linear, size), r in left[:a.rows]:
-            print("%-9s 0x%05X %5d  ran %4d  never_run %4d  unreached %4d  slots %4d  data %4d  original %4d" %
+            print("%-9s 0x%05X %5d  ran %4d  never_run %4d  unreached %4d  slots %4d  data %4d  original %4d  dead %4d" %
                   (module, linear, size, r["ran"], r["never_run"], r["unreached"], r["slots"], r["data"], r["original"]))
 
 

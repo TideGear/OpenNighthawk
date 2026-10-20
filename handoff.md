@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 86.65%, P3 100.00%, All 95.93%
+- **Scoreboard:** P1 100.00%, P2 88.12%, P3 100.00%, All 96.37%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,120 addresses matched. Scope is the expanded seven-program
-  one: **160,791 / 187,075 creditable bytes** (credit by byte since 16 Oct;
+  one: **160,791 / 183,776 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -78,7 +78,9 @@ Consolidate it instead of appending to it.
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
-  Owner decision pending: whether dead (and error/setup) code leaves the denominator.
+  Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 72 rows /
+  3,299 bytes (P2 88.12%); error paths stay in and are run on damaged-install routes (below); the START quiz is
+  dead in the GOG copy only (the owner may veto it).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
   Stage 3 is closed at 1.0 (19 Oct): clock default 0.4 / 0.025 adopted, slower machines measured, the owner's A/B looked the same.

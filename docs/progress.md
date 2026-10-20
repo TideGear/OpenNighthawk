@@ -72,6 +72,17 @@ stays on the roadmap.
   loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
   byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
   that is only hard, blocked by tooling or not yet proved belongs in the denominator.
+  **`dead` (owner rule, 19 October: only code we are certain we do not need):** `docs/census-dead.tsv` lists 72 rows
+  (3,299 never-run bytes) certified unreachable in the shipped game, each with a certificate
+  (`D:/f117-gate/phase2-final/dead-cert/certificates.tsv`, criteria c1-c7: no direct reference in any program image,
+  no pointer or computed reference, not an installed vector, every caller dead or a guarded arm whose guard cannot
+  hold, no satisfiable path from route-executed code). By kind: unreferenced library and picture functions 1,634
+  bytes, `printf` arms for conversions no format string uses (every format in the shipped programs is `%s` or `%d`)
+  902, the copy-protection quiz in START 633 (**dead in the shipped GOG START.EXE only: GOG patched the call to
+  `90 90 90`**), constant-argument arms 44, guarded signature hooks 40, exit epilogues after a call that never
+  returns 18, alternate library entries 12, padding 8, empty `_initterm` tables 8. Error paths (missing files,
+  memory, usage, assert and fatal messages) are never listed: they stay in the denominator and are run on real
+  routes instead (damaged-install routes). Only the never-run bytes leave: a byte a route ran or a body covers stays credited.
   **Executed code outside the census is included** (17 October 2026). The old census rows and
   their figures stay available for comparison. A separate `census.supplemental` count adds each byte
   outside them once when an interpreter route or a matched body's proof executes its instruction,
@@ -95,7 +106,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch ab): **160,791 / 187,075**, P2 **86.65%**, overall **95.79%** (P3 98.79% after Stage 2 moved and Stage 4 completed).
+  **Current total** (after batch ab): **160,791 / 183,776**, P2 **88.12%**, overall **96.37%** (3,299 never-run bytes certified dead left the denominator on 20 Oct: `docs/census-dead.tsv`) (P3 100.00% since the Stage 3 close).
   Still outside the score: 3,939 static-discovery bytes needing review, and 18,469 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus
