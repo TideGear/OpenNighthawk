@@ -15,6 +15,7 @@ import unittest
 
 REPAIRS = {"D1", "D1TTL", "D1SLOT", "D1ACCEL", "D2", "D3", "D4", "D5", "D6", "D8", "D11", "D12", "D34"}
 OPTIONS = {"D1REAL", "D1PROX"}
+QUIZ = {"QUIZ"}          # START's copy-protection quiz: an option that no switch but its own name turns on
 APP = RUNNER = None
 
 
@@ -24,8 +25,8 @@ def enabled(exe, args, app=False):
     result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=15)
     if result.returncode:
         raise AssertionError("%s: %s" % (command, result.stdout + result.stderr))
-    rows = dict(re.findall(r"^(D\w+)\s+(on|off)\s", result.stdout, re.M))
-    if set(rows) != REPAIRS | OPTIONS:
+    rows = dict(re.findall(r"^([DQ]\w+)\s+(on|off)\s", result.stdout, re.M))
+    if set(rows) != REPAIRS | OPTIONS | QUIZ:
         raise AssertionError("missing or unexpected fix rows: %s" % result.stdout)
     return {name for name, state in rows.items() if state == "on"}
 
@@ -71,6 +72,13 @@ class DefaultsTests(unittest.TestCase):
 
     def test_optional_timing_and_balance_changes_can_be_enabled(self):
         self.assertEqual(enabled(APP, ["--fix", "all"], app=True), REPAIRS | OPTIONS)
+
+    def test_the_quiz_option_is_off_unless_named(self):
+        self.assertNotIn("QUIZ", enabled(APP, [], app=True))                    # normal play
+        self.assertNotIn("QUIZ", enabled(APP, ["--fix", "all"], app=True))      # `all` is the repairs and options, not the quiz
+        self.assertEqual(enabled(APP, ["--fix", "none", "--fix", "QUIZ"], app=True), {"QUIZ"})
+        self.assertEqual(enabled(RUNNER, ["--fix", "QUIZ"]), {"QUIZ"})
+        self.assertEqual(enabled(APP, ["--fix", "QUIZ", "--fix", "all"], app=True), REPAIRS | OPTIONS | {"QUIZ"})
 
     def test_original_mode_and_custom_subset_override_normal_defaults(self):
         self.assertEqual(enabled(APP, ["--fix", "none"], app=True), set())

@@ -667,6 +667,12 @@ Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
 protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail
 has `E8 E3 06` (call `0x0703`). This recompilation translates whichever
 START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
+The option **`--fix QUIZ`** restores it on GOG's copy (an override at START `0x001D`
+pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail `call` does).
+It is an option, not a repair: **off by default, and `--fix all` and normal play never
+switch it on**; it is named explicitly, and `--fix none` clears it. The routes
+`quiz_right` and `quiz_wrong` run it (docs/progress.md: the quiz code is in the
+Phase 2 denominator, not in `docs/census-dead.tsv`).
 
 ## R1. Open questions from this project
 

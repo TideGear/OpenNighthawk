@@ -148,8 +148,8 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (20 October 2026, batch ad):** 362 CTests; 56 routes identical, run
-as 55 sessions; 5,719,104 instruction states under each timing profile; 1,125
+**Current figures (20 October 2026, batch ad):** 362 CTests; 58 routes identical, run
+as 57 sessions; 5,719,104 instruction states under each timing profile; 1,125
 matched routines at three seeds; reachability and event limits clean. The 17 October default-fixes
 full gate took 1,557.30 s, with every interpreter session verified fresh (0 reused,
 44 run), coverage refreshed and no new translated code. Correctness-only app and

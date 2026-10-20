@@ -21,7 +21,7 @@ make (Phase 4).
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
-- **Engine parity.** 56 scripted routes (55 sessions) are identical between
+- **Engine parity.** 58 scripted routes (57 sessions) are identical between
   the interpreter and the recompiled code at every 50-million-clock checkpoint
   and at the end; every translated instruction is held to the interpreter from
   random states (5,718,848 comparisons under each of the two timing profiles,
@@ -152,19 +152,19 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 1,125 addresses matched; named code runs 155,991 of the
-      166,355 creditable census bytes (179,213 in all, 12,860 of them data, code that stays original or certified-dead code; see
+      166,988 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215, batch ab 2,040 and batch ac 290.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215, batch ab 2,040 and batch ac 290 (batches ad and ae added routes and an option, no routine).
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 161,439 /183,934 creditable bytes (P2 88.38%, overall 96.45%);
+      the score measures 161,439 /184,574 creditable bytes (P2 88.09%, overall 96.37%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -200,7 +200,7 @@ not the recompilation:
       reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
       **What the never-run code is (19 Oct 2026, a static reading of all 334 rows / 12,972 bytes; evidence
       `D:/f117-gate/neverrun-research/`, rows in `table.tsv`, mostly medium confidence):** dead code with no path in
-      the shipped files 5,201 bytes (the START quiz, which GOG's file patches out at START `0x1D`, 633; printf
+      the shipped files 5,201 bytes (the START quiz, which GOG's file patches out at START `0x1D`, 633, restored since 20 Oct by the option `--fix QUIZ` so no longer dead; printf
       conversions no format string uses, about 736; `_flsbuf` 689 and `_write` 679; about 1,200 bytes of unused END
       graphics/UI functions; unused MPS_LOGO and PLAYER helpers); error and fatal paths 3,657 (C runtime exits,
       allocation and file errors, command-line misuse, banners); paths a player can reach with normal input 2,321
@@ -278,6 +278,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | ab | 19 Oct | 1,120 | 2,040 | 37 small routines on existing routes, found by four module-group proof agents: SETUP (cursor, shut-down, tick wait, timer-hook install), VGAME (display-page registration, background span fill, picture close/read, frame loop), END (file reads, allocate-or-quit, debrief picture, DOS open, exit), START (hangar scene, the six objective-sentence arms, file loads, buffer allocation, clock hook, long-to-text, malloc), MPS_LOGO and PLAYER (palette write/read, allocators, break-vector hook, timer install, clock-hook step). Also the playback-clock default 0.4 / 0.025. Dropped: END `4160` (diverged on a real route), `23D6` and `3682` (they replace existing fragment rows), VGAME `0010`, `12A11`, END `03D9`, `57B0`, MPS_LOGO `067C`. 1,029 mutations, all caught |
 | ac | 20 Oct | 1,125 | 290 | 5 routines: END `4160` (DOS block read: its first proof hard-coded END's data segment, which the loader relocates, and failed on `landing`; fixed by reading the immediate from the code), END `2430` and `36D6` (the tails of the ribbon and death-message routines, registered beside their existing fragment rows), MPS_LOGO `0030` (`fread` of bytes into a far buffer) and PLAYER `01F6` (`player_finish`). 127 mutations, all caught. Also: `/Os` on `matched.c` (`/O2` took 90+ minutes to compile it from batch ab on), and 3,299 bytes certified dead left the denominator (`docs/census-dead.tsv`) |
 | ad | 20 Oct | 1,125 | 0 (routes) | seven new routes, no new routine: five damaged-install routes (`err_player_assert`, `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`: the original programs' own error handlers run against a private copy of the install with one file removed or damaged, `tools/route_damage.py`) and two compressed-boot flights (`libya_tour_eject`, `korea_release_eject`). 56 routes / 55 sessions identical between the engines. They run about 3,250 more census bytes (128 rows) that no routine covers yet. Gate 2,184 s (the compile took 5 minutes with `/Os`) |
+| ae | 20 Oct | 1,125 | 0 (option) | the START quiz as an option: `--fix QUIZ` (an override at START `001D` that pushes `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`; off by default, `all` and normal play never switch it on) and the routes `quiz_right` / `quiz_wrong` (both verdict arms, `planes2.pic` milestone). The 633 quiz bytes left `docs/census-dead.tsv` and are back in the denominator, so P2 dipped from 88.38% to 88.09%. 58 routes / 57 sessions identical; gate 2,305 s |
 
 Notes that still matter:
 

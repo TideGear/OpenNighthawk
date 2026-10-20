@@ -1,7 +1,7 @@
 # Census rows whose never-run code is certified unreachable in the shipped game (a certificate per row: D:/f117-gate/phase2-final/dead-cert/certificates.tsv, criteria c1-c7).
 # They leave the Phase 2 denominator (tools/census_classify.py class `dead`): only never-run code bytes of the row; any byte a route ran or a matched body covers stays credited.
 # CERTAIN means all of: no direct reference (raw scan of every program image), no pointer or computed reference, not an installed vector, every caller itself dead or a guarded arm whose guard cannot hold,
-# and no satisfiable path from route-executed code. Error paths (missing files, memory, usage) are NOT here: they stay in the denominator. The START quiz is dead in the shipped GOG START.EXE only (the call is patched to 90 90 90).
+# and no satisfiable path from route-executed code. Error paths (missing files, memory, usage) are NOT here: they stay in the denominator. The START quiz is not listed: it is reachable with the option `--fix QUIZ` (the call GOG patched out, restored), so it stays in the denominator.
 # Columns: module, linear address (the census row), never-run bytes when certified, group, what it is.
 DSWAP	0x00010	2	EPILOG	dead epilogue (pop bp; ret) at 00217-00218 after 'call 0x219' (exit) -- pop bp;ret after call 0x219 -> 0xE36 exit (INT 21h/4Ch with cx=0); never returns
 DSWAP	0x00696	43	DEADFUNC	body of a far-buffer file reader (entry 00693 is U) -- unreferenced PIC-library / int86 / overlay-free helper cluster (callers only inside dead wrappers 0033E..0045B / 0030A)
@@ -63,11 +63,6 @@ PLAYER	0x01CBA	75	PRINTF	[extra _output conversion arms] piece of PLAYER's _outp
 PLAYER	0x01D02	78	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
 SETUP	0x00010	2	EPILOG	2-byte dead epilogue (pop bp; ret at 00501-00502) of main after its last call to quit() -- pop bp;ret after call 0x53B -> 0x16CE exit (cx=0 -> INT 21h/4Ch at 01749)
 SETUP	0x01387	6	CONSTARG	interrupt dispatcher int86-like(intno, inregs, outregs): INT 10h, 21h, 16h, 1Ah or error AX=-1; N bytes are the INT 21h (013BE), INT 16h (01 -- int86 dispatcher arms INT 21h/16h/1Ah: both callers pass intno=0x10
-START	0x00583	350	QUIZ	aircraft-identification quiz (copy protection): quiz_make, picks 2 of 20 random aircraft pictures and draws the question -- aircraft-identification copy-protection quiz; only caller bytes 0x1D-0x1F patched to 90 90 90 in the GOG file
-START	0x006E0	50	QUIZ	quiz page tail (draw) -- aircraft-identification copy-protection quiz; only caller bytes 0x1D-0x1F patched to 90 90 90 in the GOG file
-START	0x00703	43	QUIZ	quiz question loop entry (sets +22h of the roster record to 0/1, shows the result picture) -- aircraft-identification copy-protection quiz; only caller bytes 0x1D-0x1F patched to 90 90 90 in the GOG file
-START	0x0072E	88	QUIZ	quiz answer check (compares the chosen aircraft with [B282]) -- aircraft-identification copy-protection quiz; only caller bytes 0x1D-0x1F patched to 90 90 90 in the GOG file
-START	0x00788	102	QUIZ	key-state tracker helper next to the quiz (scans keys via 393D, posts events through 3517) -- aircraft-identification copy-protection quiz; only caller bytes 0x1D-0x1F patched to 90 90 90 in the GOG file
 START	0x09A9C	18	CONSTARG	[L28 fopen mode parser] fopen mode parser; N18 = '+' arm -- fopen mode parser plus-arm: all 5 fopen modes are literal rb/wb
 START	0x09EB3	270	PRINTF	[L01 _output arms] MS C _output arms for %n, %p (seg:off), and the floating point conversions %e %E %f %g %G (via _cfltcvt vectors at ds:0xb -- _output arms for %n %p %e %f %g %X %x %o; all format strings contain only %s and %d
 START	0x09FD6	53	PRINTF	[L11 _output arms] MS C _output radix setup for %X %x %o (hex letter base 7/0x27, '0x' alternate prefix, octal '0' prefix) -- _output arms for %n %p %e %f %g %X %x %o; all format strings contain only %s and %d

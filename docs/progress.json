@@ -155,18 +155,18 @@
     "partial_functions": 283,
     "classes": {
       "credited": 155991,
-      "ran": 3246,
-      "never_run": 5305,
+      "ran": 3857,
+      "never_run": 5327,
       "unreached": 971,
       "slots": 842,
       "data": 6906,
       "original": 2655,
-      "dead": 3297
+      "dead": 2664
     },
-    "creditable_bytes": 166355,
+    "creditable_bytes": 166988,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
-      "bytes": 17579,
+      "bytes": 17586,
       "credited": 5448,
       "reviewed_static_bytes": 10301,
       "by_module": {
@@ -196,7 +196,7 @@
           "reviewed_static_bytes": 2724
         },
         "START": {
-          "bytes": 1852,
+          "bytes": 1859,
           "credited": 334,
           "reviewed_static_bytes": 625
         },
@@ -218,9 +218,9 @@
         "RSOUND.LOG": 2128
       },
       "route_records": {
-        "accepted": 63750,
+        "accepted": 64027,
         "changed": 124,
-        "bound_slots": 174,
+        "bound_slots": 179,
         "decode": 3
       }
     }

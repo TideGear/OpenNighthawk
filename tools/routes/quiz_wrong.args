@@ -1,0 +1,14 @@
+# Quiz option on (--fix QUIZ restores the aircraft-identification quiz GOG's START.EXE skips). Boot with the PC speaker driver; the quiz (silhouette, 18 names) opens at START's start; a wrong answer (F-14D Tomcat) clicked: the quiz's wrong arm (START 074B); START then goes on to the roster screen.
+# expect-open planes2.pic START.EXE 1
+--fix
+QUIZ
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--click
+START.EXE+60000000:40,146
+--steps
+1300000000
+--time-us
+700000000000000

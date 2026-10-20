@@ -629,9 +629,25 @@ static int fix_d3_keypad(machine_t *m)
     return 0;                        /* the original compare, on the digit */
 }
 
+/* QUIZ. START's aircraft-identification quiz (the copy protection). GOG's START.EXE has the call at 001D patched to three
+ * NOPs (`74 03 90 90 90`, retail `74 03 E8 E3 06`), so the quiz code (0583 and its helpers) never runs. This option
+ * restores the call: at 001D, reached when the `je` at 001B is not taken, the return address 0020 is pushed and the
+ * quiz routine at 0703 runs (it draws the silhouette screen, reads the answer, stores 1 or 0 in the pilot record's
+ * word at +22h and shows the verdict). The three NOPs' clocks are replaced by the call's one. An option, not a repair:
+ * off unless named, and `all` never switches it on. */
+static int fix_quiz(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    cpu_push16(c, 0x0020);
+    c->ip = 0x0703;
+    c->icount += 1;                  /* the CALL */
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
+    { "QUIZ", "START.EXE", START_47304, 0x0000, 0x001D, fix_quiz, "the aircraft-identification quiz call GOG patched out" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0xD441, fix_d1real_rates, "selected simulation rates" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x4359, fix_d1real_frame, "selected real-time simulation cadence" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, fix_d1real_pause, "pause resets simulation deadline" },
@@ -691,10 +707,14 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D8", "the laser-guided bomb's guidance can flatten its dive: the 11.25-degree pitch clamp is skipped" },
     { "D3", "keypad digits answer SETUP's sound question with NumLock off, instead of quitting to DOS" },
     { "D6", "no terrain sector hides the player completely: a detection cover of 0 reads as the lowest nonzero cover" },
+    { "QUIZ", "OPTION (off unless named): START's aircraft-identification quiz, the copy protection GOG's build skips" },
 };
 #define NFIXES (sizeof FIXES / sizeof FIXES[0])
 
 static int g_on[NFIXES];
+
+/* Options are not repairs: `all` never switches one on, so they are named explicitly (--fix QUIZ); `none` clears them. */
+static int is_option(const char *id) { return !strcmp(id, "QUIZ"); }
 
 void fixes_register(void)
 {
@@ -716,6 +736,7 @@ int fixes_enable(const char *id, int on)
     int n = 0;
     for (unsigned i = 0; i < NFIXES; i++) {
         if (strcmp(id, "all") && strcmp(id, FIXES[i].id)) continue;
+        if (!strcmp(id, "all") && on && is_option(FIXES[i].id)) continue;   /* `all` never switches an option on (it still clears one) */
         g_on[i] = on != 0;
         recomp_override_enable(FIXES[i].id, on);
         n++;

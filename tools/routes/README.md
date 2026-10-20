@@ -15,9 +15,19 @@ and so the inputs.
 interpreter and the recompiled code at 50-million-clock checkpoints and the
 final state. Routes with identical options play one session per engine
 (today `recon_return` and `recon_career`), and each is held to its own
-milestones on it: 56 routes, 55 sessions. Every replay starts from a fresh
+milestones on it: 58 routes, 57 sessions. Every replay starts from a fresh
 `save-*` directory holding the install's roster, so coverage runs or an
 earlier pipeline's edited pilot cannot change its starting state.
+
+## The quiz option
+
+`--fix QUIZ` (off by default; `--fix all` and normal play never switch it on) restores START's aircraft-identification
+quiz, the copy protection GOG's build patches out (`docs/bugs.md`). `quiz_right` clicks the right name (the A-10 shown), `quiz_wrong`
+a wrong one; both then continue to the roster screen. Together they run both verdict arms (START `073A` and `074B`).
+
+| Route | What it plays |
+|---|---|
+| `quiz_right`, `quiz_wrong` | PC-speaker boot, the quiz screen at START's start (silhouette and 18 names, `planes2.pic`), a click on the right or a wrong name, the verdict, the roster screen |
 
 ## Damaged installs
 

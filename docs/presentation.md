@@ -874,6 +874,24 @@ and 3.3-5.0% (`rerun-mode/app7`). On the gated build, one run each: defaults 6 f
 sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz. On 19 October the defaults became 0.4 / 0.025 (the owner delegated the decision). Hidden app replays of the two owner flights, two runs per setting (`D:/f117-gate/present-v2/clock-live`, frames whose speed is under 0.1 of the median count as freezes, over twice the median as skips; picture age was not measured): roads flight 0.2 / 0.05 gave 25 and 25 freezes, 15 and 16 skips, 2.4-2.6% >20% speed changes; 0.4 / 0.025 gave 14 and 15, 8 and 5, 1.3-1.9%. Sharp flight: 21 and 22 freezes, 17 and 16 skips, 3.5-4.5% against 17 and 13, 12 and 5, 3.4% and 1.9%. Skips against picture age remain to tune. Owner's A/B of the roads flight in a 960x720 window, new against old, 19 October: looked the same. Most of the freezes counted above are one block at mission start (frames 4-15 after the replay begins, 14 of 28 old and 13 of 17 new in the first run, the same in both settings); outside it the old setting had about 14 and the new about 4. **Known, accepted (owner, 19 October): the mission opens with about 7 presented frames (just over 100 ms) at the original 320x200, with the 3D view still missing from the cockpit, before the first logic step completes and the high-resolution pictures start,** because a high-resolution picture needs a completed pair of steps. It is one process switching mode (no exit or reload); a hold or fade over those frames is possible but not wanted. Captured with `F117_PRESENT_SHOTS`. The owner played rerun fullscreen at 4K on 15 October and
 accepted the motion "at least for now" (apart from the original's own jitter).
 
+**Long flight and loaded machine (20 October 2026, hidden, Phase 4 coverage notes, unscored).** The `cargo_return` route
+(17.09 G clocks, a supply drop and the return, 9 MIPS as recorded) played through the real app (`--present rerun`, scale 2,
+dummy SDL, software renderer) for 31.7 minutes: exit 0; 22,096 logic frames, every one equal to the display at its close;
+91,109 VGA frames presented, 91,066 of them in-between pictures drawn by the original on a copy, 30 fell back to interpolation
+(0.03%); the machine held its 9.0 MIPS in every five-minute window (the run took 1,899 s for 1,899 s of play: no drift);
+the working set was flat at 136 MB from minute 9 to the end (no leak); outside the mission-start block there were 42 frames
+whose speed was under a tenth of the median (0.05%) and 12 over twice it, spread evenly over the six windows
+(`D:/f117-gate/present-v2/long-cargo/`). The owner's A/B of the roads flight looked the same for the old and new clock.
+
+**A loaded machine (20 October 2026, hidden, unscored).** The roads flight (143 s of play at 20 MIPS) with the app pinned to
+one core that one, two or three busy loops share (the app gets about 50%, 33% and 25% of the core;
+`D:/f117-gate/present-v2/clock-live/share/`): with one competitor the run took 143 s at the full 19.9 MIPS and the
+app presented 3,300 pictures (it presents what it can: 5,660 on an idle machine), 6 copy draws fell back; with two, 155 s,
+18.4 MIPS, 1,611 pictures, 3 fallbacks; with three the machine fell behind real time (280 s for 143 s of play, 10.2 MIPS) and
+presented 1,611 pictures. Every run exited 0 and ended on the same logic frames: a starved host slows the game and thins the
+in-between pictures; it does not skip simulation steps, corrupt a picture or crash. A real older CPU or GPU is a physical
+test this PC cannot do (Phase 4).
+
 ## Consolidate world geometry before more clipping exceptions (15 October 2026)
 
 *Superseded as the main path the same day by [the current plan](#the-current-plan-for-60-fps-15-october-2026-owner).

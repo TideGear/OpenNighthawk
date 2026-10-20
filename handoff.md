@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 19 October 2026.
+more than once, what it costs). State as of 20 October 2026.
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,86 +15,53 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.38%, P3 100.00%, All 96.45%
+- **Scoreboard:** P1 100.00%, P2 88.09%, P3 100.00%, All 96.37%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,125 addresses matched. Scope is the expanded seven-program
-  one: **161,439 / 183,934 creditable bytes** (credit by byte since 16 Oct;
+  one: **161,439 / 184,574 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
   modules (launcher, resident graphics and sound drivers; they need
   module/segment support). `docs/census-code.tsv` has 37 reviewed static ranges;
   SETUP `1E4F` (142 bytes, opaque mixed range) stays deferred.
-- **Latest accepted batches (r, t):** r = VGAME `1A98`, `114A:02FF` (142 bytes). t = VGAME
-  `0FB2:0012` (the game's spelling of census `0000:FB32`; a body registered under a different
-  segment spelling of the same address is never entered: check neighbouring rows), `CE65` (key-arm
-  chain, hands back to the original arm: only the chain earns credit) and `CD7E`: 962 bytes, 1,015
-  addresses. Batch t gate with the new order: parity done at 1,381 s (was 1,643), whole acceptance
-  1,597 s (was 1,697). VGAME `137C:000E` (`1377:005E`) is declined (an observer sits there). Scripts:
-  `D:/f117-gate/accept-kit/` (`new_batch.py LETTER PREV BASE_COMMIT DIR[:PREFIX[:partial]]...`; mark
-  hand-back routines `partial`; `finish_all.py` for checkpoints/boot/verdict). Evidence
-  `D:/f117-gate/p2-batch-{r,t}-accept/`. Earlier batches: [docs/roadmap.md](docs/roadmap.md).
-- **Batch u (accepted):** VGAME `9EFA` `vgame_display_pass` (4,552 bytes), written as named
-  sections after a mechanical transcript was rejected (header, named constants, loops, strings
-  read from the data segment; four cells and the divide-error path are marked unknown/untested);
-  the `display_tour` route (46 routes / 45 sessions now: `tools/routes/display_tour.*`); and the
-  lockstep fix for a RET reached through misaligned fuzzed code (CTest
-  `matched_projectile_misaligned_return`, which closes the open issue of 18 Oct; the old/new
-  harness agreed on every routine at three seeds). Gate with no keyed baseline (new route),
-  presentation sequential: 1,694 s. Evidence `D:/f117-gate/p2-batch-u-accept/`.
-- **Batch v (accepted):** VGAME `8F71` (navigation display, 677 bytes) and `93E9` (armament panel
-  refresh, 196) on the `display_tour` route (VGAME `8342` was already matched as `vgame_view_caption`).
-  Gate with the frozen 46-route baseline: 1,855 s under heavy load from proof agents. Evidence
-  `D:/f117-gate/p2-batch-v-accept/`. The keyed baseline for 46 routes is in `p2-batch-u-accept/baseline`
-  (use `new_batch.py LETTER u BASE_COMMIT ...` for the next batch).
-- **Batches w, x (accepted):** w = START `1C2F` (784 bytes), x = START `11DB` (the briefing-map hover handler,
-  301 bytes), both on `display_tour`. Evidence `D:/f117-gate/p2-batch-{w,x}-accept/`. `new_batch.py LETTER PREV
-  BASE_COMMIT ...` takes the keyed baseline from the newest batch that froze one and the named coverage from PREV.
-- **Batch aa (accepted, 63 routines, 2,215 bytes):** the flight key dispatcher's arms (VGAME `C8CA`..`D3F8`),
-  the eject arm, START's Alt+Q panel and int86, END's Alt+Q panel, TASS page, int86 and icon-frame switch, on
-  the new routes `key_tour`, `quit_dialogs`, `ejection_tass` (batch z gated them: 49 routes / 48 sessions, keyed
-  baseline in `p2-batch-z-accept/baseline`). Tools: `D:/f117-gate/accept-kit/integrate_many.py DIR...` merges the
-  proofs and their FATAL_JUMPS/SHARED_ENDINGS rows (SPANS rows and `g_cov_ip` lines of proofs whose code lies
-  below the entry, e.g. VGAME `CC93` and END `0977`, are added by hand); `new_batch.py LETTER PREV BASE_COMMIT
-  DIR[:PREFIX[:partial]]...` (mark hand-back routines `partial`). Evidence `D:/f117-gate/p2-batch-aa-accept/`.
-- **Batch ab (accepted, 37 routines, 2,040 bytes) and the clock default:** small rows found by four module-group proof
-  agents (SETUP, VGAME, END, START, MPS_LOGO, PLAYER; list in `D:/f117-gate/ab_list.txt`), plus the playback clock
-  default 0.4 / 0.025 (owner delegated, 19 Oct; live evidence in `docs/presentation.md`, runs in
-  `D:/f117-gate/present-v2/clock-live`). Gate 1,809 s, 357 CTests, 49 routes, no keyed baseline (the clock change moved the
-  interpreter key). Traps met: the kit's `checkpoints` reads the interpreter cache for the CURRENT tree key, so refill it
-  with `accept-kit/prefill_cache.py ROUTE...` after any non-matched `src/` edit (and set such edits aside while proofs run);
-  agents miss harness hunks (an arm that joins code below its entry needs a SPANS `from` and a `g_cov_ip` line: START
-  `2760`, `277D`, `27E3`; END `4F8A` needed a PROGRAM_ENDS row; MPS_LOGO `033A`/`038E` POPF_STOPS rows): diff each
-  proof's `tests-base.c` lines against `tests/func_lockstep.c`, and run the new CTests locally before the gate. Not
-  integrated: END `4160` (checkpoints 198 of 200 on `landing`, a real divergence: investigate), END `23D6` and `3682`
-  (whole-function proofs that replace the existing fragment rows `st4_end_ribbon_layout` and
-  `st4_end_debrief_switch_open`; remove those rows, fixtures and CTests when integrating), VGAME `0010` (DECLINED,
-  main), `12A11` (INT 0 handler, second-fault arm unexercised), END `03D9` (fix D12 sites inside, decline path
-  unseen), `57B0`, MPS_LOGO `067C` (declined). Evidence `D:/f117-gate/p2-batch-ab-accept/`; the failed attempts are
-  `p2-batch-ab-failed{1,2}`. Per-proof directories `D:/f117-gate/p2-*-t{a,b,c,d}*`.
-- **Batch ac (accepted, 5 routines, 290 bytes; 20 Oct):** END `4160` `2430` `36D6`, MPS_LOGO `0030`, PLAYER `01F6` (evidence
-  `D:/f117-gate/p2-batch-ac-accept/`; failed attempts `p2-batch-ac-failed{1,2}`). Not integrated: MPS_LOGO `01D3`/`01DA`
-  (exit family; mutation set incomplete, `01DA` never entered), VGAME `0010` (main, declined), `12A11`, END `03D9`, `57B0`,
-  `23D6` and `3682` (would replace existing fragment rows). **Compile trap:** `matched.c` at `/O2` took 90+ minutes to
-  compile from batch ab on; `CMakeLists.txt` now sets `/Os` on it (6 minutes). Use `--no-baseline` in `new_batch.py` whenever
-  `CMakeLists.txt` (outside tests) or `src/` changes: the interpreter key moves and the old baseline is rejected at the end.
-- **Batch ad (routes only, accepted 20 Oct):** `tools/route_damage.py` (a route's `--damage` / `ACTION:FILE` pairs build a private hard-linked
-  damaged copy of the install and add `--data`; `route_args` calls it; tests `tests/test_route_damage.py`) and seven routes:
-  `err_player_assert`, `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `libya_tour_eject`,
-  `korea_release_eject` (compressed boot: Esc skips PLAYER's animations). 56 routes / 55 sessions. Evidence
-  `D:/f117-gate/p2-batch-ad-accept/`; coverage `D:/f117-gate/route-cover-20261020/`; the 128 newly "ran" rows (3,246 bytes) are listed in
-  `D:/f117-gate/phase2-final/ran-rows.tsv`. Five proof agents (letters va DSWAP, vb MPS_LOGO, vc PLAYER, vd END+SETUP, ve VGAME+START) were
-  started on them and died on the session limit; their work is in `D:/f117-gate/p2-*-v?-*`: resume them with SendMessage.
-  `finalize.py` no longer hard-codes the instruction-state count (it grows when the coverage pass translates more code).
+- **Batches r to ad (all accepted, evidence `D:/f117-gate/p2-batch-<letter>-accept/`; table and counts in
+  [docs/roadmap.md](docs/roadmap.md)):** r, t, u (VGAME `9EFA` display pass), v, w, x (START `11DB`/`1C2F`), aa (63 key-dispatcher
+  and dialog routines), ab (37 small routines and the clock default), ac (5: END `4160` `2430` `36D6`, MPS_LOGO `0030`, PLAYER
+  `01F6`), ad (routes only: seven new routes and `tools/route_damage.py`), ae (the quiz option and its two routes; 58 routes / 57 sessions). Scripts:
+  `D:/f117-gate/accept-kit/` (`new_batch.py LETTER PREV BASE_COMMIT [--no-baseline] DIR[:PREFIX[:partial]]...`: mark hand-back routines
+  `partial`, give `--no-baseline` whenever `CMakeLists.txt` outside tests, `src/` or a route changes (the interpreter key moves and the old
+  baseline is rejected at the end); `integrate_many.py DIR...` merges proofs and their FATAL_JUMPS/SHARED_ENDINGS rows; `finish_all.py
+  DIR:ROUTE...` runs checkpoints, boot proof and verdict; `prefill_cache.py ROUTE...` refills the interpreter cache after a non-matched `src/`
+  edit; `finalize.py` derives the instruction-state count from the gate log). Traps met on the way (each cost hours):
+  agents miss harness hunks (an arm that joins code below its entry needs a SPANS `from` and a `g_cov_ip` line; PROGRAM_ENDS, POPF_STOPS and
+  LIVE_FRAMES rows): diff each proof's `tests-base.c` against the repo's CURRENT `tests/func_lockstep.c`; a body must read a segment immediate
+  from the code (`seg_read16`), never hard-code it (END `4160` passed lockstep and failed `landing`); **`matched.c` compiles with `/Os`**
+  (at `/O2` MSVC took 90+ minutes from batch ab on; `CMakeLists.txt` sets it); never run more than two or three `cl.exe` at once;
+  `kit checkpoints` fails with "result.json missing" when the interpreter cache lacks the current tree key.
+  Not integrated: END `23D6` and `3682` (whole-function proofs that would replace existing fragment rows `st4_end_ribbon_layout` and
+  `st4_end_debrief_switch_open`: remove those rows, fixtures and CTests when integrating), MPS_LOGO `01D3`/`01DA` (exit family, incomplete
+  mutation set, `01DA` never entered), VGAME `0010` (main, declined), `12A11`, END `03D9` (fix D12 sites inside), `57B0`, MPS_LOGO `067C`.
+- **Damaged-install routes and compressed boot (batch ad):** a route's `--damage` / `ACTION:FILE` lines build a private hard-linked damaged
+  copy of the install (`tools/route_damage.py`, called from `route_args`; the install is never written). Routes `err_player_assert`,
+  `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart` run the original's own error handlers;
+  `libya_tour_eject` and `korea_release_eject` use a compressed boot (Esc skips PLAYER's animations: START at 80M clocks, not 957M; keep one
+  unskipped boot such as `boot_to_flight`). Coverage `D:/f117-gate/route-cover-20261020/`; the 128 rows they run that no routine covers yet
+  (3,246 bytes) are in `D:/f117-gate/phase2-final/ran-rows.tsv`.
+- **Quiz option (owner, 20 Oct: functional, off by default):** `--fix QUIZ` (`src/fixes/fixes.c` `fix_quiz`: an override at START `001D` pushes
+  `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`); `--fix all` and normal play never switch it on, `--fix none`
+  clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
+  `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583` 350, `06E0` 50, `0703` 43,
+  `072E` 88, `0788` 102 bytes) are back in the denominator, not in `docs/census-dead.tsv`; they need proofs (task below).
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
   5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
-  Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 72 rows /
-  3,299 bytes (P2 88.38%); error paths stay in and are run on damaged-install routes (below); the START quiz is
-  dead in the GOG copy only (the owner may veto it).
+  Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 67 rows /
+  2,666 bytes; error paths stay in and are run on damaged-install routes (below); the START quiz is an option
+  (`--fix QUIZ`), not dead code (owner, 20 Oct).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
   Stage 3 is closed at 1.0 (19 Oct): clock default 0.4 / 0.025 adopted, slower machines measured, the owner's A/B looked the same.
@@ -174,25 +141,35 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-1. **Phase 2 (owner's priority).** Screen new leads for batch s.
-   Screening: join current named-byte credit and registered entries before
-   selecting a lead (a "FREE" lead can be interior to a body written with
-   block macros: START `665B` was inside `64E5`); `D:/f117-gate/p2-batch-g-accept/screen_leads.py`
-   plus `kit/DECLINED.tsv`, then `progress.named_bytes` for credited bytes.
-   Rank with `D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv` (all 45
-   routes; column 6 lists them) and prove on the shortest route
-   (`kit.py DIR checkpoints --route NAME`). `p2-batch-n-accept/ranked-partials.json`
-   ranks incomplete registered routines (screen first; some remaining bytes are
-   data). Open candidates: END `400F` (proved privately in `p2-end-400f`, held
-   back: stand-in fatal tail, one uncaught mutation, coverage counts 21 of 39),
-   `p2-vgame-11cd3/RESEARCH.txt` (512-byte picture read with terminal DOS error
-   path; needs a bounded dossier), PLAYER `026B:0336` (needs returning-helper
-   fixtures), VGAME `09EFA`.
-2. **Presentation:** the owner's physical-panel verdict on the 0.4 / 0.025 clock default
-   (adopted 19 Oct after live runs, see batch ab; the owner's A/B looked the same); Stage 3 is closed (slower machines measured, skips against age at a plateau).
-   Known and accepted: the mission opens with about 100 ms at 320x200 before the hi-res pictures start (docs/presentation.md).
-3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
-4. **Branch housekeeping (reviewed 19 Oct):** merged branches are retained. Two unmerged branches were reviewed
+Goal in force: finish Phase 2 (88%+ now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+
+1. **Batch ae is accepted** (the quiz option and its two routes; gate 2,305 s, 58 routes / 57 sessions, evidence
+   `D:/f117-gate/p2-batch-ae-accept/`) and committed. **Owner instruction (20 Oct): make the safe gate changes in the next batch.**
+   They are: (a) keep the keyed baseline valid so the presentation checks overlap the gate (about 11-20 minutes saved): run matched-routine batches
+   back to back and do not touch `CMakeLists.txt` outside tests, `src/` or the routes between them (`new_batch.py` without `--no-baseline`;
+   batch ae froze a fresh baseline); (b) run nothing heavy during a gate (the build took 145 s alone and 569 s beside proof agents):
+   collect agent reports first, then gate; (c) translate the 18 modules in parallel in `recompiler/` with a check that the generated files are
+   byte-identical to a serial run (an hour of work for 1-3 minutes on each of two steps: do it only with that check); not safe or declined:
+   splitting routes into checkpoint segments, and shortening existing routes (they are the evidence). Splitting `matched.c` into several
+   files would cut its 5-minute compile to about 1 minute but is a large refactor: only if the compile bothers again.
+2. **Prove the 128 newly runnable rows (3,246 bytes, `D:/f117-gate/phase2-final/ran-rows.tsv`).** Five proof agents (letters va DSWAP, vb MPS_LOGO,
+   vc PLAYER, vd END+SETUP, ve VGAME+START) were stopped when the session wrapped; their work is in `D:/f117-gate/p2-{dswap,mpslogo,player,end,setup,vgame,start}-v?-*`
+   (many have mutation runs; each directory needs its body, fixture, seeds and mutations checked as in `kit/BRIEF.md`). Re-launch them with
+   `kit/AGENT_PROMPT.txt` plus `D:/f117-gate/ac_brief_extra.txt` (six lessons; their agent ids do not survive a session), CPU masks 0x0000F000, 0x000F0000,
+   0x00F00000, 0x0F000000, 0xF0000000 (one each, no other). Then per routine: `finish_all.py DIR:ROUTE` (shortest route from the reports; the damaged-install
+   and `libya`/`korea` routes are in `tools/routes/`), `integrate_many.py`, a local build and `ctest -R` of the new tests (build with
+   `build.cmd` in PowerShell, not bare cmake), `new_batch.py af ae <HEAD> [--no-baseline] DIR...`, the audit loop for `partial` flags, the gate, the score.
+   A sixth task: the START quiz rows (`0583` 350, `06E0` 50, `0703` 43, `072E` 88, `0788` 102) on `quiz_right`/`quiz_wrong` (coverage in `route-cover-20261020/quiz_*.cov`).
+3. **What is left after that (5,305 never-run bytes, `D:/f117-gate/phase2-final/classify-after-routes.txt`):** error paths no file damage can reach
+   (out of memory, DOS write errors, other open errors, the `_C_FILE_INFO` environment arm: about 2,500 bytes; the agent's list is in
+   `phase2-final/err-routes`); rows the dead certificates call PROBABLE (1,315 bytes, `phase2-final/dead-cert/summary.txt`: they need evidence, not a decision);
+   player-reachable leftovers that need combat or very long careers (END icon kinds and death causes, VGAME `073C8` second lock slot, `0CB64`, `0CA1A`,
+   career thresholds, `phase2-final/reach-routes/missing.txt`). The owner's rule: code leaves the denominator only when certain it is not needed
+   (`docs/census-dead.tsv`, a certificate per row).
+4. **Phase 4 stays unscored (owner, 20 Oct):** refresh rates above 60 Hz, the hardware-only parts, a real older CPU or GPU. Long-flight and
+   loaded-machine tests were run hidden on 20 Oct (`docs/presentation.md`): 31.7 minutes of `cargo_return`, flat memory, no drift; a starved host
+   slows the game and thins the in-between pictures without breaking anything.
+5. **Branch housekeeping (reviewed 19 Oct):** merged branches are retained. Two unmerged branches were reviewed
    and not worth merging: `flight-input` is superseded (its VGAME `5852` and `683E` routines are on master as
    `vgame_air_traffic` and `vgame_projectiles`; its only unique piece, the draft generator's `RET n` fix,
    was cherry-picked with its test; the worktree `D:/f117-wt/span-emitter` holds an older uncommitted draft

@@ -62,12 +62,12 @@ recorded sessions restore their recorded fix set (older logs mean no fixes).
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
 - **Named and matched:** 1,125 routine addresses have explained C equivalents
-  checked against their original bodies, covering 161,439 of 183,934 creditable
+  checked against their original bodies, covering 161,439 of 184,574 creditable
   bytes in the expanded seven-program scope. The historical census has 970
   rows wholly covered and 293 in part; executed code outside its rows now
   counts too, along with reviewed static code. Unreviewed discoveries and other modules remain an explicit
   scope backlog ([how progress is measured](docs/progress.md)).
-- **Parity, measured:** 56 scripted routes, run as 55 sessions, end in
+- **Parity, measured:** 58 scripted routes, run as 57 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the
   palette, MIDI and the disk - checked every 50 million clocks along the
