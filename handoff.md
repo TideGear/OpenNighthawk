@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 86.65%, P3 99.46%, All 95.79%
+- **Scoreboard:** P1 100.00%, P2 86.65%, P3 100.00%, All 95.93%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,120 addresses matched. Scope is the expanded seven-program
@@ -81,8 +81,8 @@ Consolidate it instead of appending to it.
   Owner decision pending: whether dead (and error/setup) code leaves the denominator.
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
-  left in Stage 3: his visual judgement of the new clock default (0.4 / 0.025, adopted 19 Oct). Visual judgement stays with the
-  owner; hardware-only parts are a Phase 4 maybe.
+  Stage 3 is closed at 1.0 (19 Oct): clock default 0.4 / 0.025 adopted, slower machines measured, the owner's A/B looked the same.
+  Hardware-only parts are a Phase 4 maybe.
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,
   recorded per-machine cadence; legacy recordings keep eight. Do not promote
@@ -91,7 +91,7 @@ Consolidate it instead of appending to it.
   [docs/cadence15-validation.md](docs/cadence15-validation.md). Core, API and
   headless runs start with fixes off and parity commands prepend `--fix none`;
   `--fix none` clears them and further IDs select a subset.
-- **Phase 3 (99.46%):** only Stage 3 (97%) is open: his visual judgement of the new clock default (a Phase 4 maybe). The `DF03`/`C2C8` group is fixed (`rerun.c` attitude spelling; gate, all 46
+- **Phase 3 (100.00%, 19 Oct):** Stage 3 closed at 1.0: the 0.4 / 0.025 clock default is adopted and measured (hidden replays, 8/4/2/1 cores, simulation plateau) and the owner's A/B looked the same. The `DF03`/`C2C8` group is fixed (`rerun.c` attitude spelling; gate, all 46
   routes in rerun mode and boot exact). Stage 2's open parts became a Phase 4 maybe; Stage 4 is complete for what
   can be tested here. Refresh rates above 60 Hz are unscored Phase 4. Details:
   [docs/progress.md](docs/progress.md), [docs/presentation.md](docs/presentation.md).
@@ -173,7 +173,7 @@ Consolidate it instead of appending to it.
    path; needs a bounded dossier), PLAYER `026B:0336` (needs returning-helper
    fixtures), VGAME `09EFA`.
 2. **Presentation:** the owner's physical-panel verdict on the 0.4 / 0.025 clock default
-   (adopted 19 Oct after live runs, see batch ab; the owner's A/B looked the same); Stage 3's last skips and slower machines.
+   (adopted 19 Oct after live runs, see batch ab; the owner's A/B looked the same); Stage 3 is closed (slower machines measured, skips against age at a plateau).
    Known and accepted: the mission opens with about 100 ms at 320x200 before the hi-res pictures start (docs/presentation.md).
 3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
 4. **Branch housekeeping (reviewed 19 Oct):** merged branches are retained. Two unmerged branches were reviewed
