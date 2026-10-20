@@ -150,13 +150,13 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed instruction bytes outside those rows, within the same seven programs; added to numerator and denominator for scoring. Other modules are reported separately. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 1070,
-    "matched_bytes": 156688,
-    "partial_functions": 286,
+    "matched_functions": 1082,
+    "matched_bytes": 157316,
+    "partial_functions": 289,
     "classes": {
-      "credited": 156688,
-      "ran": 3326,
-      "never_run": 5179,
+      "credited": 157316,
+      "ran": 2908,
+      "never_run": 4969,
       "unreached": 953,
       "slots": 842,
       "data": 6906,
@@ -167,7 +167,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
       "bytes": 17586,
-      "credited": 5448,
+      "credited": 5454,
       "reviewed_static_bytes": 10301,
       "by_module": {
         "DSWAP": {
@@ -182,7 +182,7 @@
         },
         "MPS_LOGO": {
           "bytes": 1412,
-          "credited": 53,
+          "credited": 59,
           "reviewed_static_bytes": 1217
         },
         "PLAYER": {

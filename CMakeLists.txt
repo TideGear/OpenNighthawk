@@ -1076,6 +1076,34 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:2C3)
     add_test(NAME matched_vgame_run_flight COMMAND func_lockstep --states 5000
       --only VGAME.EXE:1BC2)
+    add_test(NAME matched_mps_logo_string_position COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:3A)
+    add_test(NAME matched_mps_logo_alloc_or_abort COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:17B0)
+    add_test(NAME matched_mps_logo_dos_block_freed COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:102)
+    add_test(NAME matched_mps_logo_malloc_jump COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1A64)
+    add_test(NAME matched_mps_logo_format_scan COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:FE4)
+    add_test(NAME matched_mps_logo_write_file_handle COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:15FA)
+    add_test(NAME matched_player_stack_check COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1FD0)
+    add_test(NAME matched_player_raise_exit_code_three COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:22AF)
+    add_test(NAME matched_end_format_decimal_arm COMMAND func_lockstep --states 5000
+      --only END.EXE:5948)
+    add_test(NAME matched_end_debrief_message_arm_0e90 COMMAND func_lockstep --states 5000
+      --only END.EXE:3692)
+    add_test(NAME matched_dswap_dos_open_or_report COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:599)
+    add_test(NAME matched_dswap_load_color_registers COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:848)
+    add_test(NAME matched_vgame_far_sine_entry COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:82)
+    add_test(NAME matched_vgame_far_hud_colours_init COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:E)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

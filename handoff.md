@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.45%, P3 100.00%, All 96.47%
+- **Scoreboard:** P1 100.00%, P2 88.78%, P3 100.00%, All 96.57%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,148 addresses matched. Scope is the expanded seven-program
-  one: **162,136 / 184,574 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,162 addresses matched. Scope is the expanded seven-program
+  one: **162,770 / 184,574 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -54,6 +54,14 @@ Consolidate it instead of appending to it.
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
   `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583` 350, `06E0` 50, `0703` 43,
   `072E` 88, `0788` 102 bytes) are back in the denominator, not in `docs/census-dead.tsv`; they need proofs (task below).
+- **Batch ag (20 Oct, accepted):** 14 routines from the ran-rows list (table in `docs/roadmap.md`; 645 named bytes,
+  313 covered instructions, 341 caught mutations, 70 optimized seeds); 399 CTests, 58 routes / 57 sessions, gate 1,604 s,
+  acceptance 1,731 s. Evidence `D:/f117-gate/p2-batch-ag-accept/`. Traps met: `integrate_many.py` carries only FATAL_JUMPS and
+  SHARED_ENDINGS rows: SPANS, IMAGE_PATCHES, LIVE_FRAMES, `patch_image_for` lines and `run_to_ret` hunks in each proof's
+  `harness-hunks.diff` / `tests-base.c` must be applied by hand (three CTests failed until the SPANS rows went in);
+  `finalize.py`/`audit_private.py` need a block-macro prefix (`NOBLOCKS` in batch.json for bodies without `XB`), and mark
+  hand-back or `XN`/computed-count bodies `partial`. Not integrated (proofs private-ready or needing work): MPS_LOGO `27C2`, `163A`
+  (no route call found), VGAME `14C2:00B7`, `1058:000A`, `1058:0012` (SPANS is keyed by IP: add a segment key first).
 - **Batch af (20 Oct, accepted):** 23 saved drafts: five DSWAP, seven END, three PLAYER, SETUP's DOS printer,
   three START hooks and four VGAME entries (table in `docs/roadmap.md`). 363 fully covered instructions,
   550 caught mutations, 115 optimized seed checks; 385 CTests, 58 identical routes / 57 fresh interpreter
@@ -154,7 +162,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (88.45% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (88.78% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
    no proof worker or unrelated heavy job runs during a gate; af's baseline is keyed for all 58 routes / 57 sessions.
