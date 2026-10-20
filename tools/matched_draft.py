@@ -69,6 +69,15 @@ def walk(mod, seg, entry, limit=4000):
     return seen
 
 
+def callee_pops(mod, seg, target):
+    """The bytes a near callee's RET n removes: 0 for plain RETs, n when every RET it reaches is RET n,
+    None when they disagree. guest_call traps the return at the caller's stack level, so a RET 8
+    callee called as a plain call is never trapped and the original quietly finishes the routine."""
+    sizes = {int.from_bytes(i.raw[1:3], "little") if i.raw[0] == 0xC2 else 0
+             for i in walk(mod, seg, target).values() if i.kind == K_RET and i.raw[0] in (0xC2, 0xC3)}
+    return (sizes.pop() if sizes else 0) if len(sizes) <= 1 else None
+
+
 def dossier(mod, seg, entry, insns):
     """Observed static walk, not source ownership or a parity verdict. Keep private."""
     covered, calls, exits, frontier = set(), [], [], set()
@@ -148,8 +157,12 @@ def draft(mod, seg, entry, name, insns=None):
         nxt = ordered[k + 1] if k + 1 < len(ordered) else None
         out.append("    /* %04X  %-14s %s */" % (ip, ins.raw.hex(), text(ins)))
         if ins.kind == K_CALL:
-            lines = ["L_%04X: CHECK(0x%04X);" % (ip, ip),
-                     "if (!guest_call(m, 0x%04X, 0x%04X)) return 1;" % (ins.target & 0xFFFF, ins.next_ip)]
+            pops = callee_pops(mod, seg, ins.target & 0xFFFF)
+            call = ("guest_call(m, 0x%04X, 0x%04X)" % (ins.target & 0xFFFF, ins.next_ip) if not pops else
+                    "guest_call_pop(m, 0x%04X, 0x%04X, %d)" % (ins.target & 0xFFFF, ins.next_ip, pops))
+            lines = ["L_%04X: CHECK(0x%04X);" % (ip, ip), "if (!%s) return 1;" % call]
+            if pops is None:
+                lines.insert(1, "/* the callee's RETs remove different argument sizes: check this call */")
             if nxt != ins.next_ip:
                 lines.append("goto L_%04X;" % ins.next_ip if inside(ins.next_ip) else "EXIT(0x%04X);" % ins.next_ip)
         elif ins.kind == K_CALLFAR:

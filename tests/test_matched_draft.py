@@ -34,6 +34,14 @@ class DossierTests(unittest.TestCase):
         self.assertEqual(result["exits"], [{"ip": 12, "kind": "ret"}])
         self.assertEqual(draft(mod, 0, 0, "fixture"), draft(mod, 0, 0, "fixture", insns))
 
+    def test_call_to_ret_n_callee_pops_its_arguments(self):
+        # CALL +1 over a RET; the callee at 4 ends in RET 8; a plain-RET callee at 8.
+        image = b"\xe8\x01\x00\xc3\xc2\x08\x00\x90\xc3"
+        mod = Module("FIXTURE.EXE", 0, "exe", image, set())
+        self.assertEqual(matched_draft.callee_pops(mod, 0, 4), 8)
+        self.assertEqual(matched_draft.callee_pops(mod, 0, 8), 0)
+        self.assertIn("guest_call_pop(m, 0x0004, 0x0003, 8)", draft(mod, 0, 0, "fixture")[0])
+
     @unittest.skipUnless(shutil.which("cmake"), "CMake is needed for the draft compile check")
     def test_draft_compiles_in_matched_context(self):
         # MOV, ADD, branch, CALL and RET are synthetic, not game bytes.

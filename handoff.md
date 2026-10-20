@@ -175,13 +175,17 @@ Consolidate it instead of appending to it.
 2. **Presentation:** the owner's physical-panel verdict on the 0.4 / 0.025 clock default
    (adopted 19 Oct after live runs, see batch ab); Stage 3's last skips and slower machines.
 3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
-4. **Branch housekeeping:** merged branches are retained; not merged:
-   `flight-input` (its worktree `D:/f117-wt/span-emitter` has uncommitted edits)
-   and `irq-divide-fault` (kept on purpose: VGAME `0FB2:04DD`, the clipper's
-   divide-error handler, is fixture-proven but no route reaches it; commit
-   `e15c9ef`; integrate only if a route or clearly labelled staged input does).
-   Stopped presentation WIP branches are history; do not merge them. Ask the
-   owner before deleting anything.
+4. **Branch housekeeping (reviewed 19 Oct):** merged branches are retained. Not merged, both reviewed and
+   not worth merging: `flight-input` is superseded (its VGAME `5852` and `683E` routines are on master as
+   `vgame_air_traffic` and `vgame_projectiles`; its only unique piece, the draft generator's `RET n` fix,
+   was cherry-picked with its test; the worktree `D:/f117-wt/span-emitter` holds an older uncommitted draft
+   of `683E` that master has surpassed). `irq-divide-fault`: its span-clipper handler `084E` is on master
+   (`117201c`); the rest is `e15c9ef`, the line clipper's handler `04DD`, lockstep-only because only a line
+   longer than 32,767 units overflows its divide and every caller bounds its lines below that (a probe of
+   146,153 clip divisions peaked at a quotient of 9,047), so a player cannot reach it and it stays in
+   `docs/census-original.tsv`. Both branches and the span-emitter worktree can be deleted when the owner
+   says so. Stopped presentation WIP branches are history; do not merge them. Ask the owner before
+   deleting anything.
 
 ## Left as original code, declined, or stopped
 
