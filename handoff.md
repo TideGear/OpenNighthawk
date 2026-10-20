@@ -173,7 +173,8 @@ Consolidate it instead of appending to it.
    path; needs a bounded dossier), PLAYER `026B:0336` (needs returning-helper
    fixtures), VGAME `09EFA`.
 2. **Presentation:** the owner's physical-panel verdict on the 0.4 / 0.025 clock default
-   (adopted 19 Oct after live runs, see batch ab); Stage 3's last skips and slower machines.
+   (adopted 19 Oct after live runs, see batch ab; the owner's A/B looked the same); Stage 3's last skips and slower machines.
+   Known and accepted: the mission opens with about 100 ms at 320x200 before the hi-res pictures start (docs/presentation.md).
 3. **Phase 3 coverage:** a long cargo/career flight; weaker machines.
 4. **Branch housekeeping (reviewed 19 Oct):** merged branches are retained. Two unmerged branches were reviewed
    and not worth merging: `flight-input` is superseded (its VGAME `5852` and `683E` routines are on master as
