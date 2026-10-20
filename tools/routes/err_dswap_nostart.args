@@ -1,0 +1,14 @@
+# Damaged install: LABSLOGO.SS corrupt (skips the intro) and START.EXE missing. DSWAP cannot open START.EXE and shows the swap-disk screen; it waits for a disk (no exit).
+# expect-open swap.pic DSWAP.EXE 1
+--damage
+poke=18:FF:LABSLOGO.SS
+--damage
+remove:START.EXE
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--steps
+6000000
+--time-us
+700000000000000

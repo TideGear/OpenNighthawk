@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 
+import route_damage
 from run_route import check_route, route_args
 from build_recomp import session_groups
 
@@ -77,6 +78,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--mode", choices=("interp", "rerun"), default="interp")
     args = ap.parse_args()
+    route_damage.set_master(args.data)
     if any(n < 1 or n > 12 for n in args.scales) or args.jobs < 1:
         ap.error("scales must be 1..12 and jobs positive")
     exe = Path(os.environ.get("F117R_RUN_EXE", ROOT / "build/f117run.exe")).resolve()

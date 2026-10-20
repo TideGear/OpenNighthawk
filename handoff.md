@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.27%, P3 100.00%, All 96.42%
+- **Scoreboard:** P1 100.00%, P2 88.38%, P3 100.00%, All 96.45%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,125 addresses matched. Scope is the expanded seven-program
-  one: **161,081 / 183,776 creditable bytes** (credit by byte since 16 Oct;
+  one: **161,439 / 183,934 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -79,13 +79,21 @@ Consolidate it instead of appending to it.
   `23D6` and `3682` (would replace existing fragment rows). **Compile trap:** `matched.c` at `/O2` took 90+ minutes to
   compile from batch ab on; `CMakeLists.txt` now sets `/Os` on it (6 minutes). Use `--no-baseline` in `new_batch.py` whenever
   `CMakeLists.txt` (outside tests) or `src/` changes: the interpreter key moves and the old baseline is rejected at the end.
+- **Batch ad (routes only, accepted 20 Oct):** `tools/route_damage.py` (a route's `--damage` / `ACTION:FILE` pairs build a private hard-linked
+  damaged copy of the install and add `--data`; `route_args` calls it; tests `tests/test_route_damage.py`) and seven routes:
+  `err_player_assert`, `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `libya_tour_eject`,
+  `korea_release_eject` (compressed boot: Esc skips PLAYER's animations). 56 routes / 55 sessions. Evidence
+  `D:/f117-gate/p2-batch-ad-accept/`; coverage `D:/f117-gate/route-cover-20261020/`; the 128 newly "ran" rows (3,246 bytes) are listed in
+  `D:/f117-gate/phase2-final/ran-rows.tsv`. Five proof agents (letters va DSWAP, vb MPS_LOGO, vc PLAYER, vd END+SETUP, ve VGAME+START) were
+  started on them and died on the session limit; their work is in `D:/f117-gate/p2-*-v?-*`: resume them with SendMessage.
+  `finalize.py` no longer hard-codes the instruction-state count (it grows when the coverage pass translates more code).
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
   5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
   Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 72 rows /
-  3,299 bytes (P2 88.27%); error paths stay in and are run on damaged-install routes (below); the START quiz is
+  3,299 bytes (P2 88.38%); error paths stay in and are run on damaged-install routes (below); the START quiz is
   dead in the GOG copy only (the owner may veto it).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);

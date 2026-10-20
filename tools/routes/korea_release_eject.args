@@ -1,0 +1,16 @@
+# expect-world KO
+# expect-exit VGAME.EXE 129 40000000
+# expect-exit END.EXE 0 40000000
+# expect-open rescue.pic END.EXE 1
+# Korea (Limited War, Strike Missions) on the carrier. The boot skips the PLAYER title animation with Esc (PLAYER exits 27) and
+# uses 30-60M-clock gaps between the front-end clicks (the briefing's order decode needs 290M before its next click).
+# In flight: F9 (ILS on), brakes off (0), full throttle (Shift +); at 100M the bomb bay opens (8); at 150M and 158M Enter releases a
+# weapon (an airborne release is logged as debrief event 4); at 170M Shift+F10 ejects (VGAME exits 129). END shows RESCUE.PIC (the
+# carrier is over sea), Alt+Q n (resume), Enter x2 to the flag page and the map, then Enter steps the map events (takeoff, the weapon
+# release, the end point), each map event takes about 45M clocks to animate, then Alt+Q y (END exits 0).
+--replay
+korea_release_eject.input
+--steps
+3000000000
+--time-us
+700000000000000

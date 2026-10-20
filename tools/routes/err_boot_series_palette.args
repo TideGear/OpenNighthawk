@@ -1,0 +1,15 @@
+# Damaged install: LABSLOGO.SS corrupt (byte 18 = FF) and PALETTES.PAL missing. MPS_LOGO reports 'bad series load' and exits 255; F117.COM skips the intro; START cannot open PALETTES.PAL and quits.
+# expect-exit MPS_LOGO.EXE 255 100000
+# expect-exit START.EXE 0 100000
+--damage
+poke=18:FF:LABSLOGO.SS
+--damage
+remove:PALETTES.PAL
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--steps
+4000000
+--time-us
+700000000000000

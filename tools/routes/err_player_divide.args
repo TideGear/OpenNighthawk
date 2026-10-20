@@ -1,0 +1,12 @@
+# Damaged install: TITLE-1.PAN has speed byte (byte 3) = 0. PLAYER's idiv faults: INT 0 handler, run-time error R6003, exit 255.
+# expect-exit PLAYER.EXE 255 100000
+--damage
+poke=3:00:TITLE-1.PAN
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--steps
+76000000
+--time-us
+700000000000000

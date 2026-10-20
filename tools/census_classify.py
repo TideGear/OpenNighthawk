@@ -372,7 +372,7 @@ def main():
         left = sorted(((r["ran"] + r["never_run"], row, r) for row, r in zip(rows, per_row)), key=lambda x: -x[0])
         for n, (module, linear, size), r in left[:a.rows]:
             print("%-9s 0x%05X %5d  ran %4d  never_run %4d  unreached %4d  slots %4d  data %4d  original %4d  dead %4d" %
-                  (module, linear, size, r["ran"], r["never_run"], r["unreached"], r["slots"], r["data"], r["original"]))
+                  (module, linear, size, r["ran"], r["never_run"], r["unreached"], r["slots"], r["data"], r["original"], r["dead"]))
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ import tempfile
 import threading
 import time
 
+import route_damage
 from run_route import check_route, route_args, prepare_roster, roster_seed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -491,6 +492,7 @@ def main():
                     help="run the recompiled half anyway and require it to equal the coverage runs route by route "
                          "(the proof that reusing them changes no verdict)")
     a = ap.parse_args()
+    route_damage.set_master(a.data)
     if a.parity_only and a.no_parity:
         ap.error("--parity-only and --no-parity cannot be combined")
 

@@ -29,6 +29,8 @@ import subprocess
 import sys
 import tempfile
 
+import route_damage
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
@@ -79,7 +81,7 @@ def route_args(path):
     for i, option in enumerate(args[:-1]):
         if option == "--replay" and not os.path.isabs(args[i + 1]):
             args[i + 1] = os.path.abspath(os.path.join(os.path.dirname(path), args[i + 1]))
-    return args
+    return route_damage.expand(args)       # --damage pairs become a private damaged copy of the install (--data)
 
 
 def check_route(path, log, save_dir=None):
@@ -135,6 +137,7 @@ def main():
     ap.add_argument("--engine", default="recomp")
     ap.add_argument("--out", default=None, help="run directory (save/, run.log)")
     a = ap.parse_args(argv)
+    route_damage.set_master(a.data)
     name = os.path.splitext(os.path.basename(a.route))[0]
     out = a.out or os.path.join(os.path.expanduser("~"), "f117-recomp-local", "runs", name + "_" + a.engine)
     os.makedirs(out, exist_ok=True)

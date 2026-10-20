@@ -1,0 +1,16 @@
+# expect-world LB
+# expect-exit VGAME.EXE 129 200000000
+# expect-exit END.EXE 0 60000000
+# expect-open tass.pic END.EXE 1
+# Compressed boot (the PLAYER title animation skipped with Esc: PLAYER exits 27; the second PLAYER animation skipped the same way; 30-60M gaps
+# between the front-end clicks, 290M for the briefing's order decode), the default Libya training mission.
+# START briefing map: menu rows at x 272: y 65, 77 (overlay modes 2 and 3), 91, 104, then 53 (mode 1). In flight on the ramp, no throttle: F3 (map
+# page), z x (map zoom, eight steps each way), F3 again (other map), z x again; Alt+K x5 (training nudge: aircraft to map cell column 15 row 6, terrain
+# class 0), Shift+F10 x2 (eject, sortie result 2, VGAME exits 129). END: TASS.PIC (capture page), Alt+Q n (resume), Enter x5 (flag page, debrief map events),
+# Alt+Q y (END exits 0).
+--replay
+libya_tour_eject.input
+--steps
+5000000000
+--time-us
+700000000000000

@@ -15,9 +15,26 @@ and so the inputs.
 interpreter and the recompiled code at 50-million-clock checkpoints and the
 final state. Routes with identical options play one session per engine
 (today `recon_return` and `recon_career`), and each is held to its own
-milestones on it: 49 routes, 48 sessions. Every replay starts from a fresh
+milestones on it: 56 routes, 55 sessions. Every replay starts from a fresh
 `save-*` directory holding the install's roster, so coverage runs or an
 earlier pipeline's edited pilot cannot change its starting state.
+
+## Damaged installs
+
+A route may damage a private copy of the install, as a broken install would be: pairs of lines `--damage` and
+`ACTION:FILE`, ACTION one of `remove`, `empty`, `trunc=N`, `poke=OFFSET:HEXBYTES`, `rename=NEW` (FILE is a name in the
+install's top directory, case ignored). `tools/route_damage.py` (called from `route_args`) builds the copy once, from hard
+links of the install, and the route runs with `--data` pointing at it. The install is never written and no state or
+executable is poked. These routes make the original programs run their own error handling: PLAYER's `assert`/abort and
+divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure, DSWAP's missing-START screen.
+
+| Route | Damage and what it plays |
+|---|---|
+| `err_player_assert` | `TITLE-1.PAN` cel count set to 1025: PLAYER's `assert(cels<=1024)` fails (fprintf, abort, raise, `_exit(3)`) |
+| `err_player_divide` | `TITLE-1.PAN` speed byte 0: PLAYER's divide fault, the INT 0 handler, run-time error R6003 (exit 255) |
+| `err_boot_series_palette` | `LABSLOGO.SS` byte 18 = FF and `PALETTES.PAL` removed: MPS_LOGO reports "bad series load" (exit 255), START cannot open the palette and quits; also the cheapest way to START (3M clocks) |
+| `err_driver_overlay` | `ISOUND.LOG` removed: MPS_LOGO's overlay-load failure tail (exit 0), PLAYER starts in text mode |
+| `err_dswap_nostart` | `LABSLOGO.SS` corrupt and `START.EXE` removed: DSWAP cannot open START.EXE and waits on its swap-disk screen (ends on `--steps`) |
 
 ## Milestones
 
@@ -95,6 +112,8 @@ proofs for matched routines; call counts are in
 | `key_tour` | the flight key dispatcher's arms, from a log with raw scancodes: START roster screen clicks the 'Lockheed F117A' realism checkbox; in flight on the ramp (no throttle, one key per frame because VGAME reads only the first queued key of a frame): `3 4 5 7 7 9`, `v v v`, `z x`, Shift+F8, `[`, Shift+`? > M` views, F1, F5 Space Backspace F4 F9, Alt+A/H/M/C/C/D/D/D/D/F/V, the camera page keys `, . m /` `[ ] { }` and F2, Insert, Shift+F1..F6, F1 F7 Shift+F8, Shift+Z Shift+X, Alt+T twice (the training bit starts set), Alt+R/I/K/J/L/N, then Alt+Q, Y; 2.45 G clocks |
 | `quit_dialogs` | START's first screen: Alt+Q then `n` (resume), Alt+Q then `y` (exit with code 0); 1.02 G clocks, START exits 0 |
 | `ejection_tass` | training sortie on the ramp: Alt+K x5 (moves the aircraft to map cell column 15 row 6, terrain class 0), Shift+F10 x2 (raw 2A,44: eject, sortie result 2, VGAME exits 129), END's TASS capture page, the flag page and the debrief map (Enter x3), Alt+Q, Y (END exits 0); 2.51 G clocks |
+| `libya_tour_eject` | compressed boot (Esc skips PLAYER's title animations, 30-60M-clock gaps between front-end clicks; VGAME starts at 660M instead of 2,327M), the briefing map's overlay menu rows, in-flight map pages with `z` `x` zoom steps, then `ejection_tass`'s Alt+K x5, Shift+F10 x2, END's TASS page and Alt+Q n / y; runs the map zoom shift, END's Alt+Q panel and START's overlay modes that no other route reaches |
+| `korea_release_eject` | Korea (Limited War, Strike) compressed boot on the carrier: F9 ILS, a weapon released, Shift+F10 at 170M, END's rescue page (sea), its Alt+Q panel and the three debrief map events; runs the ILS carrier arm (VGAME `097E9`..`097FE`), END `03B9A` and the weapon-release icon |
 
 **Recorded sorties.** Each replays a recorded flight flown with normal keys
 and mouse (most by an adaptive pilot tool), so a timing change that moves

@@ -1,0 +1,12 @@
+# Damaged install: TITLE-1.PAN has its cel count (bytes 4-5) set to 1025. PLAYER's assert(cels<=1024) fails: fprintf/_output, abort, raise, _exit(3).
+# expect-exit PLAYER.EXE 3 100000
+--damage
+poke=4:0104:TITLE-1.PAN
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--steps
+73560000
+--time-us
+700000000000000
