@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.12%, P3 100.00%, All 96.37%
+- **Scoreboard:** P1 100.00%, P2 88.27%, P3 100.00%, All 96.42%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,120 addresses matched. Scope is the expanded seven-program
-  one: **160,791 / 183,776 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,125 addresses matched. Scope is the expanded seven-program
+  one: **161,081 / 183,776 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -73,13 +73,19 @@ Consolidate it instead of appending to it.
   main), `12A11` (INT 0 handler, second-fault arm unexercised), END `03D9` (fix D12 sites inside, decline path
   unseen), `57B0`, MPS_LOGO `067C` (declined). Evidence `D:/f117-gate/p2-batch-ab-accept/`; the failed attempts are
   `p2-batch-ab-failed{1,2}`. Per-proof directories `D:/f117-gate/p2-*-t{a,b,c,d}*`.
+- **Batch ac (accepted, 5 routines, 290 bytes; 20 Oct):** END `4160` `2430` `36D6`, MPS_LOGO `0030`, PLAYER `01F6` (evidence
+  `D:/f117-gate/p2-batch-ac-accept/`; failed attempts `p2-batch-ac-failed{1,2}`). Not integrated: MPS_LOGO `01D3`/`01DA`
+  (exit family; mutation set incomplete, `01DA` never entered), VGAME `0010` (main, declined), `12A11`, END `03D9`, `57B0`,
+  `23D6` and `3682` (would replace existing fragment rows). **Compile trap:** `matched.c` at `/O2` took 90+ minutes to
+  compile from batch ab on; `CMakeLists.txt` now sets `/Os` on it (6 minutes). Use `--no-baseline` in `new_batch.py` whenever
+  `CMakeLists.txt` (outside tests) or `src/` changes: the interpreter key moves and the old baseline is rejected at the end.
 - **Never-run code (research done 19 Oct, `D:/f117-gate/neverrun-research/`):** of 12,972 never-run census bytes,
   5,201 are dead, 3,657 error paths, 2,321 player-reachable, 1,306 setup/hardware, 487 unknown; most of the
   player-reachable part is now credited (batch aa). Left from that research: the `ejection` route (END's rescue page
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
   Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 72 rows /
-  3,299 bytes (P2 88.12%); error paths stay in and are run on damaged-install routes (below); the START quiz is
+  3,299 bytes (P2 88.27%); error paths stay in and are run on damaged-install routes (below); the START quiz is
   dead in the GOG copy only (the owner may veto it).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);

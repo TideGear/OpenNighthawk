@@ -77323,7 +77323,333 @@ static int start_load_file(machine_t *m)
 #undef LB
 }
 
+/* END 4160: the C runtime's DOS read of one block of the program's data file. No arguments. DS is made the
+ * program's data segment (05FAh) for the call and the caller's DS is put back on success.
+ *   - DOS function 3Fh reads 200h bytes from the file whose handle is in [1EE1] into 05FA:1C77. The INT 21h
+ *     is the machine's own DOS call.
+ *   - No carry: the old DS comes back and the routine returns with DOS's answer (the byte count) in AX.
+ *   - Carry: the read failed. DX gets the message at 1EC2 and CX the code FFFFh, and the routine jumps to
+ *     41E5. 41E5 is not part of this routine: it is the fatal-error tail shared with the C runtime's other
+ *     DOS calls (prints the message at DS:DX, and with a code other than -1 the code too, then ends the
+ *     program with DOS function 4Ch). The old DS is not restored on that path. The body hands over to the
+ *     original code at 41E5 with the registers set for it. */
+static int end_read_block_or_report(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* The cells and buffer the read uses, and where the code holds END's data segment (MOV BX at 4163; 05FAh before the
+     * loader relocates it). */
+    enum { DATA_SEGMENT_IMMEDIATE = 0x4164, FILE_HANDLE_CELL = 0x1EE1, BLOCK_SIZE = 0x0200, BLOCK_BUFFER = 0x1C77 };
+    /* The failure: the message, the "no code" value, and the shared fatal-error tail. */
+    enum { READ_FAILED_MESSAGE = 0x1EC2, NO_CODE = 0xFFFF, FATAL_ERROR_TAIL = 0x41E5 };
+    enum { DOS_READ = 0x3F };
+    /* A block of n instructions starting at at_: claim the room and charge them. OBI: the block ends in an
+     * INT 21h, which charges itself. */
+#define OB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define OBI(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_) - 1; } while (0)
+    if (!room(c, 8)) return 0;
+    OBI(8, 0x4160);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, DOS_READ);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], DATA_SEGMENT_IMMEDIATE);   /* the data segment, an immediate the loader relocates */
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = ds_get(c, FILE_HANDLE_CELL);
+    c->r[R_CX] = BLOCK_SIZE;
+    c->r[R_DX] = BLOCK_BUFFER;
+    if (!st4_int21(m, 0x4172)) return 1;
+    OB(1, 0x4174);
+    if (x86_cond(c, 3)) goto read_ok;                         /* JAE: no carry */
+    OB(3, 0x4176);
+    c->r[R_DX] = READ_FAILED_MESSAGE;
+    c->r[R_CX] = NO_CODE;
+    c->ip = FATAL_ERROR_TAIL;                                 /* the fatal-error tail is original code */
+    return 1;
+read_ok:
+    OB(2, 0x417F);
+    c->seg[S_DS] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef OB
+#undef OBI
+}
+
+/* END 2430: the tail of the rank-ribbon routine (23D6), entered inside its live frame when the ribbon
+ * is in a full row: the column offset cell [bp-0Ah] is set to 82h, and the code falls into the shared
+ * drawing part at 2435. Arguments (cdecl, as 23D6 sees them): [bp+6] the ribbon's number in the block;
+ * the frame's [bp-0Eh] holds the last row's number, [bp-8] the doubled coordinate and [bp-6] the cell
+ * width (all set by 23D6's opening). Nothing is returned (AX is whatever the far routine leaves).
+ *   - The ribbon's row distance from the last row (the number divided by three, less LAST_ROW) is
+ *     doubled and added to 95h: the row's vertical position.
+ *   - The column is the offset plus 0Bh times the ribbon's place in its row (its number modulo three).
+ *   - The far routine 05FA:24CC (an overlay thunk, plain RETF) draws with eight words, pushed in this
+ *     order: 2, 0Bh, the vertical position, the column, 1, the doubled coordinate, the cell width, 3
+ *     (the last pushed is its first argument). Its arguments stay on the stack for the epilogue
+ *     (mov sp,bp; pop bp; ret) to discard. */
+static int end_ribbon_draw_from_full_row(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ARG_NUMBER = 6 };
+    enum { LAST_ROW = -14, COLUMN = -10, DOUBLED_COORDINATE = -8, WIDTH_CELL = -6 };
+    enum { OFFSET_FULL_ROW = 0x82, ROW_BASE = 0x95, RIBBON_STEP = 0x0B, PER_ROW = 3 };
+    enum { DRAW_CALL_AT = 0x246D };
+#define RB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RB(1, 0x2430);
+    bp_put(c, COLUMN, OFFSET_FULL_ROW);
+    RB(25, 0x2435);
+    c->r[R_AX] = bp_get(c, ARG_NUMBER);
+    c->r[R_CX] = PER_ROW;
+    cwd(c);
+    (void)x86_idiv16(c, c->r[R_CX], 0);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, LAST_ROW), 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ROW_BASE, 1);
+    c->r[R_DX] = 2;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = RIBBON_STEP;
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, ARG_NUMBER);
+    cwd(c);
+    (void)x86_idiv16(c, c->r[R_CX], 0);
+    c->r[R_AX] = c->r[R_DX];
+    c->r[R_BX] = RIBBON_STEP;
+    x86_imul16(c, c->r[R_BX]);
+    bp_put(c, COLUMN, (uint16_t)alu_op(c, 0, bp_get(c, COLUMN), c->r[R_AX], 1));
+    cpu_push16(c, bp_get(c, COLUMN));
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, DOUBLED_COORDINATE));
+    cpu_push16(c, bp_get(c, WIDTH_CELL));
+    cpu_push16(c, c->r[R_CX]);
+    SM4_NEED(1, DRAW_CALL_AT);
+    RRUN(guest_call_far(m, DRAW_CALL_AT, 0x2472));
+    RB(3, 0x2472);
+    frame_close_ret(c);
+    return 1;
+#undef RRUN
+#undef RB
+}
+
+/* END 36D6: the common part of the debriefing's ending message (3682), entered inside that routine's live
+ * frame once an arm has stored the message's address in the frame's local word at BP-2. It sets the text
+ * routine's box record at 6D8C (its word at 6D98h gets 4, 6D90h gets 0FDh and 6D92h gets 0FEh) and draws
+ * the message by calling the text routine 1A75 with seven words (the last pushed is its first argument):
+ * the box record 6D8C, the message address, 0AFh, 28h, 78h, 0Ah and 1. 1A75 returns with a plain RET, so
+ * nothing is removed here: the epilogue (mov sp,bp; pop bp; ret) discards the words. Nothing is returned
+ * (AX is whatever the text routine leaves). */
+static int end_death_message_box_draw(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MESSAGE = -2 };
+    enum { TEXT_ROUTINE = 0x1A75, BOX = 0x6D8C, BOX_COLOUR = 0x6D98, BOX_FIELD_A = 0x6D90, BOX_FIELD_B = 0x6D92 };
+    enum { COLOUR = 4, FIELD_A = 0x00FD, FIELD_B = 0x00FE };
+    enum { ARG_AF = 0x00AF, ARG_28 = 0x0028, ARG_78 = 0x0078, ARG_0A = 0x000A, ARG_1 = 0x0001 };
+#define DB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define DRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 16)) return 0;
+    DB(16, 0x36D6);
+    ds_put(c, BOX_COLOUR, COLOUR);
+    ds_put(c, BOX_FIELD_A, FIELD_A);
+    ds_put(c, BOX_FIELD_B, FIELD_B);
+    c->r[R_AX] = ARG_1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ARG_0A;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ARG_78;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ARG_28;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ARG_AF;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, MESSAGE));
+    c->r[R_AX] = BOX;
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x3703);
+    DRUN(guest_call_pop(m, TEXT_ROUTINE, 0x3706, 0));
+    DB(3, 0x3706);
+    frame_close_ret(c);
+    return 1;
+#undef DRUN
+#undef DB
+}
+
+/* MPS_LOGO 0000:0030, far (RETF): read count bytes from a stream into a far buffer,
+ * fread_bytes_far(stream, buffer, count). The arguments are cdecl, below a far return address:
+ * [bp+6] the stream (a near pointer into the data segment), [bp+8]:[bp+0A] the buffer as a far
+ * pointer (offset, then segment) and [bp+0C]:[bp+0E] the byte count as a long. The routine:
+ *   - reserves a frame of 4 bytes through the C run-time's stack check (0146:0296, a far call
+ *     that takes the frame size in AX, checks it against the stack limit and lowers SP by it);
+ *   - calls fread_far (0045:0116, far, plain RETF) as fread_far(buffer, 1, count, stream): the
+ *     item size is the long 1 (pushed as DX = 0 and AX = 1), the item count is the byte count,
+ *     the stream goes last; seven words are pushed, in the order stream, count high, count low,
+ *     size high, size low, buffer segment, buffer offset, and the routine drops them itself
+ *     (ADD SP, 0Eh);
+ *   - keeps the answer, the number of items read, as an unsigned word widened to a long in the
+ *     local pair [bp-4]:[bp-2] (high word cleared by XOR DX, DX, after the call) and returns it in
+ *     DX:AX.
+ * The stack check is the only other call; the far call to fread_far is the only other callee. */
+static int mps_logo_fread_bytes_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { STREAM = 6, BUF_OFF = 8, BUF_SEG = 10, COUNT_LO = 12, COUNT_HI = 14, LOCAL_LO = -4, LOCAL_HI = -2,
+           FRAME_BYTES = 4 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+    /* push bp / mov bp, sp / mov ax, 4: the frame size for the stack check */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FRAME_BYTES;
+    c->icount += 3;
+    SM4_NEED(1, 0x0036);
+    {   /* The stack check lowers SP by AX before its RETF, so the return is not at the caller's SP:
+         * the trap that sees the call come back waits for SP - AX. */
+        const uint16_t caller_cs = c->seg[S_CS], reserve = c->r[R_AX];
+        const uint16_t target_off = seg_read16(c, caller_cs, 0x0037), target_seg = seg_read16(c, caller_cs, 0x0039);
+        const uint8_t trap_on = m->trap_on;
+        const uint16_t trap_cs = m->trap_cs, trap_ip = m->trap_ip, trap_sp = m->trap_sp;
+        const uint64_t until = m->run_until;
+        cpu_push16(c, caller_cs);
+        cpu_push16(c, 0x003B);
+        c->seg[S_CS] = target_seg;
+        c->ip = target_off;
+        c->icount++;                                              /* the CALL FAR */
+        m->trap_on = 1;
+        m->trap_cs = caller_cs;
+        m->trap_ip = 0x003B;
+        m->trap_sp = (uint16_t)(c->r[R_SP] + 4 - reserve);
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int rc = matched_runner(m);
+        m->run_until = until; m->trap_on = trap_on; m->trap_cs = trap_cs; m->trap_ip = trap_ip; m->trap_sp = trap_sp;
+        c->io_cross = 0;
+        if (rc != RUN_TRAP) return 1;
+    }
+    /* The seven arguments of fread_far: nine instructions with the long 1 built in DX:AX. */
+    if (!room(c, 9)) { c->ip = 0x003B; return 1; }
+    XB(9, 0x003B);
+    cpu_push16(c, bp_get(c, STREAM));
+    cpu_push16(c, bp_get(c, COUNT_HI));
+    cpu_push16(c, bp_get(c, COUNT_LO));
+    c->r[R_AX] = 1;
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, BUF_SEG));
+    cpu_push16(c, bp_get(c, BUF_OFF));
+    SM4_NEED(1, 0x0051);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_far(m, 0x0051, 0x0056);
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    /* add sp, 0Eh / xor dx, dx / the answer into the long local and back / leave / retf */
+    XB(9, 0x0056);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0E, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    bp_put(c, LOCAL_LO, c->r[R_AX]);
+    bp_put(c, LOCAL_HI, c->r[R_DX]);
+    c->r[R_AX] = bp_get(c, LOCAL_LO);
+    c->r[R_DX] = bp_get(c, LOCAL_HI);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    return 1;
+#undef XB
+}
+
+/* PLAYER 0x001F6, player_finish(code): the end of the intro player, called with the exit code
+ * (a near frame, plain RET; the caller pops the word). It undoes what the player set up, in the
+ * order the setup was made, and then leaves through the C run-time's exit. On the real machine it
+ * does not come back; the lockstep fixture's exit does, and the frame unwinds:
+ *   - the sound driver's thunk (02A3:13B9, far, plain RETF) is asked for request 0, the word 0
+ *     pushed and the stack set back with MOV SP, BP (not by the callee);
+ *   - 026B:004D (far, RETF) and 0x005D0 (near) restore the timer and the screen state;
+ *   - unless the saved display number [1E74] is 13h it is given to 0x00540 (near, one argument,
+ *     the video mode set) and the stack set back;
+ *   - the word [207C] goes to 0x014E0 (near, one argument); when that answers non-zero (AX),
+ *     0x01476 (near, three arguments pushed 9Eh, C8h, D1h, so D1h is the first) is called as well
+ *     and the stack set back;
+ *   - last, the exit code [bp+4] goes to 0x0124E (the run-time's exit(code), near) and the stack is
+ *     set back.
+ * Every callee returns with a plain RET. */
+static int player_finish(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CODE = 4, DISPLAY = 0x1E74, NO_RESTORE = 0x13, FILE_STATE = 0x207C,
+           DRIVER_STOP = 0, TIMER_RESTORE = 0x05D0, VIDEO_RESTORE = 0x0540, FILE_CLOSE = 0x14E0,
+           REPORT = 0x1476, EXIT = 0x124E };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 4)) return 0;
+    /* push bp / mov bp, sp / sub ax, ax / push ax */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    XFAR(0x01FC, 0x0201);
+    XB(1, 0x0201);
+    c->r[R_SP] = c->r[R_BP];
+    XFAR(0x0203, 0x0208);
+    XNEAR(0x0208, TIMER_RESTORE, 0x020B);
+    XB(2, 0x020B);
+    alu_op(c, 7, ds_get(c, DISPLAY), NO_RESTORE, 1);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x0212);
+        cpu_push16(c, ds_get(c, DISPLAY));
+        XNEAR(0x0216, VIDEO_RESTORE, 0x0219);
+        XB(1, 0x0219);
+        c->r[R_SP] = c->r[R_BP];
+    }
+    XB(1, 0x021B);
+    cpu_push16(c, ds_get(c, FILE_STATE));
+    XNEAR(0x021F, FILE_CLOSE, 0x0222);
+    XB(3, 0x0222);
+    c->r[R_SP] = c->r[R_BP];
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    if (!(c->flags & F_ZF)) {
+        XB(6, 0x0228);
+        c->r[R_AX] = 0x9E;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0xC8;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0xD1;
+        cpu_push16(c, c->r[R_AX]);
+        XNEAR(0x0234, REPORT, 0x0237);
+        XB(1, 0x0237);
+        c->r[R_SP] = c->r[R_BP];
+    }
+    XB(1, 0x0239);
+    cpu_push16(c, bp_get(c, CODE));
+    XNEAR(0x023C, EXIT, 0x023F);
+    XB(3, 0x023F);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XFAR
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x01F6, player_finish, "stop the driver, restore the timer and screen, report, exit", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0000, 0x0030, mps_logo_fread_bytes_far, "read count bytes from a stream into a far buffer", 2 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x36D6, end_death_message_box_draw, "set the debriefing text box record and draw the ending message with the text routine, inside the message routine frame", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2430, end_ribbon_draw_from_full_row, "draw one rank ribbon with the full-row column offset, inside the ribbon routine frame: far drawing call, then leave", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4160, end_read_block_or_report, "read one block of the data file by DOS (3Fh), or hand the failure to the fatal-error screen", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x289A, start_load_file, "read a whole file into a near buffer", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0FC0, setup_timer_hook_install, "calibrate the timer and install the tick-counting INT 8 hook", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0336, player_clock_hook_step, "one step of the clock hook: the picture step, then the sound driver's tick and its rate request", 2 },

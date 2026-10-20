@@ -58,6 +58,13 @@ target_link_libraries(f117present PUBLIC f117machine)
 # this large source once, then include its object in each runtime archive.
 add_library(f117matched OBJECT src/matched/matched.c)
 target_include_directories(f117matched PRIVATE src/fixes src/matched)
+if(MSVC)
+  # /Ot (favour speed, part of /O2) sends MSVC's optimiser into 90+ minute compiles of this file since batch ab (the
+  # big VGAME routines reach 10,000 to 125,000 instructions after inlining); /Os compiles it in about 6 minutes with
+  # the same semantics. Measured 20 Oct 2026: /O2 /Ob2 (still running at 90 min), /O2 /Os (6.5 min), /O1 (4.5 min),
+  # /O2 /Ob0 (10 s, but the forced-inline CPU helpers become calls).
+  set_source_files_properties(src/matched/matched.c PROPERTIES COMPILE_OPTIONS /Os)
+endif()
 target_link_libraries(f117matched PRIVATE f117machine)
 add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/observe.c $<TARGET_OBJECTS:f117matched>)
 target_include_directories(f117recomp_none PUBLIC src/fixes src/matched)
@@ -1013,6 +1020,16 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:FC0)
     add_test(NAME matched_start_load_file COMMAND func_lockstep --states 5000
       --only START.EXE:289A)
+    add_test(NAME matched_end_read_block_or_report COMMAND func_lockstep --states 5000
+      --only END.EXE:4160)
+    add_test(NAME matched_end_ribbon_draw_from_full_row COMMAND func_lockstep --states 5000
+      --only END.EXE:2430)
+    add_test(NAME matched_end_death_message_box_draw COMMAND func_lockstep --states 5000
+      --only END.EXE:36D6)
+    add_test(NAME matched_mps_logo_fread_bytes_far COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:30)
+    add_test(NAME matched_player_finish COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1F6)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

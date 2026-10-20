@@ -86,6 +86,15 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Practical traps
 
+- **`matched.c` must compile with `/Os`.** From batch ab on, MSVC's `/O2` (which includes `/Ot`) took 90+ minutes
+  to compile `src/matched/matched.c` (the first batch-ab gate took 108 minutes; later gates only looked fast because the
+  object was reused). The slow functions are the big pre-existing VGAME routines (`vgame_draw_model_in_view`,
+  `vgame_display_pass` at 125,787 instructions after inlining, ...), not the new ones; batch ab only tipped the optimiser
+  over. Measured on 20 October 2026: `/O2 /Ob2` still running at 90 min, `/O2 /Os` 6.5 min, `/O1` 4.5 min, `/O2 /Ob0`
+  10 s (the forced-inline CPU helpers become calls), `/O1 /Ot` slow. `CMakeLists.txt` sets `/Os` on that one source file.
+  Find the slow functions of a compile with `cl ... /O1 /d2cgsummary` ("Anomalistic Compile Times"). A stuck `cl.exe` is
+  one core at 100%: check CPU time before concluding it is idle, and never run more than two or three of these at once
+  (3-4 GB each).
 - PowerShell-redirected pacer logs are UTF-16: decode them explicitly before
   looking for a success line. Restoring a source by copying can keep its old
   timestamp and fool Ninja into reusing an experimental object: touch it and

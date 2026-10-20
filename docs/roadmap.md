@@ -151,20 +151,20 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,120 addresses matched; named code runs 155,388 of the
+      **Now:** 1,125 addresses matched; named code runs 155,677 of the
       166,353 creditable census bytes (179,213 in all, 12,860 of them data, code that stays original or certified-dead code; see
       [progress.md](progress.md#what-is-measured)): 970 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215 and batch ab 2,040.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215, batch ab 2,040 and batch ac 290.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
       proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
       16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 160,791 /183,776 creditable bytes (P2 88.12%, overall 96.37%);
+      the score measures 161,081 /183,776 creditable bytes (P2 88.27%, overall 96.42%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -276,6 +276,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | x | 19 Oct | 1,020 | 301 | START `11DB` `start_map_hover_light`: the briefing-map hover handler (127 instructions, 301 bytes: relights the palette entry of the item under the pointer, the help line and the site popup; the census rows `11DB`, `1285` and `12DB` are parts of it). Proved on `display_tour` (1,301 calls) |
 | aa | 19 Oct | 1,083 | 2,215 | 63 routines on the new routes: the flight key dispatcher's arms (VGAME `C8CA`..`D3F8`: 55 arms, each a hand-back routine named by its key: zoom, countermeasures, gear, flaps, HUD options, the camera and view keys, the height hold, the sensitivity, detail, sound and frame-rate steps, the training switch, the waypoint reset, the display selectors F3-F10, Enter/Backspace buttons and more), the eject arm `CD04`, START's Alt+Q panel `7611` and int86 `9520`, END's Alt+Q panel `3E61`, TASS page `3BBF`, int86 `519E` and the whole icon-frame switch `0977`. On `key_tour`, `quit_dialogs`, `ejection_tass`, `display_tour`, `navigation_grid`, `recon`, `airair_type5`, `korea_strike` and `camera_gradients`. Mutation counts: 1,709 in all, all caught; 13 arms of two or three instructions have fewer than 20 (5 to 18) because no more distinct edits exist |
 | ab | 19 Oct | 1,120 | 2,040 | 37 small routines on existing routes, found by four module-group proof agents: SETUP (cursor, shut-down, tick wait, timer-hook install), VGAME (display-page registration, background span fill, picture close/read, frame loop), END (file reads, allocate-or-quit, debrief picture, DOS open, exit), START (hangar scene, the six objective-sentence arms, file loads, buffer allocation, clock hook, long-to-text, malloc), MPS_LOGO and PLAYER (palette write/read, allocators, break-vector hook, timer install, clock-hook step). Also the playback-clock default 0.4 / 0.025. Dropped: END `4160` (diverged on a real route), `23D6` and `3682` (they replace existing fragment rows), VGAME `0010`, `12A11`, END `03D9`, `57B0`, MPS_LOGO `067C`. 1,029 mutations, all caught |
+| ac | 20 Oct | 1,125 | 290 | 5 routines: END `4160` (DOS block read: its first proof hard-coded END's data segment, which the loader relocates, and failed on `landing`; fixed by reading the immediate from the code), END `2430` and `36D6` (the tails of the ribbon and death-message routines, registered beside their existing fragment rows), MPS_LOGO `0030` (`fread` of bytes into a far buffer) and PLAYER `01F6` (`player_finish`). 127 mutations, all caught. Also: `/Os` on `matched.c` (`/O2` took 90+ minutes to compile it from batch ab on), and 3,299 bytes certified dead left the denominator (`docs/census-dead.tsv`) |
 
 Notes that still matter:
 
