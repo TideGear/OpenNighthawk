@@ -20,12 +20,15 @@ verification) is not an optimisation; it needs the owner's approval.
 - **Matched routine batch (Phase 2).** Private proofs per routine in
   `D:/f117-gate/p2-*`, then one acceptance directory per batch
   (`p2-batch-<letter>-accept/`: `accept.py`, `overlap_accept.py`,
-  `optimized.py`, `audit_private.py`, `finalize.py`). Batch q: gate and
-  overlapped presentation 1,720 s in total (246 CTests, 45 routes / 44 fresh
-  interpreter sessions, N=1 596.49 s, boot N=4/9 49.66 s). Freeze keyed
-  per-route baselines before integrating: the presentation checks then start
-  about 1,050 s into the gate; without a valid keyed baseline they run
-  sequentially (batch p: 1,833 s in all). `optimized.py` passes `--only` with
+  `optimized.py`, `audit_private.py`, `finalize.py`). Batch al: acceptance
+  1,549 s with the presentation overlapped (427 CTests, 63 routes / 62 fresh
+  interpreter sessions, N=1 718 s started 793 s into the gate, boot N=4/9 75 s).
+  A keyed per-route baseline is what lets the presentation checks overlap the
+  gate; without a valid one (after a route or non-matched `src/` change) they
+  run sequentially (batch ai: 1,658 s in all). Before a gate, two cheap
+  pre-checks catch most failures: the commit-keyed seed through
+  `tools/func_lockstep_par.py --jobs 8` (about 4 minutes) and every new route
+  once with `--engine recomp` for `[matched] OVERRUN`. `optimized.py` passes `--only` with
   unpadded hex (a padded address once selected zero states) and requires
   positive comparison counts; `finalize.py` validates old coverage against the
   previous batch's own registration table and every new byte against the
@@ -38,7 +41,7 @@ verification) is not an optimisation; it needs the owner's approval.
   gate with the overlapped presentation, the ten optimized seeds, the baseline group verdict and the
   credit audit, then `audit_private.py` is run by hand. `finish_all.py DIR[:ROUTE]...` runs each
   directory's checkpoints, boot proof and verdict side by side on spare CPUs. Wall-time changes that
-  keep every check: the gate now starts the 44 fresh interpreter sessions (the critical path: the
+  keep every check: the gate now starts the fresh interpreter sessions (62 today) (the critical path: the
   career chain is ~1,285 s) right after the build and before the unit tests rather than after them
   (`build_recomp.py`: the same tests run concurrently, a failure still fails the gate); the overlapped
   N=1 presentation starts speculatively when coverage ends instead of after the re-translation check
@@ -154,22 +157,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 (below).
 
 **Current figures (21 October 2026, batch al):** 427 CTests; 63 routes identical, run
-as 62 sessions; 5,723,136 instruction states under each timing profile; 1,189
-matched routines at three seeds; reachability and event limits clean. Batch aj's
-gate took 1,770 s, acceptance 1,753 s with the presentation check overlapped from 110 s (a keyed baseline for the 63 routes is frozen): all 62 interpreter
-sessions fresh, 63 N=1 presentation routes exact, boot N=4/9 exact, 20 optimized seed checks and 122 caught mutations. (Batch ai: 1,658 s with no overlap. Batch ah: gate 1,783 s, 405 CTests, 30 optimized seed
-checks and 275 caught mutations. Batch ag: gate 1,604.44 s, acceptance 1,730.54 s, 399 CTests.) (Batch af: gate 1,554.92 s, acceptance 1,688.59 s.)
-First attempt at ag: three of its new CTests failed because the integration does not carry
-the SPANS and IMAGE_PATCHES rows of a proof's private harness; they were added by hand
-before the gate. The 17 October default-fixes
-full gate took 1,557.30 s, with every interpreter session verified fresh (0 reused,
-44 run), coverage refreshed and no new translated code. Correctness-only app and
-clock probes shared spare CPUs; this is not a controlled scheduling comparison.
-Evidence: `D:/f117-gate/default-fixes-20261017/{gate-verdict.json,gate.log}`.
-Batch o's matching acceptance, including N=1 and boot N=4/9 presentation, finished
-in 1,965.26 s using checked presentation overlap
-(`D:/f117-gate/p2-batch-o-accept/final-gate-verdict.json`).
-Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
+as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction states under each
+timing profile; 1,189 matched routines at three seeds; reachability and event limits clean.
+Gate 1,579 s; acceptance 1,549 s with the presentation checks overlapped (63 N=1 routes,
+260,613 exact frames / 260,527 pairs; boot N=4/9 736 / 732). Evidence:
+`D:/f117-gate/p2-batch-al-accept/`. Typical gates take about 1,500-1,800 s; the longest
+career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
@@ -237,7 +230,7 @@ cache keys, full checkpoints/final hashes and every route milestone. After the
 gate's final build settles, N=1 uses a frozen runner and baselines on 16 workers
 beside the eight fresh interpreter workers, under the existing 24-CPU affinity.
 Boot N=4/9 starts after the gate. Every command/check is retained. Before accepting,
-all 44 fresh interpreter sessions must match the frozen baselines at every
+all fresh interpreter sessions must match the frozen baselines at every
 checkpoint/final and milestone; all frozen file and runner hashes must still match.
 Five deliberate faults are rejected (wrong final, wrong checkpoints, missing
 final, changed frozen file, stale result claimed as fresh). Evidence:
@@ -318,9 +311,10 @@ route and lockstep workers remain experiments to benchmark first.
 - `ctest -E func_lockstep -j 8`: the same 142 tests the gate runs (111 took
   36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
-  --scales 1` over the 45 routes: 517.89-579.53 s at 16 workers; 1,321.61 s at
-  eight workers beside a gate. It keeps 259,240 exact logic frames / 259,166
-  exact interpolation pairs and every guest checkpoint and final hash.
+  --scales 1` over every route: 718 s for 63 routes at eight workers beside a gate
+  (batch al; 517.89-579.53 s for 45 routes at 16 workers alone). It keeps 260,613
+  exact logic frames / 260,527 exact interpolation pairs and every guest checkpoint
+  and final hash.
   Options: `--routes STEM...`, `--scales N...` (default 4 and 9), `--jobs N`
   (default 4), `--mode interp|rerun`. Run the full gate first for fresh
   baselines. It requires matching guest checkpoints, final hashes and route

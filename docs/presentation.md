@@ -639,7 +639,7 @@ memory and devices and rejected DOS calls under both timing profiles.
 
 **Checks** (`f117run`, every copy): before and after each extra draw, the real machine structure, all 1 MiB of
 memory and the fixes' state are compared; at t = 0 the unnudged copy must draw its step's own picture, coarse and
-fine. `tools/presentation_check.py --mode rerun` runs this over all 45 routes against the scan baselines.
+fine. `tools/presentation_check.py --mode rerun` runs this over every route against the scan baselines.
 
 **Status (15 October 2026, commit `fe20913`).** The full gate passes (116 CTests, 45 routes identical, both instruction
 profiles, three matched seeds, reachability/event checks). The 45-route rerun N=1 check keeps 259,240 frames / 259,166
@@ -936,7 +936,7 @@ the latest full-gate tally: the handoff):
   baselines: every guest hash, route milestone, closed logic frame and interpolation endpoint; it rejects
   dropped/unseeded frames and requires positive pairs on flight routes. All 45 N=1 routes: 259,240 closed logic frames
   and 259,166 pairs exact. `--mode rerun` adds the copy checks and requires positive original in-between draws;
-  changes to `drawfeed`/`rerun` need it on all 45 routes.
+  changes to `drawfeed`/`rerun` need it on every route.
 - **Live boot sentinels** (`boot_to_flight` at N=4 and N=9): 368 exact logic frames and 366 exact endpoint pairs each,
   54 checkpoints and final hash `48a10e901505e2a9`, equal to the run without presentation.
 - **Retained windows:** 96 replay/fine/interpolation checks over sixteen windows (the eight `logs41` windows, the map

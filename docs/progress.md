@@ -117,7 +117,9 @@ stays on the roadmap.
   Still outside the score: 3,939 static-discovery bytes needing review, and 18,584 validated executed
   bytes in the launcher, resident graphics library and sound drivers, reported separately by the
   classifier; extending matching and the score to those modules needs module/segment support. Thus
-  the score measures the expanded seven-program scope, not all game code. `census_classify.py` prints
+  the score measures the expanded seven-program scope, not all game code. The owner approved
+  bringing those modules and the reviewed discoveries into the scope (21 Oct): the percentage
+  will drop when they are added, and this section will say so with the before and after. `census_classify.py` prints
   the supplement, module counts and rejected-record counts; the existing `progress.py --census ...`
   command refreshes the old and expanded counts together.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the

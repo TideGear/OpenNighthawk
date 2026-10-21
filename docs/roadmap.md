@@ -38,8 +38,9 @@ make (Phase 4).
   direct maintenance through the original UI; the earned tenth-mission tour
   ribbon, promotion and Airman's Medal; a rank-3 career paired through
   retirement at sortie 99; the rank-6 "General, At Last!" retirement reached
-  with a staged roster (`tools/career_rank6.py`; not an earned rank-6 career).
-  Per route: [../tools/routes/README.md](../tools/routes/README.md).
+  with a staged roster (`tools/career_rank6.py`; not an earned rank-6 career);
+  the START quiz option; the original programs' own error handlers on ten damaged
+  installs (`tools/route_damage.py`, a private copy per run). Per route: [../tools/routes/README.md](../tools/routes/README.md).
 - **The emulated PC against GOG's DOSBox 0.74** (`tools/fidelity.py`): 1,210
   comparable answers agree. The machine follows DOSBox where it was measured
   to (memory layout, VGA timing and scanout, DAC, the PIT control-word
@@ -71,8 +72,8 @@ make (Phase 4).
 - **The gate** (`tools/build_recomp.py`): translate, build, unit tests (427),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
-  routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,557 s); costs and what was
+  routes-only and event-limit checks. About 26-30 minutes with every
+  interpreter route verified fresh (batch al: 1,579 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,86 +152,47 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,189 addresses matched; named code runs 159,769 of the
-      165,265 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
-      [progress.md](progress.md#what-is-measured)): 1,108 census rows
-      wholly, 294 in part. Credit is by byte since 16 October
-      ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
-      held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239, batch o 268, batch p 154, batch q 154, batch r 142, batch t 962, batch u 4,552, batch v 873, batch w 784, batch x 301, batch aa 2,215, batch ab 2,040 and batch ac 290, batch af 697, batch ag 645 and batch ah 794, batch ai 41 and batch aj 277 and batch ak 875 and batch al 495 (batches ad and ae added routes and an option, no routine).
-      **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
-      proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
-      16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
-      The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
-      (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
-      wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 165,256 /182,862 creditable bytes (P2 90.85%, overall 97.21%);
-      the earlier 87.43% used only the old census. No matching was removed.
-      The remaining 3,939 static-inventory bytes need review; speculative table/padding
-      decodes and independent-decoder disagreements prevent blindly adding translated bytes.
-      The second review trims PLAYER `1AD4` before the bisected `1B9B` instruction.
-      The third resolves the logo mouse-helper range: seven canonical walks cover
-      all 230 bytes without entering the overlapping operand decode. Canonical
-      VGAME `0FB2:02B4` likewise avoids segment-zero aliases inside operands.
-      Evidence: `D:/f117-gate/census-gap-20261018-tranche3/applied.json`. These and 18,584 validated executed bytes in other modules
-      remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
-      counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
-      records agree with an independent decoder. VGAME `09EFA`'s display pass
-      (1,628 instructions / 4,552 bytes) was matched in batch u.
-      **What is left:** `tools/census_reach.py` separates code with run
-      evidence from code without (gate coverage logs only interpreted
-      fallback instructions, so it cannot show what ran). Fresh interpreter
-      captures of all 45 routes (16 Oct, after batch d) run the entries of
-      381 unmatched census rows / 25,821 bytes, including 92 rows / 7,688
-      bytes that start inside one of our translation regions (interior
-      entries such as VGAME `0CB77` key dispatch, which the tool used to
-      skip as data). 21 rows / 4,764 bytes have only interior instructions
-      run, and 208 rows / 18,901 bytes have no evidence; those include data
-      (DSWAP `3DF3`, SETUP `27AE`'s strings) and need new routes or a
-      data/code decision each.
-      **What the old census's uncredited bytes are** (17 Oct, corrected instruction lengths,
-      `tools/census_classify.py`, 31,765 bytes): 5,486 in instructions routes ran (workable now),
-      15,127 decoded as code that no route runs (needs a new route or a decision that it is unreachable),
-      1,030 that no walk reaches and nothing marks as data (read on 21 Oct, `D:/f117-gate/unreached-review-20261021/`: of the 845 left, 257 are padding, jump tables and a driver vector table (now in `docs/census-data.tsv`), 367 are code nothing can enter (`docs/census-dead-ranges.tsv`) and 222 stay in: a 6-byte head reachable only by a failing `assert()`, and 215 bytes whose evidence is only `no reference found`),
-      842 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
-      VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code;
-      on 21 Oct 837 of those bytes, in SETUP and PLAYER, were certified unreachable: each program binds only a few
-      slots and no instruction in any program image names the rest, `docs/census-dead-ranges.tsv`; SETUP slot 47
-      stays in), and the 9,280 bytes of data and original code that left it.
-      The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
-      the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
-      reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
-      **What the never-run code is (19 Oct 2026, a static reading of all 334 rows / 12,972 bytes; evidence
-      `D:/f117-gate/neverrun-research/`, rows in `table.tsv`, mostly medium confidence):** dead code with no path in
-      the shipped files 5,201 bytes (the START quiz, which GOG's file patches out at START `0x1D`, 633, restored since 20 Oct by the option `--fix QUIZ` so no longer dead, and proved in batch ah; printf
-      conversions no format string uses, about 736; `_flsbuf` 689 and `_write` 679; about 1,200 bytes of unused END
-      graphics/UI functions; unused MPS_LOGO and PLAYER helpers); error and fatal paths 3,657 (C runtime exits,
-      allocation and file errors, command-line misuse, banners); paths a player can reach with normal input 2,321
-      (VGAME's key dispatcher 945 bytes of it, the Alt+Q dialogs of START and END about 654, ejection flights about 360,
-      the ILS panel about 175, career thresholds, a few small ones); setup or hardware paths 1,306 (DSWAP's floppy-swap
-      path about 1,000, joystick port timeouts, retrace and monochrome probes); about 487 unknown. Routes are being built
-      for the player-reachable groups (`display_tour` was the first); the dead and error groups are listed for an owner
-      decision on whether they leave the denominator as code that stays original.
-      **Machine-option-only error paths (owner, 20 Oct):** out-of-memory arms, DOS write/read/close errors and the
-      `_C_FILE_INFO` environment arm (about 2,500 bytes) can only run under a new test-only machine option; the owner
-      decided not to build one, so they stay original code, unscored as work and still in the denominator.
-      **Stays original code:** the timer interrupts (VGAME 0x1C9B, START
-      0x8D0B, END 0x4BEF) open with STI, after which the run loop admits one
-      more instruction before it looks at events, so a matched body could do
-      nothing the original does not. The line clipper's divide-error handler
-      (`0FB2:04DD`) is fixture-proven but **not integrated**: no input reaches
-      it (146,153 real clip divisions across 14 routes stay well under its
-      32,767-unit threshold); its patch is archived privately after the owner's
-      branch cleanup on 19 October. The C start-up routine (START `8EDC` and its
-      six copies) must stop right after its own STI and never returns to its
-      caller's stack, so no lockstep state can complete it; it needs a harness
-      completion rule first (`D:/f117-gate/p2-start-8edc/BLOCKED.txt`); its
-      copies are VGAME `E6BE`, DSWAP `0C7E`, SETUP `1516`, END `4DD2`, PLAYER
-      `1096` and MPS_LOGO `0146:0016`. The far palette loader VGAME `14C2:0000`
-      has STI inside its colour loop, like START `8378` and END `42E4`, whose
-      matched bodies stop at the first STI.
-      MPS_LOGO 0x1ADC and 0x1C82 remain excluded as unequal; START 0x11DB
-      was corrected and matched in batch x.
+      **Now (21 Oct):** 1,189 addresses matched. The score covers the expanded
+      seven-program scope: the Reimp census rows plus code outside them that routes
+      or proofs execute and reviewed static code (`docs/census-code.tsv`, 37 ranges):
+      **165,256 / 182,862 creditable bytes, P2 90.85%, overall 97.21%**. In the census
+      alone, named code runs 159,769 of 165,265 creditable bytes (1,108 rows wholly,
+      294 in part). Credit is by byte since 16 October; data, code that stays original
+      and certified-dead code leave the denominator
+      ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
+      **What is left (17,606 bytes; `tools/census_classify.py`):**
+      - About 12,100 outside the census rows: 10,301 reviewed static code bytes that no
+        route runs, and about 1,800 executed bytes no routine names. A route campaign
+        is under way (`D:/f117-gate/static-route-plan-20261021/`).
+      - 5,496 inside the census rows: 947 that routes run but that stay original or were
+        declined (below); 4,322 that no route runs (about 2,500 error paths only a
+        test-only machine option could reach, which the owner decided not to build;
+        831 probable-dead bytes that need evidence; the rest needs combat or very long
+        careers); 222 unreached bytes held back on weak evidence; one live jump slot.
+      - Outside the score: 18,584 executed bytes in the launcher, the resident graphics
+        library and the sound drivers, and 3,939 unreviewed static-discovery bytes.
+      **Owner decision (21 Oct): no meaningful game code may be missed.** Approved: bring
+      the launcher, graphics library and sound drivers into the scope (the percentage
+      drops at first); the route campaign above; a review of the unreviewed bytes; and a
+      reference entry (name and one-line purpose) for every range that cannot be matched,
+      so nothing is left unexplained even when it earns no credit.
+      **Dead code** leaves the denominator only when certain (owner, 19 Oct), with a
+      certificate per row: `docs/census-dead.tsv` (73 rows, 2,927 bytes) and
+      `docs/census-dead-ranges.tsv` (868 bytes of jump slots no program binds or names
+      and 367 bytes of code no walk decodes; 21 Oct reviews). The START quiz is an option
+      (`--fix QUIZ`), not dead code, and its routines are matched.
+      **Stays original code:** the timer interrupts (VGAME `1C9B`, START `8D0B`, END
+      `4BEF`) open with STI, after which the run loop admits one more instruction
+      before it looks at events, so a matched body could do nothing the original does
+      not. The C start-up (START `8EDC` and its copies VGAME `E6BE`, DSWAP `0C7E`, SETUP
+      `1516`, END `4DD2`, PLAYER `1096`, MPS_LOGO `0146:0016`) stops after its own STI and
+      never returns, so no lockstep state can complete it. The palette loaders with STI
+      inside their colour loop (VGAME `14C2:0000`, START `8378`, END `42E4`). The line
+      clipper's divide-error handler (`0FB2:04DD`) is fixture-proven but no input reaches
+      it (146,153 real clip divisions across 14 routes stay far under its threshold).
+      Declined: VGAME `0010` (`main`), START `8427` and END `4393` (wait loops routes
+      cannot finish), END `57B0` (an interior arm of printf), MPS_LOGO `1ADC` and `1C82`
+      (unequal); the list is `D:/f117-gate/kit/DECLINED.tsv`.
 
 ### How an entry is proved
 
@@ -249,12 +211,12 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to q (16-18 October 2026)
+### Batches e to al (16-21 October 2026)
 
 Every batch below passed the same proof (see above): five seeds per routine
 with every instruction reached, all mutations caught, exact boot (26
 checkpoints) and real-route proofs, optimized seed runs, then a fresh full gate
-(about 22-32 minutes), the 45-route N=1 presentation check and boot N=4/9.
+(about 22-32 minutes), the N=1 presentation check over every route (45 routes then, 63 now) and boot N=4/9.
 Per-batch evidence is in `D:/f117-gate/p2-batch-<letter>-accept/` (usually
 `final-gate-verdict.json`); the commit title carries the scoreboard. Counts are
 census bytes by byte credit unless noted; "addresses" is the registered total.
@@ -293,14 +255,10 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | ak | 21 Oct | 1,181 | 875 named bytes | 9 routines in rows that routes run but no routine covered: DSWAP `023E` (draw the disk-swap screen), `03A7` (open a picture file, decode it onto a page, close it), `0AD5` (the picture decoder's start) and `0BCF` (its code and table step: it leaves by `JMP BP`, handled by a `run_to_ret` rule and the pop-distance exemption); MPS_LOGO `0006:0044` (clear the text screen), `0006:000C` (`fatal_error`) and `0146:01D3` (the whole `exit()` entry through the shared tail; `01DA`/`01E2` are entered by no route, so the earlier `_exit` proof stays private); END `3B9A` (put up the report picture) and `03D9` (debriefing menu, rating and tally: D12 has two fix sites inside, so the body declines while D12 is on, like five other bodies). 379 fully covered instructions, 283 caught mutations, 45 optimized seed checks; 419 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,719 s, acceptance 1,606 s with presentation overlap. Fixtures force each branch outcome in a fixed share of states and were run at six extra seeds. The private audit needed two allowances: bodies without block macros take the placeholder prefix, and a hook inside the routine is accepted when a covering `fix_inside` guard declines it. |
 | al | 21 Oct | 1,189 | 495 named bytes | 8 PLAYER routines in rows that routes run but no routine covered: `1A7E` (printf's format scan, with the stack check inlined), `18C4` (`fprintf`), `1476` (assert failure), `1839` (write a message to the console), `15BA` (start-up check failed), `223A` (`raise`: it hands its tail to the already matched `22AF`, so no double credit), `026B:0244` (program the timer chip; a segment-keyed span and a `POPF_STOPS` row because `0000:0244` is another routine) and `0010` (`main`; the dossier span was one byte short of its RET, which had skipped every state). 228 fully covered instructions, 255 caught mutations, 40 optimized seed checks; 427 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,579 s, acceptance 1,549 s with overlap. Four claimed-but-uncredited bytes (inlined stack check). The batch copy of the private audit accepts a call inside a block for a `partial` body (the lockstep compares the clocks). |
 
-Batch af's raw audit adds 690 distinct instruction bytes against the older
-route inventory; current captures add DSWAP's two epilogue bytes `111E`/`111F`.
-The unchanged census boundaries repeat five of the newly covered positions
-across rows, giving 697 census-byte credits from 692 distinct bytes. The prior
-registry gains no credit when refreshed alone. Exact reconciliation:
-`D:/f117-gate/p2-batch-af-accept/credit-reconciliation.json`.
-
 Notes that still matter:
+
+- Census boundaries can repeat a byte across two rows: batch af's 692 newly covered bytes gave 697
+  census-byte credits (`D:/f117-gate/p2-batch-af-accept/credit-reconciliation.json`).
 
 - END `3BF4`'s wide test envelope includes nine fixture callee JMPs: 95 covered
   instructions represent 86 original ones. Code-operand stores keep separate
@@ -308,11 +266,6 @@ Notes that still matter:
 - Batches l-n replaced inherited opening coverage with fresh coverage of the
   complete body; no duplicate entry or credit was added. Switch-data bytes
   (`5963..5974`, `34D2..34E9`) and VGAME `11DFF` stay uncredited.
-- END `400F` (DOS open with a fatal tail) was proved privately but is held back:
-  stand-in tail, one uncaught mutation, coverage counts 21 of 39 instructions.
-- Batch r's full gate: 248 CTests, 45 routes / 44 fresh interpreter sessions,
-  1,012 routines at three seeds, all 65 mutations caught, ten optimized seed
-  runs, gate + overlapped presentation 1,697 s.
 
 ### Matched: VGAME flight, weapons and world
 
