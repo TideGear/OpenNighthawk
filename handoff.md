@@ -36,13 +36,13 @@ Consolidate it instead of appending to it.
     scope. Outside the score: 3,939 unreviewed static-discovery bytes and the floating LZEXE decompressor.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
-  - `static-route-plan-20261021/` (DONE): no route, damage, argument or probe answer can run any of the 10,301 reviewed-static bytes: 9,197
-    bytes (groups A, B, D-I: VGAME CGA/Tandy drivers 1,042; printf modifier states 1,251; SETUP library cluster 2,724; picture/span wrappers
-    1,480; INT 23h shims 569; MPS_LOGO mouse library 230; PLAYER report formatter 460; VGAME uncalled code 1,441) have no way in, and the
-    1,104 bytes of DSWAP's printf core (group C) need a floppy drive, which the owner declined. `plan.md` and `groups.tsv` there. Certifying
-    them dead needs `docs/census-code.tsv` rows removed (the classifier subtracts nothing for `census-dead-ranges.tsv`).
-  - `static-route-verify-20261021/` (INTERRUPTED in the prior session): an adversarial re-derivation of groups A, D, E, F, G, H
-    (historical agent id a70bf25a1f34ae616; scratch scripts are saved). Do not certify any group dead until it reports.
+  - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
+    no additional route identified for the 10,301 reviewed-static bytes. **No new dead certificate.** The review
+    retains all 27 requested ranges / 6,505 bytes; indirect/callback/vector and writer closure is incomplete.
+    The old claim that none can run is superseded: VGAME `1377:0204..0356` includes the M pixel routine `0287`,
+    and the old MPS_LOGO pointer scan used the wrong DGROUP (`041A`, actual `0332`). Details and per-group
+    decisions: [docs/static-code-review.md](docs/static-code-review.md); private `resumed-report.md` and
+    `group-a-closure.md`. B/I remain held too; C needs declined floppy support or machine-option-only errors.
   - `static-review-20261021/` (INTERRUPTED, agent a2f2492401cab1fda): the code/data review of the 3,939 unreviewed static bytes; stage files
     saved, no `code-rows.tsv` yet.
   - `unmatched-reference-20261021/` (agent a6d52c02c7d0dc047, status unknown when the session ended): the reference table for every range that
@@ -129,7 +129,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-1. **Reviewed static code (10,301 bytes):** the route plan found no way to run it. Complete the interrupted verification from its saved scripts, then decide per group: certify dead (with certificates and by removing the rows from `docs/census-code.tsv`) or keep. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
+1. **Reviewed static code (10,301 bytes):** resumed verification retains every range; no additional route or dead certificate is established ([review](docs/static-code-review.md)). Any later exclusion needs exact per-range closure of indirect and callback paths. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
 2. **Reference entries for unmatchable code:** check the agent's `reference.tsv` and coverage check
    (`D:/f117-gate/unmatched-reference-20261021/`), then publish it as a repository doc (one row per routine:
    name, purpose, status, why not matched, evidence).

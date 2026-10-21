@@ -163,11 +163,12 @@ not the recompilation:
       **What is left (36,441 bytes; `tools/census_classify.py`):**
       - About 12,100 outside the census rows: 10,301 reviewed static code bytes that no
         route runs, and about 1,800 executed bytes no routine names. A route plan
-        (`D:/f117-gate/static-route-plan-20261021/`, 21 Oct) found no input, file condition or
-        machine answer that runs any of the reviewed bytes: 9,197 are library, driver and
-        wrapper code with no caller or pointer, and 1,104 (DSWAP's printf core) need a floppy
-        drive that the owner declined to emulate. An independent check of those findings was
-        in progress; nothing has been certified dead from them yet.
+        (`D:/f117-gate/static-route-plan-20261021/`, 21 Oct) identified no additional route.
+        The resumed independent review retains every range: indirect/callback/vector and writer
+        closure is incomplete, and the earlier constant-M argument overlooked M/E pixel helpers
+        inside a purported CGA/Tandy range. No new dead-code exclusion is adopted. Details:
+        [static-code-review.md](static-code-review.md). DSWAP's identified formatting callers need
+        declined floppy support or machine-option-only failures.
       - 5,496 inside the census rows: 947 that routes run but that stay original or were
         declined (below); 4,322 that no route runs (about 2,500 error paths only a
         test-only machine option could reach, which the owner decided not to build;
