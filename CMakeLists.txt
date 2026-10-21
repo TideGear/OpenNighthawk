@@ -1127,6 +1127,24 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:CDD)
     add_test(NAME matched_end_fatal_error_screen COMMAND func_lockstep --states 5000
       --only END.EXE:41CA)
+    add_test(NAME matched_dswap_show_swap_disk_screen COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:23E)
+    add_test(NAME matched_dswap_show_picture_file COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:3A7)
+    add_test(NAME matched_dswap_pic_start COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:AD5)
+    add_test(NAME matched_dswap_pic_lzw COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:BCF)
+    add_test(NAME matched_mps_logo_clear_text_screen COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:44)
+    add_test(NAME matched_mps_logo_fatal_error COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:C)
+    add_test(NAME matched_mps_logo_exit COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1D3)
+    add_test(NAME matched_end_load_report_picture COMMAND func_lockstep --states 5000
+      --only END.EXE:3B9A)
+    add_test(NAME matched_end_debrief_and_tally COMMAND func_lockstep --states 5000
+      --only END.EXE:3D9)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

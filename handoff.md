@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 89.34%, P3 100.00%, All 96.75%
+- **Scoreboard:** P1 100.00%, P2 89.79%, P3 100.00%, All 96.88%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,172 addresses matched. Scope is the expanded seven-program
-  one: **163,882 / 184,585 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,181 addresses matched. Scope is the expanded seven-program
+  one: **164,757 / 184,587 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -53,6 +53,12 @@ Consolidate it instead of appending to it.
   `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`); `--fix all` and normal play never switch it on, `--fix none`
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
   `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583`, `06E0`, `0703`, `072E`, `0788`) are credited since batch ah.
+- **Batch ak (21 Oct, accepted):** DSWAP `023E` `03A7` `0AD5` `0BCF`, MPS_LOGO `0006:0044` `0006:000C` `0146:01D3`, END `3B9A` `03D9` (875 bytes, 379
+  instructions, 283 mutations; table in `docs/roadmap.md`); 419 CTests, 63 routes / 62 sessions, gate 1,719 s, acceptance 1,606 s with overlap.
+  Evidence `D:/f117-gate/p2-batch-ak-accept/`. Pre-checks used: the commit-keyed seed through `func_lockstep_par.py` before the gate. Batch-copy
+  audit allowances: `NOBLOCKS` prefix in `batch.json` for bodies without `XB`, and `audit_private.py` accepts a hook collision when a covering
+  `fix_inside` guard is in the body (copy both from `p2-batch-ak-accept/` into the next batch directory, `new_batch.py` copies stock ones).
+  Not integrated: PLAYER ran-row proofs still in progress (`p2-player-vj-*`); MPS_LOGO `_exit` `01DA`/`163A` and `27C2` (no route enters them).
 - **Batch aj (20 Oct, accepted):** DSWAP `0754`, MPS_LOGO `1364`, VGAME `0CDD`, END `41CA` (277 bytes, 116 instructions, 122 mutations; table in
   `docs/roadmap.md`); 410 CTests, 63 routes / 62 sessions, gate 1,770 s, acceptance 1,753 s with overlap (keyed baseline for 63 routes frozen,
   so `new_batch.py` needs no `--no-baseline` again unless `CMakeLists.txt` outside tests, non-matched `src/` or a route changes). Evidence
@@ -191,7 +197,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (89.34% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (89.79% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
    no proof worker or unrelated heavy job runs during a gate; the keyed baseline (af's, 58 routes) is stale since batch ai added five routes: the next matched batch runs `new_batch.py ... --no-baseline` once and freezes a new one for 63 routes / 62 sessions.
