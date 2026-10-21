@@ -24,7 +24,13 @@ class SessionGroups(unittest.TestCase):
         # Damaged-install routes stage copies even when only their session
         # keys are read. Keep this ROM-free check independent of a game install.
         with tempfile.TemporaryDirectory() as install:
-            for name in ("LABSLOGO.SS", "TITLE-1.PAN", "PALETTES.PAL", "ISOUND.LOG", "START.EXE"):
+            # every file a route damages (the line after each --damage is ACTION:FILE or poke=OFFSET:VALUE:FILE)
+            names = {"LABSLOGO.SS", "TITLE-1.PAN", "PALETTES.PAL", "ISOUND.LOG", "START.EXE"}
+            for route in routes:
+                with open(route, encoding="utf-8") as f:
+                    lines = f.read().split()
+                names.update(lines[i + 1].rsplit(":", 1)[-1] for i, word in enumerate(lines[:-1]) if word == "--damage")
+            for name in sorted(names):
                 with open(os.path.join(install, name), "wb") as f:
                     f.write(bytes(64))
             with patch.object(gate.route_damage, "MASTER", install), \
