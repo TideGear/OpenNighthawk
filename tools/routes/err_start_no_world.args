@@ -1,0 +1,29 @@
+# Damaged install: LABSLOGO.SS corrupt (skips the intro) and LB.WLD removed. The player picks the default Libya mission; START cannot open lb.wld and exits 255 through its run-time error banner (F117.COM then starts VGAME, which the route stops at once).
+# expect-exit MPS_LOGO.EXE 255 100000
+# expect-exit START.EXE 255 100000000
+--damage
+poke=18:FF:LABSLOGO.SS
+--damage
+remove:LB.WLD
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--click
+START.EXE+400000000:280,60
+--click
+START.EXE+700000000:272,134
+--click
+START.EXE+900000000:271,148
+--click
+START.EXE+1100000000:225,191
+--steps
+430000000
+--time-us
+700000000000000

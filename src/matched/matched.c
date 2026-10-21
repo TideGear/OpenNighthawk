@@ -491,11 +491,13 @@ static int vgame_set_scene_origin(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 10)) return 0;
-    const uint16_t x = arg(c, 0), y = arg(c, 1), z = arg(c, 2);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
-    ds_put(c, 0x49AC, x);
-    ds_put(c, 0x49AE, y);
+    /* Each argument is read just before its store: when DS and SS overlap, the stores can change the later
+     * arguments (matched_scene_origin_stack_alias keeps the seed that showed it). */
+    ds_put(c, 0x49AC, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+    ds_put(c, 0x49AE, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6)));
+    const uint16_t z = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8));
     ds_put(c, 0x49B0, z);
     c->r[R_AX] = z;
     x86_leave(c);

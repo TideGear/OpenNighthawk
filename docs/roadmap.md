@@ -21,10 +21,10 @@ make (Phase 4).
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
-- **Engine parity.** 58 scripted routes (57 sessions) are identical between
+- **Engine parity.** 63 scripted routes (62 sessions) are identical between
   the interpreter and the recompiled code at every 50-million-clock checkpoint
   and at the end; every translated instruction is held to the interpreter from
-  random states (5,719,104 comparisons under each of the two timing profiles,
+  random states (5,723,136 comparisons under each of the two timing profiles,
   0 differences); the interpreter and the translator are held to 8088 and
   80286 silicon vectors; 144 of 144 planted defects are caught; seeded random
   flights are identical. How:
@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (405),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (406),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
@@ -151,9 +151,9 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,168 addresses matched; named code runs 158,110 of the
+      **Now:** 1,168 addresses matched; named code runs 158,151 of the
       166,988 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
-      [progress.md](progress.md#what-is-measured)): 1,091 census rows
+      [progress.md](progress.md#what-is-measured)): 1,092 census rows
       wholly, 288 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
@@ -164,7 +164,7 @@ not the recompilation:
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 163,575 /184,574 creditable bytes (P2 89.19%, overall 96.70%);
+      the score measures 163,617 /184,585 creditable bytes (P2 89.21%, overall 96.71%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -283,6 +283,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | af | 20 Oct | 1,148 | 697 census credits | 23 routines: DSWAP `0647`, `0668`, `06EA`, `08F4`, `10F4` (close/read, picture block/rows, BIOS disk); END `00C7`, `00C8`, `22EA`, `47FE`, `2BCB`, `42BE`, `451B` (empty hooks, free-or-quit, palette, mouse); PLAYER `1C12`, `1D8D`, `1F54` (string/integer formatting and abort); SETUP `1509` (DOS string); START `057B`, `057C`, `885E` and VGAME `11D8:0155`, `02C2`, `02C3` (empty hooks); VGAME `1BC2` (flight-loop wrapper). 363 fully covered instructions, 550 caught mutations, 115 optimized seed checks; 385 CTests and all 58 routes pass. Gate 1,555 s; acceptance 1,689 s with presentation overlap. Serial/parallel translation is byte-identical; coverage loading 51.23 to 5.20 s. The harness span alias and the ROM-free scheduling test's install dependency are repaired. |
 | ag | 20 Oct | 1,162 | 645 named bytes | 14 routines from the rows that routes run but no routine covered: MPS_LOGO `0045:003A` (string position), `0045:0102` (DOS block free), `0146:0FE4` (formatter scan), `0146:15FA` (`_write`, with its shared tails), `0146:17B0` (checked allocation), `0146:1A64` (far jump to the allocator); PLAYER `1FD0` (the C run-time's stack check), `22AF` (raise()'s exit(3) tail); END `5948` (`%d` arm), `3692` (debrief message arm); DSWAP `0599` (DOS open or report), `0848` (colour registers); VGAME `104E:0082` (far sine entry), `1058:000E` (far HUD colour setup). 313 fully covered instructions, 341 caught mutations, 70 optimized seed checks; 399 CTests, 58 identical routes / 57 fresh interpreter sessions, both timing profiles, three full matched seeds and event limits pass. Gate 1,604 s, acceptance 1,731 s with presentation overlap. Five more proofs are not integrated: MPS_LOGO `27C2` and `163A` (their real-route proof found no call on the routes tried), VGAME `14C2:00B7`, `1058:000A` and `1058:0012` (the lockstep span table is keyed by IP, so the new rows would alias same-IP routines in other segments: they need a segment key first). Blocked as not routines or already matched: PLAYER `1BBA`, `1D50`, `1C3D`, `1D02` (entries inside the printf dispatcher `1BB6`, whose own proof has no verdict), `222D` (a switch table), `1FCF` (padding), END `4FA4` (run inline by `end_exit`), VGAME `11322`, `11372`, `11ED5` (already matched under other entries), MPS_LOGO `039A` (already matched). Hand-back routines `2444`, `2c10` and the formatter and runtime bodies whose block macros the private audit cannot enumerate are marked partial for that audit only; credit is by byte coverage. |
 | ah | 20 Oct | 1,168 | 787 named bytes | 6 routines: the START quiz (`057E` draws the screen, `0703` takes the pick and judges it, `0786` highlights the hovered button; the census rows `0583`, `06E0`, `072E` and `0788` are mid-instruction pieces of these three, credited by byte; proved on `quiz_right` with `--fix QUIZ`), PLAYER `1BB6` (printf's conversion dispatch, 471 bytes, 65 instructions; seeds now compare 6,124-6,146 states each, the earlier proof's seeds had skipped nearly all; it also credits the census rows `1BBA` and `1D50`, whose first bytes are mid-instruction), VGAME `1058:000A` and `1058:0012` (far entries of the HUD pass and layout switch). 328 fully covered instructions, 275 caught mutations, 30 optimized seed checks; 405 CTests, 58 identical routes / 57 fresh interpreter sessions, both timing profiles, three full matched seeds and event limits pass. Gate 1,783 s, acceptance 1,729 s. The lockstep span table gained a segment-keyed companion (`SPANS_SEG`) because `1058:000A` and `1058:0012` share addresses with routines in other segments. VGAME `14C2:00B7` was proved too but is the same code as the existing `1452:07B7` (linear 14CD7), so it was dropped; a first gate run caught the duplicate through its routine tally. Three claimed-but-uncredited bytes come from `1BB6`'s shared tail at `1D52`, entered from two arms. |
+| ai | 20 Oct | 1,168 | 41 census bytes (routes) | five new damaged-install routes, no new routine: `err_start_no_world` (LB.WLD removed: START's run-time error banner), `err_start_terrain_files` (LB.3DG removed, LB.3DT magic zeroed), `err_vgame_no_photo` (PHOTO.3DX removed: VGAME's file-error arm, a key already pressed so the matched `getch` never waits), `err_dswap_no_swap_palette` (LABSLOGO.SS, START.EXE and SWAP.PAL removed: MPS_LOGO's not-found arm and DSWAP's fatal-text printer) and `err_end_no_tass` (TASS.PIC removed after the ejection flow); 63 routes / 62 sessions identical between the engines; together they run 581 never-run census code bytes that no routine covers yet. Also: VGAME `D9E7` (set the scene origin) read its three arguments before its stores, but the original reads each just before its store: the commit-keyed seed of step 7c found it when DS and SS overlap (CTest `matched_scene_origin_stack_alias`); the dead-list row VGAME `0EBEA` (9 bytes) was removed because a route reaches it; `tools/presentation_check.py` names the two routes that start VGAME but end at a file error as `NO_FLIGHT_ROUTES`. Four gate attempts: one 7c mismatch (`D9E7`), one event-limit overrun (an open `getch` wait: a key typed after 1.4M clocks waits, before 1.0M does not), one presentation pairing requirement, then pass. Gate and acceptance 1,658 s, 406 CTests. |
 
 Batch af's raw audit adds 690 distinct instruction bytes against the older
 route inventory; current captures add DSWAP's two epilogue bytes `111E`/`111F`.

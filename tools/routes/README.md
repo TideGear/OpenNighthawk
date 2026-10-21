@@ -15,7 +15,7 @@ and so the inputs.
 interpreter and the recompiled code at 50-million-clock checkpoints and the
 final state. Routes with identical options play one session per engine
 (today `recon_return` and `recon_career`), and each is held to its own
-milestones on it: 58 routes, 57 sessions. Every replay starts from a fresh
+milestones on it: 63 routes, 62 sessions. Every replay starts from a fresh
 `save-*` directory holding the install's roster, so coverage runs or an
 earlier pipeline's edited pilot cannot change its starting state.
 
@@ -36,7 +36,8 @@ A route may damage a private copy of the install, as a broken install would be: 
 install's top directory, case ignored). `tools/route_damage.py` (called from `route_args`) builds the copy once, from hard
 links of the install, and the route runs with `--data` pointing at it. The install is never written and no state or
 executable is poked. These routes make the original programs run their own error handling: PLAYER's `assert`/abort and
-divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure, DSWAP's missing-START screen.
+divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure, DSWAP's missing-START screen, and the
+file-open and file-format error arms of DSWAP, START, VGAME and END.
 
 | Route | Damage and what it plays |
 |---|---|
@@ -45,6 +46,11 @@ divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure, DSWA
 | `err_boot_series_palette` | `LABSLOGO.SS` byte 18 = FF and `PALETTES.PAL` removed: MPS_LOGO reports "bad series load" (exit 255), START cannot open the palette and quits; also the cheapest way to START (3M clocks) |
 | `err_driver_overlay` | `ISOUND.LOG` removed: MPS_LOGO's overlay-load failure tail (exit 0), PLAYER starts in text mode |
 | `err_dswap_nostart` | `LABSLOGO.SS` corrupt and `START.EXE` removed: DSWAP cannot open START.EXE and waits on its swap-disk screen (ends on `--steps`) |
+| `err_dswap_no_swap_palette` | `LABSLOGO.SS`, `START.EXE` and `SWAP.PAL` removed: MPS_LOGO cannot open its series (exit 255); DSWAP also cannot open `swap.pal` and prints its fatal 'file not found' text (exit 0); 3.3M clocks |
+| `err_start_no_world` | `LABSLOGO.SS` corrupt and `LB.WLD` removed: START cannot open the world file for the default Libya mission and exits 255 through its run-time error banner (about 430M clocks) |
+| `err_start_terrain_files` | `LABSLOGO.SS` corrupt, `LB.3DG` removed and `LB.3DT`'s magic word zeroed: START's open-failure arm for the 3DG file and the terrain reader's bad-magic arm; START carries on and idles (ends on `--steps`, 450M clocks) |
+| `err_vgame_no_photo` | `LABSLOGO.SS` corrupt and `PHOTO.3DX` removed: the mission starts, VGAME cannot open `photo.3dx` and runs its file-error arm, then reads a key; the route has already pressed one (a wait left open would run the matched `getch` past its event limit) and ends on `--steps`, 1.5G clocks |
+| `err_end_no_tass` | `TASS.PIC` removed, then `ejection_tass`'s inputs: after the ejection END cannot open `tass.pic`, writes its message through its DOS write wrapper and exits 0 (2.44G clocks) |
 
 ## Milestones
 

@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 89.19%, P3 100.00%, All 96.70%
+- **Scoreboard:** P1 100.00%, P2 89.21%, P3 100.00%, All 96.71%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,168 addresses matched. Scope is the expanded seven-program
-  one: **163,575 / 184,574 creditable bytes** (credit by byte since 16 Oct;
+  one: **163,617 / 184,585 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -53,6 +53,16 @@ Consolidate it instead of appending to it.
   `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`); `--fix all` and normal play never switch it on, `--fix none`
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
   `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583`, `06E0`, `0703`, `072E`, `0788`) are credited since batch ah.
+- **Batch ai (20 Oct, accepted, routes only):** five new damaged-install routes (`err_start_no_world`, `err_start_terrain_files`,
+  `err_vgame_no_photo`, `err_dswap_no_swap_palette`, `err_end_no_tass`; table in `tools/routes/README.md`): 63 routes / 62 sessions, 406 CTests,
+  gate and acceptance 1,658 s, run without the keyed baseline (new routes), so no presentation overlap. They run 581 never-run census bytes that
+  now wait for proofs (list: `D:/f117-gate/route-cover-20261020b/` against the census). Also the `D9E7` argument-order fix
+  (`matched_scene_origin_stack_alias`), `NO_FLIGHT_ROUTES` in `tools/presentation_check.py`, and the VGAME `0EBEA` dead-row removal.
+  Traps: a route that leaves a matched `getch` waiting trips gate step 9 (OVERRUN): type the key before the wait (`/tmp`-style probe:
+  run the route with `--engine recomp` and grep `[matched] OVERRUN`); a rotating seed (7c) keyed by the commit hash can expose an old
+  argument-order bug in any matched body: reproduce with `func_lockstep --states 4000 --only MOD:IP --seed SEED`. `finalize.py` now
+  accepts any "declined" count (it grows when new routes add translated code). Evidence `D:/f117-gate/p2-batch-ai-accept/`; failed attempts
+  are `...-attempt1-d9e7`, `...-attempt2-overrun`, `...-attempt3-overrun2`.
 - **Batch ah (20 Oct, accepted):** START quiz routines `057E`/`0703`/`0786` (proved on `quiz_right`; the census rows `0583`, `06E0`, `072E`, `0788`
   are mid-instruction pieces of them), PLAYER `1BB6` (printf dispatch) and VGAME `1058:000A`/`1058:0012`; 328 instructions, 275 mutations,
   405 CTests, gate 1,783 s. Evidence `D:/f117-gate/p2-batch-ah-accept/` (attempt 1, with a duplicate VGAME `14C2:00B7`, is `...-attempt1-dup14cd7`).
@@ -169,10 +179,10 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (89.19% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (89.21% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
-   no proof worker or unrelated heavy job runs during a gate; af's baseline is keyed for all 58 routes / 57 sessions.
+   no proof worker or unrelated heavy job runs during a gate; the keyed baseline (af's, 58 routes) is stale since batch ai added five routes: the next matched batch runs `new_batch.py ... --no-baseline` once and freezes a new one for 63 routes / 62 sessions.
    Keep it valid by running matched batches back to back without changing `CMakeLists.txt` outside tests, non-matched `src/`, or routes.
    `new_batch.py ag af <HEAD> DIR...` can reuse it. The wrapper stores each alias route's own key (milestones can differ within one session),
    validates grouping and all fresh results, and overlaps presentation even when the gate validates its unchanged coverage record.

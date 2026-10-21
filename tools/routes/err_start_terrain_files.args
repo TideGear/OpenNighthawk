@@ -1,0 +1,32 @@
+# Damaged install: LABSLOGO.SS corrupt (skips the intro), LB.3DG removed and LB.3DT's two magic bytes zeroed. The same mission start: START cannot open lb.3dG (its error arm, the program carries on) and rejects lb.3dT because its magic word is not '11' (the terrain reader's error arm); START then idles.
+# expect-exit MPS_LOGO.EXE 255 100000
+# expect-open lb.wld START.EXE 1
+# expect-open lb.3dT START.EXE 1
+--damage
+poke=18:FF:LABSLOGO.SS
+--damage
+remove:LB.3DG
+--damage
+poke=0:0000:LB.3DT
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--click
+START.EXE+400000000:280,60
+--click
+START.EXE+700000000:272,134
+--click
+START.EXE+900000000:271,148
+--click
+START.EXE+1100000000:225,191
+--steps
+450000000
+--time-us
+700000000000000

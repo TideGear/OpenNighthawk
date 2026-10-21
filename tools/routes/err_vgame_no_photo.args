@@ -1,0 +1,32 @@
+# Damaged install: LABSLOGO.SS corrupt (skips the intro) and PHOTO.3DX removed. The mission starts normally (START, then PLAYER's second animation); VGAME opens stflt.3dx, lb.3dG and lb.3DX, cannot open photo.3dx and runs its file-error arm, then reads a key; the route has already pressed one, so the wait never opens (an open wait runs the matched getch past its event limit).
+# expect-exit MPS_LOGO.EXE 255 100000
+# expect-world LB
+# expect-open lb.3DX VGAME.EXE 1
+--damage
+poke=18:FF:LABSLOGO.SS
+--damage
+remove:PHOTO.3DX
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--click
+START.EXE+400000000:280,60
+--click
+START.EXE+700000000:272,134
+--click
+START.EXE+900000000:271,148
+--click
+START.EXE+1100000000:225,191
+--type
+VGAME.EXE+600000:\r
+--steps
+1500000000
+--time-us
+700000000000000

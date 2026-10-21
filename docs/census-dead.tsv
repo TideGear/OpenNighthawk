@@ -68,5 +68,4 @@ START	0x09EB3	270	PRINTF	[L01 _output arms] MS C _output arms for %n, %p (seg:of
 START	0x09FD6	53	PRINTF	[L11 _output arms] MS C _output radix setup for %X %x %o (hex letter base 7/0x27, '0x' alternate prefix, octal '0' prefix) -- _output arms for %n %p %e %f %g %X %x %o; all format strings contain only %s and %d
 VGAME	0x0E933	4	INITTERM	[L40 _initterm far] walk a far-pointer initializer/terminator table calling non-NULL entries (lcall [di]) -- lcall [di] in _initterm far: both call sites pass SI==DI (empty table)
 VGAME	0x0EBC4	9	HOOK	[L34 hook before DOS call] kbhit-style wrapper: if sig==0xD6D6 call hook(bx=-1) before INT 21h AH=0Bh -- call [0x9408] guarded by signature [0x9406]==0xD6D6 (image value 0; only compares)
-VGAME	0x0EBEA	9	HOOK	[L35 hook before DOS call] same 0xD6D6 hook before the INT 21h in a getch-style wrapper -- call [0x9408] guarded by signature [0x9406]==0xD6D6 (image value 0; only compares)
 VGAME	0x0F1E0	12	CONSTARG	[L28 fopen mode parser] fopen mode parser; N12 = 't' arm -- fopen mode parser t-arm: all 3 fopen modes are literal rb/rb/r+b

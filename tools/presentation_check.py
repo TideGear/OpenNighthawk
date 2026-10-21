@@ -26,6 +26,10 @@ from build_recomp import session_groups
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Routes that start VGAME but end at a file error (or stop at once) before it draws a flight frame: every other presentation
+# check still applies to them; only the "flight produced pairs" requirement does not.
+NO_FLIGHT_ROUTES = {"err_start_no_world", "err_vgame_no_photo"}
+
 
 def verdict(text):
     final = re.findall(r"stopped at icount (\d+) .*final hash ([0-9a-f]+)", text)
@@ -124,7 +128,7 @@ def main():
             if verdict(text) != baselines[route.stem]:
                 raise ValueError("guest checkpoints/final state differ from scan baseline")
             log = (out / "run.log").read_text()
-            row.update(presentation(text, "[exec] VGAME.EXE " in log))
+            row.update(presentation(text, "[exec] VGAME.EXE " in log and route.stem not in NO_FLIGHT_ROUTES))
             if args.mode == "rerun":
                 row.update(rerun_presentation(text, row["pairs"]))
         except (OSError, ValueError) as error:

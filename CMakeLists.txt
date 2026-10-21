@@ -386,6 +386,9 @@ if(F117R_BUILD_TESTS)
     # The random generator's seed aliases the caller's bound through DS and SS.
     add_test(NAME matched_start_rnd_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x4ebc42e1d00b --only START.EXE:76C0)
+    # The scene origin reads each argument just before its store; DS and SS can overlap (seed of 7c on 20 Oct).
+    add_test(NAME matched_scene_origin_stack_alias COMMAND func_lockstep --states 4000
+      --seed 0x8b9b2367ecdf --only VGAME.EXE:D9E7)
     # A stack overlapping the shift helper changes BX before the in-place stores.
     add_test(NAME matched_shift_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x2cb230b9369f --only VGAME.EXE:EF80,START.EXE:97D8)

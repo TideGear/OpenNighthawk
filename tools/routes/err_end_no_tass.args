@@ -1,0 +1,12 @@
+# Damaged install: TASS.PIC removed, then ejection_tass's inputs (a training sortie ejected on the ramp, VGAME exits 129). END cannot open tass.pic for the capture page, runs its file-error arm (the DOS write of its message) and exits 0.
+# expect-world LB
+# expect-exit VGAME.EXE 129 80000000
+# expect-exit END.EXE 0 5000000
+--damage
+remove:TASS.PIC
+--replay
+ejection_tass.input
+--steps
+3200000000
+--time-us
+700000000000000

@@ -366,7 +366,7 @@ are in [roadmap.md](roadmap.md).
    under `--engine interp` and `--engine recomp` and hashes all of memory,
    the registers and everything the machine sent out (every port write with
    its value and clock, every file write) every 50 million clocks. Every
-   route in `tools/routes/` (58, run as 57 sessions) must be identical at
+   route in `tools/routes/` (63, run as 62 sessions) must be identical at
    every checkpoint; `tools/build_recomp.py` (the gate) repeats this on every
    change. Routes also declare milestones - `# expect-world`, `# expect-exit`,
    `# expect-open`, `# expect-save`, `# seed-roster` - so two engines that
