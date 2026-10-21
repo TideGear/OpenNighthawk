@@ -1145,6 +1145,22 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:3B9A)
     add_test(NAME matched_end_debrief_and_tally COMMAND func_lockstep --states 5000
       --only END.EXE:3D9)
+    add_test(NAME matched_player_format_scan COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1A7E)
+    add_test(NAME matched_player_fprintf COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:18C4)
+    add_test(NAME matched_player_assert_fail COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1476)
+    add_test(NAME matched_player_write_message COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1839)
+    add_test(NAME matched_player_startup_check_failed COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:15BA)
+    add_test(NAME matched_player_raise COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:223A)
+    add_test(NAME matched_player_timer_program_count COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:244)
+    add_test(NAME matched_player_main COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:10)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -80702,7 +80702,576 @@ leave:
 #undef DB
 }
 
+/* PLAYER 0x01A7E, the formatter's scan (printf's _output, the Borland C runtime; the same code as
+ * START 0x09D06, END 0x05678 and MPS_LOGO 0146:0FE4, on PLAYER's cells). It is the function's
+ * entry and the scan loop's first turn; the conversion arms jump back to the loop at 0x01A91.
+ *  - The frame: the stack check (0x01FD0) is asked for 171h bytes of locals (it takes the
+ *    caller's return address off the stack and returns by JMP CX, so SP ends 171h lower; on
+ *    overflow the abort at 0x0115E runs and does not come back). SI and DI are saved, the count
+ *    so far [bp-8] and the state [bp-5] are cleared.
+ *  - The scan (from 0x01A91): the next format character is taken (LODSB from DS:[bp+6], the
+ *    pointer stored back, the character kept at [bp-2]). At the end of the string (a zero), or
+ *    with the count already negative (it cannot be at this first turn), the count is the
+ *    answer: AX = [bp-8], and the exit at 0x01F4D follows (pop DI, SI, MOV SP,BP, POP BP, RET).
+ *  - Otherwise the character's class: the table at DS:1C1A indexed by the character less 20h (up
+ *    to 58h; anything else is class 0), low nibble. Class times 8 plus the old state [bp-5]
+ *    indexes the same table again, whose high nibble is the new state (kept at [bp-5]); the
+ *    handler for it comes from the jump table at CS:1A6E, one word per state, and the routine
+ *    ends with the machine there: the arm is the original's code (0x01BB6 is matched).
+ * The stack check is run inline (rt_stack_check, the same code as player_stack_check): the lockstep
+ * cannot follow a callee that returns by JMP CX with the stack lowered. */
+static int player_format_scan(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FORMAT = 6, COUNT = -8, STATE = -5, KEPT = -2, CLASSES = 0x1C1A, HANDLERS = 0x1A6E,
+           LIMIT = 0x1C7E, OVERFLOW_HANDLER = 0x115E, FRAME = 0x0171 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x1A7E);                                                /* push bp / mov bp, sp / mov ax, 171h / call the stack check */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FRAME;
+    cpu_push16(c, 0x1A87);
+    if (!room(c, 9)) { c->ip = 0x1FD0; return 1; }                /* the check carries on as original code */
+    rt_stack_check(m, LIMIT, OVERFLOW_HANDLER);
+    if (c->ip != 0x1A87) return 1;                                /* overflow: the abort runs */
+    XB(5, 0x1A87);                                                /* push si / push di / xor ax, ax / mov [bp-8], ax / mov [bp-5], al */
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    bp_put(c, COUNT, c->r[R_AX]);
+    bp_put8(c, STATE, get_r8(c, R_AL));
+    XB(6, 0x1A91);                                                /* the next format character */
+    c->r[R_SI] = bp_get(c, FORMAT);
+    x86_lods(c, 0, c->seg[S_DS]);
+    bp_put(c, FORMAT, c->r[R_SI]);
+    bp_put8(c, KEPT, get_r8(c, R_AL));
+    alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0);            /* or al, al */
+    if (x86_cond(c, 4)) goto finished;                            /* je */
+    XB(2, 0x1A9F);
+    alu_op(c, 7, bp_get(c, COUNT), 0, 1);                         /* cmp word ptr [bp-8], 0 */
+    if (x86_cond(c, 13)) goto classify;                           /* jge */
+finished:
+    XB(2, 0x1AA5);                                                /* the count is the answer: mov ax, [bp-8] / jmp 1F4D */
+    c->r[R_AX] = bp_get(c, COUNT);
+    c->ip = 0x1F4D;
+    return 1;
+classify:
+    XB(4, 0x1AAB);
+    c->r[R_BX] = CLASSES;
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), 0x20, 0));
+    alu_op(c, 7, get_r8(c, R_AL), 0x58, 0);
+    if (x86_cond(c, 7)) goto other;                               /* ja */
+    XB(3, 0x1AB4);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + get_r8(c, R_AL))));   /* xlatb */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+    goto next_state;
+other:
+    XB(1, 0x1AB9);
+    set_r8(c, R_AL, 0);
+next_state:
+    XB(11, 0x1ABB);
+    set_r8(c, R_CL, 3);
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 4, get_r8(c, R_AL), get_r8(c, R_CL), 0));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), bp_get8(c, STATE), 0));
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + get_r8(c, R_AL))));   /* xlatb */
+    set_r8(c, R_CL, (uint8_t)alu_inc(c, get_r8(c, R_CL), 0));
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), get_r8(c, R_CL), 0));
+    bp_put8(c, STATE, get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->ip = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + HANDLERS));   /* jmp cs:[bx+1A6E] */
+    return 1;
+#undef XB
+}
+
+/* PLAYER 0x018C4, fprintf(stream, format, ...): the C run-time's formatted output to a chosen stream
+ * (0x0131E is the same routine for the fixed second stream; MPS_LOGO and the other programs carry
+ * copies). cdecl: [bp+4] the stream record, [bp+6] the format string, the values from [bp+8] on.
+ *  - 0x018FA (stbuf, plain RET, one argument) is given the stream: it gives an unbuffered
+ *    stream a temporary buffer and answers whether it did (kept in DI).
+ *  - 0x01A7E (the formatter's _output, plain RET, three arguments: the stream, the format and a
+ *    pointer to the values, which is BP + 8) answers the number of characters written; it is
+ *    kept at [bp-4].
+ *  - 0x0196B (free_buffer, plain RET, two arguments: DI and the stream) takes the temporary
+ *    buffer away again.
+ * The answer is the formatter's count; SI (the stream), DI and the 4-byte local are the frame's. */
+static int player_fprintf(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { STREAM = 4, FORMAT = 6, VALUES = 8, COUNT = -4, STBUF = 0x18FA, OUTPUT = 0x1A7E, FREE_BUFFER = 0x196B };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x18C4);                                      /* push bp / mov bp,sp / sub sp,4 / push di / push si / mov si,[bp+4] / push si */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 4, 1);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = bp_get(c, STREAM);
+    cpu_push16(c, c->r[R_SI]);
+    XNEAR(0x18D0, STBUF, 0x18D3);
+    XB(6, 0x18D3);                                      /* add sp,2 / mov di,ax / lea ax,[bp+8] / push ax / push [bp+6] / push si */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1);
+    c->r[R_DI] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + VALUES);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, FORMAT));
+    cpu_push16(c, c->r[R_SI]);
+    XNEAR(0x18E0, OUTPUT, 0x18E3);
+    XB(4, 0x18E3);                                      /* add sp,6 / mov [bp-4],ax / push si / push di */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    bp_put(c, COUNT, c->r[R_AX]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    XNEAR(0x18EB, FREE_BUFFER, 0x18EE);
+    XB(7, 0x18EE);                                      /* add sp,4 / mov ax,[bp-4] / pop si / pop di / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 4, 1);
+    c->r[R_AX] = bp_get(c, COUNT);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x01476, the C run-time's assertion report (what a failed assert() calls; plain RET, the
+ * caller pops the three words it pushed: the line, the file name and the expression text).
+ *  - fprintf (0x018C4) is called with the error stream record (0x1AE2), the report's format string
+ *    (0x1A92) and the caller's three words, in the order they sit at [bp+4], [bp+6] and [bp+8]
+ *    (pushed last first, so the formatter sees [bp+4] first); the frame is dropped (MOV SP,BP).
+ *  - fflush (0x019AA, one argument) is called for the same stream.
+ *  - abort (0x01F54) ends the program; if it did return, the frame is dropped and the routine
+ *    returns to its caller.
+ * All three callees are plain RET (the frame drop undoes their arguments). */
+static int player_assert_fail(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FPRINTF = 0x18C4, FFLUSH = 0x19AA, ABORT = 0x1F54, STREAM = 0x1AE2, FORMAT = 0x1A92 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x1476);                          /* push bp / mov bp,sp / push [bp+8] / push [bp+6] / push [bp+4] / mov ax,FORMAT / push ax / mov ax,STREAM / push ax */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_AX] = FORMAT;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = STREAM;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x148A, FPRINTF, 0x148D);
+    XB(3, 0x148D);                          /* mov sp,bp / mov ax,STREAM / push ax */
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_AX] = STREAM;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x1493, FFLUSH, 0x1496);
+    XB(1, 0x1496);                          /* mov sp,bp */
+    c->r[R_SP] = c->r[R_BP];
+    XNEAR(0x1498, ABORT, 0x149B);
+    XB(3, 0x149B);                          /* mov sp,bp / pop bp / ret */
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x01839, write_message(code), the C run-time's error message writer (plain frame, RET 2:
+ * the callee removes its argument). The message text for the code comes from find_message
+ * (0x0180E, one argument, plain RET: the argument stays until the frame is dropped); a code with
+ * no text answers 0 and nothing is written.
+ *  - The text's length: REPNE SCASB for its zero from ES:DI (DI = the text, CX starts at FFFFh,
+ *    counted whole), length = ~CX - 1.
+ *  - The write: BX = 2 (the error handle), CX = the length, DX = the text (in DS). If the console
+ *    hook's signature [1CB4] is D6D6h the hook at [1CB6] is called first (a near call through
+ *    memory, plain RET). Then DOS function 40h (INT 21h) writes it; its answer is not looked at.
+ *  - AX leaves as DOS (or the hook, or find_message) left it. */
+static int player_write_message(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CODE = 4, FIND_MESSAGE = 0x180E, SIGNATURE = 0x1CB4, HOOK = 0x1CB6, MAGIC = 0xD6D6 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x1839);                          /* push bp / mov bp,sp / push di / push [bp+4] */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, bp_get(c, CODE));
+    SM4_NEED(1, 0x1840);
+    XRUN(guest_call_pop(m, FIND_MESSAGE, 0x1843, 0));
+    XB(2, 0x1843);                          /* or ax,ax / je */
+    alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 4)) goto done;
+    {
+        const unsigned k = scan_zero_count(c, c->r[R_AX]);
+        XB(9 + k, 0x1847);                  /* xchg dx,ax / mov di,dx / xor ax,ax / mov cx,FFFF / repne scasb / not cx / dec cx / mov bx,2 / cmp [SIGNATURE],MAGIC / jne */
+        { const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_AX]; c->r[R_AX] = t; }
+        c->r[R_DI] = c->r[R_DX];
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+        c->r[R_CX] = 0xFFFF;
+        rep_string(c, STR_SCAS, 0, 0, 1);
+        c->r[R_CX] = (uint16_t)~c->r[R_CX];
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        c->r[R_BX] = 2;
+        alu_op(c, 7, ds_get(c, SIGNATURE), MAGIC, 1);
+        if (!x86_cond(c, 5)) {              /* the hook */
+            SM4_NEED(1, 0x185F);
+            XRUN(guest_call_pop(m, ds_get(c, HOOK), 0x1863, 0));
+        }
+    }
+    XB(1, 0x1863);                          /* mov ah,40h */
+    set_r8(c, R_AH, 0x40);
+    if (!sm4_int(m, 0x1865)) return 1;      /* INT 21h: write */
+done:
+    XB(4, 0x1867);                          /* pop di / mov sp,bp / pop bp / ret 2 */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x015BA, the start-up check's failure report (what the checksum routine at 0x015E0
+ * calls when its sum is wrong; plain RET): two messages through write_message (0x01839, RET 2,
+ * its argument is the message code), with the program's exit hook between them.
+ *  - write_message(0FCh) is called (the callee removes its one argument).
+ *  - If the hook word [1ABA] is not zero the hook is called through it (a near call, plain RET,
+ *    no arguments).
+ *  - write_message(0FFh) is called.
+ *  Then the frame is dropped and the routine returns. */
+static int player_startup_check_failed(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WRITE_MESSAGE = 0x1839, HOOK = 0x1ABA, FIRST_CODE = 0x00FC, SECOND_CODE = 0x00FF };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x15BA);                          /* push bp / mov bp,sp / mov ax,FCh / push ax */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FIRST_CODE;
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x15C1);
+    XRUN(guest_call_pop(m, WRITE_MESSAGE, 0x15C4, 2));
+    XB(2, 0x15C4);                          /* cmp [1ABA],0 / je */
+    alu_op(c, 7, ds_get(c, HOOK), 0, 1);
+    if (!x86_cond(c, 4)) {
+        SM4_NEED(1, 0x15CB);
+        XRUN(guest_call_pop(m, ds_get(c, HOOK), 0x15CF, 0));
+    }
+    XB(2, 0x15CF);                          /* mov ax,FFh / push ax */
+    c->r[R_AX] = SECOND_CODE;
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x15D3);
+    XRUN(guest_call_pop(m, WRITE_MESSAGE, 0x15D6, 2));
+    XB(3, 0x15D6);                          /* mov sp,bp / pop bp / ret */
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0x0223A, raise(signal), the C run-time's signal dispatch (plain frame, one argument at
+ * [bp+4], 4 bytes of locals; the answer in AX is 0, or -1 for a signal with no table entry,
+ * and the caller removes the argument). The run-time's tail 0x022AF (exit(3), matched on its own
+ * as player_raise_exit_code_three) is not part of this routine: the floating-point arm ends by
+ * running into it, and so does the jump table's word for it. The frame's common exit (0x022B6 for
+ * -1, 0x022BB for 0, then 0x022BD: MOV SP,BP / POP BP / RET) is shared with that tail and is done
+ * here for the paths that reach it from this routine.
+ *  - SIGINT (2): carry cleared and INT 23h (the DOS Ctrl-Break handler); with carry still clear
+ *    afterwards the answer is 0 (the common exit at 22BB); otherwise DOS function 4Ch ends the
+ *    program (AH = 4Ch, the INT 21h left to the original, where the program ends).
+ *  - SIGFPE (8) with no handler installed in the long [1CC4]:[1CC6] answers -1 (22B6).
+ *  - The signal's table entry comes from 0x0257B (AL in, a plain RET: carry set when the signal
+ *    is not in the table, then the answer is -1 too; else BX = the entry's address and CX = the
+ *    signal's index). An entry is a long: the handler (its low word, kept in [bp-4], the high word in
+ *    [bp-2]). The low word 0 (default action) goes through the jump table at CS:222E, one
+ *    word per index: 22BB (nothing), 22A7 (the floating-point arm: AX = 8Ch and a far call through
+ *    the pointer at SS:1CCC, then on into 22AF, the abort tail) or 22AF itself; 1 (ignore) answers 0.
+ *  - Any other low word is the handler: ES, BP, DI and SI are saved, the entry is cleared to 0
+ *    unless the signal is SIGFPE (8), DF is cleared, and the handler is called (near, through the
+ *    word at [bp-4]) with the signal and 8Ch pushed; the registers are restored and the answer is 0.
+ * The callees are 0x0257B (RET) and the handler (RET). */
+static int player_raise(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SIGNAL = 4, HANDLER = -4, HANDLER_HIGH = -2, FIND = 0x257B, TABLE = 0x222E, FPE_POINTER = 0x1CCC,
+           FPE_HANDLER_LONG = 0x1CC4, FPE_HANDLER_HIGH = 0x1CC6, SIGINT = 2, SIGFPE = 8, FLOAT_ARM = 0x22A7,
+           ABORT_TAIL = 0x22AF, ANSWER_MINUS_ONE = 0x22B6, ANSWER_ZERO = 0x22BB, ARG_8C = 0x8C };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x223A);                          /* push bp / mov bp,sp / sub sp,4 / mov ax,[bp+4] / cmp ax,2 / jne */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 4, 1);
+    c->r[R_AX] = bp_get(c, SIGNAL);
+    alu_op(c, 7, c->r[R_AX], SIGINT, 1);
+    if (x86_cond(c, 5)) goto not_interrupt;
+    XB(1, 0x2248);                          /* clc */
+    set_flag(c, F_CF, 0);
+    if (!sm4_int(m, 0x2249)) return 1;      /* INT 23h */
+    XB(1, 0x224B);                          /* jae 22BB */
+    if (!(c->flags & F_CF)) goto answer_zero;
+    XB(1, 0x224D);                          /* mov ah,4Ch: the INT 21h that follows ends the program */
+    set_r8(c, R_AH, 0x4C);
+    c->ip = 0x224F;
+    return 1;
+not_interrupt:
+    XB(2, 0x2251);                          /* cmp ax,8 / jne */
+    alu_op(c, 7, c->r[R_AX], SIGFPE, 1);
+    if (x86_cond(c, 5)) goto look_up;
+    XB(3, 0x2256);                          /* mov bx,[1CC4] / or bx,[1CC6] / je 22B6 */
+    c->r[R_BX] = ds_get(c, FPE_HANDLER_LONG);
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], ds_get(c, FPE_HANDLER_HIGH), 1);
+    if (x86_cond(c, 4)) goto answer_minus_one;
+look_up:
+    SM4_NEED(1, 0x2260);
+    XRUN(guest_call_pop(m, FIND, 0x2263, 0));
+    XB(1, 0x2263);                          /* jb 22B6 */
+    if (c->flags & F_CF) goto answer_minus_one;
+    XB(4, 0x2265);                          /* mov ax,[bx] / mov dx,[bx+2] / cmp ax,1 / ja */
+    c->r[R_AX] = ds_get(c, c->r[R_BX]);
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2));
+    alu_op(c, 7, c->r[R_AX], 1, 1);
+    if (x86_cond(c, 7)) goto handler;
+    XB(2, 0x226F);                          /* or ax,ax / jne 22BB */
+    alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 5)) goto answer_zero;
+    XB(3, 0x2273);                          /* mov bx,cx / shl bx,1 / jmp cs:[bx+222E] */
+    c->r[R_BX] = c->r[R_CX];
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    {
+        const uint16_t target = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + TABLE));
+        if (target == ANSWER_ZERO) goto answer_zero;
+        if (target != FLOAT_ARM) { c->ip = target; return 1; }
+    }
+    XB(1, FLOAT_ARM);                       /* mov ax,8Ch */
+    c->r[R_AX] = ARG_8C;
+    SM4_NEED(1, 0x22AA);                    /* call far ss:[1CCC] */
+    {
+        const uint16_t off = seg_read16(c, c->seg[S_SS], FPE_POINTER), sg = seg_read16(c, c->seg[S_SS], (uint16_t)(FPE_POINTER + 2));
+        XRUN(guest_call_far_to(m, sg, off, ABORT_TAIL));
+    }
+    c->ip = ABORT_TAIL;
+    return 1;
+handler:
+    XB(9, 0x227C);                          /* mov [bp-4],ax / mov [bp-2],dx / push es / push bp / push di / push si / mov cx,[bp+4] / cmp cx,8 / je */
+    bp_put(c, HANDLER, c->r[R_AX]);
+    bp_put(c, HANDLER_HIGH, c->r[R_DX]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_BP]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_CX] = bp_get(c, SIGNAL);
+    alu_op(c, 7, c->r[R_CX], SIGFPE, 1);
+    if (x86_cond(c, 4)) goto call_handler;
+    XB(3, 0x228E);                          /* xor ax,ax / mov [bx],ax / mov [bx+2],ax: the entry is cleared */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    ds_put(c, c->r[R_BX], c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), c->r[R_AX]);
+call_handler:
+    XB(4, 0x2295);                          /* mov ax,8Ch / push ax / push cx / cld */
+    c->r[R_AX] = ARG_8C;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    set_flag(c, F_DF, 0);
+    SM4_NEED(1, 0x229B);                    /* call word ptr [bp-4] */
+    XRUN(guest_call_pop(m, bp_get(c, HANDLER), 0x229E, 0));
+    XB(6, 0x229E);                          /* add sp,4 / pop si / pop di / pop bp / pop es / jmp 22BB */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 4, 1);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    goto answer_zero;
+answer_minus_one:
+    XB(2, ANSWER_MINUS_ONE);                /* mov ax,0FFFFh / jmp 22BD */
+    c->r[R_AX] = 0xFFFF;
+    goto frame_exit;
+answer_zero:
+    XB(1, ANSWER_ZERO);                     /* xor ax,ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+frame_exit:
+    XB(3, 0x22BD);                          /* mov sp,bp / pop bp / ret */
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 026B:0244 (linear 0x028F4), near: program the timer chip (PIT channel 0) with the clock
+ * hook's tick count, when that needs doing. DX = the wanted count [1A08]; the count the chip
+ * was last given is [1A0A]. With the two equal and CX zero nothing is sent (JCXZ to the end).
+ * Otherwise:
+ *  - [1A0A] = DX; the control word 36h (channel 0, low then high byte, mode 3) goes to port
+ *    43h, then the count's low byte (DL) and high byte (DH) to port 40h; each OUT is followed by
+ *    a JMP to the next instruction (an I/O delay).
+ *  - The programming counter [1A0C] is incremented; CX is negated and kept in [1A18] (the
+ *    caller's pending request, as the negative of what it passed). A JE to the next
+ *    instruction follows (no effect).
+ * Both ways end with STI and RET. The STI lets an interrupt in, so the routine stops after it
+ * and the original's RET follows. No callees. */
+static int player_timer_program_count(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WANTED = 0x1A08, LAST = 0x1A0A, PROGRAMMED = 0x1A0C, PENDING = 0x1A18, PIT_CONTROL = 0x43, PIT_CHANNEL0 = 0x40, MODE = 0x36 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0244);                          /* mov dx,[WANTED] / cmp dx,[LAST] / jne */
+    c->r[R_DX] = ds_get(c, WANTED);
+    alu_op(c, 7, c->r[R_DX], ds_get(c, LAST), 1);
+    if (x86_cond(c, 5)) goto program;
+    XB(1, 0x024E);                          /* jcxz */
+    if (c->r[R_CX] == 0) goto finish;
+program:
+    SM4_NEED(4 + IO_SLACK(1), 0x0250);      /* mov [LAST],dx / mov al,MODE / out 43h,al / jmp */
+    ds_put(c, LAST, c->r[R_DX]);
+    set_r8(c, R_AL, MODE);
+    c->icount += 2;
+    x86_out(c, PIT_CONTROL, 0);
+    c->icount += 2;
+    SM4_NEED(3 + IO_SLACK(1), 0x025A);      /* mov al,dl / out 40h,al / jmp */
+    set_r8(c, R_AL, get_r8(c, R_DL));
+    c->icount += 1;
+    x86_out(c, PIT_CHANNEL0, 0);
+    c->icount += 2;
+    SM4_NEED(6 + IO_SLACK(1), 0x0260);      /* mov al,dh / out 40h,al / inc [PROGRAMMED] / neg cx / mov [PENDING],cx / je */
+    set_r8(c, R_AL, get_r8(c, R_DH));
+    c->icount += 1;
+    x86_out(c, PIT_CHANNEL0, 0);
+    c->icount += 1;
+    ds_put(c, PROGRAMMED, (uint16_t)alu_inc(c, ds_get(c, PROGRAMMED), 1));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+    ds_put(c, PENDING, c->r[R_CX]);
+    c->icount += 4;
+finish:
+    SM4_NEED(1, 0x0270);                    /* sti */
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0271;                         /* the RET */
+    return 1;
+#undef XB
+}
+
+/* PLAYER 0x00010, main(argc, argv): the intro player's entry. [bp+4] is argc, [bp+6] argv (a
+ * near array of near pointers to the argument strings; entry 0 is the program name). One local
+ * word, [bp-2], keeps argc. SI and DI are saved.
+ *  - With fewer than two arguments (argc < 2, signed) the usage text is printed (0x0131E, the
+ *    formatted print to the second stream, plain RET, one argument: the message code 42h) and
+ *    exit(63h) (0x0124E, plain RET, one argument) is called; the exit does not come back in the
+ *    game, but the code goes on if it did.
+ *  - 0x0005C (prepare playback: memory and hardware services; plain RET, no arguments) is called.
+ *  - For each argument after the program name, in order (SI starts at argv and steps two bytes
+ *    first, DI = argc counts down to the last): the picture file's name pointer [SI] is pushed
+ *    and 0x00244 (stream the picture file, plain RET, one argument) is called. (With argc
+ *    = 0 the countdown would run through 65536 turns; the loop is the original's.)
+ *  - 0x0019A (play out and finish, plain RET, one argument: argc) ends the program's run; it
+ *    does not come back in the game, but the frame is dropped and the routine returns if it did. */
+static int player_main(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ARGC = 4, ARGV = 6, KEPT_ARGC = -2, PRINT = 0x131E, EXIT = 0x124E, PREPARE = 0x5C, STREAM_FILE = 0x244,
+           PLAY_OUT = 0x19A, USAGE = 0x42, EXIT_CODE = 0x63 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0010);                          /* push bp / mov bp,sp / sub sp,2 / push di / push si / mov di,[bp+4] / mov [bp-2],di / cmp di,2 / jge */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 2, 1);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DI] = bp_get(c, ARGC);
+    bp_put(c, KEPT_ARGC, c->r[R_DI]);
+    alu_op(c, 7, c->r[R_DI], 2, 1);
+    if (x86_cond(c, 13)) goto start;
+    XB(2, 0x0023);                          /* mov ax,42h / push ax */
+    c->r[R_AX] = USAGE;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x0027, PRINT, 0x002A);
+    XB(3, 0x002A);                          /* add sp,2 / mov ax,63h / push ax */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1);
+    c->r[R_AX] = EXIT_CODE;
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x0031, EXIT, 0x0034);
+    XB(1, 0x0034);                          /* add sp,2 */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1);
+start:
+    XNEAR(0x0037, PREPARE, 0x003A);
+    XB(2, 0x003A);                          /* mov si,[bp+6] / jmp 4A */
+    c->r[R_SI] = bp_get(c, ARGV);
+    goto next;
+each:
+    XB(3, 0x0040);                          /* inc si / inc si / push [si] */
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    cpu_push16(c, ds_get(c, c->r[R_SI]));
+    XNEAR(0x0044, STREAM_FILE, 0x0047);
+    XB(1, 0x0047);                          /* add sp,2 */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1);
+next:
+    XB(2, 0x004A);                          /* dec di / jne 40 */
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    if (x86_cond(c, 5)) goto each;
+    XB(1, 0x004D);                          /* push [bp-2] */
+    cpu_push16(c, bp_get(c, KEPT_ARGC));
+    XNEAR(0x0050, PLAY_OUT, 0x0053);
+    XB(6, 0x0053);                          /* add sp,2 / pop si / pop di / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0010, player_main, "the player's main: usage message, then each picture file named, then play out", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0244, player_timer_program_count, "program the timer chip with the tick count when it changed", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x223A, player_raise, "raise(signal): the run-time's signal dispatch", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x15BA, player_startup_check_failed, "the start-up check failed: report, run the exit hook, report", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1839, player_write_message, "write the run-time message for a code to the error handle", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1476, player_assert_fail, "the assert report: print to the error stream, flush, abort", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x18C4, player_fprintf, "formatted output to a given stream", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1A7E, player_format_scan, "the formatter scan", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x03D9, end_debrief_and_tally, "debriefing menu and replay, then rate the flight and tally it in the pilot record", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3B9A, end_load_report_picture, "load the report picture with its drawing step, request sound 26h from the driver and write a line of text", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x01D3, mps_logo_exit, "exit(code): the far C run-time exit with the exit tables", 2 },
