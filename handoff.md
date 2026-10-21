@@ -209,14 +209,7 @@ Goal in force: finish Phase 2 (90.04% now; see Current state). Everything below 
    validates grouping and all fresh results, and overlaps presentation even when the gate validates its unchanged coverage record.
    Do not split or shorten routes, drop cache verification, or change the default eight overlap workers. Splitting `matched.c` stays an
    optional large refactor only if compilation becomes a problem again.
-2. **Continue the newly runnable rows** (original lead list: 128 rows / 3,246 bytes, `D:/f117-gate/phase2-final/ran-rows.tsv`; af's 23 entries are done).
-   Saved drafts are in `D:/f117-gate/p2-{dswap,mpslogo,player,end,setup,vgame,start}-v?-*`. Review every body, fixture, seed log and mutation
-   against `kit/BRIEF.md` and `D:/f117-gate/ac_brief_extra.txt`; many remaining drafts have failed or stale evidence. The kit now refuses
-   mutations/verdicts without five current passing seed logs and current mutation results, and refuses automatic integration where SPANS
-   would alias another segment. Original group masks were 0x0000F000, 0x000F0000, 0x00F00000, 0x0F000000, 0xF0000000; use at most two or
-   three compilers in all. Complete private proofs before the gate. Then `finish_all.py DIR:ROUTE` (cap its six-worker default to two or three
-   when it compiles), `integrate_many.py`, local build and new CTests, the `partial`-claim audit, full acceptance, score, docs and commit/push.
-   The START quiz rows are done (batch ah).
+2. **The runnable-row list is nearly exhausted (21 Oct).** After batches af to al, the classifier (`py tools/census_classify.py --census D:/f117-gate/census.tsv --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A --rows 45`) shows 947 `ran` bytes left, and almost all are routines that stay original or were declined: VGAME `0010` main, `073C8` (a second lock slot no route fills), MPS_LOGO `1ADC` and `1C82` (excluded as unequal), START `8427`, END `4393` (routes missed planted defects; wait loops), END `57B0` (interior arm), DSWAP `0723` (a DOS write wrapper; no route enters its failure arm). The kit, agents and gate workflow are in the section below if a new route makes rows runnable (`tools/routes/README.md`, `tools/route_damage.py`). New damaged-install routes that need only file removal or damage are the remaining way to turn `never_run` bytes into `ran`.
 3. **What is left after that (5,305 never-run bytes, `D:/f117-gate/phase2-final/classify-after-routes.txt`):** error paths no file damage can reach
    (out of memory, DOS write errors, other open errors, the `_C_FILE_INFO` environment arm: about 2,500 bytes; the agent's list is in
    `phase2-final/err-routes`); rows the dead certificates call PROBABLE (1,315 bytes, `phase2-final/dead-cert/summary.txt`: they need evidence, not a decision);
