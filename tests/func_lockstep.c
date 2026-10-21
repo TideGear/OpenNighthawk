@@ -38,6 +38,14 @@ typedef struct {
 
 static side_t g_side[2];
 
+/* Special fixtures and return boundaries belong to a module-relative entry,
+ * never to an IP shared by unrelated overlays. */
+static const recomp_override *g_entry;
+static int entry_is(const char *module, uint16_t seg, uint16_t ip)
+{
+    return g_entry && g_entry->seg == seg && g_entry->ip == ip && !strcmp(g_entry->module, module);
+}
+
 static side_t *side_of(cpu_t *c) { return (side_t *)c->user; }
 
 static uint64_t mix(uint64_t h, uint64_t v)
@@ -245,47 +253,52 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
 
 static unsigned long long g_overrun;    /* routines that ran past the event limit */
 
-/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
+/* Sentinel words to plant, by routine (module, segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
 #define PLANT_ABS 8
-static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
-    { 0x0000, 0x0494, PLANT_ABS, 0x0088, 0x0000 }, /* checked allocator: empty error format in planted states */
-    { 0x1058, 0x09D8, PLANT_ABS, 0x294B, 0x0001 }, /* HUD's compact layout */
-    { 0x1058, 0x0A2C, PLANT_ABS, 0x294B, 0x0001 },
-    { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0001 },   /* projectile slots: bounded walks and odd-frame refill */
-    { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0004 },
-    { 0x0000, 0x4777, PLANT_ABS, 0x368E, 0x000F },   /* frame-rate estimate S */
-    { 0x0000, 0x4777, PLANT_ABS, 0x3D8E, 0x0001 },
-    { 0x0000, 0x4777, PLANT_ABS, 0x43EE, 0x0001 },   /* keyboard trigger held */
-    { 0x0000, 0x4777, PLANT_ABS, 0x3682, 0x03E8 },   /* ammunition available */
-    { 0x0000, 0x4777, PLANT_ABS, 0xC09A, 0x0000 },
-    { 0x0000, 0x5046, PLANT_ABS, 0xE008, 0x0014 },   /* ground defences: display 14h up, no warning countdown, no override */
-    { 0x0000, 0x5046, PLANT_ABS, 0x3D98, 0x0000 },
-    { 0x0000, 0x5046, PLANT_ABS, 0xDF06, 0x0000 },
-    { 0x0000, 0x73C8, PLANT_ABS, 0xE304, 0x0002 },   /* target_damage: the weapon-lock slot scan finding a match */
-    { 0x0000, 0x73C8, PLANT_ABS, 0xE306, 0x0001 },
-    { 0x0000, 0x73C8, PLANT_ABS, 0xE316, 0x0002 },
-    { 0x0000, 0x73C8, PLANT_ABS, 0xE318, 0x0002 },
-    { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
-    { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
-    { 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
-    { 0x0000, 0xDB3C, PLANT_ABS, 0xE328, 0x0002 },   /* ... in view mode 2 */
-    { 0x0000, 0xDB3C, PLANT_ABS, 0x49AA, 0x0005 },   /* ... with detail class 5 */
-    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0030 },   /* frame_palette_cycle: the four phases of the clock ... */
-    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0020 },
-    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0010 },
-    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0040 },
-    { 0x0000, 0x4E5F, PLANT_ABS, 0x43DC, 0x0000 },   /* ... with the cycle enabled */
-    { 0x0000, 0x48AA, PLANT_ABS, 0x3F84, 0x4197 },   /* pic_rle_row: the private stack live, ... */
-    { 0x0000, 0x48AA, PLANT_ABS, 0x3F86, 0x0002 },   /* ... so the LZW step runs its body, briefly */
-    { 0x11ED, 0x00AE, PLANT_ABS, 0x9688, 0x989B },   /* pic_rle_row, VGAME's copy */
-    { 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
-    { 0x0000, 0x890A, PLANT_ABS, 0x8D6E, 0x8F81 },   /* pic_rle_row, START's copy */
-    { 0x0000, 0x890A, PLANT_ABS, 0x8D70, 0x0002 },
-    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFE3C },   /* model_fill: the AND, OR, stipple and clear styles */
-    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFD3C },
-    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFC3C },
-    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFB3C },
+static const struct { const char *module; uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
+    { "DSWAP.EXE", 0x0000, 0x0494, PLANT_ABS, 0x0088, 0x0000 }, /* checked allocator: empty error format in planted states */
+    { "VGAME.EXE", 0x1058, 0x09D8, PLANT_ABS, 0x294B, 0x0001 }, /* HUD's compact layout */
+    { "VGAME.EXE", 0x1058, 0x0A2C, PLANT_ABS, 0x294B, 0x0001 },
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0001 },   /* projectile slots: bounded walks and odd-frame refill */
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0004 },
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0x368E, 0x000F },   /* frame-rate estimate S */
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0x3D8E, 0x0001 },
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0x43EE, 0x0001 },   /* keyboard trigger held */
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0x3682, 0x03E8 },   /* ammunition available */
+    { "VGAME.EXE", 0x0000, 0x4777, PLANT_ABS, 0xC09A, 0x0000 },
+    { "VGAME.EXE", 0x0000, 0x5046, PLANT_ABS, 0xE008, 0x0014 },   /* ground defences: display 14h up, no warning countdown, no override */
+    { "VGAME.EXE", 0x0000, 0x5046, PLANT_ABS, 0x3D98, 0x0000 },
+    { "VGAME.EXE", 0x0000, 0x5046, PLANT_ABS, 0xDF06, 0x0000 },
+    { "VGAME.EXE", 0x0000, 0x73C8, PLANT_ABS, 0xE304, 0x0002 },   /* target_damage: the weapon-lock slot scan finding a match */
+    { "VGAME.EXE", 0x0000, 0x73C8, PLANT_ABS, 0xE306, 0x0001 },
+    { "VGAME.EXE", 0x0000, 0x73C8, PLANT_ABS, 0xE316, 0x0002 },
+    { "VGAME.EXE", 0x0000, 0x73C8, PLANT_ABS, 0xE318, 0x0002 },
+    { "VGAME.EXE", 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
+    { "VGAME.EXE", 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
+    { "VGAME.EXE", 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
+    { "VGAME.EXE", 0x0000, 0xDB3C, PLANT_ABS, 0xE328, 0x0002 },   /* ... in view mode 2 */
+    { "VGAME.EXE", 0x0000, 0xDB3C, PLANT_ABS, 0x49AA, 0x0005 },   /* ... with detail class 5 */
+    { "VGAME.EXE", 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0030 },   /* frame_palette_cycle: the four phases of the clock ... */
+    { "VGAME.EXE", 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0020 },
+    { "VGAME.EXE", 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0010 },
+    { "VGAME.EXE", 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0040 },
+    { "VGAME.EXE", 0x0000, 0x4E5F, PLANT_ABS, 0x43DC, 0x0000 },   /* ... with the cycle enabled */
+    { "END.EXE", 0x0000, 0x48AA, PLANT_ABS, 0x3F84, 0x4197 },   /* pic_rle_row: the private stack live, ... */
+    { "END.EXE", 0x0000, 0x48AA, PLANT_ABS, 0x3F86, 0x0002 },   /* ... so the LZW step runs its body, briefly */
+    { "VGAME.EXE", 0x11ED, 0x00AE, PLANT_ABS, 0x9688, 0x989B },   /* pic_rle_row, VGAME's copy */
+    { "VGAME.EXE", 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
+    { "START.EXE", 0x0000, 0x890A, PLANT_ABS, 0x8D6E, 0x8F81 },   /* pic_rle_row, START's copy */
+    { "START.EXE", 0x0000, 0x890A, PLANT_ABS, 0x8D70, 0x0002 },
+    { "VGAME.EXE", 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFE3C },   /* model_fill: the AND, OR, stipple and clear styles */
+    { "VGAME.EXE", 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFD3C },
+    { "VGAME.EXE", 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFC3C },
+    { "VGAME.EXE", 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFB3C },
 };
+
+static int plant_matches(unsigned k, const recomp_override *o)
+{
+    return !strcmp(PLANTS[k].module, o->module) && PLANTS[k].seg == o->seg && PLANTS[k].ip == o->ip;
+}
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
 static int g_verbose, g_shown;
@@ -1800,13 +1813,28 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
+    const unsigned watch_bytes = (entry_is("START.EXE", 0x0000, 0x149C) ||
+        entry_is("START.EXE", 0x0000, 0x6DB8) ||
+        entry_is("END.EXE", 0x0000, 0x2BEC) ||
+        entry_is("MPS_LOGO.EXE", 0x006D, 0x0112) ||
+        entry_is("SETUP.EXE", 0x0000, 0x0010) ||
+        entry_is("START.EXE", 0x0000, 0x4239) ||
+        entry_is("VGAME.EXE", 0x0000, 0x2F9D) ||
+        entry_is("VGAME.EXE", 0x0000, 0x683E) ||
+        entry_is("VGAME.EXE", 0x0000, 0x5852) ||
+        entry_is("VGAME.EXE", 0x0000, 0x3ADA) ||
+        entry_is("VGAME.EXE", 0x0000, 0x1EB0) ||
+        entry_is("VGAME.EXE", 0x0000, 0xBCEF) ||
+        entry_is("VGAME.EXE", 0x0000, 0x983E) ||
+        entry_is("VGAME.EXE", 0x1058, 0x0016) ||
+        entry_is("VGAME.EXE", 0x0000, 0x79BE) ||
+        entry_is("VGAME.EXE", 0x0000, 0x8A90)) ? g_span : 0x300u + g_below;
     while ((unsigned)*steps < g_step_cap) {
-        const unsigned watch_bytes = (ip == 0x149C || ip == 0x6DB8 || ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int own = a->seg[S_CS] == cs && (uint16_t)(here - g_from) < g_span;
-        if (ip == 0x07EE && own && a->mem == g_mem[0]) {
+        if (entry_is("START.EXE", 0x0000, 0x07EE) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x0822, 0x0841, 0x0862, 0x08B7, 0x08EA };
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_arms_seen |= 1u << k;
@@ -1822,7 +1850,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_camera_seen |= UINT64_C(1) << k;
         }
-        if (ip == 0x983E && own && a->mem == g_mem[0]) {
+        if (entry_is("VGAME.EXE", 0x0000, 0x983E) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x984B, 0x98D5, 0x98EF, 0x9916,
                 0x9923, 0x994A, 0x9988, 0x99A3, 0x99CB, 0x99D3, 0x99DB,
                 0x99F3, 0x9A1D, 0x9A7C, 0x9A9D, 0x9AB7, 0x9B42,
@@ -1832,7 +1860,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_moving_seen |= UINT64_C(1) << k;
         }
-        if (ip == 0x0016 && own && a->mem == g_mem[0]) {
+        if (entry_is("VGAME.EXE", 0x1058, 0x0016) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x0049, 0x00D9, 0x01D6, 0x022E,
                 0x0262, 0x030F, 0x0370, 0x0377, 0x0397, 0x0418, 0x04A0,
                 0x0544, 0x059B, 0x05F7, 0x0653, 0x0697, 0x0709, 0x079B,
@@ -1841,7 +1869,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_hud_seen |= UINT64_C(1) << k;
         }
-        if (ip == 0x79BE && own && a->mem == g_mem[0]) {
+        if (entry_is("VGAME.EXE", 0x0000, 0x79BE) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x79D3, 0x79E2, 0x7A06, 0x7A2E,
                 0x7A6D, 0x7A97, 0x7AAC, 0x7AE2, 0x7B81, 0x7C02, 0x7C4D,
                 0x7C66, 0x7C96, 0x7CCD, 0x7D59, 0x7DBE, 0x7DF9, 0x7E39,
@@ -1850,7 +1878,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_cockpit_seen |= UINT64_C(1) << k;
         }
-        if (ip == 0x8A90 && own && a->mem == g_mem[0]) {
+        if (entry_is("VGAME.EXE", 0x0000, 0x8A90) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x8ADC, 0x8B55, 0x8BB8,
                 0x8C18, 0x8C3F, 0x8C8F, 0x8D45, 0x8CAD, 0x8CC0,
                 0x8D62, 0x8DA1, 0x8DC5, 0x8DF3, 0x8E17, 0x8E5B,
@@ -1858,7 +1886,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
                 if (here == branch[k]) g_nav_seen |= 1u << k;
         }
-        if (ip == 0x9515 && own && a->mem == g_mem[0]) {
+        if (entry_is("VGAME.EXE", 0x0000, 0x9515) && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x9570, 0x957D, 0x9582, 0x9587,
                 0x958C, 0x9591, 0x9596, 0x959B, 0x9532, 0x96DD,
                 0x9670, 0x9699, 0x961C, 0x9646 };
@@ -1930,8 +1958,8 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
         const int is_ret = kind == 3 ? op == 0xCF : kind == 2 ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
         /* MPS_LOGO's exit() entry (01D3): its shared tail returns far to the fixture's caller or ends the program. */
-        if (kind == 2 && ip == 0x01D3 && is_ret && from_cs == 0x7000 && sp_before == entry_sp) return 1;
-        if (kind == 2 && ip == 0x01D3 && here == 0x0255 && op == 0xCB && sp_before == (uint16_t)(entry_sp + 4) && a->seg[S_CS] == cs) return inside;
+        if (kind == 2 && entry_is("MPS_LOGO.EXE", 0x0146, 0x01D3) && is_ret && from_cs == 0x7000 && sp_before == entry_sp) return 1;
+        if (kind == 2 && entry_is("MPS_LOGO.EXE", 0x0146, 0x01D3) && here == 0x0255 && op == 0xCB && sp_before == (uint16_t)(entry_sp + 4) && a->seg[S_CS] == cs) return inside;
         if (is_ret && sp_before == entry_sp) return inside;
         /* The C runtime's near stackavail takes its return address off into
          * CX and returns by JMP CX: that, with the address already popped. */
@@ -1940,22 +1968,22 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
             return inside;
         /* PLAYER's C start-up argument set-up (1602) pops its return address into [1ABC], lowers the stack for the
          * argument vector and leaves by JMP [1ABC] (at 178C). */
-        if (kind == 1 && ip == 0x1602 && here == 0x178C && op == 0xFF) return inside;
+        if (kind == 1 && entry_is("PLAYER.EXE", 0x0000, 0x1602) && here == 0x178C && op == 0xFF) return inside;
         /* DSWAP's picture decoder step (0BCF) pops its return address into BP and leaves by JMP BP (at 0BD7), with the
          * string stack as it stands. */
-        if (kind == 1 && ip == 0x0BCF && here == 0x0BD7 && op == 0xFF && a->ip == a->r[R_BP]) return inside;
+        if (kind == 1 && entry_is("DSWAP.EXE", 0x0000, 0x0BCF) && here == 0x0BD7 && op == 0xFF && a->ip == a->r[R_BP]) return inside;
         /* PLAYER's stack check pops its return address into CX and returns by JMP CX at 1FDF. */
-        if (kind == 1 && ip == 0x1FD0 && here == 0x1FDF && op == 0xFF && a->ip == a->r[R_CX]) return inside;
+        if (kind == 1 && entry_is("PLAYER.EXE", 0x0000, 0x1FD0) && here == 0x1FDF && op == 0xFF && a->ip == a->r[R_CX]) return inside;
         /* The far-model argv builder keeps its allocation and returns by LJMP. */
-        if (kind == 2 && ip == 0x08CC && here == 0x0A5A && op == 0xFF) return inside;
+        if (kind == 2 && entry_is("MPS_LOGO.EXE", 0x0146, 0x08CC) && here == 0x0A5A && op == 0xFF) return inside;
         /* DSWAP argv setup returns indirectly with its stack allocation retained. */
-        if (kind == 1 && ip == 0x117E && here == 0x1308 && op == 0xFF) return inside;
-        if (kind == 1 && ip == 0x19B6 && here == 0x1B40 && op == 0xFF) return inside;   /* SETUP's copy: JMP [0EBA] */
+        if (kind == 1 && entry_is("DSWAP.EXE", 0x0000, 0x117E) && here == 0x1308 && op == 0xFF) return inside;
+        if (kind == 1 && entry_is("SETUP.EXE", 0x0000, 0x19B6) && here == 0x1B40 && op == 0xFF) return inside;   /* SETUP's copy: JMP [0EBA] */
         /* START's exit (9094) pops DI and SI it never saved (its _cexit entries save them): past the INT 21h
          * answered here, or on the CH-set arm, its RET runs two words above the entry's stack. */
-        if (kind == 1 && ip == 0x9094 && here == 0x9114 && op == 0xC3 && sp_before == (uint16_t)(entry_sp + 4)) return inside;
+        if (kind == 1 && entry_is("START.EXE", 0x0000, 0x9094) && here == 0x9114 && op == 0xC3 && sp_before == (uint16_t)(entry_sp + 4)) return inside;
         /* END's exit (4F8A), the same: its RET at 500A runs two words above the entry's stack. */
-        if (kind == 1 && ip == 0x4F8A && here == 0x500A && op == 0xC3 && sp_before == (uint16_t)(entry_sp + 4)) return inside;
+        if (kind == 1 && entry_is("END.EXE", 0x0000, 0x4F8A) && here == 0x500A && op == 0xC3 && sp_before == (uint16_t)(entry_sp + 4)) return inside;
     }
     return 0;
 }
@@ -2041,8 +2069,52 @@ static int step_runner(machine_t *mm)
     return RUN_SLICE;
 }
 
+static int check_module_rules(void)
+{
+    static const char *drivers[] = { "ASOUND.117", "ASOUND.LOG", "F117.COM", "MGRAPHIC.EXE", "MISC.EXE" };
+    recomp_override o = {0};
+    for (unsigned k = 0; k < sizeof PLANTS / sizeof PLANTS[0]; k++) {
+        o.module = PLANTS[k].module; o.seg = PLANTS[k].seg; o.ip = PLANTS[k].ip;
+        if (!plant_matches(k, &o)) return 1;
+        for (unsigned d = 0; d < sizeof drivers / sizeof drivers[0]; d++) {
+            o.module = drivers[d];
+            if (plant_matches(k, &o)) return 1;
+        }
+    }
+    uint8_t *memory = (uint8_t *)calloc(MEM_SIZE, 1);
+    if (!memory) return 2;
+    g_mem[0] = memory; g_pristine = memory; g_step_cap = 1; g_cov = -1;
+    for (unsigned test = 0; test < 3; test++) {
+        cpu_t c; cpu_init(&c, memory); c.model = CPU_80286;
+        c.seg[S_CS] = 0x4000; c.seg[S_SS] = 0x5000;
+        c.ip = 0x9114; c.r[R_SP] = 0x1004;
+        memory[phys(c.seg[S_CS], c.ip)] = 0xC3;
+        o.module = test == 1 ? "ASOUND.LOG" : "START.EXE";
+        o.seg = test == 2 ? 1 : 0; o.ip = 0x9094;
+        g_entry = &o; g_from = o.ip; g_span = 0x300;
+        int steps = 0;
+        const int result = run_to_ret(&c, 0x1000, 1, &steps, c.seg[S_CS], o.ip);
+        if (steps != 1 || result != (test == 0)) { free(memory); return 1; }
+    }
+    for (unsigned test = 0; test < 3; test++) {
+        cpu_t c; cpu_init(&c, memory); c.model = CPU_80286;
+        c.seg[S_CS] = 0x4000; c.ip = 0x0822;
+        memory[phys(c.seg[S_CS], c.ip)] = 0x90;
+        o.module = test == 1 ? "ASOUND.LOG" : "START.EXE";
+        o.seg = test == 2 ? 1 : 0; o.ip = 0x07EE;
+        g_entry = &o; g_from = o.ip; g_span = 0x300; g_arms_seen = 0;
+        int steps = 0;
+        run_to_ret(&c, 0x1000, 1, &steps, c.seg[S_CS], o.ip);
+        if (steps != 1 || g_arms_seen != (test == 0 ? 1u : 0u)) { free(memory); return 1; }
+    }
+    free(memory);
+    puts("module fixture and return-boundary collisions: passed");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--check-module-rules")) return check_module_rules();
     int states = 2000;
     const char *only = NULL;        /* --only MODULE:IP[,MODULE:IP...]: just those routines (IP in hex), for quick runs */
     unsigned shard = 0, shards = 1; /* --shard K/N: every Nth routine from K (tools/func_lockstep_par.py) */
@@ -2080,6 +2152,7 @@ int main(int argc, char **argv)
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
+        g_entry = o;
         if (mi % shards != shard) continue;
         g_rng = routine_seed(seed, o);
         if (only) {
@@ -2107,7 +2180,7 @@ int main(int argc, char **argv)
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
-        if (g_cov >= 0) { g_cov_ip = (uint16_t)(COVERED[g_cov].ip - ((o->seg == 0x130D && o->ip == 0x033F) || (o->seg == 0x120A && o->ip == 0x0CE9) ? g_below : 0)); g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
+        if (g_cov >= 0) { g_cov_ip = (uint16_t)(COVERED[g_cov].ip - (entry_is("VGAME.EXE", 0x130D, 0x033F) || entry_is("VGAME.EXE", 0x120A, 0x0CE9) ? g_below : 0)); g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         if (g_cov >= 0 && !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xC9AE) g_cov_ip = 0xC8FA;   /* coverage from the common exit below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xCC93) g_cov_ip = 0xCC85;   /* the shared store tail below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x0977) g_cov_ip = 0x0894;   /* the icon arms below the dispatcher entry */
@@ -2205,7 +2278,7 @@ int main(int argc, char **argv)
              * registers point: random memory has none, and the 00/FF/01 half
              * has no 80h byte. Each in half the states, by routine. */
             for (unsigned pk = 0; pk < sizeof PLANTS / sizeof PLANTS[0]; pk++) {
-                if (PLANTS[pk].seg != o->seg || PLANTS[pk].ip != o->ip || (rnd() & 1)) continue;
+                if (!plant_matches(pk, o) || (rnd() & 1)) continue;
                 const uint32_t a = phys(seg[S_DS], (uint16_t)((PLANTS[pk].reg == PLANT_ABS ? 0 : r[PLANTS[pk].reg]) + PLANTS[pk].disp));
                 if (a + 1 >= at && a < at + m->size + 2) continue;           /* not into the image */
                 for (int k = 0; k < 2; k++) {

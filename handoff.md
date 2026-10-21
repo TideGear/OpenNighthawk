@@ -21,7 +21,7 @@ Consolidate it instead of appending to it.
 - **Phase 2:** 1,189 addresses matched; **165,256 / 201,697 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 427 CTests, 63 routes run as 62 sessions,
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 428 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
 - **Where the remaining 36,441 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
   --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
@@ -52,7 +52,7 @@ Consolidate it instead of appending to it.
     `measurement.json` verifies per-module counts and captured-record rejection, and the scorer includes all 17
     game code files. Credit remains 165,256; no new dead/original exclusions. Scope validation: 427 standard
     CTests, 57 focused Python tests, 2,235,060 matched states / 0 mismatching (2,000 states, eight shards).
-    `scope-verdict.json` retains the byte audit and test evidence. Next: step 2a (harness module keys).
+    `scope-verdict.json` retains the byte audit and test evidence. Step 2a (harness module keys: module-keyed rules, 37 `PLANTS` keyed by module, synthetic collision test `matched_module_rules`) is done: 428 CTests, gate 1,272 s, per-routine reports identical at four seeds for all 1,189 routines (`D:/f117-gate/modules-harness-keys-20261021/final-gate-verdict.json`; its `accept.py` failed only on its own text check and `finish_after_gate.py` completed the steps). Next: step 3 (kit and accept-kit widening), then the pilots.
   Owner decisions this session: bring these modules in scope; no floppy drive (DSWAP's disk-swap path stays original).
 - **Dead code** (owner rule: only when certain): `docs/census-dead.tsv` (73 census rows, 2,927 bytes;
   certificates `D:/f117-gate/phase2-final/dead-cert/`, the 21 Oct evidence review `dead-review-20261021/`) and
