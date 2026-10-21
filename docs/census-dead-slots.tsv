@@ -1,0 +1,12 @@
+# Jump-slot byte ranges certified unreachable (class `slots` -> `dead` in tools/census_classify.py), keyed by byte range not census row.
+# Columns: module, linear address of the first byte, bytes, evidence. Same rule as docs/census-dead.tsv: only when certain.
+# A slot is live code in the programs that bind it, so only slots that no program can enter qualify. Certificates and the full per-slot table:
+# D:/f117-gate/slots-review-20261021/ (certificates-new.tsv, notes.txt). Scans: every E8/E9/9A/EA transfer with all segment aliases, relocated
+# segment/offset word pairs in all 18 modules plus SPEECH.117, ROSTER.FIL and LABSLOGO.SS, each program's single binder (which slots it fills).
+SETUP	0x02D85	204	slots 6 (last 4 bytes)..46: MGRAPHIC range, never bound by SETUP (it binds only misc.exe slots 90-95); no instruction in any program image names these jump slots
+SETUP	0x02E56	176	slots 48..83 (first byte): MGRAPHIC range, never bound by SETUP; no instruction names them (slot 47 at 02E51 stays live: its callers are static-only evidence)
+SETUP	0x02F28	5	slot 90 (MISC entry 0): bound, but no transfer in SETUP names it
+PLAYER	0x03BF0	416	slots 0..82 and first byte of 83: MGRAPHIC range, never bound by PLAYER (it binds only the sound driver's slots 100-104); no instruction names them
+PLAYER	0x03DB2	26	slots 90..94 and first byte of 95: MISC range, never bound by PLAYER; no reference
+PLAYER	0x03DE4	5	slot 100 (sound driver entry 0): bound, never called through PLAYER's table (F117.COM calls the driver through its header)
+PLAYER	0x03DEE	5	slot 102 (sound driver entry 2): bound, never called through PLAYER's table

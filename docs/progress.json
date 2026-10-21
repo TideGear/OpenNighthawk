@@ -158,12 +158,12 @@
       "ran": 947,
       "never_run": 4322,
       "unreached": 845,
-      "slots": 842,
+      "slots": 5,
       "data": 6906,
       "original": 2655,
-      "dead": 2927
+      "dead": 3764
     },
-    "creditable_bytes": 166725,
+    "creditable_bytes": 165888,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in the seven census programs",
       "bytes": 17597,

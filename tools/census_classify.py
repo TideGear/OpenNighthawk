@@ -16,7 +16,8 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
                 five-byte slots; the same binder code is in SETUP, PLAYER, DSWAP, START and END, and exactly
                 those programs have the table). In the file the unfilled slots read EA 00 00 00 00. They
                 are live code: in VGAME 47 of the 84 are executed by the routes. This class is the
-                entries no route runs; it stays in the denominator.
+                entries no route runs; it stays in the denominator, except the byte ranges of
+                docs/census-dead-slots.tsv (slots no program binds or names), which count as dead.
   unreached     no walk reaches it and nothing marks it as data: possibly code only a computed jump
                 reaches, possibly data nobody has looked at. It stays in the denominator until a person
                 has read it and decided.
@@ -57,6 +58,7 @@ import progress  # noqa: E402
 
 ORIGINAL = os.path.join(ROOT, "docs", "census-original.tsv")
 DEAD = os.path.join(ROOT, "docs", "census-dead.tsv")
+DEAD_SLOTS = os.path.join(ROOT, "docs", "census-dead-slots.tsv")
 DATA_TABLE = os.path.join(ROOT, "docs", "census-data.tsv")
 CODE_TABLE = os.path.join(ROOT, "docs", "census-code.tsv")
 CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original", "dead")
@@ -76,6 +78,19 @@ def read_original(path=ORIGINAL):
 def read_dead(path=DEAD):
     """Rows (module, linear) whose never-run code is certified unreachable in the shipped game (docs/census-dead.tsv)."""
     return read_original(path)
+
+
+def read_dead_slots(path=DEAD_SLOTS):
+    """{module: set of linear addresses} for jump-slot byte ranges certified unreachable (docs/census-dead-slots.tsv)."""
+    out = collections.defaultdict(set)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as source:
+            for line in source:
+                if line.strip() and not line.startswith("#"):
+                    a = line.split("	")
+                    start = int(a[1], 16)
+                    out[a[0].upper().replace(".EXE", "")].update(range(start, start + int(a[2])))
+    return out
 
 
 def read_data_table(path=DATA_TABLE):
@@ -262,12 +277,13 @@ def filler_bytes(image):
     return zero, text
 
 
-def classify(rows, covered, ran, mods, original, reviewed=None, dead=()):
+def classify(rows, covered, ran, mods, original, reviewed=None, dead=(), dead_slots=None):
     """rows: [(module, linear, size)]. Returns (totals, per_row) with per_row[i] = Counter of class -> bytes."""
     code = code_bytes(rows, mods, ran)
     filler = {m: filler_bytes(mods[m].image) for m in mods}
     slots = {m: slot_bytes(mods[m].image) for m in mods}
     reviewed = reviewed or {}
+    dead_slots = dead_slots or {}
     totals, per_row = collections.Counter(), []
     for module, linear, size in rows:
         row = collections.Counter()
@@ -283,7 +299,7 @@ def classify(rows, covered, ran, mods, original, reviewed=None, dead=()):
             elif b in seen or b in zero or (b in text and b not in cd):
                 kind = "data"
             elif b in slot:
-                kind = "slots"
+                kind = "dead" if b in dead_slots.get(module, ()) else "slots"
             elif b in cd and (module, linear) in dead:
                 kind = "dead"
             elif b in cd:
@@ -338,7 +354,7 @@ def run(census, cover_dir, route_dir, data_dir, scope=None):
     covered = progress.named_bytes(cover_dir, data_dir, route_dir)
     audit = {}
     ran = route_instructions(route_dir, mods, audit)
-    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead())
+    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead(), dead_slots=read_dead_slots())
     if scope is not None:
         scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods)))
         scope["route_records"] = audit

@@ -46,8 +46,8 @@ ROWS = [("T", 0x00, 4), ("T", 0x10, 8), ("T", 0x20, 8), ("T", 0x30, 26), ("T", 0
         ("T", 0x78, 16), ("T", 0x90, 8), ("T", 0xA0, 4), ("T", 0xB0, 6)]
 
 
-def run(covered=None, ran=None, original=(), reviewed=None, dead=()):
-    return cc.classify(ROWS, covered or {}, ran or {}, {"T": MODULE}, set(original), reviewed or {}, dead=set(dead))
+def run(covered=None, ran=None, original=(), reviewed=None, dead=(), dead_slots=None):
+    return cc.classify(ROWS, covered or {}, ran or {}, {"T": MODULE}, set(original), reviewed or {}, dead=set(dead), dead_slots=dead_slots)
 
 
 class ClassTests(unittest.TestCase):
@@ -74,6 +74,13 @@ class ClassTests(unittest.TestCase):
         _, per = run()
         self.assertEqual(per[4]["data"], 0)
         self.assertEqual(per[4]["unreached"], 12)
+
+    def test_certified_dead_slot_bytes_leave_the_slots_class_only_in_their_range(self):
+        # row F (0x60) holds four blank slots at 0x61..0x74; certify the second and third slot only
+        totals, per = run(dead_slots={"T": set(range(0x66, 0x70))})
+        self.assertEqual(per[5]["dead"], 10)
+        self.assertEqual(per[5]["slots"], 10)
+        self.assertEqual(run()[1][5]["dead"], 0)
 
     def test_four_blank_slots_are_a_table_and_three_are_not(self):
         _, per = run()
