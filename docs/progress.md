@@ -107,7 +107,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch ak): **164,757 / 184,587**, P2 **89.79%**, overall **96.88%** (2,666 never-run bytes certified dead left the denominator on 20 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  **Current total** (after batch al): **165,256 / 184,601**, P2 **90.04%**, overall **96.96%** (2,666 never-run bytes certified dead left the denominator on 20 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
   The historical census retains its recorded row boundaries, including overlapping
   positions: af adds 697 row-byte credits from 692 distinct instruction bytes
   (five positions occur in two rows). The separate raw-byte audit reports 690
