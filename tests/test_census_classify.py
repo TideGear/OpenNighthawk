@@ -213,6 +213,20 @@ class RouteTests(unittest.TestCase):
 
 
 class SupplementalTests(unittest.TestCase):
+    def test_all_game_files_enter_scope_without_crediting_unmatched_drivers(self):
+        ran = {"T": {0, 1}, "F117.COM": {0x100, 0x101}, "ASOUND.117": {0, 1},
+               "ASOUND.LOG": {0, 1}, "MGRAPHIC": {0}, "LZEXE091.STUB": {0}, "UNKNOWN": {0}}
+        covered = {"ASOUND.117": {1, 2}}
+        reviewed = {"NSOUND.117": {0x6E}}
+        scope = cc.supplemental_scope([("T", 0, 1)], covered, ran, reviewed)
+        self.assertEqual((scope["bytes"], scope["credited"], scope["reviewed_static_bytes"]), (10, 2, 1))
+        self.assertEqual(scope["by_module"]["ASOUND.LOG"]["credited"], 0)
+        self.assertEqual(scope["by_module"]["F117.COM"]["bytes"], 2)
+        self.assertEqual(scope["by_module"]["NSOUND.117"]["bytes"], 1)
+        self.assertEqual(scope["by_module"]["RSOUND.117"]["bytes"], 0)
+        self.assertEqual(scope["other_modules_executed_bytes"], {"LZEXE091.STUB": 1, "UNKNOWN": 1})
+        self.assertEqual(len(cc.modules_scope()), 17)
+
     def test_supplement_adds_executed_bytes_once_without_changing_old_rows(self):
         rows = [("T", 0, 3), ("T", 0x10, 0), ("U", 0, 1)]
         scope = cc.supplemental_scope(rows, {"T": {2, 3, 4, 7}},

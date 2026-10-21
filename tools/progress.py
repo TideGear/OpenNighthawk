@@ -28,10 +28,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "progress.json")
 
+def module_key(name):
+    """Keep historical EXE keys, and preserve distinct COM/117/LOG identities."""
+    return name.upper().removesuffix(".EXE")
+
 def matched_addresses():
     text = open(os.path.join(ROOT, "src", "matched", "matched.c"), encoding="utf-8").read()
-    return {(mod, int(seg, 16) * 16 + int(ip, 16))
-            for mod, seg, ip in re.findall(r'"(\w+)\.EXE", \w+, 0x([0-9A-F]{4}), 0x([0-9A-F]{4})', text)}
+    return {(module_key(mod), int(seg, 16) * 16 + int(ip, 16))
+            for mod, seg, ip in re.findall(r'"(\w+\.(?:EXE|COM|117|LOG))", \w+, 0x([0-9A-F]{4}), 0x([0-9A-F]{4})', text)}
 
 
 def fixes_share():
@@ -67,7 +71,7 @@ def named_bytes(cover_dir, data_dir, route_dir):
     sys.path.insert(0, os.path.join(ROOT, "recompiler"))
     from modules import load_all
     from x86dec import decode
-    mods = {m.name.upper().replace(".EXE", ""): m for m in load_all(data_dir)}
+    mods = {module_key(m.name): m for m in load_all(data_dir)}
     lines = [l for path in sorted(glob.glob(os.path.join(cover_dir, "*.cov")))
              for l in open(path, encoding="utf-8")]
     routed = set()
@@ -75,7 +79,7 @@ def named_bytes(cover_dir, data_dir, route_dir):
         for line in open(path, encoding="utf-8"):
             parts = line.split()
             if len(parts) >= 4:   # by segment and offset: a packed program's unpacker shares linear addresses
-                routed.add((parts[0].upper().replace(".EXE", ""), int(parts[2], 16), int(parts[3], 16)))
+                routed.add((module_key(parts[0]), int(parts[2], 16), int(parts[3], 16)))
     return cover_bytes(lines, lambda module, seg, ip: decode(mods[module].image, mods[module].off(seg, ip), ip),
                        matched_addresses(), routed)
 
@@ -115,7 +119,7 @@ def cover_bytes(lines, insn, matched, routed):
         head, _, rest = line.partition(":")
         named, _, hand = rest.partition("|")
         exe, seg, entry, _compared = head.split()
-        module, seg, entry = exe.upper().replace(".EXE", ""), int(seg, 16), int(entry, 16)
+        module, seg, entry = module_key(exe), int(seg, 16), int(entry, 16)
         seen.add((module, seg * 16 + entry))
         out = covered.setdefault(module, set())
         for ip in (int(x, 16) for x in named.split()):
@@ -215,7 +219,7 @@ def main():
              c.get("partial_functions", 0), fixed, catalogued, closed))
     if "supplemental" in c:
         s = c["supplemental"]
-        print("expanded seven-program scope: %d of %d creditable bytes; adds %d bytes outside census (%d named, %d reviewed static); unreviewed gaps and other modules remain outside this measure"
+        print("expanded game-code scope: %d of %d creditable bytes; adds %d bytes outside census (%d named, %d reviewed static); unreviewed static discoveries remain outside this measure"
               % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"], s["bytes"], s["credited"],
                  s.get("reviewed_static_bytes", 0)))
     print(title(pct))

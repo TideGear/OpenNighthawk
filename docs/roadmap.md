@@ -153,14 +153,14 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now (21 Oct):** 1,189 addresses matched. The score covers the expanded
-      seven-program scope: the Reimp census rows plus code outside them that routes
+      game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 37 ranges):
-      **165,256 / 182,862 creditable bytes, P2 90.85%, overall 97.21%**. In the census
+      **165,256 / 201,697 creditable bytes, P2 82.84%, overall 94.76%**. In the census
       alone, named code runs 159,769 of 165,265 creditable bytes (1,108 rows wholly,
       294 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left (17,606 bytes; `tools/census_classify.py`):**
+      **What is left (36,441 bytes; `tools/census_classify.py`):**
       - About 12,100 outside the census rows: 10,301 reviewed static code bytes that no
         route runs, and about 1,800 executed bytes no routine names. A route plan
         (`D:/f117-gate/static-route-plan-20261021/`, 21 Oct) found no input, file condition or
@@ -173,11 +173,13 @@ not the recompilation:
         test-only machine option could reach, which the owner decided not to build;
         831 probable-dead bytes that need evidence; the rest needs combat or very long
         careers); 222 unreached bytes held back on weak evidence; one live jump slot.
-      - Outside the score: 18,584 executed bytes in the launcher, the resident graphics
-        library and the sound drivers, and 3,939 unreviewed static-discovery bytes.
+      - 18,835 validated executed bytes in the launcher, resident graphics library and sound
+        drivers, now included (21 Oct scope expansion; no matching credit lost). The remaining
+        3,939 unreviewed static-discovery bytes are still outside the score.
       **Owner decision (21 Oct): no meaningful game code may be missed.** Approved: bring
       the launcher, graphics library and sound drivers into the scope (the percentage
-      drops at first; design in `D:/f117-gate/modules-scope-20261021/plan.md`); the static-code work above; a review of the unreviewed bytes; and a
+      drops at first; measurement and scoring steps 0/1a/1b done in `D:/f117-gate/modules-scope-20261021/`;
+      harness and proof-kit work remains); the static-code work above; a review of the unreviewed bytes; and a
       reference entry (name and one-line purpose) for every range that cannot be matched,
       so nothing is left unexplained even when it earns no credit.
       **Dead code** leaves the denominator only when certain (owner, 19 Oct), with a

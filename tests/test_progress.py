@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -28,6 +28,22 @@ def code(table):
 class CoverTests(unittest.TestCase):
     # 1000: two-byte op; 1002: JCC to 1008; 1004: op; 1006: RET; 1008: op; 100A: RET.
     PROGRAM = staticmethod(code({0x1002: (2, K_JCC, 0x1008), 0x1006: (1, K_RET, 0), 0x100A: (1, K_RET, 0)}))
+
+    def test_registration_parser_keeps_every_game_module_identity(self):
+        source = '\n'.join('"%s", TOKEN, 0x0007, 0x0100' % name for name in
+                           ("MISC.EXE", "F117.COM", "ASOUND.117", "ASOUND.LOG", "LZEXE091.STUB"))
+        with patch("builtins.open", mock_open(read_data=source)):
+            self.assertEqual(progress.matched_addresses(),
+                             {(name, 0x170) for name in ("MISC", "F117.COM", "ASOUND.117", "ASOUND.LOG")})
+
+    def test_driver_and_com_proofs_use_distinct_module_keys(self):
+        names = ("ASOUND.117", "ASOUND.LOG", "F117.COM", "MGRAPHIC.EXE")
+        lines = [f"{name} 0000 0100 1: 0100 |\n" for name in names]
+        matched = {(progress.module_key(name), 0x100) for name in names}
+        covered = progress.cover_bytes(lines, code({}), matched, set())
+        self.assertEqual(covered, {progress.module_key(name): {0x100, 0x101} for name in names})
+        with self.assertRaises(SystemExit):
+            progress.cover_bytes(lines[1:], code({}), matched, set())
 
     def test_lockstep_lines_become_bytes_by_linear_address(self):
         covered = progress.cover_bytes(["START.EXE 0000 1000 10: 1000 1004 |\n",

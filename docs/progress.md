@@ -87,13 +87,13 @@ stays on the roadmap.
   **Executed code outside the census is included** (17 October 2026). The old census rows and
   their figures stay available for comparison. A separate `census.supplemental` count adds each byte
   outside them once when an interpreter route or a matched body's proof executes its instruction,
-  within the same seven programs. The score uses `(matched_bytes + supplemental.credited) /
+  across all 17 game code files (launcher, programs, resident graphics library and sound drivers). The score uses `(matched_bytes + supplemental.credited) /
   (creditable_bytes + supplemental.bytes)`. This was a denominator change, not lost matched work:
   P2 fell from 87.43% to 85.11% at the first correction. The route captures store four-byte
   windows, **not instruction lengths**, so the tool decodes each instruction, checks the module's
   file hash and its captured opcode/operand bytes against the image, allows relocated words and the
-  known bound jump vectors, and rejects changed or undecodable code (127 unique records rejected
-  against 57,646 accepted; they add no bytes). Fixture-only named bytes count by the same proof rule
+  known bound jump vectors, and rejects changed or undecodable code (317 unique records rejected
+  against 64,512 accepted in the current 63-route captures; rejected records add no bytes). Fixture-only named bytes count by the same proof rule
   as inside the old census.
   **Reviewed static code** (`docs/census-code.tsv`, four tranches on 17-18 October): 37 ranges add
   11,491 bytes to the workload with no matching credit (text and DOS helpers, printf arms, arithmetic,
@@ -107,21 +107,23 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch al and the 21 Oct dead review): **165,256 / 182,862**, P2 **90.85%**, overall **97.21%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  **Current total** (after batch al and the 21 Oct module scope expansion): **165,256 / 201,697**, P2 **82.84%**, overall **94.76%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
   The historical census retains its recorded row boundaries, including overlapping
   positions: af adds 697 row-byte credits from 692 distinct instruction bytes
   (five positions occur in two rows). The separate raw-byte audit reports 690
   against the older route inventory; current captures supply the other two.
   `p2-batch-af-accept/credit-reconciliation.json` records both measures against
   the prior registry; the denominator and scoring method are unchanged.
-  Still outside the score: 3,939 static-discovery bytes needing review, and 18,584 validated executed
-  bytes in the launcher, resident graphics library and sound drivers, reported separately by the
-  classifier; extending matching and the score to those modules needs module/segment support. Thus
-  the score measures the expanded seven-program scope, not all game code. The owner approved
-  bringing those modules and the reviewed discoveries into the scope (21 Oct): the percentage
-  will drop when they are added, and this section will say so with the before and after. `census_classify.py` prints
-  the supplement, module counts and rejected-record counts; the existing `progress.py --census ...`
-  command refreshes the old and expanded counts together.
+  **Launcher and drivers included (21 Oct):** the approved scope expansion adds 18,835
+  validated executed bytes across F117.COM, MGRAPHIC, MISC and six sound drivers. No matched
+  credit changed: the denominator rose from 182,862 to 201,697, taking P2 from 90.85% to
+  82.84% (the measured byte share is 81.93%; the completed tooling item supplies 5% of P2).
+  All 17 game code files are eligible; NSOUND.117 currently contributes zero because no route
+  runs it and it has no reviewed static range. Unreviewed static discoveries (3,939 bytes)
+  and the shared floating LZEXE decompressor remain outside the measure. No new original-code
+  or dead-code exclusion was made. Measurement and validation: `D:/f117-gate/modules-scope-20261021/`.
+  `census_classify.py` prints the supplement, module counts and rejected-record counts;
+  `progress.py --census ...` refreshes the historical and expanded counts together.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

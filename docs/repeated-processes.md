@@ -57,6 +57,14 @@ verification) is not an optimisation; it needs the owner's approval.
   the latest named coverage and batch-h route coverage. No gate is rerun for a
   scope-table-only change; the classifier, progress and dossier tests are
   enough (`tests/test_census_classify.py` and the progress tests).
+- **Module scope refresh.** Decode and validate the existing route captures against all 17
+  game code files, then refresh progress with the current named proofs. The 21 Oct measurement
+  took 2.8 s; the complete score refresh took about 9 s. Scope-only tooling changes use the
+  progress, classifier and dossier regressions plus the normal gate CTests
+  (`ctest --test-dir build -E func_lockstep --output-on-failure -j 8`). The standalone
+  serial `func_lockstep` CTest duplicates the gate's separate sharded check; use
+  `tools/func_lockstep_par.py --jobs 8` for that comparison. Production and matched code are
+  unchanged. Evidence: `D:/f117-gate/modules-scope-20261021/`.
 - **Normal-play default changes.** `tests/test_fix_defaults.py` (ROM-free,
   dummy SDL video/audio, six synthetic COM session cases) must fail against the
   pre-change executable and pass after rebuilding the app and runner; run the

@@ -65,12 +65,11 @@ quiz. It is off by default and is enabled only when named explicitly;
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
 - **Named and matched:** 1,189 routine addresses have explained C equivalents
-  checked against their original bodies, covering 165,256 of 182,862 creditable
-  bytes in the expanded seven-program scope. The historical census has 1,108
+  checked against their original bodies, covering 165,256 of 201,697 creditable
+  bytes across all 17 game code files. The historical census has 1,108
   rows wholly covered and 294 in part; executed code outside its rows now
-  counts too, along with reviewed static code. Next to come into the scope:
-  the launcher, the resident graphics library and the sound drivers, and the
-  static discoveries not yet reviewed ([how progress is measured](docs/progress.md)).
+  counts too, along with reviewed static code. Static discoveries not yet
+  reviewed remain outside the score ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the

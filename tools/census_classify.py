@@ -32,9 +32,9 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
                 arm whose guard cannot hold). Error paths are never listed; each row has a certificate
 
 The historical census share is credited / (bytes - data - original - dead). Phase 2 also includes the separately
-reported supplement of executed instructions outside these rows in the same seven programs; add its named
+reported supplement of executed instructions outside these rows in all 17 game code files; add its named
 bytes to the numerator and all its bytes to the denominator. Reviewed static code from docs/census-code.tsv
-also adds workload; unreviewed discoveries and other modules remain a scope backlog.
+also adds workload; unreviewed discoveries remain a scope backlog. The floating LZEXE decompressor is excluded.
 `data`, `original` and `dead` leave only uncredited bytes; a body that
 does run some of those bytes keeps its credit. Linear census addresses are the image offsets of the loaded
 programs, which is how the rest of the tooling reads them.
@@ -321,29 +321,38 @@ def load_rows(path):
     return [(r[0], int(r[1], 16), int(r[2])) for r in lines if len(r) > 2]
 
 
+def modules_scope():
+    """All shipped game code files; the shared floating decompressor is not game code."""
+    from modules import CODE_FILES
+    return {progress.module_key(name) for name in CODE_FILES}
+
+
 def supplemental_scope(rows, covered, ran, reviewed=None):
-    """Executed code outside the old census, in its seven programs only.
+    """Executed and reviewed code outside the old census, across all game code files.
 
     Keep the historical rows intact. Add each outside byte once if a validated
     interpreter capture or a matched body's proof executed its instruction.
     Human-reviewed static code is added from the separately checked table;
     static discovery alone adds nothing here.
-    The other modules remain separately reported debt, not silently included
-    in a measure whose matched table only supports these seven programs.
+    Keep zero-byte modules visible, including NSOUND.117 until execution or
+    a static review supplies its workload. Unknown modules and the floating
+    decompressor remain separately reported and never enter the score.
     """
     inside = collections.defaultdict(set)
     reviewed = reviewed or {}
     for module, linear, size in rows:
         inside[module].update(range(linear, linear + size))
     by_module = {}
-    for module, census in sorted(inside.items()):
+    included = modules_scope() | set(inside)
+    for module in sorted(included):
+        census = inside.get(module, set())
         named = covered.get(module, set())
         executed = ran.get(module, set()) | named
         extra = (executed | reviewed.get(module, set())) - census
         by_module[module] = dict(bytes=len(extra), credited=len(extra & named),
                                 reviewed_static_bytes=len(extra - executed))
-    other = {module: len(bytes_) for module, bytes_ in sorted(ran.items()) if module not in inside}
-    return dict(basis="census plus executed and reviewed static code in the seven census programs",
+    other = {module: len(bytes_) for module, bytes_ in sorted(ran.items()) if module not in included}
+    return dict(basis="census plus executed and reviewed static code in all 17 game code files",
                 bytes=sum(v["bytes"] for v in by_module.values()),
                 credited=sum(v["credited"] for v in by_module.values()),
                 reviewed_static_bytes=sum(v["reviewed_static_bytes"] for v in by_module.values()),
@@ -380,7 +389,7 @@ def main():
     creditable = total - totals["data"] - totals["original"] - totals["dead"]
     print("old census creditable denominator %d; named-byte share %.2f%% (whole census %.2f%%)"
           % (creditable, 100.0 * totals["credited"] / creditable, 100.0 * totals["credited"] / total))
-    print("supplement outside census: %d bytes, %d credited; expanded seven-program share %.2f%%"
+    print("supplement outside census: %d bytes, %d credited; expanded game-code share %.2f%%"
           % (scope["bytes"], scope["credited"],
              100.0 * (totals["credited"] + scope["credited"]) / (creditable + scope["bytes"])))
     for module, counts in scope["by_module"].items():

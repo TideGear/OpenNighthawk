@@ -15,15 +15,15 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 90.85%, P3 100.00%, All 97.21%
+- **Scoreboard:** P1 100.00%, P2 82.84%, P3 100.00%, All 94.76%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,189 addresses matched; **165,256 / 182,862 creditable bytes** in the
-  expanded seven-program scope (credit by byte; rules in [docs/progress.md](docs/progress.md)).
+- **Phase 2:** 1,189 addresses matched; **165,256 / 201,697 creditable bytes** across
+  all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 427 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Where the remaining 17,606 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
+- **Where the remaining 36,441 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
   --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
   --data D:/GOG/F-117A --rows 45`):
   - outside the census rows, about 12,100: 10,301 reviewed static code bytes no route runs
@@ -32,23 +32,27 @@ Consolidate it instead of appending to it.
     `073C8`'s second lock slot, MPS_LOGO `1ADC`/`1C82` unequal, START `8427` and END `4393` wait loops,
     END `57B0` interior arm, DSWAP `0723`'s failure arm), 4,322 `never_run` (about 2,500 machine-option-only
     error paths, 831 probable-dead, the rest needs combat or very long careers), 222 `unreached`, 5 `slots`.
-  - Outside the score entirely: 18,584 executed bytes in the launcher, resident graphics library and sound
-    drivers, and 3,939 unreviewed static-discovery bytes.
-- **Phase 2 scope work in flight (21 Oct); the session ended mid-way, nothing here is in the repo yet.** All analysis is read-only under
-  `D:/f117-gate/`; adopt only what you verify:
+  - 18,835 validated executed bytes in the launcher, resident graphics library and sound drivers are now in
+    scope. Outside the score: 3,939 unreviewed static-discovery bytes and the floating LZEXE decompressor.
+- **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
+  `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (DONE): no route, damage, argument or probe answer can run any of the 10,301 reviewed-static bytes: 9,197
     bytes (groups A, B, D-I: VGAME CGA/Tandy drivers 1,042; printf modifier states 1,251; SETUP library cluster 2,724; picture/span wrappers
     1,480; INT 23h shims 569; MPS_LOGO mouse library 230; PLAYER report formatter 460; VGAME uncalled code 1,441) have no way in, and the
     1,104 bytes of DSWAP's printf core (group C) need a floppy drive, which the owner declined. `plan.md` and `groups.tsv` there. Certifying
     them dead needs `docs/census-code.tsv` rows removed (the classifier subtracts nothing for `census-dead-ranges.tsv`).
-  - `static-route-verify-20261021/` (INTERRUPTED by the usage limit, resets 5:10 PM): an adversarial re-derivation of groups A, D, E, F, G, H
-    (agent id a70bf25a1f34ae616, resume with SendMessage; scratch scripts are saved). Do not certify any group dead until it reports.
+  - `static-route-verify-20261021/` (INTERRUPTED in the prior session): an adversarial re-derivation of groups A, D, E, F, G, H
+    (historical agent id a70bf25a1f34ae616; scratch scripts are saved). Do not certify any group dead until it reports.
   - `static-review-20261021/` (INTERRUPTED, agent a2f2492401cab1fda): the code/data review of the 3,939 unreviewed static bytes; stage files
     saved, no `code-rows.tsv` yet.
   - `unmatched-reference-20261021/` (agent a6d52c02c7d0dc047, status unknown when the session ended): the reference table for every range that
     cannot be matched; no `reference.tsv` yet.
   - `modules-scope-20261021/plan.md` (DONE): the ten-step design for bringing the launcher, MGRAPHIC, MISC and the sound drivers into the score
-    (about 18,835 validated bytes; P2 would drop to about 81.9% before matching starts). Start with step 0 (private measurement) and 1a/1b.
+    (18,835 validated bytes; measured byte share 81.93%, weighted P2 82.84%). Steps 0/1a/1b done:
+    `measurement.json` verifies per-module counts and captured-record rejection, and the scorer includes all 17
+    game code files. Credit remains 165,256; no new dead/original exclusions. Scope validation: 427 standard
+    CTests, 57 focused Python tests, 2,235,060 matched states / 0 mismatching (2,000 states, eight shards).
+    `scope-verdict.json` retains the byte audit and test evidence. Next: step 2a (harness module keys).
   Owner decisions this session: bring these modules in scope; no floppy drive (DSWAP's disk-swap path stays original).
 - **Dead code** (owner rule: only when certain): `docs/census-dead.tsv` (73 census rows, 2,927 bytes;
   certificates `D:/f117-gate/phase2-final/dead-cert/`, the 21 Oct evidence review `dead-review-20261021/`) and
@@ -125,7 +129,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-1. **Reviewed static code (10,301 bytes):** the route plan found no way to run it. Resume the verification agent, then decide per group: certify dead (with certificates and by removing the rows from `docs/census-code.tsv`) or keep. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
+1. **Reviewed static code (10,301 bytes):** the route plan found no way to run it. Complete the interrupted verification from its saved scripts, then decide per group: certify dead (with certificates and by removing the rows from `docs/census-code.tsv`) or keep. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
 2. **Reference entries for unmatchable code:** check the agent's `reference.tsv` and coverage check
    (`D:/f117-gate/unmatched-reference-20261021/`), then publish it as a repository doc (one row per routine:
    name, purpose, status, why not matched, evidence).
@@ -133,7 +137,8 @@ Consolidate it instead of appending to it.
    instruction counts must verify on refresh) and data rows into `docs/census-data.tsv`, then refresh the score.
 4. **Drivers and launcher into scope:** implement the Plan agent's step-by-step design (module identification
    for overlays and the COM file, matched-table and lockstep support, census from executed plus reviewed bytes,
-   scoring and docs). Small verifiable steps; the gate stays green after each.
+   scoring and docs). Measurement and scoring steps 0/1a/1b are complete; next step 2a is module-keying the
+   harness, with identical per-routine output at four seeds and a full gate. Small verifiable steps; the gate stays green after each.
 5. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
 
 ## Phase 2 batch workflow and its traps
