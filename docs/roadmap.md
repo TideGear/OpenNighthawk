@@ -152,7 +152,7 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 1,189 addresses matched; named code runs 159,769 of the
-      165,888 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
+      165,265 creditable census bytes (179,213 in all, 12,225 of them data, code that stays original or certified-dead code; see
       [progress.md](progress.md#what-is-measured)): 1,108 census rows
       wholly, 294 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
@@ -164,7 +164,7 @@ not the recompilation:
       The second and third tranches on 18 October add 2,941 bytes in 19 more ranges
       (35 ranges total, 11,282 additional static bytes); a fourth adds 209 bytes in two
       wrappers (37 ranges, 11,491). With batch r's new names,
-      the score measures 165,256 /183,485 creditable bytes (P2 90.56%, overall 97.12%);
+      the score measures 165,256 /182,862 creditable bytes (P2 90.85%, overall 97.21%);
       the earlier 87.43% used only the old census. No matching was removed.
       The remaining 3,939 static-inventory bytes need review; speculative table/padding
       decodes and independent-decoder disagreements prevent blindly adding translated bytes.
@@ -191,11 +191,11 @@ not the recompilation:
       **What the old census's uncredited bytes are** (17 Oct, corrected instruction lengths,
       `tools/census_classify.py`, 31,765 bytes): 5,486 in instructions routes ran (workable now),
       15,127 decoded as code that no route runs (needs a new route or a decision that it is unreachable),
-      1,030 that no walk reaches and nothing marks as data (to be read),
+      1,030 that no walk reaches and nothing marks as data (read on 21 Oct, `D:/f117-gate/unreached-review-20261021/`: of the 845 left, 257 are padding, jump tables and a driver vector table (now in `docs/census-data.tsv`), 367 are code nothing can enter (`docs/census-dead-ranges.tsv`) and 222 stay in: a 6-byte head reachable only by a failing `assert()`, and 215 bytes whose evidence is only `no reference found`),
       842 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
       VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code;
       on 21 Oct 837 of those bytes, in SETUP and PLAYER, were certified unreachable: each program binds only a few
-      slots and no instruction in any program image names the rest, `docs/census-dead-slots.tsv`; SETUP slot 47
+      slots and no instruction in any program image names the rest, `docs/census-dead-ranges.tsv`; SETUP slot 47
       stays in), and the 9,280 bytes of data and original code that left it.
       The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
       the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that

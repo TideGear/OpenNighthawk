@@ -2,7 +2,190 @@
 # Phase 2 denominator (tools/census_classify.py). A byte that a route ran or a matched body covers is never
 # excluded by this table. Add a range only after reading it; when in doubt leave it out, which keeps the byte
 # in the denominator. Columns: module, first linear address, length in bytes, what it is and how it was checked.
-SETUP	0x027AE	1495	screen and message text with box-drawing characters, a word table of characters (0x2C2E) and C-runtime messages; read in full, 0x027AE..0x02D64
+SETUP	0x027AE	1463	screen and message text with box-drawing characters, a word table of characters (0x2C2E) and C-runtime messages; read in full, 0x027AE..0x02D64
 PLAYER	0x040C8	1070	zero fill, the C runtime's messages ("Error releasing overlay memory", "_C_FILE_INFO=", "Assertion failed"), and small tables; read in full
 DSWAP	0x03DF3	2924	zero fill plus the C runtime's messages, "_C_FILE_INFO=" and small tables; read in full (the census lists it as a function)
 DSWAP	0x02920	518	a lookup table: zero fill, then an arithmetic sequence of byte values with flag bytes 40/80/C0/00; the census rows 0x02920 and 0x029E6 overlap it; read in full, 0x02920..0x02B25
+VGAME	0x01DF0	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x01E47	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes f8 eb 15) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x01E9C	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 26 eb 06) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x095AE	16	jumptable: jump table of 8 near code pointers: instruction at 0x095A9 is `jmp word ptr cs:[bx-0x6a52]` = cs:[bx+0x95AE] (the displacement is this table's address), bx=2*(ax-1) after `cmp ax,7; ja` guard so exactly 8 words (16 bytes); decoded entries 9570,9587,9582,957D,958C,9596,9591,959B are all instruction starts of code (push imm16 stubs that routes ran)
+VGAME	0x0CE8D	16	jumptable: jump table of 8 near code pointers: `jmp word ptr cs:[bx-0x3173]` at 0x0CE88 (= cs:[bx+0xCE8D]); bx=2*quotient of (ax-0x231)/0x101 with the guard `cmp ax,0x707; ja`, so 8 words; decoded entries C968,C96F,C961,C944,C973,C977,CB77,C9AE are instruction starts of code that routes ran
+VGAME	0x0E335	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes f8 eb 73) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0E4AB	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 7e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0E4B6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c2 eb 5d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0E9C3	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 04 eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0EA05	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 11) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F237	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb d6) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F241	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 02 eb c7) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F247	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb f4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F2DD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F373	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F393	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F541	1	pad: padding 0x00 (1 byte) after jmp short (bytes db eb be) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F91D	1	pad: padding 0x00 (1 byte) after jmp near (bytes e9 22 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0F98F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0FB53	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 03) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0FE71	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 07 eb 67) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0FEC2	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes da eb 71) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0FEC7	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes fa eb 6c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x0FED5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 22 eb 5e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1014E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 26 eb 10) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x101E7	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 07 eb 4e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10221	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes da eb 6c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10226	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes fa eb 67) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10234	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 26 eb 59) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1032F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 22 eb 2c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x106A5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 1e eb 3b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1079A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 14) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x107C5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 29 eb 0b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x108F6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 2a eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10997	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 1e eb 7f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10C85	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 73) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10EAA	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 2c eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10EC5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 2c eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10F0B	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 2c eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x10F26	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 2c eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1125A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 01) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1129E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7f eb 26) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x112B5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x112E2	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d0 eb 0e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x11CF1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 77) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x11FA9	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 96 eb 1c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x11FB8	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 96 eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x11FE1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes b7 eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12139	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 0e eb 31) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12207	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 90 eb 38) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x122DF	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 90 eb 29) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x123F4	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7d eb 38) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1249E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 2f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x125DF	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 90 eb 4a) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x126C5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes f1 eb 0b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x127C9	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 5f eb 03) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12AAC	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 0c eb 22) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12F36	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 18 eb 1c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12F3C	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 3e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12F45	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 25) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12F4B	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 1f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x12F51	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 29) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x13152	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x13169	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x135A0	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 28) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x1363A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d2 eb 37) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x136C6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 04 eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x136CD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 85 eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x136E6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 0c eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x136ED	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 85 eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x137E0	40	vectortable: four 6-word near-pointer tables (graphics-mode driver vectors) at 1377:0070/007C/0088/0094 (image 0x137E0..0x1380F; the first 40 bytes are unreached): selected by `lea bx,[0x70|0x7C|0x88|0x94]` followed by `mov [0x85F2],bx` (the movs are at 0x13849, 0x13881, 0x1389D, 0x138C0, 0x138EB) and indexed by the thunks `mov bx,[0x85F2]; call word ptr cs:[bx+N]`; every entry decodes to a function (e.g. 1377:0246 push bp; mov bp,sp), entries +8/+A equal in modes 1-3
+VGAME	0x13EF3	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes db eb 13) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x13F30	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes db eb 09) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x05963	5	jumptable: first 5 bytes of a 9-word jump table (18 bytes 0x5963..0x5974; the other 13 bytes already read as data/text): `jmp word ptr cs:[bx+0x5963]` at 0x0595E, guard `cmp ax,8; ja`; decoded entries 58EF,5908,591F,5924,593D,5942,5947,594C,5951 are all instruction starts (mov ax,imm16 stubs) that routes ran
+START	0x08482	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 01) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x084C6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7f eb 26) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x084DD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08502	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d0 eb 0e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08935	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 8d eb 1c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08944	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 8d eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x0896D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes b7 eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08E40	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08E7E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x08E81	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 90 eb 1a) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x091E1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 04 eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09223	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 11) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x095E1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 0b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09AF3	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb d6) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09AFD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 02 eb c7) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09B03	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb f4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09C49	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x09CDF	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x0A1E5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x0A457	1	pad: padding 0x00 (1 byte) after jmp short (bytes 1c eb c9) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x0A76F	1	pad: padding 0x00 (1 byte) after jmp near (bytes e9 01 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+START	0x0A7E1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x0417E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 67) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x041C1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 24) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x043EE	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 01) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x04432	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7f eb 26) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x04449	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x048D5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 3f eb 1c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x048E4	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 3f eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x0490D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes b7 eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x04D24	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x0525F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 0b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x05BBF	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+END	0x05C55	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x0044F	1	pad: padding NOP 0x90 (1 byte) after ret (bytes e5 5d c3) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x0049D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 20 eb 03) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00645	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 0c eb 13) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00723	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 0c eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00786	2	pad: padding NOP 0x90 (2 byte) after jmp short (bytes 1d eb 5d) before code at +2; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00CB3	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d8 eb 1d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00ED1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x00F0B	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 6e eb 05) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x01017	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ed eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x019C1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x01A57	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x01FE7	1	pad: padding 0x00 (1 byte) after jmp near (bytes e9 77 f1) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x02665	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+PLAYER	0x0298A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00151	1	pad: padding NOP 0x90 (1 byte) after jmp near (bytes e9 71 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00167	1	pad: padding NOP 0x90 (1 byte) after jmp near (bytes e9 5b 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x001C1	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes bd eb d1) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0053D	1	pad: padding NOP 0x90 (1 byte) after ret (bytes 99 c9 cb) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x005B5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes fc eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0067F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes fc eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00727	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e5) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0074B	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb dd) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x007AD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb dc) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00847	1	pad: padding NOP 0x90 (1 byte) after jmp near (bytes e9 23 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x008E5	1	pad: padding NOP 0x90 (1 byte) after jmp near (bytes e9 85 03) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00B85	1	pad: padding NOP 0x90 (1 byte) after jmp near (bytes e9 b4 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00D5B	1	pad: padding NOP 0x90 (1 byte) after ret (bytes 75 ee c3) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00D81	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb ef) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x00DA5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb dd) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x01159	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x01164	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 4a) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0116A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb 44) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0119A	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb 14) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x011A6	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0179F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 04 eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x017E7	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 13) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x01F9D	1	pad: padding 0x00 (1 byte) after ret n (bytes ca 02 00) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x02229	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb d6) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x02233	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 02 eb c7) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x02239	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb f4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x02383	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 57) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x0241D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e2) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x02925	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+MPS_LOGO	0x032B5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x00708	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 67) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x0074B	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 24) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x00B81	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 24 eb 1c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x00B90	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 24 eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x00BB9	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes b7 eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x00F17	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 11) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x010BD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 0b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01577	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb d6) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01581	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 02 eb c7) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01587	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 01 eb f4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01BA5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 04) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01CB9	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 55) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x01D4F	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 47 eb e4) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+DSWAP	0x021E5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x00B1E	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 21 eb 7f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x00B28	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 21 eb 75) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x00B69	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 21 eb 34) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x00B82	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 21 eb 1b) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x01182	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 03 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013B8	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 12 eb 15) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013BD	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 10 eb 17) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013C2	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 21 eb 12) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013C7	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 16 eb 0d) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013CC	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 1a eb 08) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x013D3	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x01D47	1	pad: padding byte 0x00 after `ret` (c3 at 01D46) and before the next function's prologue `55 8b ec` at 01D48; no branch, operand, word or far pair targets it
+SETUP	0x01DB9	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes ff eb 0c) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x023E5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 01) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x02429	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7f eb 26) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x02440	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+SETUP	0x0246D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d0 eb 0e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill

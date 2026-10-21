@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 90.56%, P3 100.00%, All 97.12%
+- **Scoreboard:** P1 100.00%, P2 90.85%, P3 100.00%, All 97.21%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,189 addresses matched. Scope is the expanded seven-program
-  one: **165,256 / 183,485 creditable bytes** (credit by byte since 16 Oct;
+  one: **165,256 / 182,862 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -115,7 +115,7 @@ Consolidate it instead of appending to it.
   `3B9A`, built, not adopted), career thresholds (a hand-made roster), the ILS panel's last 23 bytes
   (`97E9`..`97FF`: needs an approach that enters the ILS window), `0CB64`, `0CA1A`, `073C8`'s second lock slot.
   Owner decision (19 Oct): dead code leaves the denominator only when certain: `docs/census-dead.tsv`, 73 rows /
-  2,927 bytes plus `docs/census-dead-slots.tsv` (837 bytes of SETUP and PLAYER jump slots no program binds or names, range-keyed, 21 Oct review `D:/f117-gate/slots-review-20261021/`; SETUP slot 47 at `02E51` kept live) (7 rows added 21 Oct by the evidence review, `D:/f117-gate/dead-review-20261021/`; the 12 still PROBABLE rows, 831 bytes, and the three upgrades left out are listed there: MPS_LOGO `00754` rests on a `LABSLOGO.SS` byte our damage routes can poke, `01B3C` and `02ECA` on single-writer arguments); error paths stay in and are run on damaged-install routes (below); the START quiz is an option
+  2,927 bytes plus `docs/census-dead-ranges.tsv` (range-keyed, not census rows: 868 bytes of SETUP and PLAYER jump slots no program binds or names, `D:/f117-gate/slots-review-20261021/`, SETUP slot 47 at `02E51` kept live; and 367 bytes of code no walk decodes, `D:/f117-gate/unreached-review-20261021/`; left out as weaker evidence: VGAME `12E4B` `11CF4` `11DFF`, START `081C6`, MPS_LOGO `02ECF` and `028E4`; the `census-data.tsv` row SETUP `027AE` was corrected from 1,495 to 1,463 bytes) (7 rows added 21 Oct by the evidence review, `D:/f117-gate/dead-review-20261021/`; the 12 still PROBABLE rows, 831 bytes, and the three upgrades left out are listed there: MPS_LOGO `00754` rests on a `LABSLOGO.SS` byte our damage routes can poke, `01B3C` and `02ECA` on single-writer arguments); error paths stay in and are run on damaged-install routes (below); the START quiz is an option
   (`--fix QUIZ`), not dead code (owner, 20 Oct).
 - **Stage 3/4 (owner approved 18 Oct):** Stage 4 is done at 1.0 for what can be tested here: hidden capacity
   measurements plus the announced 24-minute fullscreen landing run (p99 16.95 ms, zero missed; docs/presentation.md);
@@ -200,7 +200,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (90.56% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (90.85% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
    no proof worker or unrelated heavy job runs during a gate; the keyed baseline (af's, 58 routes) is stale since batch ai added five routes: the next matched batch runs `new_batch.py ... --no-baseline` once and freezes a new one for 63 routes / 62 sessions.

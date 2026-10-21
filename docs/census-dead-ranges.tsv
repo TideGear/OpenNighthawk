@@ -1,0 +1,47 @@
+# Byte ranges certified unreachable that are not census rows (jump slots, and unreached code bytes no walk decodes), `dead` in tools/census_classify.py; keyed by byte range.
+# Columns: module, linear address of the first byte, bytes, evidence. Same rule as docs/census-dead.tsv: only when certain.
+# A slot is live code in the programs that bind it, so only slots that no program can enter qualify. Certificates and the full per-slot table:
+# D:/f117-gate/slots-review-20261021/ (certificates-new.tsv, notes.txt). Scans: every E8/E9/9A/EA transfer with all segment aliases, relocated
+# segment/offset word pairs in all 18 modules plus SPEECH.117, ROSTER.FIL and LABSLOGO.SS, each program's single binder (which slots it fills).
+SETUP	0x02D66	31	slots 0..5 and the first byte of slot 6: MGRAPHIC range, never bound by SETUP; no instruction names them (these bytes were inside the SETUP 0x027AE data range until its length was corrected from 1,495 to 1,463 on 21 Oct)
+SETUP	0x02D85	204	slots 6 (last 4 bytes)..46: MGRAPHIC range, never bound by SETUP (it binds only misc.exe slots 90-95); no instruction in any program image names these jump slots
+SETUP	0x02E56	176	slots 48..83 (first byte): MGRAPHIC range, never bound by SETUP; no instruction names them (slot 47 at 02E51 stays live: its callers are static-only evidence)
+SETUP	0x02F28	5	slot 90 (MISC entry 0): bound, but no transfer in SETUP names it
+PLAYER	0x03BF0	416	slots 0..82 and first byte of 83: MGRAPHIC range, never bound by PLAYER (it binds only the sound driver's slots 100-104); no instruction names them
+PLAYER	0x03DB2	26	slots 90..94 and first byte of 95: MISC range, never bound by PLAYER; no reference
+PLAYER	0x03DE4	5	slot 100 (sound driver entry 0): bound, never called through PLAYER's table (F117.COM calls the driver through its header)
+PLAYER	0x03DEE	5	slot 102 (sound driver entry 2): bound, never called through PLAYER's table
+VGAME	0x0E87D	26	ALTENTRY: exit-routine entry variants (_exit / _cexit / _c_exit stubs: push bp; mov bp,sp; [push si; push di;] mov cx,flags; jmp shared body) at E87D/E885/E88F (shared body E897); the exit() entry E876 is the run one; the only data word equ
+VGAME	0x0F60C	8	ALTENTRY: alternate entry (push bp; mov bp,sp; sub sp,4; xor bh,bh) of the file-open routine F5F2 (INT 21h/AH=3Dh); the main entry jumps over it with `jmp F614`; no call, jump, pointer or far pair targets F60C (word hits are inside arithmet
+VGAME	0x0FABF	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+VGAME	0x137D7	9	THUNK: vector thunk `mov bx,[0x85F2]; call word ptr cs:[bx+0xA]; retf` = 1377:0067; its sibling thunks 1377:0x4C, 0x55, 0x5E are lcall'd 4, 3 and 1 times in VGAME; neither `9A 67 00 77 13` nor the bytes `67 00 77 13` occur in any game fi
+START	0x08620	6	ALTENTRY: flag-1 arm `nop; mov byte [73FC],1` after `mov byte [73FC],0; jmp +6`: alternate entry variant (cf. END 045C3, docs/census-dead.tsv ALTENTRY); no branch or pointer targets 0x08621
+START	0x0909B	26	ALTENTRY: exit-routine entry variants (_exit / _cexit / _c_exit stubs: push bp; mov bp,sp; [push si; push di;] mov cx,flags; jmp shared body) at 909B/90A3/90AD (shared body 90B5); exit() entry 9094 is the run one; the only data word equal t
+START	0x09699	8	DEADFUNC: two ctype-predicate stubs `mov ax,0x17; jmp 96A1` (9699) and `mov ax,0x20` (969E) sharing the body at 96A1; siblings 9680..9694 belong to the same family (9694 is run); nothing calls or points at 9699/969E
+START	0x098B0	13	DEADFUNC: C run-time __dosretax-style entry `jae 98AA; push ax; call 98D0; pop ax; xor ah,ah; mov sp,bp; pop bp; ret` (98B0): preceded by `ret` (98AF); no jump or call targets 98B0 (the jumps that reach the family target 98A8 and 98BD)
+START	0x0A5B4	8	ALTENTRY: alternate entry (push bp; mov bp,sp; sub sp,4; xor bh,bh; same 8 bytes as VGAME 0F60C) of the routine entered at A59A, whose main entry jumps over it (eb 08); nothing calls or points at A5B4
+START	0x0A911	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+END	0x01470	2	DEADFUNC: first two bytes (push bp; mov bp,sp) of the dead END message-box helper whose body is the census-dead rows END 01450/01472 (the census entry 01472 is mid-prologue); nothing targets 01470
+END	0x04606	8	ALTENTRY: first 8 bytes (push bp; mov bp,sp; push di; push si; push es; push ds; push bp) of the twin of the routine that ends with `ret` at 4605, whose `mov byte [2612],0; jmp; nop; mov byte [2612],1` arms form the ALTENTRY pair of docs/ce
+END	0x05482	13	DEADFUNC: C run-time __dosret0/__dosretax entries (5482 `jb 5499; xor ax,ax; mov sp,bp; pop bp; ret`, 548A `jae 5484; push ax; call 54AA; ...`): preceded by `ret 2` (547F); only the internal `jae 5484` targets this code; the row END 0544D (
+END	0x05F61	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+PLAYER	0x00F7E	6	ALTENTRY: flag-1 arm `nop; mov byte [19E0],1` after `mov byte [19E0],0; jmp +6`: alternate entry variant (cf. END 045C3); no branch or pointer targets 0x0F7F
+PLAYER	0x0186E	2	DEADFUNC: `jb 1885` head of the C run-time __dosret0 entry (186E) before the run tail 1870; the wrappers jump to 1876 (E9 at 14B5/14EA), none targets 186E; preceded by `ret 2`
+PLAYER	0x01C40	98	PRINTF: MS C _output arms for conversion letters %n and %p (cmp al,'n' je 1C40 / cmp al,'p' je 1C53 at 1BEB..1BF1, the %p seg:off tail 1C97): PLAYER's only format string containing '%' is `Assertion failed: %s, file %s, line %d` (scan of 
+PLAYER	0x01CB6	4	PRINTF: head of the %E/%G (floating point) and unknown-conversion arm (jmp 1CB6 from 1BFE, jmp 1CB9 from 1BFB) of PLAYER's _output; PLAYER formats contain only %s/%d, same basis as docs/census-dead.tsv PLAYER 01CA2 and 01CBA
+PLAYER	0x024B5	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+MPS_LOGO	0x0037E	2	DEADINSN: `jmp +0x10` after `mov [bp-0x318],3; jmp +0x12`: both jump to 0x390; the second is unreachable (its only predecessor is the unconditional jmp); nothing targets 0x37E
+MPS_LOGO	0x01642	18	ALTENTRY: exit-routine entry variants (_exit / _cexit / _c_exit stubs: push bp; mov bp,sp; [push si; push di;] mov cx,flags; jmp shared body) (the _cexit and _c_exit entries, ip 1E2 and 1EC; the cx=1 entry at 163A is walked); exit() entry 1
+MPS_LOGO	0x02D0E	8	ALTENTRY: alternate entry (push bp; mov bp,sp; sub sp,4; xor bh,bh; same 8 bytes as VGAME 0F60C) of the routine entered at 0146:1894, whose main entry jumps over it (jmp 2D16); nothing calls or points at 2D0E
+MPS_LOGO	0x030EF	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+DSWAP	0x0086C	6	ALTENTRY: flag-1 arm `nop; mov byte [0B02],1` after `mov byte [0B02],0; jmp +6`: alternate entry variant (cf. END 045C3); no branch or pointer targets it
+DSWAP	0x00E3D	26	ALTENTRY: exit-routine entry variants (_exit / _cexit / _c_exit stubs: push bp; mov bp,sp; [push si; push di;] mov cx,flags; jmp shared body) at E3D/E45/E4F (shared body E57); exit() entry E36 is the run one; the only data word equal to E3D
+DSWAP	0x013EA	6	DEADFUNC: C run-time __dosret0 entry `jb 1401; xor ax,ax; mov sp,bp` (13EA) falling into the run tail 13F0 (`pop bp; ret`): preceded by `ret 2`; no jump or call targets 13EA
+DSWAP	0x013F2	5	DEADFUNC: C run-time __dosretax entry `jae 13EC; push ax; call (errno mapper)...` (13F2): preceded by `pop bp; ret` (13F0); no jump or call targets 13F2 (the internal `jae 13EC` is its own branch)
+DSWAP	0x01D80	8	ALTENTRY: alternate entry (push bp; mov bp,sp; sub sp,4; xor bh,bh; same 8 bytes as VGAME 0F60C) of the routine entered at 1D66, whose main entry jumps over it (eb 08); nothing calls or points at 1D80
+DSWAP	0x0219B	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
+SETUP	0x00AB1	6	ALTENTRY: flag-1 arm `nop; mov byte [078E],1` after `mov byte [078E],0; jmp +6`: alternate entry variant (cf. END 045C3); no branch or pointer targets it
+SETUP	0x00BB4	6	ALTENTRY: flag-1 arm `nop; mov byte [078E],1` after `mov byte [078E],0; jmp +6`: alternate entry variant (cf. END 045C3); no branch or pointer targets it
+SETUP	0x00C0D	6	ALTENTRY: flag-1 arm `nop; mov byte [078E],1` after `mov byte [078E],0; jmp +6`: alternate entry variant (cf. END 045C3); no branch or pointer targets it
+SETUP	0x016D5	26	ALTENTRY: exit-routine entry variants (_exit / _cexit / _c_exit stubs: push bp; mov bp,sp; [push si; push di;] mov cx,flags; jmp shared body) at 16D5/16DD/16E7 (shared body); exit() entry 16CE is the run one; the only data word equal to 16D
+SETUP	0x01D25	1	DEADINSN: `stc` skipped by `clc; jmp +1` (bytes f8 eb 01 f9 c3): the only predecessor jumps over it; no branch or pointer targets it; the next instruction is `ret`
