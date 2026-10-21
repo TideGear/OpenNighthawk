@@ -1104,6 +1104,18 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:82)
     add_test(NAME matched_vgame_far_hud_colours_init COMMAND func_lockstep --states 5000
       --only VGAME.EXE:E)
+    add_test(NAME matched_vgame_far_hud_pass COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:A)
+    add_test(NAME matched_vgame_far_hud_layout_apply COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:12)
+    add_test(NAME matched_player_format_dispatch COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1BB6)
+    add_test(NAME matched_start_quiz_draw_screen COMMAND func_lockstep --states 5000
+      --only START.EXE:57E)
+    add_test(NAME matched_start_quiz_ask_and_judge COMMAND func_lockstep --states 5000
+      --only START.EXE:703)
+    add_test(NAME matched_start_quiz_hover_highlight COMMAND func_lockstep --states 5000
+      --only START.EXE:786)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

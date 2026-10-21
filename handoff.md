@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.78%, P3 100.00%, All 96.57%
+- **Scoreboard:** P1 100.00%, P2 89.19%, P3 100.00%, All 96.70%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,162 addresses matched. Scope is the expanded seven-program
-  one: **162,770 / 184,574 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,168 addresses matched. Scope is the expanded seven-program
+  one: **163,575 / 184,574 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -52,8 +52,15 @@ Consolidate it instead of appending to it.
 - **Quiz option (owner, 20 Oct: functional, off by default):** `--fix QUIZ` (`src/fixes/fixes.c` `fix_quiz`: an override at START `001D` pushes
   `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`); `--fix all` and normal play never switch it on, `--fix none`
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
-  `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583` 350, `06E0` 50, `0703` 43,
-  `072E` 88, `0788` 102 bytes) are back in the denominator, not in `docs/census-dead.tsv`; they need proofs (task below).
+  `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583`, `06E0`, `0703`, `072E`, `0788`) are credited since batch ah.
+- **Batch ah (20 Oct, accepted):** START quiz routines `057E`/`0703`/`0786` (proved on `quiz_right`; the census rows `0583`, `06E0`, `072E`, `0788`
+  are mid-instruction pieces of them), PLAYER `1BB6` (printf dispatch) and VGAME `1058:000A`/`1058:0012`; 328 instructions, 275 mutations,
+  405 CTests, gate 1,783 s. Evidence `D:/f117-gate/p2-batch-ah-accept/` (attempt 1, with a duplicate VGAME `14C2:00B7`, is `...-attempt1-dup14cd7`).
+  Traps: `kit-libs` were stale (a private build said `no fix QUIZ`): refresh them from the main build after changing `src/` (a copy of the old set is in
+  `kit-libs-before-<commit>`); `kit.py integrate` refuses same-IP span aliases unless `KIT_ALLOW_ALIAS=1`, and then the new span goes in the
+  segment-keyed `SPANS_SEG` table, not `SPANS`; an agent's "new" address can already be matched under another segment spelling
+  (`14C2:00B7` = `1452:07B7`): compare linear addresses, the finalize tally catches it; agents do not run `--fix` routes, the root does.
+  Open: MPS_LOGO `27C2` and `163A` (no route call found).
 - **Batch ag (20 Oct, accepted):** 14 routines from the ran-rows list (table in `docs/roadmap.md`; 645 named bytes,
   313 covered instructions, 341 caught mutations, 70 optimized seeds); 399 CTests, 58 routes / 57 sessions, gate 1,604 s,
   acceptance 1,731 s. Evidence `D:/f117-gate/p2-batch-ag-accept/`. Traps met: `integrate_many.py` carries only FATAL_JUMPS and
@@ -162,7 +169,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (88.78% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (89.19% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
    no proof worker or unrelated heavy job runs during a gate; af's baseline is keyed for all 58 routes / 57 sessions.
@@ -178,7 +185,7 @@ Goal in force: finish Phase 2 (88.78% now; see Current state). Everything below 
    would alias another segment. Original group masks were 0x0000F000, 0x000F0000, 0x00F00000, 0x0F000000, 0xF0000000; use at most two or
    three compilers in all. Complete private proofs before the gate. Then `finish_all.py DIR:ROUTE` (cap its six-worker default to two or three
    when it compiles), `integrate_many.py`, local build and new CTests, the `partial`-claim audit, full acceptance, score, docs and commit/push.
-   A sixth task: the START quiz rows (`0583` 350, `06E0` 50, `0703` 43, `072E` 88, `0788` 102) on `quiz_right`/`quiz_wrong` (coverage in `route-cover-20261020/quiz_*.cov`).
+   The START quiz rows are done (batch ah).
 3. **What is left after that (5,305 never-run bytes, `D:/f117-gate/phase2-final/classify-after-routes.txt`):** error paths no file damage can reach
    (out of memory, DOS write errors, other open errors, the `_C_FILE_INFO` environment arm: about 2,500 bytes; the agent's list is in
    `phase2-final/err-routes`); rows the dead certificates call PROBABLE (1,315 bytes, `phase2-final/dead-cert/summary.txt`: they need evidence, not a decision);

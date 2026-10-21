@@ -79247,7 +79247,580 @@ static int vgame_far_hud_colours_init(machine_t *m)
     return 1;
 }
 
+
+/* VGAME 1058:000A, far entry of the HUD pass: the far entry the rest of the program calls
+ * (CALL FAR 1058:000A) for the HUD pass 1058:0016 (vgame_hud_pass), which sits in the same segment and
+ * is called near (CALL 0016, plain RET, no arguments of its own: the
+ * far caller's stack is passed through untouched). When it returns, RETF. The
+ * routine changes no register itself; whatever the callee leaves in them and in
+ * the flags is what the far caller sees. */
+static int vgame_far_hud_pass(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_pop(m, 0x0016, 0x000D, 0);
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    SM4_NEED(1, 0x000D);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1058:0012, far entry of the HUD layout switch: the far entry the rest of the program calls
+ * (CALL FAR 1058:0012) for the small-or-full HUD layout switch 1058:0A2C (vgame_hud_layout_apply), which sits in the same segment and
+ * is called near (CALL 0A2C, plain RET, no arguments of its own: the
+ * far caller's stack is passed through untouched). When it returns, RETF. The
+ * routine changes no register itself; whatever the callee leaves in them and in
+ * the flags is what the far caller sees. */
+static int vgame_far_hud_layout_apply(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_pop(m, 0x0A2C, 0x0015, 0);
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    SM4_NEED(1, 0x0015);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x01BB6, the formatter's conversion dispatch (an arm of printf's _output, PLAYER
+ * 0x01A7E, Borland C runtime; the same code as START 0x09E3E on PLAYER's addresses, which also
+ * runs the numeric arms START leaves to the original). The scan (0x01A91) has taken a format
+ * character's state and jumped through its handler table to here, inside _output's frame: the
+ * conversion character was kept at [bp-2]. This code picks the handler for it, one compare at
+ * a time, in this order:
+ *   'd' and 'i'  -> 0x01D4E: flag 40h (signed) of [bp-4], then radix 10 at [bp-6]
+ *   'u'          -> 0x01D52: radix 10
+ *   'X'          -> 0x01D58: letter offset 07h at [bp-1], 'x' -> 0x01D5E: letter offset 27h; both
+ *                   on to 0x01D62: with flag 80h of [bp-4] ('#') the prefix is "0" and
+ *                   the letter ('x' or 'X', 51h + the letter offset) - two bytes at [bp-0Eh], its
+ *                   length 2 at [bp-10h] - then radix 16
+ *   'o'          -> 0x01D7F: with flag 80h the "leading 0" flag 02h of [bp-3], then radix 8
+ *   'c'          -> here: a character from the argument list
+ *   's' 0x01C12, 'n' 0x01C40, 'p' 0x01C53
+ *   'E' and 'G'  -> 0x01CB6 (the floating formats, which also count an exponent letter),
+ *   anything else -> 0x01CB9 (the floating formats 'e', 'f', 'g' and the unknown ones).
+ * The integer arms end on the integer conversion at 0x01D8D (the original's code). For 'c' the
+ * next argument word is fetched (0x01E88: the word at [[bp+8]], the pointer moved on), its low
+ * byte is stored as the one character of the field at [bp-171h], DI is left on that byte, CX = 1
+ * (its length), and the common field output at 0x01DFD takes over. The other choices only
+ * jump. The callee returns by a plain RET with its result in AX. */
+static int player_format_dispatch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XCMP(v_) alu_op(c, 7, get_r8(c, R_AL), (v_), 0)
+#define XGO(target_) do { c->ip = (target_); return 1; } while(0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x1BB6);
+    set_r8(c, R_AL, (uint8_t)bp_get8(c, -2));
+    XCMP(0x64);
+    if (x86_cond(c, 5)) goto not_d;
+    XB(1, 0x1BBD);
+    goto arm_d;
+not_d:
+    XB(2, 0x1BC0);
+    XCMP(0x69);
+    if (x86_cond(c, 5)) goto not_i;
+    XB(1, 0x1BC4);
+    goto arm_d;
+not_i:
+    XB(2, 0x1BC7);
+    XCMP(0x75);
+    if (x86_cond(c, 5)) goto not_u;
+    XB(1, 0x1BCB);
+    goto arm_u;
+not_u:
+    XB(2, 0x1BCE);
+    XCMP(0x58);
+    if (x86_cond(c, 5)) goto not_upper_x;
+    XB(1, 0x1BD2);
+    goto arm_upper_x;
+not_upper_x:
+    XB(2, 0x1BD5);
+    XCMP(0x78);
+    if (x86_cond(c, 5)) goto not_x;
+    XB(1, 0x1BD9);
+    goto arm_x;
+not_x:
+    XB(2, 0x1BDC);
+    XCMP(0x6F);
+    if (x86_cond(c, 5)) goto not_o;
+    XB(1, 0x1BE0);
+    goto arm_o;
+not_o:
+    XB(2, 0x1BE3);
+    XCMP(0x63);
+    if (x86_cond(c, 4)) goto char_arm;
+    XB(2, 0x1BE7);
+    XCMP(0x73);
+    if (x86_cond(c, 4)) XGO(0x1C12);
+    XB(2, 0x1BEB);
+    XCMP(0x6E);
+    if (x86_cond(c, 4)) XGO(0x1C40);
+    XB(2, 0x1BEF);
+    XCMP(0x70);
+    if (x86_cond(c, 4)) XGO(0x1C53);
+    XB(2, 0x1BF3);
+    XCMP(0x45);
+    if (x86_cond(c, 4)) goto float_e;
+    XB(2, 0x1BF7);
+    XCMP(0x47);
+    if (x86_cond(c, 4)) goto float_e;
+    XB(1, 0x1BFB);
+    XGO(0x1CB9);
+float_e:
+    XB(1, 0x1BFE);
+    XGO(0x1CB6);
+char_arm:
+    XNEAR(0x1C01, 0x1E88, 0x1C04);
+    XB(7, 0x1C04);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + 0xFE8F);                       /* lea di, [bp-171h] */
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    x86_stos(c, 0);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    c->r[R_CX] = 0x0001;
+    XGO(0x1DFD);
+arm_d:
+    XB(3, 0x1D4E);                                                      /* or [bp-4],40h / mov [bp-6],10 / jmp */
+    bp_put8(c, -4, (uint8_t)alu_op(c, 1, bp_get8(c, -4), 0x40, 0));
+    bp_put8(c, -6, 10);
+    XGO(0x1D8D);
+arm_u:
+    XB(2, 0x1D52);
+    bp_put8(c, -6, 10);
+    XGO(0x1D8D);
+arm_upper_x:
+    XB(2, 0x1D58);                                                      /* mov [bp-1],7 / jmp 1D62 */
+    bp_put8(c, -1, 0x07);
+    goto hex_prefix;
+arm_x:
+    XB(1, 0x1D5E);
+    bp_put8(c, -1, 0x27);
+hex_prefix:
+    XB(2, 0x1D62);
+    alu_logic(c, (uint32_t)bp_get8(c, -4) & 0x80, 0);                   /* test [bp-4],80h */
+    if (x86_cond(c, 4)) goto hex_radix;                                 /* no '#' */
+    XB(5, 0x1D68);
+    bp_put(c, -0x10, 2);
+    bp_put8(c, -0x0E, 0x30);
+    set_r8(c, R_DL, 0x51);
+    set_r8(c, R_DL, (uint8_t)alu_op(c, 0, get_r8(c, R_DL), bp_get8(c, -1), 0));
+    bp_put8(c, -0x0D, get_r8(c, R_DL));
+hex_radix:
+    XB(2, 0x1D79);
+    bp_put8(c, -6, 0x10);
+    XGO(0x1D8D);
+arm_o:
+    XB(2, 0x1D7F);
+    alu_logic(c, (uint32_t)bp_get8(c, -4) & 0x80, 0);                   /* test [bp-4],80h */
+    if (x86_cond(c, 4)) goto octal_radix;
+    XB(1, 0x1D85);
+    bp_put8(c, -3, (uint8_t)alu_op(c, 1, bp_get8(c, -3), 0x02, 0));
+octal_radix:
+    XB(1, 0x1D89);
+    bp_put8(c, -6, 8);
+    XGO(0x1D8D);
+#undef XGO
+#undef XCMP
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* START 057E: the aircraft-identification quiz's screen builder (the
+ * routine the quiz step 0703 hands to 3641 as the screen it shows, and the
+ * picture the player answers). Its frame holds, below BP: -12h the first
+ * decoy, -14h the second decoy, -16h and -18h the screen position being
+ * drawn, -1Ah the row counter, -1Ch the silhouette cell, -1Eh the name
+ * number.
+ *
+ *  - The tick counter (8607, INT 1Ah) seeds the random generator (96BC);
+ *    76C0 (20) draws the correct answer, kept at [B282]. The answer shifted
+ *    right twice is the silhouette cell; its bit 0 times A0h and its bit 1
+ *    times 4Fh (8-bit multiplies, which keep the flags) give the
+ *    silhouette's source offsets.
+ *  - The page is cleared with the far draw thunk 0A95:6A8A (200, 320, ...),
+ *    35FC (cell + 19h, 4) shows the cell, and the thunk draws the
+ *    silhouette and the page frame.
+ *  - Two decoys are drawn with 76C0 (20): the first until it is not the
+ *    answer, the second until it is neither the answer nor the first.
+ *  - The 18 name rows: DC24 = 1, DC1C = FFh, position (1Fh, 8Eh); the name
+ *    number [-1Eh] counts from 0, skipping the decoys' numbers; its number
+ *    is stored at B270 + row, and 3567 (DC18, the text pointer at
+ *    [936A + 2 * number], and the two position words) draws it. Each row the
+ *    y position moves down 9 (DC1C counts down); after each sixth row
+ *    (row mod 6 = 5) the position jumps to the next column (x + 5Fh, y 8Eh).
+ *  - The page is cleared again with the thunk and the routine returns.
+ * 8607, 76C0, 35FC and 3567 are plain near returns (cdecl: this code removes
+ * the arguments) and 96BC is a plain setter, all run as original code; the
+ * thunk 0A95:6A8A is a far call whose 8 argument words are removed here.
+ * Returns with a plain RET and no value. */
+static int start_quiz_draw_screen(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { DECOY1=-0x12, DECOY2=-0x14, POSX=-0x16, POSY=-0x18, ROW=-0x1A, CELL=-0x1C, NAME=-0x1E,
+           ANSWER=0xB282, ROWS=0xB270, NAMES=0x936A, LEFT=0xDC1C, MODE=0xDC24, STRING=0xDC18 };
+#define WB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define WP(v_) cpu_push16(c,(v_))
+#define WPOP() (c->r[R_BX]=cpu_pop16(c))
+#define WSP(n_) (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+#define WRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define WNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));WRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define WFAR(at_,ret_) do { SM4_NEED(1,(at_));WRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,4))return 0;
+    /* push bp / mov bp,sp / sub sp,1Eh / push si */
+    WB(4,0x057E);
+    WP(c->r[R_BP]);c->r[R_BP]=c->r[R_SP];c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],0x1E,1);WP(c->r[R_SI]);
+    /* srand(ticks) */
+    WNEAR(0x0585,0x8607,0x0588);
+    WB(1,0x0588);WP(c->r[R_AX]);
+    WNEAR(0x0589,0x96BC,0x058C);
+    /* the answer: 76C0(20) */
+    WB(3,0x058C);WPOP();c->r[R_AX]=0x0014;WP(c->r[R_AX]);
+    WNEAR(0x0591,0x76C0,0x0594);
+    WB(28,0x0594);
+    WPOP();
+    ds_put(c,ANSWER,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],1,1);
+    bp_put(c,CELL,c->r[R_AX]);
+    set_r8(c,0,ds_get8(c,ANSWER));
+    set_r8(c,0,(uint8_t)alu_op(c,4,get_r8(c,0),0x01,0));
+    set_r8(c,1,0xA0);
+    x86_mul8(c,get_r8(c,1));
+    bp_put(c,POSX,c->r[R_AX]);
+    set_r8(c,0,ds_get8(c,ANSWER));
+    set_r8(c,0,(uint8_t)alu_op(c,4,get_r8(c,0),0x02,0));
+    set_r8(c,0,(uint8_t)x86_shift(c,7,get_r8(c,0),1,0));
+    set_r8(c,1,0x4F);
+    x86_imul8(c,get_r8(c,1));
+    bp_put(c,POSY,c->r[R_AX]);
+    /* clear the page: thunk(1, 0, 0, 0, 1, 0, 140h, C8h) pushed last argument first */
+    c->r[R_AX]=0x00C8;WP(c->r[R_AX]);
+    c->r[R_AX]=0x0140;WP(c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);WP(c->r[R_AX]);WP(c->r[R_AX]);
+    c->r[R_CX]=1;WP(c->r[R_CX]);WP(c->r[R_AX]);WP(c->r[R_AX]);WP(c->r[R_AX]);
+    WFAR(0x05CC,0x05D1);
+    /* the silhouette cell: 35FC(cell + 19h, 4) */
+    WB(6,0x05D1);
+    WSP(0x10);
+    c->r[R_AX]=4;WP(c->r[R_AX]);
+    c->r[R_CX]=bp_get(c,CELL);c->r[R_CX]=(uint16_t)alu_op(c,0,c->r[R_CX],0x19,1);WP(c->r[R_CX]);
+    WNEAR(0x05DF,0x35FC,0x05E2);
+    WB(16,0x05E2);
+    WPOP();WPOP();
+    c->r[R_AX]=0x004F;WP(c->r[R_AX]);
+    c->r[R_AX]=0x0096;WP(c->r[R_AX]);
+    c->r[R_AX]=0x0030;WP(c->r[R_AX]);
+    c->r[R_AX]=0x0092;WP(c->r[R_AX]);
+    c->r[R_CX]=1;WP(c->r[R_CX]);
+    WP(bp_get(c,POSY));WP(bp_get(c,POSX));
+    c->r[R_DX]=4;WP(c->r[R_DX]);
+    WFAR(0x0602,0x0607);
+    WB(17,0x0607);
+    WSP(0x10);
+    c->r[R_AX]=5;WP(c->r[R_AX]);
+    c->r[R_AX]=0x13;WP(c->r[R_AX]);
+    c->r[R_AX]=0x7A;WP(c->r[R_AX]);
+    c->r[R_AX]=0x92;WP(c->r[R_AX]);
+    c->r[R_AX]=1;WP(c->r[R_AX]);
+    c->r[R_AX]=0xB4;WP(c->r[R_AX]);
+    c->r[R_AX]=0xF1;WP(c->r[R_AX]);
+    c->r[R_AX]=2;WP(c->r[R_AX]);
+    WFAR(0x062A,0x062F);
+    WB(1,0x062F);
+    WSP(0x10);
+first_decoy:
+    WB(2,0x0632);c->r[R_AX]=0x0014;WP(c->r[R_AX]);
+    WNEAR(0x0636,0x76C0,0x0639);
+    WB(5,0x0639);
+    WPOP();bp_put(c,DECOY1,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,ANSWER);
+    alu_op(c,7,bp_get(c,DECOY1),c->r[R_AX],1);
+    if(x86_cond(c,4))goto first_decoy;
+second_decoy:
+    WB(2,0x0645);c->r[R_AX]=0x0014;WP(c->r[R_AX]);
+    WNEAR(0x0649,0x76C0,0x064C);
+    WB(5,0x064C);
+    WPOP();bp_put(c,DECOY2,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,ANSWER);
+    alu_op(c,7,bp_get(c,DECOY2),c->r[R_AX],1);
+    if(x86_cond(c,4))goto second_decoy;
+    WB(3,0x0658);
+    c->r[R_AX]=bp_get(c,DECOY1);
+    alu_op(c,7,bp_get(c,DECOY2),c->r[R_AX],1);
+    if(x86_cond(c,4))goto second_decoy;
+    /* the name list */
+    WB(8,0x0660);
+    ds_put(c,MODE,1);ds_put(c,LEFT,0x00FF);
+    bp_put(c,POSX,0x001F);bp_put(c,POSY,0x008E);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);
+    bp_put(c,ROW,c->r[R_AX]);bp_put(c,NAME,c->r[R_AX]);
+    goto rows_test;
+next_row:
+    WB(1,0x0680);
+    bp_put(c,POSY,(uint16_t)alu_op(c,0,bp_get(c,POSY),0x09,1));
+next_column:
+    WB(3,0x0684);
+    ds_put(c,LEFT,(uint16_t)alu_dec(c,ds_get(c,LEFT),1));
+    bp_put(c,ROW,(uint16_t)alu_inc(c,bp_get(c,ROW),1));
+    bp_put(c,NAME,(uint16_t)alu_inc(c,bp_get(c,NAME),1));
+rows_test:
+    WB(2,0x068E);
+    alu_op(c,7,bp_get(c,ROW),0x12,1);
+    if(x86_cond(c,13))goto done;
+    WB(3,0x0694);
+    c->r[R_AX]=bp_get(c,DECOY1);
+    alu_op(c,7,bp_get(c,NAME),c->r[R_AX],1);
+    if(x86_cond(c,4))goto skip_name;
+    WB(3,0x069C);
+    c->r[R_AX]=bp_get(c,DECOY2);
+    alu_op(c,7,bp_get(c,NAME),c->r[R_AX],1);
+    if(x86_cond(c,5))goto draw_name;
+skip_name:
+    WB(1,0x06A4);
+    bp_put(c,NAME,(uint16_t)alu_inc(c,bp_get(c,NAME),1));
+draw_name:
+    WB(10,0x06A7);
+    set_r8(c,0,bp_get8(c,NAME));
+    c->r[R_BX]=bp_get(c,ROW);
+    ds_put8(c,(uint16_t)(c->r[R_BX]+ROWS),get_r8(c,0));
+    WP(bp_get(c,POSY));WP(bp_get(c,POSX));
+    c->r[R_SI]=bp_get(c,NAME);
+    c->r[R_SI]=(uint16_t)x86_shift(c,4,c->r[R_SI],1,1);
+    WP(ds_get(c,(uint16_t)(c->r[R_SI]+NAMES)));
+    c->r[R_AX]=STRING;WP(c->r[R_AX]);
+    WNEAR(0x06C4,0x3567,0x06C7);
+    WB(7,0x06C7);
+    WSP(8);
+    c->r[R_AX]=bp_get(c,ROW);c->r[R_CX]=6;
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000;
+    c->ip=0x06D3;
+    if(!x86_idiv16(c,c->r[R_CX],0)){c->icount++;return 1;}
+    alu_op(c,7,c->r[R_DX],0x05,1);
+    if(x86_cond(c,5))goto next_row;
+    WB(3,0x06D8);
+    bp_put(c,POSX,(uint16_t)alu_op(c,0,bp_get(c,POSX),0x5F,1));
+    bp_put(c,POSY,0x008E);
+    goto next_column;
+done:
+    WB(12,0x06E3);
+    c->r[R_AX]=0x00C8;WP(c->r[R_AX]);
+    c->r[R_AX]=0x0140;WP(c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);
+    WP(c->r[R_AX]);WP(c->r[R_AX]);WP(c->r[R_AX]);WP(c->r[R_AX]);WP(c->r[R_AX]);
+    c->r[R_AX]=1;WP(c->r[R_AX]);
+    WFAR(0x06F6,0x06FB);
+    WB(5,0x06FB);
+    WSP(0x10);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef WB
+#undef WP
+#undef WPOP
+#undef WSP
+#undef WRUN
+#undef WNEAR
+#undef WFAR
+}
+
+/* START 0703: the aircraft-identification quiz's question-and-verdict step
+ * (the routine START 001D calls when --fix QUIZ restores the call GOG patched
+ * out). It runs after the quiz screen (0583) has been drawn, which left the
+ * correct answer's number at [B282]; the table at B26F maps a pick (1..) to the
+ * number of the aircraft in that slot. The player record is the far
+ * pointer at [E096]; its word +22h is the quiz result.
+ *
+ *  - Clear the record's result word, then call 3641 (0, 057E): a screen
+ *    hook set-up that takes the quiz screen's routine 057E.
+ *  - Poll 38AC (6BC6) until it returns something other than 63h (no pick yet).
+ *  - The pick indexes the table: the number there is compared with [B282].
+ *    Right: the record's result word becomes 1, and the verdict string is 015Ah.
+ *    Wrong: it stays 0 and the verdict string is 0181h.
+ *  - 3989 clears the screen area; 2B1B (verdict, 5A, 4, 1, A0) prints the
+ *    string at the position held in the call's stack words; 405F (F0) waits
+ *    that long (the display time); 3588 restores the screen state.
+ * Callees 3641, 38AC, 3989, 2B1B, 405F and 3588 are plain near returns
+ * (cdecl: this code removes the arguments), run as original code. The routine
+ * returns with a plain RET and no value. */
+static int start_quiz_ask_and_judge(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { VERDICT=-2, RECORD=0xE096, RESULT=0x22, PICKS=0xB26F, ANSWER=0xB282 };
+#define QB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define QP(v_) cpu_push16(c,(v_))
+#define QPOP() (c->r[R_BX]=cpu_pop16(c))
+#define QRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define QNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));QRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define QRECORD(v_) do { c->r[R_BX]=ds_get(c,RECORD);c->seg[S_ES]=ds_get(c,(uint16_t)(RECORD+2)); \
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+RESULT),(v_)); } while(0)
+    if(!room(c,9))return 0;
+    /* push bp / mov bp,sp / sub sp,4 / les bx,[E096] / mov es:[bx+22h],0 / push 057E / push 0 */
+    QB(9,0x0703);
+    QP(c->r[R_BP]);c->r[R_BP]=c->r[R_SP];c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    QRECORD(0);
+    c->r[R_AX]=0x057E;QP(c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);QP(c->r[R_AX]);
+    QNEAR(0x071A,0x3641,0x071D);
+    QB(2,0x071D);QPOP();QPOP();
+poll:
+    QB(2,0x071F);c->r[R_AX]=0x6BC6;QP(c->r[R_AX]);
+    QNEAR(0x0723,0x38AC,0x0726);
+    QB(3,0x0726);QPOP();alu_op(c,7,c->r[R_AX],0x0063,1);
+    if(x86_cond(c,4))goto poll;
+    /* the pick's number against the correct answer */
+    QB(5,0x072C);
+    c->r[R_BX]=c->r[R_AX];
+    set_r8(c,0,ds_get8(c,(uint16_t)(c->r[R_BX]+PICKS)));
+    set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+    alu_op(c,7,c->r[R_AX],ds_get(c,ANSWER),1);
+    if(x86_cond(c,5))goto wrong;
+    QB(4,0x073A);QRECORD(1);bp_put(c,VERDICT,0x015A);
+    goto verdict;
+wrong:
+    QB(3,0x074B);QRECORD(0);bp_put(c,VERDICT,0x0181);
+verdict:
+    QNEAR(0x075A,0x3989,0x075D);
+    QB(10,0x075D);
+    c->r[R_AX]=0x00A0;QP(c->r[R_AX]);
+    c->r[R_CX]=1;QP(c->r[R_CX]);
+    c->r[R_CX]=4;QP(c->r[R_CX]);
+    c->r[R_CX]=0x5A;QP(c->r[R_CX]);
+    QP(c->r[R_AX]);
+    QP(bp_get(c,VERDICT));
+    QNEAR(0x0771,0x2B1B,0x0774);
+    QB(3,0x0774);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x0C,1);
+    c->r[R_AX]=0x00F0;QP(c->r[R_AX]);
+    QNEAR(0x077B,0x405F,0x077E);
+    QB(1,0x077E);QPOP();
+    QNEAR(0x077F,0x3588,0x0782);
+    QB(3,0x0782);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef QB
+#undef QP
+#undef QPOP
+#undef QRUN
+#undef QNEAR
+#undef QRECORD
+}
+
+/* START 0786: the quiz screen's button hover step. 393D (table 6BCA, count
+ * [6BC9]) is the rectangle hit test of the pointer ([E08A], [E08C]) against a
+ * table of 8-byte rectangles; it returns the number (1..) of the rectangle
+ * the pointer is in, or 0. The last number is kept at [D096] and this step's
+ * at [BP-2].
+ *
+ *  - A new number that is not 0 and differs from [D096] queues, with 3517
+ *    (a three-word record appended to the queue at 64A6, six bytes per
+ *    entry, counted at [64E2]), the record (1, 11C7h, 100h - number)
+ *    pushed last-argument first: the button now lit.
+ *  - A last number that is not 0 and differs from the new one queues
+ *    (1, 11D6h, 100h - last): the button left. This second queueing is
+ *    not followed by an ADD SP; the closing MOV SP,BP removes the words.
+ *  - The new number becomes the last one ([D096]).
+ * 393D and 3517 are plain near returns (cdecl: this code removes the
+ * arguments of 393D and of 3517's first call, but not of the second),
+ * run as original code. Returns with a plain RET and no value. */
+static int start_quiz_hover_highlight(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { NEW=-2, COUNT=0x6BC9, TABLE=0x6BCA, LAST=0xD096 };
+#define HB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define HP(v_) cpu_push16(c,(v_))
+#define HPOP() (c->r[R_BX]=cpu_pop16(c))
+#define HRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define HNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));HRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,8))return 0;
+    /* push bp / mov bp,sp / sub sp,2 / hit test */
+    HB(8,0x0786);
+    HP(c->r[R_BP]);c->r[R_BP]=c->r[R_SP];c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],2,1);
+    set_r8(c,0,ds_get8(c,COUNT));
+    set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+    HP(c->r[R_AX]);
+    c->r[R_AX]=TABLE;HP(c->r[R_AX]);
+    HNEAR(0x0796,0x393D,0x0799);
+    HB(5,0x0799);
+    HPOP();HPOP();
+    bp_put8(c,NEW,get_r8(c,0));
+    set_r8(c,0,(uint8_t)alu_op(c,1,get_r8(c,0),get_r8(c,0),0));
+    if(x86_cond(c,4))goto left;
+    HB(2,0x07A2);
+    alu_op(c,7,get_r8(c,0),ds_get8(c,LAST),0);
+    if(x86_cond(c,4))goto left;
+    /* the button now lit */
+    HB(8,0x07A8);
+    c->r[R_CX]=1;HP(c->r[R_CX]);
+    c->r[R_CX]=0x11C7;HP(c->r[R_CX]);
+    set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0100,1);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);
+    HP(c->r[R_AX]);
+    HNEAR(0x07B8,0x3517,0x07BB);
+    HB(1,0x07BB);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);
+left:
+    HB(2,0x07BE);
+    alu_op(c,7,ds_get8(c,LAST),0,0);
+    if(x86_cond(c,4))goto settle;
+    HB(3,0x07C5);
+    set_r8(c,0,bp_get8(c,NEW));
+    alu_op(c,7,ds_get8(c,LAST),get_r8(c,0),0);
+    if(x86_cond(c,4))goto settle;
+    /* the button left */
+    HB(9,0x07CE);
+    c->r[R_AX]=1;HP(c->r[R_AX]);
+    c->r[R_AX]=0x11D6;HP(c->r[R_AX]);
+    set_r8(c,0,ds_get8(c,LAST));
+    set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0100,1);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);
+    HP(c->r[R_AX]);
+    HNEAR(0x07E1,0x3517,0x07E4);
+settle:
+    HB(5,0x07E4);
+    set_r8(c,0,bp_get8(c,NEW));
+    ds_put8(c,LAST,get_r8(c,0));
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef HB
+#undef HP
+#undef HPOP
+#undef HRUN
+#undef HNEAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0786, start_quiz_hover_highlight, "quiz button hover: queue the highlight of the button under the pointer and the clearing of the one left", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0703, start_quiz_ask_and_judge, "aircraft-identification quiz: take the pick, record right or wrong in the player record, show the verdict", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x057E, start_quiz_draw_screen, "aircraft-identification quiz screen: draw the silhouette, pick the answer and two decoys, list the 18 names", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1BB6, player_format_dispatch, "the formatter's conversion dispatch", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0012, vgame_far_hud_layout_apply, "far entry of the HUD layout switch", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x000A, vgame_far_hud_pass, "far entry of the HUD pass", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x000E, vgame_far_hud_colours_init, "far entry of the HUD colour setup", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x0082, vgame_far_sine_entry, "far entry of the table sine", 2 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0848, dswap_load_color_registers, "load all 256 VGA colour registers from the table at DS:0435 (INT 10h, function 1012h)", 1 },

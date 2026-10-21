@@ -64,10 +64,10 @@ quiz. It is off by default and is enabled only when named explicitly;
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,162 routine addresses have explained C equivalents
-  checked against their original bodies, covering 162,770 of 184,574 creditable
-  bytes in the expanded seven-program scope. The historical census has 1,082
-  rows wholly covered and 289 in part; executed code outside its rows now
+- **Named and matched:** 1,168 routine addresses have explained C equivalents
+  checked against their original bodies, covering 163,575 of 184,574 creditable
+  bytes in the expanded seven-program scope. The historical census has 1,091
+  rows wholly covered and 288 in part; executed code outside its rows now
   counts too, along with reviewed static code. Unreviewed discoveries and other modules remain an explicit
   scope backlog ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 58 scripted routes, run as 57 sessions, end in
