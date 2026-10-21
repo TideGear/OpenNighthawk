@@ -48,7 +48,7 @@ MPS_LOGO	0x01387	1	DEADFUNC	RETF of the mouse-cursor helper at 0x1380 (which sit
 MPS_LOGO	0x01388	26	DEADFUNC	Mouse library: after a cursor move re-draw (if [01AA] visible and cs:[05C0] set, call 013D6 and copy cs:[05C0] to [007B]) -- unreferenced mouse library (INT 33h wrapper, cursor redraw) of MPS_LOGO
 MPS_LOGO	0x013A2	52	DEADFUNC	Mouse library: INT 33h wrapper (AX,BX,CX,DX from the stack), stores the four results at [01B6..01BC], returns a pointer to them; shifts CX r -- unreferenced mouse library (INT 33h wrapper, cursor redraw) of MPS_LOGO
 MPS_LOGO	0x013D6	50	DEADFUNC	Mouse library: redraw the mouse cursor through two far callbacks at DA:00BC and DA:012C (clipping rectangle from [01A2..01AE]) -- unreferenced mouse library (INT 33h wrapper, cursor redraw) of MPS_LOGO
-PLAYER	0x0003F	10	EPILOG	dead tail after exit: a nop (0003F) and the epilogue pop si/pop di/mov sp,bp/pop bp/ret at 00053-0005B after 'call 0019A', which ends in exi -- nop + epilogue after call 0x19A -> 0x1F6 -> 0x124E exit (cx=0 -> INT 21h/4Ch at 012C9)
+PLAYER	0x0003F	3	EPILOG	dead tail after exit: a nop (0003F) and the epilogue pop si/pop di/mov sp,bp/pop bp/ret at 00053-0005B after 'call 0019A', which ends in exi -- nop + epilogue after call 0x19A -> 0x1F6 -> 0x124E exit (cx=0 -> INT 21h/4Ch at 012C9)
 PLAYER	0x0019A	2	EPILOG	2-byte epilogue (pop bp; ret) at 001F4-001F5 after the call to 001F6 which exits -- pop bp;ret after call 0x1F6 (exit, never returns)
 PLAYER	0x00F19	1	PAD	stray zero byte at 00F19 (padding after the RET at 00F18, before the function at 00F1A) -- padding byte after RET at 00F18
 PLAYER	0x00FF8	7	DEADFUNC	tail of a free-overlay-memory helper (00FC5-00FFE: INT 21h/49h; on error prints 'Error releasing overlay memory$' and exit(0)) -- unreferenced __aFldiv/__aFlmul user cluster (gap fn 00A20) and free-overlay helper 00FC5
@@ -60,7 +60,7 @@ PLAYER	0x015B2	8	DEADFUNC	[extra __aFlmul (32-bit multiply helper)] tail of __aF
 PLAYER	0x01B9C	26	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
 PLAYER	0x01CA2	23	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
 PLAYER	0x01CBA	75	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
-PLAYER	0x01D02	78	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
+PLAYER	0x01D02	76	PRINTF	[extra _output conversion arms] piece of PLAYER's _output conversion switch / number formatting (size letters l F N L, %d/%i/%u/%x/%o dispat -- _output size-modifier (l F N L), %p tail and floating-point arms; PLAYER formats contain only %s %d
 SETUP	0x00010	2	EPILOG	2-byte dead epilogue (pop bp; ret at 00501-00502) of main after its last call to quit() -- pop bp;ret after call 0x53B -> 0x16CE exit (cx=0 -> INT 21h/4Ch at 01749)
 SETUP	0x01387	6	CONSTARG	interrupt dispatcher int86-like(intno, inregs, outregs): INT 10h, 21h, 16h, 1Ah or error AX=-1; N bytes are the INT 21h (013BE), INT 16h (01 -- int86 dispatcher arms INT 21h/16h/1Ah: both callers pass intno=0x10
 START	0x09A9C	18	CONSTARG	[L28 fopen mode parser] fopen mode parser; N18 = '+' arm -- fopen mode parser plus-arm: all 5 fopen modes are literal rb/wb
@@ -69,3 +69,10 @@ START	0x09FD6	53	PRINTF	[L11 _output arms] MS C _output radix setup for %X %x %o
 VGAME	0x0E933	4	INITTERM	[L40 _initterm far] walk a far-pointer initializer/terminator table calling non-NULL entries (lcall [di]) -- lcall [di] in _initterm far: both call sites pass SI==DI (empty table)
 VGAME	0x0EBC4	9	HOOK	[L34 hook before DOS call] kbhit-style wrapper: if sig==0xD6D6 call hook(bx=-1) before INT 21h AH=0Bh -- call [0x9408] guarded by signature [0x9406]==0xD6D6 (image value 0; only compares)
 VGAME	0x0F1E0	12	CONSTARG	[L28 fopen mode parser] fopen mode parser; N12 = 't' arm -- fopen mode parser t-arm: all 3 fopen modes are literal rb/rb/r+b
+VGAME	0x0F8F0	23	TEXTMODE	only caller 0F85C is in _write text arm; _write only from fflush; FTEXT only via fopen without b; modes rb/rb/r+b; std streams unreferenced
+START	0x0A3CB	37	TEXTMODE	flush helper only from text-mode LF translation of _write; modes rb/rb/wb/rb/rb; stdout printf constants without LF
+START	0x0A756	1	TEXTMODE	only caller 0A377 is in the text-mode LF arm of _write; same guard as 0A3CB
+MPS_LOGO	0x01ADC	23	CONSTARG	sole caller strstr(name,'.') with literal 'labslogo' (DS:0530); chain 0048A<-00805<-007E2<-0022D
+MPS_LOGO	0x0064E	129	DEADFUNC	wrapper at linear 0 has no reference (no call, no relocated far pointer); blank slots are unrelocated 0:0 = absolute
+MPS_LOGO	0x018FA	42	DEADFUNC	sole caller fwrite_far 0064E is dead (wrapper at linear 0 has no reference)
+MPS_LOGO	0x01C82	24	CONSTARG	sole caller 005D6 copies <=0x200 bytes, dest offset <=0Fh, src DS:0C76; wrap arms need offset+count>64K

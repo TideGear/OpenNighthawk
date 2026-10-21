@@ -72,8 +72,8 @@ stays on the roadmap.
   loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
   byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
   that is only hard, blocked by tooling or not yet proved belongs in the denominator.
-  **`dead` (owner rule, 19 October: only code we are certain we do not need):** `docs/census-dead.tsv` lists 67 rows
-  (2,666 never-run bytes) certified unreachable in the shipped game, each with a certificate
+  **`dead` (owner rule, 19 October: only code we are certain we do not need):** `docs/census-dead.tsv` lists 73 rows
+  (2,927 never-run bytes) certified unreachable in the shipped game, each with a certificate
   (`D:/f117-gate/phase2-final/dead-cert/certificates.tsv`, criteria c1-c7: no direct reference in any program image,
   no pointer or computed reference, not an installed vector, every caller dead or a guarded arm whose guard cannot
   hold, no satisfiable path from route-executed code). By kind: unreferenced library and picture functions 1,634
@@ -107,7 +107,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch al): **165,256 / 184,601**, P2 **90.04%**, overall **96.96%** (2,666 never-run bytes certified dead left the denominator on 20 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  **Current total** (after batch al and the 21 Oct dead review): **165,256 / 184,322**, P2 **90.17%**, overall **97.00%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
   The historical census retains its recorded row boundaries, including overlapping
   positions: af adds 697 row-byte credits from 692 distinct instruction bytes
   (five positions occur in two rows). The separate raw-byte audit reports 690

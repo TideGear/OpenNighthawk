@@ -65,7 +65,7 @@ quiz. It is off by default and is enabled only when named explicitly;
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
 - **Named and matched:** 1,189 routine addresses have explained C equivalents
-  checked against their original bodies, covering 165,256 of 184,601 creditable
+  checked against their original bodies, covering 165,256 of 184,322 creditable
   bytes in the expanded seven-program scope. The historical census has 1,108
   rows wholly covered and 294 in part; executed code outside its rows now
   counts too, along with reviewed static code. Unreviewed discoveries and other modules remain an explicit
