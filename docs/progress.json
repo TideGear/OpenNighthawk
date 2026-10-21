@@ -166,9 +166,9 @@
     "creditable_bytes": 165265,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 36432,
+      "bytes": 39482,
       "credited": 5487,
-      "reviewed_static_bytes": 10301,
+      "reviewed_static_bytes": 13351,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5373,
@@ -181,14 +181,14 @@
           "reviewed_static_bytes": 0
         },
         "DSWAP": {
-          "bytes": 1921,
+          "bytes": 2210,
           "credited": 99,
-          "reviewed_static_bytes": 1725
+          "reviewed_static_bytes": 2014
         },
         "END": {
-          "bytes": 475,
+          "bytes": 800,
           "credited": 26,
-          "reviewed_static_bytes": 303
+          "reviewed_static_bytes": 628
         },
         "F117.COM": {
           "bytes": 837,
@@ -216,9 +216,9 @@
           "reviewed_static_bytes": 0
         },
         "MPS_LOGO": {
-          "bytes": 1414,
+          "bytes": 1656,
           "credited": 73,
-          "reviewed_static_bytes": 1217
+          "reviewed_static_bytes": 1459
         },
         "NSOUND.117": {
           "bytes": 0,
@@ -226,9 +226,9 @@
           "reviewed_static_bytes": 0
         },
         "PLAYER": {
-          "bytes": 982,
+          "bytes": 1320,
           "credited": 33,
-          "reviewed_static_bytes": 903
+          "reviewed_static_bytes": 1241
         },
         "RSOUND.117": {
           "bytes": 2213,
@@ -241,19 +241,19 @@
           "reviewed_static_bytes": 0
         },
         "SETUP": {
-          "bytes": 3012,
+          "bytes": 3517,
           "credited": 51,
-          "reviewed_static_bytes": 2724
+          "reviewed_static_bytes": 3229
         },
         "START": {
-          "bytes": 1859,
+          "bytes": 2509,
           "credited": 341,
-          "reviewed_static_bytes": 625
+          "reviewed_static_bytes": 1275
         },
         "VGAME": {
-          "bytes": 7934,
+          "bytes": 8635,
           "credited": 4864,
-          "reviewed_static_bytes": 2804
+          "reviewed_static_bytes": 3505
         }
       },
       "other_modules_executed_bytes": {},

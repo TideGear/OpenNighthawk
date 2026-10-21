@@ -189,3 +189,4 @@ SETUP	0x023E5	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 00 eb 01) 
 SETUP	0x02429	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes 7f eb 26) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
 SETUP	0x02440	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes c0 eb 0f) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
 SETUP	0x0246D	1	pad: padding NOP 0x90 (1 byte) after jmp short (bytes d0 eb 0e) before code at +1; no branch, operand, word or far pair targets it; MASM jump-shrink NOP / alignment fill
+VGAME	0x244D9	70	zero fill inside DGROUP after the last variable; no run, named, census, reviewed or dead range touches it and no walk decodes an instruction start there; repeated `add [bx+si],al` decoding of zeros is not code evidence (static review, 21 Oct)

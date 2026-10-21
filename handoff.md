@@ -15,25 +15,25 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 82.84%, P3 100.00%, All 94.76%
+- **Scoreboard:** P1 100.00%, P2 81.68%, P3 100.00%, All 94.41%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,189 addresses matched; **165,256 / 201,697 creditable bytes** across
+- **Phase 2:** 1,189 addresses matched; **165,256 / 204,747 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 428 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Where the remaining 36,441 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
+- **Where the remaining 39,491 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
   --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
   --data D:/GOG/F-117A --rows 45`):
-  - outside the census rows, about 12,100: 10,301 reviewed static code bytes no route runs
-    (`docs/census-code.tsv`) and about 1,800 executed bytes no routine names;
+  - outside the census rows, about 15,150: 13,351 reviewed static code bytes no route runs
+    (`docs/census-code.tsv`, 154 ranges after the fifth tranche on 21 Oct) and about 1,800 executed bytes no routine names;
   - inside the census rows, 5,496: 947 `ran` (all declined or staying original: VGAME `0010` main,
     `073C8`'s second lock slot, MPS_LOGO `1ADC`/`1C82` unequal, START `8427` and END `4393` wait loops,
     END `57B0` interior arm, DSWAP `0723`'s failure arm), 4,322 `never_run` (about 2,500 machine-option-only
     error paths, 831 probable-dead, the rest needs combat or very long careers), 222 `unreached`, 5 `slots`.
   - 18,835 validated executed bytes in the launcher, resident graphics library and sound drivers are now in
-    scope. Outside the score: 3,939 unreviewed static-discovery bytes and the floating LZEXE decompressor.
+    scope. Outside the score: about 654 held static-discovery bytes (42 groups; the XOR-transformed SETUP region needs a strict validator) and the floating LZEXE decompressor.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
@@ -43,10 +43,14 @@ Consolidate it instead of appending to it.
     and the old MPS_LOGO pointer scan used the wrong DGROUP (`041A`, actual `0332`). Details and per-group
     decisions: [docs/static-code-review.md](docs/static-code-review.md); private `resumed-report.md` and
     `group-a-closure.md`. B/I remain held too; C needs declined floppy support or machine-option-only errors.
-  - `static-review-20261021/` (INTERRUPTED, agent a2f2492401cab1fda): the code/data review of the 3,939 unreviewed static bytes; stage files
-    saved, no `code-rows.tsv` yet.
-  - `unmatched-reference-20261021/` (agent a6d52c02c7d0dc047, status unknown when the session ended): the reference table for every range that
-    cannot be matched; no `reference.tsv` yet.
+  - `static-review-20261021/` (DONE, independently audited): 117 code ranges and one 70-byte data range adopted on 21 Oct (`adoption-audit.md`);
+    held for a strict validator: 19 follow-up data rows, the plain follow-up code rows and the encoded SETUP region (`followup-review-report.md`).
+  - `unmatched-reference-20261021/` (DONE, checked, NOT published): `reference.tsv` has 793 rows / 43,362 bytes with a per-byte coverage proof
+    against the old 201,697 scope (`coverage-check.json`, `independent-check.json`). Before publishing it as a repository doc: regenerate it
+    against the 204,747 scope, fix VGAME `ED10` `vgame_int86x_carry` (it says the DOS call never fails: too strong; see
+    `reference-adoption-review.md`), strengthen the names of ASOUND.LOG `04E5` and RSOUND.LOG `028E` (two new original-code candidates), and
+    note that 297 rows have the status `pending-match-purpose-unreviewed` and 153 `unresolved-review`: those are inventory, not claims that
+    the code cannot be matched.
   - `modules-scope-20261021/plan.md` (DONE): the ten-step design for bringing the launcher, MGRAPHIC, MISC and the sound drivers into the score
     (18,835 validated bytes; measured byte share 81.93%, weighted P2 82.84%). Steps 0/1a/1b done:
     `measurement.json` verifies per-module counts and captured-record rejection, and the scorer includes all 17
@@ -130,11 +134,8 @@ Consolidate it instead of appending to it.
 ## Next steps
 
 1. **Reviewed static code (10,301 bytes):** resumed verification retains every range; no additional route or dead certificate is established ([review](docs/static-code-review.md)). Any later exclusion needs exact per-range closure of indirect and callback paths. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
-2. **Reference entries for unmatchable code:** check the agent's `reference.tsv` and coverage check
-   (`D:/f117-gate/unmatched-reference-20261021/`), then publish it as a repository doc (one row per routine:
-   name, purpose, status, why not matched, evidence).
-3. **Unreviewed static bytes:** adopt the review's code rows into `docs/census-code.tsv` (hash, boundaries and
-   instruction counts must verify on refresh) and data rows into `docs/census-data.tsv`, then refresh the score.
+2. **Reference entries for unmatchable code:** regenerate and fix `D:/f117-gate/unmatched-reference-20261021/reference.tsv` as listed above, then publish it as a repository doc (one row per routine: name, purpose, status, why not matched, evidence); no private paths or binary dumps in the public copy.
+3. **Unreviewed static bytes:** the 117 audited code rows and the 70-byte VGAME data row are adopted (21 Oct, `D:/f117-gate/static-review-20261021/adoption-audit.md`). Still to adopt: the 19 follow-up data rows (`followup-data-rows.tsv`), the plain follow-up code rows (`followup-code-rows.tsv`) and the encoded SETUP code (`encoded-code-rows.json`; XOR low-IP transform of 1,300 bytes at IP 0050..0564), which needs a strict validator that pins raw file hash, decoded hash, bounds and instruction counts and never publishes the transformed binary.
 4. **Drivers and launcher into scope:** implement the Plan agent's step-by-step design (module identification
    for overlays and the COM file, matched-table and lockstep support, census from executed plus reviewed bytes,
    scoring and docs). Measurement and scoring steps 0/1a/1b are complete; next step 2a is module-keying the

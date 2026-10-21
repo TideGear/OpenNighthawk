@@ -107,7 +107,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch al and the 21 Oct module scope expansion): **165,256 / 201,697**, P2 **82.84%**, overall **94.76%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  **Current total** (after batch al and the 21 Oct module scope expansion): **165,256 / 204,747**, P2 **81.68%**, overall **94.41%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
   The historical census retains its recorded row boundaries, including overlapping
   positions: af adds 697 row-byte credits from 692 distinct instruction bytes
   (five positions occur in two rows). The separate raw-byte audit reports 690
@@ -119,8 +119,11 @@ stays on the roadmap.
   credit changed: the denominator rose from 182,862 to 201,697, taking P2 from 90.85% to
   82.84% (the measured byte share is 81.93%; the completed tooling item supplies 5% of P2).
   All 17 game code files are eligible; NSOUND.117 currently contributes zero because no route
-  runs it and it has no reviewed static range. Unreviewed static discoveries (3,939 bytes)
-  and the shared floating LZEXE decompressor remain outside the measure. No new original-code
+  runs it and it has no reviewed static range. On 21 Oct a fifth review tranche added 117 code ranges
+  (4,481 bytes, 3,050 of them not already executed or named) and one 70-byte data range; the denominator
+  rose from 201,697 to 204,747 and P2 fell from 82.84% to 81.68%, with no credit change. About 654
+  static-discovery bytes in 42 groups are still held (the SETUP region that is XOR-transformed before it
+  executes needs a strict validator first) and the shared floating LZEXE decompressor stays outside the measure. No new original-code
   or dead-code exclusion was made. Measurement and validation: `D:/f117-gate/modules-scope-20261021/`.
   `census_classify.py` prints the supplement, module counts and rejected-record counts;
   `progress.py --census ...` refreshes the historical and expanded counts together.
