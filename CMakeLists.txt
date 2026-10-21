@@ -1119,6 +1119,14 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:703)
     add_test(NAME matched_start_quiz_hover_highlight COMMAND func_lockstep --states 5000
       --only START.EXE:786)
+    add_test(NAME matched_dswap_fatal_text_exit COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:754)
+    add_test(NAME matched_mps_logo_format_field COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1364)
+    add_test(NAME matched_vgame_message_and_key COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CDD)
+    add_test(NAME matched_end_fatal_error_screen COMMAND func_lockstep --states 5000
+      --only END.EXE:41CA)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

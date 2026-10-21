@@ -79816,7 +79816,280 @@ settle:
 #undef HNEAR
 }
 
+/* DSWAP 0754: the fatal-error screen of the swap program, entered by a JMP (not a CALL) from the DOS
+ * wrappers' failure arms (open 0599, and the close/read/write wrappers through the 076F entry).
+ * Registers at the jump: BX = a zero-ended file name (DS:BX), AX = the offset of a '$'-ended message,
+ * CX = the DOS error code, or FFFFh when the message needs no code.
+ *   - AX is kept on the stack and INT 10h function 3 sets text mode 3 (clears the screen);
+ *   - the name's end is found (DI counts to the first zero byte of DS:BX+DI) and the zero is replaced
+ *     by '$', so the name can be printed: DS:DX = BX, AH = 9, INT 21h;
+ *   - the saved message offset comes back into DX and prints the same way (the entry at 076F is this
+ *     point, for callers that have already chosen DX);
+ *   - unless CX is FFFFh, the code plus 30h is stored as one character at [0185] with '$' at [0186]
+ *     and printed (a single digit for codes 0..9);
+ *   - AX = 4C00h and the program ends by INT 21h at 078E. The matched code stops before that INT:
+ *     the original runs it, as the machine's DOS ends the program.
+ * Never returns. No callees; the only instructions that leave the routine are the INTs. */
+static int dswap_fatal_text_exit(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define DI c->r[R_DI]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define INT(at_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=sm4_int(m,(at_)); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    enum { CODE_DIGIT = 0x0185, DIGIT_END = 0x0186, NO_CODE = 0xFFFF };
+    if(!room(c,2))return 0;
+    XB(2,0x0754);x86_push_reg(c,R_AX);AX=3;INT(0x0758);                                  /* push ax / mov ax,3 / int 10h */
+    XB(1,0x075A);DI=0;                                                                   /* mov di,0 */
+name_scan:
+    XB(2,0x075D);alu_op(c,7,ds_get8(c,(uint16_t)(BX+DI)),0,0);if(x86_cond(c,4))goto print_name;   /* cmp [bx+di],0 / je */
+    XB(2,0x0762);DI=(uint16_t)alu_inc(c,DI,1);goto name_scan;                            /* inc di / jmp */
+print_name:
+    XB(3,0x0765);ds_put8(c,(uint16_t)(BX+DI),0x24);DX=BX;set_r8(c,R_AH,9);INT(0x076C);   /* '$' over the zero; print the name */
+    XB(2,0x076E);DX=cpu_pop16(c);set_r8(c,R_AH,9);INT(0x0771);                           /* pop dx / mov ah,9 / int 21h: the message */
+    XB(2,0x0773);alu_op(c,7,CX,NO_CODE,1);if(x86_cond(c,4))goto terminate;               /* cmp cx,-1 / je */
+    XB(5,0x0778);CX=(uint16_t)alu_op(c,0,CX,0x30,1);ds_put8(c,CODE_DIGIT,get_r8(c,R_CL));ds_put8(c,DIGIT_END,0x24);
+    DX=CODE_DIGIT;set_r8(c,R_AH,9);INT(0x0789);                                          /* print the code character */
+terminate:
+    XB(1,0x078B);AX=0x4C00;c->ip=0x078E;return 1;                                        /* mov ax,4C00h; the INT 21h is the original's */
+#undef INT
+#undef XB
+#undef DI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* MPS_LOGO 0146:1364, the formatter's field output (printf's _output, the Borland C runtime for
+ * the larger model): the tail every conversion shares, the same code as START 0x0A085 and its
+ * siblings. It runs in _output's frame: ES:DI the text to print, CX its length, and the
+ * conversion state below BP: [BP-4] the flags (01h plus sign, 02h space, 04h left-justify, 08h
+ * zero padding, 40h a signed conversion), [BP-3] bit 0 a negative value, [BP-0Ah] the width,
+ * [BP-0Eh] the sign's character and [BP-10h] its length (0 until set here).
+ *  - The sign: with flag 40h (a signed conversion) the sign goes to [BP-0Eh], its length 1 to
+ *    [BP-10h]: '-' when [BP-3] bit 0 is set (a negative value), else '+' with flag 01h, else ' '
+ *    with flag 02h; with none of them the length stays as it was.
+ *  - The padding is the width less the text's length and the sign's length, 0 when that is
+ *    negative (a signed compare). ES, DI and CX are saved around the leading padding.
+ *  - Without flags 04h or 08h the padding is spaces before everything (0x1468, DL 20h, CX the
+ *    count); then the sign (0x144A from SS:[BP-0Eh], CX [BP-10h]); with flag 08h and not flag
+ *    04h the padding is zeros (DL 30h) after the sign; then the text itself (0x144A from ES:DI,
+ *    CX its length); with flag 04h the padding is spaces after it. The padding count lives in
+ *    AX across the calls (pushed around the sign and the text).
+ *  - Then back to the format scan at 0x0FF8 (JMP): the next format character. The routine ends
+ *    with the machine there; the scan is the original's code.
+ * The entry is 1364, reached by JMPs from the conversion arms (1176, 118F, 11A4, 121A, 12B2); the
+ * two bytes at 1362 (JMP 1364, reached only by two conditional jumps at 1352 and 135A) are not part of it. Both
+ * callees (the formatter's output loop and padding loop) end with a plain RET: no arguments on
+ * the stack; CX, DL and ES:DI are theirs. */
+static int mps_logo_format_field(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PAD = 0x1468, PUT = 0x144A, SCAN = 0x0FF8 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XTEST(off_, mask_) alu_logic(c, (uint32_t)bp_get8(c, (off_)) & (mask_), 0)
+#define XSET() (!(c->flags & F_ZF))
+    if (!room(c, 2)) return 0;
+    XB(2, 0x1364);
+    XTEST(-4, 0x40);
+    if (XSET()) {                                                 /* a signed conversion: its sign */
+        XB(2, 0x136A);
+        XTEST(-3, 0x01);
+        if (XSET()) {
+            XB(3, 0x1370);
+            bp_put8(c, -0x0E, 0x2D);                              /* '-' */
+            bp_put(c, -0x10, 1);
+        } else {
+            XB(2, 0x137B);
+            XTEST(-4, 0x01);
+            if (XSET()) {
+                XB(3, 0x1381);
+                bp_put8(c, -0x0E, 0x2B);                          /* '+' */
+                bp_put(c, -0x10, 1);
+            } else {
+                XB(2, 0x138C);
+                XTEST(-4, 0x02);
+                if (XSET()) {
+                    XB(2, 0x1392);
+                    bp_put8(c, -0x0E, 0x20);                      /* ' ' */
+                    bp_put(c, -0x10, 1);
+                }
+            }
+        }
+    }
+    XB(4, 0x139B);
+    c->r[R_AX] = bp_get(c, -0x0A);                                /* the width */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, -0x10), 1);
+    if (!x86_cond(c, 13)) {                                       /* jge 13A7 not taken: no padding */
+        XB(1, 0x13A5);
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    }
+    XB(5, 0x13A7);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(-4, 0x0C);
+    if (!XSET()) {                                                /* right-justified with spaces */
+        XB(2, 0x13B0);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0x13B4, PAD, 0x13B7);
+    }
+    XB(5, 0x13B7);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss / pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x0E);                   /* lea di, [bp-0Eh]: the sign */
+    c->r[R_CX] = bp_get(c, -0x10);
+    XCALL(0x13C0, PUT, 0x13C3);
+    XB(3, 0x13C3);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x08);
+    if (XSET()) {
+        XB(2, 0x13CA);
+        XTEST(-4, 0x04);
+        if (!XSET()) {                                            /* zeros after the sign */
+            XB(2, 0x13D0);
+            c->r[R_CX] = c->r[R_AX];
+            set_r8(c, R_DL, 0x30);
+            XCALL(0x13D4, PAD, 0x13D7);
+        }
+    }
+    XB(4, 0x13D7);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XCALL(0x13DB, PUT, 0x13DE);                                   /* the text */
+    XB(3, 0x13DE);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x04);
+    if (XSET()) {                                                 /* left-justified: spaces after */
+        XB(2, 0x13E5);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0x13E9, PAD, 0x13EC);
+    }
+    XB(1, 0x13EC);
+    c->ip = SCAN;                                                 /* jmp 0FF8: the next format character */
+    return 1;
+#undef XSET
+#undef XTEST
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* VGAME 0CDD, message_and_key(text): a fatal-error screen helper. It draws the
+ * string at near pointer `text` (bp+4) with the panel text routine 0895E at
+ * x = 0, y = 60h in colour 0Fh (arguments pushed colour first, so text, x, y,
+ * colour in call order), takes its four words off again with MOV SP,BP, and
+ * calls getch (0EBEA) to wait for a key; the key is dropped (AX is left as
+ * getch returned it). Both callees return with a plain RET. */
+static int vgame_message_and_key(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define MKB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define MKRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define MKNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); MKRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if (!room(c, 6)) return 0;
+    MKB(6, 0x0CDD);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, 0x0F); cpu_push16(c, 0x60); cpu_push16(c, 0);
+    cpu_push16(c, bp_get(c, 4));
+    MKNEAR(0x0CE9, 0x895E, 0x0CEC);
+    MKB(1, 0x0CEC);
+    c->r[R_SP] = c->r[R_BP];
+    MKNEAR(0x0CEE, 0xEBEA, 0x0CF1);
+    MKB(2, 0x0CF1);
+    x86_leave(c); near_ret(c);
+    return 1;
+#undef MKB
+#undef MKRUN
+#undef MKNEAR
+}
+
+/* END 41CA, the fatal-error screen of the C run-time's DOS wrappers (the census row 0419A holds it; the
+ * routine in front of it, 4199, is a separate far-buffer DOS write). It is reached by a JMP from the
+ * wrappers' failure arms with BX the near pointer of a zero-ended message and the registers otherwise
+ * theirs, and it never returns.
+ *   - AX is saved (it becomes the message pointer of the shared tail below) and INT 10h with AX = 3 sets
+ *     the 80-column text mode;
+ *   - the zero byte that ends the message at DS:BX is found (DI counts from 0, the scan has no limit)
+ *     and replaced by '$', and INT 21h function 9 prints the message (DX = BX);
+ *   - DX is popped back (the AX the arm came in with). That is where the shared tail 41E5 starts (the
+ *     wrappers for close and read JMP straight to it with DX the message and CX the DOS error code or
+ *     FFFFh): INT 21h function 9 prints the string at DX;
+ *   - unless CX is FFFFh, CX + 30h is stored as a character at DS:1C75, a '$' at DS:1C76 ends it and
+ *     INT 21h function 9 prints that digit (DX = 1C75h);
+ *   - AX = 4C00h and INT 21h end the program. The matched code stops with AH = 4Ch at the INT (4204):
+ *     the original runs the INT and the machine's DOS ends the program.
+ * The three INT 21h and the INT 10h run as original code (sm4_int) and return; none of the routine's
+ * other instructions call anything. */
+static int end_fatal_error_screen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DIGIT_CELL = 0x1C75, DIGIT_END = 0x1C76 };
+#define FB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    FB(2, 0x41CA);
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = 0x0003;
+    if (!sm4_int(m, 0x41CE)) return 1;                             /* set the text mode */
+    FB(1, 0x41D0);
+    c->r[R_DI] = 0;
+    for (;;) {                                                    /* find the message's zero byte */
+        FB(2, 0x41D3);
+        alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_DI]))), 0x00, 0);
+        if (x86_cond(c, 4)) break;
+        FB(2, 0x41D8);
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    }
+    FB(3, 0x41DB);
+    mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_DI])), 0x24);
+    c->r[R_DX] = c->r[R_BX];
+    set_r8(c, R_AH, 9);
+    if (!sm4_int(m, 0x41E2)) return 1;                             /* print the message */
+    FB(2, 0x41E4);
+    c->r[R_DX] = cpu_pop16(c);
+    set_r8(c, R_AH, 9);
+    if (!sm4_int(m, 0x41E7)) return 1;                             /* print the string at DX */
+    FB(2, 0x41E9);
+    alu_op(c, 7, c->r[R_CX], 0xFFFF, 1);
+    if (!x86_cond(c, 4)) {                                        /* a DOS error code: print its digit */
+        FB(5, 0x41EE);
+        c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], 0x30, 1);
+        mem_write8(c, phys(c->seg[S_DS], DIGIT_CELL), get_r8(c, R_CL));
+        mem_write8(c, phys(c->seg[S_DS], DIGIT_END), 0x24);
+        c->r[R_DX] = DIGIT_CELL;
+        set_r8(c, R_AH, 9);
+        if (!sm4_int(m, 0x41FF)) return 1;
+    }
+    FB(1, 0x4201);
+    c->r[R_AX] = 0x4C00;
+    c->ip = 0x4204;                                               /* the INT 21h: the original ends the program */
+    return 1;
+#undef FB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "END.EXE", END_47304, 0x0000, 0x41CA, end_fatal_error_screen, "the fatal-error screen: text mode, print the message, a DOS error digit, and end the program", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0CDD, vgame_message_and_key, "show a message line at row 96 in colour 15 and wait for a key", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1364, mps_logo_format_field, "the formatter's field output: sign, padding and the text", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0754, dswap_fatal_text_exit, "clear the screen, print the file name and message, print the error digit, end the program", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0786, start_quiz_hover_highlight, "quiz button hover: queue the highlight of the button under the pointer and the clearing of the one left", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0703, start_quiz_ask_and_judge, "aircraft-identification quiz: take the pick, record right or wrong in the player record, show the verdict", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x057E, start_quiz_draw_screen, "aircraft-identification quiz screen: draw the silhouette, pick the answer and two decoys, list the 18 names", 1 },

@@ -532,6 +532,7 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "START.EXE", 0x3641, 0x3693, 0xC3 },
     /* START 0x0A015 and END 0x05987, the formatter's integer conversion: an arm of _output that ends with a JMP to the scan. */
     { "START.EXE", 0xA015, 0x09D19, 0xC3 },
+    { "MPS_LOGO.EXE", 0x1364, 0x02458, 0xC3 },   /* the formatter's field output ends by jumping back to the scan: it returns */
     { "END.EXE", 0x5987, 0x0568B, 0xC3 },
 
     { "END.EXE", 0x42E4, 0x0489, 0x00 },
@@ -587,6 +588,10 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "END.EXE", 0x41CA, 0x41CA, 0x003C },
+    { "VGAME.EXE", 0x0CDD, 0x0CDD, 0x0016 },
+    { "MPS_LOGO.EXE", 0x1364, 0x1364, 0x008B },
+    { "DSWAP.EXE", 0x0754, 0x0754, 0x003C },
     { "START.EXE", 0x0786, 0x0786, 0x0068 },
     { "START.EXE", 0x0703, 0x0703, 0x0083 },
     { "START.EXE", 0x057E, 0x057E, 0x0185 },
@@ -930,6 +935,7 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "END.EXE", 0x5678, 0x5678, 0x0500 },
     { "START.EXE", 0x9D67, 0x9D19, 0x0062 }, /* reset and its returning scan thunk */
     { "START.EXE", 0xA015, 0x9D19, 0x03F7 }, /* integer conversion and its returning scan thunk */
+    { "MPS_LOGO.EXE", 0x1364, 0x0FF8, 0x03F7 }, /* the formatter's field output and its returning scan thunk */
     { "END.EXE", 0x56D9, 0x568B, 0x0062 },
     { "START.EXE", 0x94FA, 0x94FA, 0x1000 },    /* itoa and ltoa: the shared conversion returns at 0x0A4B6 */
     { "START.EXE", 0x9516, 0x9516, 0x1000 },
@@ -1366,6 +1372,10 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x057E, 0x0185, 162, 162, "aircraft-identification quiz screen: draw the silhouette, pick the answer and two decoys, list the 18 names" },
     { "START.EXE", 0x0000, 0x0703, 0x0083, 51, 51, "aircraft-identification quiz: take the pick, record right or wrong in the player record, show the verdict" },
     { "START.EXE", 0x0000, 0x0786, 0x0068, 46, 46, "quiz button hover: queue the highlight of the button under the pointer and the clearing of the one left" },
+    { "DSWAP.EXE", 0x0000, 0x0754, 0x003C, 25, 25, "clear the screen, print the file name and message, print the error digit, end the program" },
+    { "MPS_LOGO.EXE", 0x0146, 0x1364, 0x008B, 55, 55, "the formatter's field output: sign, padding and the text" },
+    { "VGAME.EXE", 0x0000, 0x0CDD, 0x0016, 11, 11, "show a message line at row 96 in colour 15 and wait for a key" },
+    { "END.EXE", 0x0000, 0x41CA, 0x003C, 25, 25, "the fatal-error screen: text mode, print the message, a DOS error digit, and end the program" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1413,6 +1423,8 @@ static const struct { const char *module; uint16_t seg, ip, end; } PROGRAM_ENDS[
     { "START.EXE", 0x0000, 0x9094, 0x910F }, /* exit(code): MOV AH,4Ch / INT 21h, its CH-clear end */
     { "END.EXE", 0x0000, 0x4F8A, 0x5005 },   /* exit(code): MOV AH,4Ch / INT 21h, its CH-clear end */
     { "MPS_LOGO.EXE", 0x00DA, 0x0352, 0x043B }, /* overlay load failure: DOS exit */
+    { "DSWAP.EXE", 0x0000, 0x0754, 0x078E },    /* fatal-error text tail: MOV AX,4C00h / INT 21h */
+    { "END.EXE", 0x0000, 0x41CA, 0x4204 },      /* the fatal-error screen: MOV AX,4C00h / INT 21h at 4204 */
     { "SETUP.EXE", 0x0000, 0x0A9F, 0x0BA0 },    /* the overlay loader's error arms: MOV AX,4C00h / INT 21h */
 };
 /* Routines with an arm that jumps out of the named code to a run-time exit that never returns: the
@@ -1598,6 +1610,7 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
     { "PLAYER.EXE", 0x0000, 0x1BB6, 0x1CB9 },    /* the formatter's conversion dispatch: a JMP to another arm */
     { "PLAYER.EXE", 0x0000, 0x1BB6, 0x1D8D },    /* the formatter's conversion dispatch: a JMP to another arm */
     { "PLAYER.EXE", 0x0000, 0x1BB6, 0x1DFD },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "MPS_LOGO.EXE", 0x0146, 0x1364, 0x0FF8 },    /* the formatter's field output: JMP back to the scan */
 };
 /* Routines whose named code ends with a POPF that restores the caller's IF: the POPF clears the run
  * limit so the run loop can take an interrupt, so the body stops after it with the machine at `stop`
@@ -32809,7 +32822,9 @@ int main(int argc, char **argv)
                 /* The correct answer's number and the table of picks (B26F + pick). */
                 const uint16_t answer=XPICK(4)?(uint16_t)XPICK(256):(uint16_t)XRAND();
                 XW16(dg,0xB282,answer);
-                for(unsigned j=0;j<0x180;j++)XW8(dg,0xB26F+j,XPICK(3)?(uint8_t)(XPICK(2)?answer:(uint8_t)(answer+1)):(uint8_t)XRAND());
+                /* Every fourth state: all picks right; every fourth: all wrong (both verdict arms at every seed). */
+                const unsigned verdict_mode=(unsigned)(s&3);
+                for(unsigned j=0;j<0x180;j++)XW8(dg,0xB26F+j,verdict_mode==0?(uint8_t)answer:verdict_mode==1?(uint8_t)(answer+1):XPICK(3)?(uint8_t)(XPICK(2)?answer:(uint8_t)(answer+1)):(uint8_t)XRAND());
                 /* Callee probes: fold every argument in order into F800, count the call,
                  * return the next word of a list. List 1 (38AC, the poll) mixes
                  * the 63h no-pick answer with picks, always holding some real pick. */
@@ -32940,6 +32955,205 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"DSWAP.EXE") && o->seg==0 && o->ip==0x0754) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define RND(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+                /* The fatal tail is entered by a JMP: no frame. DS holds the file name and the digit
+                 * cells; the stack is in DS or apart. */
+                seg[S_DS]=0x5000;seg[S_SS]=(XRAND()&1)?0x5000:0x6000;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<8;j++)XW8(seg[S_DS],(uint16_t)(0x0180+j),XRAND());
+                /* The zero-ended name: empty, short, long, at a low or a high offset, and one that runs
+                 * across the end of the segment (BX+DI wraps) or sits on the digit cells. */
+                static const uint16_t starts_[]={0x2200,0x2200,0x3300,0xFFF0,0xFFFC,0x0180,0x0184,0x0185,0x0186,0x0010,0x9000};
+                const uint16_t name_=starts_[RND(sizeof starts_/sizeof starts_[0])];
+                const unsigned len_=(RND(5)==0)?0:RND(40);
+                for(unsigned j=0;j<len_;j++)XW8(seg[S_DS],(uint16_t)(name_+j),1+RND(255));
+                XW8(seg[S_DS],(uint16_t)(name_+len_),0);
+                r[R_BX]=name_;r[R_AX]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                /* The code: FFFFh (no digit), 2 and 3 and 4 (the open failures), small values, values
+                 * whose sum with 30h wraps or changes the low byte, anything. */
+                { static const uint16_t codes_[]={0xFFFF,0xFFFF,0xFFFF,0xFFFE,0xFFCF,0xFFD0,0xFFD1,0,1,2,3,4,5,9,0x10,0xFF,0x100,0x7FFF,0x8000};
+                  r[R_CX]=(RND(6)==0)?(uint16_t)XRAND():codes_[RND(sizeof codes_/sizeof codes_[0])]; }
+                /* The harness pushes the return address below SP; arguments are not read. */
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                g_dos=1;g_native_int10=1;g_dos_script_n=4;
+                for(unsigned j=0;j<4;j++){g_dos_script[j].ax=(uint16_t)XRAND();g_dos_script[j].cf=(uint8_t)(XRAND()&1);g_dos_script[j].put=0;}
+                /* DOS exit is terminal in the game. Here the original's code after the INT 21h at 078E is
+                 * a RET, which returns to the address the harness pushed. */
+                XW8(0,0x0790,0xC3);
+                g_nend=1;g_end_lo[0]=0x0790;g_end_hi[0]=0x0791;
+#undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0146 && o->ip==0x1364) {
+                /* The field output runs in _output's frame: BP above SP, the stream at [bp+6]
+                 * (next pointer, room), the conversion state below BP, the text at ES:DI with
+                 * CX bytes. Both callees stay original (the harness runs the matched ones on
+                 * the body's side): the stream's room never runs out, so the flush is not
+                 * called. The scan at 0x0FF8 is a RET here (IMAGE_PATCHES), the way out. */
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define RND(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+#define PCT(p_) (RND(100)<(unsigned)(p_))
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x400;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t w_=(uint16_t)XRAND();XW16(ss_,(uint16_t)(r[R_SP]+2*j),w_);small[j]=w_;}
+                const uint16_t bp_=(uint16_t)(r[R_SP]+0x60+2*RND(0x40));
+                r[R_BP]=bp_;
+                /* The stream: next pointer and a room that never runs out. */
+                const uint16_t stream_=(uint16_t)(0x3000+2*RND(8));
+                XW16(ss_,bp_+6,stream_);
+                XW16(dg,stream_,(uint16_t)(0x3100+RND(0x40)));
+                XW16(dg,stream_+2,(uint16_t)(0x1000+RND(0x4000)));
+                for(unsigned j=0;j<0x600;j++)XW8(dg,0x3100+j,XRAND());
+                /* The text: ES:DI and its length CX (none, one, short, longer). */
+                uint16_t len_;
+                { const unsigned q_=RND(100);
+                  if(q_<8)len_=0;
+                  else if(q_<20)len_=1;
+                  else if(q_<80)len_=(uint16_t)(2+RND(14));
+                  else len_=(uint16_t)(16+RND(0x30)); }
+                const uint16_t tseg_=PCT(60)?dg:(uint16_t)0x7000;
+                const uint16_t toff_=(uint16_t)(0x4000+RND(0x3000));
+                for(unsigned j=0;j<0x80;j++)XW8(tseg_,(uint16_t)(toff_+j),XRAND());
+                seg[S_ES]=tseg_;r[R_DI]=toff_;r[R_CX]=len_;
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                /* The conversion state. The flags byte: a signed conversion, plus, space,
+                 * left-justify and zero padding each most of the time or none of the time. */
+                uint8_t f_=(uint8_t)(XRAND()&0xB0);
+                if(PCT(55))f_|=0x40;
+                if(PCT(35))f_|=0x01;
+                if(PCT(30))f_|=0x02;
+                if(PCT(35))f_|=0x04;
+                if(PCT(40))f_|=0x08;
+                if(PCT(8))f_=(uint8_t)XRAND();
+                XW8(ss_,bp_-4,f_);
+                const uint8_t neg_=(uint8_t)(PCT(45)?(XRAND()|1):(XRAND()&0xFE));   /* negative: bit 0 */
+                XW8(ss_,bp_-3,neg_);
+                XW8(ss_,bp_-14,XRAND());XW8(ss_,bp_-13,XRAND());                /* the sign's characters */
+                uint16_t sl_;                                                   /* the sign's length so far */
+                { const unsigned q_=RND(100);
+                  if(q_<60)sl_=0;
+                  else if(q_<80)sl_=1;
+                  else if(q_<90)sl_=2;
+                  else sl_=(uint16_t)RND(6);
+                  XW16(ss_,bp_-16,sl_); }
+                /* The sign's length when the routine has set it. */
+                const uint16_t sle_=(f_&0x40)?(((neg_&1)||(f_&0x03))?1:sl_):sl_;
+                { uint16_t w_;                                                  /* the width */
+                  const unsigned q_=RND(100);
+                  if(q_<12)w_=(uint16_t)(0-RND(4));
+                  else if(q_<20)w_=(uint16_t)(0x8000+len_+sle_-RND(sle_+1u));   /* the signed overflow of the last subtraction */
+                  else if(q_<26)w_=(uint16_t)(0x8000+len_);                      /* the first subtraction overflows */
+                  else if(q_<32)w_=(uint16_t)(0xFFF0+RND(16));
+                  else if(q_<52)w_=(uint16_t)(len_+sle_+RND(4)-RND(2));       /* about the text's and sign's length */
+                  else if(q_<60)w_=(uint16_t)(len_+RND(4));
+                  else if(q_<64)w_=(uint16_t)(0x30+RND(0x20));
+                  else w_=(uint16_t)RND(40);
+                  XW16(ss_,bp_-10,w_); }
+                XW16(ss_,bp_-8,XRAND());                                        /* the count so far */
+#undef PCT
+#undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x0CDD) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The one argument: the message's near pointer (any word, now
+                 * and then the extremes). */
+                uint16_t arg[4];
+                arg[0]=(XRAND()%6==0)?(uint16_t)((XRAND()&1)?0xFFFF:0):(uint16_t)XRAND();
+                arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* Call log: every stub folds its id, its arguments in order and
+                 * the word at [E008] into [F800], and counts at [F802]. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);XW16(dg,0xE008,XRAND());
+#define XSTUB(sg_,off_,id_,nargs_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x81);XW8(sgx_,out_++,0xF3);XW8(sgx_,out_++,(id_)&0xFF);XW8(sgx_,out_++,(id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+        XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x5E);XW8(sgx_,out_++,((far_)?6:4)+2*j_); } \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x08);XW8(sgx_,out_++,0xE0); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,0x02);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,id; unsigned args; } stub_[2]={
+                        {0x895E,0xF200,0x1895,4},{0xEBEA,0xF240,0x2EBE,0}};
+                    for(unsigned k=0;k<2;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        XSTUB(0,stub_[k].code,stub_[k].id,stub_[k].args,0);
+                    }
+                }
+#undef XSTUB
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x41CA) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                uint16_t arg[4];
+                for(unsigned j=0;j<4;j++){arg[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* A zero-ended message of 0..40 bytes at DS:BX (nonzero bytes, now and then
+                 * a '$'), noise after it; DI starts as noise; BX takes any offset. */
+                {
+                    const uint16_t bx_=(uint16_t)(0x1000+XRAND()%0x8000);
+                    const unsigned len_=(XRAND()%4==0)?0:(XRAND()%41);
+                    for(unsigned j=0;j<len_;j++)XW8(dg,(uint16_t)(bx_+j),(XRAND()%8==0)?0x24:(uint8_t)(1+XRAND()%255));
+                    XW8(dg,(uint16_t)(bx_+len_),0);
+                    for(unsigned j=1;j<8;j++)XW8(dg,(uint16_t)(bx_+len_+j),XRAND());
+                    r[R_BX]=bx_;
+                    r[R_DI]=(uint16_t)XRAND();
+                }
+                /* CX: FFFFh about a third of the time (no digit), else a DOS error code or noise;
+                 * the digit cells start as noise. AX/DX noise. */
+                {
+                    const unsigned pick_=XRAND()%6;
+                    r[R_CX]=(pick_<2)?0xFFFF:(pick_<5)?(uint16_t)(XRAND()%12):(pick_==5&&(XRAND()&1))?0xFFFE:(uint16_t)XRAND();
+                    r[R_AX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                    XW16(dg,0x1C75,XRAND());
+                }
+                /* The program's end (INT 21h AH=4Ch at 4204) is answered by the harness and falls
+                 * into 4206: a RET there takes the original back to the caller (the stack is as at
+                 * entry: the AX pushed is popped as DX). */
+                XW8(0,0x4206,0xC3);
+                g_nend=1;g_end_lo[0]=0x4206;g_end_hi[0]=0x4207;
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -33061,7 +33275,7 @@ int main(int argc, char **argv)
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
             g_step_cap = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) ? 2000000 : (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
-            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008);
+            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008) || (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0754) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x41CA);
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;
                 static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};

@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 89.21%, P3 100.00%, All 96.71%
+- **Scoreboard:** P1 100.00%, P2 89.34%, P3 100.00%, All 96.75%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,168 addresses matched. Scope is the expanded seven-program
-  one: **163,617 / 184,585 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,172 addresses matched. Scope is the expanded seven-program
+  one: **163,882 / 184,585 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,584 executed bytes in other
@@ -53,6 +53,14 @@ Consolidate it instead of appending to it.
   `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`); `--fix all` and normal play never switch it on, `--fix none`
   clears it; test `test_the_quiz_option_is_off_unless_named`. Routes `quiz_right` (clicks the A-10 shown: START `073A`) and `quiz_wrong` (`074B`),
   `# expect-open planes2.pic`; probes and screenshots in `D:/f117-gate/phase2-final/quiz/`. The quiz rows (START `0583`, `06E0`, `0703`, `072E`, `0788`) are credited since batch ah.
+- **Batch aj (20 Oct, accepted):** DSWAP `0754`, MPS_LOGO `1364`, VGAME `0CDD`, END `41CA` (277 bytes, 116 instructions, 122 mutations; table in
+  `docs/roadmap.md`); 410 CTests, 63 routes / 62 sessions, gate 1,770 s, acceptance 1,753 s with overlap (keyed baseline for 63 routes frozen,
+  so `new_batch.py` needs no `--no-baseline` again unless `CMakeLists.txt` outside tests, non-matched `src/` or a route changes). Evidence
+  `D:/f117-gate/p2-batch-aj-accept/`. **Cheap pre-checks before a gate (adopted 20 Oct):** (1) the commit-keyed seed
+  (`py tools/build_recomp.py` prints it; it is the first 12 hex digits of HEAD) through `tools/func_lockstep_par.py --jobs 8 --states 4000
+  --verbose --seed SEED` (about 4 minutes) catches a thin fixture or an old argument-order bug; run it on the working tree before the gate and
+  note that committing changes the seed; (2) each new route once with `--engine recomp`, grepping `[matched] OVERRUN`. A fixture must force each
+  branch outcome in a fixed share of states, not leave it to chance.
 - **Batch ai (20 Oct, accepted, routes only):** five new damaged-install routes (`err_start_no_world`, `err_start_terrain_files`,
   `err_vgame_no_photo`, `err_dswap_no_swap_palette`, `err_end_no_tass`; table in `tools/routes/README.md`): 63 routes / 62 sessions, 406 CTests,
   gate and acceptance 1,658 s, run without the keyed baseline (new routes), so no presentation overlap. They run 581 never-run census bytes that
@@ -175,11 +183,15 @@ Consolidate it instead of appending to it.
   headless, silent, hidden.
 - The owner's untracked `4k60.bat`, `4k-rerun.bat` and `4k-sharp.bat` stay
   untouched: do not overwrite or stage them.
+- **Machine-option-only error paths stay unscored original code (owner, 20 Oct):** out-of-memory arms, DOS write/read/close errors with the
+  carry flag set, the `_C_FILE_INFO` environment arm and the like (about 2,500 bytes) are not worth test-only machine options (smaller memory,
+  injected DOS failures, extra environment variables). Do not build such options; do not count these bytes as work left. They are not certified
+  dead either (the "only when certain" rule stands), so they stay in the denominator.
 - The roadmap goal stays active: keep going item by item; ask only on policy.
 
 ## Next steps
 
-Goal in force: finish Phase 2 (89.21% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
+Goal in force: finish Phase 2 (89.34% now; see Current state). Everything below is private work under `D:/f117-gate/` plus repo edits that wait for a gate.
 
 1. **Batch af is accepted; next is ag.** The approved gate changes are implemented: parallel translation has the byte-identity proof;
    no proof worker or unrelated heavy job runs during a gate; the keyed baseline (af's, 58 routes) is stale since batch ai added five routes: the next matched batch runs `new_batch.py ... --no-baseline` once and freezes a new one for 63 routes / 62 sessions.

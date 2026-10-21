@@ -153,11 +153,11 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (20 October 2026, batch ai):** 406 CTests; 63 routes identical, run
-as 62 sessions; 5,723,136 instruction states under each timing profile; 1,168
-matched routines at three seeds; reachability and event limits clean. Batch ai's
-gate and acceptance took 1,658 s with no overlap (new routes mean no keyed baseline): all 62 interpreter
-sessions fresh, 63 N=1 presentation routes exact, boot N=4/9 exact. (Batch ah: gate 1,783 s, 405 CTests, 30 optimized seed
+**Current figures (20 October 2026, batch aj):** 410 CTests; 63 routes identical, run
+as 62 sessions; 5,723,136 instruction states under each timing profile; 1,172
+matched routines at three seeds; reachability and event limits clean. Batch aj's
+gate took 1,770 s, acceptance 1,753 s with the presentation check overlapped from 110 s (a keyed baseline for the 63 routes is frozen): all 62 interpreter
+sessions fresh, 63 N=1 presentation routes exact, boot N=4/9 exact, 20 optimized seed checks and 122 caught mutations. (Batch ai: 1,658 s with no overlap. Batch ah: gate 1,783 s, 405 CTests, 30 optimized seed
 checks and 275 caught mutations. Batch ag: gate 1,604.44 s, acceptance 1,730.54 s, 399 CTests.) (Batch af: gate 1,554.92 s, acceptance 1,688.59 s.)
 First attempt at ag: three of its new CTests failed because the integration does not carry
 the SPANS and IMAGE_PATCHES rows of a proof's private harness; they were added by hand
