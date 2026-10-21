@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 21 October 2026.
+more than once, what it costs). State as of 21 October 2026 (end of session).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -34,11 +34,22 @@ Consolidate it instead of appending to it.
     error paths, 831 probable-dead, the rest needs combat or very long careers), 222 `unreached`, 5 `slots`.
   - Outside the score entirely: 18,584 executed bytes in the launcher, resident graphics library and sound
     drivers, and 3,939 unreviewed static-discovery bytes.
-- **Work in progress (21 Oct), all read-only agents writing under `D:/f117-gate/`:** the route plan for the
-  reviewed static code (`static-route-plan-20261021/`), the review of the 3,939 unreviewed bytes
-  (`static-review-20261021/`), a reference entry for every range that cannot be matched
-  (`unmatched-reference-20261021/`), and the design for matching the drivers and launcher (a Plan agent; save
-  its plan there when it reports). See Next steps.
+- **Phase 2 scope work in flight (21 Oct); the session ended mid-way, nothing here is in the repo yet.** All analysis is read-only under
+  `D:/f117-gate/`; adopt only what you verify:
+  - `static-route-plan-20261021/` (DONE): no route, damage, argument or probe answer can run any of the 10,301 reviewed-static bytes: 9,197
+    bytes (groups A, B, D-I: VGAME CGA/Tandy drivers 1,042; printf modifier states 1,251; SETUP library cluster 2,724; picture/span wrappers
+    1,480; INT 23h shims 569; MPS_LOGO mouse library 230; PLAYER report formatter 460; VGAME uncalled code 1,441) have no way in, and the
+    1,104 bytes of DSWAP's printf core (group C) need a floppy drive, which the owner declined. `plan.md` and `groups.tsv` there. Certifying
+    them dead needs `docs/census-code.tsv` rows removed (the classifier subtracts nothing for `census-dead-ranges.tsv`).
+  - `static-route-verify-20261021/` (INTERRUPTED by the usage limit, resets 5:10 PM): an adversarial re-derivation of groups A, D, E, F, G, H
+    (agent id a70bf25a1f34ae616, resume with SendMessage; scratch scripts are saved). Do not certify any group dead until it reports.
+  - `static-review-20261021/` (INTERRUPTED, agent a2f2492401cab1fda): the code/data review of the 3,939 unreviewed static bytes; stage files
+    saved, no `code-rows.tsv` yet.
+  - `unmatched-reference-20261021/` (agent a6d52c02c7d0dc047, status unknown when the session ended): the reference table for every range that
+    cannot be matched; no `reference.tsv` yet.
+  - `modules-scope-20261021/plan.md` (DONE): the ten-step design for bringing the launcher, MGRAPHIC, MISC and the sound drivers into the score
+    (about 18,835 validated bytes; P2 would drop to about 81.9% before matching starts). Start with step 0 (private measurement) and 1a/1b.
+  Owner decisions this session: bring these modules in scope; no floppy drive (DSWAP's disk-swap path stays original).
 - **Dead code** (owner rule: only when certain): `docs/census-dead.tsv` (73 census rows, 2,927 bytes;
   certificates `D:/f117-gate/phase2-final/dead-cert/`, the 21 Oct evidence review `dead-review-20261021/`) and
   `docs/census-dead-ranges.tsv` (byte ranges that are not census rows: 868 bytes of SETUP and PLAYER jump slots
@@ -114,9 +125,7 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-1. **Route campaign for the reviewed static code** (10,301 bytes plus about 1,800 executed bytes outside the
-   census): take the ranked plan in `D:/f117-gate/static-route-plan-20261021/`, build each route (pre-check it
-   with both engines and for `[matched] OVERRUN`), then prove the routines it runs with the kit.
+1. **Reviewed static code (10,301 bytes):** the route plan found no way to run it. Resume the verification agent, then decide per group: certify dead (with certificates and by removing the rows from `docs/census-code.tsv`) or keep. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
 2. **Reference entries for unmatchable code:** check the agent's `reference.tsv` and coverage check
    (`D:/f117-gate/unmatched-reference-20261021/`), then publish it as a repository doc (one row per routine:
    name, purpose, status, why not matched, evidence).

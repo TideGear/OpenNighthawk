@@ -162,8 +162,12 @@ not the recompilation:
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
       **What is left (17,606 bytes; `tools/census_classify.py`):**
       - About 12,100 outside the census rows: 10,301 reviewed static code bytes that no
-        route runs, and about 1,800 executed bytes no routine names. A route campaign
-        is under way (`D:/f117-gate/static-route-plan-20261021/`).
+        route runs, and about 1,800 executed bytes no routine names. A route plan
+        (`D:/f117-gate/static-route-plan-20261021/`, 21 Oct) found no input, file condition or
+        machine answer that runs any of the reviewed bytes: 9,197 are library, driver and
+        wrapper code with no caller or pointer, and 1,104 (DSWAP's printf core) need a floppy
+        drive that the owner declined to emulate. An independent check of those findings was
+        in progress; nothing has been certified dead from them yet.
       - 5,496 inside the census rows: 947 that routes run but that stay original or were
         declined (below); 4,322 that no route runs (about 2,500 error paths only a
         test-only machine option could reach, which the owner decided not to build;
@@ -173,7 +177,7 @@ not the recompilation:
         library and the sound drivers, and 3,939 unreviewed static-discovery bytes.
       **Owner decision (21 Oct): no meaningful game code may be missed.** Approved: bring
       the launcher, graphics library and sound drivers into the scope (the percentage
-      drops at first); the route campaign above; a review of the unreviewed bytes; and a
+      drops at first; design in `D:/f117-gate/modules-scope-20261021/plan.md`); the static-code work above; a review of the unreviewed bytes; and a
       reference entry (name and one-line purpose) for every range that cannot be matched,
       so nothing is left unexplained even when it earns no credit.
       **Dead code** leaves the denominator only when certain (owner, 19 Oct), with a
