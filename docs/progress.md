@@ -38,6 +38,61 @@ stays on the roadmap.
 
 ## What is measured
 
+### Phase 2: the gameplay score (21 October 2026)
+
+Owner decisions of 21 October 2026. P2's "Matched functions replacing translations" item (weight 60) is
+scored by the **gameplay score**, computed by `census_classify.gameplay()` during the usual
+`progress.py --census ...` refresh and recorded as `census.gameplay` in progress.json:
+
+- **Denominator:** every distinct instruction byte that any route executes, across all 17 game code files, from
+  the validated interpreter captures of all routes (the `--route-cover` directory). Record validation is
+  unchanged: rejected records (changed code, wrong file, undecodable) add nothing. The ten `err_*`
+  damaged-install routes count like the others.
+- **Numerator:** (a) bytes inside matched routine bodies (named cover) that a route executes; coverage only a
+  fixture state reaches does not count; plus (b) executed bytes of routines that stay original **by design
+  rule only**: STI-first interrupt handlers, the C start-up and its copies, and palette loaders with an STI in
+  their loop. Inside the census these are the `docs/census-original.tsv` rows; outside it an entry must name
+  its rule. Declined routines (VGAME main, MPS_LOGO `1ADC`/`1C82`, START `8427`, END `4393`, END `57B0`, and
+  the rest) are remaining work, not original code. (b) counts only where a **reviewed reference entry**
+  exists in `docs/reference-reviewed.tsv`. An entry counts only when a second reader has checked its name and
+  purpose against the disassembly. Each range has exactly one status (`stays-original`,
+  `machine-option-only`, `dead-certified`, `probable-dead`, `needs-route`, `data`, `unreached-held`). A
+  `stays-original` entry over a census row outside `census-original.tsv` stops the refresh. The table starts
+  empty, so (b) is 0 and the score starts at matched-only.
+- **Published beside it:** the denominator in bytes; fixture-only matched bytes; executed but unmatched bytes
+  by module (remaining work, which includes design-rule original code still waiting for its reviewed entry);
+  and the **accounted-for checklist**. The checklist counts every byte of the previous all-code scope
+  (204,747 by row occurrence, 204,677 distinct) that is not in the denominator, split by whether a reviewed
+  entry (any status) covers it. The target is 100%.
+- **Cross-checks on every refresh:** (a) and (b) are disjoint; a + b + remaining = denominator; denominator
+  bytes inside the previous scope + checklist bytes = the previous scope's distinct bytes.
+
+**The previous measure is kept.** The all-code measure below (credited over creditable census bytes plus the
+supplement) is still computed and printed, labelled "previous measure". It still scores P2's "Routines named
+and explained" item (weight 35). Naming and explaining is owed for the whole code inventory, including
+reviewed static code and error paths that no route runs, which the gameplay score leaves out. Moving that
+item too would score the same numerator twice. Reviewed reference entries do not count toward it yet; that
+would be a separate decision. The tooling item (weight 5) is unchanged.
+
+| 21 Oct 2026, batch am (`f3cbaff`) | previous measure | gameplay score |
+|---|---|---|
+| denominator | 204,747 creditable bytes (all-code scope) | 163,862 route-executed bytes |
+| numerator | 165,370 named bytes (lockstep or routes) | 140,391 matched bytes a route runs + 0 reviewed original |
+| share | 80.77% | **85.68%** |
+| P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
+
+Also at this refresh: 24,914 fixture-only matched bytes (not counted); 23,471 remaining executed bytes (ASOUND.117
+5,373, MGRAPHIC 3,159, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, START 1,325, ISOUND.117 1,200, VGAME
+1,172, ISOUND.LOG 1,167, F117.COM 837, END 551, PLAYER 511, MPS_LOGO 497, SETUP 418, DSWAP 276, MISC 29). Of them,
+1,994 bytes are design-rule original code (census-original rows) waiting for reviewed entries, which would raise
+the score to at most 86.89%. Checklist: 0 of 42,809 bytes accounted for (23,494 fixture-credited census bytes,
+13,351 reviewed static, 4,317 never-run, 1,420 fixture-credited outside the census, 222 unreached, 5 slots).
+The figures reproduce the private measurement `D:/f117-gate/gameplay-score-20261021/` (`numbers.json`) exactly:
+denominator, matched route-run, fixture-only, checklist by class, 161,868 + 1,994 denominator bytes in and outside
+the previous scope, and 70 bytes shared by two census rows.
+
+### The previous all-code measure
+
 - **Phase 2, matching and naming:** the census (the Reimp's walk of seven
   programs: 1,535 functions, 179,213 bytes, recorded in progress.json) against
   the matched routines in `src/matched/matched.c`, by code bytes, so a
@@ -107,7 +162,7 @@ stays on the roadmap.
   a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
   census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
   Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total** (after batch am, the first matched routines outside the seven programs, and the 21 Oct module scope expansion): **165,370 / 204,747**, P2 **81.73%**, overall **94.42%** (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
+  **Current total of this measure** (after batch am, the first matched routines outside the seven programs, and the 21 Oct module scope expansion): **165,370 / 204,747**, P2 **81.73%**, overall **94.42%** while it scored both P2 items (since the gameplay score, P2 84.67%, overall 95.32%) (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
   The historical census retains its recorded row boundaries, including overlapping
   positions: af adds 697 row-byte credits from 692 distinct instruction bytes
   (five positions occur in two rows). The separate raw-byte audit reports 690

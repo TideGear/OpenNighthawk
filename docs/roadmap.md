@@ -155,7 +155,9 @@ not the recompilation:
       **Now (21 Oct):** 1,193 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **165,370 / 204,747 creditable bytes, P2 81.73%, overall 94.42%**. In the census
+      **165,370 / 204,747 creditable bytes** (the previous measure, which now scores only the naming item).
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **140,391 of the 163,862
+      bytes the routes execute (85.68%); P2 84.67%, overall 95.32%**. In the census
       alone, named code runs 159,769 of 165,265 creditable bytes (1,108 rows wholly,
       294 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator

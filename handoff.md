@@ -15,10 +15,13 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.73%, P3 100.00%, All 94.42%
+- **Scoreboard:** P1 100.00%, P2 84.67%, P3 100.00%, All 95.32%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,193 addresses matched; **165,370 / 204,747 creditable bytes** across
+- **Phase 2:** 1,193 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **140,391 /
+  163,862 route-executed bytes, 85.68%**; `docs/reference-reviewed.tsv` is empty, so no original code counts yet
+  (1,994 design-rule bytes wait for reviewed entries) and the accounted-for checklist is 0 / 42,809. Previous
+  all-code measure (scores the naming item): **165,370 / 204,747 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 432 CTests, 63 routes run as 62 sessions,

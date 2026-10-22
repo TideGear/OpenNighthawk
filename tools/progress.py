@@ -6,12 +6,16 @@
     py tools/progress.py --census FILE.tsv --named-cover DIR --route-cover DIR --data GOG_DIR
                                       # refresh the census figures: reimp_names.py output, the named
                                       # coverage func_lockstep writes with F117_NAMED_COVER, and
-                                      # interpreter --coverage captures of every route
+                                      # interpreter --coverage captures of every route; it also
+                                      # refreshes the gameplay score (census.gameplay) from the
+                                      # same byte sets and docs/reference-reviewed.tsv
 
 Each phase is a weighted list of items in docs/progress.json: weight is the
 item's share of the phase's effort, done its completion. Items marked
 "measured" are computed here from the repository - matched routines from
-src/matched/matched.c against the census, fixes from src/fixes/fixes.c
+src/matched/matched.c against the bytes the routes execute (the gameplay
+score) and against the all-code census (the previous measure, which still
+scores the naming item), fixes from src/fixes/fixes.c
 against the defects in docs/bugs.md - and the rest are estimates with their
 evidence written beside them. Overall is the phases weighted by their share
 of the whole effort. docs/progress.md explains the choices.
@@ -153,13 +157,37 @@ def refresh_classes(data, path, cover_dir, data_dir, route_dir):
     credit. Run after refresh_census; it decodes the game's programs, which the credit step does not need."""
     import census_classify
     c = data["census"]
-    scope = {}
-    _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir, scope=scope)
+    scope, detail = {}, {}
+    _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir, scope=scope, detail=detail)
     assert totals["credited"] == c["matched_bytes"], "census_classify and progress disagree on the credit"
     assert sum(totals.values()) == c["bytes"], "census_classify and progress disagree on the census size"
     c["classes"] = {k: totals[k] for k in census_classify.CLASSES}
     c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["original"] - totals["dead"]
     c["supplemental"] = scope
+    return detail
+
+
+def refresh_gameplay(data, detail, reference=None):
+    """The gameplay score (owner, 21 Oct 2026; census_classify.gameplay): executed bytes only. Run after
+    refresh_classes, from the byte sets it collected; the previous all-code measure stays in data["census"]."""
+    import census_classify as cc
+    c = data["census"]
+    rows = detail["rows"]
+    original = cc.read_original()
+    entries = cc.read_reference_reviewed(reference or cc.REFERENCE_REVIEWED)
+    cc.check_design_rule(entries, rows, original)
+    g = cc.gameplay(detail["covered"], detail["ran"], detail["scope_bytes"], cc.original_bytes(rows, original),
+                    entries, cc.modules_scope())
+    # The previous scope, counted by row occurrence (204,747 on 21 Oct), is its distinct bytes plus the bytes
+    # two census rows share; the checklist and the cross-check below use distinct bytes.
+    occurrences = c["creditable_bytes"] + c["supplemental"]["bytes"]
+    x = g["crosscheck"]
+    x["previous_scope_occurrences"] = occurrences
+    x["previous_scope_shared_row_bytes"] = occurrences - x["previous_scope_distinct"]
+    assert x["previous_scope_shared_row_bytes"] >= 0, "previous scope has fewer occurrences than distinct bytes"
+    assert x["denominator_in_previous_scope"] + g["checklist"]["bytes"] == x["previous_scope_distinct"]
+    assert (g["matched_route_run"] + g["stays_original_reviewed"] + g["remaining"]) == g["denominator"]
+    c["gameplay"] = g
 
 
 def compute(data):
@@ -171,6 +199,9 @@ def compute(data):
                                  (c.get("creditable_bytes", c["bytes"]) + supplemental.get("bytes", 0))),
         "fixes_share": share,
     }
+    if "gameplay" in c:
+        g = c["gameplay"]
+        measures["gameplay_score"] = (g["matched_route_run"] + g["stays_original_reviewed"]) / g["denominator"]
     out = {}
     rows = []
     for phase, items in data["phases"].items():
@@ -203,7 +234,7 @@ def main():
         if not (a.named_cover and a.route_cover and a.data):
             ap.error("--census needs --named-cover, --route-cover and --data: credit is by the bytes named code runs")
         refresh_census(data, a.census, a.named_cover, a.data, a.route_cover)
-        refresh_classes(data, a.census, a.named_cover, a.data, a.route_cover)
+        refresh_gameplay(data, refresh_classes(data, a.census, a.named_cover, a.data, a.route_cover))
         with open(DATA, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
@@ -214,14 +245,30 @@ def main():
     for phase, item, weight, done, kind in rows:
         print("%-3s %5.1f%% of weight %5.1f  %-9s %s" % (phase, 100 * done, weight, kind, item))
     c = data["census"]
+    if "gameplay" in c:
+        g = c["gameplay"]
+        print("gameplay score (P2 'Matched functions replacing translations'): %.2f%% of %d executed bytes = %d matched "
+              "bytes a route runs + %d reviewed design-rule original bytes"
+              % (100.0 * (g["matched_route_run"] + g["stays_original_reviewed"]) / g["denominator"], g["denominator"],
+                 g["matched_route_run"], g["stays_original_reviewed"]))
+        print("  fixture-only matched bytes (no route runs them; not counted): %d" % g["fixture_only"])
+        print("  remaining executed, unmatched bytes: %d (of them %d design-rule original awaiting a reviewed entry); by module: %s"
+              % (g["remaining"], g["original_awaiting_review"],
+                 ", ".join("%s %d" % (m, v["remaining"]) for m, v in g["by_module"].items() if v["remaining"])))
+        k = g["checklist"]
+        print("  accounted for: %d of %d bytes of the previous all-code scope outside the denominator have a reviewed "
+              "reference entry (%.2f%%; target 100%%), %d without (docs/reference-reviewed.tsv, %d entries)"
+              % (k["with_reviewed_entry"], k["bytes"], 100.0 * k["with_reviewed_entry"] / max(k["bytes"], 1),
+                 k["without_reviewed_entry"], g["reviewed_entries"]))
     print("census: %d of %d creditable bytes (%d in all; data, original and certified-dead code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
           % (c["matched_bytes"], c.get("creditable_bytes", c["bytes"]), c["bytes"], c["matched_functions"], c["functions"],
              c.get("partial_functions", 0), fixed, catalogued, closed))
     if "supplemental" in c:
         s = c["supplemental"]
-        print("expanded game-code scope: %d of %d creditable bytes; adds %d bytes outside census (%d named, %d reviewed static); unreviewed static discoveries remain outside this measure"
-              % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"], s["bytes"], s["credited"],
-                 s.get("reviewed_static_bytes", 0)))
+        print("previous measure (all-code scope; P2 'Routines named and explained'): %d of %d creditable bytes (%.2f%%); adds %d bytes outside census (%d named, %d reviewed static); unreviewed static discoveries remain outside this measure"
+              % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"],
+                 100.0 * (c["matched_bytes"] + s["credited"]) / (c["creditable_bytes"] + s["bytes"]), s["bytes"],
+                 s["credited"], s.get("reviewed_static_bytes", 0)))
     print(title(pct))
 
 

@@ -101,5 +101,45 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual((c["matched_bytes"], c["matched_functions"], c["partial_functions"]), (4, 1, 0))
 
 
+class GameplayScoreTests(unittest.TestCase):
+    PHASES = {"P2": [{"item": "named", "weight": 1, "done": "census_matched_bytes", "kind": "measured"},
+                     {"item": "matched", "weight": 3, "done": "gameplay_score", "kind": "measured"}]}
+
+    def test_the_matched_item_uses_the_gameplay_score_and_the_naming_item_the_previous_measure(self):
+        data = {"census": {"matched_bytes": 50, "bytes": 200, "creditable_bytes": 100,
+                           "supplemental": {"credited": 10, "bytes": 50},
+                           "gameplay": {"matched_route_run": 70, "stays_original_reviewed": 10, "denominator": 100}},
+                "phases": self.PHASES, "phase_weights": {"P2": 1}}
+        out, rows, _ = progress.compute(data)
+        self.assertEqual([round(r[3], 4) for r in rows], [0.4, 0.8])
+        self.assertAlmostEqual(out["P2"], 100 * (0.4 + 3 * 0.8) / 4)
+        self.assertEqual(progress.title(out), "(P2 %.2f%%, All %.2f%%)" % (out["P2"], out["All"]))
+
+    def refresh(self, reference_text, ran, covered, scope_bytes, occurrences):
+        import census_classify as cc
+        data = {"census": {"creditable_bytes": occurrences, "supplemental": {"bytes": 0}}}
+        detail = dict(rows=[("VGAME", 0x00010, 224), ("VGAME", 0x01C9B, 102)], covered=covered, ran=ran,
+                      scope_bytes=scope_bytes)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "reference.tsv"
+            path.write_text("# header\n" + reference_text, encoding="utf-8")
+            with patch.object(cc, "read_original", return_value={("VGAME", 0x01C9B)}):
+                progress.refresh_gameplay(data, detail, str(path))
+        return data["census"]["gameplay"]
+
+    def test_refresh_reviews_the_reference_table_and_cross_checks_the_pieces(self):
+        timer = set(range(0x01C9B, 0x01C9B + 97))
+        ran = {"VGAME": timer | {0x100, 0x101}, "LZEXE091.STUB": {0}}
+        g = self.refresh("", ran, {"VGAME": {0x100, 0x200}}, {"VGAME": {0x100: "credited", 0x200: "credited"}}, 3)
+        self.assertEqual((g["denominator"], g["matched_route_run"], g["stays_original_reviewed"], g["fixture_only"]),
+                         (99, 1, 0, 1))
+        self.assertEqual((g["original_awaiting_review"], g["crosscheck"]["previous_scope_shared_row_bytes"]), (97, 1))
+        g = self.refresh("VGAME\t1C9B\t102\ttimer_isr\tthe timer interrupt\tstays-original\tSTI-first handler\tchecked\n",
+                         ran, {"VGAME": {0x100}}, {}, 0)
+        self.assertEqual((g["stays_original_reviewed"], g["original_awaiting_review"], g["remaining"]), (97, 0, 1))
+        with self.assertRaises(ValueError):    # a declined row (not in census-original.tsv) cannot stay original
+            self.refresh("VGAME\t0010\t4\tmain\tmain\tstays-original\tC start-up\tchecked\n", ran, {}, {}, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
