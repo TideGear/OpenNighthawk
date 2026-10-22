@@ -84,6 +84,12 @@ would be a separate decision. The tooling item (weight 5) is unchanged.
 After batch an (21 Oct, `5feb5f5`): the gameplay score is **140,679 / 163,862 = 85.85%** (P2 84.83%, All 95.37%); 25,042 fixture-only
 matched bytes; 23,183 remaining executed bytes; previous measure 165,786 / 204,875 (80.92%).
 
+First reviewed entries (21 Oct): 38 second-read stays-original entries (1,826 bytes) bring the gameplay score to
+**(140,679 + 1,826) / 163,862 = 86.97%** (P2 85.48%, All 95.57%). Two PLAYER routines listed as original did not meet a design rule
+(`02853`, an interrupt handler whose STI is its 13th instruction; `028C1`, a retrace re-sync) and left `docs/census-original.tsv`, so
+the previous measure's denominator rose to 205,035; START `08F94` (the divide-error entry inside the C start-up row) is remaining work.
+`check_design_rule` now requires every stays-original entry, inside or outside the census, to name its design rule.
+
 Also at this refresh: 24,914 fixture-only matched bytes (not counted); 23,471 remaining executed bytes (ASOUND.117
 5,373, MGRAPHIC 3,159, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, START 1,325, ISOUND.117 1,200, VGAME
 1,172, ISOUND.LOG 1,167, F117.COM 837, END 551, PLAYER 511, MPS_LOGO 497, SETUP 418, DSWAP 276, MISC 29). Of them,

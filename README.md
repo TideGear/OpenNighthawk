@@ -66,8 +66,9 @@ quiz. It is off by default and is enabled only when named explicitly;
   emulated BIOS's own stubs are.
 - **Named and matched:** 1,207 routine addresses have explained C equivalents
   checked against their original bodies. They run 140,679 of the 163,862
-  instruction bytes the scripted routes execute (85.85%, the gameplay score), and
-  cover 165,786 of 204,875 creditable bytes across all 17 game code files. The historical census has 1,108
+  instruction bytes the scripted routes execute, plus 1,826 bytes of reviewed code that stays original
+  by design (86.97%, the gameplay score), and
+  cover 165,786 of 205,035 creditable bytes across all 17 game code files. The historical census has 1,108
   rows wholly covered and 294 in part; executed code outside its rows now
   counts too, along with reviewed static code. Static discoveries not yet
   reviewed remain outside the score ([how progress is measured](docs/progress.md)).

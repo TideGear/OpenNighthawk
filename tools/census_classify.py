@@ -430,7 +430,9 @@ def check_design_rule(entries, rows, original):
 
     Inside the census, every byte of the entry must lie in a docs/census-original.tsv row: a declined routine
     (VGAME main, MPS_LOGO 1ADC/1C82, START 8427, END 4393, END 57B0, ...) is remaining work, not original code.
-    Outside every census row, the entry must name its design rule at the start of `why not matched`."""
+    Every entry, inside or outside the census, must name its design rule at the start of `why not matched`: a
+    census-original.tsv row can be wider than the design-rule routine (a C start-up row also holds the run time's
+    divide-error entry), so the row alone is not evidence (second reader, 21 Oct 2026)."""
     inside = collections.defaultdict(set)
     for module, linear, size in rows:
         inside[module].update(range(linear, linear + size))
@@ -443,8 +445,8 @@ def check_design_rule(entries, rows, original):
         if census - orig[e["module"]]:
             raise ValueError("stays-original entry %s %05X covers census bytes outside docs/census-original.tsv"
                              % (e["module"], e["start"]))
-        if span - census and not e["why"].lower().startswith(tuple(r.lower() for r in DESIGN_RULES)):
-            raise ValueError("stays-original entry %s %05X outside the census must start `why not matched` with a "
+        if not e["why"].lower().startswith(tuple(r.lower() for r in DESIGN_RULES)):
+            raise ValueError("stays-original entry %s %05X must start `why not matched` with a "
                              "design rule (%s)" % (e["module"], e["start"], "; ".join(DESIGN_RULES)))
 
 

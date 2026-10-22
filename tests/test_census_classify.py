@@ -339,8 +339,12 @@ class ReferenceTableTests(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
             return cc.read_reference_reviewed(str(path), modules={"T", "VGAME"})
 
-    def test_the_committed_table_parses_and_starts_empty(self):
-        self.assertEqual(cc.read_reference_reviewed(), [])
+    def test_the_committed_table_parses_and_every_original_entry_names_its_design_rule(self):
+        entries = cc.read_reference_reviewed()
+        for e in entries:
+            if e["status"] == "stays-original":
+                self.assertTrue(e["why"].lower().startswith(tuple(r.lower() for r in cc.DESIGN_RULES)), (e["module"], e["start"]))
+            self.assertTrue(e["note"].strip(), (e["module"], e["start"]))
 
     def test_an_entry_parses(self):
         [e] = self.read(HEADER + entry("VGAME.EXE", 0x1138C, 33, "stays-original"))
@@ -407,6 +411,12 @@ class GameplayTests(unittest.TestCase):
             self.score(ran={"T": {0x80}}, entries=[self.stays(0x80, 2, why="hard to prove")])
         g = self.score(ran={"T": {0x80, 0x81}}, entries=[self.stays(0x80, 2, why="STI-first handler: driver timer")])
         self.assertEqual(g["stays_original_reviewed"], 2)
+
+    def test_original_code_inside_a_census_original_row_must_also_name_its_design_rule(self):
+        # a census-original row can be wider than its design-rule routine (a C start-up row also holds the run
+        # time's divide-error entry): the row alone is not evidence
+        with self.assertRaisesRegex(ValueError, "design rule"):
+            self.score(ran={"T": {0x12}}, entries=[self.stays(0x12, 1, why="divide-error entry inside the start-up row")])
 
     def test_rejected_route_records_are_not_in_the_denominator(self):
         mod = Module("T.EXE", 0x1234, "exe", bytes.fromhex("b83412c3909090"), set())
