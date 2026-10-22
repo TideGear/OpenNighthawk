@@ -17662,7 +17662,7 @@ static int vgame_target_damage(machine_t *m)
             c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
             cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DC)));
             c->r[R_SI] = c->r[R_BX];
-            c->icount += 5;
+            c->icount += 6;
             NEAR_THEN(0xC436, 0x74EE, 0, 10);
             c->r[R_BX] = cpu_pop16(c);
             SETFRAME(-0xA, c->r[R_AX]);
@@ -17676,9 +17676,10 @@ static int vgame_target_damage(machine_t *m)
             c->r[R_DI] = (uint16_t)alu_op(c, 4, c->r[R_DI], 0xFF, 1);
             set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_DI])));
             alu_logic(c, get_r8(c, R_AL) & 0x20, 0);
-            c->icount += 10;                                    /* through the test and its branch */
+            c->icount += 13;                                    /* the pop through the test and its branch */
             if (!(c->flags & F_ZF)) {
                 c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xB2DC));
+                c->icount += 2;                                 /* the load and the jump to the store */
             } else {
                 if (!room(c, 15)) { c->ip = 0x7513; return 1; }
                 cpu_push16(c, FRAME(4));
@@ -17698,7 +17699,7 @@ static int vgame_target_damage(machine_t *m)
             c->r[R_BX] = FRAME(4);
             c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
             ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2DC), c->r[R_AX]);
-            c->icount += 5;
+            c->icount += 6;      /* the frame store through the record store */
         }
         if (!room(c, 10)) { c->ip = 0x753B; return 1; }
         alu_sub(c, ds_get(c, 0x9F40), 0, 1, 0);
@@ -84476,7 +84477,243 @@ done:
 #undef XB
 }
 
+/* Clip the sprite's DI/DX offsets against the rectangle in SS:BP.
+ * Negative offsets set leading skips; edges beyond the rectangle set trailing
+ * skips. Reject with carry set, or store the visible origin and dimensions
+ * with carry clear. Keep the original signed tests and 16-bit arithmetic;
+ * skip words not assigned by a branch retain their incoming values. */
+static int mgraphic_clip_sprite_bounds(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount+=(n); } while(0)
+#define CW(at) seg_read16(c,c->seg[S_CS],(at))
+#define CP(at,v) seg_write16(c,c->seg[S_CS],(at),(v))
+    if(!room(c,2)) return 0;
+    XB(2,0x0BC0);
+    c->r[R_DI]=(uint16_t)alu_op(c,1,c->r[R_DI],c->r[R_DI],1);
+    if(!x86_cond(c,9)) {
+        XB(4,0x0BC4);
+        c->r[R_AX]=c->r[R_DI];
+        c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);
+        (void)alu_op(c,7,c->r[R_AX],CW(0x0848),1);
+        if(x86_cond(c,3)) goto reject;
+        XB(1,0x0BCF); CP(0x0856,c->r[R_AX]);
+    }
+    XB(6,0x0BD3);
+    c->r[R_AX]=c->r[R_DI];
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],CW(0x0848),1);
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    c->r[R_BX]=bp_get(c,0x10);
+    c->r[R_BX]=(uint16_t)alu_op(c,5,c->r[R_BX],bp_get(c,0x0E),1);
+    if(x86_cond(c,8)) goto reject;
+    XB(2,0x0BE3);
+    (void)alu_op(c,7,c->r[R_DI],c->r[R_BX],1);
+    if(x86_cond(c,15)) goto reject;
+    XB(2,0x0BE7);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_BX],1);
+    if(!x86_cond(c,14)) { XB(1,0x0BEB); CP(0x085A,c->r[R_AX]); }
+    XB(2,0x0BEF);
+    c->r[R_DX]=(uint16_t)alu_op(c,1,c->r[R_DX],c->r[R_DX],1);
+    if(!x86_cond(c,9)) {
+        XB(4,0x0BF3);
+        c->r[R_AX]=c->r[R_DX];
+        c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);
+        (void)alu_op(c,7,c->r[R_AX],CW(0x0846),1);
+        if(x86_cond(c,3)) goto reject;
+        XB(1,0x0BFE); CP(0x0858,c->r[R_AX]);
+    }
+    XB(6,0x0C02);
+    c->r[R_AX]=c->r[R_DX];
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],CW(0x0846),1);
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    c->r[R_BX]=bp_get(c,0x14);
+    c->r[R_BX]=(uint16_t)alu_op(c,5,c->r[R_BX],bp_get(c,0x12),1);
+    if(x86_cond(c,8)) goto reject;
+    XB(2,0x0C12);
+    (void)alu_op(c,7,c->r[R_DX],c->r[R_BX],1);
+    if(x86_cond(c,15)) goto reject;
+    XB(2,0x0C16);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_BX],1);
+    if(!x86_cond(c,14)) { XB(2,0x0C1A); CP(0x085C,c->r[R_AX]); }
+    XB(16,0x0C23);
+    c->r[R_AX]=CW(0x0858);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],c->r[R_DX],1); CP(0x084E,c->r[R_AX]);
+    c->r[R_AX]=CW(0x0856);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],c->r[R_DI],1); CP(0x0850,c->r[R_AX]);
+    c->r[R_AX]=CW(0x0846);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],CW(0x0858),1);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],CW(0x085C),1); CP(0x0852,c->r[R_AX]);
+    c->r[R_AX]=CW(0x0848);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],CW(0x0856),1);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],CW(0x085A),1); CP(0x0854,c->r[R_AX]);
+    c->flags=(uint16_t)(c->flags&~F_CF); near_ret(c); return 1;
+reject:
+    XB(2,0x0C21);
+    c->flags=(uint16_t)(c->flags|F_CF); near_ret(c); return 1;
+#undef CP
+#undef CW
+#undef XB
+}
+
+/* Draw a font string from SS:SI using the prepared font state in DS.
+ * Bytes with bit 7 set change the pen; bytes outside the font range are
+ * skipped. Fixed or per-glyph widths are reduced by the left clip and,
+ * on the last glyph, the right clip. Transparent mode writes set bits only;
+ * mode 1 writes pen or background for every pixel. Keep the original byte
+ * loops, including their zero-count wrap and direction-flag behavior.
+ * BP initially names the caller's parameter block, then holds the glyph
+ * row stride until the shared return below the entry restores it. */
+static int mgraphic_draw_font_string(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount+=(n); } while(0)
+#define RUN(call) do { uint64_t old_=m->run_until; m->run_until=c->stop_at; int ok_=(call); m->run_until=old_; if(!ok_) return 1; } while(0)
+    if(!room(c,2)) return 0;
+    XB(2,0x061A);
+    set_r8(c,R_AH,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+4))));
+    ds_put8(c,0x1962,get_r8(c,R_AH));
+    SM4_NEED(1,0x0621); RUN(guest_call_far(m,0x0621,0x0626));
+    XB(13,0x0626);
+    set_r8(c,R_AL,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+6))));
+    ds_put8(c,0x1963,get_r8(c,R_AL));
+    c->r[R_AX]=bp_get(c,2); ds_put8(c,0x1964,get_r8(c,R_AL));
+    x86_push_reg(c,R_BP); c->r[R_BP]=ds_get(c,0x17FC);
+    c->r[R_BX]=c->seg[S_ES];
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    c->seg[S_ES]=seg_read16(c,c->seg[S_CS],(uint16_t)(c->r[R_BX]+0x0787));
+    c->r[R_DI]=ds_get(c,0x1800);
+    c->r[R_DI]=(uint16_t)x86_shift(c,4,c->r[R_DI],1,1);
+    c->r[R_DI]=seg_read16(c,c->seg[S_CS],(uint16_t)(c->r[R_DI]+4));
+    c->r[R_DI]=(uint16_t)alu_op(c,0,c->r[R_DI],ds_get(c,0x17FE),1);
+character:
+    XB(4,0x064F);
+    c->r[R_AX]=seg_read16(c,c->seg[S_SS],c->r[R_SI]);
+    c->r[R_SI]=(uint16_t)alu_inc(c,c->r[R_SI],1);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,1,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    if(x86_cond(c,4)) goto done;
+    XB(1,0x0657);
+    if(x86_cond(c,8)) goto colour;
+    XB(2,0x0659);
+    (void)alu_op(c,7,get_r8(c,R_AL),ds_get8(c,0x1806),0);
+    if(x86_cond(c,7)) goto character;
+    XB(2,0x065F);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),ds_get8(c,0x1805),0));
+    if(x86_cond(c,2)) goto character;
+    XB(7,0x0665);
+    x86_push_reg(c,R_SI); x86_push_reg(c,R_DI); c->r[R_SI]=c->r[R_AX];
+    c->r[R_SI]=(uint16_t)alu_op(c,4,c->r[R_SI],0x00FF,1);
+    set_r8(c,R_CL,ds_get8(c,0x1802));
+    set_r8(c,R_CL,(uint8_t)alu_op(c,1,get_r8(c,R_CL),get_r8(c,R_CL),0));
+    if(x86_cond(c,5)) goto width_ready;
+    XB(3,0x0675);
+    c->r[R_BX]=ds_get(c,0x17FA);
+    set_r8(c,R_CL,mem_read8(c,phys(c->seg[S_DS],(uint16_t)(c->r[R_BX]+c->r[R_SI]))));
+    set_r8(c,R_CL,(uint8_t)alu_op(c,0,get_r8(c,R_CL),ds_get8(c,0x1803),0));
+width_ready:
+    XB(2,0x067F);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,1,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    if(!x86_cond(c,5)) { XB(1,0x0683); set_r8(c,R_CL,(uint8_t)alu_op(c,5,get_r8(c,R_CL),ds_get8(c,0x1808),0)); }
+    XB(11,0x0687);
+    set_r8(c,R_CL,(uint8_t)alu_op(c,5,get_r8(c,R_CL),ds_get8(c,0x1807),0));
+    ds_put8(c,0x1965,get_r8(c,R_CL));
+    set_r8(c,R_CL,ds_get8(c,0x1804));
+    c->r[R_SI]=(uint16_t)x86_shift(c,4,c->r[R_SI],get_r8(c,R_CL),1);
+    c->r[R_SI]=(uint16_t)alu_op(c,0,c->r[R_SI],ds_get(c,0x17F8),1);
+    set_r8(c,R_CL,ds_get8(c,0x1807)); set_r8(c,R_CH,ds_get8(c,0x1809));
+    set_r8(c,R_DL,ds_get8(c,0x1962)); set_r8(c,R_DH,ds_get8(c,0x1963));
+    (void)alu_op(c,7,ds_get8(c,0x1964),1,0);
+    if(x86_cond(c,4)) goto opaque_row;
+    XB(3,0x06B0);
+    set_r8(c,R_AL,ds_get8(c,0x1965));
+    set_r8(c,R_AL,(uint8_t)alu_op(c,1,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    if(x86_cond(c,4)) goto advance;
+    XB(2,0x06B7);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,1,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    if(x86_cond(c,4)) goto transparent_row;
+    XB(2,0x06BB);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),ds_get8(c,0x1803),0));
+    if(x86_cond(c,4)) goto advance;
+transparent_row:
+    XB(5,0x06C1);
+    x86_push_reg(c,R_DI); set_r8(c,R_AH,get_r8(c,R_AL));
+    c->r[R_BX]=ds_get(c,c->r[R_SI]);
+    { uint8_t lo_=get_r8(c,R_BL); set_r8(c,R_BL,get_r8(c,R_BH)); set_r8(c,R_BH,lo_); }
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],get_r8(c,R_CL),1);
+transparent_bit:
+    XB(2,0x06CA);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    if(!x86_cond(c,3)) { XB(1,0x06CE); mem_write8(c,phys(c->seg[S_ES],c->r[R_DI]),get_r8(c,R_DL)); }
+    XB(3,0x06D1);
+    c->r[R_DI]=(uint16_t)alu_inc(c,c->r[R_DI],1);
+    set_r8(c,R_AH,(uint8_t)alu_dec(c,get_r8(c,R_AH),0));
+    if(x86_cond(c,5)) goto transparent_bit;
+    XB(5,0x06D6);
+    c->r[R_DI]=cpu_pop16(c);
+    c->r[R_DI]=(uint16_t)alu_op(c,0,c->r[R_DI],0x0140,1);
+    c->r[R_SI]=(uint16_t)alu_op(c,0,c->r[R_SI],c->r[R_BP],1);
+    set_r8(c,R_CH,(uint8_t)alu_dec(c,get_r8(c,R_CH),0));
+    if(x86_cond(c,5)) goto transparent_row;
+advance:
+    XB(8,0x06E1);
+    c->r[R_DI]=cpu_pop16(c); c->r[R_SI]=cpu_pop16(c);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    ds_put8(c,0x1807,get_r8(c,R_AH)); set_r8(c,R_AL,ds_get8(c,0x1965));
+    c->r[R_DI]=(uint16_t)alu_op(c,0,c->r[R_DI],c->r[R_AX],1);
+    ds_put(c,0x17FE,(uint16_t)alu_op(c,0,ds_get(c,0x17FE),c->r[R_AX],1));
+    goto character;
+opaque_row:
+    XB(5,0x06F5);
+    x86_push_reg(c,R_DI); set_r8(c,R_AH,ds_get8(c,0x1965));
+    c->r[R_BX]=ds_get(c,c->r[R_SI]);
+    { uint8_t lo_=get_r8(c,R_BL); set_r8(c,R_BL,get_r8(c,R_BH)); set_r8(c,R_BH,lo_); }
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],get_r8(c,R_CL),1);
+opaque_bit:
+    XB(3,0x0700);
+    set_r8(c,R_AL,get_r8(c,R_DL));
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    if(!x86_cond(c,2)) { XB(1,0x0706); set_r8(c,R_AL,get_r8(c,R_DH)); }
+    XB(3,0x0708);
+    x86_stos(c,0); set_r8(c,R_AH,(uint8_t)alu_dec(c,get_r8(c,R_AH),0));
+    if(x86_cond(c,5)) goto opaque_bit;
+    XB(5,0x070D);
+    c->r[R_DI]=cpu_pop16(c);
+    c->r[R_DI]=(uint16_t)alu_op(c,0,c->r[R_DI],0x0140,1);
+    c->r[R_SI]=(uint16_t)alu_op(c,0,c->r[R_SI],c->r[R_BP],1);
+    set_r8(c,R_CH,(uint8_t)alu_dec(c,get_r8(c,R_CH),0));
+    if(x86_cond(c,5)) goto opaque_row;
+    XB(1,0x0718); goto advance;
+colour:
+    XB(3,0x060A);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,4,get_r8(c,R_AL),0x7F,0));
+    ds_put8(c,0x1962,get_r8(c,R_AL)); goto character;
+done:
+    XB(4,0x0612);
+    c->r[R_BP]=cpu_pop16(c); set_r8(c,R_AL,ds_get8(c,0x1962));
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+4)),get_r8(c,R_AL));
+    near_ret(c); return 1;
+#undef RUN
+#undef XB
+}
+
+/* The mode-zero entry to the span fill: SUB DX,DX, then continue at
+ * the existing 0F3D entry. Only this two-byte prefix belongs to this body;
+ * its continuation keeps its existing proof and earns no duplicate credit. */
+static int mgraphic_fill_spans_mode_zero(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount+=(n); } while(0)
+    if(!room(c,1)) return 0;
+    XB(1,0x0F3B);
+    c->r[R_DX]=(uint16_t)alu_op(c,5,c->r[R_DX],c->r[R_DX],1);
+    c->ip=0x0F3D;
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0F3B, mgraphic_fill_spans_mode_zero, "far span-fill prefix: clear DX and its arithmetic flags, then hand control to the existing 0F3D span fill", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x061A, mgraphic_draw_font_string, "near: draw the SS:SI font string to the selected page, with embedded pen colours, variable glyph widths, clipping and opaque or transparent pixels", 1 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0BC0, mgraphic_clip_sprite_bounds, "near: clip sprite offsets DI and DX against the BP rectangle; store visible origin, size and skips in live CS words; carry marks rejection", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A6A, mgraphic_bitmap_encode_row, "far bitmap row encoding with leading and trailing zero trimming", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A4D, mgraphic_bitmap_buffer_close, "far bitmap buffer close and paragraph cursor advance", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A02, mgraphic_bitmap_buffer_open, "far bitmap arena buffer open and dimension header", 2 },

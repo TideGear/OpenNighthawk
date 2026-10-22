@@ -33,11 +33,19 @@ verification) is not an optimisation; it needs the owner's approval.
   positive comparison counts; `finalize.py` validates old coverage against the
   previous batch's own registration table and every new byte against the
   dossiers. The census refresh afterwards takes seconds.
-- **Extra seed sweep before a matched batch.** Batch as checked the whole table at 4,000 states per
-  routine, eight shards, using the commit-keyed seed plus `0x27182818` and `0x10222026` before the full gate.
-  All 1,248 routines passed; the three runs took 1429 s in total.
-  New routines also had six extra private seeds beyond the kit's five and all planted defects caught.
-  Evidence: `D:/f117-gate/as-precheck-verdict.json`; the three new optimized CTests took 1.82 s.
+- **Extra seed sweep before a matched batch.** Batch at checked all 1,251 entries at 4,000 states,
+  eight shards, using the commit-keyed seed, `0x27182818` and `0x20261022`; 1090 s in total.
+  The commit-keyed seed first failed on VGAME `73C8` (a latent clock undercount in its target-zero path, fixed in
+  batch at: the body now charges 6, 13 and 6 instructions where it charged 5, 10 and 6); 16 seeds at 20,000 states
+  then compared equal. Of the 1,248 old per-routine reports, 1,247 were unchanged at the common seed (`73C8` differs). New entries also passed six extra
+  private seeds beyond the kit's five, with every planted defect caught. Evidence:
+  `D:/f117-gate/at-precheck-verdict.json`; the three new optimized CTests took 2.80 s.
+- **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
+  from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
+  prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full
+  final state; only two bytes earn credit. Below-entry returns still need an explicit COV origin. Default
+  kit output is byte-identical; invalid zero, overflow and out-of-range bounds are rejected. Gate acceptance
+  and credit audits remain unchanged.
 - **Batch acceptance tooling (`D:/f117-gate/accept-kit/`, 18 October).**
   `new_batch.py LETTER PREV BASE_COMMIT DIR...` creates `p2-batch-<letter>-accept/`
   from generic scripts (no hand-editing of routine names, counts or hashes: tests, routine totals,

@@ -760,6 +760,9 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MGRAPHIC.EXE", 0x0F3B, 0x0F3B, 0x01DD },
+    { "MGRAPHIC.EXE", 0x061A, 0x060A, 0x0110 },
+    { "MGRAPHIC.EXE", 0x0BC0, 0x0BC0, 0x009D },
     { "MGRAPHIC.EXE", 0x0A6A, 0x0A6A, 0x00A2 },
     { "MGRAPHIC.EXE", 0x0A4D, 0x0A4D, 0x001D },
     { "MGRAPHIC.EXE", 0x0A02, 0x0A02, 0x004B },
@@ -1699,6 +1702,9 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "MGRAPHIC.EXE", 0x019C, 0x0A02, 0x004B, 28, 28, "far bitmap arena buffer open and dimension header" },
     { "MGRAPHIC.EXE", 0x019C, 0x0A4D, 0x001D, 10, 10, "far bitmap buffer close and paragraph cursor advance" },
     { "MGRAPHIC.EXE", 0x019C, 0x0A6A, 0x00A2, 56, 56, "far bitmap row encoding with leading and trailing zero trimming" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0BC0, 0x009D, 55, 55, "near: clip sprite offsets DI and DX against the BP rectangle; store visible origin, size and skips in live CS words; carry marks rejection" },
+    { "MGRAPHIC.EXE", 0x019C, 0x061A, 0x0110, 105, 105, "near: draw the SS:SI font string to the selected page, with embedded pen colours, variable glyph widths, clipping and opaque or transparent pixels" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0F3B, 0x0002, 1, 1, "far span-fill prefix: clear DX and its arithmetic flags, then hand control to the existing 0F3D span fill", 0x0F3D, 1 },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2647,6 +2653,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0 && !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x27E3) g_cov_ip = 0x27BA;   /* the shared tail below the arm's entry */
         if (g_cov >= 0 && !strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x0599) g_cov_ip = 0x057A;   /* coverage from the plot tail below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x0C95) g_cov_ip = 0x0C92;   /* coverage from the exit jump just below the entry */
+        if (g_cov >= 0 && !strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x061A) g_cov_ip = 0x060A;   /* embedded colour arm and near return below the entry */
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
@@ -37397,6 +37404,185 @@ int main(int argc, char **argv)
 
 #undef XPICK
 #undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0BC0) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n) (XRAND()%(n))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                seg[S_DS]=XPICK(2)?seg[S_SS]:0x7000;
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x1000));
+                r[R_BP]=(uint16_t)(0x1000+XPICK(0x1000));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                const uint16_t height=(uint16_t)(8+XPICK(120)),width=(uint16_t)(8+XPICK(240));
+                uint16_t di=(uint16_t)XPICK(160),dx=(uint16_t)XPICK(320),hy=(uint16_t)(height+12),wx=(uint16_t)(width+12);
+                switch(s%12) {
+                case 0:di=(uint16_t)-height;break;
+                case 1:di=(uint16_t)(-height-1);break;
+                case 2:di=(uint16_t)(1-height);dx=0;break;
+                case 3:di=0;hy=(uint16_t)-1;break;
+                case 4:di=(uint16_t)(hy+1);break;
+                case 5:di=hy;dx=0;break;
+                case 6:di=0;dx=(uint16_t)-width;break;
+                case 7:di=0;dx=(uint16_t)(1-width);break;
+                case 8:di=0;dx=0;wx=(uint16_t)-1;break;
+                case 9:di=0;dx=(uint16_t)(wx+1);break;
+                case 10:di=0;dx=wx;break;
+                default:di=(uint16_t)XRAND();dx=(uint16_t)XRAND();hy=(uint16_t)XRAND();wx=(uint16_t)XRAND();break;
+                }
+                r[R_DI]=di;r[R_DX]=dx;
+                XW16(cs,0x0846,width);XW16(cs,0x0848,height);
+                for(unsigned at=0x084E;at<=0x085C;at+=2)XW16(cs,at,(uint16_t)XRAND());
+                const uint16_t y0=(uint16_t)XRAND(),x0=(uint16_t)XRAND();
+                XW16(seg[S_SS],r[R_BP]+0x0E,y0);XW16(seg[S_SS],r[R_BP]+0x10,(uint16_t)(y0+hy));
+                XW16(seg[S_SS],r[R_BP]+0x12,x0);XW16(seg[S_SS],r[R_BP]+0x14,(uint16_t)(x0+wx));
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x061A) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n) (XRAND()%(n))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                seg[S_DS]=XPICK(2)?seg[S_SS]:0x3000;
+                flags=(uint16_t)(XPICK(6)?flags&~F_DF:flags|F_DF);
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x800));
+                r[R_BP]=(uint16_t)(0x2000+XPICK(0x100));
+                r[R_SI]=(uint16_t)(0x3000+XPICK(0x100));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t v=XRAND();small[j]=v;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);}
+                const unsigned mode=(s/8)%3;
+                XW16(seg[S_SS],r[R_BP]+2,mode==0?1:mode==1?0:2);
+                XW16(seg[S_SS],r[R_BP]+4,XRAND()); XW16(seg[S_SS],r[R_BP]+6,XRAND());
+                static const uint16_t page_segments[]={0x7000,0x8000,0x9000,0xA000};
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,page_segments[XPICK(4)]);
+                seg[S_ES]=(uint16_t)XPICK(5);
+                const uint16_t row=(uint16_t)XPICK(8),x=(uint16_t)XPICK(320);
+                XW16(cs,(uint16_t)(row*2+4),(uint16_t)XRAND());
+                XW16(seg[S_DS],0x1800,row); XW16(seg[S_DS],0x17FE,x);
+                XW16(seg[S_DS],0x17F8,0x4000);XW16(seg[S_DS],0x17FA,0x2800);
+                XW16(seg[S_DS],0x17FC,(uint16_t)(2+XPICK(7)));
+                uint8_t width=(uint8_t)(4+XPICK(13)),left=(uint8_t)XPICK(3),right=(uint8_t)XPICK(3),spacing=(uint8_t)XPICK(3),height=(uint8_t)(1+XPICK(4));
+                if(s%32==4){width=1;left=1;right=0;spacing=0;height=1;}
+                if(s%32==5){width=1;left=0;right=0;spacing=1;height=1;}
+                if(s%64==7){width=1;left=0;right=0;spacing=0;height=0;}
+                XW8(seg[S_DS],0x1802,(s/4)%2?width:0);
+                XW8(seg[S_DS],0x1803,spacing);XW8(seg[S_DS],0x1804,XPICK(4));
+                XW8(seg[S_DS],0x1805,32);XW8(seg[S_DS],0x1806,35);
+                XW8(seg[S_DS],0x1807,left);XW8(seg[S_DS],0x1808,right);XW8(seg[S_DS],0x1809,height);
+                for(unsigned j=0;j<4;j++)XW8(seg[S_DS],0x2800+j,(uint8_t)(width-spacing));
+                for(unsigned j=0;j<0x900;j++)XW8(seg[S_DS],0x4000+j,XRAND());
+                static const uint8_t strings[8][7]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0}};
+                for(unsigned j=0;j<7;j++)XW8(seg[S_SS],(uint16_t)(r[R_SI]+j),strings[s%8][j]);
+                /* Relocated far-call operands use segment aliases of the real,
+                 * straight-line 0561 setter, and its loaded data-segment word
+                 * is independently patched. No call target is hard-coded. */
+                static const uint16_t deltas[]={0,1,0x10,0x20};
+                const uint16_t delta=deltas[XPICK(4)];
+                XW16(cs,0x0622,(uint16_t)(0x0561-16*delta));XW16(cs,0x0624,(uint16_t)(cs+delta));
+                static const uint16_t setter_ds[]={0x3000,0x7000,0x8000,0x9000};
+                XW16(cs,0x0563,setter_ds[XPICK(4)]);
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0F3B) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+#define XR8(s_,o_) (g_pristine[phys((s_),(uint16_t)(o_))])
+#define XR16(s_,o_) ((uint16_t)(XR8((s_),(o_))|(XR8((s_),(uint16_t)((o_)+1))<<8)))
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(!XPICK(6)) flags=(uint16_t)(flags|F_DF);
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_BP]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();
+                r[R_DI]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                /* The screen segment CS:[0194] and the page offset CS:[0196] are run-time words of the library:
+                 * the segment is any whose 64K neither holds the stack nor the image; the offset is any word. */
+                static const uint16_t scr_[]={0xA000,0x7000,0x8000,0x9000,0x4000};
+                const uint16_t scr=scr_[XPICK(5)];
+                XW16(cs,0x0194,scr);
+                const uint16_t pageoff=(XPICK(3)==0)?0:(uint16_t)XRAND();
+                XW16(cs,0x0196,pageoff);
+                /* The four relocated segment words (the immediates of the mov dx,imm16 at 0F43, 0FAA, 1025, 1099),
+                 * each its own value, so a mode that reads another mode's word shows. The byte every mode takes from
+                 * <segment>:[1866] is random in each of them. */
+                static const uint16_t dsw[]={0x1AB3,0x3000,0x2C00,0x1000};
+                static const uint16_t ips_[]={0x0F44,0x0FAB,0x1026,0x109A};
+                for(unsigned j=0;j<4;j++){ const uint16_t d_=dsw[XPICK(4)]; XW16(cs,ips_[j],d_); XW8(d_,0x1866,XRAND()); }
+                /* The mode (DX): 0 fill, 1 OR, 2 AND in a fifth each, 3 and other values (the tint) in two fifths. */
+                {   const unsigned p_=XPICK(10);
+                    static const uint16_t other_[]={3,4,0x8000,0xFFFF,0x1234,3,3};
+                    r[R_DX]=p_<2?0:p_<4?1:p_<6?2:other_[XPICK(7)]; }
+                /* The rows: AX first, CX last (rows run CX down to AX). AX negative in one state in eight (nothing
+                 * drawn); else a row below the offset table's end, sometimes a far one. CX is AX plus 0-7 rows
+                 * or, now and then, below AX (one row is drawn). */
+                unsigned ax_;
+                {   const unsigned p_=XPICK(16);
+                    if(p_<2) ax_=(p_==0)?0x8000:(0x8000|(XRAND()&0x7FFF));
+                    else if(p_==2) ax_=0xFFFF;
+                    else if(p_==3) ax_=0x1000+XPICK(0x2000);
+                    else if(p_==4) ax_=0;
+                    else ax_=XPICK(190); }
+                r[R_AX]=(uint16_t)ax_;
+                {   static const int k_[]={0,0,1,1,2,3,5,7,-1,-3};
+                    r[R_CX]=(uint16_t)(ax_+(uint16_t)k_[XPICK(10)]); }
+                /* The edge table, in the stack segment: left SS:[BX+2y], right SS:[BX+2y+1B8h]. */
+                r[R_BX]=(uint16_t)(0x0200+XPICK(0x4000));
+                {   const int a_s=(int)(int16_t)r[R_AX], c_s=(int)(int16_t)r[R_CX]; const int lo_=(a_s<c_s?a_s:c_s)-1;
+                    const int hi_=(a_s<c_s?c_s:a_s)+1;
+                    for(int y=lo_;y<=hi_;y++){
+                        const uint16_t yy=(uint16_t)y;
+                        const uint16_t sl=(uint16_t)(r[R_BX]+2*yy), sr=(uint16_t)(sl+0x01B8);
+                        uint16_t lw_,rw_;
+                        const unsigned kind=XPICK(100);
+                        if(kind<18){ lw_=(uint16_t)(4+XPICK(316)); rw_=(uint16_t)(lw_-1-XPICK(4)); }              /* right below left */
+                        else if(kind<24){ lw_=rw_=0; }
+                        else if(kind<30){ lw_=rw_=0x013F; }
+                        else if(kind<38){ lw_=rw_=(uint16_t)(1+XPICK(318)); }                                 /* one pixel */
+                        else {
+                            const unsigned wk=XPICK(100);
+                            unsigned w;
+                            if(wk<30) w=1+XPICK(3);
+                            else if(wk<70) w=4+XPICK(13);
+                            else if(wk<90) w=17+XPICK(48);
+                            else if(wk<95) w=320;
+                            else w=65+XPICK(256);
+                            lw_=(wk>=90&&wk<95)?0:(uint16_t)XPICK(320);
+                            rw_=(uint16_t)(lw_+w-1);
+                        }
+                        XW16(seg[S_SS],sl,lw_); XW16(seg[S_SS],sr,rw_);
+                        /* The row's offset word CS:[2y+4] (only the 200 rows the table holds). */
+                        if(yy<200 && XPICK(8)) XW16(cs,(uint16_t)(2*yy+4),(uint16_t)XRAND());
+                        /* The screen bytes the span touches and the bytes around it: random. */
+                        {   const uint16_t di_=(uint16_t)(XR16(cs,(uint16_t)(2*yy+4))+pageoff+lw_);
+                            const uint16_t w16=(uint16_t)(rw_-lw_+1);
+                            if(rw_>=lw_ && w16<=400)
+                                for(int j=-12;j<(int)w16+12;j++) XW8(scr,(uint16_t)(di_+j),XRAND()); }
+                    } }
+#undef XPICK
+#undef XRAND
+#undef XR16
+#undef XR8
 #undef XW16
 #undef XW8
             }
