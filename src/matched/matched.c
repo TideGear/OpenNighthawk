@@ -30355,6 +30355,7 @@ row_checked:
         set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 0x9188));            /* the left mask */
         c->icount += n + 1;
         x86_out(c, c->r[R_DX], 0);
+        if (!room(c, 1)) { c->icount++; c->ip = 0x08F6; return 1; }            /* a port that wakes the run loop (DX is the caller's): the OUT's own clock is charged here */
         c->r[R_AX] = 0xFF55;
         set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | VG3_DS8(0x9176), 0));
         alu_logic(c, si & 2, 1);
@@ -30365,6 +30366,7 @@ row_checked:
         vg4_xchg_ahal(c);
         c->icount += n + 3;
         x86_out(c, c->r[R_DX], 0);                                /* the full mask */
+        if (!room(c, 1)) { c->icount++; c->ip = 0x090C; return 1; }
         set_r8(c, R_AL, get_r8(c, R_AH));
         c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
         n = 4;                                                    /* out, mov, dec, je */
@@ -30391,6 +30393,7 @@ row_checked:
         set_r8(c, R_AL, VG3_DS8(c->r[R_BP] + 0x9190));            /* 0922: the right mask */
         c->icount += n + 1;
         x86_out(c, c->r[R_DX], 0);
+        if (!room(c, 1)) { c->icount++; c->ip = 0x0928; return 1; }
         set_r8(c, R_AL, get_r8(c, R_AH));
         alu_sub(c, get_r8(c, R_AH), VG4_ES8(c->r[R_DI]), 0, 0);
         vg4_stosb(c);
@@ -30402,6 +30405,7 @@ single:                                                           /* 094A */
     set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & VG3_DS8(c->r[R_BP] + 0x9190), 0));
     c->icount += n + 2;
     x86_out(c, c->r[R_DX], 0);                                    /* both masks */
+    if (!room(c, 1)) { c->icount++; c->ip = 0x0954; return 1; }
     set_r8(c, R_AL, 0x55);
     set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | VG3_DS8(0x9176), 0));
     alu_logic(c, c->r[R_SI] & 2, 1);

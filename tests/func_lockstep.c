@@ -754,6 +754,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
  * applied after SPANS. */
 static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_SEG[] = {
     { "VGAME.EXE", 0x1058, 0x000A, 0x000A, 0x0004 },   /* far HUD pass entry (11D8:000A has its own span) */
+    { "VGAME.EXE", 0x120A, 0x0815, 0x07C8, 0x00F0 },   /* model vertex transform: the part-switch escape 07C8-0812 lies below the entry, and a stack that aliases it rewrites the code the original then runs */
     { "PLAYER.EXE", 0x026B, 0x0244, 0x0244, 0x002E },  /* program the timer chip (0000:0244 is another routine with its own span) */
     { "VGAME.EXE", 0x1058, 0x0012, 0x0012, 0x0004 },   /* far HUD layout entry (0FB2:0012 has its own span) */
 };
