@@ -59,16 +59,16 @@ quiz. It is off by default and is enabled only when named explicitly;
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; exact rendered Roland parity is still open).
-- **Translated:** all 17 code files and the LZEXE decompressor, 89,369
+- **Translated:** all 17 code files and the LZEXE decompressor, 89,433
   instruction starts, 96% of the bytes of the code areas; the rest is
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,207 routine addresses have explained C equivalents
-  checked against their original bodies. They run 141,115 of the 163,862
+- **Named and matched:** 1,248 routine addresses have explained C equivalents
+  checked against their original bodies. They run 142,864 of the 163,862
   instruction bytes the scripted routes execute, plus 1,826 bytes of reviewed code that stays original
-  by design (87.23%, the gameplay score), and
-  cover 165,786 of 205,035 creditable bytes across all 17 game code files. The historical census has 1,108
+  by design (88.30%, the gameplay score), and
+  cover 168,416 of 205,480 creditable bytes across all 17 game code files. The historical census has 1,108
   rows wholly covered and 294 in part; executed code outside its rows now
   counts too, along with reviewed static code. Static discoveries not yet
   reviewed remain outside the score ([how progress is measured](docs/progress.md)).

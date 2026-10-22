@@ -17,7 +17,7 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,369
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,433
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (432),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (489),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -152,33 +152,25 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now (21 Oct):** 1,221 addresses matched. The score covers the expanded
+      **Now (22 Oct):** 1,248 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **165,786 / 205,035 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **141,115 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (87.23%); P2 85.71%, overall 95.64%**. In the census
-      alone, named code runs 159,769 of 165,265 creditable bytes (1,108 rows wholly,
+      **168,416 / 205,480 creditable bytes** (the previous measure, which now scores only the naming item).
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **142,864 of the 163,862
+      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (88.30%); P2 86.67%, overall 95.93%**. In the census
+      alone, named code runs 159,769 of 165,425 creditable bytes (1,108 rows wholly,
       294 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left (39,491 bytes; `tools/census_classify.py`):**
-      - About 15,150 outside the census rows: 13,351 reviewed static code bytes that no
-        route runs, and about 1,800 executed bytes no routine names. A route plan
-        (`D:/f117-gate/static-route-plan-20261021/`, 21 Oct) identified no additional route.
-        The resumed independent review retains every range: indirect/callback/vector and writer
-        closure is incomplete, and the earlier constant-M argument overlooked M/E pixel helpers
-        inside a purported CGA/Tandy range. No new dead-code exclusion is adopted. Details:
-        [static-code-review.md](static-code-review.md). DSWAP's identified formatting callers need
-        declined floppy support or machine-option-only failures.
-      - 5,496 inside the census rows: 947 that routes run but that stay original or were
-        declined (below); 4,322 that no route runs (about 2,500 error paths only a
-        test-only machine option could reach, which the owner decided not to build;
-        831 probable-dead bytes that need evidence; the rest needs combat or very long
-        careers); 222 unreached bytes held back on weak evidence; one live jump slot.
-      - 18,835 validated executed bytes in the launcher, resident graphics library and sound
-        drivers, now included (21 Oct scope expansion; no matching credit lost). The remaining
-        about 654 held static-discovery bytes (42 groups) are still outside the score.
+      **What is left:** 19,172 executed bytes remain unmatched (of them 20 are design-rule
+      original code awaiting reviewed entries). The largest groups are ASOUND.117 5,373, ASOUND.LOG 2,615,
+      RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042,
+      MGRAPHIC 859, F117.COM 688 and VGAME 549. The all-code measure has
+      37,064 uncredited bytes, including 13,351 reviewed static code bytes that no route runs.
+      No new route or dead certificate has been established for those static ranges: indirect/callback/vector
+      and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
+      About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;
+      831 probable-dead bytes still need evidence. The held static discoveries remain outside the score.
       **Owner decision (21 Oct): no meaningful game code may be missed.** Approved: bring
       the launcher, graphics library and sound drivers into the scope (the percentage
       drops at first; measurement and scoring steps 0/1a/1b done in `D:/f117-gate/modules-scope-20261021/`;
@@ -269,6 +261,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | ap | 22 Oct | 1,227 | 178 named bytes | 6 MGRAPHIC routines: `07A3` (copy a CS word), `12D5` (ES from a CS segment table), `12DD` and `12DF` (bare far returns), `0E30` (clip-and-blit entry stub) and `0E41` (clip a blit rectangle against two bounds per axis, then far-call `0EE6`); 110 mutations, 1,719 s. The gate's step 7c at the commit seed found a harness gap, not a routine fault: the nested run of original code a body calls followed a fault vector to the clock limit while the oracle stops at the first fault (VGAME `5852`, fixed in `e6464c9`) |
 | aq | 22 Oct | 1,236 | 244 named bytes | 9 MGRAPHIC routines: `04A4` (the largest free DOS block), `04B6` (enter mode 13h and check it took), `04CA` and `04E4` (screen off and on, each after a vertical retrace), `04FE` (allocate the picture arena or return a page segment), `057A` (the pixel plot's tail, entered from outside: routes never enter `056E`), `0826` (return the constant 3; only `key_tour` runs it), `09A8` (take the largest free block for the arena) and `1118` (clear a 64,000-byte page). `0561`, `07B2`, `07DB` and `0804` are inner entries of matched bodies, credited once there. 278 mutations, 1,623 s. The harness gained an I/O answer salt, a settable INT 10h mode answer and a return frame for `057A` |
 | ar | 22 Oct | 1,245 | 1,500 named bytes | 9 larger MGRAPHIC routines: `0599` (a Bresenham line; it runs the pixel plot's tail `057A` and `0581` inline), `071A` (dashed rows), `09D4` (release the arena `09A8` took), `0B0C` (compile a bitmap into rows through `0A02`, `0A6A`, `0A4D`), `0B70` (clip a sprite and draw it), `0C95` (a scaled, mirrored, clipped run-length sprite; it reads the two bytes it patches into its own code), `0F3D` (horizontal span fills in four modes; routes cover under half of it), `1188` (recolour in a rectangle) and `125C` (palette flash and screen jolt). 491 mutations, 1,665 s. A 13-seed sweep before the gate found two older defects, fixed in the same commit: VGAME `1377:0874` and its three entries ran on past a graphics-controller OUT that wakes the run loop, and VGAME `120A:0815` had a self-write window that missed its escape code below the entry |
+| as | 22 Oct | 1,248 | 263 named bytes | MGRAPHIC `0A02` (open the bitmap buffer and write its dimensions), `0A4D` (close it and advance the arena by its rounded paragraph count) and `0A6A` (encode a row, trimming leading and trailing zeros). All 94 instructions covered, eleven private seeds per routine, all 79 mutations caught; exact 66-checkpoint game and 26-checkpoint boot proofs. Three whole-table pre-gate seeds and the full gate passed: 489 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation on every route and boot N=4/9; acceptance 1,621 s. |
 
 Notes that still matter:
 

@@ -1281,6 +1281,12 @@ if(F117R_BUILD_TESTS)
       --only MGRAPHIC.EXE:C95)
     add_test(NAME matched_mgraphic_draw_line COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:599)
+    add_test(NAME matched_mgraphic_bitmap_buffer_open COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:A02)
+    add_test(NAME matched_mgraphic_bitmap_buffer_close COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:A4D)
+    add_test(NAME matched_mgraphic_bitmap_encode_row COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:A6A)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

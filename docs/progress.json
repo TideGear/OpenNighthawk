@@ -166,8 +166,8 @@
     "creditable_bytes": 165425,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 40028,
-      "credited": 8384,
+      "bytes": 40055,
+      "credited": 8647,
       "reviewed_static_bytes": 13351,
       "by_module": {
         "ASOUND.117": {
@@ -206,8 +206,8 @@
           "reviewed_static_bytes": 0
         },
         "MGRAPHIC": {
-          "bytes": 3655,
-          "credited": 2560,
+          "bytes": 3682,
+          "credited": 2823,
           "reviewed_static_bytes": 0
         },
         "MISC": {
@@ -267,17 +267,17 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163862,
-      "matched_route_run": 142628,
+      "matched_route_run": 142864,
       "stays_original_reviewed": 1826,
-      "score": 0.8815588727099632,
-      "fixture_only": 25460,
-      "remaining": 19408,
+      "score": 0.882999109006359,
+      "fixture_only": 25487,
+      "remaining": 19172,
       "original_awaiting_review": 20,
       "reviewed_entries": 38,
       "checklist": {
-        "bytes": 43367,
+        "bytes": 43394,
         "with_reviewed_entry": 0,
-        "without_reviewed_entry": 43367,
+        "without_reviewed_entry": 43394,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 0,
@@ -293,7 +293,7 @@
           },
           "supp-credited": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 1966
+            "without_reviewed_entry": 1993
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 0,
@@ -306,10 +306,10 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 205383,
+        "previous_scope_distinct": 205410,
         "denominator_in_previous_scope": 162016,
         "denominator_outside_previous_scope": 1846,
-        "previous_scope_occurrences": 205453,
+        "previous_scope_occurrences": 205480,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
@@ -392,12 +392,12 @@
         },
         "MGRAPHIC": {
           "denominator": 3237,
-          "matched_route_run": 2142,
+          "matched_route_run": 2378,
           "stays_original_reviewed": 0,
-          "fixture_only": 418,
-          "remaining": 1095,
+          "fixture_only": 445,
+          "remaining": 859,
           "original_awaiting_review": 0,
-          "not_in_denominator": 418,
+          "not_in_denominator": 445,
           "not_in_denominator_reviewed": 0,
           "in_previous_scope": 3237
         },

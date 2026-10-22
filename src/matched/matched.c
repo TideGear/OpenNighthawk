@@ -84326,7 +84326,160 @@ L_057A:
 #undef XB
 }
 
+/* Open the graphics arena's bitmap buffer. Reject an exhausted arena;
+ * otherwise cap its capacity at 0xFFF paragraphs and write width and height
+ * from DS at the caller's stack offsets. Preserve DI and return ES in AX.
+ * The arena pointer and limits are live CS data, not segment constants. */
+static int mgraphic_bitmap_buffer_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount += (n); } while(0)
+    if (!room(c,3)) return 0;
+    XB(3,0x0A02);
+    c->r[R_AX]=seg_read16(c,c->seg[S_CS],0x0830);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],seg_read16(c,c->seg[S_CS],0x082C),1);
+    if(x86_cond(c,6)) {
+        XB(4,0x0A42);
+        c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1);
+        seg_write16(c,c->seg[S_CS],0x082A,c->r[R_AX]);
+        seg_write16(c,c->seg[S_CS],0x082C,c->r[R_AX]);
+        far_ret(c); return 1;
+    }
+    XB(2,0x0A0D);
+    (void)alu_op(c,7,c->r[R_AX],0x1000,1);
+    if(!x86_cond(c,2)) { XB(1,0x0A12); c->r[R_AX]=0x0FFF; }
+    XB(18,0x0A15);
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1);
+    seg_write16(c,c->seg[S_CS],0x0832,c->r[R_AX]);
+    c->r[R_BX]=c->r[R_SP];
+    x86_push_reg(c,R_DI);
+    c->r[R_DI]=seg_read16(c,c->seg[S_CS],0x082A);
+    c->seg[S_ES]=seg_read16(c,c->seg[S_CS],0x082C);
+    c->r[R_AX]=seg_read16(c,c->seg[S_DS],(uint16_t)(c->r[R_BX]+4));
+    x86_stos(c,1);
+    seg_write16(c,c->seg[S_CS],0x083C,c->r[R_AX]);
+    c->r[R_AX]=seg_read16(c,c->seg[S_DS],(uint16_t)(c->r[R_BX]+6));
+    x86_stos(c,1);
+    seg_write16(c,c->seg[S_CS],0x083A,c->r[R_AX]);
+    seg_write16(c,c->seg[S_CS],0x082A,c->r[R_DI]);
+    c->r[R_AX]=c->seg[S_ES];
+    c->r[R_DI]=cpu_pop16(c);
+    far_ret(c); return 1;
+#undef XB
+}
+
+/* Close the bitmap buffer: clear its byte cursor, round its used byte
+ * count up to paragraphs (with the original 16-bit wrap), advance the arena
+ * segment and return the previous arena segment in AX. */
+static int mgraphic_bitmap_buffer_close(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    uint16_t previous;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount += (n); } while(0)
+    if(!room(c,10)) return 0;
+    XB(10,0x0A4D);
+    c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1);
+    previous=seg_read16(c,c->seg[S_CS],0x082A);
+    seg_write16(c,c->seg[S_CS],0x082A,c->r[R_AX]);
+    c->r[R_AX]=previous;
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x000F,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],seg_read16(c,c->seg[S_CS],0x082C),1);
+    previous=seg_read16(c,c->seg[S_CS],0x082C);
+    seg_write16(c,c->seg[S_CS],0x082C,c->r[R_AX]);
+    c->r[R_AX]=previous;
+    far_ret(c); return 1;
+#undef XB
+}
+
+/* Append one bitmap row to the arena buffer. Skip leading zero pixels,
+ * copy pixels after the first colour, then remove trailing zeros. Store
+ * the retained length and leading skip before the bytes. An absent buffer
+ * returns immediately; an overflow reduces the stored height and clears
+ * the arena end. All counters and cursor words remain live CS data. */
+static int mgraphic_bitmap_encode_row(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount += (n); } while(0)
+#define CW(at) seg_read16(c,c->seg[S_CS],(at))
+#define CP(at,v) seg_write16(c,c->seg[S_CS],(at),(v))
+    if(!room(c,9)) return 0;
+    XB(9,0x0A6A);
+    x86_push_reg(c,R_BP); c->r[R_BP]=c->r[R_SP];
+    x86_push_reg(c,R_SI); x86_push_reg(c,R_DI);
+    c->r[R_SI]=bp_get(c,6);
+    c->r[R_DI]=CW(0x082A); c->seg[S_ES]=CW(0x082C);
+    c->r[R_AX]=c->seg[S_ES];
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(!x86_cond(c,5)) { XB(1,0x0A7D); goto done; }
+    XB(5,0x0A80);
+    c->r[R_AX]=CW(0x083C);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],4,1);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],c->r[R_DI],1);
+    (void)alu_op(c,7,c->r[R_AX],CW(0x0832),1);
+    if(!x86_cond(c,6)) {
+        XB(4,0x0A90);
+        seg_write16(c,c->seg[S_ES],2,(uint16_t)alu_dec(c,seg_read16(c,c->seg[S_ES],2),1));
+        c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1);
+        CP(0x0830,c->r[R_AX]); goto done;
+    }
+    XB(8,0x0A9E);
+    c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1);
+    CP(0x0834,c->r[R_AX]); CP(0x0836,c->r[R_AX]); CP(0x0838,c->r[R_AX]);
+    c->r[R_BP]=c->r[R_DI]; x86_stos(c,1); x86_stos(c,1);
+    c->r[R_CX]=CW(0x083C);
+pixel:
+    XB(3,0x0AB5);
+    x86_lods(c,0,c->seg[S_DS]);
+    set_r8(c,0,(uint8_t)alu_op(c,1,get_r8(c,0),get_r8(c,0),0));
+    if(!x86_cond(c,4)) { XB(2,0x0ABA); CP(0x0836,0); goto copy; }
+    XB(2,0x0AC4);
+    (void)alu_op(c,7,CW(0x0838),0,1);
+    if(!x86_cond(c,5)) {
+        XB(2,0x0ACC);
+        CP(0x0834,(uint16_t)alu_inc(c,CW(0x0834),1));
+        c->r[R_CX]=(uint16_t)(c->r[R_CX]-1);
+        if(c->r[R_CX]) goto pixel;
+        XB(1,0x0AD3); goto finish;
+    }
+    XB(1,0x0AD6); CP(0x0836,(uint16_t)alu_inc(c,CW(0x0836),1));
+copy:
+    XB(3,0x0ADB);
+    CP(0x0838,(uint16_t)alu_inc(c,CW(0x0838),1));
+    x86_stos(c,0); c->r[R_CX]=(uint16_t)(c->r[R_CX]-1);
+    if(c->r[R_CX]) goto pixel;
+finish:
+    XB(5,0x0AE3);
+    c->r[R_AX]=CW(0x0838); c->r[R_BX]=CW(0x0834); c->r[R_CX]=CW(0x0836);
+    c->r[R_CX]=(uint16_t)alu_op(c,1,c->r[R_CX],c->r[R_CX],1);
+    if(!x86_cond(c,4)) {
+        XB(2,0x0AF5);
+        c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_CX],1);
+        c->r[R_DI]=(uint16_t)alu_op(c,5,c->r[R_DI],c->r[R_CX],1);
+    }
+    XB(4,0x0AF9);
+    seg_write16(c,c->seg[S_ES],c->r[R_BP],c->r[R_AX]);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BP]+2),c->r[R_BX]);
+    CP(0x082A,c->r[R_DI]); c->r[R_AX]=c->seg[S_ES];
+done:
+    XB(4,0x0B08);
+    c->r[R_DI]=cpu_pop16(c); c->r[R_SI]=cpu_pop16(c); c->r[R_BP]=cpu_pop16(c);
+    far_ret(c); return 1;
+#undef CP
+#undef CW
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A6A, mgraphic_bitmap_encode_row, "far bitmap row encoding with leading and trailing zero trimming", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A4D, mgraphic_bitmap_buffer_close, "far bitmap buffer close and paragraph cursor advance", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0A02, mgraphic_bitmap_buffer_open, "far bitmap arena buffer open and dimension header", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0599, mgraphic_draw_line, "far: line from (AX,BX) to (CX,DX) in the pen colour on the current surface (Bresenham), one pixel through the 057A plot tail when the ends are equal", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0C95, mgraphic_draw_scaled_sprite, "far: draw a run-length sprite scaled to CS:[0846] x [0848], mirrored by the signs, clipped by the words 0BC0 sets, into the page BP's block names", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0B70, mgraphic_draw_clipped_sprite, "far, cdecl: clip a sprite (x, y, width, height, source, segment) against the parameter block's rectangle with 0C5D and 0BC0 and draw it with 0C95; returns AX = 084Eh, DX = CS", 2 },

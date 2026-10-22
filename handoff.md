@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 21 October 2026 (end of session).
+more than once, what it costs). State as of 22 October 2026 (batch as accepted).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,32 +15,28 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 86.54%, P3 100.00%, All 95.89%
+- **Scoreboard:** P1 100.00%, P2 86.67%, P3 100.00%, All 95.93%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,245 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **142,628 /
-  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 88.16%**. `docs/reference-reviewed.tsv` holds 38
+- **Phase 2:** 1,248 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **142,864 /
+  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 88.30%**. `docs/reference-reviewed.tsv` holds 38
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
-  stays-original entry to name its design rule. The accounted-for checklist is 0 / 42,958. Previous
-  all-code measure (scores the naming item): **165,786 / 205,035 creditable bytes** across
+  stays-original entry to name its design rule. The accounted-for checklist is 0 / 43,394. Previous
+  all-code measure (scores the naming item): **168,416 / 205,480 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
-  Batches a to ar are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 486 CTests, 63 routes run as 62 sessions,
+  Batches a to as are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 489 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Where the remaining 39,491 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
-  --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
-  --data D:/GOG/F-117A --rows 45`):
-  - outside the census rows, about 15,150: 13,351 reviewed static code bytes no route runs
-    (`docs/census-code.tsv`, 154 ranges after the fifth tranche on 21 Oct) and about 1,800 executed bytes no routine names;
-  - inside the census rows, 5,496: 947 `ran` (all declined or staying original: VGAME `0010` main,
-    `073C8`'s second lock slot, MPS_LOGO `1ADC`/`1C82` unequal, START `8427` and END `4393` wait loops,
-    END `57B0` interior arm, DSWAP `0723`'s failure arm), 4,322 `never_run` (about 2,500 machine-option-only
-    error paths, 831 probable-dead, the rest needs combat or very long careers), 222 `unreached`, 5 `slots`.
-  - 18,835 validated executed bytes in the launcher, resident graphics library and sound drivers are now in
-    scope. Outside the score: about 654 held static-discovery bytes (42 groups; the XOR-transformed SETUP region needs a strict validator) and the floating LZEXE decompressor.
+- **Remaining work:** 19,172 route-executed bytes are unmatched; the all-code measure has 37,064 uncredited bytes.
+  Largest executed groups: ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128,
+  ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042, MGRAPHIC 859, F117.COM 688 and VGAME 549.
+  There are 13,351 reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
+  machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
+  held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
+  Refresh using batch as's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
@@ -54,7 +50,7 @@ Consolidate it instead of appending to it.
     held for a strict validator: 19 follow-up data rows, the plain follow-up code rows and the encoded SETUP region (`followup-review-report.md`).
   - `unmatched-reference-20261021/` (DONE, checked, NOT published): `reference.tsv` has 793 rows / 43,362 bytes with a per-byte coverage proof
     against the old 201,697 scope (`coverage-check.json`, `independent-check.json`). Before publishing it as a repository doc: regenerate it
-    against the 204,747 scope, fix VGAME `ED10` `vgame_int86x_carry` (it says the DOS call never fails: too strong; see
+    against the current 205,480 scope, fix VGAME `ED10` `vgame_int86x_carry` (it says the DOS call never fails: too strong; see
     `reference-adoption-review.md`), strengthen the names of ASOUND.LOG `04E5` and RSOUND.LOG `028E` (two new original-code candidates), and
     note that 297 rows have the status `pending-match-purpose-unreviewed` and 153 `unresolved-review`: those are inventory, not claims that
     the code cannot be matched.
@@ -145,13 +141,19 @@ Consolidate it instead of appending to it.
 3. **Unreviewed static bytes:** the 117 audited code rows and the 70-byte VGAME data row are adopted (21 Oct, `D:/f117-gate/static-review-20261021/adoption-audit.md`). Still to adopt: the 19 follow-up data rows (`followup-data-rows.tsv`), the plain follow-up code rows (`followup-code-rows.tsv`) and the encoded SETUP code (`encoded-code-rows.json`; XOR low-IP transform of 1,300 bytes at IP 0050..0564), which needs a strict validator that pins raw file hash, decoded hash, bounds and instruction counts and never publishes the transformed binary.
 4. **Drivers and launcher: matching, steps 4 onward of `D:/f117-gate/modules-scope-20261021/plan.md`.** Done: steps 0, 1a, 1b (scope),
    2a (module-keyed harness), 3 (kit widened) and the step 4 pilot (batch `am`, `261381c`: MISC `0000` `000A` `0018`, MGRAPHIC `023A`;
-   module tokens are defined in `matched.c`), then MGRAPHIC batches `ao` (14), `ap` (6), `aq` (9) and `ar` (9: the large drawing routines). 1,095 executed MGRAPHIC bytes remain unmatched. Known candidates: the bitmap compiler's callees `0A02`, `0A4D` and `0A6A` (far routines that `0B0C`'s proof ran as original code); derive the full list by diffing the executed MGRAPHIC instruction starts in `D:/f117-gate/route-cover-20261020b/*.cov` against `D:/f117-gate/p2-batch-ar-accept/named-cover` (inner entries `0561`, `07B2`, `07DB`, `0804` and the `057A` tail are already credited inside matched bodies). Next, in this order: (a) batches of MGRAPHIC routines (overlay seg `019C`, linear `0x19C0 + ip`;
+   module tokens are defined in `matched.c`), then MGRAPHIC batches `ao` (14), `ap` (6), `aq` (9) and `ar` (9: the large drawing routines). 859 executed MGRAPHIC bytes remain unmatched. Batch `as` added the bitmap compiler's
+   three callees `0A02`, `0A4D` and `0A6A` (94 instructions, 79 caught mutations, 489 CTests, acceptance 1,621 s;
+   `D:/f117-gate/p2-batch-as-accept/`). The row encoder's span is 162 bytes through RETF `0B0B`,
+   including gaps; its instruction bytes total 159. Proofs: `p2-mgraphic-as-<ip>`; extra whole-table seed evidence:
+   `D:/f117-gate/as-precheck-verdict.json`. Remaining executed groups start at `02A1`, `0612`, `0BC0` and
+   `0F3B`; the last is a two-byte prefix that clears DX before the matched `0F3D` span fill,
+   so cover that prefix without duplicating credit for the existing body.
+   `D:/f117-gate/mgraphic-unmatched-before-as.json` is the complete pre-as instruction/route inventory
+   (416 starts / 1,095 bytes); remove the three newly matched bodies when using it. Next, in this order: (a) batches of MGRAPHIC routines (overlay seg `019C`, linear `0x19C0 + ip`;
    split by address, six per agent, setters and small primitives first), the remaining MISC wrappers (a keyboard wait loop is not a
    candidate) and a few small F117.COM helpers to prove `.COM` addressing; follow the pilot's conventions (read every relocated word from the
    loaded code and make the fixture patch it to several values; force each branch in a fixed share of states; six or more extra seeds;
-   stack segments only 0x5000/0x6000; replace 'entry room' mutations the harness cannot see). Three agents for this were started and
-   stopped before they produced anything: restart them from the pilot's prompt (kit `AGENT_PROMPT.txt` plus the 'Launcher, graphics
-   library and sound drivers' section of `BRIEF.md`). (b) Step 2b before any ASOUND/ISOUND/RSOUND or `.LOG` routine whose proof depends on
+   stack segments only 0x5000/0x6000; replace 'entry room' mutations the harness cannot see). Use the kit prompt and the 'Launcher, graphics library and sound drivers' section of `BRIEF.md`. (b) Step 2b before any ASOUND/ISOUND/RSOUND or `.LOG` routine whose proof depends on
    the load base: a relocation list from the recompiler (`gen_relocs.c`, declared under `tests/`), nonzero `LOAD_BASES` for the new modules,
    the io-hash clock flag and the interrupt-wake flag, as its own gate (a planted DS=0 mutant must be caught). (c) Then ASOUND.117, the
    `.LOG` drivers, ISOUND/RSOUND.117 and the F117.COM EXEC chain, each kind with its traps from the plan (STI-first handlers stay original).
@@ -171,7 +173,7 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
 
 - **Pre-checks before a gate (cheap, adopted 20 Oct):** the commit-keyed seed (`build_recomp.rotating_seed()`;
   the first 12 hex digits of HEAD) through `tools/func_lockstep_par.py --exe build/func_lockstep.exe --jobs 8
-  --states 4000 --verbose --seed SEED` (about 4 minutes), and every new route once with `--engine recomp`,
+  --states 4000 --verbose --seed SEED` (about 8 minutes per seed in batch as), and every new route once with `--engine recomp`,
   grepping `[matched] OVERRUN`.
 - **Fixtures force each branch outcome** in a fixed share of states (by the state index), and every proof is
   run at six or more seeds: a chance-only arm fails `fixtures reached too little` at some rotating seed.

@@ -27,12 +27,17 @@ verification) is not an optimisation; it needs the owner's approval.
   gate; without a valid one (after a route or non-matched `src/` change) they
   run sequentially (batch ai: 1,658 s in all). Before a gate, two cheap
   pre-checks catch most failures: the commit-keyed seed through
-  `tools/func_lockstep_par.py --jobs 8` (about 4 minutes) and every new route
+  `tools/func_lockstep_par.py --jobs 8` (about 8 minutes per seed in batch as) and every new route
   once with `--engine recomp` for `[matched] OVERRUN`. `optimized.py` passes `--only` with
   unpadded hex (a padded address once selected zero states) and requires
   positive comparison counts; `finalize.py` validates old coverage against the
   previous batch's own registration table and every new byte against the
   dossiers. The census refresh afterwards takes seconds.
+- **Extra seed sweep before a matched batch.** Batch as checked the whole table at 4,000 states per
+  routine, eight shards, using the commit-keyed seed plus `0x27182818` and `0x10222026` before the full gate.
+  All 1,248 routines passed; the three runs took 1429 s in total.
+  New routines also had six extra private seeds beyond the kit's five and all planted defects caught.
+  Evidence: `D:/f117-gate/as-precheck-verdict.json`; the three new optimized CTests took 1.82 s.
 - **Batch acceptance tooling (`D:/f117-gate/accept-kit/`, 18 October).**
   `new_batch.py LETTER PREV BASE_COMMIT DIR...` creates `p2-batch-<letter>-accept/`
   from generic scripts (no hand-editing of routine names, counts or hashes: tests, routine totals,
@@ -81,7 +86,7 @@ verification) is not an optimisation; it needs the owner's approval.
   fires or steers (engine equality of an inactive fixture is not coverage);
   home-orbit attempts give combat, not compression, coverage.
 - **Presentation-only changes** (`src/present`, observer, drawlist): full
-  CTests, all 45 N=1 routes and boot N=4/9 against the frozen interpreter
+  CTests, all 63 N=1 routes and boot N=4/9 against the frozen interpreter
   baselines of the preceding full gate (about 1,450 s in all); changes to
   `drawfeed`/`rerun` need the full gate too. Diagnostics that replay a frozen
   record (pixel-origin `DT_HUD_FINE` counts, before/after frames) are

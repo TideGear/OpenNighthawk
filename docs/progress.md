@@ -81,33 +81,16 @@ would be a separate decision. The tooling item (weight 5) is unchanged.
 | share | 80.77% | **85.68%** |
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
-After batch an (21 Oct, `5feb5f5`): the gameplay score is **140,679 / 163,862 = 85.85%** (P2 84.83%, All 95.37%); 25,042 fixture-only
-matched bytes; 23,183 remaining executed bytes; previous measure 165,786 / 204,875 (80.92%).
-
-First reviewed entries (21 Oct): 38 second-read stays-original entries (1,826 bytes) bring the gameplay score to
-**(140,679 + 1,826) / 163,862 = 86.97%** (P2 85.48%, All 95.57%). Two PLAYER routines listed as original did not meet a design rule
-(`02853`, an interrupt handler whose STI is its 13th instruction; `028C1`, a retrace re-sync) and left `docs/census-original.tsv`, so
-the previous measure's denominator rose to 205,035; START `08F94` (the divide-error entry inside the C start-up row) is remaining work.
-`check_design_rule` now requires every stays-original entry, inside or outside the census, to name its design rule.
-
-After batch ao (21 Oct, stricter port/timer-wake checks plus 14 MGRAPHIC routines): the gameplay score is
-**(141,115 + 1,826) / 163,862 = 87.23%** (P2 85.71%, All 95.64%).
-
-After batch ap (22 Oct, six MGRAPHIC routines): **(141,230 + 1,826) / 163,862 = 87.30%** (P2 85.78%, All 95.66%); 20,806 executed bytes remain unmatched (ASOUND.117 5,373, ASOUND.LOG 2,615, MGRAPHIC 2,493, RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, F117.COM 688, with the programs' remainder in the full table of `py tools/progress.py`).
-
-After batch aq (22 Oct, nine MGRAPHIC routines): **(141,406 + 1,826) / 163,862 = 87.41%** (P2 85.87%, All 95.69%); 20,630 executed bytes remain unmatched (ASOUND.117 5,373, ASOUND.LOG 2,615, MGRAPHIC 2,317, RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042, F117.COM 688).
-
-After batch ar (22 Oct, nine larger MGRAPHIC routines): **(142,628 + 1,826) / 163,862 = 88.16%** (P2 86.54%, All 95.89%); 19,408 executed bytes remain unmatched (ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, MGRAPHIC 1,095, START 1,042, F117.COM 688, VGAME 549).
-
-Also at this refresh: 24,914 fixture-only matched bytes (not counted); 23,471 remaining executed bytes (ASOUND.117
-5,373, MGRAPHIC 3,159, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, START 1,325, ISOUND.117 1,200, VGAME
-1,172, ISOUND.LOG 1,167, F117.COM 837, END 551, PLAYER 511, MPS_LOGO 497, SETUP 418, DSWAP 276, MISC 29). Of them,
-1,994 bytes are design-rule original code (census-original rows) waiting for reviewed entries, which would raise
-the score to at most 86.89%. Checklist: 0 of 42,809 bytes accounted for (23,494 fixture-credited census bytes,
-13,351 reviewed static, 4,317 never-run, 1,420 fixture-credited outside the census, 222 unreached, 5 slots).
-The figures reproduce the private measurement `D:/f117-gate/gameplay-score-20261021/` (`numbers.json`) exactly:
-denominator, matched route-run, fixture-only, checklist by class, 161,868 + 1,994 denominator bytes in and outside
-the previous scope, and 70 bytes shared by two census rows.
+Current (22 Oct, batch as): **(142,864 + 1,826) / 163,862 = 88.30%**
+(P2 86.67%, All 95.93%). The previous all-code measure is
+**168,416 / 205,480**; 25,487 matched bytes run only in fixtures and earn no gameplay credit.
+There are 19,172 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
+The largest remaining modules are ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213,
+RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042 and MGRAPHIC 859.
+The accounted-for checklist is 0 / 43,394; the full module and
+checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
+[roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement
+is retained privately in `D:/f117-gate/gameplay-score-20261021/`.
 
 ### The previous all-code measure
 

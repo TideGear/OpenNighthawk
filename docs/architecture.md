@@ -103,7 +103,8 @@ host renders. A run is therefore a pure function of the program, its files,
 and the inputs with the clock counts at which they arrived.
 
 - **Speed.** The headless reference default is 9,000,000 a second, GOG
-  DOSBox's `cycles=9000` for this game; the app defaults to 20,000,000.
+  DOSBox's `cycles=9000` for this game; the app defaults to 60,000,000 with
+  the fifteen-step simulation cadence (the owner's 18 October decision).
   `--ips` changes either. The game's behaviour depends on speed (bug D1);
   optional corrected combat and real-time pacing are documented in
   [speed-sweep.md](speed-sweep.md).
@@ -765,7 +766,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,221 addresses are matched across the game's 17 code files (the census totals are in
+1,248 addresses are matched across the game's 17 code files (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
