@@ -154,13 +154,14 @@ static void io_w(cpu_t *c, uint16_t port, uint32_t val, int width)
     }
 }
 
+static uint64_t g_io_salt;   /* private hunk: a fixture varies the port-read answers per state (they are otherwise a function of the port, width and read count only) */
 static uint32_t io_r(cpu_t *c, uint16_t port, int width)
 {
     side_t *s = side_of(c);
     s->nread++;
     s->io = mix(s->io, 0x2000000ull | ((uint64_t)port << 8) | (uint64_t)width);
     s->io = mix(s->io, c->icount);
-    uint64_t v = mix((uint64_t)port * 31u + (uint64_t)width, s->nread);
+    uint64_t v = mix((uint64_t)port * 31u + (uint64_t)width + g_io_salt, s->nread);
     io_note(s, 2, port, width, 0, c->icount);
     return width == 1 ? (uint32_t)(v & 0xFF) : (uint32_t)(v & 0xFFFF);
 }
@@ -176,6 +177,8 @@ static struct { uint16_t ax; uint8_t cf; uint16_t put; } g_dos_script[16];   /* 
 static unsigned g_dos_script_n;
 
 static int g_native_int10;   /* answer INT 10h too (the string writer under test) */
+static int g_int10_force;    /* private hunk: a fixture sets AL for INT 10h function 0Fh (get video mode) per state */
+static uint8_t g_int10_al;
 static int g_kbd_force;      /* a fixture sets the answer (AX and ZF/CF) of INT 16h and INT 21h per state */
 static uint16_t g_kbd_ax, g_kbd_fl;
 static int int_h(cpu_t *c, uint8_t vec)
@@ -225,7 +228,7 @@ static int int_h(cpu_t *c, uint8_t vec)
         else if (c->r[R_AX] == 0) c->r[R_AX] = (v & 0x100) ? 0xFFFF : 0;
         return 1;
     }
-    if (vec == 0x10 && g_native_int10) { s->nread++; return 1; }   /* the BIOS video calls leave the registers alone */
+    if (vec == 0x10 && g_native_int10) { s->nread++; if (g_int10_force && get_r8(c, R_AH) == 0x0F) set_r8(c, R_AL, g_int10_al); return 1; }   /* the BIOS video calls leave the registers alone (private hunk: or answer the video mode in AL) */
     return 0;                       /* not emulated: the CPU dispatches it */
 }
 
@@ -756,6 +759,15 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MGRAPHIC.EXE", 0x1118, 0x1118, 0x000A },
+    { "MGRAPHIC.EXE", 0x09A8, 0x09A8, 0x002C },
+    { "MGRAPHIC.EXE", 0x0826, 0x0826, 0x0004 },
+    { "MGRAPHIC.EXE", 0x057A, 0x057A, 0x0007 },
+    { "MGRAPHIC.EXE", 0x04FE, 0x04FE, 0x005D },
+    { "MGRAPHIC.EXE", 0x04E4, 0x04E4, 0x001A },
+    { "MGRAPHIC.EXE", 0x04CA, 0x04CA, 0x001A },
+    { "MGRAPHIC.EXE", 0x04B6, 0x04B6, 0x00A5 },
+    { "MGRAPHIC.EXE", 0x04A4, 0x04A4, 0x0012 },
     { "MGRAPHIC.EXE", 0x0E41, 0x0E41, 0x0094 },
     { "MGRAPHIC.EXE", 0x0E30, 0x0E30, 0x0011 },
     { "MGRAPHIC.EXE", 0x12DF, 0x12DF, 0x0001 },
@@ -1653,6 +1665,15 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "MGRAPHIC.EXE", 0x019C, 0x12DF, 0x0001, 1, 1, "far: bare RETF, no arguments, no effect" },
     { "MGRAPHIC.EXE", 0x019C, 0x0E30, 0x0011, 10, 10, "far: entry stub, BP = the caller's one argument (a parameter-block pointer), then far call 0E41" },
     { "MGRAPHIC.EXE", 0x019C, 0x0E41, 0x0094, 64, 64, "far, BP=shared parameter block: clip X then Y against two bounds each, then far-call 0EE6 to blit" },
+    { "MGRAPHIC.EXE", 0x019C, 0x04A4, 0x0012, 9, 9, "far: DOS allocate 48h of FFFFh paragraphs (always fails); AX = the largest free block (BX) when DOS answers 8, else 0" },
+    { "MGRAPHIC.EXE", 0x019C, 0x04B6, 0x00A5, 46, 46, "far: BIOS video mode 13h and read it back; if it is not 13h, text mode, message DS:1834h, exit to DOS (the code after the exit sets 16 DAC registers and calls 04E4)" },
+    { "MGRAPHIC.EXE", 0x019C, 0x04CA, 0x001A, 15, 15, "far: wait for a vertical retrace, mode control 3D8h = 02h, then set the screen-off bit (bit 5) of sequencer register 1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x04E4, 0x001A, 15, 15, "far: wait for a vertical retrace, mode control 3D8h = 0Ah, then clear the screen-off bit (bit 5) of sequencer register 1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x04FE, 0x005D, 37, 37, "far, one argument: 0 returns the page-0 segment CS:[0787]; else DOS-allocate CS:[0474]/16 paragraphs (AX = segment) or, on failure, text mode, message DS:180Eh, exit" },
+    { "MGRAPHIC.EXE", 0x019C, 0x057A, 0x0007, 5, 5, "far, interior entry of the pixel plot: call 0581, STOSB, pop ES and DS pushed by the caller" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0826, 0x0004, 2, 2, "far: AX = the immediate word at CS:0827 (3 as shipped), then return; no flags change" },
+    { "MGRAPHIC.EXE", 0x019C, 0x09A8, 0x002C, 15, 15, "far: ask 04A4 for the largest free DOS block, allocate it (INT 21h/48h), record start and end segments in CS words 082C-0830" },
+    { "MGRAPHIC.EXE", 0x019C, 0x1118, 0x000A, 5, 5, "far: clear a 64000-byte page, rep stosw of 32000 zero words from ES:0 in the direction DF gives (1122 calls it with ES = A000h)" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2202,6 +2223,8 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         /* MPS_LOGO's exit() entry (01D3): its shared tail returns far to the fixture's caller or ends the program. */
         if (kind == 2 && entry_is("MPS_LOGO.EXE", 0x0146, 0x01D3) && is_ret && from_cs == 0x7000 && sp_before == entry_sp) return 1;
         if (kind == 2 && entry_is("MPS_LOGO.EXE", 0x0146, 0x01D3) && here == 0x0255 && op == 0xCB && sp_before == (uint16_t)(entry_sp + 4) && a->seg[S_CS] == cs) return inside;
+        /* MGRAPHIC 057A: an interior entry that pops the caller's ES and DS first; the harness's return frame is what it pops, so its RETF runs at entry_sp + 4. */
+        if (kind == 2 && entry_is("MGRAPHIC.EXE", 0x019C, 0x057A) && is_ret && sp_before == (uint16_t)(entry_sp + 4)) return inside;
         if (is_ret && sp_before == entry_sp) return inside;
         /* The C runtime's near stackavail takes its return address off into
          * CX and returns by JMP CX: that, with the address already popped. */
@@ -2650,7 +2673,7 @@ int main(int argc, char **argv)
         const int armament_screen = !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x07EE;
         unsigned arms_branches = 0;
         unsigned long long arms_returning = 0, arms_actual = 0;
-        g_dos = 0; g_dos_script_n = 0; memset(g_dos_script, 0, sizeof g_dos_script); g_kbd_force = 0;
+        g_dos = 0; g_dos_script_n = 0; memset(g_dos_script, 0, sizeof g_dos_script); g_kbd_force = 0; g_int10_force = 0; g_io_salt = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
         g_nend = 0;
@@ -36239,6 +36262,352 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x04A4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* DOS answers 8 (insufficient memory) in half the states, and the near misses (08xxh, xx08h,
+                 * 7, 9, 0) and random words in the rest, so the whole 16-bit compare is exercised. The carry and
+                 * zero flags are random: nothing reads them, but both are compared at the end. */
+                static const uint16_t odd[]={0,7,9,0x0108,0x0800,0x8008,0x0088,0x0018,0xFFF8,0x0028};
+                const unsigned pick=XPICK(8);
+                g_kbd_force=1;
+                g_kbd_ax=pick<4?8:pick<7?odd[XPICK(10)]:(uint16_t)XRAND();
+                g_kbd_fl=(uint16_t)((XRAND()&1?F_CF:0)|(XRAND()&1?F_ZF:0));
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x04B6) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* The two relocated segment words of the shared exit tail (the immediates of the mov ax,imm16 /
+                 * mov ds,ax at 0528 and the mov ax,imm16 / mov es,ax at 053D) are read from the loaded code:
+                 * patch them to several values. ES must keep the palette-table read (ES:[2*index+1867h], up to
+                 * 64 KB above ES:0) off the stack segments 5000h/6000h and out of the library image. */
+                static const uint16_t dsw[]={0x0000,0x1AB3,0x3000,0x7000,0x0FF0,0xFFFF,0x019C};
+                static const uint16_t esw[]={0x1000,0x2000,0x3000,0x4000,0x7000,0x8000};
+                XW16(cs,0x0529,dsw[XPICK(7)]);
+                const uint16_t esv=esw[XPICK(6)];
+                XW16(cs,0x053E,esv);
+                /* The palette table word the tail reads: DX = ES:[2*index+1867h], index = the argument [SP+4]
+                 * of the entered routine (small[0] here; 04FE: the argument of the routine entered at 0536 is
+                 * the same stack word). The word is random, so a wrong index or table base changes DX. */
+                {   const uint16_t idx_=small[0];
+                    const uint16_t off_=(uint16_t)(2*idx_+0x1867);
+                    XW16(esv,off_,(uint16_t)XRAND());
+                    XW16(esv,(uint16_t)(off_+0x0002),(uint16_t)XRAND());
+                    XW16(esv,(uint16_t)(off_-0x0002),(uint16_t)XRAND()); }
+                g_kbd_force=1;
+                {   const unsigned p_=XPICK(8);
+                    g_kbd_ax=p_<2?0:p_<4?(uint16_t)(XRAND()&7):(uint16_t)XRAND();
+                    g_kbd_fl=(uint16_t)((XRAND()&1?F_CF:0)|(XRAND()&1?F_ZF:0)); }
+                /* INT 10h function 0Fh (get video mode) answers AL = 13h in half the states and another mode
+                 * (including 03h, 93h, 12h, 14h) in the rest: both ends of the routine's one branch. */
+                g_int10_force=1;
+                { static const uint8_t modes_[]={0x03,0x93,0x12,0x14,0x13,0x00,0xFF};
+                  g_int10_al=XPICK(2)?0x13:(XPICK(3)?modes_[XPICK(7)]:(uint8_t)XRAND()); }
+                /* The port-read answers are a function of the port, width and read count only: salt them per state
+                 * so the retrace wait takes a different number of turns and the sequencer read a different value. */
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x04CA) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                /* The port reads are the harness's (a function of the port, the width, the read count and the
+                 * clock): the retrace wait takes one turn in about half the states and several in the rest;
+                 * AX, DX and the flags come in random, so a register the routine forgets to set shows. */
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                /* The port-read answers are a function of the port, width and read count only: salt them per state
+                 * so the retrace wait takes a different number of turns and the sequencer read a different value. */
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x04E4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                /* The port reads are the harness's (a function of the port, the width, the read count and the
+                 * clock): the retrace wait takes one turn in about half the states and several in the rest;
+                 * AX, DX and the flags come in random, so a register the routine forgets to set shows. */
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                /* The port-read answers are a function of the port, width and read count only: salt them per state
+                 * so the retrace wait takes a different number of turns and the sequencer read a different value. */
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x04FE) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* The two relocated segment words of the shared exit tail (the immediates of the mov ax,imm16 /
+                 * mov ds,ax at 0528 and the mov ax,imm16 / mov es,ax at 053D) are read from the loaded code:
+                 * patch them to several values. ES must keep the palette-table read (ES:[2*index+1867h], up to
+                 * 64 KB above ES:0) off the stack segments 5000h/6000h and out of the library image. */
+                static const uint16_t dsw[]={0x0000,0x1AB3,0x3000,0x7000,0x0FF0,0xFFFF,0x019C};
+                static const uint16_t esw[]={0x1000,0x2000,0x3000,0x4000,0x7000,0x8000};
+                XW16(cs,0x0529,dsw[XPICK(7)]);
+                const uint16_t esv=esw[XPICK(6)];
+                XW16(cs,0x053E,esv);
+                /* The palette table word the tail reads: DX = ES:[2*index+1867h], index = the argument [SP+4]
+                 * of the entered routine (small[0] here; 04FE: the argument of the routine entered at 0536 is
+                 * the same stack word). The word is random, so a wrong index or table base changes DX. */
+                {   const uint16_t idx_=small[0];
+                    const uint16_t off_=(uint16_t)(2*idx_+0x1867);
+                    XW16(esv,off_,(uint16_t)XRAND());
+                    XW16(esv,(uint16_t)(off_+0x0002),(uint16_t)XRAND());
+                    XW16(esv,(uint16_t)(off_-0x0002),(uint16_t)XRAND()); }
+                g_kbd_force=1;
+                {   const unsigned p_=XPICK(8);
+                    g_kbd_ax=p_<2?0:p_<4?(uint16_t)(XRAND()&7):(uint16_t)XRAND();
+                    g_kbd_fl=(uint16_t)((XRAND()&1?F_CF:0)|(XRAND()&1?F_ZF:0)); }
+                /* The argument is 0 in a quarter of the states (the page-0 segment is returned), else any word;
+                 * the allocation size CS:[0474] and the page table's first word CS:[0787] are run-time data
+                 * of the library, patched to random words (the size's high bits are shifted away). */
+                if(!XPICK(4)){small[0]=0;XW16(seg[S_SS],r[R_SP],0);}
+                XW16(cs,0x0474,(uint16_t)XRAND());
+                XW16(cs,0x0787,(uint16_t)XRAND());
+                /* The port-read answers are a function of the port, width and read count only: salt them per state
+                 * so the retrace wait takes a different number of turns and the sequencer read a different value. */
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x057A) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The pen's data segment is the relocated word at 0571, patched in the loaded code to a different
+                 * value in four states of five (the encoded 0 in the fifth). */
+                static const uint16_t dsegs[]={0x0000,0x2000,0x3800,0x4C00,0x7000};
+                const uint16_t dsv=dsegs[(unsigned)s%5u];
+                
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                /* the direction flag set in a third of the states: STOSB steps DI down */
+                flags=(uint16_t)(XPICK(3)==0?(flags|F_DF):(flags&(0xFFFFu^F_DF)));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                /* The harness pushes its return address (back, cs) BELOW this SP, and the routine pops ES and DS first, so those two
+                 * words are the harness's; its RETF then pops the words at SP, which must be that same return address. */
+                for(unsigned j=0;j<4;j++){uint16_t w=j==0?back:j==1?cs:(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* The caller's DS and ES are random words (only pushed and popped); the surface at CS:[0194] is a
+                 * page segment that is never the stack, the image or the library's data segment. */
+                seg[S_DS]=dsv;
+                /* the caller's saved ES (top) and DS above the return address are plausible words; they come back as ES/DS */
+                                static const uint16_t surfaces[]={0x2000,0x3000,0x4000,0x8000,0x9000};
+                const uint16_t surf=surfaces[XPICK(5)];
+                XW16(cs,0x0194,surf);
+                seg[S_ES]=surf;   /* set by the caller: the drawing surface page, a safe page */
+                /* y: a screen row, a wrap boundary or a random word; the row word is written unless it falls on
+                 * the routine's own code (0560-0600), the surface word or the row-offset word. */
+                const unsigned mode=(unsigned)XPICK(4);
+                static const uint16_t ys[]={0x7FFE,0x7FFF,0x8000,0x8001,0xFFFE,0xFFFF,0x4000,0xC000};
+                uint16_t y;
+                if(mode<2)y=(uint16_t)XPICK(200);
+                else if(mode==2)y=ys[XPICK(8)];
+                else y=(uint16_t)XRAND();
+                const uint16_t ta=(uint16_t)((uint16_t)(y<<1)+4);
+                if((ta<0x0560||ta>=0x0600)&&(uint16_t)(ta-0x0193)>4)XW16(cs,ta,XRAND());
+                XW16(cs,0x0196,XPICK(4)==0?0:XRAND());
+                XW16(dsv,0x185A,XPICK(2)?XPICK(320):XRAND());
+                XW16(dsv,0x185C,y);
+                /* the pen colour is non-zero mostly, so a missing or misplaced store shows */
+                XW8(dsv,0x1866,XPICK(8)==0?0:(1+XPICK(255)));
+                r[R_DI]=(uint16_t)XRAND();r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0826) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(XPICK(2)?(flags|F_CF|F_ZF|F_SF|F_OF):(flags&~(F_CF|F_ZF|F_SF|F_OF)));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* The immediate at 0827 is read from the loaded code: the shipped 3 in one state of three,
+                 * boundary values and random words in the others. */
+                static const uint16_t imms[]={0x0000,0xFFFF,0x8000,0x7FFF,0x00FF,0xFF00,0x0003};
+                const unsigned mode=XPICK(3);
+                XW16(cs,0x0827,mode==0?0x0003:(mode==1?imms[XPICK(7)]:(uint16_t)XRAND()));
+                r[R_AX]=(uint16_t)XRAND(); r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND(); r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_BP]=(uint16_t)XRAND();
+                seg[S_DS]=(uint16_t)XRAND(); seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x09A8) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                /* The four CS words the routine writes start random (never equal to what it writes by chance). */
+                for(unsigned j=0;j<4;j++)XW16(cs,(uint16_t)(0x082A+2*j),XRAND());
+                /* The callee 04A4 (far, no arguments; returns the largest free block in AX, or 0). Half of the
+                 * states run the real 04A4 (its INT 21h/48h with BX = FFFFh is answered by the scripted DOS: AX = 8
+                 * makes it answer BX = FFFFh, anything else makes it answer 0); the other half replace it with a
+                 * stub `mov ax, imm16; retf` so the size takes any value. The original bytes are saved from the
+                 * first state and put back whenever the real one is wanted. */
+                static uint8_t orig04a4[18]; static int have04a4;
+                if(!have04a4){ for(unsigned j=0;j<18;j++)orig04a4[j]=g_pristine[phys(cs,(uint16_t)(0x04A4+j))]; have04a4=1; }
+                g_dos=1;
+                static const uint16_t sizes[]={0,0,0x0001,0x0010,0x7FFF,0x8000,0xFFFF,0x1234,0x0100,0xF000,0x0008};
+                static const uint16_t segs[]={0,0x0001,0x1234,0x5000,0x7FFF,0x8000,0xFFFF,0xA000,0xE000,0x0008};
+                const unsigned real=XPICK(2);
+                if(real){
+                    for(unsigned j=0;j<18;j++)XW8(cs,(uint16_t)(0x04A4+j),orig04a4[j]);
+                    g_dos_script_n=2;
+                    const unsigned big=XPICK(2);
+                    g_dos_script[0].ax=big?8:(XPICK(2)?0:(uint16_t)(XRAND()%8));    /* 04A4's probe: 8 = a block exists */
+                    g_dos_script[0].cf=(uint8_t)XPICK(2);
+                    g_dos_script[1].ax=XPICK(3)?segs[XPICK(10)]:(uint16_t)XRAND();
+                    g_dos_script[1].cf=(uint8_t)(XPICK(3)==0);
+                } else {
+                    for(unsigned j=0;j<18;j++)XW8(cs,(uint16_t)(0x04A4+j),orig04a4[j]);
+                    const uint16_t sz=XPICK(4)?sizes[XPICK(11)]:(uint16_t)XRAND();
+                    XW8(cs,0x04A4,0xB8);XW16(cs,0x04A5,sz);XW8(cs,0x04A7,0xCB);   /* mov ax, sz; retf */
+                    g_dos_script_n=1;
+                    g_dos_script[0].ax=XPICK(3)?segs[XPICK(10)]:(uint16_t)XRAND();
+                    g_dos_script[0].cf=(uint8_t)(XPICK(3)==0);
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x1118) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* DF both ways (the routine never sets it): up fills ES:0000-F9FF, down fills ES:0000 and ES:0600-FFFE. */
+                flags=(uint16_t)(XPICK(4)?(flags & (0xFFFFu^F_DF)):(flags | F_DF));
+                /* ES: only segments whose whole 64K is neither the stack, the image nor the code (0A000h is the
+                 * screen the real caller 1122 uses). */
+                static const uint16_t es_[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000,0xA000};
+                seg[S_ES]=es_[XPICK(7)];
+                seg[S_DS]=(uint16_t)XRAND();
+                /* Ones where the zeros go, so a missed or misplaced word shows: the first and last words of both
+                 * directions' ranges and a spread through the segment. */
+                for(unsigned j=0;j<0x40;j++)XW16(seg[S_ES],(uint16_t)(2*XRAND()),0xFFFF^(uint16_t)XRAND());
+                XW16(seg[S_ES],0x0000,0xBEEF);XW16(seg[S_ES],0xF9FE,0xBEEF);XW16(seg[S_ES],0xFA00,0xBEEF);
+                XW16(seg[S_ES],0x0600,0xBEEF);XW16(seg[S_ES],0xFFFE,0xBEEF);XW16(seg[S_ES],0x05FE,0xBEEF);
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -36360,7 +36729,7 @@ int main(int argc, char **argv)
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
             g_step_cap = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) ? 2000000 : (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
-            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008) || (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0754) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x41CA);
+            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008) || (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0754) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x41CA) || (!strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && (o->ip == 0x04B6 || o->ip == 0x04FE));
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;
                 static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};

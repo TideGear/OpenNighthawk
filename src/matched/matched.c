@@ -82641,7 +82641,454 @@ L_0ECC:
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:04A4 (far, no arguments): the size of the largest free
+ * block of DOS memory, in paragraphs.
+ *
+ * It asks DOS for an impossible block (function 48h, allocate, BX = FFFFh
+ * paragraphs = 1 MB). DOS refuses and, with the error code 8 (insufficient
+ * memory) in AX, leaves the size of the largest block available in BX. When
+ * the answer in AX is 8 the routine returns that BX in AX; for any other
+ * answer it returns 0. Nine instructions in three blocks: the request and
+ * the INT 21h (run as original code, so the DOS answer, the clock it
+ * takes and the interrupt hook are the machine's own), the compare and
+ * branch, then one of the two two-instruction endings, both ending in the
+ * far return. */
+static int mgraphic_largest_free_block(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    set_r8(c, R_AH, 0x48);
+    c->r[R_BX] = 0xFFFF;
+    c->icount += 2;
+    if (!sm4_int(m, 0x04A9)) return 1;
+    XB(2, 0x04AB);
+    alu_op(c, 7, c->r[R_AX], 0x0008, 1);                       /* cmp ax, 8 */
+    if (x86_cond(c, 5)) goto L_04B3;                           /* jne */
+    XB(2, 0x04B0);
+    c->r[R_AX] = c->r[R_BX];                                   /* mov ax, bx */
+    far_ret(c);
+    return 1;
+L_04B3:
+    XB(2, 0x04B3);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax, ax */
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:04B6 (far, no arguments): enter VGA mode 13h
+ * (320x200, 256 colours) and check that the BIOS took it.
+ *
+ * INT 10h function 0 with AX = 0013h sets the mode; INT 10h function 0Fh
+ * (AH = 0Fh) reads the current mode back into AL. When AL is 13h the
+ * routine returns at once (far). Otherwise it loads DX = 1834h, the offset
+ * of an error message, and jumps into the library's shared failure exit
+ * at 0523: it restores text mode (INT 10h, AX = 3), loads DS with the
+ * library's data segment (the word of the "mov ax, imm16 / mov ds, ax"
+ * pair at 0528, which the loader relocates: read from the loaded code),
+ * prints the message at DS:DX (INT 21h, AH = 9) and ends the program
+ * (INT 21h, AX = 4C00h). The machine's DOS ends the program there, so
+ * the INT 21h does not come back and the routine returns at once with the
+ * machine wherever the DOS left it. Only a DOS that returns (as the
+ * harness's answers do) runs on into the code after it, 0536 onward - a
+ * separate entry of the library, whose one argument is a palette index
+ * [SP+4] (above the far return address): it saves ES, loads ES with the
+ * relocated word at 053D, doubles the index, takes DX = the word at
+ * ES:[index*2 + 1867h] (a table of 16 colour values), and sets the 16
+ * DAC registers with INT 10h AX = 1012h, BX = 0, CX = 10h (ES:DX = the
+ * table). It restores ES and far-calls 04E4 (screen on) and returns far.
+ *
+ * The INT instructions are run as original code (sm4_int), so the
+ * answers, the clock they take and the program's end are the machine's
+ * own; the routine claims room only for the instructions between them. */
+static int mgraphic_enter_mode_13h(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    c->r[R_AX] = 0x0013;                                          /* mov ax, 13h */
+    c->icount += 1;
+    if (!sm4_int(m, 0x04B9)) return 1;
+    XB(1, 0x04BB);
+    set_r8(c, R_AH, 0x0F);                                        /* mov ah, 0Fh: get the video mode */
+    if (!sm4_int(m, 0x04BD)) return 1;
+    XB(2, 0x04BF);
+    alu_op(c, 7, get_r8(c, R_AL), 0x13, 0);                       /* cmp al, 13h */
+    if (x86_cond(c, 5)) goto L_04C4;                              /* jne */
+    XB(1, 0x04C3);
+    far_ret(c);
+    return 1;
+L_04C4:
+    XB(2, 0x04C4);
+    c->r[R_DX] = 0x1834;                                          /* the message */
+    /* jmp 0523 */
+    XB(1, 0x0523);
+    c->r[R_AX] = 0x0003;                                          /* text mode */
+    if (!sm4_int(m, 0x0526)) return 1;
+    XB(3, 0x0528);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0529);             /* mov ax, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_AX];                                    /* mov ds, ax */
+    set_r8(c, R_AH, 0x09);                                        /* mov ah, 9: print DS:DX */
+    if (!sm4_int(m, 0x052F)) return 1;
+    XB(1, 0x0531);
+    c->r[R_AX] = 0x4C00;                                          /* mov ax, 4C00h: exit */
+    if (!sm4_int(m, 0x0534)) return 1;
+    XB(10, 0x0536);
+    c->r[R_BX] = c->r[R_SP];                                      /* mov bx, sp */
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 0x0004));   /* mov bx, ss:[bx+4] */
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x053E);             /* mov ax, imm16 (relocated) */
+    c->seg[S_ES] = c->r[R_AX];                                    /* mov es, ax */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);     /* shl bx, 1 */
+    c->r[R_DX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x1867));   /* mov dx, es:[bx+1867h] */
+    c->r[R_AX] = 0x1012;                                          /* set a block of DAC registers */
+    c->r[R_BX] = 0x0000;
+    c->r[R_CX] = 0x0010;
+    if (!sm4_int(m, 0x0552)) return 1;
+    XB(1, 0x0554);
+    c->seg[S_ES] = cpu_pop16(c);                                  /* pop es */
+    SM4_NEED(1, 0x0555);
+    RUN(guest_call_far(m, 0x0555, 0x055A));                       /* lcall 04E4: screen on */
+    XB(1, 0x055A);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:04CA (far, no arguments): blank the screen, in a
+ * vertical retrace.
+ *
+ * Wait until the CRT status port 3DAh shows a vertical retrace (bit 3 set;
+ * IN / TEST AL,8 / JE, as many turns as it takes, each port read at the
+ * clock the original reads it), then write 02h to the mode control port
+ * 3D8h and set bit 5 (the screen-off bit) of sequencer register 1: the
+ * index 1 goes to port 3C4h, the register is read through 3C5h, ORed with
+ * 20h and written back. Flags are those of the last OR. 04E4 is the same
+ * routine with 0Ah and a cleared bit. The port accesses are the routine's
+ * only effect; the clock is charged at each of them, in order, and the
+ * room claim leaves slack for the bus delay a port access can add. */
+static int mgraphic_screen_off(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->r[R_DX] = 0x03DA;
+    c->icount += 1;
+    for (;;) {                                                    /* 04CD: in al,dx / test al,8 / je */
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x04CD; return 1; }
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        alu_logic(c, (uint32_t)(get_r8(c, R_AL)) & 0x08, 0);      /* test al, 8 */
+        c->icount += 2;                                           /* test, je */
+        if (!x86_cond(c, 4)) break;
+    }
+    if (!room(c, 11 + IO_SLACK(4))) { c->ip = 0x04D2; return 1; }
+    c->r[R_DX] = 0x03D8;
+    set_r8(c, R_AL, 0x02);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* mode control: 02h */
+    c->icount += 1;
+    c->r[R_DX] = 0x03C4;
+    set_r8(c, R_AL, 0x01);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* the sequencer's index: register 1 */
+    c->icount += 1;
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* inc dx: 3C5h */
+    c->icount += 1;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), 0x20, 0));   /* or al, 20h */
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);
+    c->icount += 2;                                               /* out, retf */
+    far_ret(c);
+    return 1;
+}
+
+/* MGRAPHIC.EXE 019C:04E4 (far, no arguments): switch the screen on, in a
+ * vertical retrace.
+ *
+ * Wait until the CRT status port 3DAh shows a vertical retrace (bit 3 set;
+ * IN / TEST AL,8 / JE, as many turns as it takes, each port read at the
+ * clock the original reads it), then write 0Ah to the mode control port
+ * 3D8h and clear bit 5 (the screen-off bit) of sequencer register 1: the
+ * index 1 goes to port 3C4h, the register is read through 3C5h, ANDed with
+ * DFh and written back. Flags are those of the last AND. 04CA is the same
+ * routine with 02h and a set bit. The port accesses are the routine's
+ * only effect; the clock is charged at each of them, in order, and the
+ * room claim leaves slack for the bus delay a port access can add. */
+static int mgraphic_screen_on(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->r[R_DX] = 0x03DA;
+    c->icount += 1;
+    for (;;) {                                                    /* 04E7: in al,dx / test al,8 / je */
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x04E7; return 1; }
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        alu_logic(c, (uint32_t)(get_r8(c, R_AL)) & 0x08, 0);      /* test al, 8 */
+        c->icount += 2;                                           /* test, je */
+        if (!x86_cond(c, 4)) break;
+    }
+    if (!room(c, 11 + IO_SLACK(4))) { c->ip = 0x04EC; return 1; }
+    c->r[R_DX] = 0x03D8;
+    set_r8(c, R_AL, 0x0A);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* mode control: 0Ah */
+    c->icount += 1;
+    c->r[R_DX] = 0x03C4;
+    set_r8(c, R_AL, 0x01);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* the sequencer's index: register 1 */
+    c->icount += 1;
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* inc dx: 3C5h */
+    c->icount += 1;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0xDF, 0));   /* and al, 0DFh */
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);
+    c->icount += 2;                                               /* out, retf */
+    far_ret(c);
+    return 1;
+}
+
+/* MGRAPHIC.EXE 019C:04FE (far, one argument at [SP+4], above the far
+ * return address): hand out a segment of memory for the library's pages.
+ *
+ * With the argument 0 it returns the page table's first word, CS:[0787]
+ * (the segment of page 0), in AX. With any other argument it asks DOS to
+ * allocate memory (INT 21h function 48h) of BX = CS:[0474] / 16 paragraphs
+ * (the byte count at 0474 shifted right four times); when DOS succeeds
+ * (carry clear) the new block's segment is in AX and the routine returns
+ * it (far). On carry it jumps into the library's shared failure exit,
+ * after loading DX = 180Eh (an error message): text mode (INT 10h,
+ * AX = 3), DS = the library's data segment (the word of the
+ * "mov ax, imm16 / mov ds, ax" pair at 0528, relocated: read from the
+ * loaded code), print DS:DX (INT 21h, AH = 9) and end the program
+ * (INT 21h, AX = 4C00h). The machine's DOS ends the program there, so the
+ * INT 21h does not come back and the routine returns at once with the
+ * machine wherever the DOS left it. Only a DOS that returns (as the
+ * harness's answers do) runs on into the code after it, 0536 onward - a
+ * separate entry of the library with its own argument, a palette index at
+ * [SP+4]: ES is saved and loaded with the relocated word at 053D, the
+ * index doubled, DX = the word at ES:[index*2 + 1867h] (a table of 16
+ * colour values), and the 16 DAC registers set with INT 10h AX = 1012h,
+ * BX = 0, CX = 10h (ES:DX = the table); ES is restored and 04E4 (screen
+ * on) far-called before the far return.
+ *
+ * The INT instructions are run as original code (sm4_int), so the
+ * answers, the clock they take and the program's end are the machine's
+ * own; the routine claims room only for the instructions between them. */
+static int mgraphic_alloc_or_page_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    c->r[R_BX] = c->r[R_SP];                                      /* mov bx, sp */
+    alu_op(c, 7, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 0x0004)), 0x0000, 1);   /* cmp word ss:[bx+4], 0 */
+    c->icount += 3;                                               /* mov, cmp, jne */
+    if (x86_cond(c, 5)) goto L_050C;                              /* jne */
+    XB(2, 0x0507);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0787);             /* mov ax, cs:[0787] */
+    far_ret(c);
+    return 1;
+L_050C:
+    XB(6, 0x050C);
+    set_r8(c, R_AH, 0x48);                                        /* mov ah, 48h: allocate */
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x0474);             /* mov bx, cs:[0474] */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);     /* shr bx, 1, four times */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    if (!sm4_int(m, 0x051B)) return 1;
+    XB(1, 0x051D);                                                /* jb */
+    if (x86_cond(c, 2)) goto L_0520;
+    XB(1, 0x051F);
+    far_ret(c);
+    return 1;
+L_0520:
+    XB(2, 0x0520);
+    c->r[R_DX] = 0x180E;                                          /* the message */
+    /* falls into 0523 */
+    c->r[R_AX] = 0x0003;                                          /* text mode */
+    if (!sm4_int(m, 0x0526)) return 1;
+    XB(3, 0x0528);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0529);             /* mov ax, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_AX];                                    /* mov ds, ax */
+    set_r8(c, R_AH, 0x09);                                        /* mov ah, 9: print DS:DX */
+    if (!sm4_int(m, 0x052F)) return 1;
+    XB(1, 0x0531);
+    c->r[R_AX] = 0x4C00;                                          /* mov ax, 4C00h: exit */
+    if (!sm4_int(m, 0x0534)) return 1;
+    XB(10, 0x0536);
+    c->r[R_BX] = c->r[R_SP];                                      /* mov bx, sp */
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 0x0004));   /* mov bx, ss:[bx+4] */
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x053E);             /* mov ax, imm16 (relocated) */
+    c->seg[S_ES] = c->r[R_AX];                                    /* mov es, ax */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);     /* shl bx, 1 */
+    c->r[R_DX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x1867));   /* mov dx, es:[bx+1867h] */
+    c->r[R_AX] = 0x1012;                                          /* set a block of DAC registers */
+    c->r[R_BX] = 0x0000;
+    c->r[R_CX] = 0x0010;
+    if (!sm4_int(m, 0x0552)) return 1;
+    XB(1, 0x0554);
+    c->seg[S_ES] = cpu_pop16(c);                                  /* pop es */
+    SM4_NEED(1, 0x0555);
+    RUN(guest_call_far(m, 0x0555, 0x055A));                       /* lcall 04E4: screen on */
+    XB(1, 0x055A);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:057A (far, entered with the caller's DS and ES already
+ * on the stack, and ES:DI/AL not yet set): the tail of the pen-pixel plot
+ * that starts at 056E. The near call to 0581 returns AL = the pen colour
+ * and DI = the pixel's address in the current surface; one STOSB stores AL
+ * at ES:[DI] (DI steps by the direction flag), then ES and DS are popped
+ * from the stack (the values the caller pushed, ES on top) and the routine
+ * returns far. 057A is reached on 43 routes from outside; 056E..0579 (the
+ * prologue) is not run on any route. Five instructions: the call, then a
+ * block of four ending in the far return. */
+static int mgraphic_plot_pen_pixel_tail(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x057A);
+    RUN(guest_call_pop(m, 0x0581, 0x057D, 0));               /* AL = colour, DI = pixel address */
+    XB(4, 0x057D);
+    x86_stos(c, 0);                                           /* stosb: ES:[DI] = AL */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0826 (far, no arguments): load AX with a constant and
+ * return. The word is the immediate of the "mov ax, imm16" at 0826, which
+ * is 3 as shipped (read from the loaded code at CS:0827, never assumed).
+ * Only AX changes; the flags and every other register and memory cell are
+ * untouched. Real routes: only key_tour runs it (no other route reaches
+ * 0826). Two instructions: one block ending in the far return. */
+static int mgraphic_ret_constant_3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0826);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0827);   /* the immediate: 3 as shipped */
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:09A8 (far, no arguments): set up the library's memory
+ * arena. It far-calls 04A4, which asks DOS for an impossibly large block
+ * (INT 21h/48h with BX = FFFFh) and answers the size, in paragraphs, of the
+ * largest free block (or 0). A non-zero size is then really allocated with
+ * INT 21h/48h (BX = that size); if DOS refuses (carry) or the size was 0,
+ * AX and BX are both 0. Then BX = size + AX, i.e. the segment just past the
+ * block, and four CS words are set: [082A] = 0, [082C] = AX (the block's
+ * first segment), [082E] = AX (the allocation cursor, same value), [0830] =
+ * BX (the end segment). AX (the segment or 0) and BX (the end) are left for
+ * the caller. 09D4 (the matching release) follows immediately; this routine
+ * ends at its own far return at 09D3.
+ * Fifteen instructions on the longest path: the call, a block of three, a
+ * mov and the INT 21h, the jae, two xors, then a block of six ending in the
+ * far return. */
+static int mgraphic_arena_take_largest_block(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x09A8);
+    RUN(guest_call_far(m, 0x09A8, 0x09AD));
+    XB(3, 0x09AD);
+    c->r[R_BX] = c->r[R_AX];                                      /* mov bx, ax */
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);   /* or bx, bx */
+    if (x86_cond(c, 4)) goto L_09B9;                              /* je: nothing free */
+    XB(1, 0x09B3);
+    set_r8(c, 4, 0x48);                                           /* mov ah, 48h */
+    SM4_NEED(1, 0x09B5);
+    if (!st4_int21(m, 0x09B5)) return 1;                          /* allocate BX paragraphs */
+    XB(1, 0x09B7);
+    if (x86_cond(c, 3)) goto L_09BD;                              /* jae: allocated */
+L_09B9:
+    XB(2, 0x09B9);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax, ax */
+    c->r[R_BX] = (uint16_t)alu_op(c, 6, c->r[R_BX], c->r[R_BX], 1);   /* xor bx, bx */
+L_09BD:
+    XB(6, 0x09BD);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);   /* add bx, ax */
+    seg_write16(c, c->seg[S_CS], 0x082A, 0);
+    seg_write16(c, c->seg[S_CS], 0x082C, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x082E, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x0830, c->r[R_BX]);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:1118 (far, no arguments, ES = the target segment): clear
+ * a 320 x 200 page. CX = 7D00h (32000), AX = 0, DI = 0, then REP STOSW writes
+ * 32000 zero words (64000 bytes) from ES:0 in the direction DF gives (the
+ * routine does not set it). The fill ends with CX = 0 and DI = 64000 modulo
+ * 64K (up) or the matching wrap (down); AX is 0 and the flags are those of
+ * the XOR DI, DI (ZF set, CF/OF/SF clear, PF set). 1122 loads ES = A000h and
+ * calls this; the routine reads nothing but ES, DF and the return address.
+ * One REP iteration is one instruction and a stop point of its own: when the
+ * clock runs out inside the fill the routine hands back at 111F with CX
+ * and DI as far as they got. Five instructions, 32004 steps when it finishes. */
+static int mgraphic_clear_es_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x1118);
+    c->r[R_CX] = 0x7D00;                                          /* mov cx, 7D00h */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax, ax */
+    c->r[R_DI] = (uint16_t)alu_op(c, 6, c->r[R_DI], c->r[R_DI], 1);   /* xor di, di */
+    do {                                                          /* rep stosw: one clock an iteration */
+        SM4_NEED(1, 0x111F);
+        x86_stos(c, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;
+    } while (c->r[R_CX] != 0);
+    XB(1, 0x1121);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1118, mgraphic_clear_es_segment, "far: clear a 64000-byte page, rep stosw of 32000 zero words from ES:0 in the direction DF gives (1122 calls it with ES = A000h)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x09A8, mgraphic_arena_take_largest_block, "far: ask 04A4 for the largest free DOS block, allocate it (INT 21h/48h), record start and end segments in CS words 082C-0830", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0826, mgraphic_ret_constant_3, "far: AX = the immediate word at CS:0827 (3 as shipped), then return; no flags change", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x057A, mgraphic_plot_pen_pixel_tail, "far, interior entry of the pixel plot: call 0581, STOSB, pop ES and DS pushed by the caller", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x04FE, mgraphic_alloc_or_page_segment, "far, one argument: 0 returns the page-0 segment CS:[0787]; else DOS-allocate CS:[0474]/16 paragraphs (AX = segment) or, on failure, text mode, message DS:180Eh, exit", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x04E4, mgraphic_screen_on, "far: wait for a vertical retrace, mode control 3D8h = 0Ah, then clear the screen-off bit (bit 5) of sequencer register 1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x04CA, mgraphic_screen_off, "far: wait for a vertical retrace, mode control 3D8h = 02h, then set the screen-off bit (bit 5) of sequencer register 1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x04B6, mgraphic_enter_mode_13h, "far: BIOS video mode 13h and read it back; if it is not 13h, text mode, message DS:1834h, exit to DOS (the code after the exit sets 16 DAC registers and calls 04E4)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x04A4, mgraphic_largest_free_block, "far: DOS allocate 48h of FFFFh paragraphs (always fails); AX = the largest free block (BX) when DOS answers 8, else 0", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0E41, mgraphic_clip_rect, "far, BP=shared parameter block: clip X then Y against two bounds each, then far-call 0EE6 to blit", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0E30, mgraphic_clip_blit_entry, "far: entry stub, BP = the caller's one argument (a parameter-block pointer), then far call 0E41", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12DF, mgraphic_ret_12DF, "far: bare RETF, no arguments, no effect", 2 },
