@@ -82388,7 +82388,266 @@ static int mgraphic_select_page(machine_t *m)
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:07A3 (far, no arguments): copy one of the graphics
+ * library's own CS words into another. AX is loaded from CS:[0789] and
+ * stored to CS:[0194] (the same cell 07CD..07D5 and the drawing routines
+ * 0F7E/0FE6/1061/10CF read as the library's row offset base); the value
+ * is left in AX. No flag is changed. Three instructions: a straight block
+ * ending in the far return. */
+static int mgraphic_copy_text_var_194(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x07A3);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0789);
+    seg_write16(c, c->seg[S_CS], 0x0194, c->r[R_AX]);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:12D5 (far, argument: SI = a table index): a small
+ * segment-table lookup. SI is doubled (shl si,1), then ES is loaded from
+ * the word at CS:[SI+0787] -- a table of segment values kept in the
+ * library's own code segment, one per index. No other register or flag
+ * is touched beyond what the shift sets. Three instructions ending in
+ * the far return. */
+static int mgraphic_select_overlay_seg(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x12D5);
+    c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 1, 1));        /* shl si, 1 */
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0787));
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:12DD (far, no arguments): a bare far return, one
+ * instruction. Changes nothing but IP and CS (both popped from the
+ * stack) and the clock. */
+static int mgraphic_ret_12DD(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x12DD);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:12DF (far, no arguments): a bare far return, one
+ * instruction. Changes nothing but IP and CS (both popped from the
+ * stack) and the clock. */
+static int mgraphic_ret_12DF(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x12DF);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0E30 (far, argument: a parameter-block pointer at
+ * [bp+6] of a fresh frame): the entry stub for the clip-and-blit pair
+ * 0E30/0E41. It opens a frame (push bp; mov bp,sp), saves SI and DI,
+ * then loads BP itself from its own caller's argument -- so BP, from
+ * here on, is the parameter-block pointer, not a frame pointer -- and
+ * far-calls 0E41 with that BP (0E41 reads and writes the block through
+ * BP-relative offsets, and ends by calling 0EE6 the same way). On return
+ * DI, SI and the original BP are restored and the routine returns far.
+ * Ten instructions: a block of five, the call, a block of four ending in
+ * the far return. */
+static int mgraphic_clip_blit_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 5)) return 0;
+    XB(5, 0x0E30);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_BP] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0006));
+    SM4_NEED(1, 0x0E38);
+    RUN(guest_call_far(m, 0x0E38, 0x0E3D));
+    XB(4, 0x0E3D);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0E41 (far, entered with BP = the parameter-block
+ * pointer that 0E30 sets up and that 0EE6 later reads the same way):
+ * clip the block's rectangle against two bounds per axis, then far-call
+ * 0EE6 to blit it.
+ *
+ * The block, by offset (as 0EE6 reads it): [BP+0] source page, [BP+2]
+ * source x, [BP+4] source y, [BP+6] destination page#, [BP+8]
+ * destination x, [BP+0A] destination y, [BP+0C] width, [BP+0E] height.
+ * Two more bounds are read here only: [BP+14] and [BP+16] against the X
+ * axis, [BP+10] and [BP+12] against the Y axis.
+ *
+ * X axis: AX = [BP+8], CX = [BP+14]. If AX >= CX (jge), the far edge
+ * AX+[BP+0C]-1 is compared with CX: clearing it (BX = AX+[BP+0C]-1 >= CX)
+ * changes nothing; otherwise (BX < CX, i.e. the window ends before the
+ * bound) CX-AX is added to [BP+8] and [BP+2] and subtracted from
+ * [BP+0C] -- the window is pushed right to the bound and shrunk. If
+ * instead AX < CX (the near edge is left of the bound), the far edge
+ * BX = AX+[BP+0C]-1 is compared with CX again: BX < CX drops the whole
+ * rectangle (jump to the shared exit, skipping the blit); otherwise
+ * CX-AX is subtracted from [BP+0C] only. A second pass then clips the
+ * far edge (BX, carried from whichever arm ran) against CX = [BP+16]:
+ * BX <= CX changes nothing; BX > CX, with AX also past CX, drops the
+ * rectangle; otherwise BX-CX is subtracted from [BP+0C].
+ *
+ * Y axis: the same two passes, with AX = [BP+0A], CX = [BP+10] then
+ * [BP+12], [BP+0E] (height) and [BP+4] (the Y accumulator) in the roles
+ * [BP+0C]/[BP+2] had.
+ *
+ * [BP+0C] and [BP+0E] are pushed at entry and popped back to their
+ * ORIGINAL values just before the return: every SUB/ADD against them
+ * above is local to this routine's own clipping arithmetic and does not
+ * survive the call -- only [BP+8], [BP+0A], [BP+2] and [BP+4] carry the
+ * clip out to the caller. BP is additionally saved/restored (PUSH/POP)
+ * around the call to 0EE6, which also saves and restores it itself. DS
+ * and ES, saved at entry, come back unchanged. Reaching the shared exit
+ * through any of the four "drop it" jumps skips the call to 0EE6.
+ * Sixty-four instructions; far return. */
+static int mgraphic_clip_rect(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define BPW(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+#define BPW_SET(o_, v_) seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)), (uint16_t)(v_))
+    if (!room(c, 8)) return 0;
+    XB(8, 0x0E41);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, BPW(0x000C));                 /* ff76 0c: push [bp+0c] (width) */
+    cpu_push16(c, BPW(0x000E));                 /* ff76 0e: push [bp+0e] (height) */
+    c->r[R_CX] = BPW(0x0014);
+    c->r[R_AX] = BPW(0x0008);
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);    /* cmp ax, cx */
+    if (x86_cond(c, 13)) goto L_0E6E;            /* jge */
+    XB(5, 0x0E53);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], BPW(0x000C), 1);
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+    alu_op(c, 7, c->r[R_BX], c->r[R_CX], 1);    /* cmp bx, cx */
+    if (x86_cond(c, 13)) goto L_0E60;            /* jge */
+    XB(1, 0x0E5D);
+    goto L_0ECC;                                 /* drop the rectangle */
+L_0E60:
+    XB(5, 0x0E60);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1);
+    BPW_SET(0x0008, alu_op(c, 0, BPW(0x0008), c->r[R_CX], 1));
+    BPW_SET(0x0002, alu_op(c, 0, BPW(0x0002), c->r[R_CX], 1));
+    BPW_SET(0x000C, alu_op(c, 5, BPW(0x000C), c->r[R_CX], 1));
+    goto L_0E74;
+L_0E6E:
+    XB(3, 0x0E6E);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], BPW(0x000C), 1);
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+L_0E74:
+    XB(3, 0x0E74);
+    c->r[R_CX] = BPW(0x0016);
+    alu_op(c, 7, c->r[R_BX], c->r[R_CX], 1);    /* cmp bx, cx */
+    if (x86_cond(c, 14)) goto L_0E87;             /* jle */
+    XB(2, 0x0E7B);
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);    /* cmp ax, cx */
+    if (x86_cond(c, 14)) goto L_0E82;             /* jle */
+    XB(1, 0x0E7F);
+    goto L_0ECC;                                  /* drop the rectangle */
+L_0E82:
+    XB(2, 0x0E82);
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_CX], 1);
+    BPW_SET(0x000C, alu_op(c, 5, BPW(0x000C), c->r[R_BX], 1));
+L_0E87:
+    XB(4, 0x0E87);
+    c->r[R_CX] = BPW(0x0010);
+    c->r[R_AX] = BPW(0x000A);
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);    /* cmp ax, cx */
+    if (x86_cond(c, 13)) goto L_0EAC;             /* jge */
+    XB(5, 0x0E91);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], BPW(0x000E), 1);
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+    alu_op(c, 7, c->r[R_BX], c->r[R_CX], 1);    /* cmp bx, cx */
+    if (x86_cond(c, 13)) goto L_0E9E;             /* jge */
+    XB(1, 0x0E9B);
+    goto L_0ECC;                                   /* drop the rectangle */
+L_0E9E:
+    XB(5, 0x0E9E);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1);
+    BPW_SET(0x000A, alu_op(c, 0, BPW(0x000A), c->r[R_CX], 1));
+    BPW_SET(0x0004, alu_op(c, 0, BPW(0x0004), c->r[R_CX], 1));
+    BPW_SET(0x000E, alu_op(c, 5, BPW(0x000E), c->r[R_CX], 1));
+    goto L_0EB2;
+L_0EAC:
+    XB(3, 0x0EAC);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], BPW(0x000E), 1);
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+L_0EB2:
+    XB(3, 0x0EB2);
+    c->r[R_CX] = BPW(0x0012);
+    alu_op(c, 7, c->r[R_BX], c->r[R_CX], 1);    /* cmp bx, cx */
+    if (x86_cond(c, 14)) goto L_0EC5;              /* jle */
+    XB(2, 0x0EB9);
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);    /* cmp ax, cx */
+    if (x86_cond(c, 14)) goto L_0EC0;              /* jle */
+    XB(1, 0x0EBD);
+    goto L_0ECC;                                    /* drop the rectangle */
+L_0EC0:
+    XB(2, 0x0EC0);
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_CX], 1);
+    BPW_SET(0x000E, alu_op(c, 5, BPW(0x000E), c->r[R_BX], 1));
+L_0EC5:
+    XB(1, 0x0EC5);
+    x86_push_reg(c, R_BP);
+    SM4_NEED(1, 0x0EC6);
+    RUN(guest_call_far(m, 0x0EC6, 0x0ECB));
+    XB(1, 0x0ECB);
+    c->r[R_BP] = cpu_pop16(c);
+L_0ECC:
+    XB(5, 0x0ECC);
+    BPW_SET(0x000E, cpu_pop16(c));
+    BPW_SET(0x000C, cpu_pop16(c));
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef BPW_SET
+#undef BPW
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0E41, mgraphic_clip_rect, "far, BP=shared parameter block: clip X then Y against two bounds each, then far-call 0EE6 to blit", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0E30, mgraphic_clip_blit_entry, "far: entry stub, BP = the caller's one argument (a parameter-block pointer), then far call 0E41", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12DF, mgraphic_ret_12DF, "far: bare RETF, no arguments, no effect", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12DD, mgraphic_ret_12DD, "far: bare RETF, no arguments, no effect", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12D5, mgraphic_select_overlay_seg, "far: ES = the CS table at 0787, indexed by SI doubled (a segment-per-index table)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07A3, mgraphic_copy_text_var_194, "far: copy the library's CS word 0789 into CS word 0194", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07AC, mgraphic_select_page, "select page [SP+4]: AX = page table word CS:[0787+2n], stored as the current surface CS:[0194]; BX = entry SP", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1131, mgraphic_page_copy_rect, "copy a width x height rectangle from one 320-wide page to another, a REP MOVSB per row (page table CS:0787, row table CS:0004)", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0ED5, mgraphic_blit_transparent_entry, "far entry: BP = the parameter block address [BP+6], far call 0EE6 (transparent blit); SI, DI, BP kept", 2 },

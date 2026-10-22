@@ -756,6 +756,12 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MGRAPHIC.EXE", 0x0E41, 0x0E41, 0x0094 },
+    { "MGRAPHIC.EXE", 0x0E30, 0x0E30, 0x0011 },
+    { "MGRAPHIC.EXE", 0x12DF, 0x12DF, 0x0001 },
+    { "MGRAPHIC.EXE", 0x12DD, 0x12DD, 0x0001 },
+    { "MGRAPHIC.EXE", 0x12D5, 0x12D5, 0x0008 },
+    { "MGRAPHIC.EXE", 0x07A3, 0x07A3, 0x0009 },
     { "MGRAPHIC.EXE", 0x07AC, 0x07AC, 0x0016 },
     { "MGRAPHIC.EXE", 0x1131, 0x1131, 0x0057 },
     { "MGRAPHIC.EXE", 0x0ED5, 0x0ED5, 0x0011 },
@@ -1641,6 +1647,12 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "MGRAPHIC.EXE", 0x019C, 0x0ED5, 0x0011, 10, 10, "far entry: BP = the parameter block address [BP+6], far call 0EE6 (transparent blit); SI, DI, BP kept" },
     { "MGRAPHIC.EXE", 0x019C, 0x1131, 0x0057, 41, 41, "copy a width x height rectangle from one 320-wide page to another, a REP MOVSB per row (page table CS:0787, row table CS:0004)" },
     { "MGRAPHIC.EXE", 0x019C, 0x07AC, 0x0016, 9, 9, "select page [SP+4]: AX = page table word CS:[0787+2n], stored as the current surface CS:[0194]; BX = entry SP" },
+    { "MGRAPHIC.EXE", 0x019C, 0x07A3, 0x0009, 3, 3, "far: copy the library's CS word 0789 into CS word 0194" },
+    { "MGRAPHIC.EXE", 0x019C, 0x12D5, 0x0008, 3, 3, "far: ES = the CS table at 0787, indexed by SI doubled (a segment-per-index table)" },
+    { "MGRAPHIC.EXE", 0x019C, 0x12DD, 0x0001, 1, 1, "far: bare RETF, no arguments, no effect" },
+    { "MGRAPHIC.EXE", 0x019C, 0x12DF, 0x0001, 1, 1, "far: bare RETF, no arguments, no effect" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0E30, 0x0011, 10, 10, "far: entry stub, BP = the caller's one argument (a parameter-block pointer), then far call 0E41" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0E41, 0x0094, 64, 64, "far, BP=shared parameter block: clip X then Y against two bounds each, then far-call 0EE6 to blit" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -36042,6 +36054,186 @@ int main(int argc, char **argv)
                 r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();
                 if(XPICK(3)==0){r[R_AX]=(uint16_t)(page^1);r[R_DX]=page;r[R_BP]=r[R_SP];}
                 if(XPICK(2)==0)flags=(uint16_t)(flags|F_OF|F_CF|F_ZF|F_SF);else flags=(uint16_t)(flags&~(F_OF|F_CF|F_ZF|F_SF|F_AF|F_PF));
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x07A3) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;   /* never a random segment: a stack landing in the image would corrupt the pristine copy for later states */
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* The source word 0789 holds a mix of ordinary and boundary values; the destination 0194
+                 * starts different from the source so the copy is visible, and its neighbours survive. */
+                static const uint16_t vals[]={0x0000,0xFFFF,0x8000,0x00FF,0xFF00,0x0001,0x0100};
+                const uint16_t src_=XPICK(2)?(uint16_t)XRAND():vals[XPICK(7)];
+                XW16(cs,0x0789,src_);
+                XW16(cs,0x0194,(uint16_t)(src_^0xFFFFu));
+                XW16(cs,0x0787,XRAND());XW16(cs,0x078B,XRAND());XW16(cs,0x0192,XRAND());XW16(cs,0x0196,XRAND());
+                r[R_AX]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x12D5) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* SI is the table index before the shift; cover index 0, a mid index and the high bit (so the
+                 * shift's carry-out and sign are both exercised), with varied segment-looking table entries. */
+                static const uint16_t idxs[]={0,1,2,3,7,0x3FFF,0x7FFF,0x8000,0xFFFF};
+                r[R_SI]=idxs[XPICK(9)];
+                static const uint16_t segv[]={0x0000,0x0A95,0x1000,0x7000,0x8FFF,0xF000};
+                for(unsigned j=0;j<0x20;j++)XW16(cs,(uint16_t)(0x0787+2*j),XPICK(2)?segv[XPICK(6)]:(uint16_t)XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+                flags=(uint16_t)(XPICK(2)?(flags|F_CF):(flags&~F_CF));
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x12DD) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(XPICK(2)?(flags|F_CF|F_ZF):(flags&~(F_CF|F_ZF)));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                r[R_AX]=(uint16_t)XRAND(); r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND(); r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x12DF) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(XPICK(2)?(flags|F_CF|F_ZF):(flags&~(F_CF|F_ZF)));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0,0x0008};
+                r[R_SP]=stacks[XPICK(6)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                r[R_AX]=(uint16_t)XRAND(); r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND(); r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0E30) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();
+                r[R_DI]=(uint16_t)XRAND();
+                /* 0E41 (clip-then-blit) is proven on its own: stub its entry to a bare RETF so this
+                 * routine's own ten instructions (frame setup, the far call, the restore) are what get
+                 * exercised. 0E30 reads nothing back from 0E41 and does not care which argument [bp+6]
+                 * (its own argument, becoming 0E41's BP) points to once the callee is a bare return. */
+                XW8(cs,0x0E41,0xCB);
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0E41) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                /* BP is inherited from the caller (0E30) as a parameter-block pointer, not a frame pointer:
+                 * it sits in the stack segment above the return address, as 0EE6's own fixture places it. */
+                const uint16_t pb=(uint16_t)(r[R_SP]+0x10+2*XPICK(0x40));
+                r[R_BP]=pb;
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                /* 0EE6 (the pixel blit) is already proven and runs for real here (0E41 saves/restores BP
+                 * itself around the call and reads nothing back from the callee). Its page segments and the
+                 * CS:0787 table it reads must stay in the same safe set 0EE6's own fixture uses -- never the
+                 * stack, CS or the image -- or a stray blit can write over this routine's own code and the
+                 * state is skipped as self-written. */
+                static const uint16_t safepages[]={0x2000,0x3000,0x3800,0x4000,0x7000,0x8000};
+                for(unsigned j=0;j<5;j++)XW16(cs,(uint16_t)(0x0787+2*j),safepages[XPICK(6)]);
+                const uint16_t srcpage=safepages[XPICK(6)];
+                const uint16_t dstpagen=(uint16_t)XPICK(5);
+                /* Seven arms per axis, picked so every branch of the clip (both initial compares, both
+                 * second-pass compares, and every "drop the rectangle" exit) is reached by some state. */
+                unsigned xarm=XPICK(7);
+                uint16_t ax8,c14,w0c,c16;
+                switch(xarm){
+                 case 0: ax8=50;  c14=50;  w0c=10; c16=100; break;               /* >=cx1, far<=cx2: no change */
+                 case 1: ax8=50;  c14=50;  w0c=80; c16=70;  break;               /* >=cx1, far>cx2, ax<=cx2: trim */
+                 case 2: ax8=90;  c14=90;  w0c=10; c16=30;  break;               /* >=cx1, far>cx2, ax>cx2: drop */
+                 case 3: ax8=20;  c14=50;  w0c=40; c16=150; break;               /* <cx1, far>=cx1: trim-left, 2nd no-trim */
+                 case 4: ax8=20;  c14=50;  w0c=40; c16=50;  break;               /* <cx1, far>=cx1: trim-left, 2nd trim */
+                 case 5: ax8=20;  c14=50;  w0c=40; c16=5;   break;               /* <cx1, far>=cx1: trim-left, 2nd drop */
+                 default: ax8=10; c14=50;  w0c=5;  c16=100; break;               /* <cx1, far<cx1: immediate drop */
+                }
+                unsigned yarm=XPICK(7);
+                uint16_t ay,c10,w0e,c12;
+                switch(yarm){
+                 case 0: ay=40;  c10=40;  w0e=8;  c12=90;  break;
+                 case 1: ay=40;  c10=40;  w0e=60; c12=55;  break;
+                 case 2: ay=70;  c10=70;  w0e=8;  c12=25;  break;
+                 case 3: ay=15;  c10=40;  w0e=30; c12=140; break;
+                 case 4: ay=15;  c10=40;  w0e=30; c12=40;  break;
+                 case 5: ay=15;  c10=40;  w0e=30; c12=4;   break;
+                 default: ay=8;  c10=40;  w0e=4;  c12=90;  break;
+                }
+                /* The block, by offset (0 source page, 2 source x, 4 source y, 6 dest page#, 8 dest x,
+                 * 0A dest y, 0C width, 0E height, 10/12 the Y bounds, 14/16 the X bounds). Source x/y start
+                 * at small random seeds since the trim-left arms ADD to them. */
+                const uint16_t srcx0=(uint16_t)XPICK(20), srcy0=(uint16_t)XPICK(20);
+                const uint16_t blk[12]={srcpage,srcx0,srcy0,dstpagen,ax8,ay,w0c,w0e,c10,c12,c14,c16};
+                for(unsigned j=0;j<12;j++)XW16(seg[S_SS],(uint16_t)(pb+2*j),blk[j]);
 #undef XPICK
 #undef XRAND
 #undef XW16

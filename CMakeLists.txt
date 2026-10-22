@@ -1233,6 +1233,18 @@ if(F117R_BUILD_TESTS)
       --only MGRAPHIC.EXE:1131)
     add_test(NAME matched_mgraphic_select_page COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:7AC)
+    add_test(NAME matched_mgraphic_copy_text_var_194 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7A3)
+    add_test(NAME matched_mgraphic_select_overlay_seg COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:12D5)
+    add_test(NAME matched_mgraphic_ret_12dd COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:12DD)
+    add_test(NAME matched_mgraphic_ret_12df COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:12DF)
+    add_test(NAME matched_mgraphic_clip_blit_entry COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:E30)
+    add_test(NAME matched_mgraphic_clip_rect COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:E41)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
