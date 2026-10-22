@@ -2282,7 +2282,13 @@ static int step_runner_run(machine_t *mm)
         note_exec_dirty(c, from_cs, from_ip);
         const int changed = g_cov >= 0 && changed_return(c, from_cs, from_ip);
         const int destroyed = g_cov >= 0 && destroyed_return(c, from_cs, from_ip);
+        const int depth_before = c->int_depth;
         cpu_step(c);
+        /* A fault inside original code a body called ends the replay where run_to_ret ends the
+         * original's: at the first interrupt entry. The fixtures below compare that state; following
+         * the fault vector's random target on to the clock limit compared two different moments. */
+        if ((g_mission_fixture || g_ground_fixture || g_projectile_fixture || g_traffic_fixture) &&
+            c->int_depth > depth_before) return RUN_SLICE;
         /* Match the exact original clock/register/segment/flag state at a
          * destroyed return, even while it is still inside the callee. The
          * final full-state comparison remains mandatory, and this path

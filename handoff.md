@@ -230,6 +230,17 @@ C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache`, via
 the tally (`N ok, 0 failed`), not the exit code. Check GitHub CI after pushing
 (a run shows "cancelled" when the next push supersedes it).
 
+## Fault replay inside a body's nested original code (22 Oct, fixed in the harness)
+
+`tests/func_lockstep.c` compares a divide fault at the state where the original takes it. A matched body that
+calls original code (`guest_call`) runs that callee in `step_runner_run`; a fuzzed stack can make the callee wander
+into the body's own code, fault there exactly as the original does, and then keep stepping through the random fault
+vector to the clock limit, so the two sides were compared at different moments (VGAME 0x5852, seed `0xd10dd4e2005e`,
+`--states 4000`, state 3187: matched `vgame_bearing` call at 5AF6 returned to 619A; both sides faulted at 5E89 with
+AX 1000, DX 0). The routine was right. `step_runner_run` now returns at the first interrupt entry for the mission,
+ground, projectile and traffic fixtures, as `run_to_ret` does. When a fault-replay state mismatches with the same
+fault site on both sides, print the matched side's ip after `o->fn` and the nested call log before suspecting the body.
+
 ## Traps
 
 Matching and the gate:
