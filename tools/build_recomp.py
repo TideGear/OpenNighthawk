@@ -354,6 +354,7 @@ def parallel(jobs, items, work, cost=None, name=None):
     time of the longest items is printed afterwards: when the longest alone is close to the whole
     stage, more workers cannot shorten it."""
     spans = {}
+    offsets = {}                # name -> (seconds after the stage began when it started, when it ended)
     started = time.time()
 
     def guarded(item):
@@ -364,6 +365,7 @@ def parallel(jobs, items, work, cost=None, name=None):
             return None, e
         finally:
             spans[name(item) if name else None] = time.time() - t0
+            offsets[name(item) if name else None] = (t0 - started, time.time() - started)
     order = sorted(range(len(items)), key=lambda i: -cost(items[i])) if cost else range(len(items))
     results = [None] * len(items)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
@@ -376,6 +378,8 @@ def parallel(jobs, items, work, cost=None, name=None):
         print("  [%d jobs on %d workers: %.0f s wall, %.0f s of work, lower bound %.0f s; longest %s]" % (
             len(items), jobs, wall, sum(spans.values()), max(max(spans.values(), default=0), sum(spans.values()) / max(1, jobs)),
             ", ".join("%s %.0f s" % kv for kv in longest)))
+        print("  [start and end, seconds into the stage: %s]" % ", ".join(
+            "%s %.0f-%.0f" % (k, *offsets[k]) for k, _ in longest))
     for _, error in results:
         if error is not None:
             raise error
