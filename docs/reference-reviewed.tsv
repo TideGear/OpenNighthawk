@@ -1,0 +1,14 @@
+# Reviewed reference entries for game code that is not matched (owner rule, 21 Oct 2026; docs/progress.md).
+# An entry counts only when a second reader has checked its name and purpose against the disassembly; the
+# reviewer note records that check. Exactly one status per range: entries may not overlap, and
+# tools/census_classify.py stops the score refresh on a malformed row, an unknown status or an overlap.
+# Statuses: stays-original, machine-option-only, dead-certified, probable-dead, needs-route, data, unreached-held.
+# What an entry earns:
+#   stays-original  its executed bytes enter the gameplay score's numerator, only for a routine that stays original
+#                   by design rule: inside the census every byte must lie in a docs/census-original.tsv row; outside
+#                   the census `why not matched` must start with the rule (STI-first handler, C start-up, palette
+#                   loader with STI). A declined routine (VGAME main, MPS_LOGO 1ADC/1C82, START 8427, END 4393,
+#                   END 57B0, ...) is remaining work and cannot be listed as stays-original.
+#   any status      a byte of the previous all-code scope that no route executes is "accounted for" in the checklist.
+# Columns (tab-separated): module, linear start (hex), bytes (decimal), name, purpose, status, why not matched,
+# reviewer note.

@@ -42,6 +42,11 @@ programs, which is how the rest of the tooling reads them.
 The rule that protects the score: when in doubt a byte stays in the denominator. Only `data` (strong evidence
 above), `original` and `dead` (tables a person maintains, `dead` with a certificate per row) leave it, and a byte that a matched body does run is
 credited whatever it was judged to be. docs/census-data.tsv records every data range a person read.
+
+Since 21 Oct 2026 the P2 'Matched functions replacing translations' item uses the gameplay score instead (gameplay()
+below): only bytes a validated route executes, matched bytes a route runs, and design-rule original code with a
+reviewed entry in docs/reference-reviewed.tsv. The classes above remain the previous all-code measure, and the
+gameplay score's checklist counts every byte of that measure's scope that no route executes.
 """
 import argparse
 import collections
@@ -61,7 +66,13 @@ DEAD = os.path.join(ROOT, "docs", "census-dead.tsv")
 DEAD_RANGES = os.path.join(ROOT, "docs", "census-dead-ranges.tsv")
 DATA_TABLE = os.path.join(ROOT, "docs", "census-data.tsv")
 CODE_TABLE = os.path.join(ROOT, "docs", "census-code.tsv")
+REFERENCE_REVIEWED = os.path.join(ROOT, "docs", "reference-reviewed.tsv")
 CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original", "dead")
+REVIEW_STATUSES = ("stays-original", "machine-option-only", "dead-certified", "probable-dead", "needs-route", "data",
+                   "unreached-held")
+# The design rules under which a routine stays original (owner, 21 Oct 2026). A routine declined for any other
+# reason (unequal, waits the routes cannot check, main(), an interior arm) is remaining work.
+DESIGN_RULES = ("STI-first handler", "C start-up", "palette loader with STI")
 SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run time patches
 
 
@@ -278,8 +289,10 @@ def filler_bytes(image):
     return zero, text
 
 
-def classify(rows, covered, ran, mods, original, reviewed=None, dead=(), dead_ranges=None):
-    """rows: [(module, linear, size)]. Returns (totals, per_row) with per_row[i] = Counter of class -> bytes."""
+def classify(rows, covered, ran, mods, original, reviewed=None, dead=(), dead_ranges=None, scope_bytes=None):
+    """rows: [(module, linear, size)]. Returns (totals, per_row) with per_row[i] = Counter of class -> bytes.
+    scope_bytes, when given, collects {module: {linear: class}} for the distinct bytes the old measure keeps in its
+    denominator (every class but data, original and dead; a byte two rows share is kept once, with its first class)."""
     code = code_bytes(rows, mods, ran)
     filler = {m: filler_bytes(mods[m].image) for m in mods}
     slots = {m: slot_bytes(mods[m].image) for m in mods}
@@ -310,6 +323,8 @@ def classify(rows, covered, ran, mods, original, reviewed=None, dead=(), dead_ra
             else:
                 kind = "unreached"
             row[kind] += 1
+            if scope_bytes is not None and kind not in ("data", "original", "dead"):
+                scope_bytes.setdefault(module, {}).setdefault(b, kind)
         per_row.append(row)
         totals.update(row)
     return totals, per_row
@@ -327,7 +342,7 @@ def modules_scope():
     return {progress.module_key(name) for name in CODE_FILES}
 
 
-def supplemental_scope(rows, covered, ran, reviewed=None):
+def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None):
     """Executed and reviewed code outside the old census, across all game code files.
 
     Keep the historical rows intact. Add each outside byte once if a validated
@@ -337,6 +352,7 @@ def supplemental_scope(rows, covered, ran, reviewed=None):
     Keep zero-byte modules visible, including NSOUND.117 until execution or
     a static review supplies its workload. Unknown modules and the floating
     decompressor remain separately reported and never enter the score.
+    scope_bytes, when given, also collects each outside byte as supp-credited, supp-ran or supp-reviewed-static.
     """
     inside = collections.defaultdict(set)
     reviewed = reviewed or {}
@@ -351,6 +367,11 @@ def supplemental_scope(rows, covered, ran, reviewed=None):
         extra = (executed | reviewed.get(module, set())) - census
         by_module[module] = dict(bytes=len(extra), credited=len(extra & named),
                                 reviewed_static_bytes=len(extra - executed))
+        if scope_bytes is not None:
+            out = scope_bytes.setdefault(module, {})
+            for b in extra:
+                out[b] = ("supp-credited" if b in named else "supp-ran" if b in ran.get(module, ()) else
+                          "supp-reviewed-static")
     other = {module: len(bytes_) for module, bytes_ in sorted(ran.items()) if module not in included}
     return dict(basis="census plus executed and reviewed static code in all 17 game code files",
                 bytes=sum(v["bytes"] for v in by_module.values()),
@@ -359,17 +380,150 @@ def supplemental_scope(rows, covered, ran, reviewed=None):
                 by_module=by_module, other_modules_executed_bytes=other)
 
 
-def run(census, cover_dir, route_dir, data_dir, scope=None):
+def read_reference_reviewed(path=REFERENCE_REVIEWED, modules=None):
+    """The reviewed reference entries (docs/reference-reviewed.tsv): one status per byte range.
+
+    Columns: module, linear start (hex), bytes, name, purpose, status, why not matched, reviewer note. Every
+    text column must be filled (the reviewer note is the second reader's record), the status must be one of
+    REVIEW_STATUSES, the module a game code file, and no two entries may share a byte: a malformed table
+    stops the refresh rather than silently changing the score."""
+    modules = modules_scope() if modules is None else set(modules)
+    entries, spans = [], collections.defaultdict(set)
+    with open(path, encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 8 or not all(f.strip() for f in fields):
+                raise ValueError("%s:%d: expected module, linear start, bytes, name, purpose, status, why not matched, "
+                                 "reviewer note, all filled" % (path, number))
+            module, start, size, name, purpose, status, why, note = (f.strip() for f in fields)
+            module = progress.module_key(module)
+            try:
+                start, size = int(start, 16), int(size)
+            except ValueError as error:
+                raise ValueError("%s:%d: linear start must be hex and bytes decimal" % (path, number)) from error
+            if module not in modules or start < 0 or size <= 0:
+                raise ValueError("%s:%d: unknown module or empty range" % (path, number))
+            if status not in REVIEW_STATUSES:
+                raise ValueError("%s:%d: status must be exactly one of %s" % (path, number, ", ".join(REVIEW_STATUSES)))
+            span = set(range(start, start + size))
+            if span & spans[module]:
+                raise ValueError("%s:%d: overlaps another reviewed entry (one status per range)" % (path, number))
+            spans[module] |= span
+            entries.append(dict(module=module, start=start, bytes=size, name=name, purpose=purpose, status=status,
+                                why=why, note=note))
+    return entries
+
+
+def original_bytes(rows, original):
+    """{module: linear addresses} of the census rows docs/census-original.tsv lists (the design-rule rows)."""
+    out = collections.defaultdict(set)
+    for module, linear, size in rows:
+        if (module, linear) in original:
+            out[module].update(range(linear, linear + size))
+    return out
+
+
+def check_design_rule(entries, rows, original):
+    """A stays-original entry counts only for a routine that stays original by design rule (owner, 21 Oct 2026).
+
+    Inside the census, every byte of the entry must lie in a docs/census-original.tsv row: a declined routine
+    (VGAME main, MPS_LOGO 1ADC/1C82, START 8427, END 4393, END 57B0, ...) is remaining work, not original code.
+    Outside every census row, the entry must name its design rule at the start of `why not matched`."""
+    inside = collections.defaultdict(set)
+    for module, linear, size in rows:
+        inside[module].update(range(linear, linear + size))
+    orig = original_bytes(rows, original)
+    for e in entries:
+        if e["status"] != "stays-original":
+            continue
+        span = set(range(e["start"], e["start"] + e["bytes"]))
+        census = span & inside[e["module"]]
+        if census - orig[e["module"]]:
+            raise ValueError("stays-original entry %s %05X covers census bytes outside docs/census-original.tsv"
+                             % (e["module"], e["start"]))
+        if span - census and not e["why"].lower().startswith(tuple(r.lower() for r in DESIGN_RULES)):
+            raise ValueError("stays-original entry %s %05X outside the census must start `why not matched` with a "
+                             "design rule (%s)" % (e["module"], e["start"], "; ".join(DESIGN_RULES)))
+
+
+def gameplay(covered, ran, scope_bytes, original, entries, modules):
+    """The gameplay score (owner, 21 Oct 2026), from byte sets by module and linear address.
+
+    denominator D  every byte of an instruction a validated route capture executed, in the game code files
+    numerator   a  matched-body bytes (named cover) that a route executed: fixture-only coverage does not count
+                b  executed bytes of a reviewed stays-original entry (design-rule routines only, check_design_rule)
+                   that a is not already crediting
+    remaining      D - a - b; of it, `original_awaiting_review` is design-rule original code (census-original.tsv
+                   rows) that has no reviewed entry yet
+    checklist      every byte of the previous all-code measure's scope (scope_bytes) that is not in D, split by
+                   whether a reviewed entry (any status) covers it
+    """
+    ref_any, ref_orig = collections.defaultdict(set), collections.defaultdict(set)
+    for e in entries:
+        span = range(e["start"], e["start"] + e["bytes"])
+        ref_any[e["module"]].update(span)
+        if e["status"] == "stays-original":
+            ref_orig[e["module"]].update(span)
+    unknown = set(scope_bytes) - set(modules)
+    assert not unknown, "previous scope has bytes in modules outside the game code files: %s" % sorted(unknown)
+    by_module, classes = {}, collections.defaultdict(collections.Counter)
+    t = collections.Counter()
+    for m in sorted(modules):
+        d = set(ran.get(m, ()))
+        cov = covered.get(m, set())
+        a = cov & d
+        b = (d & ref_orig[m]) - a
+        r = d - a - b
+        waiting = (d & original.get(m, set())) - a - b
+        assert not (a & b) and not (r & (a | b)) and a | b | r == d and len(a) + len(b) + len(r) == len(d)
+        s = scope_bytes.get(m, {})
+        out = [x for x in s if x not in d]
+        with_ref = sum(1 for x in out if x in ref_any[m])
+        for x in out:
+            classes[s[x]]["with_reviewed_entry" if x in ref_any[m] else "without_reviewed_entry"] += 1
+        row = dict(denominator=len(d), matched_route_run=len(a), stays_original_reviewed=len(b),
+                   fixture_only=len(cov - d), remaining=len(r), original_awaiting_review=len(waiting),
+                   not_in_denominator=len(out), not_in_denominator_reviewed=with_ref,
+                   in_previous_scope=sum(1 for x in d if x in s))
+        by_module[m] = row
+        t.update(row)
+    score = (t["matched_route_run"] + t["stays_original_reviewed"]) / t["denominator"] if t["denominator"] else 0.0
+    return dict(
+        basis="every instruction byte a validated route capture executes in the 17 game code files",
+        denominator=t["denominator"], matched_route_run=t["matched_route_run"],
+        stays_original_reviewed=t["stays_original_reviewed"], score=score,
+        fixture_only=t["fixture_only"], remaining=t["remaining"], original_awaiting_review=t["original_awaiting_review"],
+        reviewed_entries=len(entries),
+        checklist=dict(bytes=t["not_in_denominator"], with_reviewed_entry=t["not_in_denominator_reviewed"],
+                       without_reviewed_entry=t["not_in_denominator"] - t["not_in_denominator_reviewed"],
+                       by_class={k: dict(with_reviewed_entry=v["with_reviewed_entry"],
+                                         without_reviewed_entry=v["without_reviewed_entry"])
+                                 for k, v in sorted(classes.items())}),
+        crosscheck=dict(previous_scope_distinct=sum(len(v) for v in scope_bytes.values()),
+                        denominator_in_previous_scope=t["in_previous_scope"],
+                        denominator_outside_previous_scope=t["denominator"] - t["in_previous_scope"]),
+        by_module=by_module)
+
+
+def run(census, cover_dir, route_dir, data_dir, scope=None, detail=None):
+    """detail, when given, receives what the gameplay score needs: rows, covered, ran and the previous scope's
+    distinct bytes (scope must be given too)."""
     from modules import load_all
     mods = {m.name.upper().replace(".EXE", ""): m for m in load_all(data_dir)}
     rows = load_rows(census)
     covered = progress.named_bytes(cover_dir, data_dir, route_dir)
     audit = {}
     ran = route_instructions(route_dir, mods, audit)
-    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead(), dead_ranges=read_dead_ranges())
+    scope_bytes = {} if detail is not None else None
+    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead(),
+                               dead_ranges=read_dead_ranges(), scope_bytes=scope_bytes)
     if scope is not None:
-        scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods)))
+        scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods), scope_bytes=scope_bytes))
         scope["route_records"] = audit
+    if detail is not None:
+        detail.update(rows=rows, covered=covered, ran=ran, scope_bytes=scope_bytes)
     return rows, totals, per_row
 
 

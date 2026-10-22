@@ -325,5 +325,125 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(data["census"]["creditable_bytes"], 6)
 
 
+HEADER = "# reviewed reference entries\n"
+
+
+def entry(module, start, size, status, why="why", note="second reader checked name and purpose"):
+    return "%s\t%X\t%d\tname\tpurpose\t%s\t%s\t%s\n" % (module, start, size, status, why, note)
+
+
+class ReferenceTableTests(unittest.TestCase):
+    def read(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "reference.tsv"
+            path.write_text(text, encoding="utf-8")
+            return cc.read_reference_reviewed(str(path), modules={"T", "VGAME"})
+
+    def test_the_committed_table_parses_and_starts_empty(self):
+        self.assertEqual(cc.read_reference_reviewed(), [])
+
+    def test_an_entry_parses(self):
+        [e] = self.read(HEADER + entry("VGAME.EXE", 0x1138C, 33, "stays-original"))
+        self.assertEqual((e["module"], e["start"], e["bytes"], e["status"]), ("VGAME", 0x1138C, 33, "stays-original"))
+
+    def test_one_status_per_range(self):
+        with self.assertRaisesRegex(ValueError, "overlaps"):
+            self.read(entry("T", 0x10, 4, "needs-route") + entry("T", 0x13, 2, "probable-dead"))
+        with self.assertRaisesRegex(ValueError, "exactly one of"):
+            self.read(entry("T", 0x10, 4, "needs-route | probable-dead"))
+        self.assertEqual(len(self.read(entry("T", 0x10, 4, "needs-route") + entry("T", 0x14, 2, "data"))), 2)
+
+    def test_an_unreviewed_or_malformed_entry_fails(self):
+        for text in (entry("T", 0x10, 4, "data", note=" "), entry("T", 0x10, 4, "data").replace("\tname", ""),
+                     entry("UNKNOWN", 0x10, 4, "data"), entry("T", 0x10, 0, "data")):
+            with self.assertRaises(ValueError):
+                self.read(text)
+
+
+class GameplayTests(unittest.TestCase):
+    """Synthetic module T: census rows 0x10 (design-rule original, in census-original.tsv) and 0x20 (declined:
+    a census row that is not in census-original.tsv)."""
+    ROWS = [("T", 0x10, 4), ("T", 0x20, 4)]
+    ORIGINAL = {("T", 0x10)}
+
+    def score(self, covered=None, ran=None, scope=None, entries=()):
+        entries = list(entries)
+        cc.check_design_rule(entries, self.ROWS, self.ORIGINAL)
+        return cc.gameplay(covered or {}, ran or {}, scope or {}, cc.original_bytes(self.ROWS, self.ORIGINAL),
+                           entries, {"T"})
+
+    @staticmethod
+    def stays(start, size, why="C start-up copy"):
+        return dict(module="T", start=start, bytes=size, status="stays-original", why=why, name="n", purpose="p", note="r")
+
+    def test_route_run_matched_bytes_count_and_fixture_only_bytes_do_not(self):
+        g = self.score(covered={"T": {0, 1, 2, 0x40, 0x41}}, ran={"T": set(range(8))})
+        self.assertEqual((g["denominator"], g["matched_route_run"], g["fixture_only"], g["remaining"]), (8, 3, 2, 5))
+        self.assertAlmostEqual(g["score"], 3 / 8)
+
+    def test_design_rule_original_counts_only_with_a_reviewed_entry(self):
+        ran = {"T": set(range(0x10, 0x14)) | {0}}
+        g = self.score(ran=ran)
+        self.assertEqual((g["stays_original_reviewed"], g["original_awaiting_review"], g["remaining"]), (0, 4, 5))
+        g = self.score(ran=ran, entries=[self.stays(0x10, 4)])
+        self.assertEqual((g["stays_original_reviewed"], g["original_awaiting_review"], g["remaining"]), (4, 0, 1))
+        self.assertAlmostEqual(g["score"], 4 / 5)
+
+    def test_a_matched_byte_inside_original_code_counts_once(self):
+        g = self.score(covered={"T": {0x10}}, ran={"T": set(range(0x10, 0x14))}, entries=[self.stays(0x10, 4)])
+        self.assertEqual((g["matched_route_run"], g["stays_original_reviewed"], g["remaining"]), (1, 3, 0))
+
+    def test_a_declined_routine_is_not_counted(self):
+        with self.assertRaisesRegex(ValueError, "outside docs/census-original.tsv"):
+            self.score(ran={"T": set(range(0x20, 0x24))}, entries=[self.stays(0x20, 4)])
+        with self.assertRaisesRegex(ValueError, "outside docs/census-original.tsv"):
+            self.score(entries=[self.stays(0x12, 0x10)])          # spills from the original row into the declined one
+        g = self.score(ran={"T": set(range(0x20, 0x24))},
+                       entries=[dict(self.stays(0x20, 4), status="needs-route")])
+        self.assertEqual((g["stays_original_reviewed"], g["remaining"]), (0, 4))
+
+    def test_original_code_outside_the_census_must_name_its_design_rule(self):
+        with self.assertRaisesRegex(ValueError, "design rule"):
+            self.score(ran={"T": {0x80}}, entries=[self.stays(0x80, 2, why="hard to prove")])
+        g = self.score(ran={"T": {0x80, 0x81}}, entries=[self.stays(0x80, 2, why="STI-first handler: driver timer")])
+        self.assertEqual(g["stays_original_reviewed"], 2)
+
+    def test_rejected_route_records_are_not_in_the_denominator(self):
+        mod = Module("T.EXE", 0x1234, "exe", bytes.fromhex("b83412c3909090"), set())
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "route.cov").write_text("T.EXE 1234 0000 0000 b87856c3\n"     # changed code: rejected
+                                                    "T.EXE 9999 0000 0003 c3909090\n"     # wrong file: rejected
+                                                    "T.EXE 1234 0000 0003 c3909090\n", encoding="utf-8")
+            ran = cc.route_instructions(directory, {"T": mod})
+        g = self.score(covered={"T": {0, 1, 2, 3}}, ran=ran)
+        self.assertEqual((g["denominator"], g["matched_route_run"], g["fixture_only"]), (1, 1, 3))
+
+    def test_the_checklist_splits_previous_scope_bytes_outside_the_denominator(self):
+        scope = {"T": {0x30: "never_run", 0x31: "never_run", 0x32: "credited", 0x05: "ran"}}
+        entries = [dict(self.stays(0x30, 1), status="probable-dead")]
+        g = self.score(ran={"T": {0x05, 0x06}}, scope=scope, entries=entries)
+        self.assertEqual(g["checklist"]["bytes"], 3)
+        self.assertEqual((g["checklist"]["with_reviewed_entry"], g["checklist"]["without_reviewed_entry"]), (1, 2))
+        self.assertEqual(g["checklist"]["by_class"]["never_run"], dict(with_reviewed_entry=1, without_reviewed_entry=1))
+        self.assertEqual(g["crosscheck"], dict(previous_scope_distinct=4, denominator_in_previous_scope=1,
+                                               denominator_outside_previous_scope=1))
+
+    def test_the_pieces_are_disjoint_and_add_up_to_the_denominator(self):
+        g = self.score(covered={"T": {0, 0x11}}, ran={"T": {0, 1, 0x10, 0x11, 0x12, 0x20}},
+                       entries=[self.stays(0x10, 4)])
+        self.assertEqual(g["matched_route_run"] + g["stays_original_reviewed"] + g["remaining"], g["denominator"])
+        self.assertEqual((g["matched_route_run"], g["stays_original_reviewed"], g["remaining"]), (2, 2, 2))
+
+    def test_the_previous_scope_collects_distinct_in_scope_bytes(self):
+        scope = {}
+        cc.classify(ROWS, {"T": {0x00}}, {"T": {0x93}}, {"T": MODULE}, {("T", 0xA0)}, {}, scope_bytes=scope)
+        self.assertEqual(scope["T"][0x00], "credited")
+        self.assertEqual(scope["T"][0x93], "ran")
+        self.assertNotIn(0x10, scope["T"])     # data
+        self.assertNotIn(0xA0, scope["T"])     # original
+        cc.supplemental_scope(ROWS, {"T": {0xF0}}, {"T": {0xF1}}, {"T": {0xF2}}, scope_bytes=scope)
+        self.assertEqual([scope["T"][b] for b in (0xF0, 0xF1, 0xF2)], ["supp-credited", "supp-ran", "supp-reviewed-static"])
+
+
 if __name__ == "__main__":
     unittest.main()
