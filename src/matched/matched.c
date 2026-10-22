@@ -20661,16 +20661,18 @@ static int end_pic_row(machine_t *m) { return st3_pic_row(m, &ST3_PIC_ROW_END); 
  * interrupt work: the divisor wanted ([want]) replaces the one in use
  * ([cur]) when they differ, and channel 0 of the PIT is set to mode 3 with
  * it (36h to port 43h, the low and high bytes to port 40h); [reloads] is
- * counted, -CX stored at [neg] and, when not zero, [nonzero] counted. The
- * routine stops after its STI (the run loop then looks at interrupts); the
- * RET is the original's. */
-typedef struct { uint16_t entry, cur, want, reloads, neg, nonzero; } st3_timer_reload_t;
+ * counted, -CX stored at [neg] and, when not zero, [nonzero] counted, then
+ * STI and RET. The control word to port 43h makes the run loop look at
+ * interrupts (pc.c io_write8: a counter 0 control word), so the routine stops
+ * right after that OUT and the original finishes it from the delay JMP: the
+ * count's bytes, the counters, the STI and the RET are its own. */
+typedef struct { uint16_t entry, cur, want; } st3_timer_reload_t;
 
 static int st3_timer_reload(machine_t *m, const st3_timer_reload_t *s)
 {
     cpu_t *c = &m->cpu;
     const uint16_t entry = s->entry;
-    if (!room(c, 19 + IO_SLACK(3))) return 0;
+    if (!room(c, 19 + IO_SLACK(3))) return 0;                     /* (the whole routine's claim, unchanged) */
     c->r[R_DX] = ds_get(c, s->cur);
     alu_sub(c, c->r[R_DX], ds_get(c, s->want), 1, 0);
     c->icount += 3;
@@ -20682,30 +20684,12 @@ static int st3_timer_reload(machine_t *m, const st3_timer_reload_t *s)
     set_r8(c, R_AL, 0x36);
     c->icount += 1;
     x86_out(c, 0x43, 0);                                          /* channel 0, mode 3, low then high */
-    c->icount += 2;
-    set_r8(c, R_AL, get_r8(c, R_DL));
     c->icount += 1;
-    x86_out(c, 0x40, 0);
-    c->icount += 2;
-    set_r8(c, R_AL, get_r8(c, R_DH));
-    c->icount += 1;
-    x86_out(c, 0x40, 0);
-    c->icount += 1;
-    ds_put(c, s->reloads, (uint16_t)alu_inc(c, ds_get(c, s->reloads), 1));
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
-    ds_put(c, s->neg, c->r[R_CX]);
-    c->icount += 4;
-    if (!(c->flags & F_ZF)) {
-        ds_put(c, s->nonzero, (uint16_t)alu_inc(c, ds_get(c, s->nonzero), 1));
-        c->icount += 1;
-    }
-    x86_sti(c);
-    c->icount += 1;
-    c->ip = AT(0x33);                                             /* the RET: STI lets the run loop look at interrupts */
+    c->ip = AT(0x16);                                             /* the delay JMP: the control word woke the run loop */
     return 1;
 }
-static const st3_timer_reload_t ST3_TIMER_RELOAD_START = { 0x8DA4, 0xAE03, 0xAE01, 0xAE05, 0xAE13, 0xAE11 };
-static const st3_timer_reload_t ST3_TIMER_RELOAD_END = { 0x4C88, 0x50D4, 0x50D2, 0x50D6, 0x50E4, 0x50E2 };
+static const st3_timer_reload_t ST3_TIMER_RELOAD_START = { 0x8DA4, 0xAE03, 0xAE01 };
+static const st3_timer_reload_t ST3_TIMER_RELOAD_END = { 0x4C88, 0x50D4, 0x50D2 };
 static int start_timer_reload(machine_t *m) { return st3_timer_reload(m, &ST3_TIMER_RELOAD_START); }
 static int end_timer_reload(machine_t *m) { return st3_timer_reload(m, &ST3_TIMER_RELOAD_END); }
 
@@ -30695,8 +30679,11 @@ static int vgame_keyboard_unhook(machine_t *m)
 /* VGAME 0x01D54, timer_program (CX = ticks to count): the PIT's channel 0
  * (mode 3, both bytes) loaded with the rate [2630], kept at [2632]; the
  * reprogram count [2634] goes up, [2642] = -CX, and [2640] counts the
- * programs with CX nonzero. It stops after its STI. The body takes the
- * n instructions run before it and not yet counted (0x01D01 comes here). */
+ * programs with CX nonzero, then STI and RET. The control word to port 43h
+ * makes the run loop look at interrupts (pc.c io_write8: a counter 0 control
+ * word), so the body stops right after that OUT and the original finishes
+ * the routine from the delay JMP at 0x01D6A. The body takes the n
+ * instructions run before it and not yet counted (0x01D01 comes here). */
 static int vg4_timer_program(machine_t *m, unsigned n)
 {
     cpu_t *c = &m->cpu;
@@ -30711,26 +30698,13 @@ static int vg4_timer_program(machine_t *m, unsigned n)
     set_r8(c, R_AL, 0x36);
     c->icount += n + 1;
     x86_out(c, 0x43, 0);
-    set_r8(c, R_AL, get_r8(c, R_DL));
-    c->icount += 3;                                               /* out, jmp, mov */
-    x86_out(c, 0x40, 0);
-    set_r8(c, R_AL, get_r8(c, R_DH));
-    c->icount += 3;
-    x86_out(c, 0x40, 0);
-    ds_put(c, 0x2634, (uint16_t)alu_inc(c, ds_get(c, 0x2634), 1));
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
-    ds_put(c, 0x2642, c->r[R_CX]);
-    n = 5;                                                        /* out, inc, neg, mov, je */
-    if (!(c->flags & F_ZF)) { ds_put(c, 0x2640, (uint16_t)alu_inc(c, ds_get(c, 0x2640), 1)); n++; }
-    c->icount += n;
-    x86_sti(c);
-    c->icount += 1;
-    c->ip = 0x1D87;
+    c->icount += 1;                                               /* the OUT */
+    c->ip = 0x1D6A;                                               /* the delay JMP: the control word woke the run loop */
     return 1;
 }
 static int vgame_timer_program(machine_t *m)
 {
-    if (!room(&m->cpu, 19 + IO_SLACK(3))) return 0;
+    if (!room(&m->cpu, 19 + IO_SLACK(3))) return 0;               /* (the whole routine's claim, unchanged) */
     return vg4_timer_program(m, 0);
 }
 
@@ -31985,7 +31959,8 @@ done:
  * calibration was not believed ([263F] 0), else when the screen is in its
  * vertical retrace (bit 3 of the status port [0:0463] + 6, bit 7 clear on
  * a monochrome card); outside it the original's wait for the retrace runs
- * (it turns interrupts on every read). It stops after its STI. */
+ * (it turns interrupts on every read). It stops after its STI, or after
+ * timer_program's control word to port 43h. */
 static int vgame_timer_resync(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -41552,9 +41527,12 @@ sprite_failure: /* Return a null far pointer after a recorded failure. */
  * (the wait's, and the one before the RET) lets an interrupt in, so the
  * routine stops right after it, at an instruction boundary, and the original
  * carries on: the rest of the wait and the RET are the original's, as in
- * vgame_timer_resync and the timer reload. */
+ * vgame_timer_resync and the timer reload. The control word to port 43h
+ * makes the run loop look at interrupts too (pc.c io_write8), so the
+ * routine stops right after that OUT and the original programs the count,
+ * keeps the counters and leaves. */
 typedef struct {
-    uint16_t calls, retrace, period, want, count, left, divider;  /* data offsets: byte, byte, word x5 */
+    uint16_t calls, retrace, period, want;                        /* data offsets: byte, byte, word, word */
 } timer_resync_cfg;
 
 static int frontend_timer_resync(machine_t *m, const timer_resync_cfg *k)
@@ -41607,22 +41585,9 @@ program_pit:
     set_r8(c, R_AL, 0x36);                                        /* channel 0, low then high byte, mode 3 */
     c->icount += 1;
     x86_out(c, 0x43, 0);                                          /* each port is written at its own clock */
-    c->icount += 2;                                               /* the OUT and the JMP that delays */
-    set_r8(c, R_AL, get_r8(c, R_DL));
     c->icount += 1;
-    x86_out(c, 0x40, 0);
-    c->icount += 2;
-    set_r8(c, R_AL, get_r8(c, R_DH));
-    c->icount += 1;
-    x86_out(c, 0x40, 0);
-    c->icount += 1;
-    seg_write16(c, c->seg[S_DS], k->count, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_DS], k->count), 1));
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
-    seg_write16(c, c->seg[S_DS], k->left, c->r[R_CX]);
-    c->icount += 4;                                               /* inc, neg, mov, je */
-    if (c->flags & F_ZF) goto at_end;
-    seg_write16(c, c->seg[S_DS], k->divider, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_DS], k->divider), 1));
-    c->icount += 1;
+    c->ip = (uint16_t)(at + 0x49);                                /* the delay JMP: the control word woke the run loop */
+    return 1;
 at_end:
     if (!room(c, 1)) { c->ip = end; return 1; }
     x86_sti(c);
@@ -41633,12 +41598,12 @@ at_end:
 
 static int start_timer_resync(machine_t *m)
 {
-    static const timer_resync_cfg k = { 0xAE09, 0xAE10, 0xAE03, 0xAE01, 0xAE05, 0xAE13, 0xAE11 };
+    static const timer_resync_cfg k = { 0xAE09, 0xAE10, 0xAE03, 0xAE01 };
     return frontend_timer_resync(m, &k);
 }
 static int end_timer_resync(machine_t *m)
 {
-    static const timer_resync_cfg k = { 0x50DA, 0x50E1, 0x50D4, 0x50D2, 0x50D6, 0x50E4, 0x50E2 };
+    static const timer_resync_cfg k = { 0x50DA, 0x50E1, 0x50D4, 0x50D2 };
     return frontend_timer_resync(m, &k);
 }
 
@@ -63868,13 +63833,15 @@ rate:
  * zeros (caller drops 8); the keyboard handler is unhooked (1132:0052)
  * unless the same bit, re-read through [E574], is set; library entry 79
  * (1E42:02A5) gets 1; timing_wait (04C7) waits two ticks; and it leaves
- * by JMP into isrclock_init's tail at 1C4C, run here: the timer (PIT
- * channel 0) is set back to mode 3 with divisor 0 (36h to port 43h, 0 and
- * 0 to port 40h, a JMP $+2 after the first two), INT 21h AH=25h puts the
- * saved tick vector CS:[1CFD]/[1CFF] back (DS kept on the stack), and the
- * ready flag [262B] is cleared; RET. Each port access runs at its own
- * clock. Every near callee returns with a plain RET and every far one with
- * RETF; the caller drops the one-word arguments with POP BX. */
+ * by JMP into isrclock_init's tail at 1C4C: the timer (PIT channel 0) is
+ * set back to mode 3 with divisor 0 (36h to port 43h, 0 and 0 to port 40h,
+ * a JMP $+2 after the first two), INT 21h AH=25h puts the saved tick vector
+ * CS:[1CFD]/[1CFF] back (DS kept on the stack), and the ready flag [262B]
+ * is cleared; RET. The body runs the tail up to the control word, whose
+ * write makes the run loop look at interrupts, and stops there: the rest of
+ * the tail is the original's. Every near callee returns with a plain RET and
+ * every far one with RETF; the caller drops the one-word arguments with POP
+ * BX. */
 static int vgame_flight_session(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -63947,28 +63914,15 @@ static int vgame_flight_session(machine_t *m)
     FSNEAR(0x02BB, 0x04C7, 0x02BE);
     FSB(2, 0x02BE);                                               /* and the JMP to 1C4C */
     c->r[R_BX] = cpu_pop16(c);
-    /* 1C4C: the timer back to 18.2 Hz, the tick vector restored, not ready. */
-    SM4_NEED(12 + IO_SLACK(3), 0x1C4C);                           /* eleven and the INT */
+    /* 1C4C: the timer back to 18.2 Hz. The control word to port 43h makes the run loop look at
+     * interrupts (pc.c io_write8), so the routine stops right after that OUT; the divisor's bytes, the
+     * tick vector's restore, the ready flag and the RET are the original's. */
+    SM4_NEED(12 + IO_SLACK(3), 0x1C4C);                           /* (the tail's claim, unchanged) */
     set_r8(c, R_AL, 0x36);
     c->icount += 1;
     x86_out(c, 0x43, 0);                                          /* channel 0, mode 3, low then high */
-    c->icount += 3;                                               /* the OUT, JMP $+2, XOR */
-    set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));
-    x86_out(c, 0x40, 0);                                          /* divisor low */
-    c->icount += 2;                                               /* the OUT, JMP $+2 */
-    x86_out(c, 0x40, 0);                                          /* divisor high */
     c->icount += 1;
-    cpu_push16(c, c->seg[S_DS]);
-    set_r8(c, R_AH, 0x25);
-    set_r8(c, R_AL, 0x08);
-    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x1CFD);
-    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x1CFF);
-    c->icount += 4;                                               /* PUSH, MOV, MOV, LDS */
-    if (!sm4_int(m, 0x1C64)) return 1;
-    FSB(3, 0x1C66);
-    c->seg[S_DS] = cpu_pop16(c);
-    ds_put8(c, 0x262B, 0x00);
-    near_ret(c);
+    c->ip = 0x1C50;                                               /* the delay JMP: the control word woke the run loop */
     return 1;
 #undef FSPILOT
 #undef FSFAR
@@ -81153,11 +81107,14 @@ frame_exit:
  *    caller's pending request, as the negative of what it passed). A JE to the next
  *    instruction follows (no effect).
  * Both ways end with STI and RET. The STI lets an interrupt in, so the routine stops after it
- * and the original's RET follows. No callees. */
+ * and the original's RET follows. The control word to port 43h does the same (pc.c io_write8: a
+ * counter 0 control word makes the run loop look at interrupts), so on the programming path the
+ * routine stops right after that OUT and the original finishes it: the delay JMP, the count's two
+ * bytes, the counters and the STI are its own. No callees. */
 static int player_timer_program_count(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    enum { WANTED = 0x1A08, LAST = 0x1A0A, PROGRAMMED = 0x1A0C, PENDING = 0x1A18, PIT_CONTROL = 0x43, PIT_CHANNEL0 = 0x40, MODE = 0x36 };
+    enum { WANTED = 0x1A08, LAST = 0x1A0A, PIT_CONTROL = 0x43, MODE = 0x36 };
 #define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
     if (!room(c, 3)) return 0;
     XB(3, 0x0244);                          /* mov dx,[WANTED] / cmp dx,[LAST] / jne */
@@ -81167,26 +81124,14 @@ static int player_timer_program_count(machine_t *m)
     XB(1, 0x024E);                          /* jcxz */
     if (c->r[R_CX] == 0) goto finish;
 program:
-    SM4_NEED(4 + IO_SLACK(1), 0x0250);      /* mov [LAST],dx / mov al,MODE / out 43h,al / jmp */
+    SM4_NEED(4 + IO_SLACK(1), 0x0250);      /* mov [LAST],dx / mov al,MODE / out 43h,al (and the JMP: the claim is unchanged) */
     ds_put(c, LAST, c->r[R_DX]);
     set_r8(c, R_AL, MODE);
     c->icount += 2;
     x86_out(c, PIT_CONTROL, 0);
-    c->icount += 2;
-    SM4_NEED(3 + IO_SLACK(1), 0x025A);      /* mov al,dl / out 40h,al / jmp */
-    set_r8(c, R_AL, get_r8(c, R_DL));
     c->icount += 1;
-    x86_out(c, PIT_CHANNEL0, 0);
-    c->icount += 2;
-    SM4_NEED(6 + IO_SLACK(1), 0x0260);      /* mov al,dh / out 40h,al / inc [PROGRAMMED] / neg cx / mov [PENDING],cx / je */
-    set_r8(c, R_AL, get_r8(c, R_DH));
-    c->icount += 1;
-    x86_out(c, PIT_CHANNEL0, 0);
-    c->icount += 1;
-    ds_put(c, PROGRAMMED, (uint16_t)alu_inc(c, ds_get(c, PROGRAMMED), 1));
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
-    ds_put(c, PENDING, c->r[R_CX]);
-    c->icount += 4;
+    c->ip = 0x0258;                         /* the delay JMP: the control word woke the run loop */
+    return 1;
 finish:
     SM4_NEED(1, 0x0270);                    /* sti */
     x86_sti(c);

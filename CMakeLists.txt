@@ -379,8 +379,13 @@ if(F117R_BUILD_TESTS)
     target_link_libraries(func_lockstep PRIVATE f117recomp)
     add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
     add_test(NAME matched_module_rules COMMAND func_lockstep --check-module-rules)
-    # A body that charges the clock in one lump around an OUT, and one that runs on past an EOI write.
+    # A body that charges the clock in one lump around an OUT, one that runs on past an EOI write, one
+    # whose EOI comes past the run's limit, and which stops complete their named region.
     add_test(NAME matched_io_rules COMMAND func_lockstep --check-io-rules)
+    # Eight bodies that ran on past their own counter 0 control word to port 43h (a wake); this seed's
+    # first 100 states showed all eight before they stopped after that OUT (21 Oct).
+    add_test(NAME matched_wake_stops COMMAND func_lockstep --states 100 --seed 0x5EED0F117A
+      --only PLAYER.EXE:244,VGAME.EXE:235,START.EXE:8DA4,END.EXE:4C88,VGAME.EXE:1D54,VGAME.EXE:1D01,START.EXE:8D71,END.EXE:4C55)
     add_test(NAME matched_initializer_bounds COMMAND func_lockstep --states 4000
       --seed 0x66A860898896 --only SETUP.EXE:177C)
     # This seed aliases the shadow-text source with PUSH SS's stack write.

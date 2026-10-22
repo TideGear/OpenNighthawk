@@ -713,10 +713,20 @@ caught real defects:
   instructions, so no delay can cross inside a matched routine; when that
   room is not there the routine parks and the original runs the stretch.
   The clock must be charged between port accesses, not in one lump after
-  them: the lockstep cannot see a stale clock at a PIT or CRT-status read,
-  but the routes can. An interrupt handler that opens with STI cannot be
+  them: a stale clock at a PIT or CRT-status read changes what the routes
+  read, and the lockstep records the clock of every port access
+  (`matched_io_rules` checks that it sees a lump). An interrupt handler that opens with STI cannot be
   matched past that instruction (the run loop admits one more instruction
-  after STI), so the timer handlers stay original code.
+  after STI), so the timer handlers stay original code. A port write that
+  makes the run loop look at interrupts (`io_write8`: an EOI or mask to the
+  PIC, a counter 0 control word or reload to the PIT) lowers the limit to 0
+  as STI does: the routine stops at the boundary right after it and the
+  original finishes the routine. The lockstep requires each such write to
+  lie within the run's limit and the body to stop exactly there (`WAKE
+  OVERRUN` otherwise; `matched_wake_stops` keeps the eight timer routines
+  that once ran on past their control word), and counts a body stopped
+  after its own such write as completing its named region, as it does one
+  stopped after its own POPF or STI (`POPF_STOPS`).
 - DOS and BIOS calls: a matched routine runs its INT instruction as
   original code (`sm4_int`: the machine at the INT, a return trap after
   it), so the DOS services, their stubs and time and any interrupt taken

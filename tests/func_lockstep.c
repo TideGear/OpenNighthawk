@@ -12,7 +12,9 @@
  * does for single instructions: registers, segments, IP, flags, the clock,
  * every byte written, every port touched (with the clock it was touched at)
  * and every interrupt raised. A port write that makes the machine look at
- * interrupts (pc.c wake()) must end the body's run at the next boundary.
+ * interrupts (pc.c wake()) must come within the run's limit and end the
+ * body's run at the next boundary; a body stopped there by its own write has
+ * completed its named region (wake_stop_reached).
  *
  * A state in which the original does not return within the step budget
  * (random data can send a loop a long way) is counted, not compared; so is
@@ -127,8 +129,9 @@ static int port_wakes(wake_model *d, uint16_t port, uint8_t v)
 /* The first wake of the run a matched body makes (side 1, between
  * wake_arm and wake_overrun): the original stops at the boundary after
  * that instruction, so the body must have stopped there too. */
-static struct { int armed, woke; uint64_t clk; uint16_t port, flags; uint8_t val; } g_wake;
+static struct { int armed, woke, by_body; uint64_t clk, limit; uint16_t port, flags; uint8_t val; } g_wake;
 static cpu_t *g_wake_cpu;   /* the matched side's CPU */
+static int g_runner_depth;  /* original code the body called is running (step_runner), not the body's own C */
 
 static void io_w(cpu_t *c, uint16_t port, uint32_t val, int width)
 {
@@ -144,10 +147,10 @@ static void io_w(cpu_t *c, uint16_t port, uint32_t val, int width)
         const uint16_t p = (uint16_t)(port + b);
         const uint8_t v = (uint8_t)(val >> (8 * b));
         if (!port_wakes(&s->dev, p, v)) continue;
+        if (c == g_wake_cpu && g_wake.armed && !g_wake.woke) {   /* the limit as it was before the write lowers it */
+            g_wake.woke = 1; g_wake.clk = c->icount; g_wake.limit = c->stop_at; g_wake.by_body = g_runner_depth == 0;
+            g_wake.port = p; g_wake.val = v; g_wake.flags = c->flags;        }
         cpu_irq_state_changed(c);
-        if (c == g_wake_cpu && g_wake.armed && !g_wake.woke) {
-            g_wake.woke = 1; g_wake.clk = c->icount; g_wake.port = p; g_wake.val = v; g_wake.flags = c->flags;
-        }
     }
 }
 
@@ -486,6 +489,13 @@ static int wake_overrun(const recomp_override *o, uint16_t ip, int ran, const ch
     if (!g_wake.woke) return 0;
     const cpu_t *c = g_wake_cpu;
     const uint64_t stop = g_wake.clk + 1;    /* the boundary after the writing instruction */
+    if (stop > g_wake.limit) {               /* the original never reaches the write: its limit comes first */
+        g_wake_overrun++;
+        printf("  WAKE OVERRUN%s %s %04X:%04X: OUT %02Xh,%02Xh at +%llu runs past the limit at %+lld\n", ctx, o->module,
+               o->seg, ip, g_wake.port, g_wake.val, (unsigned long long)(g_wake.clk - 1000),
+               (long long)g_wake.limit - 1000);
+        return 1;
+    }
     if (ran && c->icount == stop) return 0;
     g_wake_overrun++;
     printf("  WAKE OVERRUN%s %s %04X:%04X: OUT %02Xh,%02Xh at +%llu (IF %d) wakes the run loop, the original stops at +%llu;"
@@ -1860,12 +1870,23 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
 static const struct { const char *module; uint16_t seg, ip, stop; } POPF_STOPS[] = {
     { "SETUP.EXE", 0x0000, 0x111A, 0x11AE },   /* timer calibrate */
     { "PLAYER.EXE", 0x026B, 0x0272, 0x0306 },   /* timer calibrate */
-    { "PLAYER.EXE", 0x026B, 0x0244, 0x0271 },   /* program the timer chip: the STI lets interrupts in */
+    { "PLAYER.EXE", 0x026B, 0x0244, 0x0271 },   /* program the timer chip, nothing to send: the STI lets interrupts in (sending stops at the control word: wake_stop_reached) */
     { "END.EXE", 0x0000, 0x4CBC, 0x4D50 },      /* timer calibrate */
     { "START.EXE", 0x0000, 0x8DD8, 0x8E6C },    /* timer calibrate */
     { "MPS_LOGO.EXE", 0x0006, 0x033A, 0x0387 }, /* write the VGA palette: the STI lets interrupts in */
     { "MPS_LOGO.EXE", 0x0006, 0x038E, 0x03DD }, /* read the VGA palette: the STI lets interrupts in */
 };
+/* Any routine whose own code writes a port that wakes the run loop (port_wakes: an EOI or mask to the
+ * PIC, a counter 0 control word or reload to the PIT) stops at the boundary right after that write, as
+ * the original does, and the original finishes the routine. A body stopped exactly there - the write
+ * its own (not a callee's), the machine at the next instruction's clock in the routine's segment with
+ * the limit lowered to 0, which wake_overrun has checked - has completed its named region, as a body
+ * stopped after its own POPF or STI has (POPF_STOPS). */
+static int wake_stop_reached(const cpu_t *c, uint16_t cs)
+{
+    return g_wake.woke && g_wake.by_body && g_wake.clk + 1 <= g_wake.limit &&
+           c->seg[S_CS] == cs && c->icount == g_wake.clk + 1 && c->stop_at == 0;
+}
 static int program_end_reached(const recomp_override *o, const cpu_t *c, uint16_t cs)
 {
     for (unsigned k = 0; k < sizeof POPF_STOPS / sizeof POPF_STOPS[0]; k++)
@@ -2180,7 +2201,15 @@ static int g_callover;          /* a call into original code was started with th
  * leaves through _write's ending on a failed write); the run stops there, as
  * the original side does. */
 static uint16_t g_back_cs, g_back_ip, g_back_sp;
-static int step_runner(machine_t *mm)
+static int step_runner_run(machine_t *mm);
+static int step_runner(machine_t *mm)       /* (the depth tells a body's own port writes from its callees') */
+{
+    g_runner_depth++;
+    const int rc = step_runner_run(mm);
+    g_runner_depth--;
+    return rc;
+}
+static int step_runner_run(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
     const uint16_t call_sp = (uint16_t)(c->r[R_SP] + (mm->trap_cs == c->seg[S_CS] ? 2 : 4));  /* before the CALL pushed */
@@ -2324,10 +2353,10 @@ static int body_a_lump(machine_t *m)              /* the five instructions charg
     return 1;
 }
 
-static int body_b(machine_t *m, int stops)
+static int body_b(machine_t *m, int stops, int claims)
 {
     cpu_t *c = &m->cpu;
-    if (!io_room(c, 4)) return 0;
+    if (claims && !io_room(c, 4)) return 0;
     set_r8(c, R_AL, 0x20); c->icount += 1;
     x86_out(c, 0x20, 0); c->icount += 1;         /* the EOI: the machine's limit drops to 0 */
     if (stops && !io_room(c, 2)) { c->ip = 0x0204; return 1; }   /* the INC and RET are the original's */
@@ -2335,13 +2364,15 @@ static int body_b(machine_t *m, int stops)
     c->ip = cpu_pop16(c); c->icount += 1;
     return 1;
 }
-static int body_b_exact(machine_t *m) { return body_b(m, 1); }
-static int body_b_runon(machine_t *m) { return body_b(m, 0); }
+static int body_b_exact(machine_t *m) { return body_b(m, 1, 1); }
+static int body_b_runon(machine_t *m) { return body_b(m, 0, 1); }
+static int body_b_unclaimed(machine_t *m) { return body_b(m, 1, 0); }   /* stops after the EOI, but claims no room for it */
 
 /* One state of a synthetic routine through the comparison the table's routines get: the original
- * to its RET, the body (armed for wakes), the original finishing what the body handed back, then
- * compare(). Returns the wake verdict in *woke and the comparison's verdict. */
-static int io_rules_state(uint16_t ip, int (*body)(machine_t *), int *woke)
+ * to its RET, the body (armed for wakes, `limit` instructions of room when not 0), the original
+ * finishing what the body handed back, then compare(). Returns the wake verdict in *woke and the
+ * comparison's verdict. */
+static int io_rules_state(uint16_t ip, int (*body)(machine_t *), unsigned limit, int *woke, int *credit)
 {
     static const uint16_t r[8] = { 0x1111, 0x2222, 0x3333, 0x4444, 0x1000, 0x5555, 0x6666, 0x7777 };
     static const uint16_t seg[4] = { 0x6000, 0x4000, 0x5000, 0x6000 };
@@ -2357,10 +2388,12 @@ static int io_rules_state(uint16_t ip, int (*body)(machine_t *), int *woke)
     const uint16_t entry_sp = (uint16_t)(r[R_SP] - 2);
     int steps = 0;
     if (run_to_ret(&g_cpu[0], entry_sp, 1, &steps, cs, ip) != 1 || g_cpu[0].ip != back) return -1;
+    if (limit) g_m.cpu.stop_at = g_m.cpu.icount + limit;
     wake_arm();
     g_lost = 0; g_ncalls = 0;
     const int ran = body(&g_m);
     *woke = wake_overrun(&o, ip, ran, " (self-test)");
+    *credit = ran && !*woke && wake_stop_reached(&g_m.cpu, cs);
     if (!ran) return -1;
     if (g_m.cpu.ip != back) {
         int more = 0;
@@ -2413,22 +2446,25 @@ static int check_io_rules(void)
     static const uint8_t B[] = { 0xB0, 0x20, 0xE6, 0x20, 0x43, 0xC3 };
     memcpy(g_pristine + 0x40100, A, sizeof A);
     memcpy(g_pristine + 0x40200, B, sizeof B);
-    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); int differs, woke; const char *why; } CASES[] = {
-        { "exact OUT clock", 0x0100, body_a_exact, 0, 0, "" },
-        { "clock charged in one lump around the OUT", 0x0100, body_a_lump, 1, 0, "ports or interrupts" },
-        { "exact stop after the EOI", 0x0200, body_b_exact, 0, 0, "" },
-        { "run on past the EOI", 0x0200, body_b_runon, 0, 1, "" },
+    /* `credit`: whether the stop completes the named region (wake_stop_reached). */
+    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); unsigned limit; int differs, woke, credit; const char *why; } CASES[] = {
+        { "exact OUT clock", 0x0100, body_a_exact, 0, 0, 0, 0, "" },
+        { "clock charged in one lump around the OUT", 0x0100, body_a_lump, 0, 1, 0, 0, "ports or interrupts" },
+        { "exact stop after the EOI", 0x0200, body_b_exact, 0, 0, 0, 1, "" },
+        { "run on past the EOI", 0x0200, body_b_runon, 0, 0, 1, 0, "" },
+        { "EOI the last instruction of room", 0x0200, body_b_unclaimed, 2, 0, 0, 1, "" },
+        { "EOI one instruction past the limit", 0x0200, body_b_unclaimed, 1, 0, 1, 0, "" },
     };
     for (unsigned k = 0; k < sizeof CASES / sizeof CASES[0]; k++) {
-        int woke = 0;
-        const int differs = io_rules_state(CASES[k].ip, CASES[k].body, &woke);
+        int woke = 0, credit = 0;
+        const int differs = io_rules_state(CASES[k].ip, CASES[k].body, CASES[k].limit, &woke, &credit);
         /* the faulty bodies end where the original ends: registers, clock, memory all agree, so
          * the clock-free port record and the run-limit check this harness had saw nothing */
-        const int ok = differs == CASES[k].differs && woke == CASES[k].woke &&
+        const int ok = differs == CASES[k].differs && woke == CASES[k].woke && credit == CASES[k].credit &&
                        !strncmp(g_last_why, CASES[k].why, strlen(CASES[k].why)) && (CASES[k].why[0] || !g_last_why[0]);
-        printf("%-44s %s (comparison %s%s, wake %s)\n", CASES[k].what, ok ? "as expected" : "WRONG",
+        printf("%-44s %s (comparison %s%s, wake %s, region %s)\n", CASES[k].what, ok ? "as expected" : "WRONG",
                differs < 0 ? "not run" : differs ? "differs: " : "equal", differs > 0 ? g_last_why : "",
-               woke ? "overrun" : "kept");
+               woke ? "overrun" : "kept", credit ? "completed" : "not completed");
         if (!ok) fails++;
     }
     free(g_pristine); free(g_mem[0]); free(g_mem[1]);
@@ -35754,7 +35790,8 @@ int main(int argc, char **argv)
             const int covered_region = !g_callee_finished && (whole || (g_cov >= 0 && COVERED[g_cov].boundary &&
                 g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == COVERED[g_cov].boundary &&
                 g_m.cpu.icount == 1000 + COVERED[g_cov].clocks) ||
-                (g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs)));
+                (g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs)) ||
+                (g_cov >= 0 && wake_stop_reached(&g_m.cpu, cs)));
             if (nc_out) memset(g_nc_fall, 0, sizeof g_nc_fall);
             if (nc_out && g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip != back) g_nc_hand[g_m.cpu.ip >> 3] |= (uint8_t)(1u << (g_m.cpu.ip & 7));
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
