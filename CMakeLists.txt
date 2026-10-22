@@ -379,6 +379,8 @@ if(F117R_BUILD_TESTS)
     target_link_libraries(func_lockstep PRIVATE f117recomp)
     add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
     add_test(NAME matched_module_rules COMMAND func_lockstep --check-module-rules)
+    # A body that charges the clock in one lump around an OUT, and one that runs on past an EOI write.
+    add_test(NAME matched_io_rules COMMAND func_lockstep --check-io-rules)
     add_test(NAME matched_initializer_bounds COMMAND func_lockstep --states 4000
       --seed 0x66A860898896 --only SETUP.EXE:177C)
     # This seed aliases the shadow-text source with PUSH SS's stack write.
