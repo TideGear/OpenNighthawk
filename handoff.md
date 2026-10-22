@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 22 October 2026 (batch as accepted).
+more than once, what it costs). State as of 22 October 2026 (batch as accepted; batch at saved privately).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -37,6 +37,25 @@ Consolidate it instead of appending to it.
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
   Refresh using batch as's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
+- **Prepared batch at (not accepted; stopped for handoff at the owner's request).** Tracked code is restored
+  byte-for-byte to accepted commit `7c629ef`; the local executables were rebuilt from that accepted source.
+  No acceptance or proof workers remain. Saved integration patch, source snapshots and interrupted-run evidence:
+  `D:/f117-gate/handoff-20261022-at/` (`state.json`, `integration.patch`). The proofs themselves remain in
+  `D:/f117-gate/p2-mgraphic-at-0bc0`, `...-061a` and `...-0f3b`: sprite clipping (55 instructions), font-string
+  rendering (105), and the one-instruction mode-zero span-fill prefix (only two new bytes; hands back at `0F3D`).
+  All three passed eleven private seeds, all 108 planted defects, and exact 66-checkpoint game / 26-checkpoint
+  boot proofs. Their merged optimized build and three CTests passed. The first whole-table seed
+  `0x7c629efe9ac0` passed: 1,251 routines, 4,749,156 comparisons, zero mismatches. Seed `0x27182818` was
+  interrupted; the third seed, old-report comparison, full gate, presentation acceptance and final credit audit
+  have **not** passed or run. No batch-at score is published. Resume from this accepted checkout with
+  `py D:/f117-gate/accept-at.py`: it audits the proofs, reapplies integration, builds, checks three whole-table
+  seeds (including unchanged old reports), then runs the complete acceptance and score refresh. The saved patch
+  is a backup; the script performs integration itself. After acceptance, review and run
+  `D:/f117-gate/update-docs-at.py`, then inspect docs, commit, push and check CI.
+  Private kit support for separate return/self-write spans and explicit completion boundaries is implemented
+  and documented in `kit/BRIEF.md`; default output is unchanged and six invalid metadata cases are rejected
+  (`D:/f117-gate/at-kit-boundaries-verdict.json`). The `061A` proof needs its below-entry COV origin at `060A`;
+  `accept-at.py` carries that explicit harness line. Its `0F3B` proof catches wrong carry/zero flags at the boundary.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
