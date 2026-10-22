@@ -83083,7 +83083,1259 @@ static int mgraphic_clear_es_segment(machine_t *m)
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:071A (far, no arguments; every input is a register):
+ * draw a dashed vertical run of the pen colour, one scanline in two.
+ *
+ * On entry BX = the first scanline plus one, SI = 0 or a table step (SI 0
+ * leaves the direction flag set by the routine's STD, any other SI clears it
+ * again), DL = a signed mode byte (below 1 adds 14h to the scanline) and CL =
+ * a flag (nonzero adds 4 to SI and 1 to BX). DS and ES are loaded here: DS
+ * from the relocated immediate at 071D (the library's data segment), ES from
+ * the library variable CS:[0194] (the drawing surface). All the routine's
+ * parameters live in that data segment: AL = AH = the pen colour [1866h],
+ * DX = the column [SI+1966h], the lowest scanline [SI+196Eh] and the highest
+ * [SI+1976h].
+ *
+ * Scanlines are walked from BX down in steps of 2 (BX is unsigned: the walk
+ * ends when BX falls below the lowest scanline). A scanline above the highest
+ * is skipped but still counts in the pattern. Otherwise DI = the row offset
+ * CS:[2*BX+4] + the column and the colour is stored with STOSB, in the
+ * direction DF gives, in a cycle of ten scanlines (CH counts them, starting
+ * at 0Ah): CH = 0Ah stores two bytes, plus a third when CL is zero; CH = 5
+ * stores two bytes; CH 1-4 and 6-9 store one. After the scanline CH is reset
+ * to 0 when it was 0Ah and then incremented. At the end DF is cleared, ES
+ * and DS are popped and the routine returns far. The exit leaves BX, CX
+ * (CH), DX, DI, SI, AX and the flags as the last instructions left them. */
+static int mgraphic_draw_dashed_rows(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define DSW(o_) seg_read16(c, c->seg[S_DS], (uint16_t)(o_))
+    if (!room(c, 8)) return 0;
+    XB(8, 0x071A);
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds */
+    cpu_push16(c, c->seg[S_ES]);                                  /* push es */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x071D);             /* mov ax, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_AX];                                    /* mov ds, ax */
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], 0x0194);           /* mov es, cs:[0194] */
+    set_flag(c, F_DF, 1);                                         /* std */
+    c->r[R_SI] = (uint16_t)alu_op(c, 1, c->r[R_SI], c->r[R_SI], 1);   /* or si, si */
+    if (x86_cond(c, 4)) goto L_072C;                              /* je */
+    XB(1, 0x072B);
+    set_flag(c, F_DF, 0);                                         /* cld */
+L_072C:
+    XB(3, 0x072C);
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);             /* dec bx */
+    alu_op(c, 7, get_r8(c, 2), 0x01, 0);                          /* cmp dl, 1 */
+    if (x86_cond(c, 12)) goto L_0735;                             /* jl */
+    XB(1, 0x0732);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], 0x0014, 1);   /* add bx, 14h */
+L_0735:
+    XB(2, 0x0735);
+    set_r8(c, 1, (uint8_t)alu_op(c, 1, get_r8(c, 1), get_r8(c, 1), 0));   /* or cl, cl */
+    if (x86_cond(c, 4)) goto L_073D;                              /* je */
+    XB(2, 0x0739);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 0x0004, 1);   /* add si, 4 */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);             /* inc bx */
+L_073D:
+    XB(4, 0x073D);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x1866)));    /* mov al, [1866] */
+    set_r8(c, 4, get_r8(c, 0));                                   /* mov ah, al */
+    c->r[R_DX] = DSW(c->r[R_SI] + 0x1966);                        /* mov dx, [si+1966] */
+    set_r8(c, 5, 0x0A);                                           /* mov ch, 0Ah */
+L_0748:
+    XB(2, 0x0748);
+    alu_op(c, 7, c->r[R_BX], DSW(c->r[R_SI] + 0x196E), 1);        /* cmp bx, [si+196E] */
+    if (x86_cond(c, 2)) goto L_0783;                              /* jb */
+    XB(2, 0x074E);
+    alu_op(c, 7, c->r[R_BX], DSW(c->r[R_SI] + 0x1976), 1);        /* cmp bx, [si+1976] */
+    if (x86_cond(c, 7)) goto L_0775;                              /* ja */
+    XB(6, 0x0754);
+    c->r[R_DI] = c->r[R_BX];                                      /* mov di, bx */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);     /* shl di, 1 */
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0004));   /* mov di, cs:[di+4] */
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_DX], 1);   /* add di, dx */
+    alu_op(c, 7, get_r8(c, 5), 0x05, 0);                          /* cmp ch, 5 */
+    if (x86_cond(c, 5)) goto L_0769;                              /* jne */
+    XB(3, 0x0764);
+    x86_stos(c, 0);
+    x86_stos(c, 0);
+    goto L_0775;                                                  /* jmp */
+L_0769:
+    XB(2, 0x0769);
+    alu_op(c, 7, get_r8(c, 5), 0x0A, 0);                          /* cmp ch, 0Ah */
+    if (x86_cond(c, 5)) goto L_0774;                              /* jne */
+    XB(4, 0x076E);
+    x86_stos(c, 0);
+    x86_stos(c, 0);
+    set_r8(c, 1, (uint8_t)alu_op(c, 1, get_r8(c, 1), get_r8(c, 1), 0));   /* or cl, cl */
+    if (x86_cond(c, 5)) goto L_0775;                              /* jne */
+L_0774:
+    XB(1, 0x0774);
+    x86_stos(c, 0);
+L_0775:
+    XB(3, 0x0775);
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], 0x0002, 1);   /* sub bx, 2 */
+    alu_op(c, 7, get_r8(c, 5), 0x0A, 0);                          /* cmp ch, 0Ah */
+    if (x86_cond(c, 5)) goto L_077F;                              /* jne */
+    XB(1, 0x077D);
+    set_r8(c, 5, (uint8_t)alu_op(c, 6, get_r8(c, 5), get_r8(c, 5), 0));   /* xor ch, ch */
+L_077F:
+    XB(2, 0x077F);
+    set_r8(c, 5, (uint8_t)alu_inc(c, get_r8(c, 5), 0));           /* inc ch */
+    goto L_0748;                                                  /* jmp */
+L_0783:
+    XB(4, 0x0783);
+    set_flag(c, F_DF, 0);                                         /* cld */
+    c->seg[S_ES] = cpu_pop16(c);                                  /* pop es */
+    c->seg[S_DS] = cpu_pop16(c);                                  /* pop ds */
+    far_ret(c);
+    return 1;
+#undef DSW
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0B0C (far, five arguments above the far return address):
+ * compile a rectangle of a page into the library's run-length sprite buffer.
+ *
+ * Arguments, by BP offset after the frame is built: [BP+6] page number (its
+ * absolute value picks the page segment CS:[2*|page|+787h]), [BP+8] the
+ * column, [BP+0A] the first row (CS:[2*row+4] is its row offset), [BP+0C] the
+ * width and [BP+0E] the height.
+ *
+ * 1. Far-call 0A02 with the width and height (pushed height first, 4 bytes
+ *    cleaned by the caller). 0A02 opens the buffer (it stores the width in
+ *    CS:[083C] and the height in CS:[083A]) and answers AX = the buffer
+ *    segment, or 0 when there is no room: AX = 0 skips to step 3.
+ * 2. When CS:[083A] and CS:[083C] are both nonzero: SI = the row offset of
+ *    the first row + the column, DS = the page segment, then for each of the
+ *    CS:[083A] rows far-call 0A6A with SI (it compresses one row of CS:[083C]
+ *    pixels from DS:SI into the buffer; the caller cleans the one argument),
+ *    advancing SI by 140h (one 320-pixel row) and counting CS:[083A] down.
+ *    BP is overwritten with the sign word of the page number (the frame is
+ *    not used again; the original value comes back from the stack).
+ * 3. Far-call 0A4D (close the buffer), pop DS, SI and BP and return far.
+ *
+ * The three callees are original code (or stubs in the proof): they and the
+ * flags/registers they leave are not touched here. The routine's own
+ * instruction clock: 6 + call + 3/2/2/12 on the first path, then per row
+ * 1 + call + 4, then call + 4 at the end. */
+static int mgraphic_compile_bitmap_rows(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define BPW(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+    if (!room(c, 6)) return 0;
+    XB(6, 0x0B0C);
+    x86_push_reg(c, R_BP);                                        /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                      /* mov bp, sp */
+    x86_push_reg(c, R_SI);                                        /* push si */
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds */
+    cpu_push16(c, BPW(0x000E));                                   /* push [bp+0e]: height */
+    cpu_push16(c, BPW(0x000C));                                   /* push [bp+0c]: width */
+    SM4_NEED(1, 0x0B17);
+    RUN(guest_call_far(m, 0x0B17, 0x0B1C));                       /* lcall 0A02 */
+    XB(3, 0x0B1C);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);   /* add sp, 4 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);   /* or ax, ax */
+    if (x86_cond(c, 4)) goto L_0B67;                              /* je */
+    XB(2, 0x0B23);
+    alu_op(c, 7, seg_read16(c, c->seg[S_CS], 0x083A), 0x0000, 1); /* cmp cs:[083A], 0 */
+    if (x86_cond(c, 4)) goto L_0B67;                              /* je */
+    XB(2, 0x0B2B);
+    alu_op(c, 7, seg_read16(c, c->seg[S_CS], 0x083C), 0x0000, 1); /* cmp cs:[083C], 0 */
+    if (x86_cond(c, 4)) goto L_0B67;                              /* je */
+    XB(12, 0x0B33);
+    c->r[R_SI] = BPW(0x000A);                                     /* mov si, [bp+0a] */
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);     /* shl si, 1 */
+    c->r[R_SI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0004));   /* mov si, cs:[si+4] */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], BPW(0x0008), 1);   /* add si, [bp+8] */
+    c->r[R_AX] = BPW(0x0006);                                     /* mov ax, [bp+6] */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);   /* xor ax, dx */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);   /* sub ax, dx */
+    c->r[R_BP] = c->r[R_DX];                                      /* mov bp, dx */
+    c->r[R_BX] = c->r[R_AX];                                      /* mov bx, ax */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);     /* shl bx, 1 */
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));   /* mov ds, cs:[bx+787] */
+L_0B53:
+    XB(1, 0x0B53);
+    x86_push_reg(c, R_SI);                                        /* push si */
+    SM4_NEED(1, 0x0B54);
+    RUN(guest_call_far(m, 0x0B54, 0x0B59));                       /* lcall 0A6A */
+    XB(4, 0x0B59);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1);   /* add sp, 2 */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 0x0140, 1);   /* add si, 140h */
+    {   const uint16_t v_ = seg_read16(c, c->seg[S_CS], 0x083A);  /* dec cs:[083A] */
+        seg_write16(c, c->seg[S_CS], 0x083A, (uint16_t)alu_dec(c, v_, 1)); }
+    if (x86_cond(c, 5)) goto L_0B53;                              /* jne */
+L_0B67:
+    SM4_NEED(1, 0x0B67);
+    RUN(guest_call_far(m, 0x0B67, 0x0B6C));                       /* lcall 0A4D */
+    XB(4, 0x0B6C);
+    c->seg[S_DS] = cpu_pop16(c);                                  /* pop ds */
+    c->r[R_SI] = cpu_pop16(c);                                    /* pop si */
+    c->r[R_BP] = cpu_pop16(c);                                    /* pop bp */
+    far_ret(c);
+    return 1;
+#undef BPW
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:1188 (far, seven arguments above the far return address):
+ * recolour a rectangle of a page: every pixel equal to one colour becomes
+ * another.
+ *
+ * Arguments, by BP offset after the frame is built: [BP+6] a NEAR POINTER to
+ * the page number word (SS:[ptr]; CS:[2*page+787h] is the page segment, which
+ * becomes ES), [BP+8] the first column, [BP+0A] the first row, [BP+0C] the
+ * last column, [BP+0E] the last row (both inclusive), [BP+10] the colour to
+ * find (the byte; AH) and [BP+12] the colour to put (the byte; AL).
+ *
+ * DS is loaded from the relocated immediate at 1190 (the library's data
+ * segment) and DX with the same value; neither is used afterwards, DS is
+ * restored from the stack and DX stays loaded. Rows = last row - first row +
+ * 1 (CX), width = last column - first column + 1 (BX); a count of zero would
+ * run 65536 times, as LOOP does. Each row: DI = first column + the row
+ * offset CS:[2*row+4]; for each of the BX pixels ES:[DI] equal to AH is
+ * replaced by AL, then DI advances; CX (outer) and the first column DI are
+ * saved around the row. SI steps 2 bytes along the row-offset table for the
+ * next row. Exit pops DI, SI, ES, DS, BP and returns far; the registers
+ * left are the ones the last pass leaves (AX = colours, BX = width, CX = 0,
+ * DX = the data segment word, DI/SI restored). Forty-two instructions. */
+static int mgraphic_replace_colour_in_rect(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define BPW(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+    if (!room(c, 23)) return 0;
+    XB(23, 0x1188);
+    x86_push_reg(c, R_BP);                                        /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                      /* mov bp, sp */
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds */
+    cpu_push16(c, c->seg[S_ES]);                                  /* push es */
+    x86_push_reg(c, R_SI);                                        /* push si */
+    x86_push_reg(c, R_DI);                                        /* push di */
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x1190);             /* mov dx, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_DX];                                    /* mov ds, dx */
+    c->r[R_BX] = BPW(0x0006);                                     /* mov bx, [bp+6] */
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], c->r[R_BX]);         /* mov bx, ss:[bx] */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);     /* shl bx, 1 */
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));   /* mov es, cs:[bx+787] */
+    c->r[R_SI] = BPW(0x000A);                                     /* mov si, [bp+0a] */
+    c->r[R_CX] = BPW(0x000E);                                     /* mov cx, [bp+0e] */
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_SI], 1);   /* sub cx, si */
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);             /* inc cx */
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);     /* shl si, 1 */
+    c->r[R_DI] = BPW(0x0008);                                     /* mov di, [bp+8] */
+    c->r[R_BX] = BPW(0x000C);                                     /* mov bx, [bp+0c] */
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_DI], 1);   /* sub bx, di */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);             /* inc bx */
+    set_r8(c, 4, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0010))));   /* mov ah, [bp+10] */
+    set_r8(c, 0, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0012))));   /* mov al, [bp+12] */
+L_11BB:
+    XB(4, 0x11BB);
+    x86_push_reg(c, R_CX);                                        /* push cx */
+    x86_push_reg(c, R_DI);                                        /* push di */
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0004)), 1);   /* add di, cs:[si+4] */
+    c->r[R_CX] = c->r[R_BX];                                      /* mov cx, bx */
+L_11C4:
+    XB(2, 0x11C4);
+    alu_op(c, 7, get_r8(c, 4), mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])), 0);   /* cmp ah, es:[di] */
+    if (x86_cond(c, 5)) goto L_11CC;                              /* jne */
+    XB(1, 0x11C9);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, 0));  /* mov es:[di], al */
+L_11CC:
+    XB(2, 0x11CC);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* inc di */
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                      /* loop 11C4 */
+    if (c->r[R_CX] != 0) goto L_11C4;
+    XB(4, 0x11CF);
+    c->r[R_DI] = cpu_pop16(c);                                    /* pop di */
+    c->r[R_CX] = cpu_pop16(c);                                    /* pop cx */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 0x0002, 1);   /* add si, 2 */
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                      /* loop 11BB */
+    if (c->r[R_CX] != 0) goto L_11BB;
+    XB(6, 0x11D6);
+    c->r[R_DI] = cpu_pop16(c);                                    /* pop di */
+    c->r[R_SI] = cpu_pop16(c);                                    /* pop si */
+    c->seg[S_ES] = cpu_pop16(c);                                  /* pop es */
+    c->seg[S_DS] = cpu_pop16(c);                                  /* pop ds */
+    c->r[R_BP] = cpu_pop16(c);                                    /* pop bp */
+    far_ret(c);
+    return 1;
+#undef BPW
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:125C (far, no arguments): one step of the library's
+ * palette flash / screen jolt effect.
+ *
+ * DS is loaded with the library's data segment (the word of the
+ * "mov ax, imm16 / mov ds, ax" pair at 125E, relocated: read from the
+ * loaded code); DS:1982 is a running counter, advanced to 5 * counter + 1
+ * (shl twice, add itself, inc). The counter's low two bits pick a byte
+ * of the four-byte table at DS:197E; that byte, times three, indexes a
+ * table of RGB triples at DS:1871. The triple is written to the DAC as
+ * colour 0Dh (port 3C8h = 0Dh, then three writes to 3C9h: red, green,
+ * blue). Then, only if the byte CS:[1250] (a run-time countdown of the
+ * library) is nonzero: AH, the counter's high byte, is masked to 0..3,
+ * the countdown is decremented (and AH cleared when it reaches zero),
+ * and AX goes to the CRT controller port 3D4h as one word: index 0Dh
+ * (start address, low byte) with the data AH. SI and DS are restored.
+ *
+ * The port writes are the routine's only effect besides the counter and
+ * the countdown; the clock is charged at each of them, in order. None of
+ * the ports is a timer or interrupt controller, so nothing wakes. */
+static int mgraphic_palette_flash_and_screen_jolt(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n) + IO_SLACK(1), (at)); c->icount += (n); } while (0)
+    if (!room(c, 35 + IO_SLACK(4))) return 0;
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds */
+    x86_push_reg(c, R_SI);                                        /* push si */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x125F);             /* mov ax, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_AX];                                    /* mov ds, ax */
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x1982);             /* the counter */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax, 1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax, 1 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], seg_read16(c, c->seg[S_DS], 0x1982), 1);   /* add ax, [1982] */
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);             /* inc ax */
+    seg_write16(c, c->seg[S_DS], 0x1982, c->r[R_AX]);
+    set_r8(c, R_BL, get_r8(c, R_AL));                             /* mov bl, al */
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x0003, 1);   /* and bx, 3 */
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x197E))));
+    c->r[R_SI] = 0x1871;
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_BX], 1);   /* add si, bx, three times */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_BX], 1);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_BX], 1);
+    x86_lods(c, 0, c->seg[S_DS]);
+    set_r8(c, R_CH, get_r8(c, R_AL));                             /* red */
+    x86_lods(c, 0, c->seg[S_DS]);
+    set_r8(c, R_CL, get_r8(c, R_AL));                             /* green */
+    x86_lods(c, 0, c->seg[S_DS]);
+    set_r8(c, R_BH, get_r8(c, R_AL));                             /* blue */
+    c->r[R_DX] = 0x03C8;
+    set_r8(c, R_AL, 0x0D);
+    c->icount += 25;                                              /* everything up to the first out */
+    x86_out(c, c->r[R_DX], 0);                                    /* DAC write index: colour 0Dh */
+    c->icount += 1;
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* inc dx: 3C9h */
+    set_r8(c, R_AL, get_r8(c, R_CH));
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* red */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_CL));
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* green */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_BH));
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* blue */
+    c->icount += 1;
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_CS], 0x1250)), 0x00, 0);   /* cmp byte cs:[1250], 0 */
+    c->icount += 2;                                               /* cmp, je */
+    if (x86_cond(c, 4)) goto L_12B7;
+    XB(3, 0x12A5);
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 4, get_r8(c, R_AH), 0x03, 0));   /* and ah, 3 */
+    {   const uint32_t a_ = phys(c->seg[S_CS], 0x1250);           /* dec byte cs:[1250] */
+        mem_write8(c, a_, (uint8_t)alu_dec(c, mem_read8(c, a_), 0)); }
+    if (!x86_cond(c, 5)) {                                        /* jne 12B1 */
+        XB(1, 0x12AF);
+        set_r8(c, R_AH, (uint8_t)alu_op(c, 6, get_r8(c, R_AH), get_r8(c, R_AH), 0));   /* xor ah, ah */
+    }
+    SM4_NEED(3 + IO_SLACK(1), 0x12B1);                            /* mov, mov, out */
+    c->icount += 2;
+    c->r[R_DX] = 0x03D4;
+    set_r8(c, R_AL, 0x0D);
+    x86_out(c, c->r[R_DX], 1);                                    /* CRTC register 0Dh = AH, one word write */
+    c->icount += 1;
+L_12B7:
+    XB(3, 0x12B7);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:09D4 (far, no arguments): hand the library's memory
+ * arena back to DOS; the release that goes with 09A8 (which took the
+ * largest free block and recorded its start in CS:[082E] and CS:[082C],
+ * its end in CS:[0830]).
+ *
+ * AX = CS:[082E] (the allocation cursor) and BX = CS:[082C] (the block's
+ * start) - AX, which also sets the flags. If that went below zero (carry)
+ * nothing is handed to DOS. Otherwise ES = AX and DOS is asked, with the
+ * flags of the subtraction still standing: when the difference is zero,
+ * INT 21h function 49h (free the block at ES); when it is not zero,
+ * function 4Ah (resize the block at ES to BX paragraphs). A DOS carry, or
+ * the negative case, sets ES = 0; a success leaves ES as it was set.
+ * Then AX = 0 and the three CS words 082C, 0830 and 082E are cleared, and
+ * the routine returns ES in AX (the freed segment, or 0). The INT 21h is
+ * run as the machine's DOS takes it; the routine claims room only for its
+ * own instructions between the calls. */
+static int mgraphic_arena_release(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 4)) return 0;
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x082E);             /* mov ax, cs:[082E] */
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x082C);             /* mov bx, cs:[082C] */
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_AX], 1);   /* sub bx, ax */
+    c->icount += 4;                                               /* mov, mov, sub, jb */
+    if (x86_cond(c, 2)) goto L_09ED;                              /* jb: a negative size */
+    XB(3, 0x09E1);
+    c->seg[S_ES] = c->r[R_AX];                                    /* mov es, ax */
+    set_r8(c, R_AH, 0x49);                                        /* mov ah, 49h: free */
+    if (x86_cond(c, 4)) goto L_09E9;                              /* je: the size is zero */
+    XB(1, 0x09E7);
+    set_r8(c, R_AH, 0x4A);                                        /* mov ah, 4Ah: resize to BX */
+L_09E9:
+    SM4_NEED(1, 0x09E9);
+    if (!st4_int21(m, 0x09E9)) return 1;
+    XB(1, 0x09EB);
+    if (x86_cond(c, 3)) goto L_09F1;                              /* jae: DOS did it */
+L_09ED:
+    XB(2, 0x09ED);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax, ax */
+    c->seg[S_ES] = c->r[R_AX];                                    /* mov es, ax */
+L_09F1:
+    XB(6, 0x09F1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax, ax */
+    seg_write16(c, c->seg[S_CS], 0x082C, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x0830, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x082E, c->r[R_AX]);
+    c->r[R_AX] = c->seg[S_ES];                                    /* mov ax, es */
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0F3D (far; AX = first row, CX = last row, BX = the
+ * address, in the stack segment, of an edge table, DX = the drawing mode):
+ * draw a run of horizontal spans into the screen segment.
+ *
+ * The table holds, for every row y, the left end SS:[BX + 2y] and the
+ * right end SS:[BX + 2y + 1B8h] (a word per row). The screen segment is
+ * CS:[0194]; a row starts at CS:[2y + 4] (a table of row offsets) +
+ * CS:[0196] (the page's base offset), and a span's first pixel is that
+ * plus the left end. Rows are drawn from CX down to AX (a negative AX
+ * draws nothing). A row is skipped when the right end is below the left,
+ * or when both are equal and 0 or 319 (13Fh); otherwise the span is
+ * right - left + 1 pixels long.
+ *
+ * DX picks the mode, tested in turn (0, then 1, then 2, else the fourth):
+ *   0  fill: AL = the byte at DS:1866 (DS = the library's data segment, a
+ *      relocated word at 0F44), AH = AL; the span is stored with STOSB for
+ *      an odd first address, REP STOSW for the words and STOSB for an odd
+ *      last byte.
+ *   1  OR: the same, but the data segment is the relocated word at 0FAB,
+ *      loaded into ES for AL = ES:[1866], and the screen is DS =
+ *      CS:[0194]: OR AL / OR AX into the screen bytes and words.
+ *   2  AND: as mode 1 (relocated word at 1026), AND into the screen.
+ *   3  tint: DS = the relocated word at 109A, ES = the screen; each byte
+ *      (word) of the span becomes ((old AND 0Fh) >> 1) OR 98h (for words
+ *      (old AND 0E0Eh) >> 1 OR 9898h), written back through STOSB/STOSW.
+ * All four push DS and ES on entry and restore them on the far return;
+ * a negative AX leaves through the same pops (0F9D) at once. BP, CX, SI,
+ * DI, DX, AX and the flags are what the last row left.
+ *
+ * Long spans run an iteration at a time: REP STOSW is one clock an
+ * iteration (and one for CX = 0), the OR/AND loops are three and the tint
+ * loop six instructions an iteration; each iteration is a stop point and
+ * the routine hands back at its start. */
+static int mgraphic_fill_spans(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+/* The row head shared by the four modes: the edge words, the skips, and the span set-up through the
+ * address-parity test (even: jump to `even_`, odd: fall through). `top` is the address of the first
+ * instruction; `skip` is the row's end. */
+#define ROW_HEAD(top, skip, body_, even_) \
+    XB(4, (top)); \
+    c->r[R_BP] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + c->r[R_SI])); \
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x01B8)); \
+    alu_op(c, 7, c->r[R_CX], c->r[R_BP], 1); \
+    if (x86_cond(c, 2)) goto skip; \
+    XB(1, (top) + 0x0C); \
+    if (x86_cond(c, 7)) goto body_; \
+    XB(2, (top) + 0x0E); \
+    c->r[R_CX] = (uint16_t)alu_op(c, 1, c->r[R_CX], c->r[R_CX], 1); \
+    if (x86_cond(c, 4)) goto skip; \
+    XB(2, (top) + 0x12); \
+    alu_op(c, 7, c->r[R_CX], 0x013F, 1); \
+    if (x86_cond(c, 4)) goto skip; \
+body_: \
+    XB(7, (top) + 0x18); \
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_BP], 1); \
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1); \
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0004)); \
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_CS], 0x0196), 1); \
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_BP], 1); \
+    alu_logic(c, (uint32_t)c->r[R_DI] & 0x0001, 1); \
+    if (x86_cond(c, 4)) goto even_
+/* The next row: sub si, 2 / cmp si, dx / jge top. */
+#define NEXT_ROW(at, top_) \
+    XB(3, (at)); \
+    c->r[R_SI] = (uint16_t)alu_op(c, 5, c->r[R_SI], 0x0002, 1); \
+    alu_op(c, 7, c->r[R_SI], c->r[R_DX], 1); \
+    if (x86_cond(c, 13)) goto top_
+/* DX = twice AX, SI = twice CX (four instructions). */
+#define LIMITS() \
+    c->r[R_DX] = c->r[R_AX]; \
+    c->r[R_DX] = (uint16_t)x86_shift(c, 4, c->r[R_DX], 1, 1); \
+    c->r[R_SI] = c->r[R_CX]; \
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1)
+
+    if (!room(c, 2)) return 0;
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);      /* or dx, dx */
+    c->icount += 2;                                               /* or, jne */
+    if (x86_cond(c, 5)) goto L_0FA0;
+
+    /* ---- mode 0: fill ---- */
+    XB(7, 0x0F41);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0F44);             /* mov dx, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_DX];
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], 0x0194);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 8)) goto L_0F9D;                              /* js: nothing to draw */
+    XB(6, 0x0F51);
+    LIMITS();
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x1866)));
+    set_r8(c, R_AH, get_r8(c, R_AL));
+L_0F5E:
+    ROW_HEAD(0x0F5E, L_0F96, L_0F76, L_0F8F);
+    XB(3, 0x0F8B);
+    x86_stos(c, 0);                                               /* an odd first byte */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto L_0F96;
+L_0F8F:
+    XB(1, 0x0F8F);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 1, 1);     /* shr cx, 1: CF = an odd last byte */
+    for (;;) {                                                    /* 0F91: rep stosw, one clock an iteration */
+        SM4_NEED(1, 0x0F91);
+        if (c->r[R_CX] == 0) { c->icount += 1; break; }
+        x86_stos(c, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;
+        if (c->r[R_CX] == 0) break;
+    }
+    XB(1, 0x0F93);
+    if (x86_cond(c, 3)) goto L_0F96;                              /* jae: no odd last byte */
+    XB(1, 0x0F95);
+    x86_stos(c, 0);
+L_0F96:
+    NEXT_ROW(0x0F96, L_0F5E);
+L_0F9D:
+    XB(3, 0x0F9D);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+
+    /* ---- mode 1: OR ---- */
+L_0FA0:
+    XB(2, 0x0FA0);
+    alu_op(c, 7, c->r[R_DX], 0x0001, 1);                          /* cmp dx, 1 */
+    if (x86_cond(c, 4)) goto L_0FA8;
+    XB(1, 0x0FA5);
+    goto L_101B;
+L_0FA8:
+    XB(7, 0x0FA8);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0FAB);             /* mov dx, imm16 (relocated) */
+    c->seg[S_ES] = c->r[R_DX];
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x0194);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 8)) goto L_0F9D;
+    XB(6, 0x0FB8);
+    LIMITS();
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], 0x1866)));
+    set_r8(c, R_AH, get_r8(c, R_AL));
+L_0FC6:
+    ROW_HEAD(0x0FC6, L_100F, L_0FDE, L_0FF9);
+    XB(4, 0x0FF3);
+    {   const uint32_t a_ = phys(c->seg[S_DS], c->r[R_DI]);       /* or byte [di], al */
+        mem_write8(c, a_, (uint8_t)alu_op(c, 1, mem_read8(c, a_), get_r8(c, R_AL), 0)); }
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto L_100F;
+L_0FF9:
+    XB(4, 0x0FF9);
+    c->r[R_BP] = c->r[R_CX];
+    c->r[R_BP] = (uint16_t)alu_op(c, 4, c->r[R_BP], 0x0001, 1);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 1, 1);
+    if (x86_cond(c, 4)) goto L_1009;
+    do {                                                          /* 1002: or word [di], ax / add di, 2 / loop */
+        XB(3, 0x1002);
+        {   const uint16_t o_ = c->r[R_DI];
+            seg_write16(c, c->seg[S_DS], o_, (uint16_t)alu_op(c, 1, seg_read16(c, c->seg[S_DS], o_), c->r[R_AX], 1)); }
+        c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], 0x0002, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0);
+L_1009:
+    XB(2, 0x1009);
+    c->r[R_BP] = (uint16_t)alu_op(c, 1, c->r[R_BP], c->r[R_BP], 1);
+    if (x86_cond(c, 4)) goto L_100F;
+    XB(1, 0x100D);
+    {   const uint32_t a_ = phys(c->seg[S_DS], c->r[R_DI]);
+        mem_write8(c, a_, (uint8_t)alu_op(c, 1, mem_read8(c, a_), get_r8(c, R_AL), 0)); }
+L_100F:
+    NEXT_ROW(0x100F, L_0FC6);
+    XB(3, 0x1016);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+
+    /* ---- mode 2: AND ---- */
+L_1019:
+    XB(1, 0x1019);
+    goto L_0F9D;
+L_101B:
+    XB(2, 0x101B);
+    alu_op(c, 7, c->r[R_DX], 0x0002, 1);                          /* cmp dx, 2 */
+    if (x86_cond(c, 4)) goto L_1023;
+    XB(1, 0x1020);
+    goto L_1097;
+L_1023:
+    XB(7, 0x1023);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x1026);             /* mov dx, imm16 (relocated) */
+    c->seg[S_ES] = c->r[R_DX];
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x0194);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 8)) goto L_1019;
+    XB(6, 0x1033);
+    LIMITS();
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], 0x1866)));
+    set_r8(c, R_AH, get_r8(c, R_AL));
+L_1041:
+    ROW_HEAD(0x1041, L_108A, L_1059, L_1074);
+    XB(4, 0x106E);
+    {   const uint32_t a_ = phys(c->seg[S_DS], c->r[R_DI]);       /* and byte [di], al */
+        mem_write8(c, a_, (uint8_t)alu_op(c, 4, mem_read8(c, a_), get_r8(c, R_AL), 0)); }
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto L_108A;
+L_1074:
+    XB(4, 0x1074);
+    c->r[R_BP] = c->r[R_CX];
+    c->r[R_BP] = (uint16_t)alu_op(c, 4, c->r[R_BP], 0x0001, 1);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 1, 1);
+    if (x86_cond(c, 4)) goto L_1084;
+    do {                                                          /* 107D: and word [di], ax / add di, 2 / loop */
+        XB(3, 0x107D);
+        {   const uint16_t o_ = c->r[R_DI];
+            seg_write16(c, c->seg[S_DS], o_, (uint16_t)alu_op(c, 4, seg_read16(c, c->seg[S_DS], o_), c->r[R_AX], 1)); }
+        c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], 0x0002, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0);
+L_1084:
+    XB(2, 0x1084);
+    c->r[R_BP] = (uint16_t)alu_op(c, 1, c->r[R_BP], c->r[R_BP], 1);
+    if (x86_cond(c, 4)) goto L_108A;
+    XB(1, 0x1088);
+    {   const uint32_t a_ = phys(c->seg[S_DS], c->r[R_DI]);
+        mem_write8(c, a_, (uint8_t)alu_op(c, 4, mem_read8(c, a_), get_r8(c, R_AL), 0)); }
+L_108A:
+    NEXT_ROW(0x108A, L_1041);
+    XB(3, 0x1091);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+
+    /* ---- mode 3: tint ---- */
+L_1094:
+    XB(1, 0x1094);
+    goto L_0F9D;
+L_1097:
+    XB(7, 0x1097);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x109A);             /* mov dx, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_DX];
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], 0x0194);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 8)) goto L_1094;
+    XB(4, 0x10A7);
+    LIMITS();
+L_10AF:
+    ROW_HEAD(0x10AF, L_110E, L_10C7, L_10E9);
+    XB(7, 0x10DC);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), 0x98, 0));
+    x86_stos(c, 0);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto L_110E;
+L_10E9:
+    XB(4, 0x10E9);
+    c->r[R_BP] = c->r[R_CX];
+    c->r[R_BP] = (uint16_t)alu_op(c, 4, c->r[R_BP], 0x0001, 1);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 1, 1);
+    if (x86_cond(c, 4)) goto L_1100;
+    do {                                                          /* 10F2: tint a word, stosw, loop */
+        XB(6, 0x10F2);
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+        c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0E0E, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+        c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], 0x9898, 1);
+        x86_stos(c, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0);
+L_1100:
+    XB(2, 0x1100);
+    c->r[R_BP] = (uint16_t)alu_op(c, 1, c->r[R_BP], c->r[R_BP], 1);
+    if (x86_cond(c, 4)) goto L_110E;
+    XB(5, 0x1104);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), 0x98, 0));
+    x86_stos(c, 0);
+L_110E:
+    NEXT_ROW(0x110E, L_10AF);
+    XB(3, 0x1115);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef LIMITS
+#undef NEXT_ROW
+#undef ROW_HEAD
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0B70 (far, cdecl): draw a sprite at a position, clipped
+ * to the clip rectangle the caller keeps in a parameter block.
+ *
+ * Arguments, above the far return address: [BP+6] the near address (in the
+ * stack segment) of the parameter block, [BP+8] the sprite's x (signed), [BP+0A]
+ * its y (signed), [BP+0C] its width and [BP+0E] its height (each taken as a
+ * magnitude: the routine keeps |value| and the sign word), [BP+10] a source
+ * pointer (SI for the drawing routine) and [BP+12] the sprite's segment.
+ *
+ * It saves BP, SI, DI and DS, and keeps four words in the library's data
+ * (the code segment): CS:[0846] = |width|, CS:[084A] = its sign (0 or FFFFh),
+ * CS:[0848] = |height|, CS:[084C] = its sign. Then DX = x, DI = y, SI = the
+ * source pointer, DS = the sprite's segment, BP = the parameter block.
+ *
+ * Three steps follow, each a call that may end the routine at once:
+ *  - 0C5D (near) zeroes the clipper's eight words at CS:[0856..085C] and
+ *    CS:[084E..0854] and sets ZF when the sprite is empty (DS 0, or the
+ *    sprite's header word [0] or [2] is 0): ZF skips everything below;
+ *  - 0BC0 (near) clips the sprite against the block's rectangle and sets
+ *    the clipper's words; it returns carry set when nothing of the sprite
+ *    is inside, which also skips the drawing;
+ *  - otherwise the far routine 0C95 (the sprite blitter) draws the sprite.
+ * At the end AX = 084Eh and DX = CS (the address of the clipper's result
+ * words, a far pointer for the caller), DS, DI, SI and BP are restored, and
+ * the routine returns far; the flags are those the last callee left. */
+static int mgraphic_draw_clipped_sprite(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define ARG(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+    if (!room(c, 22)) return 0;
+    XB(22, 0x0B70);
+    x86_push_reg(c, R_BP);                                        /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                      /* mov bp, sp */
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = ARG(0x000C);                                     /* the width */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);   /* xor ax, dx */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);   /* sub ax, dx: |width| */
+    seg_write16(c, c->seg[S_CS], 0x0846, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x084A, c->r[R_DX]);
+    c->r[R_AX] = ARG(0x000E);                                     /* the height */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);   /* |height| */
+    seg_write16(c, c->seg[S_CS], 0x0848, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x084C, c->r[R_DX]);
+    c->r[R_DX] = ARG(0x0008);                                     /* x */
+    c->r[R_DI] = ARG(0x000A);                                     /* y */
+    c->r[R_SI] = ARG(0x0010);                                     /* source pointer */
+    c->seg[S_DS] = ARG(0x0012);                                   /* the sprite's segment */
+    c->r[R_BP] = ARG(0x0006);                                     /* the parameter block */
+    SM4_NEED(1, 0x0BA7);
+    RUN(guest_call_pop(m, 0x0C5D, 0x0BAA, 0));                    /* reset the clipper; ZF: empty sprite */
+    XB(1, 0x0BAA);
+    if (x86_cond(c, 4)) goto L_0BB6;                              /* je */
+    SM4_NEED(1, 0x0BAC);
+    RUN(guest_call_pop(m, 0x0BC0, 0x0BAF, 0));                    /* clip; CF: nothing visible */
+    XB(1, 0x0BAF);
+    if (x86_cond(c, 2)) goto L_0BB6;                              /* jb */
+    SM4_NEED(1, 0x0BB1);
+    RUN(guest_call_far(m, 0x0BB1, 0x0BB6));                       /* lcall 0C95: draw */
+L_0BB6:
+    XB(7, 0x0BB6);
+    c->r[R_AX] = 0x084E;
+    c->r[R_DX] = c->seg[S_CS];
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef ARG
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0C95 (far; called by 0B70): draw a run-length sprite,
+ * scaled to a width and height and optionally mirrored, into a page,
+ * clipped as 0BC0 has worked out.
+ *
+ * In: BP = the parameter block (stack segment): [BP+0] the destination page
+ * number (the page table is the words CS:[0787 + 2n]), [BP+0E] and [BP+12] the
+ * destination origin (added to DI = y and DX = x); SI = the sprite (DS = its
+ * segment); the library's drawing words in the code segment, set by 0B70 and
+ * 0BC0: CS:[0846] the drawn width and [0848] the drawn height (magnitudes),
+ * [084A] and [084C] their signs (non-zero: mirrored horizontally / vertically),
+ * [0858], [085C] the pixels clipped off the left and right (in drawn pixels),
+ * [0856], [085A] the rows clipped off the top and bottom.
+ *
+ * The sprite starts with two words: its width in pixels (CS:[0842]) and its
+ * height in rows (CS:[0844]). Then one record per row: a byte count n, a lead
+ * count k (transparent pixels before the run), and n pixel bytes; the next row
+ * follows (the skip is "add si,[si]; add si,4"). Colour 0 is transparent.
+ *
+ * Set-up: the destination page segment goes to CS:[0866] and the sprite's
+ * segment to CS:[0864]; the visible width CS:[0840] = drawn width - left - right
+ * and the visible height CS:[083E] = drawn height - top - bottom must be
+ * positive, else the routine ends at once (0C92: jump to the exit at 0D7A). The
+ * row step CS:[0862] is 320, or -320 if mirrored vertically (then the first row
+ * drawn is the bottom one: DI += bottom + visible - 1). The source rows to skip
+ * at the top are counted in a Bresenham-like loop (the drawn height against the
+ * sprite height; CS:[0860] holds the residue) and the pixels skipped on the left
+ * the same way against the widths (BX = source pixels skipped, kept in CS:[0858];
+ * CS:[085E] the residue). The mirrored case starts on the far end: DX += visible
+ * width - 1, and the pixel step flips. The step instructions are written into the
+ * pixel loop at run time: CS:[0DDB] gets the byte at CS:[0DF8] (CLD) or CS:[0DFA]
+ * (STD) and CS:[0DEC] the byte at CS:[0DF9] (INC DI) or CS:[0DFB] (DEC DI). This
+ * body reads those code bytes and does what they mean (CLD/STD, INC/DEC DI), and
+ * hands the instruction back to the original when any other byte is there.
+ *
+ * Each row (0D7D): the record's n and k are read (a record whose n is 0, or that
+ * ends left of the clip, is skipped); the row is unpacked into a scratch line at
+ * CS:[0868] (k zero bytes, the n bytes, the trailing zeros up to the sprite
+ * width), then scaled across with a Bresenham error term (BP; BX and DX the sprite
+ * and drawn widths): each source pixel is read by LODSB; non-zero is stored with
+ * STOSB, zero skips a destination pixel (the step at 0DEC); the source advances
+ * while the error term is not negative. Then the destination moves one row (DI +=
+ * CS:[0862]) and the source rows to skip for the next drawn row are counted off
+ * the same way (0E05..0E2A). When the visible rows are used up (0DFE: DEC
+ * CS:[083E]) the routine ends: ES and BP are popped and it returns far
+ * (0D7A..0D7C).
+ *
+ * 157 instructions in all; the REP string instructions run one clock an iteration
+ * and are claimed whole (the original takes the rest when the clock runs out). */
+static int mgraphic_draw_scaled_sprite(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define CD(o_) seg_read16(c, c->seg[S_DS], (uint16_t)(o_))                /* a word of the library's data (DS = CS) */
+#define CDW(o_, v_) seg_write16(c, c->seg[S_DS], (uint16_t)(o_), (uint16_t)(v_))
+#define BPW(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+    if (!room(c, 21)) return 0;
+    XB(21, 0x0C95);
+    x86_push_reg(c, R_BP);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_BX] = BPW(0);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);                 /* shl bx, 1 */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));
+    seg_write16(c, c->seg[S_CS], 0x0866, c->r[R_AX]);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], BPW(0x12), 1);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], BPW(0x0E), 1);
+    x86_lods(c, 1, c->seg[S_DS]);                                             /* lodsw */
+    seg_write16(c, c->seg[S_CS], 0x0842, c->r[R_AX]);
+    x86_lods(c, 1, c->seg[S_DS]);
+    seg_write16(c, c->seg[S_CS], 0x0844, c->r[R_AX]);
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_AX];
+    seg_write16(c, c->seg[S_CS], 0x0864, c->r[R_AX]);
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = CD(0x0846);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x0858), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x085C), 1);
+    if (x86_cond(c, 14)) goto L_0C92;                                         /* jle */
+    XB(5, 0x0CCE);
+    CDW(0x0840, c->r[R_AX]);
+    c->r[R_AX] = CD(0x0848);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x0856), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x085A), 1);
+    if (x86_cond(c, 14)) goto L_0C92;                                         /* jle */
+    XB(7, 0x0CDE);
+    CDW(0x083E, c->r[R_AX]);
+    c->r[R_AX] = 0x0140;
+    CDW(0x0862, c->r[R_AX]);
+    c->r[R_CX] = CD(0x0856);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_CX], 1);
+    alu_op(c, 7, CD(0x084C), 0, 1);                                           /* cmp word [084C], 0 */
+    if (x86_cond(c, 4)) goto L_0D01;                                          /* je */
+    XB(4, 0x0CF4);
+    CDW(0x0862, alu_sub(c, 0, CD(0x0862), 1, 0));                             /* neg word [0862] */
+    c->r[R_CX] = CD(0x085A);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], CD(0x083E), 1);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+L_0D01:
+    XB(2, 0x0D01);
+    c->r[R_AX] = CD(0x0848);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);                   /* neg ax */
+L_0D06:
+    XB(2, 0x0D06);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 8)) goto L_0D1D;                                          /* js */
+    XB(2, 0x0D09);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], CD(0x0844), 1);
+    if (x86_cond(c, 8)) goto L_0D06;                                          /* js */
+L_0D0F:
+    XB(4, 0x0D0F);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], seg_read16(c, c->seg[S_ES], c->r[R_SI]), 1);   /* add si, es:[si] */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 4, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x0848), 1);
+    if (x86_cond(c, 9)) goto L_0D0F;                                          /* jns */
+    XB(1, 0x0D1B);
+    goto L_0D06;
+L_0D1D:
+    XB(7, 0x0D1D);
+    CDW(0x0860, c->r[R_AX]);
+    c->r[R_CX] = CD(0x0858);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_CX], 1);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x0DF8)));
+    set_r8(c, 3, mem_read8(c, phys(c->seg[S_DS], 0x0DF9)));
+    alu_op(c, 7, CD(0x084A), 0, 1);                                           /* cmp word [084A], 0 */
+    if (x86_cond(c, 4)) goto L_0D44;                                          /* je */
+    XB(5, 0x0D34);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x0DFA)));
+    set_r8(c, 3, mem_read8(c, phys(c->seg[S_DS], 0x0DFB)));
+    c->r[R_CX] = CD(0x085C);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], CD(0x0840), 1);
+    c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+L_0D44:
+    XB(5, 0x0D44);
+    mem_write8(c, phys(c->seg[S_DS], 0x0DDB), get_r8(c, R_AL));               /* the step instructions, written in */
+    mem_write8(c, phys(c->seg[S_DS], 0x0DEC), get_r8(c, 3));
+    c->r[R_AX] = CD(0x0846);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);                   /* neg ax */
+    c->r[R_BX] = (uint16_t)alu_op(c, 6, c->r[R_BX], c->r[R_BX], 1);           /* xor bx, bx */
+L_0D52:
+    XB(2, 0x0D52);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 8)) goto L_0D64;                                          /* js */
+    XB(2, 0x0D55);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], CD(0x0842), 1);
+    if (x86_cond(c, 8)) goto L_0D52;                                          /* js */
+L_0D5B:
+    XB(3, 0x0D5B);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], CD(0x0846), 1);
+    if (x86_cond(c, 9)) goto L_0D5B;                                          /* jns */
+    XB(1, 0x0D62);
+    goto L_0D52;
+L_0D64:
+    XB(7, 0x0D64);
+    CDW(0x085E, c->r[R_AX]);
+    CDW(0x0858, c->r[R_BX]);
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);                 /* shl di, 1 */
+    c->r[R_DI] = CD(c->r[R_DI] + 4);                                          /* mov di, [di+4]: the row table */
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_DX], 1);
+    c->seg[S_DS] = CD(0x0864);
+    /* jmp 0D7D */
+L_0D7D:
+    XB(5, 0x0D7D);
+    cpu_push16(c, c->r[R_SI]);
+    x86_lods(c, 1, c->seg[S_DS]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);           /* or ax, ax */
+    if (x86_cond(c, 4)) goto L_0DFD;                                          /* je */
+    XB(5, 0x0D85);
+    x86_lods(c, 1, c->seg[S_DS]);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_BX], 1);
+    alu_op(c, 7, c->r[R_AX], seg_read16(c, c->seg[S_CS], 0x0858), 1);        /* cmp ax, cs:[0858] */
+    if (x86_cond(c, 6)) goto L_0DFD;                                          /* jbe */
+    XB(9, 0x0D91);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_BP] = c->r[R_DI];
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_DI] = 0x0868;
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0842);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_BX], 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_CX], 1);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* xor al, al */
+    SM4_NEED(c->r[R_CX] ? c->r[R_CX] : 1u, 0x0DA7);
+    c->icount += rep_string(c, STR_STOS, 0, 0, 0);                            /* rep stosb: the lead zeros */
+    XB(1, 0x0DA9);
+    c->r[R_CX] = c->r[R_BX];
+    SM4_NEED(c->r[R_CX] ? c->r[R_CX] : 1u, 0x0DAB);
+    c->icount += rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);                 /* rep movsb: the pixels */
+    XB(1, 0x0DAD);
+    c->r[R_CX] = c->r[R_DX];
+    SM4_NEED(c->r[R_CX] ? c->r[R_CX] : 1u, 0x0DAF);
+    c->icount += rep_string(c, STR_STOS, 0, 0, 0);                            /* rep stosb: the trailing zeros */
+    XB(10, 0x0DB1);
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_SI] = 0x0868;
+    c->r[R_DI] = c->r[R_BP];
+    c->seg[S_ES] = CD(0x0866);
+    c->r[R_BX] = CD(0x0842);
+    c->r[R_DX] = CD(0x0846);
+    c->r[R_BP] = CD(0x085E);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], CD(0x0858), 1);
+    c->r[R_CX] = CD(0x0840);
+L_0DD3:
+    XB(3, 0x0DD3);
+    x86_lods(c, 0, c->seg[S_DS]);                                             /* lodsb */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al, al */
+    if (x86_cond(c, 4)) goto L_0DE9;                                          /* je: transparent */
+L_0DD8:
+    XB(2, 0x0DD8);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 8)) goto L_0DFC;                                          /* js */
+    SM4_NEED(5, 0x0DDB);
+    {   const uint8_t step_ = mem_read8(c, phys(c->seg[S_CS], 0x0DDB));       /* the written-in CLD / STD */
+        if (step_ != 0xFC && step_ != 0xFD) { c->ip = 0x0DDB; return 1; }
+        c->icount += 5;
+        set_flag(c, F_DF, step_ == 0xFD);
+    }
+    x86_stos(c, 0);                                                           /* stosb */
+    set_flag(c, F_DF, 0);                                                     /* cld */
+    c->r[R_BP] = (uint16_t)alu_op(c, 0, c->r[R_BP], c->r[R_BX], 1);
+    if (x86_cond(c, 8)) goto L_0DD8;                                          /* js */
+L_0DE2:
+    XB(2, 0x0DE2);
+    c->r[R_BP] = (uint16_t)alu_op(c, 5, c->r[R_BP], c->r[R_DX], 1);
+    if (x86_cond(c, 8)) goto L_0DD3;                                          /* js */
+    XB(2, 0x0DE6);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    goto L_0DE2;
+L_0DE9:
+    XB(2, 0x0DE9);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 8)) goto L_0DFC;                                          /* js */
+    SM4_NEED(3, 0x0DEC);
+    {   const uint8_t step_ = mem_read8(c, phys(c->seg[S_CS], 0x0DEC));       /* the written-in INC DI / DEC DI */
+        if (step_ != 0x47 && step_ != 0x4F) { c->ip = 0x0DEC; return 1; }
+        c->icount += 3;
+        c->r[R_DI] = (uint16_t)(step_ == 0x47 ? alu_inc(c, c->r[R_DI], 1) : alu_dec(c, c->r[R_DI], 1));
+    }
+    c->r[R_BP] = (uint16_t)alu_op(c, 0, c->r[R_BP], c->r[R_BX], 1);
+    if (x86_cond(c, 8)) goto L_0DE9;                                          /* js */
+L_0DF1:
+    XB(2, 0x0DF1);
+    c->r[R_BP] = (uint16_t)alu_op(c, 5, c->r[R_BP], c->r[R_DX], 1);
+    if (x86_cond(c, 8)) goto L_0DD3;                                          /* js */
+    XB(2, 0x0DF5);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    goto L_0DF1;
+L_0DFC:
+    XB(1, 0x0DFC);
+    c->r[R_DI] = cpu_pop16(c);
+L_0DFD:
+    XB(3, 0x0DFD);
+    c->r[R_SI] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_CS], 0x083E, alu_dec(c, seg_read16(c, c->seg[S_CS], 0x083E), 1));   /* dec word cs:[083E] */
+    if (x86_cond(c, 4)) goto L_0E2D;                                          /* je */
+    XB(5, 0x0E05);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_CS], 0x0862), 1);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x0864);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0860);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], seg_read16(c, c->seg[S_CS], 0x0844), 1);
+    if (x86_cond(c, 8)) goto L_0E26;                                          /* js */
+L_0E1A:
+    XB(4, 0x0E1A);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], seg_read16(c, c->seg[S_DS], c->r[R_SI]), 1);   /* add si, [si] */
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 4, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], seg_read16(c, c->seg[S_CS], 0x0848), 1);
+    if (x86_cond(c, 9)) goto L_0E1A;                                          /* jns */
+L_0E26:
+    XB(2, 0x0E26);
+    seg_write16(c, c->seg[S_CS], 0x0860, c->r[R_AX]);
+    goto L_0D7D;
+L_0E2D:
+    XB(1, 0x0E2D);
+    goto L_0D7A;
+L_0C92:
+    XB(1, 0x0C92);
+L_0D7A:
+    XB(3, 0x0D7A);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef BPW
+#undef CDW
+#undef CD
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0599 (far, register arguments): draw a straight line
+ * between two points in the pen colour on the current drawing surface
+ * (Bresenham: the major axis steps one pixel at a time, the minor axis every
+ * so often).
+ *
+ * In: AX, BX = the first point (x, y); CX, DX = the second point (x, y).
+ * It saves the caller's DS and ES, loads DS with the library's data segment
+ * (the relocated word of the "mov di, imm16" at 059B: read from the loaded
+ * code at CS:059C) and ES with the current surface segment CS:[0194]. If the
+ * first x is above the second (unsigned) the two points are swapped, so x runs
+ * upward. The end points go to the data words [185A] x0, [185C] y0, [185E] x1
+ * and [1860] y1, where the pen-address routine 0581 reads x0 and y0.
+ *
+ * Equal x (the jne after the compare of AX and CX, whose flags the stores do
+ * not touch) and equal y: one pixel. The code jumps into the plot tail at
+ * 057A (call 0581 for AL = pen colour and DI = the pixel's address, STOSB,
+ * pop ES and DS, return far).
+ *
+ * Otherwise SI = 1 and BP = 140h (320, one screen row) are the two address
+ * steps; CX = x1 - x0 (the major length, if the line is shallow), DX = y1 - y0.
+ * A negative DX is negated and BP becomes -140h (the line goes up). If
+ * CX < DX (unsigned) the line is steep: BP and SI trade places and DX and CX
+ * trade places, so CX is the major length and DX the minor, BP the major step
+ * and SI the minor. The two lengths go to [1862] (major) and [1864] (minor);
+ * 0581 gives the start pixel (DI, AL). Then BX = minor, CX = major, DX = the
+ * error term -((major + 1) >> 1) (in the original the "-(n+1)/2" rounding) and
+ * SI is lowered by one, because the loop's STOSB itself steps DI by one
+ * (direction flag clear), so SI = minor step - 1 after the STOSB.
+ *
+ * The loop: STOSB the colour at ES:DI; CX counts down, finishing when it goes
+ * negative (the JS after DEC CX: major + 1 pixels in all); DI += SI (the minor
+ * step, less the STOSB's); DX += BX (the error term grows by the minor length);
+ * while DX stays negative the next pixel is plotted; when it turns non-negative
+ * the major length is taken off it and DI += BP (the major step) is the move to
+ * the next row/column, then the loop continues. At the end ES and DS are
+ * popped and the routine returns far. The direction flag is honoured by the
+ * STOSB as the machine does (the library never sets it).
+ *
+ * Clock: blocks of straight instructions, charged as the original runs them;
+ * each pixel of the major axis is 6 instructions (same row or column) or 9
+ * (the minor step). 0581 (seven instructions) is run as original code, once,
+ * and counts toward the 61 of the envelope 057A..0608 (the plot tail
+ * 057A..0580 lies below the entry). */
+static int mgraphic_draw_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x0599);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], 0x059C);             /* mov di, imm16 (relocated) */
+    c->seg[S_DS] = c->r[R_DI];                                    /* mov ds, di */
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], 0x0194);           /* mov es, cs:[0194] */
+    alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);                      /* cmp ax, cx */
+    if (x86_cond(c, 6)) goto L_05AC;                              /* jbe */
+    XB(2, 0x05A9);
+    { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_CX]; c->r[R_CX] = t_; }   /* xchg cx, ax */
+    { const uint16_t t_ = c->r[R_DX]; c->r[R_DX] = c->r[R_BX]; c->r[R_BX] = t_; }   /* xchg dx, bx */
+L_05AC:
+    XB(5, 0x05AC);
+    seg_write16(c, c->seg[S_DS], 0x185A, c->r[R_AX]);
+    seg_write16(c, c->seg[S_DS], 0x185C, c->r[R_BX]);
+    seg_write16(c, c->seg[S_DS], 0x185E, c->r[R_CX]);
+    seg_write16(c, c->seg[S_DS], 0x1860, c->r[R_DX]);
+    if (x86_cond(c, 5)) goto L_05C1;                              /* jne: x differs (flags of the cmp) */
+    XB(2, 0x05BD);
+    alu_op(c, 7, c->r[R_BX], c->r[R_DX], 1);                      /* cmp bx, dx */
+    if (x86_cond(c, 4)) goto L_057A;                              /* je: one pixel */
+L_05C1:
+    XB(5, 0x05C1);
+    c->r[R_SI] = 0x0001;
+    c->r[R_BP] = 0x0140;
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1);   /* sub cx, ax */
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_BX], 1);   /* sub dx, bx */
+    if (x86_cond(c, 9)) goto L_05D1;                              /* jns */
+    XB(2, 0x05CD);
+    c->r[R_BP] = (uint16_t)alu_sub(c, 0, c->r[R_BP], 1, 0);       /* neg bp */
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);       /* neg dx */
+L_05D1:
+    XB(2, 0x05D1);
+    alu_op(c, 7, c->r[R_CX], c->r[R_DX], 1);                      /* cmp cx, dx */
+    if (x86_cond(c, 3)) goto L_05D9;                              /* jae */
+    XB(2, 0x05D5);
+    { const uint16_t t_ = c->r[R_BP]; c->r[R_BP] = c->r[R_SI]; c->r[R_SI] = t_; }   /* xchg bp, si */
+    { const uint16_t t_ = c->r[R_DX]; c->r[R_DX] = c->r[R_CX]; c->r[R_CX] = t_; }   /* xchg dx, cx */
+L_05D9:
+    XB(2, 0x05D9);
+    seg_write16(c, c->seg[S_DS], 0x1862, c->r[R_CX]);
+    seg_write16(c, c->seg[S_DS], 0x1864, c->r[R_DX]);
+    SM4_NEED(1, 0x05E1);
+    RUN(guest_call_pop(m, 0x0581, 0x05E4, 0));                    /* AL = pen colour, DI = start address */
+    XB(7, 0x05E4);
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0x1864);
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], 0x1862);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);     /* shr dx, 1 */
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);       /* neg dx */
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+L_05F4:
+    XB(3, 0x05F4);
+    x86_stos(c, 0);                                               /* stosb */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (x86_cond(c, 8)) goto L_0606;                              /* js: done */
+    XB(3, 0x05F8);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_SI], 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_BX], 1);
+    if (x86_cond(c, 8)) goto L_05F4;                              /* js: same row/column */
+    XB(3, 0x05FE);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], seg_read16(c, c->seg[S_DS], 0x1862), 1);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_BP], 1);
+    goto L_05F4;
+L_0606:
+    XB(3, 0x0606);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+L_057A:
+    SM4_NEED(1, 0x057A);
+    RUN(guest_call_pop(m, 0x0581, 0x057D, 0));                    /* AL = pen colour, DI = pixel address */
+    XB(4, 0x057D);
+    x86_stos(c, 0);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0599, mgraphic_draw_line, "far: line from (AX,BX) to (CX,DX) in the pen colour on the current surface (Bresenham), one pixel through the 057A plot tail when the ends are equal", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0C95, mgraphic_draw_scaled_sprite, "far: draw a run-length sprite scaled to CS:[0846] x [0848], mirrored by the signs, clipped by the words 0BC0 sets, into the page BP's block names", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0B70, mgraphic_draw_clipped_sprite, "far, cdecl: clip a sprite (x, y, width, height, source, segment) against the parameter block's rectangle with 0C5D and 0BC0 and draw it with 0C95; returns AX = 084Eh, DX = CS", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0F3D, mgraphic_fill_spans, "far: draw horizontal spans of rows AX..CX of an edge table (left SS:[BX+2y], right SS:[BX+2y+1B8h]) into the screen segment CS:[0194] (row offsets CS:[2y+4] + CS:[0196]); DX picks the mode: 0 fill with the byte at DS:1866, 1 OR it in, 2 AND it in, else tint (and 0Fh, shr 1, or 98h)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x09D4, mgraphic_arena_release, "far: release the arena 09A8 took: AX = CS:[082E], BX = CS:[082C] - AX; if not below, INT 21h/49h (free) when BX = 0 else 4Ah (resize to BX paragraphs) with ES = AX; on carry or a negative size ES = 0; clear the CS words 082C, 082E, 0830 and return ES in AX", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x125C, mgraphic_palette_flash_and_screen_jolt, "far: counter DS:1982 = 5*counter+1; colour 0Dh of the DAC set to the RGB triple the counter's low two bits pick from DS:197E/DS:1871; while CS:[1250] is nonzero, CRTC register 0Dh (start address low) is set to the counter's high byte & 3 (zero on the last turn)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1188, mgraphic_replace_colour_in_rect, "far, seven arguments: in the page the pointed-at index picks, every pixel of the rectangle equal to colour AH becomes AL", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0B0C, mgraphic_compile_bitmap_rows, "far, five arguments: far-call 0A02 to open a buffer, then 0A6A for each row of the page bitmap, then 0A4D to close it", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x071A, mgraphic_draw_dashed_rows, "far: walk scanlines BX downward in steps of 2 between two bounds, storing the pen colour 1 or 2 bytes at ES:rowtable[BX]+x in a ten-row pattern, direction by SI", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1118, mgraphic_clear_es_segment, "far: clear a 64000-byte page, rep stosw of 32000 zero words from ES:0 in the direction DF gives (1122 calls it with ES = A000h)", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x09A8, mgraphic_arena_take_largest_block, "far: ask 04A4 for the largest free DOS block, allocate it (INT 21h/48h), record start and end segments in CS words 082C-0830", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0826, mgraphic_ret_constant_3, "far: AX = the immediate word at CS:0827 (3 as shipped), then return; no flags change", 2 },

@@ -760,6 +760,15 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MGRAPHIC.EXE", 0x0599, 0x057A, 0x008F },    /* the plot tail 057A..0580 and 0581 lie below the entry: the envelope runs 057A..0608 */
+    { "MGRAPHIC.EXE", 0x0C95, 0x0C92, 0x019E },    /* the exit jump 0C92 lies just below the entry: the envelope runs 0C92..0E2F */
+    { "MGRAPHIC.EXE", 0x0B70, 0x0B70, 0x0050 },
+    { "MGRAPHIC.EXE", 0x0F3D, 0x0F3D, 0x01DB },
+    { "MGRAPHIC.EXE", 0x09D4, 0x09D4, 0x002E },
+    { "MGRAPHIC.EXE", 0x125C, 0x125C, 0x005E },
+    { "MGRAPHIC.EXE", 0x1188, 0x1188, 0x0054 },
+    { "MGRAPHIC.EXE", 0x0B0C, 0x0B0C, 0x0064 },
+    { "MGRAPHIC.EXE", 0x071A, 0x071A, 0x006D },
     { "MGRAPHIC.EXE", 0x1118, 0x1118, 0x000A },
     { "MGRAPHIC.EXE", 0x09A8, 0x09A8, 0x002C },
     { "MGRAPHIC.EXE", 0x0826, 0x0826, 0x0004 },
@@ -1675,6 +1684,15 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "MGRAPHIC.EXE", 0x019C, 0x0826, 0x0004, 2, 2, "far: AX = the immediate word at CS:0827 (3 as shipped), then return; no flags change" },
     { "MGRAPHIC.EXE", 0x019C, 0x09A8, 0x002C, 15, 15, "far: ask 04A4 for the largest free DOS block, allocate it (INT 21h/48h), record start and end segments in CS words 082C-0830" },
     { "MGRAPHIC.EXE", 0x019C, 0x1118, 0x000A, 5, 5, "far: clear a 64000-byte page, rep stosw of 32000 zero words from ES:0 in the direction DF gives (1122 calls it with ES = A000h)" },
+    { "MGRAPHIC.EXE", 0x019C, 0x071A, 0x006D, 51, 51, "far: walk scanlines BX downward in steps of 2 between two bounds, storing the pen colour 1 or 2 bytes at ES:rowtable[BX]+x in a ten-row pattern, direction by SI" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0B0C, 0x0064, 37, 37, "far, five arguments: far-call 0A02 to open a buffer, then 0A6A for each row of the page bitmap, then 0A4D to close it" },
+    { "MGRAPHIC.EXE", 0x019C, 0x1188, 0x0054, 42, 42, "far, seven arguments: in the page the pointed-at index picks, every pixel of the rectangle equal to colour AH becomes AL" },
+    { "MGRAPHIC.EXE", 0x019C, 0x125C, 0x005E, 45, 45, "far: counter DS:1982 = 5*counter+1; colour 0Dh of the DAC set to the RGB triple the counter's low two bits pick from DS:197E/DS:1871; while CS:[1250] is nonzero, CRTC register 0Dh (start address low) is set to the counter's high byte & 3 (zero on the last turn)" },
+    { "MGRAPHIC.EXE", 0x019C, 0x09D4, 0x002E, 18, 18, "far: release the arena 09A8 took: AX = CS:[082E], BX = CS:[082C] - AX; if not below, INT 21h/49h (free) when BX = 0 else 4Ah (resize to BX paragraphs) with ES = AX; on carry or a negative size ES = 0; clear the CS words 082C, 082E, 0830 and return ES in AX" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0F3D, 0x01DB, 207, 207, "far: draw horizontal spans of rows AX..CX of an edge table (left SS:[BX+2y], right SS:[BX+2y+1B8h]) into the screen segment CS:[0194] (row offsets CS:[2y+4] + CS:[0196]); DX picks the mode: 0 fill with the byte at DS:1866, 1 OR it in, 2 AND it in, else tint (and 0Fh, shr 1, or 98h)" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0B70, 0x0050, 34, 34, "far, cdecl: clip a sprite (x, y, width, height, source, segment) against the parameter block's rectangle with 0C5D and 0BC0 and draw it with 0C95; returns AX = 084Eh, DX = CS" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0C95, 0x019E, 157, 157, "far: draw a run-length sprite scaled to CS:[0846] x [0848], mirrored by the signs, clipped by the words 0BC0 sets, into the page BP's block names" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0599, 0x008F, 61, 61, "far: line from (AX,BX) to (CX,DX) in the pen colour on the current surface (Bresenham), one pixel through the 057A plot tail when the ends are equal" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2621,6 +2639,8 @@ int main(int argc, char **argv)
         if (g_cov >= 0 && !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x2760) g_cov_ip = 0x2754;   /* the shared tail below the arm's entry */
         if (g_cov >= 0 && !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x277D) g_cov_ip = 0x2754;   /* the shared tail below the arm's entry */
         if (g_cov >= 0 && !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x27E3) g_cov_ip = 0x27BA;   /* the shared tail below the arm's entry */
+        if (g_cov >= 0 && !strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x0599) g_cov_ip = 0x057A;   /* coverage from the plot tail below the entry */
+        if (g_cov >= 0 && !strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x0C95) g_cov_ip = 0x0C92;   /* coverage from the exit jump just below the entry */
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
@@ -36604,6 +36624,675 @@ int main(int argc, char **argv)
                 for(unsigned j=0;j<0x40;j++)XW16(seg[S_ES],(uint16_t)(2*XRAND()),0xFFFF^(uint16_t)XRAND());
                 XW16(seg[S_ES],0x0000,0xBEEF);XW16(seg[S_ES],0xF9FE,0xBEEF);XW16(seg[S_ES],0xFA00,0xBEEF);
                 XW16(seg[S_ES],0x0600,0xBEEF);XW16(seg[S_ES],0xFFFE,0xBEEF);XW16(seg[S_ES],0x05FE,0xBEEF);
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x071A) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(XPICK(2)?(flags & (0xFFFFu^F_DF)):(flags | F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_DI]=(uint16_t)XRAND();
+                /* The relocated data-segment word of the mov ax,imm16 / mov ds,ax at 071C and the drawing surface
+                 * CS:[0194] are read from the loaded code: patch both to several safe segments (never the stacks,
+                 * the library or the image), ES sometimes the same as DS. */
+                static const uint16_t sg[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000};
+                const uint16_t dsv=sg[XPICK(6)];
+                const uint16_t esv=XPICK(3)?sg[XPICK(6)]:dsv;
+                XW16(cs,0x071D,dsv);
+                XW16(cs,0x0194,esv);
+                /* SI: 0 keeps the direction flag set; the others clear it (CL nonzero adds 4 more). */
+                static const uint16_t sis[]={0,0,0,0,2,4,6,8,0x10,0x20,0x100,0xFFF8,0x0001,0x7FFE};
+                const uint16_t si0=sis[XPICK(14)];
+                static const uint8_t dls[]={0,1,2,0x7F,0x80,0xFF,0x14,0x01,0x00};
+                const uint8_t dl=XPICK(3)?dls[XPICK(9)]:(uint8_t)XRAND();
+                const unsigned clnz=XPICK(2);
+                const uint8_t cl=clnz?(XPICK(3)?1:(uint8_t)(1+XRAND()%255)):0;
+                const uint16_t sie=(uint16_t)(si0+(cl?4:0));
+                r[R_SI]=si0;
+                r[R_DX]=(uint16_t)((XRAND()&0xFF00)|dl);
+                r[R_CX]=(uint16_t)((XRAND()&0xFF00)|cl);
+                /* The walk: BX starts at bxs after the routine's own adjustments, steps down by 2 for n scanlines,
+                 * the lowest bound is exact, one under or one over the last scanline, the highest bound skips
+                 * none, some or all of them. A bound at 2 or more guarantees the unsigned walk ends. */
+                static const unsigned ns[]={0,1,2,3,5,6,7,9,10,11,12,13,17,25,40,4,8};
+                unsigned n=ns[XPICK(17)];
+                uint16_t bxs;
+                const unsigned mode=XPICK(12);
+                if(mode==0){ n=0; bxs=(uint16_t)(2+XPICK(100)); }
+                else if(mode==1){ n=XPICK(5); bxs=(uint16_t)(0x7FFF+XPICK(8)); }
+                else if(mode==2){ bxs=(uint16_t)(2*n+3+200+XPICK(400)); }
+                else bxs=(uint16_t)(2*n+3+XPICK(XPICK(2)?10:150));
+                static const int ds_[]={0,0,0,1,-1,2};
+                uint16_t lo=(uint16_t)(bxs-2*n+ds_[XPICK(6)]);
+                if(mode==0) lo=(uint16_t)(bxs+1+XPICK(3));
+                uint16_t hi;
+                switch(XPICK(9)){
+                 case 0: hi=(uint16_t)(bxs+3); break;
+                 case 1: hi=bxs; break;
+                 case 2: hi=(uint16_t)(bxs-1); break;
+                 case 3: hi=(uint16_t)(bxs-2); break;
+                 case 4: hi=(uint16_t)(bxs-3); break;
+                 case 5: hi=(uint16_t)(bxs-n); break;
+                 case 6: hi=0xFFFF; break;
+                 case 7: hi=(uint16_t)(lo-1); break;
+                 default: hi=(uint16_t)(bxs-(uint16_t)XPICK(2*n+4)); break;
+                }
+                const int dge1=((int8_t)dl>=1);
+                r[R_BX]=(uint16_t)(bxs+1-(dge1?0x14:0)-(cl?1:0));
+                /* The data segment: noise around the fields, then the pen colour, the column and the two bounds. */
+                for(unsigned j=0;j<0x20;j++)XW8(dsv,0x1860+j,XRAND());
+                for(unsigned j=0;j<0x30;j++)XW8(dsv,(uint16_t)(sie+0x1960-8+j),XRAND());
+                const uint8_t pen=(uint8_t)(1+XRAND()%255);
+                XW8(dsv,0x1866,pen);
+                XW16(dsv,(uint16_t)(sie+0x1966),XRAND());
+                XW16(dsv,(uint16_t)(sie+0x196E),lo);
+                XW16(dsv,(uint16_t)(sie+0x1976),hi);
+                /* The row-offset table CS:[2*row+4] is patched to random words for the rows the walk can touch. */
+                if(XPICK(2)){
+                    for(unsigned k=0;k<=n+1;k++){
+                        const uint16_t row=(uint16_t)(bxs-2*k);
+                        const uint16_t at=(uint16_t)(2*row+4);
+                        if(at<0x0190)XW16(cs,at,XRAND());
+                    }
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0B0C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+#define XR16(s_,o_) ((uint16_t)(g_pristine[phys((s_),(uint16_t)(o_))]|(g_pristine[phys((s_),(uint16_t)((o_)+1))]<<8)))
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(XPICK(8)?(flags & (0xFFFFu^F_DF)):(flags | F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<0x10;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]+j),XRAND());
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                for(unsigned j=0;j<8;j++)if(j!=R_SP)r[j]=(uint16_t)XRAND();
+                /* The page segment table CS:[0787+2*page] (read from the loaded code) and the row-offset table. */
+                static const uint16_t sg[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000};
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,sg[XPICK(6)]);
+                static const uint16_t pages[]={0,1,2,3,4,0xFFFF,0xFFFE,0xFFFD,0xFFFC,0x8000,0x8001,0x7FFF};
+                const uint16_t page=XPICK(6)?pages[XPICK(12)]:(uint16_t)XRAND();
+                const unsigned real=XPICK(5)<3;                       /* 3 in 5 states run the real 0A02/0A6A/0A4D */
+                if(real)seg[S_DS]=seg[S_SS];                          /* C convention: the real callees read their arguments through DS */
+                const uint16_t y0=XPICK(5)?(uint16_t)XPICK(190):(uint16_t)XRAND();
+                const uint16_t xx=XPICK(3)?(uint16_t)XPICK(300):(uint16_t)XRAND();
+                static const uint16_t ws[]={0,1,2,3,5,8,12,16,7,4};
+                static const uint16_t hs[]={0,1,1,2,3,4,6,5};
+                uint16_t wd=ws[XPICK(10)], ht=hs[XPICK(8)];
+                if(!real){ if(!XPICK(3))wd=(uint16_t)XRAND(); if(!XPICK(3))ht=(uint16_t)XRAND(); }
+                small[0]=page; small[1]=xx; small[2]=y0; small[3]=wd;
+                XW16(seg[S_SS],r[R_SP]+0,page); XW16(seg[S_SS],r[R_SP]+2,xx);
+                XW16(seg[S_SS],r[R_SP]+4,y0); XW16(seg[S_SS],r[R_SP]+6,wd);
+                XW16(seg[S_SS],r[R_SP]+8,ht);
+                if(XPICK(2)){ const uint16_t at=(uint16_t)(2*y0+4); if(at<0x0190)XW16(cs,at,XRAND()); }
+                /* The three callees: original code (real) or stubs that fold their arguments (and DS) into a cell,
+                 * count the call and answer from a list. The first three bytes of each entry are put back whenever
+                 * the real code is wanted. */
+                static uint8_t orig_[3][3]; static int have_;
+                static const uint16_t ent_[3]={0x0A02,0x0A4D,0x0A6A};
+                if(!have_){ for(unsigned k=0;k<3;k++)for(unsigned j=0;j<3;j++)orig_[k][j]=g_pristine[phys(cs,(uint16_t)(ent_[k]+j))]; have_=1; }
+                for(unsigned k=0;k<3;k++)for(unsigned j=0;j<3;j++)XW8(cs,(uint16_t)(ent_[k]+j),orig_[k][j]);
+                if(real){
+                    const uint16_t bufseg=sg[XPICK(6)];
+                    static const uint16_t diffs[]={0,1,2,3,0x10,0x100,0x1000,0x1234,0x40,0x0B};
+                    const uint16_t diff=XPICK(8)?diffs[XPICK(10)]:(uint16_t)XPICK(0x300);
+                    XW16(cs,0x082A,(uint16_t)(XPICK(4)?XPICK(0x60):XRAND()));    /* buffer write offset */
+                    XW16(cs,0x082C,bufseg);
+                    XW16(cs,0x0830,(uint16_t)(bufseg+diff));
+                    XW16(cs,0x0832,XRAND()); XW16(cs,0x0834,XRAND()); XW16(cs,0x0836,XRAND()); XW16(cs,0x0838,XRAND());
+                    XW16(cs,0x083A,XRAND()); XW16(cs,0x083C,XRAND());
+                    /* The page contents the compression reads: runs of zeros and colours, per row. */
+                    {   const int16_t pv=(int16_t)page; const uint16_t ap=(uint16_t)(pv<0?-pv:pv);
+                        const uint16_t dsw=XR16(cs,(uint16_t)(2*ap+0x0787));
+                        unsigned safe=0; for(unsigned k=0;k<6;k++)if(sg[k]==dsw)safe=1;
+                        if(safe){
+                            const uint16_t si0=(uint16_t)(XR16(cs,(uint16_t)(2*y0+4))+xx);
+                            const unsigned dens=XPICK(4);
+                            for(unsigned k=0;k<ht&&k<8;k++)
+                                for(unsigned j=0;j<(unsigned)wd+3&&j<24;j++){
+                                    const unsigned z=(dens==0)?1:(dens==1)?0:(XPICK(2));
+                                    XW8(dsw,(uint16_t)(si0+0x140*k+j),z?0:(uint8_t)(1+XRAND()%255));
+                                }
+                        }
+                    }
+                } else {
+                    XW16(cs,0x083A,(uint16_t)(XPICK(4)?1+XPICK(4):0));
+                    XW16(cs,0x083C,(uint16_t)(XPICK(4)?1+XPICK(4):0));
+                    XW16(cs,0x082A,XRAND()); XW16(cs,0x082C,XRAND());
+#define EB(b_) XW8(cs,out_++,(b_))
+#define EFOLD(cell_) do { EB(0x2E);EB(0x8B);EB(0x1E);EB((cell_));EB((cell_)>>8); EB(0xD1);EB(0xC3);EB(0x33);EB(0xD8); \
+    EB(0x2E);EB(0x89);EB(0x1E);EB((cell_));EB((cell_)>>8); } while(0)
+#define XSTUB(entry_,code_,cell_,nargs_,list_) do { unsigned out_=(code_); \
+    XW8(cs,(entry_),0xE9); XW16(cs,(entry_)+1,(uint16_t)((code_)-(entry_)-3)); \
+    EB(0x55);EB(0x8B);EB(0xEC);EB(0x53); \
+    EB(0x2E);EB(0xFF);EB(0x06);EB((cell_)+4);EB(((cell_)+4)>>8); \
+    EB(0x8C);EB(0xD8); EFOLD(cell_); \
+    for(unsigned j_=0;j_<(nargs_);j_++){ EB(0x8B);EB(0x46);EB(6+2*j_); EFOLD(cell_); } \
+    EB(0x2E);EB(0x8B);EB(0x1E);EB((cell_)+2);EB(((cell_)+2)>>8); \
+    EB(0x2E);EB(0x8B);EB(0x87);EB((list_));EB((list_)>>8); \
+    EB(0x83);EB(0xC3);EB(0x02); EB(0x83);EB(0xE3);EB(0x3E); \
+    EB(0x2E);EB(0x89);EB(0x1E);EB((cell_)+2);EB(((cell_)+2)>>8); \
+    EB(0x5B);EB(0x5D);EB(0xCB); } while(0)
+                    static const struct { uint16_t entry, code, cell, list; unsigned args; } st_[3]={
+                        {0x0A02,0xF200,0xF800,0xF840,2},{0x0A4D,0xF2C0,0xF810,0xF880,0},{0x0A6A,0xF320,0xF820,0xF8C0,1}};
+                    for(unsigned k=0;k<3;k++){
+                        XW16(cs,st_[k].cell,0); XW16(cs,st_[k].cell+2,0); XW16(cs,st_[k].cell+4,0);
+                        for(unsigned j=0;j<32;j++){
+                            uint16_t v=(uint16_t)XRAND();
+                            if(k==0&&XPICK(3)==0)v=0;
+                            if(k==0&&v==0&&XPICK(2))v=1;
+                            XW16(cs,st_[k].list+2*j,v);
+                        }
+                        XSTUB(st_[k].entry,st_[k].code,st_[k].cell,st_[k].args,st_[k].list);
+                    }
+#undef XSTUB
+#undef EFOLD
+#undef EB
+                }
+#undef XPICK
+#undef XRAND
+#undef XR16
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x1188) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+#define XR16(s_,o_) ((uint16_t)(g_pristine[phys((s_),(uint16_t)(o_))]|(g_pristine[phys((s_),(uint16_t)((o_)+1))]<<8)))
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<0x60;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]+j),XRAND());
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                for(unsigned j=0;j<8;j++)if(j!=R_SP)r[j]=(uint16_t)XRAND();
+                /* The relocated data-segment word of the mov dx,imm16 at 118F is read from the loaded code: DS and
+                 * DX are loaded with it and DX stays loaded, so a wrong or baked word shows in DX. */
+                XW16(cs,0x1190,XRAND());
+                /* The page table CS:[0787+2*page] (read from the loaded code): safe segments only, since the
+                 * rectangle is written there. */
+                static const uint16_t sg[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000};
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,sg[XPICK(6)]);
+                const unsigned pk=XPICK(5);
+                const uint16_t pagev=(uint16_t)(XPICK(4)?pk:(0x8000|pk));        /* 8000h|k doubles to 2k: shl drops bit 15 */
+                const uint16_t pageseg=XR16(cs,(uint16_t)(2*pk+0x0787));
+                /* Rectangle: columns x0..x1 and rows y0..y1, both inclusive. The widths and heights are small and
+                 * exact (the loops run CX times, 65536 when it is 0), x1 and y1 are computed with 16-bit wrap. */
+                static const uint16_t wds[]={1,1,2,3,5,8,13,16,4};
+                static const uint16_t hts[]={1,1,2,3,4,6,9,5};
+                const uint16_t wd=wds[XPICK(9)], ht=hts[XPICK(8)];
+                const uint16_t x0=XPICK(6)?(uint16_t)XPICK(320):(XPICK(2)?(uint16_t)(0xFFF8+XPICK(8)):(uint16_t)XRAND());
+                const uint16_t y0=XPICK(6)?(uint16_t)XPICK(190):(uint16_t)XRAND();
+                const uint16_t x1=(uint16_t)(x0+wd-1), y1=(uint16_t)(y0+ht-1);
+                const uint8_t ah=(uint8_t)XRAND();
+                const uint8_t al=XPICK(6)?(uint8_t)XRAND():ah;
+                /* The pointed-at page word sits above the arguments. */
+                const uint16_t ptr=(uint16_t)(r[R_SP]+0x20+2*XPICK(8));
+                XW16(seg[S_SS],ptr,pagev);
+                XW16(seg[S_SS],r[R_SP]+0,ptr);
+                XW16(seg[S_SS],r[R_SP]+2,x0);
+                XW16(seg[S_SS],r[R_SP]+4,y0);
+                XW16(seg[S_SS],r[R_SP]+6,x1);
+                XW16(seg[S_SS],r[R_SP]+8,y1);
+                XW16(seg[S_SS],r[R_SP]+10,(uint16_t)((XRAND()&0xFF00)|ah));
+                XW16(seg[S_SS],r[R_SP]+12,(uint16_t)((XRAND()&0xFF00)|al));
+                small[0]=ptr; small[1]=x0; small[2]=y0; small[3]=x1;
+                /* The row-offset table CS:[2*row+4] is patched to random words for the rows in the rectangle. */
+                if(XPICK(2)){
+                    for(unsigned k=0;k<ht;k++){
+                        const uint16_t at=(uint16_t)(2*(uint16_t)(y0+k)+4);
+                        if(at<0x0190)XW16(cs,at,XRAND());
+                    }
+                }
+                /* The page: each pixel of the rectangle is the colour to find or another; the pixels just outside
+                 * on both ends of each row are the colour to find (an overrun would recolour them). */
+                for(unsigned k=0;k<ht;k++){
+                    const uint16_t ro=XR16(cs,(uint16_t)(2*(uint16_t)(y0+k)+4));
+                    const unsigned dens=XPICK(4);
+                    for(unsigned j=0;j<wd;j++){
+                        const unsigned hit=(dens==0)?1:(dens==1)?0:XPICK(2);
+                        XW8(pageseg,(uint16_t)(ro+x0+j),hit?ah:(uint8_t)(ah+1+XRAND()%255));
+                    }
+                    XW8(pageseg,(uint16_t)(ro+x0-1),ah);
+                    XW8(pageseg,(uint16_t)(ro+x0+wd),ah);
+                }
+#undef XPICK
+#undef XRAND
+#undef XR16
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x125C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(!XPICK(4)) flags=(uint16_t)(flags|F_DF);
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();
+                /* The data segment is the relocated word of the mov ax,imm16 at 125E: patch it to several
+                 * values (clear of the stack segments 5000h/6000h). The counter at DS:1982, the four-byte
+                 * selector table at DS:197E and the RGB table (up to 3*255 bytes from DS:1871) are random. */
+                static const uint16_t dsw[]={0x1AB3,0x3000,0x7000,0x2800,0x9000,0x4000,0x019C,0x0E00};
+                const uint16_t dsv=dsw[XPICK(8)];
+                XW16(cs,0x125F,dsv);
+                for(unsigned j=0;j<0x320;j++)XW8(dsv,(uint16_t)(0x1871+j),XRAND());
+                XW16(dsv,0x1982,(uint16_t)XRAND());
+                /* The selector bytes: any value, sometimes 0 or 255 (the table's ends). */
+                for(unsigned j=0;j<4;j++){const unsigned p_=XPICK(6);XW8(dsv,0x197E + j,p_==0?0:p_==1?255:XRAND());}
+                /* The run-time countdown CS:[1250]: 0 (no jolt), 1 (the last turn: AH cleared), else any. */
+                {   const unsigned p_=XPICK(10);
+                    XW8(cs,0x1250,p_<3?0:p_<6?1:p_<7?2:p_<8?255:(XRAND()&0xFF)); }
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x09D4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* The arena words (run-time data of the library, written by 09A8): the cursor CS:[082E] and the
+                 * start CS:[082C]. The start is below the cursor (a negative size, the jb), equal (free, 49h) or
+                 * above it (resize, 4Ah) in about a third of the states each, with sizes of every kind including
+                 * the boundary one below and one above; the end word CS:[0830] is random (it is cleared). */
+                {   static const uint16_t cur_[]={0,1,0x1234,0x5000,0x7FFF,0x8000,0xA000,0xFFFF,0xFFFE};
+                    const uint16_t cur=XPICK(3)?cur_[XPICK(9)]:(uint16_t)XRAND();
+                    uint16_t start=cur; const unsigned k=XPICK(9);
+                    if(k<3) start=cur;
+                    else if(k==3) start=(uint16_t)(cur-1);
+                    else if(k==4) start=(uint16_t)(cur+1);
+                    else if(k==5) start=(uint16_t)(cur-(uint16_t)XRAND());
+                    else start=(uint16_t)(cur+(uint16_t)XRAND());
+                    XW16(cs,0x082E,cur); XW16(cs,0x082C,start); XW16(cs,0x0830,(uint16_t)XRAND()); }
+                /* DOS (scripted): the one call answers any AX and carry set or clear in about half the states. */
+                g_dos=1;
+                g_dos_script_n=1;
+                g_dos_script[0].ax=XPICK(3)?(uint16_t)(XRAND()&0xF):(uint16_t)XRAND();
+                g_dos_script[0].cf=(uint8_t)XPICK(2);
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0F3D) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+#define XR8(s_,o_) (g_pristine[phys((s_),(uint16_t)(o_))])
+#define XR16(s_,o_) ((uint16_t)(XR8((s_),(o_))|(XR8((s_),(uint16_t)((o_)+1))<<8)))
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(!XPICK(6)) flags=(uint16_t)(flags|F_DF);
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_BP]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();
+                r[R_DI]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                /* The screen segment CS:[0194] and the page offset CS:[0196] are run-time words of the library:
+                 * the segment is any whose 64K neither holds the stack nor the image; the offset is any word. */
+                static const uint16_t scr_[]={0xA000,0x7000,0x8000,0x9000,0x4000};
+                const uint16_t scr=scr_[XPICK(5)];
+                XW16(cs,0x0194,scr);
+                const uint16_t pageoff=(XPICK(3)==0)?0:(uint16_t)XRAND();
+                XW16(cs,0x0196,pageoff);
+                /* The four relocated segment words (the immediates of the mov dx,imm16 at 0F43, 0FAA, 1025, 1099),
+                 * each its own value, so a mode that reads another mode's word shows. The byte every mode takes from
+                 * <segment>:[1866] is random in each of them. */
+                static const uint16_t dsw[]={0x1AB3,0x3000,0x2C00,0x1000};
+                static const uint16_t ips_[]={0x0F44,0x0FAB,0x1026,0x109A};
+                for(unsigned j=0;j<4;j++){ const uint16_t d_=dsw[XPICK(4)]; XW16(cs,ips_[j],d_); XW8(d_,0x1866,XRAND()); }
+                /* The mode (DX): 0 fill, 1 OR, 2 AND in a fifth each, 3 and other values (the tint) in two fifths. */
+                {   const unsigned p_=XPICK(10);
+                    static const uint16_t other_[]={3,4,0x8000,0xFFFF,0x1234,3,3};
+                    r[R_DX]=p_<2?0:p_<4?1:p_<6?2:other_[XPICK(7)]; }
+                /* The rows: AX first, CX last (rows run CX down to AX). AX negative in one state in eight (nothing
+                 * drawn); else a row below the offset table's end, sometimes a far one. CX is AX plus 0-7 rows
+                 * or, now and then, below AX (one row is drawn). */
+                unsigned ax_;
+                {   const unsigned p_=XPICK(16);
+                    if(p_<2) ax_=(p_==0)?0x8000:(0x8000|(XRAND()&0x7FFF));
+                    else if(p_==2) ax_=0xFFFF;
+                    else if(p_==3) ax_=0x1000+XPICK(0x2000);
+                    else if(p_==4) ax_=0;
+                    else ax_=XPICK(190); }
+                r[R_AX]=(uint16_t)ax_;
+                {   static const int k_[]={0,0,1,1,2,3,5,7,-1,-3};
+                    r[R_CX]=(uint16_t)(ax_+(uint16_t)k_[XPICK(10)]); }
+                /* The edge table, in the stack segment: left SS:[BX+2y], right SS:[BX+2y+1B8h]. */
+                r[R_BX]=(uint16_t)(0x0200+XPICK(0x4000));
+                {   const int a_s=(int)(int16_t)r[R_AX], c_s=(int)(int16_t)r[R_CX]; const int lo_=(a_s<c_s?a_s:c_s)-1;
+                    const int hi_=(a_s<c_s?c_s:a_s)+1;
+                    for(int y=lo_;y<=hi_;y++){
+                        const uint16_t yy=(uint16_t)y;
+                        const uint16_t sl=(uint16_t)(r[R_BX]+2*yy), sr=(uint16_t)(sl+0x01B8);
+                        uint16_t lw_,rw_;
+                        const unsigned kind=XPICK(100);
+                        if(kind<18){ lw_=(uint16_t)(4+XPICK(316)); rw_=(uint16_t)(lw_-1-XPICK(4)); }              /* right below left */
+                        else if(kind<24){ lw_=rw_=0; }
+                        else if(kind<30){ lw_=rw_=0x013F; }
+                        else if(kind<38){ lw_=rw_=(uint16_t)(1+XPICK(318)); }                                 /* one pixel */
+                        else {
+                            const unsigned wk=XPICK(100);
+                            unsigned w;
+                            if(wk<30) w=1+XPICK(3);
+                            else if(wk<70) w=4+XPICK(13);
+                            else if(wk<90) w=17+XPICK(48);
+                            else if(wk<95) w=320;
+                            else w=65+XPICK(256);
+                            lw_=(wk>=90&&wk<95)?0:(uint16_t)XPICK(320);
+                            rw_=(uint16_t)(lw_+w-1);
+                        }
+                        XW16(seg[S_SS],sl,lw_); XW16(seg[S_SS],sr,rw_);
+                        /* The row's offset word CS:[2y+4] (only the 200 rows the table holds). */
+                        if(yy<200 && XPICK(8)) XW16(cs,(uint16_t)(2*yy+4),(uint16_t)XRAND());
+                        /* The screen bytes the span touches and the bytes around it: random. */
+                        {   const uint16_t di_=(uint16_t)(XR16(cs,(uint16_t)(2*yy+4))+pageoff+lw_);
+                            const uint16_t w16=(uint16_t)(rw_-lw_+1);
+                            if(rw_>=lw_ && w16<=400)
+                                for(int j=-12;j<(int)w16+12;j++) XW8(scr,(uint16_t)(di_+j),XRAND()); }
+                    } }
+#undef XPICK
+#undef XRAND
+#undef XR16
+#undef XR8
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0B70) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+                seg[S_DS]=(uint16_t)XRAND();
+                /* The data words the routine and its callees write (CS:0840-0866) start random. */
+                for(unsigned j=0;j<20;j++)XW16(cs,(uint16_t)(0x0840+2*j),XRAND());
+                /* Per axis (0 = x, 1 = y): the raw size argument (any sign, magnitude M), the clip range R (the
+                 * block's [high]-[low], 16-bit) and the position, chosen against M and R so every arm of the
+                 * clipper is reached: partly off the low edge, exactly off, far off, inside, on the high edge,
+                 * past it, and wrap values. */
+                uint16_t rawsz[2], mag[2], rg[2], lo_[2], pos[2];
+                for(unsigned ax_=0;ax_<2;ax_++){
+                    unsigned k=XPICK(10);
+                    uint16_t szv=(k<2)?1:(k<4)?(uint16_t)(2+XPICK(8)):(k<8)?(uint16_t)(1+XPICK(60)):(k==8)?(uint16_t)XRAND():0;
+                    if(XPICK(40)==0)szv=0x8000;
+                    rawsz[ax_]=XPICK(2)?szv:(uint16_t)(0u-szv);
+                    mag[ax_]=(rawsz[ax_]&0x8000)?(uint16_t)(0u-rawsz[ax_]):rawsz[ax_];
+                    k=XPICK(24);
+                    rg[ax_]=(k<16)?(uint16_t)XPICK(200):(k<18)?0x7FFF:(k<19)?0x8000:(k<20)?0xFFFF:(k<22)?(uint16_t)(0u-1u-XPICK(30)):(uint16_t)XRAND();
+                    lo_[ax_]=(uint16_t)XRAND();
+                    const uint16_t M=mag[ax_], R=rg[ax_];
+                    switch(XPICK(15)){
+                     case 0: pos[ax_]=(uint16_t)(1u-M); break;
+                     case 1: pos[ax_]=(uint16_t)(0u-M); break;
+                     case 2: pos[ax_]=(uint16_t)(0u-M-1u); break;
+                     case 3: pos[ax_]=0xFFFF; break;
+                     case 4: pos[ax_]=0; break;
+                     case 5: pos[ax_]=R; break;
+                     case 6: pos[ax_]=(uint16_t)(R+1u); break;
+                     case 7: pos[ax_]=(uint16_t)(R-1u); break;
+                     case 8: pos[ax_]=(uint16_t)XPICK((R&0x8000)?1u:(unsigned)R+1u); break;
+                     case 9: pos[ax_]=(uint16_t)XRAND(); break;
+                     case 10: pos[ax_]=0x8000; break;
+                     case 11: pos[ax_]=0x7FFF; break;
+                     case 12: pos[ax_]=(uint16_t)(0u-XPICK(M?M:1u)); break;
+                     case 13: pos[ax_]=(uint16_t)(R-M+1u+XPICK(3)); break;
+                     default: pos[ax_]=(uint16_t)XPICK(300); break;
+                    }
+                }
+                /* The parameter block, in the stack segment above the arguments. */
+                const uint16_t blk=(uint16_t)(r[R_SP]+0x20+2*XPICK(0x20));
+                for(unsigned j=0;j<0x18;j++)XW8(seg[S_SS],(uint16_t)(blk+j),XRAND());
+                XW16(seg[S_SS],(uint16_t)(blk+0x0E),lo_[1]);
+                XW16(seg[S_SS],(uint16_t)(blk+0x10),(uint16_t)(lo_[1]+rg[1]));
+                XW16(seg[S_SS],(uint16_t)(blk+0x12),lo_[0]);
+                XW16(seg[S_SS],(uint16_t)(blk+0x14),(uint16_t)(lo_[0]+rg[0]));
+                /* The sprite segment: 0 now and then; else a segment whose header words [0] and [2] are zero
+                 * about one time in six each. */
+                static const uint16_t sprsegs[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000,0x019C,0x5000,0x6000};
+                const uint16_t spr=(XPICK(8)==0)?0:sprsegs[XPICK(9)];
+                if(spr){
+                    XW16(spr,0,(XPICK(6)==0)?0:(uint16_t)(1+XPICK(0xFFFF)));
+                    XW16(spr,2,(XPICK(6)==0)?0:(uint16_t)(1+XPICK(0xFFFF)));
+                }
+                const uint16_t srcp=(uint16_t)XRAND();
+                const uint16_t arg[7]={blk,pos[0],pos[1],rawsz[0],rawsz[1],srcp,spr};
+                for(unsigned j=0;j<7;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* The callee 0C95 (the sprite blitter, proved on its own): a far stub that records every register
+                 * the call gets (AX BX CX DX SI DI BP DS ES) in cells at CS:F100.., counts the call, and returns
+                 * with BX, CX and the flags set to fixture-chosen values (the flags survive to the caller's
+                 * return). */
+                {   unsigned out_=0x0C95;
+                    const uint16_t cell=0xF100;
+                    XW8(cs,out_++,0x2E);XW8(cs,out_++,0xA3);XW16(cs,out_,cell);out_+=2;               /* mov cs:[cell], ax */
+                    static const uint8_t ops_[8][2]={{0x89,0x1E},{0x89,0x0E},{0x89,0x16},{0x89,0x36},{0x89,0x3E},{0x89,0x2E},{0x8C,0x1E},{0x8C,0x06}};
+                    for(unsigned j=0;j<8;j++){XW8(cs,out_++,0x2E);XW8(cs,out_++,ops_[j][0]);XW8(cs,out_++,ops_[j][1]);XW16(cs,out_,(uint16_t)(cell+2+2*j));out_+=2;}
+                    XW8(cs,out_++,0x2E);XW8(cs,out_++,0xFF);XW8(cs,out_++,0x06);XW16(cs,out_,(uint16_t)(cell+0x12));out_+=2;   /* inc cs:[cell+12h] */
+                    XW8(cs,out_++,0xBB);XW16(cs,out_,(uint16_t)XRAND());out_+=2;                       /* mov bx, imm */
+                    XW8(cs,out_++,0xB9);XW16(cs,out_,(uint16_t)XRAND());out_+=2;                       /* mov cx, imm */
+                    XW8(cs,out_++,0xB8);XW16(cs,out_,(uint16_t)XRAND());out_+=2;                       /* mov ax, imm */
+                    XW8(cs,out_++,0x05);XW16(cs,out_,(uint16_t)XRAND());out_+=2;                       /* add ax, imm: the flags */
+                    XW8(cs,out_++,0xCB);                                                                /* retf */
+                    for(unsigned j=0;j<10;j++)XW16(cs,(uint16_t)(cell+2*j),XRAND());
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0C95) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                /* The direction flag is clear, as the library keeps it (set, the header read would run backward over random bytes: long runs); the pixel loop sets it itself when mirrored. */
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_ES]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();
+                /* The page segments (CS:0787 + 2n) and the sprite's segment: 64K windows that touch neither the stack
+                 * segments, the image nor the code, so a drawn pixel never lands in the routine's own code. */
+                static const uint16_t safe[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000};
+                const uint16_t sprseg=safe[XPICK(6)];
+                /* (A page equal to the sprite's segment would let a drawn pixel change the sprite's own row records,
+                 * and a changed byte count runs the scratch-line fill over the library's words: never the same.) */
+                for(unsigned j=0;j<5;j++){ uint16_t pg; do pg=safe[XPICK(6)]; while(pg==sprseg); XW16(cs,(uint16_t)(0x0787+2*j),pg); }
+                seg[S_DS]=sprseg;
+                /* The library's words CS:083E-0868 start random; the routine sets the visible sizes and the row step. */
+                for(unsigned j=0;j<(0x0868-0x083E)/2;j++)XW16(cs,(uint16_t)(0x083E + 2*j),XRAND());
+                /* Drawn size, sprite size and the clip, in the shapes 0B70 and 0BC0 leave: the drawn width w and
+                 * height h are magnitudes (1 and up), the clips L, R (pixels) and T, B (rows) leave a visible part, or,
+                 * in a few states, none (the early exits at 0CCC and 0CDC). */
+                unsigned w,h,Ws,Hs,L,Rr,T,B;
+                { const unsigned k=XPICK(10);
+                  w=k<5?1+XPICK(24):k<7?1+XPICK(3):k<9?25+XPICK(80):100+XPICK(200); }
+                { const unsigned k=XPICK(24);
+                  Ws=k<14?1+XPICK(40):k<18?1+XPICK(4):k<21?40+XPICK(120):k<23?200+XPICK(150):0; }
+                { const unsigned k=XPICK(10);
+                  h=k<6?1+XPICK(20):k<9?1+XPICK(3):1+XPICK(40); }
+                { const unsigned k=XPICK(24);
+                  Hs=k<14?1+XPICK(24):k<20?1+XPICK(3):k<23?1+XPICK(40):0; }
+                while(h>1 && h*(5*Ws+10*w+60)>70000) h/=2;
+                { const unsigned k=XPICK(14);
+                  if(k<6){ L=XPICK(w<4?w:4); Rr=XPICK((w-L)<4?(w-L):4); }
+                  else if(k<8){ L=0; Rr=0; }
+                  else if(k<12){ L=XPICK(w); Rr=XPICK(w-L); }
+                  else if(k==12){ L=w; Rr=XPICK(3); }
+                  else { L=XPICK(w); Rr=w-L+XPICK(3); } }
+                { const unsigned k=XPICK(14);
+                  if(k<6){ T=XPICK(h<4?h:4); B=XPICK((h-T)<4?(h-T):4); }
+                  else if(k<8){ T=0; B=0; }
+                  else if(k<12){ T=XPICK(h); B=XPICK(h-T); }
+                  else if(k==12){ T=h; B=XPICK(3); }
+                  else { T=XPICK(h); B=h-T+XPICK(3); } }
+                const uint16_t fx=XPICK(3)==0?(XPICK(2)?0xFFFF:(uint16_t)(1+XPICK(0x7FFE))):0;
+                const uint16_t fy=XPICK(3)==0?(XPICK(2)?0xFFFF:(uint16_t)(1+XPICK(0x7FFE))):0;
+                XW16(cs,0x0846,w);XW16(cs,0x0848,h);XW16(cs,0x084A,fx);XW16(cs,0x084C,fy);
+                XW16(cs,0x0856,T);XW16(cs,0x0858,L);XW16(cs,0x085A,B);XW16(cs,0x085C,Rr);
+                /* The four bytes the routine copies into the pixel loop (CS:0DF8-0DFB: CLD, INC DI, STD, DEC DI as
+                 * shipped), here and there other legal pairs or a byte this body must hand back (NOP). The loop's two
+                 * written-in bytes (CS:0DDB, CS:0DEC) are set to what the routine will write there: it rewrites the same
+                 * values, so its own code is not changed (a changed-code state is skipped). */
+                uint8_t d8=0xFC,d9=0x47,da=0xFD,db=0x4F;
+                { const unsigned k=XPICK(20);
+                  if(k>=12&&k<15){ d8=XPICK(2)?0xFC:0xFD; d9=XPICK(2)?0x47:0x4F; da=XPICK(2)?0xFC:0xFD; db=XPICK(2)?0x47:0x4F; }
+                  else if(k==15) d8=0x90; else if(k==16) d9=0x90; else if(k==17) da=0x90; else if(k==18) db=0x90; }
+                XW8(cs,0x0DF8,d8);XW8(cs,0x0DF9,d9);XW8(cs,0x0DFA,da);XW8(cs,0x0DFB,db);
+                XW8(cs,0x0DDB,fx?da:d8);XW8(cs,0x0DEC,fx?db:d9);
+                /* The sprite: width, height, then one record per row (byte count n, lead k, n pixel bytes; colour 0 is
+                 * transparent) for every row the routine can step over (the sprite's rows and the drawn rows, and a few
+                 * more), and zeros after. */
+                const uint16_t si0=XPICK(3)==0?0:(uint16_t)XPICK(0x2000);
+                XW16(sprseg,si0,Ws);XW16(sprseg,(uint16_t)(si0+2),Hs);
+                { uint16_t pos=(uint16_t)(si0+4);
+                  const unsigned nrows=Hs+h+8;
+                  for(unsigned rw=0;rw<nrows;rw++){
+                      unsigned n,k;
+                      if(Ws==0||XPICK(10)==0){ n=0; k=Ws?XPICK(Ws+1):0; }
+                      else { n=1+XPICK(Ws); k=XPICK(Ws-n+1); }
+                      XW16(sprseg,pos,n);XW16(sprseg,(uint16_t)(pos+2),k);pos=(uint16_t)(pos+4);
+                      for(unsigned i=0;i<n;i++){ XW8(sprseg,pos,XPICK(4)==0?0:1+XPICK(255));pos=(uint16_t)(pos+1); }
+                  }
+                  for(unsigned i=0;i<0x80;i++){ XW8(sprseg,pos,0);pos=(uint16_t)(pos+1); } }
+                /* The parameter block above the arguments: page number (0-4), then the destination origin offsets. */
+                const uint16_t blk=(uint16_t)(r[R_SP]+0x10+2*XPICK(0x40));
+                r[R_BP]=blk;
+                for(unsigned j=0;j<0x20;j++)XW8(seg[S_SS],(uint16_t)(blk+j),XRAND());
+                XW16(seg[S_SS],blk,XPICK(5));
+                XW16(seg[S_SS],(uint16_t)(blk+0x0E),XPICK(2)?0:XPICK(2)?(uint16_t)XPICK(40):(uint16_t)(0u-XPICK(20)));
+                XW16(seg[S_SS],(uint16_t)(blk+0x12),XPICK(2)?0:XPICK(2)?(uint16_t)XPICK(40):(uint16_t)(0u-XPICK(20)));
+                r[R_SI]=si0;
+                r[R_DX]=XPICK(3)?(uint16_t)XPICK(320):XPICK(2)?(uint16_t)(0u-XPICK(30)):(uint16_t)XRAND();
+                r[R_DI]=XPICK(3)?(uint16_t)XPICK(200):XPICK(2)?(uint16_t)(0u-XPICK(30)):(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0599) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                /* The direction flag: clear as the library keeps it, set now and then (the STOSB follows it). */
+                flags=(uint16_t)(XPICK(8)?(flags & (0xFFFFu^F_DF)):(flags | F_DF));
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060,0xFFE0};
+                r[R_SP]=stacks[XPICK(5)];
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);small[j]=w;}
+                seg[S_DS]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+                /* The relocated word of "mov di, imm16" at 059B (CS:059C) is the library's data segment; the
+                 * surface segment is CS:[0194]. Both are taken from the loaded code and data: several values,
+                 * and the same one now and then (the stores then overlap the data words). */
+                static const uint16_t dsw[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000};
+                static const uint16_t esw[]={0x2000,0x3000,0x4000,0x7000,0x8000,0x9000,0xA000};
+                const uint16_t dsv=dsw[XPICK(6)];
+                XW16(cs,0x059C,dsv);
+                XW16(cs,0x0194,XPICK(6)?esw[XPICK(7)]:dsv);
+                /* The row offset 0581 adds (CS:0196) and the pen colour [1866]. */
+                XW16(cs,0x0196,XPICK(3)==0?0:XPICK(3)==0?(uint16_t)XRAND():(uint16_t)(XPICK(0x40)*0x140));
+                XW8(dsv,0x1866,XRAND());
+                for(unsigned j=0;j<5;j++)XW16(dsv,(uint16_t)(0x185A+2*j),XRAND());
+                /* The end points. Major length Dx (x1-x0, the x run), minor length Dy, in the relations equal,
+                 * shallow, steep, zero; the y direction either way; the two points given in either order. */
+                static const uint16_t lens[]={0,1,2,3,5,8,13,40,100,200,319};
+                unsigned dxl=(XPICK(40)==0)?(unsigned)(1+XPICK(2000)):lens[XPICK(11)];
+                unsigned dyl;
+                switch(XPICK(6)){
+                 case 0: dyl=dxl; break;
+                 case 1: dyl=XPICK(dxl+1); break;
+                 case 2: dyl=dxl+1+XPICK(40); break;
+                 case 3: dyl=0; break;
+                 case 4: dyl=(XPICK(40)==0)?(unsigned)(1+XPICK(2000)):lens[XPICK(11)]; break;
+                 default: dyl=(dxl>0)?dxl-1:1; break;
+                }
+                if(XPICK(14)==0){ dxl=0; dyl=XPICK(3)?1+XPICK(60):0; }     /* vertical lines and the single pixel */
+                static const uint16_t x0s[]={0,1,0x007F,0x0100,0x1000,0x7FF0,0x8000,0xFFF0,0xFFFF-319,0x4000};
+                static const uint16_t y0s[]={0,1,100,199,0x0200,0x7F00,0x7FFF-500,0x8000,0x8000-300,0xFFFF-500};
+                uint16_t x0,y0;
+                x0=XPICK(3)?(uint16_t)XPICK(320):x0s[XPICK(10)];
+                if((unsigned)x0+dxl>0xFFFFu) x0=(uint16_t)(0xFFFFu-dxl);
+                y0=XPICK(3)?(uint16_t)XPICK(200):y0s[XPICK(10)];
+                const uint16_t x1=(uint16_t)(x0+dxl);
+                const uint16_t y1=XPICK(2)?(uint16_t)(y0+dyl):(uint16_t)(y0-dyl);
+                if(XPICK(2)){ r[R_AX]=x0; r[R_BX]=y0; r[R_CX]=x1; r[R_DX]=y1; }
+                else        { r[R_AX]=x1; r[R_BX]=y1; r[R_CX]=x0; r[R_DX]=y0; }
 #undef XPICK
 #undef XRAND
 #undef XW16

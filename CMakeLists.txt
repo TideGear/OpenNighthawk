@@ -1263,6 +1263,24 @@ if(F117R_BUILD_TESTS)
       --only MGRAPHIC.EXE:9A8)
     add_test(NAME matched_mgraphic_clear_es_segment COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:1118)
+    add_test(NAME matched_mgraphic_draw_dashed_rows COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:71A)
+    add_test(NAME matched_mgraphic_compile_bitmap_rows COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:B0C)
+    add_test(NAME matched_mgraphic_replace_colour_in_rect COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:1188)
+    add_test(NAME matched_mgraphic_palette_flash_and_screen_jolt COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:125C)
+    add_test(NAME matched_mgraphic_arena_release COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:9D4)
+    add_test(NAME matched_mgraphic_fill_spans COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:F3D)
+    add_test(NAME matched_mgraphic_draw_clipped_sprite COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:B70)
+    add_test(NAME matched_mgraphic_draw_scaled_sprite COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:C95)
+    add_test(NAME matched_mgraphic_draw_line COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:599)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

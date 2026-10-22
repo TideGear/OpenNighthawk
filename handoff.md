@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 85.87%, P3 100.00%, All 95.69%
+- **Scoreboard:** P1 100.00%, P2 86.54%, P3 100.00%, All 95.89%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,236 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **141,406 /
-  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 87.41%**. `docs/reference-reviewed.tsv` holds 38
+- **Phase 2:** 1,245 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **142,628 /
+  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 88.16%**. `docs/reference-reviewed.tsv` holds 38
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
@@ -27,8 +27,8 @@ Consolidate it instead of appending to it.
   stays-original entry to name its design rule. The accounted-for checklist is 0 / 42,958. Previous
   all-code measure (scores the naming item): **165,786 / 205,035 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
-  Batches a to aq are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 477 CTests, 63 routes run as 62 sessions,
+  Batches a to ar are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 486 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
 - **Where the remaining 39,491 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
   --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
@@ -145,7 +145,7 @@ Consolidate it instead of appending to it.
 3. **Unreviewed static bytes:** the 117 audited code rows and the 70-byte VGAME data row are adopted (21 Oct, `D:/f117-gate/static-review-20261021/adoption-audit.md`). Still to adopt: the 19 follow-up data rows (`followup-data-rows.tsv`), the plain follow-up code rows (`followup-code-rows.tsv`) and the encoded SETUP code (`encoded-code-rows.json`; XOR low-IP transform of 1,300 bytes at IP 0050..0564), which needs a strict validator that pins raw file hash, decoded hash, bounds and instruction counts and never publishes the transformed binary.
 4. **Drivers and launcher: matching, steps 4 onward of `D:/f117-gate/modules-scope-20261021/plan.md`.** Done: steps 0, 1a, 1b (scope),
    2a (module-keyed harness), 3 (kit widened) and the step 4 pilot (batch `am`, `261381c`: MISC `0000` `000A` `0018`, MGRAPHIC `023A`;
-   module tokens are defined in `matched.c`), then MGRAPHIC batches `ao` (14 routines) and `ap` (6) and `aq` (9); the MGRAPHIC entries routes still run unmatched are the large ones: `0599`, `071A`, `09D4`, `0B0C`, `0B70`, `0C95`, `0F3D`, `1188`, `125C` (2,317 executed bytes). Next, in this order: (a) batches of MGRAPHIC routines (overlay seg `019C`, linear `0x19C0 + ip`;
+   module tokens are defined in `matched.c`), then MGRAPHIC batches `ao` (14), `ap` (6), `aq` (9) and `ar` (9: the large drawing routines). 1,095 executed MGRAPHIC bytes remain unmatched. Known candidates: the bitmap compiler's callees `0A02`, `0A4D` and `0A6A` (far routines that `0B0C`'s proof ran as original code); derive the full list by diffing the executed MGRAPHIC instruction starts in `D:/f117-gate/route-cover-20261020b/*.cov` against `D:/f117-gate/p2-batch-ar-accept/named-cover` (inner entries `0561`, `07B2`, `07DB`, `0804` and the `057A` tail are already credited inside matched bodies). Next, in this order: (a) batches of MGRAPHIC routines (overlay seg `019C`, linear `0x19C0 + ip`;
    split by address, six per agent, setters and small primitives first), the remaining MISC wrappers (a keyboard wait loop is not a
    candidate) and a few small F117.COM helpers to prove `.COM` addressing; follow the pilot's conventions (read every relocated word from the
    loaded code and make the fixture patch it to several values; force each branch in a fixed share of states; six or more extra seeds;
@@ -240,6 +240,18 @@ vector to the clock limit, so the two sides were compared at different moments (
 AX 1000, DX 0). The routine was right. `step_runner_run` now returns at the first interrupt entry for the mission,
 ground, projectile and traffic fixtures, as `run_to_ret` does. When a fault-replay state mismatches with the same
 fault site on both sides, print the matched side's ip after `o->fn` and the nested call log before suspecting the body.
+
+## Two latent defects the extra seeds found (22 Oct, fixed)
+
+Before the batch ar gate a 13-seed sweep (`py tools/func_lockstep_par.py --exe build/func_lockstep.exe --jobs 8 --states 4000 --seed S`, about
+2 min a seed) found two older mismatches the gate's four seeds never hit. (1) VGAME `1377:0874`, `0886`, `08A3`, `094A` (planar fill): after each of
+four `OUT dx,al` to the graphics controller the body went on although the write wakes the run loop; each now stops after the OUT with its clock
+charged (`if (!room(c, 1)) { c->icount++; c->ip = next; return 1; }`). (2) VGAME `120A:0815` (vertex transform), seed `0x27182818`, state 1606: a
+harness gap, not the body. The part-switch escape `07C8-0812` lies below the entry, so the default self-write window missed a fuzzed stack that
+aliases it; `SPANS_SEG` now has `{VGAME.EXE, 0x120A, 0x0815, 0x07C8, 0x00F0}`. The tell: the original's per-instruction trace showed one-byte
+instructions where the dossier draft has a four-byte one (the executed bytes differed from the image). Run an extra-seed sweep before every gate; it is
+cheap and runs in the background. Debug recipe: `--only MODULE:HEXIP` takes the IP without leading zeros; print `g_state_index` in `compare()` to get
+the failing state, then trace that state's original run (`g_trace`, with registers) and compare it with the draft.
 
 ## Traps
 

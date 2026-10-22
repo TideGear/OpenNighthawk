@@ -97,6 +97,8 @@ After batch ap (22 Oct, six MGRAPHIC routines): **(141,230 + 1,826) / 163,862 = 
 
 After batch aq (22 Oct, nine MGRAPHIC routines): **(141,406 + 1,826) / 163,862 = 87.41%** (P2 85.87%, All 95.69%); 20,630 executed bytes remain unmatched (ASOUND.117 5,373, ASOUND.LOG 2,615, MGRAPHIC 2,317, RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042, F117.COM 688).
 
+After batch ar (22 Oct, nine larger MGRAPHIC routines): **(142,628 + 1,826) / 163,862 = 88.16%** (P2 86.54%, All 95.89%); 19,408 executed bytes remain unmatched (ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, MGRAPHIC 1,095, START 1,042, F117.COM 688, VGAME 549).
+
 Also at this refresh: 24,914 fixture-only matched bytes (not counted); 23,471 remaining executed bytes (ASOUND.117
 5,373, MGRAPHIC 3,159, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128, START 1,325, ISOUND.117 1,200, VGAME
 1,172, ISOUND.LOG 1,167, F117.COM 837, END 551, PLAYER 511, MPS_LOGO 497, SETUP 418, DSWAP 276, MISC 29). Of them,
