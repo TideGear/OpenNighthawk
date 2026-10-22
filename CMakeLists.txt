@@ -1170,6 +1170,34 @@ if(F117R_BUILD_TESTS)
       --only MISC.EXE:18)
     add_test(NAME matched_mgraphic_font_char_width COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:23A)
+    add_test(NAME matched_misc_joystick_button_pressed COMMAND func_lockstep --states 5000
+      --only MISC.EXE:29)
+    add_test(NAME matched_f117_load_overlay COMMAND func_lockstep --states 5000
+      --only F117.COM:3CB)
+    add_test(NAME matched_mgraphic_text_thunk_02a1 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:203)
+    add_test(NAME matched_mgraphic_text_thunk_02b0 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:20E)
+    add_test(NAME matched_mgraphic_text_thunk_0314 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:219)
+    add_test(NAME matched_mgraphic_text_thunk_0376 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:224)
+    add_test(NAME matched_mgraphic_text_thunk_03c9 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:22F)
+    add_test(NAME matched_mgraphic_text_frame_thunk_03c9 COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:19A)
+    add_test(NAME matched_mgraphic_get_surface_segment COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7C8)
+    add_test(NAME matched_mgraphic_set_surface_segment COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7C3)
+    add_test(NAME matched_mgraphic_clear_row_offset COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7CD)
+    add_test(NAME matched_mgraphic_get_constant_segment COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7E4)
+    add_test(NAME matched_mgraphic_get_flag_byte COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:80F)
+    add_test(NAME matched_mgraphic_table_word COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:12BA)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

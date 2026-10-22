@@ -81439,7 +81439,519 @@ refused:
 #undef XB
 }
 
+/* MISC.EXE 0007:0029 (far, cdecl): is a game-port button held? Argument
+ * [BP+6] is the button number (0 to 3 are buttons 1, 2, 3 and 4 of the two
+ * joysticks as the port numbers them). The routine reads the joystick port
+ * 0201h; the buttons are its bits 4 to 7 and a pressed button reads 0, so it
+ * shifts AL right by (button + 4), keeps bit 0 and flips it with xor 1:
+ * the answer in AX is 1 when the button is pressed and 0 when it is not
+ * (AH is cleared first). The shift count is the low byte of (button + 4),
+ * taken by the machine's shift helper exactly as the original's SHR AL,CL;
+ * a count of 8 or more clears AL, a count of 0 leaves AL as read. CX is
+ * left holding that count, DX 0201h, BP and SP restored. The port read is
+ * the one access: the three instructions before it are charged before it
+ * and the IN itself after it, as the machine's clock sees an IN. Flags are
+ * those of the final XOR. Leaves by a far return. */
+static int misc_joystick_button_pressed(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 12 + IO_SLACK(1))) return 0;
+    XB(3, 0x0029);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_DX] = 0x0201;
+    x86_in(c, c->r[R_DX], 0);                                              /* in al, dx */
+    XB(9, 0x002F);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));  /* the button number */
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], (uint16_t)(int16_t)(int8_t)0x04, 1);   /* add cx, 4 */
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), get_r8(c, R_CL), 0));        /* shr al, cl */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x01, 0));      /* and al, 1 */
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));   /* sub ah, ah */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], 0x0001, 1);            /* xor ax, 1 */
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* F117.COM 0000:03CB (near, one argument in DX): the launcher's overlay loader.
+ * DX holds the near address (in DS) of the file name. The routine loads that file
+ * as an overlay (DOS 4B03h) into a memory block of its own and returns the
+ * block's segment in AX. It is the same C routine as the setup program's loader
+ * (SETUP 0A9F), written in assembly for the .COM launcher, where CS = DS = ES = SS.
+ *
+ *  - ES = DS; DX is kept on the stack and in [0616h] (the name's address).
+ *  - DOS 48h with BX = FFFFh asks for all of memory and must fail, BX coming back
+ *    as the largest free block. If it does not fail, "Allocated 1Mb of space????"
+ *    (04F5h) is printed (DOS 09h) and the program ends.
+ *  - DOS 48h for that size less 400h paragraphs (kept in [04E7h]); on failure
+ *    "MS-DOS lied to us about how much memory was available" (0500h) and the end.
+ *  - The block's segment goes into [04E5h] and into the load parameter block at
+ *    [04E9h] (load segment) and [04EBh] (relocation factor). DOS 4B03h with
+ *    DS:DX = the name and ES:BX = 04E9h; the stack pointer is kept in the code
+ *    word CS:[0614h] across the call. On failure, by the error code in AX:
+ *      2  the name is made '$'-terminated in place (its NUL becomes 24h), then
+ *         it is printed and the text at 0519h follows;
+ *      8  "Not enough memory to load file" (052Fh);
+ *      other: the code's hex digits are patched into the text at 0567h and
+ *         0568h ('A' + the high nibble of AL, 'A' + the low nibble of AX),
+ *         and that text (054Bh) is printed.
+ *    Every failure ends the program through 04E0h: MOV AX,4C00h / INT 21h.
+ *  - After a load SP is taken back from CS:[0614h] and SS = DS = CS (MOV SS holds
+ *    off interrupts for the next instruction: inhibit_at); ES = the block. The
+ *    overlay's sizes are the words at 1Eh and 20h of its block, in bytes: their
+ *    paragraphs (each >> 4, added) must not exceed [04E7h], or "Overlay has
+ *    overrun allocated memory" (056Ah) and the end. The entry points at 18h and
+ *    24h of the block go to [060Eh] and [060Ch].
+ *  - DOS 4Ah shrinks the block to those paragraphs + 8; failure prints "Unable to
+ *    shrink overlay memory allocation" (057Ch) and ends.
+ *  - DS = ES = CS, AX = the block's segment, RET (the return address is read with
+ *    the new SS, which is CS).
+ * Every INT 21h runs as original code (support_int, the machine's DOS). The ending
+ * at 04E0h sets AX = 4C00h and leaves the INT 21h at 04E3h to the original code:
+ * the program ends there. CS is read from the machine (a .COM runs wherever DOS
+ * put it), never assumed to be 0. The routine makes no calls. */
+static int f117_load_overlay(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NAME_PTR = 0x0616, SAVED_SP = 0x0614, BLOCK = 0x04E5, ROOM = 0x04E7, PARAMS = 0x04E9,
+           ENTRY_LO = 0x060E, ENTRY_HI = 0x060C, HEX_HI = 0x0567, HEX_LO = 0x0568 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    /* An error message: MOV DX,text / MOV AH,9 / INT 21h / JMP 04E0h (the program's end). */
+#define FAIL(at, text) do { XB(2, (at)); c->r[R_DX] = (text); set_r8(c, R_AH, 9); \
+                            if (!support_int(m, (uint16_t)((at) + 5))) return 1; \
+                            XB(1, (uint16_t)((at) + 7)); goto program_end; } while (0)
+
+    if (!room(c, 6)) return 0;
+    XB(6, 0x03CB);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    x86_push_reg(c, R_DX);
+    ds_put(c, NAME_PTR, c->r[R_DX]);
+    set_r8(c, R_AH, 0x48);
+    c->r[R_BX] = 0xFFFF;                                          /* all of memory: must fail */
+    if (!support_int(m, 0x03D7)) return 1;
+    XB(1, 0x03D9);
+    if (!x86_cond(c, 2)) FAIL(0x03DB, 0x04F5);                    /* jb 03E5 */
+
+    XB(3, 0x03E5);
+    set_r8(c, R_AH, 0x48);
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], 0x0400, 1);   /* the largest block less 400h */
+    ds_put(c, ROOM, c->r[R_BX]);
+    if (!support_int(m, 0x03EF)) return 1;
+    XB(1, 0x03F1);
+    if (!x86_cond(c, 3)) FAIL(0x03F3, 0x0500);                    /* jae 03FD */
+
+    XB(7, 0x03FD);
+    ds_put(c, BLOCK, c->r[R_AX]);
+    ds_put(c, PARAMS, c->r[R_AX]);                                /* load segment */
+    ds_put(c, (uint16_t)(PARAMS + 2), c->r[R_AX]);                /* relocation factor */
+    c->r[R_BX] = PARAMS;
+    c->r[R_AX] = 0x4B03;
+    c->r[R_DX] = cpu_pop16(c);                                    /* the name again */
+    seg_write16(c, c->seg[S_CS], SAVED_SP, c->r[R_SP]);
+    if (!support_int(m, 0x0412)) return 1;
+    XB(1, 0x0414);
+    if (x86_cond(c, 3)) goto loaded;                              /* jae 046E */
+    XB(2, 0x0416);
+    alu_op(c, 7, c->r[R_AX], 0x0002, 1);
+    if (!x86_cond(c, 5)) {                                        /* 2: file not found */
+        XB(1, 0x041B);
+        c->r[R_BX] = ds_get(c, NAME_PTR);
+        for (;;) {                                                /* scan to the name's NUL */
+            XB(2, 0x041F);
+            alu_op(c, 7, ds_get8(c, c->r[R_BX]), 0x00, 0);
+            if (x86_cond(c, 4)) break;
+            XB(2, 0x0424);
+            c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+        }
+        XB(3, 0x0427);
+        ds_put8(c, c->r[R_BX], 0x24);                             /* '$' ends the name for DOS 09h */
+        c->r[R_DX] = ds_get(c, NAME_PTR);
+        set_r8(c, R_AH, 9);
+        if (!support_int(m, 0x0430)) return 1;
+        XB(2, 0x0432);
+        c->r[R_DX] = 0x0519;
+        set_r8(c, R_AH, 9);
+        if (!support_int(m, 0x0437)) return 1;
+        XB(1, 0x0439);
+        goto program_end;
+    }
+    XB(2, 0x043C);
+    alu_op(c, 7, c->r[R_AX], 0x0008, 1);
+    if (!x86_cond(c, 5)) FAIL(0x0441, 0x052F);                    /* 8: no memory */
+    XB(14, 0x044B);                                               /* any other code: its digits */
+    cpu_push16(c, c->r[R_AX]);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0xF0, 0));
+    for (unsigned k = 0; k < 4; k++)
+        set_r8(c, R_AL, (uint8_t)x86_shift(c, 4, get_r8(c, R_AL), 1, 0));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x41, 0));
+    ds_put8(c, HEX_HI, get_r8(c, R_AL));
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x000F, 1);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x41, 0));
+    ds_put8(c, HEX_LO, get_r8(c, R_AL));
+    c->r[R_DX] = 0x054B;
+    set_r8(c, R_AH, 9);
+    if (!support_int(m, 0x0469)) return 1;
+    XB(1, 0x046B);
+    goto program_end;
+
+loaded:                                                           /* 0x046E */
+    XB(26, 0x046E);
+    c->r[R_SP] = seg_read16(c, c->seg[S_CS], SAVED_SP);
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_SS] = c->r[R_AX];
+    c->inhibit_at = c->icount - 26 + 3;                           /* MOV SS, the block's third instruction */
+    c->seg[S_DS] = c->r[R_AX];
+    c->seg[S_ES] = ds_get(c, BLOCK);
+    c->r[R_DI] = 0x0018;
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    ds_put(c, ENTRY_LO, c->r[R_AX]);
+    c->r[R_DI] = 0x0024;
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    ds_put(c, ENTRY_HI, c->r[R_AX]);
+    c->r[R_DI] = 0x001E;
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);         /* the overlay's sizes, in bytes */
+    for (unsigned k = 0; k < 4; k++) c->r[R_BX] = x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_DI] = 0x0020;
+    c->r[R_CX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    for (unsigned k = 0; k < 4; k++) c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_CX], 1);   /* paragraphs */
+    alu_op(c, 7, c->r[R_BX], ds_get(c, ROOM), 1);
+    if (!x86_cond(c, 6)) FAIL(0x04B3, 0x056A);                    /* jbe 04BD: overrun */
+
+    XB(4, 0x04BD);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], 0x0008, 1);
+    set_r8(c, R_AH, 0x4A);
+    c->r[R_CX] = ds_get(c, BLOCK);
+    c->seg[S_ES] = c->r[R_CX];
+    if (!support_int(m, 0x04C8)) return 1;                        /* shrink the block */
+    XB(1, 0x04CA);
+    if (!x86_cond(c, 3)) FAIL(0x04CC, 0x057C);                    /* jae 04D6 */
+
+    XB(5, 0x04D6);
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_DS] = c->r[R_AX];
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, BLOCK);                                /* the result: the block's segment */
+    near_ret(c);
+    return 1;
+
+program_end:                                                      /* 0x04E0 */
+    XB(1, 0x04E0);
+    c->r[R_AX] = 0x4C00;
+    c->ip = 0x04E3;                                               /* INT 21h AH=4Ch: the original ends the program */
+    return 1;
+#undef FAIL
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0203 (far, entered with the CALLER's frame in BP): a thunk
+ * of the graphics library's text routines. The caller's frame holds two words
+ * above its saved BP and return address, [BP+8] and [BP+0A]; this thunk loads
+ * them into CX and DX (a coordinate pair for the routine it calls), pushes CS
+ * and calls 02A1 as a near call whose routine leaves by RETF: that RETF pops
+ * the call's return address 020D and the pushed CS together. The thunk then
+ * ends with its own RETF, back to whoever far-called it. No flag is set here.
+ * Five instructions: a block of three, the call, the RETF. */
+static int mgraphic_text_thunk_02A1(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0203);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x020A);
+    RUN(guest_call_pop(m, 0x02A1, 0x020D, 2));
+    XB(1, 0x020D);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:020E (far, entered with the CALLER's frame in BP): a thunk
+ * of the graphics library's text routines. The caller's frame holds two words
+ * above its saved BP and return address, [BP+8] and [BP+0A]; this thunk loads
+ * them into CX and DX (a coordinate pair for the routine it calls), pushes CS
+ * and calls 02B0 as a near call whose routine leaves by RETF: that RETF pops
+ * the call's return address 0218 and the pushed CS together. The thunk then
+ * ends with its own RETF, back to whoever far-called it. No flag is set here.
+ * Five instructions: a block of three, the call, the RETF. */
+static int mgraphic_text_thunk_02B0(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x020E);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x0215);
+    RUN(guest_call_pop(m, 0x02B0, 0x0218, 2));
+    XB(1, 0x0218);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0219 (far, entered with the CALLER's frame in BP): a thunk
+ * of the graphics library's text routines. The caller's frame holds two words
+ * above its saved BP and return address, [BP+8] and [BP+0A]; this thunk loads
+ * them into CX and DX (a coordinate pair for the routine it calls), pushes CS
+ * and calls 0314 as a near call whose routine leaves by RETF: that RETF pops
+ * the call's return address 0223 and the pushed CS together. The thunk then
+ * ends with its own RETF, back to whoever far-called it. No flag is set here.
+ * Five instructions: a block of three, the call, the RETF. */
+static int mgraphic_text_thunk_0314(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0219);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x0220);
+    RUN(guest_call_pop(m, 0x0314, 0x0223, 2));
+    XB(1, 0x0223);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0224 (far, entered with the CALLER's frame in BP): a thunk
+ * of the graphics library's text routines. The caller's frame holds two words
+ * above its saved BP and return address, [BP+8] and [BP+0A]; this thunk loads
+ * them into CX and DX (a coordinate pair for the routine it calls), pushes CS
+ * and calls 0376 as a near call whose routine leaves by RETF: that RETF pops
+ * the call's return address 022E and the pushed CS together. The thunk then
+ * ends with its own RETF, back to whoever far-called it. No flag is set here.
+ * Five instructions: a block of three, the call, the RETF. */
+static int mgraphic_text_thunk_0376(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0224);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x022B);
+    RUN(guest_call_pop(m, 0x0376, 0x022E, 2));
+    XB(1, 0x022E);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:022F (far, entered with the CALLER's frame in BP): a thunk
+ * of the graphics library's text routines. The caller's frame holds two words
+ * above its saved BP and return address, [BP+8] and [BP+0A]; this thunk loads
+ * them into CX and DX (a coordinate pair for the routine it calls), pushes CS
+ * and calls 03C9 as a near call whose routine leaves by RETF: that RETF pops
+ * the call's return address 0239 and the pushed CS together. The thunk then
+ * ends with its own RETF, back to whoever far-called it. No flag is set here.
+ * Five instructions: a block of three, the call, the RETF. */
+static int mgraphic_text_thunk_03C9(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x022F);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x0236);
+    RUN(guest_call_pop(m, 0x03C9, 0x0239, 2));
+    XB(1, 0x0239);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:019A (far, cdecl): a front door of the graphics library's
+ * text routines. Arguments: [BP+6] a frame pointer F (a word that becomes BP)
+ * and [BP+8] a string pointer (a word that becomes BX; the string is read
+ * through SS by the routine called). The routine saves BP, SI and DI, loads
+ * BX from the second argument, then replaces BP by the first, so the two words
+ * [F+8] and [F+0A] of that frame are what it loads into CX and DX (a
+ * coordinate pair). It pushes CS and calls 03C9 as a near call whose routine
+ * leaves by RETF (the RETF pops the call's return address 01AF and the pushed
+ * CS together). DI, SI and BP are restored and it ends with a RETF. No flag is set here.
+ * Fourteen instructions: a block of nine, the call, a block of four. */
+static int mgraphic_text_frame_thunk_03C9(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x019A);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_BP] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0006));
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008));
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000A));
+    cpu_push16(c, c->seg[S_CS]);
+    SM4_NEED(1, 0x01AC);
+    RUN(guest_call_pop(m, 0x03C9, 0x01AF, 2));
+    XB(4, 0x01AF);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07C8 (far, no arguments): answer the library's current
+ * drawing-surface segment. The graphics library keeps it in a word inside its
+ * own code segment, at CS:[0194] (the drawing routines load it into ES, e.g.
+ * at 0575 and 0721; 07C3 stores it and 07A3/07B2 select it from the page
+ * table at CS:[0787]). The routine reads that word into AX and returns far.
+ * Nothing else changes, flags included. Two instructions. */
+static int mgraphic_get_surface_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x07C8);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0194);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07C3 (far, no arguments): set the library's current
+ * drawing-surface segment. It stores AX into the word at CS:[0194] of the
+ * library's own code segment (the word the drawing routines load into ES and
+ * 07C8 reads back) and returns far. AX and the flags are untouched. Two
+ * instructions. */
+static int mgraphic_set_surface_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x07C3);
+    seg_write16(c, c->seg[S_CS], 0x0194, c->r[R_AX]);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07CD (far, no arguments): clear the library's row
+ * offset. The word at CS:[0196] of the library's own code segment is added
+ * to DI by the drawing routines (0F7E, 0FE6, 1061, 10CF) and set from a
+ * stack argument by 07D5; this entry stores 0 there and returns far. No
+ * register and no flag changes. Two instructions. */
+static int mgraphic_clear_row_offset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x07CD);
+    seg_write16(c, c->seg[S_CS], 0x0196, 0x0000);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07E4 (far, no arguments): answer the library's constant
+ * segment value. The routine is "mov ax, imm16; retf": AX takes the word at
+ * CS:07E5 (the immediate, 1450h as shipped; the body reads it from the
+ * loaded code rather than assuming it, as a relocated or patched word would
+ * differ) and returns far. Nothing else changes, flags included. Two
+ * instructions. */
+static int mgraphic_get_constant_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x07E4);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x07E5);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:080F (far, no arguments): answer the library's flag
+ * byte. The byte at CS:[0198] of the library's own code segment (set to 0 and
+ * 1 by 11FB and 1204) is read into AL; AH keeps what it held. Return far.
+ * The flags are untouched. Two instructions. */
+static int mgraphic_get_flag_byte(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x080F);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_CS], 0x0198)));
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:12BA (far, DI = index): look up a word of the library's
+ * header table. The table starts at CS:0004 of the library's own code segment;
+ * DI is doubled into a byte offset (shl di,1: the flags are those of that
+ * shift, DI keeps the doubled value) and AX takes the word at CS:[DI+4]
+ * (16-bit offset, so it wraps). Return far. Three instructions. */
+static int mgraphic_table_word(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x12BA);
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0004));
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12BA, mgraphic_table_word, "AX = word at CS:[2*DI+4] of the header table (DI doubled in place)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x080F, mgraphic_get_flag_byte, "AL = the flag byte at CS:[0198]", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07E4, mgraphic_get_constant_segment, "AX = the constant word at CS:07E5 (1450h as shipped)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07CD, mgraphic_clear_row_offset, "clear the row-offset word at CS:[0196]", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07C3, mgraphic_set_surface_segment, "set the current drawing-surface segment (word at CS:[0194]) from AX", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07C8, mgraphic_get_surface_segment, "current drawing-surface segment (word at CS:[0194]) into AX", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x019A, mgraphic_text_frame_thunk_03C9, "far function: a frame pointer and a string pointer in, the frame's [8],[0A] to CX,DX, near call 03C9", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x022F, mgraphic_text_thunk_03C9, "far thunk: the caller's [BP+8],[BP+0A] to CX,DX, then near call 03C9", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0224, mgraphic_text_thunk_0376, "far thunk: the caller's [BP+8],[BP+0A] to CX,DX, then near call 0376", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0219, mgraphic_text_thunk_0314, "far thunk: the caller's [BP+8],[BP+0A] to CX,DX, then near call 0314", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x020E, mgraphic_text_thunk_02B0, "far thunk: the caller's [BP+8],[BP+0A] to CX,DX, then near call 02B0", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0203, mgraphic_text_thunk_02A1, "far thunk: the caller's [BP+8],[BP+0A] to CX,DX, then near call 02A1", 2 },
+    { "matched", "F117.COM", F117_COM_47304, 0x0000, 0x03CB, f117_load_overlay, "load an overlay file into a memory block of its own (the launcher's loader)", 1 },
+    { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x0029, misc_joystick_button_pressed, "game-port joystick button test (port 201h bit button+4, 1 when pressed)", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x023A, mgraphic_font_char_width, "signed width of a character in a font (record table lookup)", 2 },
     { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x0018, misc_clear_shift_state, "clear the BIOS keyboard shift flags (0040:0017 low nibble)", 2 },
     { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x000A, misc_key_waiting, "BIOS keyboard check: AX 0 if a key waits, FFFFh if not (INT 16h AH=1)", 2 },

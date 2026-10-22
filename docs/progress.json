@@ -166,8 +166,8 @@
     "creditable_bytes": 165265,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 39482,
-      "credited": 5601,
+      "bytes": 39610,
+      "credited": 6017,
       "reviewed_static_bytes": 13351,
       "by_module": {
         "ASOUND.117": {
@@ -191,8 +191,8 @@
           "reviewed_static_bytes": 628
         },
         "F117.COM": {
-          "bytes": 837,
-          "credited": 0,
+          "bytes": 965,
+          "credited": 277,
           "reviewed_static_bytes": 0
         },
         "ISOUND.117": {
@@ -207,12 +207,12 @@
         },
         "MGRAPHIC": {
           "bytes": 3237,
-          "credited": 78,
+          "credited": 193,
           "reviewed_static_bytes": 0
         },
         "MISC": {
           "bytes": 65,
-          "credited": 36,
+          "credited": 60,
           "reviewed_static_bytes": 0
         },
         "MPS_LOGO": {
