@@ -1162,6 +1162,14 @@ if(F117R_BUILD_TESTS)
       --only PLAYER.EXE:244)
     add_test(NAME matched_player_main COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:10)
+    add_test(NAME matched_misc_dos_read_char_echo COMMAND func_lockstep --states 5000
+      --only MISC.EXE:0)
+    add_test(NAME matched_misc_key_waiting COMMAND func_lockstep --states 5000
+      --only MISC.EXE:A)
+    add_test(NAME matched_misc_clear_shift_state COMMAND func_lockstep --states 5000
+      --only MISC.EXE:18)
+    add_test(NAME matched_mgraphic_font_char_width COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:23A)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

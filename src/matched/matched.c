@@ -30,6 +30,18 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* File hashes (FNV-1a 64) of the launcher, graphics library and sound drivers: the matched table keys an entry by module name and
+   hash. Defined here, not in matched.h: an edit to matched.h moves the interpreter key of the gate. */
+#define F117_COM_47304 0xAF5D90BFD3B4CFDEULL
+#define MGRAPHIC_47304 0x96C8EC37FF154CA3ULL
+#define MISC_47304 0x377D5976F04E2063ULL
+#define ASOUND_117_47304 0x9CD012D9D4A2CF30ULL
+#define ISOUND_117_47304 0x10F8563448FCD578ULL
+#define RSOUND_117_47304 0x14F2AE43AE88ED82ULL
+#define ASOUND_LOG_47304 0x454CFFE39090A18EULL
+#define ISOUND_LOG_47304 0xDE8FC2B5DD94E701ULL
+#define RSOUND_LOG_47304 0xB37C0EBD1ABBF62AULL
+
 
 static int default_runner(machine_t *m) { return machine_run(m, m->run_until); }
 matched_runner_fn matched_runner = default_runner;
@@ -81263,7 +81275,175 @@ next:
 #undef XB
 }
 
+/* MISC.EXE 0007:0000 (far, no arguments): DOS console input with echo.
+ * Sets AH to 01h and makes the INT 21h call; whatever DOS answers (AL the
+ * character read) and the flags it leaves stay as they are, then RETF.
+ * Three instructions. The INT 21h is made as translated code makes it
+ * (st4_int21): the machine's DOS takes it; when control went elsewhere
+ * (a handler, a program end) or it does not come back to the next
+ * instruction the routine hands back at once. */
+static int misc_dos_read_char_echo(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(1, 0x0000);
+    set_r8(c, R_AH, 0x01);
+    if (!st4_int21(m, 0x0002)) return 1;
+    XB(1, 0x0004);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MISC.EXE 0007:000A (far, no arguments): is a key waiting in the BIOS
+ * keyboard buffer? Sets AH to 01h and makes the INT 16h call (check for a
+ * keystroke: ZF set when the buffer is empty). Empty (ZF set): AX = FFFFh
+ * (0013h: sub ax,ax; not ax); a key waiting: AX = 0 (0010h: sub ax,ax).
+ * Then RETF. The INT 16h is made as translated code makes it: IP past it,
+ * the machine's BIOS (its interrupt hook) or the vector takes it, one
+ * instruction. If control is elsewhere afterwards the routine hands back
+ * at once; time a BIOS transfer charges is not an instruction, so room is
+ * checked again after the call. The two exits' arithmetic goes through
+ * the same SUB helper as the original (flags as a SUB AX,AX leaves them). */
+static int misc_key_waiting(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(1, 0x000A);
+    set_r8(c, R_AH, 0x01);
+    {
+        const uint16_t cs_ = c->seg[S_CS];
+        c->op_cs = cs_;
+        c->op_ip = 0x000C;
+        c->ip = 0x000E;
+        cpu_interrupt(c, 0x16);
+        c->icount++;
+        if (c->seg[S_CS] != cs_ || c->ip != 0x000E || c->halted) return 1;
+    }
+    XB(1, 0x000E);
+    if (x86_cond(c, 4)) goto buffer_empty;
+    XB(2, 0x0010);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    far_ret(c);
+    return 1;
+buffer_empty:
+    XB(3, 0x0013);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)~c->r[R_AX];
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MISC.EXE 0007:0018 (far, no arguments): clear the BIOS keyboard shift
+ * state. Saves ES, points it at segment 0 (AX = 0 through SUB AX,AX, so the
+ * flags are those of that SUB), reads the BIOS keyboard flag byte at
+ * 0040:0017 (0000:0417), masks off its low nibble (right shift, left shift,
+ * ctrl, alt: AND AL,F0h) and writes it back. AL keeps the masked byte, AX's
+ * high byte stays 0, ES is restored; RETF. Eight instructions, straight
+ * through. */
+static int misc_clear_shift_state(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 8)) return 0;
+    XB(8, 0x0018);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_ES] = c->r[R_AX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], 0x0417)));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0xF0, 0));
+    mem_write8(c, phys(c->seg[S_ES], 0x0417), get_r8(c, R_AL));
+    c->seg[S_ES] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:023A (far, cdecl): the width of one character in a font,
+ * as a signed value. Arguments: [BP+6] the character (a byte), [BP+8] the
+ * font number (a word). The routine switches to the library's data segment
+ * (the word of the "mov ax, imm16 / mov ds, ax" pair at 023E, which the
+ * loader relocates: it is read from the loaded code, never assumed), where
+ * [00D0] is the count of fonts and the words from 00D2 are the font
+ * records' pointers. It starts with AX = 0 and leaves through 0282 on every
+ * refusal, so a refusal answers the sum of AH and AL as they stand then:
+ *   - a character with bit 7 set (js) is refused at once;
+ *   - a font number above the count (unsigned) is refused, and so is the
+ *     number that makes (number + 1) * 2 wrap to zero (je after shl);
+ *   - the pointer p comes from [00D0 + (number + 1) * 2]; the record's
+ *     first and last character are the bytes at p-8 and p-7: a character
+ *     outside them (jb, ja) is refused;
+ *   - AH takes the byte at p-3 (an adjustment), AL the byte at p-5 (a flag):
+ *     a record whose flag is not zero is refused (jne), with AL the flag;
+ *   - otherwise AL is the width byte at p-9-(last-character): the widths
+ *     are stored downwards from p-9, the last character first.
+ * The answer is AL + AH (a byte add: its carry and flags stay), then the
+ * byte sign-extended into AX (cbw). BX, CX and the flags are left as the
+ * original leaves them at the point it stopped. DS and BP are restored.
+ * Blocks follow the branch targets; pointer and table reads wrap in the
+ * data segment like the original's 16-bit offsets. */
+static int mgraphic_font_char_width(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x023A);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x023F);                     /* the relocated data segment */
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);       /* xor ax, ax */
+    set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6))));
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 1, get_r8(c, R_CL), get_r8(c, R_CL), 0));   /* or cl, cl */
+    if (x86_cond(c, 8)) goto refused;                                     /* js: bit 7 of the character */
+    XB(3, 0x024C);
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8));
+    alu_op(c, 7, c->r[R_BX], seg_read16(c, c->seg[S_DS], 0x00D0), 1);
+    if (x86_cond(c, 7)) goto refused;                                     /* ja: number above the count */
+    XB(3, 0x0255);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    if (x86_cond(c, 4)) goto refused;                                     /* je: (number + 1) * 2 wrapped */
+    XB(3, 0x025A);
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x00D0));
+    alu_op(c, 7, get_r8(c, R_CL), mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0xFFF8))), 0);
+    if (x86_cond(c, 2)) goto refused;                                     /* jb: below the first character */
+    XB(2, 0x0263);
+    alu_op(c, 7, get_r8(c, R_CL), mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0xFFF9))), 0);
+    if (x86_cond(c, 7)) goto refused;                                     /* ja: above the last character */
+    XB(4, 0x0268);
+    set_r8(c, R_AH, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0xFFFD))));
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0xFFFB))));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al, al */
+    if (x86_cond(c, 5)) goto refused;                                     /* jne: the record's flag is set */
+    XB(7, 0x0272);
+    set_r8(c, R_AL, get_r8(c, R_CL));
+    set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0xFFF9))));
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 5, get_r8(c, R_CL), get_r8(c, R_AL), 0));   /* sub cl, al: last - character */
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 6, get_r8(c, R_CH), get_r8(c, R_CH), 0));   /* xor ch, ch */
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], (uint16_t)(int16_t)(int8_t)0xF7, 1);   /* add bx, -9 */
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_CX], 1);       /* sub bx, cx */
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_BX])));
+refused:
+    XB(5, 0x0282);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), get_r8(c, R_AH), 0));   /* add al, ah */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);              /* cbw */
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x023A, mgraphic_font_char_width, "signed width of a character in a font (record table lookup)", 2 },
+    { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x0018, misc_clear_shift_state, "clear the BIOS keyboard shift flags (0040:0017 low nibble)", 2 },
+    { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x000A, misc_key_waiting, "BIOS keyboard check: AX 0 if a key waits, FFFFh if not (INT 16h AH=1)", 2 },
+    { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x0000, misc_dos_read_char_echo, "DOS console input with echo (INT 21h AH=1)", 2 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0010, player_main, "the player's main: usage message, then each picture file named, then play out", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0244, player_timer_program_count, "program the timer chip with the tick count when it changed", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x223A, player_raise, "raise(signal): the run-time's signal dispatch", 1 },

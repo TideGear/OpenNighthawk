@@ -15,13 +15,13 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.68%, P3 100.00%, All 94.41%
+- **Scoreboard:** P1 100.00%, P2 81.73%, P3 100.00%, All 94.42%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,189 addresses matched; **165,256 / 204,747 creditable bytes** across
+- **Phase 2:** 1,193 addresses matched; **165,370 / 204,747 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 428 CTests, 63 routes run as 62 sessions,
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 432 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
 - **Where the remaining 39,491 bytes are** (`py tools/census_classify.py --census D:/f117-gate/census.tsv
   --named-cover D:/f117-gate/p2-batch-al-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b
