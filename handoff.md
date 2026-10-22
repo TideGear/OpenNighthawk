@@ -15,16 +15,16 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 85.48%, P3 100.00%, All 95.57%
+- **Scoreboard:** P1 100.00%, P2 85.71%, P3 100.00%, All 95.64%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,207 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **140,679 /
-  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 86.97%**. `docs/reference-reviewed.tsv` holds 38
+- **Phase 2:** 1,221 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **141,115 /
+  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 87.23%**. `docs/reference-reviewed.tsv` holds 38
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
-  stays-original entry to name its design rule. The accounted-for checklist is 0 / 42,949. Previous
+  stays-original entry to name its design rule. The accounted-for checklist is 0 / 42,958. Previous
   all-code measure (scores the naming item): **165,786 / 205,035 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to al are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence

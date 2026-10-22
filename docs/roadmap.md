@@ -152,12 +152,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now (21 Oct):** 1,207 addresses matched. The score covers the expanded
+      **Now (21 Oct):** 1,221 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
       **165,786 / 205,035 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **140,679 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (86.97%); P2 85.48%, overall 95.57%**. In the census
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **141,115 of the 163,862
+      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (87.23%); P2 85.71%, overall 95.64%**. In the census
       alone, named code runs 159,769 of 165,265 creditable bytes (1,108 rows wholly,
       294 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator

@@ -1205,6 +1205,34 @@ if(F117R_BUILD_TESTS)
       --only MGRAPHIC.EXE:80F)
     add_test(NAME matched_mgraphic_table_word COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:12BA)
+    add_test(NAME matched_mgraphic_pen_pixel_address COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:581)
+    add_test(NAME matched_mgraphic_sprite_clip_reset COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:C5D)
+    add_test(NAME matched_mgraphic_show_back_page COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:11F1)
+    add_test(NAME matched_mgraphic_set_pen_colour COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:55B)
+    add_test(NAME matched_mgraphic_set_data_word_00ce COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7FE)
+    add_test(NAME matched_mgraphic_set_row_offset COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7D5)
+    add_test(NAME matched_mgraphic_set_page_segment COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:791)
+    add_test(NAME matched_mgraphic_row_column_offset COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:814)
+    add_test(NAME matched_mgraphic_set_shake_count COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:1251)
+    add_test(NAME matched_mgraphic_copy_row_from_stack COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:12E0)
+    add_test(NAME matched_mgraphic_blit_transparent COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:EE6)
+    add_test(NAME matched_mgraphic_blit_transparent_entry COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:ED5)
+    add_test(NAME matched_mgraphic_page_copy_rect COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:1131)
+    add_test(NAME matched_mgraphic_select_page COMMAND func_lockstep --states 5000
+      --only MGRAPHIC.EXE:7AC)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

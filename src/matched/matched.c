@@ -81882,7 +81882,527 @@ static int mgraphic_table_word(machine_t *m)
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:0581 (near, registers out): the address of the pen's
+ * pixel on the current drawing surface, and the pen's colour. The line
+ * routine (0599) keeps its pen in its data segment: x at [185A], y at
+ * [185C], the colour byte at [1866]. AL takes the colour; DI takes the row
+ * start from the library's row table at CS:0004 (the word at CS:[2*y+4],
+ * y doubled by shl di,1, the offset wrapping in 16 bits), plus the row
+ * offset word at CS:[0196], plus x. The flags are those of the last add.
+ * Seven instructions, one block, near return. */
+static int mgraphic_pen_pixel_address(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x0581);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x1866)));             /* the pen's colour */
+    c->r[R_DI] = seg_read16(c, c->seg[S_DS], 0x185C);                      /* y */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);              /* shl di, 1 */
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0004));   /* the row's start */
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_CS], 0x0196), 1);   /* + the row offset */
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_DS], 0x185A), 1);   /* + x */
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0C5D (near, DS = the sprite's segment): reset the
+ * sprite clipper's state and test the sprite. The eight words at CS:0856,
+ * 0858, 085A, 085C (the rows and columns clipped off each side) and CS:084E,
+ * 0850, 0852, 0854 (the clipped origin and size) are set to 0, in that order.
+ * Then the answer is in ZF (and AX): a sprite segment of 0 is refused at
+ * once (AX = 0, ZF set); otherwise the sprite's first header word [0] is
+ * tested, and when it is not zero its second word [2]: ZF is set when either
+ * is zero, and AX holds the last word tested (the flags are those of OR AX,
+ * AX). The caller (0B70) skips the drawing on ZF. Near return. */
+static int mgraphic_sprite_clip_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    static const uint16_t cleared[8] = { 0x0856, 0x0858, 0x085A, 0x085C, 0x084E, 0x0850, 0x0852, 0x0854 };
+    if (!room(c, 12)) return 0;
+    XB(12, 0x0C5D);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);        /* xor ax, ax */
+    for (unsigned k = 0; k < 8; k++) seg_write16(c, c->seg[S_CS], cleared[k], c->r[R_AX]);
+    c->r[R_AX] = c->seg[S_DS];
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);        /* or ax, ax: no sprite segment */
+    if (x86_cond(c, 4)) goto done;
+    XB(3, 0x0C85);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x0000);                      /* the first header word */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 4)) goto done;
+    XB(2, 0x0C8C);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x0002);                      /* the second header word */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+done:
+    XB(1, 0x0C91);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:11F1 (far, AX = a count of words): show the back page.
+ * When the library's word at CS:[11DC] is not zero (no separate back page is
+ * in use) it only clears the "page copied" byte at CS:[0198] and returns, the
+ * flags those of the CMP. Otherwise it sets that byte to 1 and copies AX
+ * words from offset 0 of the back page (segment word CS:[0789], page 1 of the
+ * page table at CS:0787) to offset 0 of page 0 (CS:[0787]) with REP MOVSW,
+ * in the direction DF gives, one clock a word (one for a count of 0). DS, ES,
+ * SI and DI are restored; CX is left 0 by the copy and the flags are those
+ * of XOR DI, DI. A copy without room for all its words hands back at the REP
+ * with nothing of it done. Return far. */
+static int mgraphic_show_back_page(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x11F1);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    alu_op(c, 7, seg_read16(c, c->seg[S_CS], 0x11DC), 0, 1);               /* cmp word cs:[11DC], 0 */
+    if (!x86_cond(c, 4)) {
+        XB(4, 0x11FB);
+        mem_write8(c, phys(c->seg[S_CS], 0x0198), 0);                       /* nothing copied */
+        c->seg[S_ES] = cpu_pop16(c);
+        c->seg[S_DS] = cpu_pop16(c);
+        far_ret(c);
+        return 1;
+    }
+    XB(8, 0x1204);
+    mem_write8(c, phys(c->seg[S_CS], 0x0198), 1);                           /* the page was copied */
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x0789);                     /* page 1, the back page */
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], 0x0787);                     /* page 0 */
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = (uint16_t)alu_op(c, 6, c->r[R_SI], c->r[R_SI], 1);
+    c->r[R_DI] = (uint16_t)alu_op(c, 6, c->r[R_DI], c->r[R_DI], 1);
+    c->r[R_CX] = c->r[R_AX];
+    SM4_NEED(c->r[R_CX] ? c->r[R_CX] : 1u, 0x121C);
+    c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);               /* rep movsw */
+    XB(5, 0x121E);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:055B (far, cdecl): set the pen colour. The argument's
+ * low byte [SP+4] (above the far return address) is the colour; the library
+ * keeps it in the byte at [1866] of its data segment (the line routine's
+ * pen, 0581 reads it). The routine takes BX = SP, AH = the colour byte,
+ * pushes DS, loads DX with the data segment - the word of the
+ * "mov dx, imm16 / mov ds, dx" pair at 0563, which the loader relocates: it
+ * is read from the loaded code, never assumed - sets DS from DX, stores AH at
+ * [1866], pops DS and returns far. AL, CX and the flags are untouched; BX
+ * leaves as the entry SP and DX as the data segment. 0561 is an inner entry
+ * of the same code with the colour already in AH (the push of DS onward);
+ * this body covers those bytes once. Eight instructions, one block. */
+static int mgraphic_set_pen_colour(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 8)) return 0;
+    XB(8, 0x055B);
+    c->r[R_BX] = c->r[R_SP];
+    set_r8(c, R_AH, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4))));   /* the colour */
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0563);                     /* the relocated data segment */
+    c->seg[S_DS] = c->r[R_DX];
+    mem_write8(c, phys(c->seg[S_DS], 0x1866), get_r8(c, R_AH));           /* the pen colour */
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07FE (far, cdecl): store a word in the library's data
+ * segment at [00CE] (the word just below the font count [00D0] that 023A
+ * reads; no code in the library reads [00CE] itself, so its user is the
+ * caller). The argument [SP+4] (above the far return address) is the word.
+ * The routine takes BX = SP, AX = the word, pushes DS, loads DX with the
+ * data segment - the word of the "mov dx, imm16 / mov ds, dx" pair at 0806,
+ * which the loader relocates: it is read from the loaded code, never
+ * assumed - sets DS from DX, stores AX at [00CE], pops DS and returns far.
+ * The flags and CX are untouched; AX leaves as the word, BX as the entry SP
+ * and DX as the data segment. 0804 is an inner entry of the same code with
+ * the word already in AX (the push of DS onward); this body covers those
+ * bytes once. Eight instructions, one block. */
+static int mgraphic_set_data_word_00CE(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 8)) return 0;
+    XB(8, 0x07FE);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4));   /* the word */
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0806);                     /* the relocated data segment */
+    c->seg[S_DS] = c->r[R_DX];
+    seg_write16(c, c->seg[S_DS], 0x00CE, c->r[R_AX]);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07D5 (far, cdecl): set the library's row-offset word,
+ * CS:[0196] in its own code segment (the drawing routines add it to their
+ * screen addresses, e.g. 0592; 07CD clears it). The argument [SP+4] (above
+ * the far return address) is the new value. The routine takes BX = SP,
+ * AX = the value, stores AX at CS:[0196] and returns far. The flags, CX and
+ * DX are untouched; AX leaves as the value and BX as the entry SP. 07DB is an
+ * inner entry of the same code with the value already in AX (the store and
+ * the return); this body covers those bytes once. Four instructions, one
+ * block. */
+static int mgraphic_set_row_offset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x07D5);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4));   /* the value */
+    seg_write16(c, c->seg[S_CS], 0x0196, c->r[R_AX]);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0791 (far, cdecl): set a drawing page's segment in the
+ * library's page table, the words at CS:0787 in its own code segment (07AC
+ * and 12D5 read them, 07A3 reads page 1). Arguments above the far return
+ * address: [SP+4] the segment, [SP+6] the page number. The routine takes
+ * BX = SP, AX = the segment, BX = the page number, doubles it (shl bx,1:
+ * the flags are that shift's, BX keeps the doubled value), stores AX at
+ * CS:[BX+0787] (16-bit offset, so it wraps) and returns far. Six
+ * instructions, one block. */
+static int mgraphic_set_page_segment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x0791);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4));   /* the segment */
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 6));   /* the page number */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);             /* shl bx, 1 */
+    seg_write16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787), c->r[R_AX]);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0814 (far, cdecl): a screen offset from a column and a
+ * row. Arguments above the far return address: [SP+4] the column, [SP+6]
+ * the row. The library's row table is the word table at CS:0004 of its own
+ * code segment (12BA reads the same table; 0581 adds a row's word to the
+ * pen's column). The routine takes BX = SP, AX = the column, BX = the row,
+ * doubles it (shl bx,1; BX keeps the doubled value), adds the word at
+ * CS:[BX+4] (16-bit offset, so it wraps) to AX - the flags are that add's -
+ * and returns far with AX = the offset. Six instructions, one block. */
+static int mgraphic_row_column_offset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x0814);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4));   /* the column */
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 6));   /* the row */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);             /* shl bx, 1 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0004)), 1);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:1251 (far, cdecl): set the screen-shake count. The
+ * argument's low byte [SP+4] (above the far return address) is the count;
+ * the library keeps it in the byte at CS:[1250] of its own code segment,
+ * which the palette-cycling routine at 125C counts down once a call while
+ * it writes a jittered CRTC start address (register 0Dh at 3D4h). The
+ * routine takes BX = SP, AL = the count byte, stores AL at CS:[1250] and
+ * returns far. AH, CX, DX and the flags are untouched; BX leaves as the
+ * entry SP. Four instructions, one block. */
+static int mgraphic_set_shake_count(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x1251);
+    c->r[R_BX] = c->r[R_SP];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4))));   /* the count */
+    mem_write8(c, phys(c->seg[S_CS], 0x1250), get_r8(c, R_AL));
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:12E0 (far, registers): copy one screen row (A0h words,
+ * 320 bytes) from the stack segment at SS:BP to ES:DI. The caller sets ES:DI
+ * (the destination, e.g. a page) and BP (the row's buffer in its stack
+ * frame). The routine pushes DS, sets DS = AX = SS, SI = BP, CX = 00A0h,
+ * runs REP MOVSW (one clock a word; the direction flag steps SI and DI, and
+ * the offsets wrap in their segments), pops DS and returns far. It leaves
+ * AX = SS, CX = 0, SI and DI past the row; BX, DX and the flags are
+ * untouched. Three blocks: the set-up, the copy (its own claim of room for
+ * 160 clocks), and the pop and return. */
+static int mgraphic_copy_row_from_stack(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 5)) return 0;
+    XB(5, 0x12E0);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = c->seg[S_SS];
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_SI] = c->r[R_BP];
+    c->r[R_CX] = 0x00A0;                                                  /* one row: 160 words */
+    SM4_NEED(0x00A0, 0x12EA);
+    c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);             /* rep movsw */
+    XB(2, 0x12EC);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0EE6 (far, entered with BP = a parameter block in the
+ * stack segment, as 0E41 and 0ED5 call it): copy a rectangle of pixels from
+ * a source page to a drawing page, skipping the zero (transparent) bytes.
+ * The block: [BP+0] the source page's segment, [BP+2] the source x, [BP+4]
+ * the source y, [BP+6] the destination page's number (its segment is the
+ * word CS:[0787 + 2n], the library's page table), [BP+8] the destination x,
+ * [BP+0A] the destination y, [BP+0C] the width, [BP+0E] the height. Both
+ * pages are 320-pixel screens addressed through the row table at CS:0004
+ * (the word at CS:[4 + 2*row]). For each row (LOOP on the height) the source
+ * offset is row start + source x and the destination's row start + x; each
+ * byte (LOOP on the width) is loaded with LODSB (SI steps as DF says) and
+ * stored unless it is zero, the destination stepping by INC DI. The row
+ * indices step by 2 (ADD DI,2 / ADD SI,2: the flags at the end are those of
+ * the last ADD SI,2). A count of 0 runs 65536 times, as LOOP does. DS, ES and
+ * BP are restored; AX, BX, CX, DX, SI and DI are left as the loops leave
+ * them. Return far. */
+static int mgraphic_blit_transparent(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define BLOCK(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
+    if (!room(c, 16)) return 0;
+    XB(16, 0x0EE6);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_AX] = BLOCK(0);                                                  /* the source page */
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_DI] = BLOCK(6);                                                  /* the destination page number */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0787));
+    c->r[R_BX] = BLOCK(0x0C);                                               /* width */
+    c->r[R_CX] = BLOCK(0x0E);                                               /* height */
+    c->r[R_DX] = BLOCK(8);                                                  /* destination x */
+    c->r[R_SI] = BLOCK(4);                                                  /* source y */
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    c->r[R_DI] = BLOCK(0x0A);                                               /* destination y */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->r[R_BP] = BLOCK(2);                                                  /* source x */
+row:
+    XB(8, 0x0F0E);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = c->r[R_BX];
+    c->r[R_SI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0004));
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_BP], 1);
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0004));
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_DX], 1);
+pixel:
+    XB(3, 0x0F21);
+    x86_lods(c, 0, c->seg[S_DS]);                                           /* lodsb */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));
+    if (x86_cond(c, 4)) goto next;                                          /* je: transparent */
+    XB(1, 0x0F26);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+next:
+    XB(2, 0x0F29);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                                /* loop */
+    if (c->r[R_CX] != 0) goto pixel;
+    XB(6, 0x0F2C);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], 2, 1);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 2, 1);
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                                /* loop */
+    if (c->r[R_CX] != 0) goto row;
+    XB(4, 0x0F37);
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef BLOCK
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0ED5 (far, cdecl): the front door of the transparent
+ * blit. Its one argument [BP+6] is the near address, in the stack segment,
+ * of the parameter block 0EE6 reads (source page, source x and y, page
+ * number, destination x and y, width, height). It saves BP, SI and DI, puts
+ * the block's address in BP and calls 0EE6 far (the call's segment word is
+ * read from the loaded code, where the loader relocates it), then restores
+ * DI, SI and BP and returns far; AX, BX, CX, DX and the flags are what the
+ * blit leaves. */
+static int mgraphic_blit_transparent_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+    if (!room(c, 5)) return 0;
+    XB(5, 0x0ED5);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_BP] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));   /* the parameter block */
+    SM4_NEED(1, 0x0EDD);
+    RUN(guest_call_far(m, 0x0EDD, 0x0EE2));                                 /* 0EE6, the blit */
+    XB(4, 0x0EE2);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:1131 (far, cdecl): copy a rectangle of pixels from one
+ * drawing page to another, every byte (no transparency). Arguments: [BP+6]
+ * the source page's number, [BP+8] source x, [BP+0A] source y, [BP+0C] the
+ * destination page's number, [BP+0E] destination x, [BP+10] destination y,
+ * [BP+12] the width, [BP+14] the height. A page's segment is the word
+ * CS:[0787 + 2n] of the library's page table (DS the source, ES the
+ * destination); both are 320-pixel screens addressed through the row table
+ * at CS:0004 (the word at CS:[4 + 2*row]). Each row (LOOP on the height:
+ * 0 runs 65536 times) is one REP MOVSB of the width, in the direction DF
+ * gives, from row start + source x to row start + destination x; the row
+ * indices step by 2 (ADD DI,2 / ADD SI,2: the flags at the end are those of
+ * the last ADD SI,2). DS, ES, SI, DI and BP are restored; BX keeps the width,
+ * DX the destination x, CX ends 0. A row's copy without room for all its
+ * bytes hands back at the REP with nothing of it done. Return far. */
+static int mgraphic_page_copy_rect(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define ARG(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
+    if (!room(c, 20)) return 0;
+    XB(20, 0x1131);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_BX] = ARG(6);                                                    /* the source page number */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));
+    c->r[R_SI] = ARG(0x0A);                                                 /* source y */
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    c->r[R_BX] = ARG(0x0C);                                                 /* the destination page number */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->seg[S_ES] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));
+    c->r[R_DX] = ARG(0x0E);                                                 /* destination x */
+    c->r[R_DI] = ARG(0x10);                                                 /* destination y */
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->r[R_BX] = ARG(0x12);                                                 /* width */
+    c->r[R_CX] = ARG(0x14);                                                 /* height */
+    c->r[R_BP] = ARG(8);                                                    /* source x */
+row:
+    XB(8, 0x1162);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_SI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_SI] + 0x0004));
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_BP], 1);
+    c->r[R_DI] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x0004));
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_DX], 1);
+    c->r[R_CX] = c->r[R_BX];
+    SM4_NEED(c->r[R_CX] ? c->r[R_CX] : 1u, 0x1175);
+    c->icount += rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);               /* rep movsb */
+    XB(6, 0x1177);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], 2, 1);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], 2, 1);
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                                /* loop */
+    if (c->r[R_CX] != 0) goto row;
+    XB(6, 0x1182);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef ARG
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:07AC (far, cdecl): select a drawing page as the current
+ * surface. The argument [SP+4] (above the far return address) is a page
+ * number; the library keeps the pages' segments in a word table inside its
+ * own code segment at CS:0787 (0791 fills it), and the current surface
+ * segment in the word at CS:[0194] (the drawing routines load it into ES).
+ * The routine takes BX = SP, AX = the page number, pushes BX, doubles the
+ * number into BX (shl bx,1: the flags are that shift's, BX the doubled
+ * value until the pop), reads the table word at CS:[BX+0787] (16-bit
+ * offset, so it wraps) into AX, stores it at CS:[0194], pops BX (so BX
+ * leaves as the entry SP) and returns far with AX = the page's segment.
+ * 07B2 is an inner entry of the same code with the page number already in
+ * AX (the push of BX onward); this body covers those bytes once. Nine
+ * instructions, one block. */
+static int mgraphic_select_page(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x07AC);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BX] + 4));   /* the page number */
+    x86_push_reg(c, R_BX);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);             /* shl bx, 1 */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0787));   /* the page's segment */
+    seg_write16(c, c->seg[S_CS], 0x0194, c->r[R_AX]);                     /* the current surface */
+    c->r[R_BX] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07AC, mgraphic_select_page, "select page [SP+4]: AX = page table word CS:[0787+2n], stored as the current surface CS:[0194]; BX = entry SP", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1131, mgraphic_page_copy_rect, "copy a width x height rectangle from one 320-wide page to another, a REP MOVSB per row (page table CS:0787, row table CS:0004)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0ED5, mgraphic_blit_transparent_entry, "far entry: BP = the parameter block address [BP+6], far call 0EE6 (transparent blit); SI, DI, BP kept", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0EE6, mgraphic_blit_transparent, "copy a width x height rectangle between 320-wide pages, zero bytes skipped (parameter block at SS:BP)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12E0, mgraphic_copy_row_from_stack, "copy one 320-byte row (A0h words) from SS:BP to ES:DI by REP MOVSW (DS kept, AX = SS)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x1251, mgraphic_set_shake_count, "screen-shake count: the byte [SP+4] to CS:[1250] (AL = it, BX = entry SP)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0814, mgraphic_row_column_offset, "AX = column [SP+4] + row table word CS:[4+2*[SP+6]] (BX = doubled row)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0791, mgraphic_set_page_segment, "page table: CS:[0787+2*[SP+6]] = [SP+4] (AX = the segment, BX = doubled page)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07D5, mgraphic_set_row_offset, "the word [SP+4] to the row-offset word CS:[0196] (AX = it, BX = entry SP)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07FE, mgraphic_set_data_word_00CE, "the word [SP+4] to [00CE] of the library data segment (relocated word at CS:0806)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x055B, mgraphic_set_pen_colour, "pen colour: the byte [SP+4] to [1866] of the library data segment (relocated word at CS:0563)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x11F1, mgraphic_show_back_page, "CS:[11DC] set: CS:[0198] = 0; else CS:[0198] = 1 and REP MOVSW of AX words from page 1 (CS:[0789]:0) to page 0 (CS:[0787]:0)", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0C5D, mgraphic_sprite_clip_reset, "zero the sprite clipper's eight CS words; ZF set when DS is 0 or the sprite header word [0] or [2] is 0", 1 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0581, mgraphic_pen_pixel_address, "AL = the pen colour [1866], DI = row table CS:[2*[185C]+4] + CS:[0196] + [185A] (the line routine's pen address)", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x12BA, mgraphic_table_word, "AX = word at CS:[2*DI+4] of the header table (DI doubled in place)", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x080F, mgraphic_get_flag_byte, "AL = the flag byte at CS:[0198]", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x07E4, mgraphic_get_constant_segment, "AX = the constant word at CS:07E5 (1450h as shipped)", 2 },
