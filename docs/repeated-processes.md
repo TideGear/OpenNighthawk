@@ -40,6 +40,9 @@ verification) is not an optimisation; it needs the owner's approval.
   then compared equal. Of the 1,248 old per-routine reports, 1,247 were unchanged at the common seed (`73C8` differs). New entries also passed six extra
   private seeds beyond the kit's five, with every planted defect caught. Evidence:
   `D:/f117-gate/at-precheck-verdict.json`; the three new optimized CTests took 2.80 s.
+- **Run the pre-check seeds together.** `D:/f117-gate/precheck_parallel.py LOGDIR SEED...` runs the three whole-table seeds at once
+  (8 workers each, 24 of the machine's 32 threads, BelowNormal): 11 minutes against 18 in series. Batch at's three seeds
+  gave identical tallies and identical per-routine lines either way, so no check changed; the saving is about 7 minutes a batch.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full
