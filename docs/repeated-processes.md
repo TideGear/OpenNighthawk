@@ -43,6 +43,8 @@ verification) is not an optimisation; it needs the owner's approval.
 - **Run the pre-check seeds together.** `D:/f117-gate/precheck_parallel.py LOGDIR SEED...` runs the three whole-table seeds at once
   (8 workers each, 24 of the machine's 32 threads, BelowNormal): 11 minutes against 18 in series. Batch at's three seeds
   gave identical tallies and identical per-routine lines either way, so no check changed; the saving is about 7 minutes a batch.
+- **Batch au pre-checks.** Three whole-table seeds and three extra seeds, each round through `precheck_parallel.py` (about 12 minutes a round),
+  all clean at 1,256 entries; the 1,251 older reports were unchanged. Evidence: `D:/f117-gate/au-pre3/` (final text) and `au-pre2/`.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full

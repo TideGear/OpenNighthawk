@@ -84710,7 +84710,378 @@ static int mgraphic_fill_spans_mode_zero(machine_t *m)
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:02B9 (near, entered by CALL from the text front ends 02A1 and 02B0 with the CALLER's
+ * frame in BP; the stack holds the near return address, then the ES and DS the front end saved, then the
+ * far return of the thunk that called it): the left clip of a text string.
+ *
+ * The caller's frame holds the clip window in two words, [BP+12h] (its left edge) and [BP+14h] (its right
+ * edge). The library's current text position is the word DS:[17FE]; SS:BX points at the string.
+ *   - A window whose right edge is below its left edge (the difference has its sign bit set) is empty:
+ *     reject.
+ *   - A text position already at or right of the window's left edge (unsigned) needs no skipping: a plain
+ *     near return, nothing written.
+ *   - Otherwise the window's left edge becomes the new text position DS:[17FE] and CX the old one. The
+ *     characters are walked from SS:BX: a zero byte ends the string (reject); a byte with its top bit set,
+ *     one above the font's last character DS:[1806] or one below its first DS:[1805] is skipped. A real
+ *     character has index AL - [1805]. Its width is DS:[1802] when that is not zero, else the byte of the
+ *     width table at DS:[17FA + index] plus DS:[1803]. CX is advanced by the width until it passes the
+ *     window's left edge (a signed comparison with DS:[17FE]); the part of that last character which lies
+ *     beyond the edge, AX - (CX - edge), is stored as a byte in DS:[1807] and the routine returns.
+ * The reject exit drops its own near return address (POP AX) and leaves by 03D1, the library's shared
+ * far-return tail: the pen's saved byte DS:[180B] is stored at SS:[DS:[180C]] when that pointer is not zero,
+ * DS:[17FE] is stored in the caller's frame word [BP+8], ES and DS are popped and a far return follows. The
+ * tail (03D1-03E7, ten instructions, separately named as the 03D1 routine) is run here whole, because the
+ * harness has no mid-point to hand back at: it is not part of this routine's credited bytes.
+ * No callees. The instructions are claimed block by block (a block starts at every branch target). */
+static int mgraphic_text_clip_left(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define FRAME(o_) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o_)))
+    if (!room(c, 5)) return 0;
+    XB(5, 0x02B9);
+    c->r[R_AX] = FRAME(0x14);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], FRAME(0x12), 1);        /* sub ax, [bp+12h] */
+    c->r[R_CX] = (uint16_t)alu_op(c, 6, c->r[R_CX], c->r[R_CX], 1);         /* xor cx, cx */
+    (void)alu_op(c, 7, c->r[R_AX], c->r[R_CX], 1);                          /* cmp ax, cx */
+    if (x86_cond(c, 8)) goto reject;                                        /* js: the window is empty */
+    XB(3, 0x02C5);
+    c->r[R_CX] = FRAME(0x12);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_DS], 0x17FE), c->r[R_CX], 1); /* cmp [17FE], cx */
+    if (x86_cond(c, 3)) goto done;                                          /* jae: already at or past the edge */
+    XB(3, 0x02CE);
+    {   const uint16_t old = seg_read16(c, c->seg[S_DS], 0x17FE);
+        seg_write16(c, c->seg[S_DS], 0x17FE, c->r[R_CX]);                   /* xchg [17FE], cx */
+        c->r[R_CX] = old; }
+    set_r8(c, 4, (uint8_t)alu_op(c, 6, get_r8(c, 4), get_r8(c, 4), 0));     /* xor ah, ah */
+    c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);                       /* dec bx (only the first time) */
+next:
+    XB(4, 0x02D5);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], c->r[R_BX])));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al, al */
+    if (x86_cond(c, 4)) goto reject;                                        /* je: the string's end */
+    XB(1, 0x02DD);
+    if (x86_cond(c, 8)) goto next;                                          /* js: a byte with its top bit set */
+    XB(2, 0x02DF);
+    (void)alu_op(c, 7, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_DS], 0x1806)), 0);   /* cmp al, [1806] */
+    if (x86_cond(c, 7)) goto next;                                          /* ja: past the font's last character */
+    XB(2, 0x02E5);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_DS], 0x1805)), 0));  /* sub al, [1805] */
+    if (x86_cond(c, 2)) goto next;                                          /* jb: before the font's first character */
+    XB(4, 0x02EB);
+    c->r[R_DI] = c->r[R_AX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x1802)));              /* the fixed width */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al, al */
+    if (!x86_cond(c, 5)) {                                                  /* jne 02FE: a fixed width */
+        XB(3, 0x02F4);
+        c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], seg_read16(c, c->seg[S_DS], 0x17FA), 1);   /* add di, [17FA] */
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_DI])));      /* the table's width */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_DS], 0x1803)), 0)); /* add al, [1803] */
+    }
+    XB(3, 0x02FE);
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);         /* add cx, ax */
+    (void)alu_op(c, 7, c->r[R_CX], seg_read16(c, c->seg[S_DS], 0x17FE), 1); /* cmp cx, [17FE] */
+    if (x86_cond(c, 14)) goto next;                                         /* jle: not yet past the edge */
+    XB(3, 0x0306);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], seg_read16(c, c->seg[S_DS], 0x17FE), 1);   /* sub cx, [17FE] */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);         /* sub ax, cx */
+    mem_write8(c, phys(c->seg[S_DS], 0x1807), get_r8(c, R_AL));             /* the part left of the edge */
+    goto done;                                                              /* the ret at 030F, claimed once in the shared return below */
+done:
+    XB(1, 0x030F);
+    c->ip = cpu_pop16(c);                                                   /* ret */
+    return 1;
+reject:
+    XB(2, 0x0310);
+    c->r[R_AX] = cpu_pop16(c);                                              /* pop ax: drop our own return address */
+    XB(3, 0x03D1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0x180C);
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);         /* or bx, bx */
+    if (x86_cond(c, 4)) goto saved;                                         /* je: no byte to store */
+    XB(2, 0x03D9);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x180B)));
+    mem_write8(c, phys(c->seg[S_SS], c->r[R_BX]), get_r8(c, R_AL));
+saved:
+    XB(5, 0x03DF);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x17FE);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8), c->r[R_AX]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);                                                             /* retf */
+    return 1;
+#undef FRAME
+#undef XB
+}
+
+/* MGRAPHIC 019C:037F, the third clip routine of the font-string pen (clip C), called
+ * near from the entry 0376 (after 03E8 pushed the caller's DS and ES and set BP).
+ * The caller's frame holds two byte limits, lo = [bp+0Eh] and hi = [bp+10h]; the live
+ * window is the start byte DS:[1800] (call it s) and the width byte DS:[1809] (w), so
+ * the window covers the bytes s .. e with e = s + w - 1 (8-bit). The font offset
+ * word DS:[17F8] steps by the font stride DS:[17FC] for every byte skipped at the front.
+ *
+ *   s > hi, or e < lo          the window lies wholly outside: reject. The routine
+ *                              POPs its own near return address (AX) and JUMPS to the
+ *                              shared far-return tail at 03D1 (restore ES and DS, RETF).
+ *                              That tail is another routine's code: this body hands
+ *                              back at 03D1 after the two instructions (pop, jmp) and
+ *                              the original runs the tail.
+ *   s < lo                     trim the front: width = e - lo + 1, start = lo,
+ *                              skipped = lo - s, and the font offset advances by
+ *                              skipped * stride (the product's high word is dropped).
+ *   e > hi                     trim the back: width = hi - s + 1, with s the ORIGINAL
+ *                              start byte held in DL.
+ *
+ * Every comparison is unsigned (JA, JB, JAE, JBE) on byte registers, and every
+ * arithmetic step goes through the same flag helpers the original's instructions set.
+ * Then it returns (near RET at 03C4).
+ */
+static int mgraphic_text_window_clip_bytes(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount+=(n); } while(0)
+#define DSB(o) mem_read8(c,phys(c->seg[S_DS],(uint16_t)(o)))
+#define DSW(o) seg_read16(c,c->seg[S_DS],(uint16_t)(o))
+#define BPB(o) mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+(o))))
+    if(!room(c,8)) return 0;
+    XB(8,0x037F);
+    set_r8(c,1,BPB(0x0E));                                   /* CL = lo */
+    set_r8(c,5,BPB(0x10));                                   /* CH = hi */
+    set_r8(c,6,DSB(0x1809));                                 /* DH = width */
+    set_r8(c,6,(uint8_t)alu_dec(c,get_r8(c,6),0));           /* width - 1 */
+    set_r8(c,2,DSB(0x1800));                                 /* DL = start */
+    set_r8(c,6,(uint8_t)alu_op(c,0,get_r8(c,6),get_r8(c,2),0));   /* DH = end */
+    (void)alu_op(c,7,get_r8(c,2),get_r8(c,5),0);
+    if(x86_cond(c,7)) goto reject;                           /* start > hi */
+    XB(2,0x0395);
+    (void)alu_op(c,7,get_r8(c,6),get_r8(c,1),0);
+    if(x86_cond(c,2)) goto reject;                           /* end < lo */
+    XB(2,0x0399);
+    (void)alu_op(c,7,get_r8(c,2),get_r8(c,1),0);
+    if(!x86_cond(c,3)) {                                     /* start < lo: trim the front */
+        XB(10,0x039D);
+        set_r8(c,0,get_r8(c,6));
+        set_r8(c,0,(uint8_t)alu_op(c,5,get_r8(c,0),get_r8(c,1),0));
+        set_r8(c,0,(uint8_t)alu_inc(c,get_r8(c,0),0));
+        mem_write8(c,phys(c->seg[S_DS],0x1809),get_r8(c,0));
+        mem_write8(c,phys(c->seg[S_DS],0x1800),get_r8(c,1));
+        set_r8(c,1,(uint8_t)alu_op(c,5,get_r8(c,1),get_r8(c,2),0));
+        set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+        set_r8(c,0,get_r8(c,1));
+        x86_mul16(c,DSW(0x17FC));
+        seg_write16(c,c->seg[S_DS],0x17F8,(uint16_t)alu_op(c,0,DSW(0x17F8),c->r[R_AX],1));
+    }
+    XB(2,0x03B8);
+    (void)alu_op(c,7,get_r8(c,6),get_r8(c,5),0);
+    if(!x86_cond(c,6)) {                                     /* end > hi: trim the back */
+        XB(3,0x03BC);
+        set_r8(c,5,(uint8_t)alu_op(c,5,get_r8(c,5),get_r8(c,2),0));
+        set_r8(c,5,(uint8_t)alu_inc(c,get_r8(c,5),0));
+        mem_write8(c,phys(c->seg[S_DS],0x1809),get_r8(c,5));
+    }
+    XB(1,0x03C4);
+    near_ret(c); return 1;
+reject:
+    XB(2,0x03C5);
+    c->r[R_AX]=cpu_pop16(c);                                 /* drop the near return */
+    c->ip=0x03D1;                                            /* JMP: the shared far-return tail */
+    return 1;
+#undef BPB
+#undef DSW
+#undef DSB
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:03D1, the common far-return tail of the text routines (the
+ * clip helpers jump to it on their reject paths and 03C9 falls into it).
+ * The text routines overwrite one byte of the string being drawn with a
+ * terminator and keep the original byte at DS:180B and the byte's address
+ * (an SS offset) at DS:180C. The tail puts that byte back through the
+ * pointer, but only while the pointer is nonzero (OR BX,BX sets the flags
+ * from it), stores the word DS:17FE (the final pen position) into the
+ * caller's frame at [BP+8], pops the caller's ES and then DS, and returns
+ * far: the far return takes the IP and CS that a thunk's PUSH CS / CALL left,
+ * so the thunk's own RETF finishes the return. No callees. Ten
+ * instructions, eight when the pointer is zero: three to the JE, two for the
+ * restore, five from 03DF to the RETF. */
+static int mgraphic_text_return_tail_restore_byte(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x03D1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0x180C);          /* the saved byte's address */
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);   /* or bx,bx */
+    if (!x86_cond(c, 4)) {                                      /* je 03DF skips the restore */
+        XB(2, 0x03D9);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x180B)));
+        mem_write8(c, phys(c->seg[S_SS], c->r[R_BX]), get_r8(c, 0));   /* ss:[bx] = the saved byte */
+    }
+    XB(5, 0x03DF);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x17FE);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0008), c->r[R_AX]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:03E8 (near, entered by CALL from the text front ends 02A1, 02B0, 0314, 0376 and 03C9 with
+ * the CALLER's frame in BP; CX and DX are the starting text position and window start, SS:BX points at the
+ * string): the shared start of the library's text routines. It does not return by RET: it takes the near
+ * return address off the stack into SI and leaves by JMP SI, with the two words it pushed (DS, then ES)
+ * still on the stack for the common return tail 03D1 to pop before its far return.
+ *
+ *   - SI = the return address; the caller's DS and ES are pushed (DS first).
+ *   - DS becomes the library's data segment: the word of the "mov ax, imm16 / mov ds, ax" pair at 03EB,
+ *     which the loader relocates, so it is read from the loaded code (03EC), never assumed.
+ *     ES = the word at [BP] of the caller's frame.
+ *   - DS:[17FE] = CX (the text position) and DS:[1800] = DX (the window start); DS:[180C] (the address of
+ *     the pen's saved byte), DS:[1807] and DS:[1808] are cleared.
+ *   - A string whose first byte (SS:[BX]) is zero is empty: leave by the far-return tail 03D1.
+ *   - The font index [BP+0Ch] must not be above the font count DS:[00D0] (unsigned) or the string is
+ *     rejected the same way. One more than the index, doubled, picks a word of the font table at
+ *     DS:[00D0 + 2*(index+1)]; a doubled value of zero also rejects. The table word (DI) is the end of the
+ *     font's header, whose bytes lie below it: DS:[17F8] = DI.
+ *   - From the header: AL = [DI-4]; when bit 0 of the caller's frame byte [BP+2] is set, [DI-2] is added
+ *     to it; AL is sign-extended and stored as the word DS:[1809]. [DI-3] goes to DS:[1803]. [DI-5] is
+ *     loaded; when it is not zero, [DI-3] is added to it (a byte add), and the result goes to DS:[1802].
+ *     [DI-8] goes to DS:[1805] and [DI-7] to DS:[1806]; AX = [DI-7] - [DI-8] (the last character less the
+ *     first); CL = [DI-6] - 1 goes to DS:[1804]; DI - 9 - AX goes to DS:[17FA] (the width table's base);
+ *     (AX + 1) << CL goes to DS:[17FC]. Then JMP SI.
+ * The far-return tail 03D1-03E7 (separately named as the 03D1 routine) is run here, on its three entries,
+ * because the harness has no mid-point to hand back at: it is not part of this routine's credited bytes.
+ * Its restore of the pen's saved byte (03D9-03DC) is skipped when DS:[180C] is zero, and this routine has
+ * just cleared that word, so the restore cannot happen on these entries and is not written out; eight
+ * instructions run in the tail. No callees. The instructions are claimed block by block (a block starts at
+ * every branch target). */
+static int mgraphic_text_begin_font_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 14)) return 0;
+    XB(14, 0x03E8);
+    c->r[R_SI] = cpu_pop16(c);                                              /* pop si: the near return address */
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x03EC);                       /* the relocated data segment */
+    c->seg[S_DS] = c->r[R_AX];
+    c->seg[S_ES] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0000));
+    seg_write16(c, c->seg[S_DS], 0x17FE, c->r[R_CX]);
+    seg_write16(c, c->seg[S_DS], 0x1800, c->r[R_DX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);         /* xor ax, ax */
+    seg_write16(c, c->seg[S_DS], 0x180C, c->r[R_AX]);
+    mem_write8(c, phys(c->seg[S_DS], 0x1807), get_r8(c, R_AL));
+    mem_write8(c, phys(c->seg[S_DS], 0x1808), get_r8(c, R_AL));
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_SS], c->r[R_BX])), get_r8(c, R_AL), 0);   /* cmp ss:[bx], al */
+    if (x86_cond(c, 4)) goto tail;                                          /* je: an empty string */
+    XB(3, 0x040B);
+    c->r[R_DI] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x000C));
+    (void)alu_op(c, 7, c->r[R_DI], seg_read16(c, c->seg[S_DS], 0x00D0), 1);   /* cmp di, [00D0] */
+    if (x86_cond(c, 7)) goto tail;                                          /* ja: the index is past the font count */
+    XB(3, 0x0414);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);               /* shl di, 1 */
+    if (x86_cond(c, 4)) goto tail;                                          /* je: the doubled index wrapped to zero */
+    XB(5, 0x0419);
+    c->r[R_DI] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0x00D0));   /* the font header's end */
+    seg_write16(c, c->seg[S_DS], 0x17F8, c->r[R_DI]);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFFC))));
+    alu_logic(c, (uint32_t)mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0002))) & 0x01, 0);   /* test [bp+2], 1 */
+    if (!x86_cond(c, 4)) {                                                  /* jne: the bit is set */
+        XB(1, 0x042A);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFFE))), 0));   /* add al, [di-2] */
+    }
+    XB(7, 0x042D);
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);                /* cbw */
+    seg_write16(c, c->seg[S_DS], 0x1809, c->r[R_AX]);
+    set_r8(c, 4, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFFD))));
+    mem_write8(c, phys(c->seg[S_DS], 0x1803), get_r8(c, 4));
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFFB))));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* or al, al */
+    if (!x86_cond(c, 4)) {                                                  /* jne: a fixed width byte */
+        XB(1, 0x043F);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), get_r8(c, 4), 0));   /* add al, ah */
+    }
+    XB(17, 0x0441);
+    mem_write8(c, phys(c->seg[S_DS], 0x1802), get_r8(c, R_AL));
+    set_r8(c, 4, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFF8))));
+    mem_write8(c, phys(c->seg[S_DS], 0x1805), get_r8(c, 4));
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFF9))));
+    mem_write8(c, phys(c->seg[S_DS], 0x1806), get_r8(c, R_AL));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), get_r8(c, 4), 0));   /* sub al, ah */
+    set_r8(c, 4, (uint8_t)alu_op(c, 6, get_r8(c, 4), get_r8(c, 4), 0));     /* xor ah, ah */
+    set_r8(c, 1, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0xFFFA))));
+    set_r8(c, 1, (uint8_t)alu_dec(c, get_r8(c, 1), 0));                     /* dec cl */
+    mem_write8(c, phys(c->seg[S_DS], 0x1804), get_r8(c, 1));
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], (uint16_t)(int16_t)(int8_t)0xF7, 1);   /* add di, -9 */
+    c->r[R_DI] = (uint16_t)alu_op(c, 5, c->r[R_DI], c->r[R_AX], 1);         /* sub di, ax */
+    seg_write16(c, c->seg[S_DS], 0x17FA, c->r[R_DI]);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, 1), 1);    /* shl ax, cl */
+    seg_write16(c, c->seg[S_DS], 0x17FC, c->r[R_AX]);
+    c->ip = c->r[R_SI];                                                     /* jmp si */
+    return 1;
+tail:
+    XB(3, 0x03D1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0x180C);
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);         /* or bx, bx: always zero here, 03FD cleared it */
+    XB(5, 0x03DF);                                                          /* (03D9-03DC, the byte put back, cannot be reached from this entry) */
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], 0x17FE);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8), c->r[R_AX]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);                                                             /* retf */
+    return 1;
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:03C9, the front end of the graphics library's font-string text routine. It is entered
+ * by a near CALL from the thunks (022F, 0224, 019A ...), which pushed CS first, so the stack holds the near
+ * return address and then the CS word: the routine ends in a RETF (the shared tail 03D1), never in a RET.
+ * The caller's frame is in BP, the coordinate pair in CX and DX and the string pointer in BX.
+ *
+ *   CALL 03E8     the shared set-up (original code, not matched here): it pops the return address 03CC
+ *                 into SI, pushes DS and ES, loads the library's data segment, sets the text position
+ *                 DS:[17FE] = CX and DS:[1800] = DX, selects the font from the frame word [BP+0Ch] and
+ *                 fills in its metrics, then returns by JMP SI. SP is therefore two words lower on
+ *                 return than before the call: the call is trapped at SP - 4 (pops = FFFCh), not at SP.
+ *                 When the string is empty or the font index is bad it leaves by a JMP to 03D1 and does not
+ *                 come back at all.
+ *   MOV SI, BX    the string pointer for the renderer.
+ *   CALL 061A     draw the font string at SS:SI (the matched mgraphic_draw_font_string; plain RET).
+ *   falls into 03D1, the shared far-return tail (restore the saved byte, store the text position into the
+ *   frame, pop ES and DS, RETF). That tail is a routine of its own (mgraphic_text_return_tail_restore_byte):
+ *   this body hands back at 03D1 and the code there finishes the routine, so the tail is not credited here.
+ * Three instructions: the two calls and the MOV; the callees charge their own clock (a call charges its own).
+ * No flag is set by the routine's own instructions. */
+static int mgraphic_text_front_font_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RUN(guest_call_pop(m, 0x03E8, 0x03CC, 0xFFFC));
+    XB(1, 0x03CC);
+    c->r[R_SI] = c->r[R_BX];
+    SM4_NEED(1, 0x03CE);
+    RUN(guest_call_pop(m, 0x061A, 0x03D1, 0));
+    c->ip = 0x03D1;
+    return 1;
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03C9, mgraphic_text_front_font_string, "far text front end (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03E8, mgraphic_text_begin_font_string, "near, shared text-routine start: save the caller's DS and ES, switch to the library data segment, store the pen position and window start, clear the saved-byte state and load the font's metric words from its header; an empty string or a bad font index leaves through the far-return tail 03D1; otherwise ends by JMP SI to the popped return address", 1 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03D1, mgraphic_text_return_tail_restore_byte, "far return tail shared by the text routines: put the string byte saved at DS:180B back through the pointer DS:180C (when nonzero), store DS:17FE to [BP+8], pop ES and DS, RETF", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x037F, mgraphic_text_window_clip_bytes, "near, clip C: trim the live string window (width byte DS:1809, start byte DS:1800, font offset DS:17F8) to the byte range in the caller's frame; on rejection drop the near return and hand back at the shared far-return tail 03D1", 1 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x02B9, mgraphic_text_clip_left, "text clip: skip a string's characters left of the clip window, or reject the string through the far-return tail", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0F3B, mgraphic_fill_spans_mode_zero, "far span-fill prefix: clear DX and its arithmetic flags, then hand control to the existing 0F3D span fill", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x061A, mgraphic_draw_font_string, "near: draw the SS:SI font string to the selected page, with embedded pen colours, variable glyph widths, clipping and opaque or transparent pixels", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0BC0, mgraphic_clip_sprite_bounds, "near: clip sprite offsets DI and DX against the BP rectangle; store visible origin, size and skips in live CS words; carry marks rejection", 1 },
