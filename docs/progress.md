@@ -81,13 +81,13 @@ would be a separate decision. The tooling item (weight 5) is unchanged.
 | share | 80.77% | **85.68%** |
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
-Current (23 Oct, batch ay): **(145,488 + 1,826) / 163,862 = 89.90%**
-(P2 88.11%, All 96.37%). The previous all-code measure is
-**171,634 / 205,925**; 26,081 matched bytes run only in fixtures and earn no gameplay credit.
-There are 16,548 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
-The largest remaining modules are ASOUND.117 5,373, ASOUND.LOG 2,501, RSOUND.117 2,213,
-RSOUND.LOG 2,074, ISOUND.117 1,200, ISOUND.LOG 637, F117.COM 688, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
-The accounted-for checklist is 0 / 43,839; the full module and
+Current (23 Oct, batch az): **(146,330 + 1,826) / 163,862 = 90.42%**
+(P2 88.56%, All 96.51%). The previous all-code measure is
+**172,483 / 205,932**; 26,088 matched bytes run only in fixtures and earn no gameplay credit.
+There are 15,706 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
+The largest remaining modules are ASOUND.117 5,356, ASOUND.LOG 2,154, RSOUND.117 2,106,
+RSOUND.LOG 1,828, ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 688, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+The accounted-for checklist is 0 / 43,846; the full module and
 checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
 [roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement
 is retained privately in `D:/f117-gate/gameplay-score-20261021/`.

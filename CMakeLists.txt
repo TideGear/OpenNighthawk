@@ -1376,6 +1376,32 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.LOG:344)
     add_test(NAME matched_isound_speaker_tick COMMAND func_lockstep --states 5000
       --only ISOUND.LOG:253)
+    add_test(NAME matched_asound_log_voice_record_start COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:515)
+    add_test(NAME matched_asound_log_reset_voice_records COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:58F)
+    add_test(NAME matched_asound_log_write_operator_level COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:A1C)
+    add_test(NAME matched_asound_log_write_operator_flags COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:B30)
+    add_test(NAME matched_asound_log_noise_step COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:333)
+    add_test(NAME matched_asound_117_noise_step COMMAND func_lockstep --states 5000
+      --only ASOUND.117:3C4)
+    add_test(NAME matched_isound_reset_sequencer_and_speaker_off COMMAND func_lockstep --states 5000
+      --only ISOUND.117:163)
+    add_test(NAME matched_isound_start_song_state COMMAND func_lockstep --states 5000
+      --only ISOUND.117:140)
+    add_test(NAME matched_rsound_log_reset_sequencer_state COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:171)
+    add_test(NAME matched_rsound_log_init_voice_record COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:40C)
+    add_test(NAME matched_rsound_117_reset_sequencer_records COMMAND func_lockstep --states 5000
+      --only RSOUND.117:B42)
+    add_test(NAME matched_rsound_117_random_step COMMAND func_lockstep --states 5000
+      --only RSOUND.117:B9C)
+    add_test(NAME matched_rsound_log_random_step COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:20A)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

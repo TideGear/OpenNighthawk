@@ -813,6 +813,19 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "RSOUND.LOG", 0x020A, 0x020A, 0x0011 },
+    { "RSOUND.117", 0x0B9C, 0x0B9C, 0x0011 },
+    { "RSOUND.117", 0x0B42, 0x0B42, 0x005A },
+    { "RSOUND.LOG", 0x040C, 0x040C, 0x004C },
+    { "RSOUND.LOG", 0x0171, 0x0171, 0x0099 },
+    { "ISOUND.117", 0x0140, 0x0140, 0x0023 },
+    { "ISOUND.117", 0x0163, 0x0163, 0x005A },
+    { "ASOUND.117", 0x03C4, 0x03C4, 0x0011 },
+    { "ASOUND.LOG", 0x0333, 0x0333, 0x0011 },
+    { "ASOUND.LOG", 0x0B30, 0x0B30, 0x0087 },
+    { "ASOUND.LOG", 0x0A1C, 0x0A1C, 0x0045 },
+    { "ASOUND.LOG", 0x058F, 0x0515, 0x00BD },
+    { "ASOUND.LOG", 0x0515, 0x0515, 0x0044 },
     { "ISOUND.LOG", 0x0253, 0x01AD, 0x0461 },
     { "ASOUND.LOG", 0x0344, 0x0332, 0x00FD },
     { "RSOUND.LOG", 0x021B, 0x021B, 0x0036 },
@@ -1836,6 +1849,19 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "RSOUND.LOG", 0x0000, 0x021B, 0x0036, 21, 21, "run the two tick callees on the driver private stack" },
     { "ASOUND.LOG", 0x0000, 0x0344, 0x00FD, 96, 96, "timer tick: noise step, sequencer on the private stack, voice sweeps, timer switch" },
     { "ISOUND.LOG", 0x0000, 0x0253, 0x0461, 303, 303, "PC speaker sequencer tick: advance the note and effect streams and program the speaker" },
+    { "ASOUND.LOG", 0x0000, 0x0515, 0x0044, 20, 20, "reset a voice record (fields, in-use byte) while the playing switch is held off" },
+    { "ASOUND.LOG", 0x0000, 0x058F, 0x0042, 18, 18, "reset the six voice records through 0515 (five calls, then hand back at the tail jump)", 0x0515, 118 },
+    { "ASOUND.LOG", 0x0000, 0x0A1C, 0x0045, 26, 26, "write the operator level register: 40h + voice offset, inverted level and key scale from the instrument record" },
+    { "ASOUND.LOG", 0x0000, 0x0B30, 0x0087, 50, 50, "write the operator characteristic register: 20h + voice offset, four flag bytes as bits plus the multiplier nibble" },
+    { "ASOUND.LOG", 0x0000, 0x0333, 0x0011, 7, 7, "AdLib driver noise step: advance the pseudo-random seed word [3CE] and leave it in AX (far return)" },
+    { "ASOUND.117", 0x01B6, 0x03C4, 0x0011, 7, 7, "AdLib overlay noise step: advance the pseudo-random seed word [17E4] and leave it in AX (far return)" },
+    { "ISOUND.117", 0x019C, 0x0163, 0x005A, 19, 19, "Clear the PC-speaker sequencer's state cells and switch the speaker gate off (port 61h)" },
+    { "ISOUND.117", 0x019C, 0x0140, 0x0023, 8, 8, "Reset the speaker sequencer (original 0168), then point the song cursor at the default track and clear the playback cells" },
+    { "RSOUND.LOG", 0x0000, 0x0171, 0x0099, 52, 52, "zero the Roland sequencer state cells and mark the 63 slot bytes free" },
+    { "RSOUND.LOG", 0x0000, 0x040C, 0x004C, 22, 22, "initialise a Roland voice record at DS:BX with default volume and pan, saving and restoring the busy byte" },
+    { "RSOUND.117", 0x023E, 0x0B42, 0x005A, 29, 29, "zero the Roland overlay sequencer records and lock word" },
+    { "RSOUND.117", 0x023E, 0x0B9C, 0x0011, 7, 7, "pseudo-random step on the state word DS:1531, returned in AX" },
+    { "RSOUND.LOG", 0x0000, 0x020A, 0x0011, 7, 7, "pseudo-random step on the state word DS:0308, returned in AX" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -39999,6 +40025,491 @@ int main(int argc, char **argv)
 #undef XW8
 #undef XPICK
 #undef XRAND
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x0515) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's data segment is the relocated word at 035Fh: read it from the loaded code. */
+                const uint16_t dseg=(uint16_t)(g_pristine[phys(cs,0x035F)]|g_pristine[phys(cs,0x0360)]<<8);
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The stack: its own segment, or (a third of the states) the data segment itself so the record can overlap it. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x0800+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The data around the playing switch and the voice records: random bytes. */
+                for(unsigned j=0;j<0x200;j++)XW8(dsx,(uint16_t)(0x0380+j),XRAND());
+                /* The record pointer: a real voice record of the driver, anywhere in the data, on the playing switch, over the pushed
+                 * DX (the word the routine pushes lies at SP-4 under the harness's return address), or wrapping the 64K offset. */
+                static const uint8_t fld_[]={0,1,2,6,9,0x0A,0x0C,0x0E,0x10,0x12,0x14,0x16,0x18,0x19};
+                const unsigned bsel_=XRAND()%12;
+                uint16_t bx;
+                if(bsel_<5)bx=(uint16_t)(0x0460+0x1A*(XRAND()%12));
+                else if(bsel_<7)bx=(uint16_t)(0x0380+XRAND()%0x200);
+                else if(bsel_==7)bx=(uint16_t)(0x043A-fld_[XRAND()%14]);   /* a field lands on the playing switch */
+                else if(bsel_==8)bx=(uint16_t)(0x043A-fld_[XRAND()%14]+(XRAND()&1));
+                else if(bsel_==9&&same_)bx=(uint16_t)(r[R_SP]-4-fld_[XRAND()%14]);
+                else if(bsel_==10)bx=(uint16_t)(0xFFFF-XRAND()%0x20);       /* the offsets wrap */
+                else bx=(uint16_t)XRAND();
+                /* A field written over the harness's return address (SP-2) sends the RET into the data: not a state. */
+                if(seg[S_SS]==dsx){
+                    static const uint8_t wd_[]={1,1,1,1,1,2,2,2,2,2,2,2,1,1};
+                    for(unsigned j=0;j<14;j++){
+                        const uint16_t a_=(uint16_t)(bx+fld_[j]);
+                        for(unsigned k=0;k<wd_[j];k++){const uint16_t x_=(uint16_t)(a_+k);if(x_==(uint16_t)(r[R_SP]-2)||x_==(uint16_t)(r[R_SP]-1))bx=(uint16_t)(bx+0x0100);}
+                    }
+                }
+                r[R_BX]=bx;
+                static const uint16_t edge_[6]={0xFFFF,0x8000,0x7FFF,1,0,0x00FF};
+                r[R_AX]=(XRAND()%4==0)?edge_[XRAND()%6]:(uint16_t)XRAND();
+                r[R_CX]=(XRAND()%4==0)?edge_[XRAND()%6]:(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* the playing switch: zero, one and any other value */
+                { const unsigned p_=XRAND()%4; XW8(dsx,0x043A,(p_==0)?0:(p_==1)?1:(uint8_t)XRAND()); }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x058F) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's data segment is the relocated word at 035Fh: read it from the loaded code. */
+                const uint16_t dseg=(uint16_t)(g_pristine[phys(cs,0x035F)]|g_pristine[phys(cs,0x0360)]<<8);
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The stack: its own segment, or (a third of the states) the data segment itself so the record can overlap it. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x0800+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The data around the playing switch and the voice records: random bytes. */
+                for(unsigned j=0;j<0x300;j++)XW8(dsx,(uint16_t)(0x0380+j),XRAND());
+                r[R_BX]=(uint16_t)XRAND();
+                static const uint16_t edge_[6]={0xFFFF,0x8000,0x7FFF,1,0,0x00FF};
+                r[R_AX]=(XRAND()%4==0)?edge_[XRAND()%6]:(uint16_t)XRAND();
+                r[R_CX]=(XRAND()%4==0)?edge_[XRAND()%6]:(uint16_t)XRAND();
+                r[R_DX]=(uint16_t)XRAND();
+                /* the playing switch: zero, one and any other value */
+                { const unsigned p_=XRAND()%4; XW8(dsx,0x043A,(p_==0)?0:(p_==1)?1:(uint8_t)XRAND()); }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x0A1C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's data segment is the relocated word at 035Fh: read it from the loaded code. */
+                const uint16_t dseg=(uint16_t)(g_pristine[phys(cs,0x035F)]|g_pristine[phys(cs,0x0360)]<<8);
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The data: the voice offset word [0670] (edge values: the carry and the overflow of the add, the high byte), the
+                 * record pointer [0674] and the record around its bytes 6 and 7. */
+                for(unsigned j=0;j<0x200;j++)XW8(dsx,(uint16_t)(0x0600+j),XRAND());
+                static const uint16_t edge_[8]={0xFFC0,0xFFFF,0x7FC0,0x7FFF,0,0x00BF,0x00FF,0x8000};
+                XW16(dsx,0x0670,(XRAND()%3==0)?edge_[XRAND()%8]:(uint16_t)XRAND());
+                static const uint8_t bytes_[10]={0,0x3F,0x40,0x80,0xC0,0xFF,1,0x7F,0x3E,0x20};
+                const unsigned psel_=XRAND()%12;
+                uint16_t rec=(uint16_t)(0x0700+XRAND()%0x100);
+                if(psel_==0)rec=(uint16_t)(0xFFFA+XRAND()%6);                  /* bytes 6 and 7 wrap past the segment end */
+                if(psel_==1)rec=(uint16_t)(0x0674-6+(XRAND()%2));              /* the record overlaps the pointer itself */
+                if(psel_==2)rec=(uint16_t)(0x0670-6+(XRAND()%8));              /* ... or the voice word */
+                XW16(dsx,0x0674,rec);
+                for(unsigned k=6;k<8;k++)if(XRAND()%2)XW8(dsx,(uint16_t)(rec+k),bytes_[XRAND()%10]);
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                /* The register write (02F6, plain RET): replaced by a stub that folds the flags, AX..DX, SS, SP, DS, the return address
+                 * and both stack words into a log cell and counts the call; it keeps every register and the flags. */
+                const uint16_t LOG=0xF7F0,CNT=0xF7F2;
+                XW16(cs,LOG,XRAND());XW16(cs,CNT,0);
+                {
+                    unsigned out_=0xF200;
+#define EB(v_) do { XW8(cs,out_,(v_)); out_++; } while(0)
+#define EW(v_) do { const uint16_t w_=(uint16_t)(v_); EB(w_&0xFF); EB(w_>>8); } while(0)
+#define FOLD() do { EB(0x31);EB(0xC3);EB(0xD1);EB(0xC3); } while(0)             /* xor bx,ax / rol bx,1 */
+#define FOLDBP(d_) do { EB(0x8B);EB(0x46);EB(d_);FOLD(); } while(0)             /* mov ax,[bp+d] */
+                    EB(0x9C);EB(0x50);EB(0x53);EB(0x51);EB(0x52);EB(0x55);       /* pushf / push ax,bx,cx,dx,bp */
+                    EB(0x89);EB(0xE5);                                           /* mov bp,sp */
+                    EB(0x2E);EB(0x8B);EB(0x1E);EW(LOG);                           /* mov bx,cs:[LOG] */
+                    FOLDBP(10);FOLDBP(8);FOLDBP(6);FOLDBP(4);FOLDBP(2);FOLDBP(0);
+                    FOLDBP(12);FOLDBP(14);FOLDBP(16);                             /* return address, register, value */
+                    EB(0x8C);EB(0xD0);FOLD();                                    /* mov ax,ss */
+                    EB(0x89);EB(0xE8);FOLD();                                    /* mov ax,bp */
+                    EB(0x8C);EB(0xD8);FOLD();                                    /* mov ax,ds */
+                    EB(0x81);EB(0xF3);EW(0x5A71);                                 /* xor bx,id */
+                    EB(0x2E);EB(0x89);EB(0x1E);EW(LOG);                           /* mov cs:[LOG],bx */
+                    EB(0x2E);EB(0xFF);EB(0x06);EW(CNT);                           /* inc word cs:[CNT] */
+                    EB(0x5D);EB(0x5A);EB(0x59);EB(0x5B);EB(0x58);EB(0x83);EB(0xC4);EB(0x02);EB(0xC3);   /* pop bp,dx,cx,bx,ax / add sp,2 (drops the pushed flags; the caller's next instruction rewrites them, and a POPF would wake the run) / ret */
+#undef FOLDBP
+#undef FOLD
+#undef EW
+#undef EB
+                    XW8(cs,0x02F6,0xE9);XW16(cs,0x02F7,(uint16_t)(0xF200-0x02F9));
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x0B30) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's data segment is the relocated word at 035Fh: read it from the loaded code. */
+                const uint16_t dseg=(uint16_t)(g_pristine[phys(cs,0x035F)]|g_pristine[phys(cs,0x0360)]<<8);
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The data: the voice offset word [0670] (edge values: the carry and the overflow of the add, the high byte), the
+                 * record pointer [0674] and the record around its bytes 6 and 7. */
+                for(unsigned j=0;j<0x200;j++)XW8(dsx,(uint16_t)(0x0600+j),XRAND());
+                static const uint16_t edge_[8]={0xFFC0,0xFFFF,0x7FC0,0x7FFF,0,0x00BF,0x00FF,0x8000};
+                XW16(dsx,0x0670,(XRAND()%3==0)?edge_[XRAND()%8]:(uint16_t)XRAND());
+                /* The record: the four flag bytes (0B, 0C, 04, 05) zero or not independently (all sixteen combinations, the zero
+                 * and the 80h/FFh/01h kinds of nonzero), the multiplier byte 09 with its high nibble set or clear. */
+                const unsigned psel_=XRAND()%12;
+                uint16_t rec=(uint16_t)(0x0700+XRAND()%0x100);
+                if(psel_==0)rec=(uint16_t)(0xFFF8+XRAND()%8);                  /* the record bytes wrap past the segment end */
+                if(psel_==1)rec=(uint16_t)(0x0674-(uint16_t)(XRAND()%0x0D));   /* the record overlaps the pointer itself */
+                if(psel_==2)rec=(uint16_t)(0x0670-(uint16_t)(XRAND()%0x0D));   /* ... or the voice word */
+                XW16(dsx,0x0674,rec);
+                static const uint8_t nz_[6]={1,0x80,0xFF,0x10,0x7F,0x02};
+                static const uint8_t flagk_[4]={0x0B,0x0C,0x04,0x05};
+                const unsigned mask_=XRAND()%16;
+                for(unsigned k=0;k<4;k++)XW8(dsx,(uint16_t)(rec+flagk_[k]),(mask_>>k&1)?nz_[XRAND()%6]:0);
+                { const unsigned p_=XRAND()%4; if(p_<3)XW8(dsx,(uint16_t)(rec+9),(p_==0)?0xFF:(p_==1)?0xF0:(uint8_t)XRAND()); }
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                /* The register write (02F6, plain RET): replaced by a stub that folds the flags, AX..DX, SS, SP, DS, the return address
+                 * and both stack words into a log cell and counts the call; it keeps every register and the flags. */
+                const uint16_t LOG=0xF7F0,CNT=0xF7F2;
+                XW16(cs,LOG,XRAND());XW16(cs,CNT,0);
+                {
+                    unsigned out_=0xF200;
+#define EB(v_) do { XW8(cs,out_,(v_)); out_++; } while(0)
+#define EW(v_) do { const uint16_t w_=(uint16_t)(v_); EB(w_&0xFF); EB(w_>>8); } while(0)
+#define FOLD() do { EB(0x31);EB(0xC3);EB(0xD1);EB(0xC3); } while(0)             /* xor bx,ax / rol bx,1 */
+#define FOLDBP(d_) do { EB(0x8B);EB(0x46);EB(d_);FOLD(); } while(0)             /* mov ax,[bp+d] */
+                    EB(0x9C);EB(0x50);EB(0x53);EB(0x51);EB(0x52);EB(0x55);       /* pushf / push ax,bx,cx,dx,bp */
+                    EB(0x89);EB(0xE5);                                           /* mov bp,sp */
+                    EB(0x2E);EB(0x8B);EB(0x1E);EW(LOG);                           /* mov bx,cs:[LOG] */
+                    FOLDBP(10);FOLDBP(8);FOLDBP(6);FOLDBP(4);FOLDBP(2);FOLDBP(0);
+                    FOLDBP(12);FOLDBP(14);FOLDBP(16);                             /* return address, register, value */
+                    EB(0x8C);EB(0xD0);FOLD();                                    /* mov ax,ss */
+                    EB(0x89);EB(0xE8);FOLD();                                    /* mov ax,bp */
+                    EB(0x8C);EB(0xD8);FOLD();                                    /* mov ax,ds */
+                    EB(0x81);EB(0xF3);EW(0x5A71);                                 /* xor bx,id */
+                    EB(0x2E);EB(0x89);EB(0x1E);EW(LOG);                           /* mov cs:[LOG],bx */
+                    EB(0x2E);EB(0xFF);EB(0x06);EW(CNT);                           /* inc word cs:[CNT] */
+                    EB(0x5D);EB(0x5A);EB(0x59);EB(0x5B);EB(0x58);EB(0x83);EB(0xC4);EB(0x02);EB(0xC3);   /* pop bp,dx,cx,bx,ax / add sp,2 (drops the pushed flags; the caller's next instruction rewrites them, and a POPF would wake the run) / ret */
+#undef FOLDBP
+#undef FOLD
+#undef EW
+#undef EB
+                    XW8(cs,0x02F6,0xE9);XW16(cs,0x02F7,(uint16_t)(0xF200-0x02F9));
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x0333) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's data segment is the relocated word at 035Fh: read from the loaded code. */
+                const uint16_t dseg=(uint16_t)(g_pristine[phys(cs,0x035F)]|g_pristine[phys(cs,0x0360)]<<8);
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;      /* the real DS most of the time */
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const unsigned ssel_=XRAND()%4;
+                seg[S_SS]=ssel_==0?dsx:(ssel_&1)?0x6000:0x5400;
+                r[R_SP]=(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x20+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The seed: edge values now and then (the add's carry and overflow, the rotates' carry). */
+                static const uint16_t edge_[10]={0xFFFF,0x8000,0x7FFF,1,0,0xFFFE,0x6DB8,0x6DB7,0x9248,0xB6B8};
+                const unsigned ek_=XRAND()%4;
+                XW16(dsx,0x03CE,ek_==0?edge_[XRAND()%10]:(uint16_t)XRAND());
+                XW16(dsx,0x17E4,(uint16_t)XRAND());                        /* the overlay twin's cell, a lookalike: must stay untouched */
+                const unsigned ax_=XRAND()%3;                              /* AX before: anything (the routine sets it) */
+                if(ax_==0)r[R_AX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x03C4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The seed is a cell of the game's data segment (the overlay's code addresses it through DS, and its other code
+                 * reaches its own cells with CS overrides): DS is never CS here, where the cell would lie in the code image. */
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const unsigned ssel_=XRAND()%4;
+                seg[S_SS]=ssel_==0?dsx:(ssel_&1)?0x6000:0x5400;
+                r[R_SP]=(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x20+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The seed: edge values now and then (the add's carry and overflow, the rotates' carry). */
+                static const uint16_t edge_[10]={0xFFFF,0x8000,0x7FFF,1,0,0xFFFE,0x6DB8,0x6DB7,0x9248,0xB6B8};
+                const unsigned ek_=XRAND()%4;
+                XW16(dsx,0x17E4,ek_==0?edge_[XRAND()%10]:(uint16_t)XRAND());
+                XW16(dsx,0x03CE,(uint16_t)XRAND());                        /* the AdLib driver twin's cell, a lookalike: must stay untouched */
+                const unsigned ax_=XRAND()%3;                              /* AX before: anything (the routine sets it) */
+                if(ax_==0)r[R_AX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.117") && o->seg==0x019C && o->ip==0x0163) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                /* DS: mostly a segment of its own, now and then CS itself (the cells 33h..75h are then the
+                 * module's own first bytes, which the routine overwrites). SS: DS or a separate segment. */
+                const unsigned dk_=XPICK(20);
+                const uint16_t ds_=dk_<1?cs:dk_<9?0x5000:dk_<14?0x6000:dk_<17?0x5800:0x6800;
+                const unsigned sk_=XPICK(4);
+                const uint16_t ss_=sk_<2?ds_:sk_<3?0x7000:0x7800;
+                static const uint16_t sps_[4]={0xF300,0xF500,0xFD00,0x2F00};
+                uint16_t sp_=sps_[XPICK(4)];
+                if(ss_==ds_&&XPICK(4)==0)sp_=(uint16_t)(0xC0+2*XPICK(0x20));
+                seg[S_DS]=ds_;seg[S_SS]=ss_;r[R_SP]=sp_;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x40;j++)XW8(ss_,(uint16_t)(sp_-0x30+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(ss_,(uint16_t)(sp_+2*j),w);small[j]=w;}
+                /* The cells: random everywhere around and inside the cleared range (a 0 left from before
+                 * would hide a store that went to the wrong cell). Where DS is CS the code stays. */
+                if(ds_!=cs){
+                    for(unsigned j=0x20;j<0x90;j++)XW8(ds_,j,XRAND());
+                    for(unsigned j=0x240;j<0x260;j++)XW8(ds_,j,XRAND());
+                }
+                g_io_salt=XRAND();                                     /* IN 61h answers differently each state */
+#undef XW16
+#undef XW8
+#undef XPICK
+#undef XRAND
+            }
+            if (!strcmp(o->module,"ISOUND.117") && o->seg==0x019C && o->ip==0x0140) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                /* DS: mostly a segment of its own, now and then CS itself (the cells 33h..75h are then the
+                 * module's own first bytes, which the routine overwrites). SS: DS or a separate segment. */
+                const unsigned dk_=XPICK(20);
+                const uint16_t ds_=dk_<1?cs:dk_<9?0x5000:dk_<14?0x6000:dk_<17?0x5800:0x6800;
+                const unsigned sk_=XPICK(4);
+                const uint16_t ss_=sk_<2?ds_:sk_<3?0x7000:0x7800;
+                static const uint16_t sps_[4]={0xF300,0xF500,0xFD00,0x2F00};
+                uint16_t sp_=sps_[XPICK(4)];
+                if(ss_==ds_&&XPICK(4)==0)sp_=(uint16_t)(0xC0+2*XPICK(0x20));
+                seg[S_DS]=ds_;seg[S_SS]=ss_;r[R_SP]=sp_;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x40;j++)XW8(ss_,(uint16_t)(sp_-0x30+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(ss_,(uint16_t)(sp_+2*j),w);small[j]=w;}
+                /* The cells: random everywhere around and inside the cleared range (a 0 left from before
+                 * would hide a store that went to the wrong cell). Where DS is CS the code stays. */
+                if(ds_!=cs){
+                    for(unsigned j=0x20;j<0x90;j++)XW8(ds_,j,XRAND());
+                    for(unsigned j=0x240;j<0x260;j++)XW8(ds_,j,XRAND());
+                    if(XPICK(3)==0){XW16(ds_,0x39,0x0EAA);XW16(ds_,0x35,0);XW16(ds_,0x66,0);XW8(ds_,0x6C,0);XW16(ds_,0x68,0);}   /* the targets already hold the values now and then */
+                }
+                g_io_salt=XRAND();                                     /* IN 61h answers differently each state */
+#undef XW16
+#undef XW8
+#undef XPICK
+#undef XRAND
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x0171) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The sequencer reset at 0171 writes only through DS (the caller's data segment: the driver's own relocated
+                 * data segment word at 022Ah most of the time, now and then another). Every cell it writes is prefilled with
+                 * varied bytes (zero, FFh, random) so a missed, extra or misplaced store changes memory. */
+                const uint16_t dseg=(uint16_t)(g_loaded_image[phys(cs,0x022A)-at]|(g_loaded_image[phys(cs,0x022B)-at]<<8));
+                const unsigned dsel_=XRAND()%10;
+                seg[S_DS]=(dsel_<6)?dseg:(dsel_<8)?0x4000:(dsel_<9)?0x4400:0x5200;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned k=0;k<0x1F0;k++){
+                    const unsigned p_=XRAND()%8;
+                    XW8(seg[S_DS],(uint16_t)(0x02F0+k),(p_<2)?0x00:(p_<4)?0xFF:(uint8_t)XRAND());
+                }
+                /* The caller's stack: the data segment itself (stack high above the cells) or a separate segment. */
+                const unsigned ssel_=XRAND()%4;
+                if(ssel_==0){seg[S_SS]=seg[S_DS];r[R_SP]=(uint16_t)(0x2000+2*(XRAND()%0x3000));}
+                else {seg[S_SS]=(ssel_&1)?0x6000:0x5800;r[R_SP]=(uint16_t)(0x0200+2*(XRAND()%0x7000));}
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x040C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The voice-record initialiser at 040C: record at DS:BX, AX and CX are values it stores, DS:[0380] is saved,
+                 * cleared and restored through a pushed DX. Modes: a plain record; a record overlapping the byte at 0380h; the
+                 * record next to the top of the stack (the pushed DX is overwritten by the record's last word); the stack slot of
+                 * the push sitting on 0380h (the clear then hits the saved DL); a record that wraps past offset FFFFh. */
+                const uint16_t dseg=(uint16_t)(g_loaded_image[phys(cs,0x022A)-at]|(g_loaded_image[phys(cs,0x022B)-at]<<8));
+                const unsigned dsel_=XRAND()%10;
+                seg[S_DS]=(dsel_<6)?dseg:(dsel_<8)?0x4000:(dsel_<9)?0x4400:0x5200;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const unsigned mode_=XRAND()%12;
+                uint16_t sp_;
+                if(mode_==7||mode_==8||mode_==9){seg[S_SS]=seg[S_DS];sp_=(uint16_t)(0x2000+2*(XRAND()%0x3000));}
+                else if(mode_==10){seg[S_SS]=seg[S_DS];sp_=0x0384;}                     /* the push at SP-4 = 0380h */
+                else {seg[S_SS]=(XRAND()&1)?0x6000:0x5800;sp_=(uint16_t)(0x0200+2*(XRAND()%0x7000));}
+                r[R_SP]=sp_;
+                uint16_t bx_;
+                switch(mode_){
+                    case 6: case 11: bx_=(uint16_t)(0x0380-(XRAND()%0x22)); break;      /* the record covers 0380h */
+                    case 7: bx_=(uint16_t)(sp_-0x24); break;                            /* last word lands on the pushed DX */
+                    case 8: bx_=(uint16_t)(sp_-0x25); break;                            /* ... one byte lower */
+                    case 9: bx_=(uint16_t)(sp_-0x24-2*(XRAND()%8)); break;
+                    case 5: bx_=(uint16_t)(0xFFFF-(XRAND()%0x22)); break;               /* wraps past the segment end */
+                    case 10: bx_=(uint16_t)(0x1000+XRAND()%0x4000); break;
+                    default: bx_=(uint16_t)(0x0400+(XRAND()%0x1800)); break;
+                }
+                r[R_BX]=bx_;
+                /* Everything the routine writes starts as varied bytes: zero, FFh or random. */
+#define XVAR() ((XRAND()%3==0)?0x00:(XRAND()%2)?0xFF:(uint8_t)XRAND())
+                for(unsigned j=0;j<0x24;j++)XW8(seg[S_DS],(uint16_t)(bx_+j),XVAR());
+                for(unsigned j=0;j<4;j++)XW8(seg[S_DS],(uint16_t)(0x0380+j-1),XVAR());
+                /* The stack: random below SP, the four argument words at SP. */
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(sp_-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(sp_+2*j),small[j]);}
+                if(mode_==10){XW8(seg[S_DS],0x0380,XVAR());}
+                /* AX and CX: edge words now and then (the stored words and the pushed DX's low byte are then distinguishable). */
+                static const uint16_t edge_[6]={0x0000,0xFFFF,0x0001,0x8000,0x00FF,0xFF00};
+                if(XRAND()%3==0)r[R_AX]=edge_[XRAND()%6];
+                if(XRAND()%3==0)r[R_CX]=edge_[XRAND()%6];
+#undef XVAR
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.117") && o->seg==0x023E && o->ip==0x0B42) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The overlay's sequencer reset at 0B42 writes only through DS: the overlay's own segment (its data follows the
+                 * code in the same image) most of the time, now and then another segment. Every cell it writes is prefilled with
+                 * varied bytes (zero, FFh, random). */
+                const unsigned dsel_=XRAND()%10;
+                seg[S_DS]=(dsel_<6)?cs:(dsel_<8)?0x4000:(dsel_<9)?0x4400:0x5200;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XVAR() ((XRAND()%3==0)?0x00:(XRAND()%2)?0xFF:(uint8_t)XRAND())
+                for(unsigned k=0;k<8;k++)XW8(seg[S_DS],(uint16_t)(0x152A+k),XVAR());
+                for(unsigned k=0;k<0x100;k++)XW8(seg[S_DS],(uint16_t)(0x2288+k),XVAR());
+                /* The caller's stack: high in its own segment, or in the data segment's high part. */
+                const unsigned ssel_=XRAND()%4;
+                if(ssel_==0){seg[S_SS]=seg[S_DS];r[R_SP]=(uint16_t)(0x4000+2*(XRAND()%0x3000));}
+                else {seg[S_SS]=(ssel_&1)?0x6000:0x5800;r[R_SP]=(uint16_t)(0x0200+2*(XRAND()%0x7000));}
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+#undef XVAR
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.117") && o->seg==0x023E && o->ip==0x0B9C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The overlay's random step at 0B9C: state word DS:[1531h]. DS is the overlay's own segment (its data follows the
+                 * code in the same image) most of the time, now and then another. The state takes edge values now and then (the add's
+                 * carry, zero, sign, overflow and the rotates' carry and overflow need exact inputs); flags start random. */
+                const unsigned dsel_=XRAND()%10;
+                seg[S_DS]=(dsel_<6)?cs:(dsel_<8)?0x4000:(dsel_<9)?0x4400:0x5200;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t edge_[]={0x0000,0xFFFF,0x6DB8,0x6DB7,0x6DB9,0x7FFF,0x8000,0x0001,0x9248,0xFFFE,0x24B7,0x24B8,0xDB48,0x6DB7+0x8000,0x0008,0xB6DB};
+                XW16(seg[S_DS],0x1531,(XRAND()%3==0)?edge_[XRAND()%(sizeof edge_/sizeof edge_[0])]:(uint16_t)XRAND());
+                XW8(seg[S_DS],0x1530,XRAND());XW8(seg[S_DS],0x1533,XRAND());
+                /* The caller's far return frame (IP then CS) and stack: its own segment, or the data segment now and then. With the
+                 * stack in the data segment it sits far above the state word (a return frame that the store rewrites runs wild code: no state
+                 * can finish it, so that overlap is not staged). */
+                const unsigned ssel_=XRAND()%5;
+                if(ssel_==0){
+                    seg[S_SS]=seg[S_DS];
+                    r[R_SP]=(uint16_t)(0x4000+2*(XRAND()%0x3000));
+                }
+                else {seg[S_SS]=(ssel_&1)?0x6000:0x5800;r[R_SP]=(uint16_t)(0x0200+2*(XRAND()%0x7000));}
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.117") && o->seg==0x023E && o->ip==0x0B9C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* The driver's random step at 020A: state word DS:[0308h]. DS is the driver's data segment (the relocated word at
+                 * 022Ah, read from the loaded image) most of the time, now and then another; never the code segment (the cell would sit in the
+                 * routine's own window). The state takes edge values now and then (the add's
+                 * carry, zero, sign, overflow and the rotates' carry and overflow need exact inputs); flags start random. */
+                const uint16_t dseg=(uint16_t)(g_loaded_image[phys(cs,0x022A)-at]|(g_loaded_image[phys(cs,0x022B)-at]<<8));
+                const unsigned dsel_=XRAND()%10;
+                seg[S_DS]=(dsel_<6)?dseg:(dsel_<8)?0x4000:(dsel_<9)?0x4400:0x5200;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t edge_[]={0x0000,0xFFFF,0x6DB8,0x6DB7,0x6DB9,0x7FFF,0x8000,0x0001,0x9248,0xFFFE,0x24B7,0x24B8,0xDB48,0x6DB7+0x8000,0x0008,0xB6DB};
+                XW16(seg[S_DS],0x0308,(XRAND()%3==0)?edge_[XRAND()%(sizeof edge_/sizeof edge_[0])]:(uint16_t)XRAND());
+                XW8(seg[S_DS],0x0307,XRAND());XW8(seg[S_DS],0x030A,XRAND());
+                /* The caller's far return frame (IP then CS) and stack: its own segment, or the data segment now and then. With the
+                 * stack in the data segment it sits far above the state word (a return frame that the store rewrites runs wild code: no state
+                 * can finish it, so that overlap is not staged). */
+                const unsigned ssel_=XRAND()%5;
+                if(ssel_==0){
+                    seg[S_SS]=seg[S_DS];
+                    r[R_SP]=(uint16_t)(0x4000+2*(XRAND()%0x3000));
+                }
+                else {seg[S_SS]=(ssel_&1)?0x6000:0x5800;r[R_SP]=(uint16_t)(0x0200+2*(XRAND()%0x7000));}
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+#undef XRAND
+#undef XW16
+#undef XW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
