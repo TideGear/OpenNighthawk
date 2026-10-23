@@ -123,6 +123,8 @@ jobs:
         run: python tests/test_recompiler_overrides.py
       - name: Parallel translation matches serial output
         run: python tests/test_recompiler_parallel.py
+      - name: Relocation metadata regressions
+        run: python tests/test_recompiler_relocations.py
       - name: Run-slicing invariance regressions
         run: python tests/test_run_slicing.py
       - name: Gate scheduling and generation helpers

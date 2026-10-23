@@ -250,6 +250,11 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test186 PRIVATE f117cpu)
   add_test(NAME cpu_186_286 COMMAND test186)
 
+  add_executable(test_reloc_image tests/test_reloc_image.c tests/test_reloc_fixture.c tests/cpu_stubs.c)
+  target_include_directories(test_reloc_image PRIVATE src/recomp)
+  target_link_libraries(test_reloc_image PRIVATE f117cpu)
+  add_test(NAME relocated_image_loader COMMAND test_reloc_image)
+
   add_executable(test_mouse tests/test_mouse.c)
   target_link_libraries(test_mouse PRIVATE f117present f117recomp_none)
   add_test(NAME software_mouse_cursor COMMAND test_mouse)

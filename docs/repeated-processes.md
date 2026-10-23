@@ -55,6 +55,18 @@ verification) is not an optimisation; it needs the owner's approval.
   checks passed. The first precheck attempt exposed a missed callee-return boundary in the test runner; exact CPU-state recovery keeps
   the final memory/I/O comparison and grants no named completion. Nineteen synthetic cases cover the return, prior interrupt gaps and
   incorrect clocks, registers, flags, memory and I/O. No checks were removed.
+- **Relocated fixture infrastructure (23 Oct, accepted locally).** After the normal build, 76 focused CTests take about six seconds;
+  metadata, parallel-translation and region tests plus invalid-base CLI controls take about two seconds. A whole-table zero-base
+  control (4,000 states, eight shards) runs beside 73-entry sweeps at 0400h and 0800h. The first arena attempt took 613 s:
+  all 1,287 zero-base reports were unchanged, while one 0800h state exposed an uninitialized graphics fixture page table.
+  The repaired fixture fills disjoint pages without new random draws; fresh controls precede six standard precheck seeds and
+  the full gate. `D:/f117-gate/modules-loadbase-20261022/run-infrastructure-acceptance.py` sequences these checks;
+  `p2-batch-loadbase-accept/` additionally pins every changed code/test/CI file and requires zero added credit.
+  Fresh repaired controls passed in 608 s; six seeds took 1,530 s. The core gate took 1,369 s, followed by sequential presentation
+  (N=1 564 s; boot N=4/9 101 s in parallel), 1,955 s for the trial. The new CMake target changed the interpreter key, so the old
+  baseline was correctly unused. A closing-audit bug still checked it; the repaired generic audit independently verifies the
+  actual fresh sequential references and presentation results. The current baseline is promoted and the old one archived.
+  The final verdict's wall time includes the idle interval before that audit repair; use the stage timings for performance.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full

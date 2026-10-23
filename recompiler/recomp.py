@@ -31,6 +31,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+from relocations import relocation_metadata
+
 from discover import Discovery, Region  # noqa: E402
 from emit import Ctx, emit              # noqa: E402
 from modules import load_all            # noqa: E402
@@ -275,6 +277,7 @@ def translate_module(task):
 
 def translate_modules(mods, coverage, sites, out_dir, comments=True,
                       heuristics=True, mutate=None, jobs=1):
+    relocations = relocation_metadata(mods)   # validate before workers publish any output
     tasks = [(m, coverage.get(m.name, []), sites.get(m.name, ()), out_dir,
               comments, heuristics, mutate) for m in mods]
     if jobs < 1:
@@ -288,6 +291,8 @@ def translate_modules(mods, coverage, sites, out_dir, comments=True,
         print(report, end="")
     # Only the parent writes the list, in load_all order, after every worker
     # succeeds. Completion order must never change registration order.
+    with open(os.path.join(out_dir, "gen_relocs.c"), "w", newline="\n") as f:
+        f.write(relocations)
     tags = [tag(m.name) for m in mods]
     with open(os.path.join(out_dir, "gen_modules.c"), "w", newline="\n") as f:
         f.write("/* GENERATED - the module list. */\n#include \"recomp_gen.h\"\n\n")

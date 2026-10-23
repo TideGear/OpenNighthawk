@@ -60,6 +60,7 @@ class ParallelTranslation(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "no translated instruction"):
                 translate_modules(mods, {}, {}, tmp, jobs=2, mutate=("A.EXE", 16, "ax"))
             self.assertFalse((Path(tmp) / "gen_modules.c").exists())
+            self.assertFalse((Path(tmp) / "gen_relocs.c").exists())
 
 
 if __name__ == "__main__":

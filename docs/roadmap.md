@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (528),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (529),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -194,6 +194,18 @@ not the recompilation:
       Declined: VGAME `0010` (`main`), START `8427` and END `4393` (wait loops routes
       cannot finish), END `57B0` (an interior arm of printf), MPS_LOGO `1ADC` and `1C82`
       (unequal); the list is `D:/f117-gate/kit/DECLINED.tsv`.
+
+### Relocation proof infrastructure (23 October)
+
+The test harness now loads the launcher, overlays and sound drivers at 0800h, applies generated relocation metadata at both image reloads,
+and compares named coverage against relocated bytes. The seven ordinary programs keep their historical zero base. Zero-base controls retain
+all 1,287 accepted per-routine reports; 73 affected entries pass at 0400h and 0800h without skips. A graphics fixture's missing renderer page
+initialization was repaired after a nonzero-base trace showed code being overwritten. No matched routine or score changed.
+
+Acceptance: 529 CTests, six whole-table precheck seeds, 63 routes / 62 fresh interpreter sessions, both timing profiles, three gate matched seeds,
+all N=1 presentation and boot N=4/9. Core gate 1,369 s; sequential gate/presentation trial 1,955 s. The inherited baseline key changed with the
+new CMake loader target; the closing audit now independently checks the fresh references actually used by that fallback. Evidence:
+`D:/f117-gate/p2-batch-loadbase-accept/` and `D:/f117-gate/modules-loadbase-20261022/`. Driver proofs remain next; no new credit.
 
 ### How an entry is proved
 

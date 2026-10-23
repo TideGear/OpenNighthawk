@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 23 October 2026 (batch ax accepted).
+more than once, what it costs). State as of 23 October 2026 (batch ax and relocation infrastructure locally accepted).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -28,7 +28,7 @@ Consolidate it instead of appending to it.
   all-code measure (scores the naming item): **170,520 / 205,509 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to ax are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 528 CTests, 63 routes run as 62 sessions,
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 529 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
 - **Remaining work:** 17,246 route-executed bytes are unmatched; the all-code measure has 34,989 uncredited bytes.
   Largest executed groups: ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128,
@@ -60,22 +60,34 @@ Consolidate it instead of appending to it.
   archived, including `ax-pre-attempt-1-legacy-return/`. No game-logic defect is claimed by these harness repairs.
   START `2A7E` means cel-animation steps left; PLAYER `0BDC` is the stream-end flag (including the corrected old open comment).
   Unfinished private `p2-player-vc-0540` still has two missed mutants and only `err_driver_overlay` reach; do not integrate it as proved.
-- **Next: relocation support, not another stale leaf list.** MISC `0007:0029` and F117.COM `03CB` were already matched in batch an;
-  ax finishes the remaining MISC BIOS-key wrapper. The launcher's remaining 688 executed bytes are its EXEC chain. Port clocks and
-  wake checks already exist; the missing capability is generated relocation metadata and nonzero load bases for driver proofs.
-  `D:/f117-gate/modules-loadbase-20261022/prepare-integration.py` prepares ten files privately under `staged/` and pins exact base /
-  staged hashes in `staged-manifest.json`; nothing is integrated. The standalone loader prototype passes word-wrap, bounds, COM-origin,
-  invalid-metadata/no-write and two-base CPU checks; a hardcoded DS=0 mutant passes at base zero but fails at 1000h and 3000h.
-  Four metadata unit tests pass. `generation-verdict.json` proves serial/parallel equality and no changes to existing generated C,
-  only a metadata file added. The staged harness is still unbuilt/unaccepted: it includes default-base contract checks, both reload
-  sites, a relocated named-coverage reference, COM fixture CS corrections, CMake and CI wiring. Before applying, require latest CI
-  green and kit libraries at HEAD, recheck every base hash, then perform zero-base report equivalence, two nonzero-base fixture
-  sweeps, the full gate and CI. Add the test-header include path to the private kit before refreshing its next baseline.
-  The fixture audit keeps MISC's BIOS 0000:0417 writes absolute; COM's CS=0 assumptions become actual cs. Driver leads and caveats:
-  `modules-loadbase-20261022/driver-leads/review-notes.md`. RSOUND.LOG `021B` is a 21-instruction stack-switching wrapper with live
-  CS-relative cells and two relocated operands, a candidate after the infrastructure gate. ASOUND.LOG `0344` and ISOUND.LOG `0253`
-  are not small leaves. ISOUND.LOG `0581` has an EOI-before-IRET arm and needs separately verified bounded-handler/resume support;
-  do not bypass the current whole-or-decline handler rule or run past its wake. All are leads, no new credit.
+- **Relocation infrastructure locally accepted (23 Oct), no new credit.** `D:/f117-gate/p2-batch-loadbase-accept/final-gate-verdict.json`
+  and `infrastructure-verdict.json` pin all ten changed code/test/CI files plus unchanged `matched.c`. Deterministic generated metadata
+  identifies images by name/hash and lists relocation words; all 60 old generated C files remain identical. Both harness reload paths
+  apply fixups, named coverage uses the relocated image, and the COM fixture uses actual CS. Production module ABI is unchanged.
+  The nine launcher/overlay/driver modules default to 0800h; historical programs remain at zero. CLI controls permit zero or
+  0400h..0800h, reserving code below fixed fixture RAM without changing its aliases. Generic loader tests still cover 1000h/3000h,
+  word wrap, COM origin, malformed metadata/no writes, and a DS=0 mutant invisible at zero but caught at both nonzero bases.
+  Fresh controls: all 1,287 zero-base reports exactly match ax; all 73 affected entries pass at both 0400h and 0800h with zero skips.
+  Six whole-table seeds (4,000 states, eight shards, two rounds of three) passed in 1,530 s; all 1,214 historical-program reports
+  are unchanged. Full gate: 529 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds,
+  routes-only reach and event limits; all N=1 presentation and boot N=4/9 exact. Core gate 1,369 s; sequential gate/presentation trial 1,955 s.
+  Two fixture-layout failures remain archived in `D:/f117-gate/modules-loadbase-20261022/`: `attempt-1-code-ram-overlap/` (3000h
+  code collides with page RAM) and `attempt-2-empty-page-table/` (MGRAPHIC 019C:02A1, seed 27182818h, state 574 writes through ES=0
+  over relocated instruction 099C:067A). The latter fixture now initializes all five renderer page entries to disjoint buffers,
+  rotating by state with no added random draws. This is a fixture repair, not a claimed game bug.
+  **Closing-audit repair:** adding the CMake loader target invalidated the inherited interpreter key. The gate correctly fell back
+  to sequential presentation against its fresh runs, but `group_verdict.py` still tried the unused old baseline. Its repaired path
+  independently verifies the actual 62 fresh sessions and all presentation results; `closing-audit-recovery.json` preserves the
+  original failure. The current-key baseline is promoted in this acceptance directory; the stale one is archived there. Generic
+  `accept-kit/group_verdict.py` carries the same fix. The original pipeline log still records its closing-audit failure; the
+  recovered `modules-loadbase-20261022/pipeline-verdict.json` and final verdicts are authoritative. Do not rerun the successful gate.
+  **Publication/kit:** check `p2-batch-loadbase-accept/ci-verdict.json` for the pushed revision's CI and `kit-libs/manifest.json`
+  for library freshness before any driver proof. The private proof template already includes ROOT/tests. Refresh libraries only
+  after green CI, retaining their verified backup. The owner requested handoff, commit, push and stop; no driver proof was started.
+  **Next conversation:** RSOUND.LOG 021B is a 21-instruction stack-switching wrapper; design and checked callee RETF/RET forms are
+  in `modules-loadbase-20261022/driver-leads/RSOUND.LOG-021b-proof-design.md`. Live CS stack cells must be re-read after callees.
+  ASOUND.LOG 0344 and ISOUND.LOG 0253 are larger leads. ISOUND.LOG 0581 needs separately verified bounded-handler/resume support
+  for its EOI-before-IRET arm; do not bypass whole-or-decline or run past a wake. All remain leads with no new credit.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
@@ -190,10 +202,10 @@ Consolidate it instead of appending to it.
    SP-2. A wrong call-depth value never fires a trap, so mutations of it are invisible: use post-trap mutants and judge such calls by the real-route counts.
    A route must run the rare arms: `full_cycle` missed `02B9`'s loop and `031D`'s cut arm (`persian_gulf_air_training` runs it).
    Step 5 was already completed in batch an: F117.COM `03CB` is matched, and MISC `0029` too. Batch ax adds MISC `0005`;
-   check the registry and current named coverage before selecting any old lead. Next: step 2b, generated relocations and nonzero
-   LOAD_BASES using the private staged change described above. Preserve existing I/O-clock, interrupt-clock and PIC/PIT wake checks.
-   Prove a planted DS=0 error at two nonzero bases, retain historical inputs and a zero-base equivalence control, and gate this
-   infrastructure separately before driver claims. Then ASOUND.117, the .LOG drivers, ISOUND/RSOUND.117 and the launcher EXEC chain,
+   check the registry and current named coverage before selecting any old lead. Step 2b relocation infrastructure now passes its
+   separate full gate, including the planted DS=0 controls and zero-base report equivalence described above. First verify pushed
+   CI and private library freshness. Then prove the RSOUND.LOG 021B pilot, followed by ASOUND.117, the .LOG drivers,
+   ISOUND/RSOUND.117 and the launcher EXEC chain,
    using the plan only for leads and traps; STI-first handlers remain original by design. The existing COM fixture needs explicit
    adaptation from segment 0 to cs. Its helper already reads live CS, as do most MGRAPHIC fixtures.
 5. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
@@ -252,12 +264,15 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
 
 `D:/f117-gate/kit/kit.py` runs a private proof for one routine (`init`, write
 `body.c` / `fixture.inc` / `mutations.json`, `lock --cover`, `seeds`,
-`mutations` (four edits at a time), `checkpoints`, `verdict`, `integrate`);
+`mutations --jobs 1`, `checkpoints`, `verdict`, `integrate`);
 `kit/BRIEF.md`, `kit/AGENT_PROMPT.txt` and `D:/f117-gate/ac_brief_extra.txt` are
 the agent brief. Agents do steps 1-7 only, in their own `p2-*` directory, every
 command through `kit/pin.py MASK` (CPU set + BelowNormal) with
-`mutations --jobs 2`; give each agent its own mask (0x000F0000, 0x00F00000,
-0x0F000000). Finish proof workers before starting a gate; run no unrelated
+`mutations --jobs 1` in each of at most three proof slots; the tool's default
+of four jobs is unsuitable for the shared queue. Use a separate mask per slot
+(0x000F0000, 0x00F00000, 0x0F000000), with at most three `cl.exe` processes
+across all work. Main builds use `CMAKE_BUILD_PARALLEL_LEVEL=3`.
+Finish proof workers before starting a gate; run no unrelated
 heavy job beside it. Verify each `private-verdict.json` yourself (counts,
 mutations, source hashes, real-route calls) before integrating. Routines that
 stay original or were declined are listed in `D:/f117-gate/kit/DECLINED.tsv`.

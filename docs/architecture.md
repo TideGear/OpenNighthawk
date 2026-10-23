@@ -608,13 +608,23 @@ The retained installer fixtures plant a nonzero segment on both sides. Keep
 its logic.
 
 **The harness** (`tests/func_lockstep.c`, needs the generated code): for each
-routine it places the module image in memory (at segment 0, where the
-unrelocated image is also the relocated one), sets random registers, flags and
+routine it places the module image in memory, applies its loader relocations,
+sets random registers, flags and
 memory and a return address outside the routine, runs the interpreter until the
 routine's own RET reaches it and the matched C once, and compares registers,
 segments, IP, flags, clock, ports, interrupts and all memory. Details that
 caught real defects:
 
+- The seven ordinary programs retain their historical zero load base. The
+  launcher, graphics and miscellaneous overlays, and six sound drivers use
+  0800h; `--load-base` provides a zero control and alternatives from 0400h to
+  0800h. This reserves the complete code window below the graphics fixtures'
+  RAM buffers. Generated test metadata identifies each image by name and file
+  hash and records image-relative relocation words; the loader validates
+  bounds and overlapping sites before copying or patching memory. Both image
+  reload paths apply the fixups, and named coverage compares against the
+  relocated image. The production module descriptor is unchanged. The
+  infrastructure passed its full gate; P2 credit remains at batch ax.
 - Half the states put small words (-1, 0, 1, 0-31) where the arguments sit,
   and the other half use memory of mostly 00, FF and 01 bytes, so edge cases
   and exact tests on memory are reached.

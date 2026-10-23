@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "recomp_gen.h"
+#include "reloc_image.h"
 #include "matched.h"
 
 /* ---- the CPU hooks: record, never emulate ---------------------------------
@@ -57,6 +58,29 @@ typedef struct {
 } side_t;
 
 static side_t g_side[2];
+
+/* Keep historical program fixtures at their existing base. Overlays, drivers
+ * and the COM launcher must not overlap the interrupt vector table. The
+ * override provides a zero-base control and a second nonzero-base proof.
+ * Keep the entire loaded code segment (including near fixture stubs) below
+ * 20000h, where the graphics fixtures' page buffers start. Their RAM and
+ * canonical 5000h/6000h stacks retain their original addresses and aliases. */
+static const struct { const char *module; uint16_t base; } LOAD_BASES[] = {
+    { "F117.COM", 0x0800 }, { "MGRAPHIC.EXE", 0x0800 }, { "MISC.EXE", 0x0800 },
+    { "ASOUND.117", 0x0800 }, { "ISOUND.117", 0x0800 }, { "RSOUND.117", 0x0800 },
+    { "ASOUND.LOG", 0x0800 }, { "ISOUND.LOG", 0x0800 }, { "RSOUND.LOG", 0x0800 },
+};
+static int fixture_base_valid(int base)
+{
+    return base == -1 || base == 0 || (base >= 0x0400 && base <= 0x0800);
+}
+static uint16_t module_load_base(const char *name, int forced)
+{
+    for (unsigned k=0;k<sizeof LOAD_BASES/sizeof LOAD_BASES[0];k++)
+        if (!strcmp(name,LOAD_BASES[k].module)) return forced >= 0 ? (uint16_t)forced : LOAD_BASES[k].base;
+    return 0;
+}
+static uint8_t g_loaded_image[MEM_SIZE]; /* relocated reference before fixtures */
 
 /* A fresh port record and device model, for a run from the entry state. */
 static void side_io_reset(side_t *s)
@@ -2516,6 +2540,18 @@ static int step_runner_run(machine_t *mm)
 
 static int check_module_rules(void)
 {
+    static const char *loaded[] = { "F117.COM", "MGRAPHIC.EXE", "MISC.EXE", "ASOUND.117", "ISOUND.117",
+        "RSOUND.117", "ASOUND.LOG", "ISOUND.LOG", "RSOUND.LOG" };
+    static const char *historical[] = { "SETUP.EXE", "MPS_LOGO.EXE", "PLAYER.EXE", "DSWAP.EXE",
+        "START.EXE", "VGAME.EXE", "END.EXE" };
+    for (unsigned k=0;k<sizeof loaded/sizeof loaded[0];k++)
+        if (!module_load_base(loaded[k],-1) || module_load_base(loaded[k],0)!=0 ||
+            module_load_base(loaded[k],0x0400)!=0x0400) return 1;
+    for (unsigned k=0;k<sizeof historical/sizeof historical[0];k++)
+        if (module_load_base(historical[k],-1)!=0 || module_load_base(historical[k],0x3000)!=0) return 1;
+    if (!fixture_base_valid(-1) || !fixture_base_valid(0) || !fixture_base_valid(0x0400) ||
+        !fixture_base_valid(0x0800) || fixture_base_valid(0x03FF) || fixture_base_valid(0x0801) ||
+        fixture_base_valid(0x3000)) return 1;
     static const char *drivers[] = { "ASOUND.117", "ASOUND.LOG", "F117.COM", "MGRAPHIC.EXE", "MISC.EXE" };
     recomp_override o = {0};
     for (unsigned k = 0; k < sizeof PLANTS / sizeof PLANTS[0]; k++) {
@@ -2829,17 +2865,27 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--check-module-rules")) return check_module_rules();
     if (argc == 2 && !strcmp(argv[1], "--check-io-rules")) return check_io_rules();
-    int states = 2000;
+    int states = 2000, forced_base = -1;
     const char *only = NULL;        /* --only MODULE:IP[,MODULE:IP...]: just those routines (IP in hex), for quick runs */
     unsigned shard = 0, shards = 1; /* --shard K/N: every Nth routine from K (tools/func_lockstep_par.py) */
     uint64_t seed = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) seed = strtoull(argv[++i], NULL, 0);
+        else if (!strcmp(argv[i], "--load-base") && i + 1 < argc) {
+            char *end; const char *value = argv[++i];
+            const unsigned long n = strtoul(value,&end,0);
+            if (end==value || *end || n>0xFFFF) { fprintf(stderr,"invalid load base\n"); return 2; }
+            forced_base = (int)n;
+        }
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
         else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
         else if (!strcmp(argv[i], "--shard") && i + 1 < argc && sscanf(argv[++i], "%u/%u", &shard, &shards) == 2 && shard < shards) {}
-        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...] [--shard K/N]\n"); return 2; }
+        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...] [--shard K/N] [--load-base S]\n"); return 2; }
+    }
+    if (!fixture_base_valid(forced_base)) {
+        fprintf(stderr, "load base outside fixture code arena (use 0 or 0x0400..0x0800); higher memory is reserved for fixture RAM\n");
+        return 2;
     }
     if (RC_NMODULES == 0) { fprintf(stderr, "no generated code linked in (build with F117R_GEN_DIR)\n"); return 2; }
 
@@ -2862,12 +2908,10 @@ int main(int argc, char **argv)
     g_m.mem = g_mem[1];
     matched_runner = step_runner;
 
-    /* Loaded at segment 0 the unrelocated image is also the relocated one:
-     * every fixup adds 0, so far calls and segment constants are right. */
-    const uint16_t base = 0;
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
+        const uint16_t base = module_load_base(o->module, forced_base);
         g_entry = o;
         if (mi % shards != shard) continue;
         g_rng = routine_seed(seed, o);
@@ -2918,8 +2962,11 @@ int main(int argc, char **argv)
              (!strcmp(o->module, "SETUP.EXE") && o->ip == 0x0010)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
-        memcpy(g_pristine + at, m->image, m->size);
-        g_nc_img = m->image; g_nc_at = at; g_nc_size = m->size;
+        if (!test_load_generated_image(g_pristine, MEM_SIZE, m, base)) {
+            fprintf(stderr,"invalid relocation metadata/image for %s\n",m->name); return 2;
+        }
+        memcpy(g_loaded_image, g_pristine + at, m->size);
+        g_nc_img = g_loaded_image; g_nc_at = at; g_nc_size = m->size;
         stub_driver_thunks(g_pristine, at, m, o);
         patch_image_for(g_pristine, o);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
@@ -2983,7 +3030,9 @@ int main(int argc, char **argv)
                  * tests (a -1 sentinel, a zero count), these hit them often. */
                 static const uint8_t pick[4] = { 0x00, 0xFF, 0x01, 0x00 };
                 for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
-                memcpy(g_pristine + at, m->image, m->size);
+                if (!test_load_generated_image(g_pristine, MEM_SIZE, m, base)) {
+                    fprintf(stderr,"invalid relocation metadata/image for %s\n",m->name); return 2;
+                }
                 stub_driver_thunks(g_pristine, at, m, o);
                 patch_image_for(g_pristine, o);
                 memcpy(g_mem[0], g_pristine, MEM_SIZE);
@@ -35317,21 +35366,21 @@ int main(int argc, char **argv)
 #define XPICK(n_) ((unsigned)(XRAND()%(n_)))
 #define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
 #define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
-                /* The launcher is a .COM: CS = DS = ES = SS. Here CS is 0 (the image's base); the
+                /* The launcher is a .COM: CS = DS = ES = SS. Here CS is the actual loaded base; the
                  * data segment is that one in one state in four, otherwise another, so a cell read
                  * through DS and one read through CS (or after DS = CS) are different words. The
-                 * stack sits in the data segment, apart from it, or in segment 0 itself. */
+                 * stack sits in the data segment, apart from it, or in the code segment itself. */
                 static const uint16_t sps_[3]={0xF304,0xF504,0xFD04};
-                const uint16_t ds_=XPICK(4)?0x5000:0x0000;
-                const uint16_t ss_=XPICK(3)==0?ds_:XPICK(2)?0x6000:0x0000;
+                const uint16_t ds_=XPICK(4)?0x5000:cs;
+                const uint16_t ss_=XPICK(3)==0?ds_:XPICK(2)?0x6000:cs;
                 const uint16_t sp_=sps_[XPICK(3)];
                 const uint16_t e_=(uint16_t)(sp_-2);              /* SP at entry: the return address */
                 seg[S_DS]=ds_;seg[S_SS]=ss_;r[R_SP]=sp_;
                 flags=(uint16_t)(flags & (0xFFFFu^F_DF));
                 for(unsigned j=0;j<0x40;j++)XW8(ss_,(uint16_t)(sp_-0x30+j),XRAND());
                 for(unsigned j=0;j<4;j++){uint16_t w=(uint16_t)XRAND();XW16(ss_,(uint16_t)(sp_+2*j),w);small[j]=w;}
-                /* After a load SS = DS = CS = 0: the return address is read from 0:E. */
-                XW16(0,e_,back);
+                /* After a load SS = DS = CS: the return address is read from CS:E. */
+                XW16(cs,e_,back);
                 /* The file name the argument DX points at (in DS): non-zero bytes, then the NUL. */
                 {
                     static const unsigned lens_[8]={0,1,2,5,12,13,40,100};
@@ -35369,13 +35418,13 @@ int main(int argc, char **argv)
                 /* The block it reads back (word at CS:04E5 once DS = CS): its own when it reads where it
                  * wrote it; the overlay's sizes and entry points. */
                 uint16_t es_=blk_;
-                if(ds_!=0)es_=XPICK(2)?blk_:(uint16_t)(((0x70+XPICK(8))<<8)|0xEB);
-                XW16(0,0x04E5,es_);                                /* (with DS = CS the routine writes the same word there) */
+                if(ds_!=cs)es_=XPICK(2)?blk_:(uint16_t)(((0x70+XPICK(8))<<8)|0xEB);
+                XW16(cs,0x04E5,es_);                                /* (with DS = CS the routine writes the same word there) */
                 {   /* The original after INT 21h/4Ch at 04E3: JMP SHORT at 04E5 to the stub at 04E7 + the high byte
                      * (0557h to 055Eh), MOV SP,E / JMP 04DFh: the routine's own RET returns to the caller. */
                     const uint16_t tgt_=(uint16_t)(0x04E7+(es_>>8));
-                    XW8(0,tgt_,0xBC);XW16(0,tgt_+1,e_);
-                    XW8(0,tgt_+3,0xE9);XW16(0,tgt_+4,(uint16_t)(0x04DF-(tgt_+6)));
+                    XW8(cs,tgt_,0xBC);XW16(cs,tgt_+1,e_);
+                    XW8(cs,tgt_+3,0xE9);XW16(cs,tgt_+4,(uint16_t)(0x04DF-(tgt_+6)));
                 }
                 for(unsigned j=0;j<0x30;j++){XW8(blk_,j,XRAND());XW8(es_,j,XRAND());}
                 {
@@ -35384,15 +35433,15 @@ int main(int argc, char **argv)
                     if(XPICK(4)==0)h2_=(uint16_t)(0xFFF0|(XRAND()&15));
                     XW16(es_,0x1E,h1_);XW16(es_,0x20,h2_);
                     const uint16_t par_=(uint16_t)((h1_>>4)+(h2_>>4));
-                    if(ds_!=0) {                                  /* the room it compares with: around the size */
+                    if(ds_!=cs) {                                  /* the room it compares with: around the size */
                         const unsigned k_=s%7;
                         const uint16_t room_=k_==0?par_:k_==1?(uint16_t)(par_-1):k_==2?(uint16_t)(par_+1):
                                              k_==3?(uint16_t)XRAND():k_==4?0:k_==5?0xFBFF:(uint16_t)(par_+XPICK(0x40));
-                        XW16(0,0x04E7,room_);
+                        XW16(cs,0x04E7,room_);
                     }
                 }
                 /* The cells the routine writes through DS and CS: random beforehand. */
-                for(unsigned j=0;j<8;j++){XW8(0,0x0610+j,XRAND());XW8(ds_,0x0610+j,XRAND());}
+                for(unsigned j=0;j<8;j++){XW8(cs,0x0610+j,XRAND());XW8(ds_,0x0610+j,XRAND());}
 #undef XW16
 #undef XW8
 #undef XPICK
@@ -38486,6 +38535,10 @@ int main(int argc, char **argv)
                 r[R_CX]=x; r[R_DX]=row;
                 r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
                 seg[S_ES]=(uint16_t)XRAND();
+                /* The renderer runs as the original continuation after 03CC. Its page table
+                 * must also be initialized: zero page entries can overwrite relocated code.
+                 * Rotate disjoint buffers without consuming or changing any random draws. */
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,page_segments[(s+j)&3]);
 #undef XPICK
 #undef XRAND
 #undef XW16
