@@ -50,8 +50,9 @@ scored by the **gameplay score**, computed by `census_classify.gameplay()` durin
   damaged-install routes count like the others.
 - **Numerator:** (a) bytes inside matched routine bodies (named cover) that a route executes; coverage only a
   fixture state reaches does not count; plus (b) executed bytes of routines that stay original **by design
-  rule only**: STI-first interrupt handlers, the C start-up and its copies, and palette loaders with an STI in
-  their loop. Inside the census these are the `docs/census-original.tsv` rows; outside it an entry must name
+  rule only**: STI-first interrupt handlers, the C start-up and its copies, palette loaders with an STI in
+  their loop, and the program launcher (F117.COM `0100`..`03CA`, owner 23 Oct 2026: it only runs the other programs
+  and tests their exit codes). Inside the census these are the `docs/census-original.tsv` rows; outside it an entry must name
   its rule. Declined routines (VGAME main, MPS_LOGO `1ADC`/`1C82`, START `8427`, END `4393`, END `57B0`, and
   the rest) are remaining work, not original code. (b) counts only where a **reviewed reference entry**
   exists in `docs/reference-reviewed.tsv`. An entry counts only when a second reader has checked its name and
@@ -81,12 +82,12 @@ would be a separate decision. The tooling item (weight 5) is unchanged.
 | share | 80.77% | **85.68%** |
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
-Current (23 Oct, batch az): **(146,330 + 1,826) / 163,862 = 90.42%**
-(P2 88.56%, All 96.51%). The previous all-code measure is
+Current (23 Oct, batch az): **(146,330 + 2,265) / 163,862 = 90.68%**
+(P2 88.72%, All 96.56%). The previous all-code measure is
 **172,483 / 205,932**; 26,088 matched bytes run only in fixtures and earn no gameplay credit.
-There are 15,706 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
+There are 15,267 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
 The largest remaining modules are ASOUND.117 5,356, ASOUND.LOG 2,154, RSOUND.117 2,106,
-RSOUND.LOG 1,828, ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 688, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+RSOUND.LOG 1,828, ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
 The accounted-for checklist is 0 / 43,846; the full module and
 checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
 [roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement

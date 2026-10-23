@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.56%, P3 100.00%, All 96.51%
+- **Scoreboard:** P1 100.00%, P2 88.72%, P3 100.00%, All 96.56%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,303 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **146,330 /
-  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 90.42%**. `docs/reference-reviewed.tsv` holds 38
+  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 90.68%**. `docs/reference-reviewed.tsv` holds 39
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
@@ -30,14 +30,14 @@ Consolidate it instead of appending to it.
   Batches a to az are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 545 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Remaining work:** 15,706 route-executed bytes are unmatched; the all-code measure has 33,449 uncredited bytes.
+- **Remaining work:** 15,267 route-executed bytes are unmatched; the all-code measure has 33,449 uncredited bytes.
   Largest executed groups: ASOUND.117 5,356, ASOUND.LOG 2,154, RSOUND.117 2,106, RSOUND.LOG 1,828,
-  ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 688, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+  ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
   There are 13,232 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
   Refresh using batch ax's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
-- **What P2 100% still requires:** 13,156 unmatched executed bytes are in the six sound drivers, 688 in the launcher's EXEC chain,
+- **What P2 100% still requires:** 13,156 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
   and 1,862 in the seven ordinary programs. The previous all-code measure also has unexecuted static/error-path work: no byte leaves
   scope without its existing design rule or a strict dead certificate. Old private mapping counts are leads, not proofs or current
   inventories. Reviewed-original credit still requires a second reader; do not convert declined routines into exclusions.
@@ -189,6 +189,11 @@ Consolidate it instead of appending to it.
 - **Phase 2 first**; safe optimisation and parallelisation are authorised, but no check may be removed or
   weakened. Declined: splitting the long interpreter run into checkpoint segments, dropping
   `--verify-interp-cache`, changing the default overlap of eight workers.
+- **Program launcher stays original (23 Oct):** F-117.COM `0100`..`03CA` (715 bytes) is a fifth design rule ("program launcher"), reviewed by an
+  independent second reader (no copy protection, no checks beyond child exit codes); the overlay loader `03CB` stays matched. Owner chose it over
+  matching the launcher in nested-run proofs. **Still undecided (asked 23 Oct):** whether hardware calibration/wait loops and the sound drivers'
+  STI installers may stay original; recommended class by class (allow loops no test state can finish, each with a second reader; keep matching
+  installers and OPL write routines). Do not treat any of them as original until the owner answers.
 - **Dead code leaves the denominator only when certain** (19 Oct), with a certificate per row.
 - **Machine-option-only error paths stay original code (20 Oct):** out-of-memory arms, DOS read/write/close
   errors, the `_C_FILE_INFO` environment arm (about 2,500 bytes). Do not build test-only machine options for

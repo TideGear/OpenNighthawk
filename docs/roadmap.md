@@ -157,14 +157,14 @@ not the recompilation:
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
       **172,483 / 205,932 creditable bytes** (the previous measure, which now scores only the naming item).
       P2's matched item uses the gameplay score since 21 Oct: matched code runs **146,330 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (90.42%); P2 88.56%, overall 96.51%**. In the census
+      bytes the routes execute, and 2,265 bytes of second-read code that stays original by design count as understood (90.68%); P2 88.72%, overall 96.56%**. In the census
       alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
       291 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left:** 15,706 executed bytes remain unmatched (of them 20 are design-rule
+      **What is left:** 15,267 executed bytes remain unmatched (of them 20 are design-rule
       original code awaiting reviewed entries). The largest groups are ASOUND.117 5,356, ASOUND.LOG 2,154,
-      RSOUND.117 2,106, RSOUND.LOG 1,828, ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 688,
+      RSOUND.117 2,106, RSOUND.LOG 1,828, ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 249,
       VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251. The all-code measure has
       33,449 uncredited bytes, including 13,232 uncredited reviewed static code bytes that no route runs.
       No new route or dead certificate has been established for those static ranges: indirect/callback/vector

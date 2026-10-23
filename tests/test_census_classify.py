@@ -412,6 +412,12 @@ class GameplayTests(unittest.TestCase):
         g = self.score(ran={"T": {0x80, 0x81}}, entries=[self.stays(0x80, 2, why="STI-first handler: driver timer")])
         self.assertEqual(g["stays_original_reviewed"], 2)
 
+    def test_program_launcher_is_a_design_rule(self):
+        # owner, 23 Oct 2026: F117.COM's launcher body only runs the other programs and tests their exit codes
+        g = self.score(ran={"T": {0x80, 0x81}},
+                       entries=[self.stays(0x80, 2, why="program launcher: runs the other programs in order")])
+        self.assertEqual(g["stays_original_reviewed"], 2)
+
     def test_original_code_inside_a_census_original_row_must_also_name_its_design_rule(self):
         # a census-original row can be wider than its design-rule routine (a C start-up row also holds the run
         # time's divide-error entry): the row alone is not evidence
