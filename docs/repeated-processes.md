@@ -49,6 +49,12 @@ verification) is not an optimisation; it needs the owner's approval.
   `precheck_parallel.py` rounds, all clean at 1,261 entries; the 1,256 older reports were unchanged. Evidence: `D:/f117-gate/av-pre/`.
 - **Batch aw checks.** Seven new optimized CTests passed in 2.28 s. Six whole-table seeds at 4,000 states
   passed in two three-seed rounds (`D:/f117-gate/aw-pre/`); acceptance took 1,671 s with 509 CTests.
+- **Batch ax checks.** Twenty targeted optimized CTests passed in 1.82 s; six whole-table seeds passed in two three-seed rounds
+  (1,407.72 s total, `D:/f117-gate/ax-pre/`). The core gate took 1,584 s and full acceptance 1,795 s: 528 CTests, 63 routes /
+  62 fresh interpreter sessions, both timing profiles, event limits, all N=1 presentation and boot N=4/9. All 95 new optimized seed
+  checks passed. The first precheck attempt exposed a missed callee-return boundary in the test runner; exact CPU-state recovery keeps
+  the final memory/I/O comparison and grants no named completion. Nineteen synthetic cases cover the return, prior interrupt gaps and
+  incorrect clocks, registers, flags, memory and I/O. No checks were removed.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full
@@ -116,6 +122,14 @@ verification) is not an optimisation; it needs the owner's approval.
   a one-tick negative control must still fail. If production source is
   unchanged, a rerun may reuse the freshly verified interpreter cache while
   tests and registration are the only amendment.
+  A recovered state can also change later fuzz inputs: the existing one-in-four
+  mid-run probe draws from the routine's random stream. In batch ax's shared-seed
+  review, 1,266 old reports are identical, END's error reporter gains one valid
+  comparison, and SETUP's startup gains two recovered returns. The latter's new
+  probe at state 509 advances the stream, changing inputs from state 510 onward;
+  its total comparison count changes from 649 to 631 while all 4,000 iterations
+  remain. Fixed/control traces prove the first 510 random-stream values equal
+  and retain every check (`D:/f117-gate/ax-legacy-io-20261023/rng-review.json`).
 
 ## Practical traps
 
@@ -526,12 +540,24 @@ Evidence: `D:/f117-gate/present-v2/band-finish`,
 
 ## Phase 2 proofs (matched routines)
 
-**Process.** Proofs run in parallel agents, each in its own
+**Process.** Each proof uses its own
 `D:/f117-gate/p2-*` directory, with `D:/f117-gate/kit/kit.py` (init, build,
 lock, seeds, mutations, checkpoints, verdict, integrate; method and traps in
 `D:/f117-gate/kit/BRIEF.md`). Finish the proof workers and verify every
 verdict before starting the batch's gate; run no other heavy job during it
 (owner, 20 October).
+
+The current private queue uses three slots, each with one compiler job;
+larger routines start first, and a slot carries its routine through mutations,
+route checkpoints, boot and verdict before taking another. Batch ax's final
+pass took 1,240 s for 18 ready routines and one failed mutation list; the
+remaining routine passed after three equivalent edits were replaced with
+observable carry defects. This timing includes repeated proof work, not the
+whole batch's development cost. Fresh harness compiles still take roughly
+80-140 s per private project; reuse beyond the existing write-if-changed
+behavior needs an equivalence measurement before adoption. Three compiler
+processes remain the limit. The 114 extra-seed logs, exact mutation lists,
+source freshness and boot hashes were independently audited.
 
 | Step | Cost | Note |
 |---|---|---|

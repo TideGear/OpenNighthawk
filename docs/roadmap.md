@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (509),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (528),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -152,21 +152,21 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now (22 Oct):** 1,268 addresses matched. The score covers the expanded
+      **Now (23 Oct):** 1,287 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **170,249 / 205,509 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **144,560 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (89.33%); P2 87.60%, overall 96.21%**. In the census
-      alone, named code runs 159,813 of 165,425 creditable bytes (1,110 rows wholly,
-      293 in part). Credit is by byte since 16 October; data, code that stays original
+      **170,520 / 205,509 creditable bytes** (the previous measure, which now scores only the naming item).
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **144,790 of the 163,862
+      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (89.48%); P2 87.73%, overall 96.25%**. In the census
+      alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
+      291 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left:** 17,476 executed bytes remain unmatched (of them 20 are design-rule
+      **What is left:** 17,246 executed bytes remain unmatched (of them 20 are design-rule
       original code awaiting reviewed entries). The largest groups are ASOUND.117 5,373, ASOUND.LOG 2,615,
       RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, F117.COM 688,
-      VGAME 549, MPS_LOGO 328, PLAYER 324 and START 306. The all-code measure has
-      35,260 uncredited bytes, including 13,243 uncredited reviewed static code bytes that no route runs.
+      VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251. The all-code measure has
+      34,989 uncredited bytes, including 13,232 uncredited reviewed static code bytes that no route runs.
       No new route or dead certificate has been established for those static ranges: indirect/callback/vector
       and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
       About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;
@@ -266,6 +266,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | au | 22 Oct | 1,256 | 330 named bytes | MGRAPHIC text-string cluster: `02B9` and `037F` (clip helpers), `03D1` (the shared far-return tail), `03E8` (shared set-up, leaves by JMP SI) and `03C9` (a front end). All 130 implemented instructions covered, five private seeds per entry, 212 mutations caught, exact game and boot proofs on routes that run every branch (`central_america_ground_training` for `02B9` and `03D1`, `cargo_pilot` for `03E8`, `ibm_boot` for `03C9`, `full_cycle` for `037F`; `full_cycle` misses the rare arms of the others). `02B9`, `037F`, `03E8` and `03C9` are audited as partial: a rejected string leaves through the shared `03D1` tail (run inline or handed back to), `03E8` leaves a dead restore arm unwritten, `03C9` calls the original `03E8`. All 1,251 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. 497 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,920 s. |
 | av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, five private seeds per entry, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,727 s. |
 | aw | 22 Oct | 1,268 | 945 named bytes | START selection change `5E6F`, theatre page `5A8A`, message panel `6045` and panel rectangles `5FFA`; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query. All 458 instructions covered, five private seeds per routine, all 372 mutations caught, exact boot and real-route proofs. The private route proofs are thin for `5A8A`/`5FFA` (once each), `6045` (three times) and `1D69` (twice); the full gate runs each in 27 or more sessions. The theatre page has 35 fixture-only instructions. Six whole-table pre-gate seeds clean; all 1,261 old reports unchanged at `0x27182818`. 509 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,671 s. |
+| ax | 23 Oct | 1,287 | 271 named bytes | 19 leaf routines: START cel steps, BIOS ticks, mouse position, flush count and free-or-exit; END ticks; MISC BIOS key read; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode, exit checksum and formatter word/pointer readers; PLAYER picture close/end flag and interrupt-vector get/set. All 141 instructions covered, 344 caught mutations, 95 optimized seed checks. Six whole-table prechecks pass: 1,266 old reports identical, two changes explained by exact callee-return recovery and the existing mid-run probe's random draw. The harness now rejects contradictory unfinished I/O, checks all INT clocks and recognizes exact original returns with extra stack pops without granting completion credit; 19 synthetic cases pass. 528 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, event limits, N=1 presentation and boot N=4/9 pass. Added gameplay credit 230 bytes, fixture-only credit 41; core gate 1,584 s, acceptance 1,795 s. |
 
 Notes that still matter:
 

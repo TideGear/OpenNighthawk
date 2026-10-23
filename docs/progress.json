@@ -12,7 +12,7 @@
         "weight": 60.04,
         "done": 1.0,
         "kind": "estimate",
-        "evidence": "All 17 code files translated (89,365 instruction starts); instruction lockstep 0 mismatches over 5,718,848 states under each timing profile; 45 routes (44 sessions) identical across engines; fidelity.py 1,210/1,210; housekeeping done."
+        "evidence": "Batch ax (23 Oct 2026): all 17 game code files and the floating decompressor translated (89,433 instruction starts); instruction lockstep 0 mismatches over 5,723,136 compared states under each timing profile; 63 routes (62 fresh interpreter sessions) identical; 528 CTests pass. Earlier fidelity.py evidence: 1,210/1,210."
       },
       {
         "item": "86Box and DOSBox-X as routine checks",
@@ -150,13 +150,13 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed and reviewed static instruction bytes outside those rows in all 17 game code files; added to numerator and denominator for scoring. Floating LZEXE decompressor and unreviewed static discoveries remain outside. gameplay (21 Oct 2026): the gameplay score's figures over the executed bytes only (denominator: every validated route-executed instruction byte; matched_route_run; stays_original_reviewed; fixture_only; remaining; checklist of previous-scope bytes outside the denominator with and without a docs/reference-reviewed.tsv entry). Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 1110,
-    "matched_bytes": 159813,
-    "partial_functions": 293,
+    "matched_functions": 1122,
+    "matched_bytes": 160003,
+    "partial_functions": 291,
     "classes": {
-      "credited": 159813,
-      "ran": 1051,
-      "never_run": 4334,
+      "credited": 160003,
+      "ran": 891,
+      "never_run": 4304,
       "unreached": 222,
       "slots": 5,
       "data": 7131,
@@ -167,8 +167,8 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 40084,
-      "credited": 10436,
-      "reviewed_static_bytes": 13243,
+      "credited": 10517,
+      "reviewed_static_bytes": 13232,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5373,
@@ -182,7 +182,7 @@
         },
         "DSWAP": {
           "bytes": 2210,
-          "credited": 132,
+          "credited": 140,
           "reviewed_static_bytes": 2009
         },
         "END": {
@@ -212,13 +212,13 @@
         },
         "MISC": {
           "bytes": 65,
-          "credited": 60,
+          "credited": 65,
           "reviewed_static_bytes": 0
         },
         "MPS_LOGO": {
           "bytes": 1656,
-          "credited": 73,
-          "reviewed_static_bytes": 1459
+          "credited": 110,
+          "reviewed_static_bytes": 1448
         },
         "NSOUND.117": {
           "bytes": 0,
@@ -242,12 +242,12 @@
         },
         "SETUP": {
           "bytes": 3517,
-          "credited": 85,
+          "credited": 102,
           "reviewed_static_bytes": 3224
         },
         "START": {
           "bytes": 2509,
-          "credited": 1175,
+          "credited": 1189,
           "reviewed_static_bytes": 1177
         },
         "VGAME": {
@@ -267,11 +267,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163862,
-      "matched_route_run": 144560,
+      "matched_route_run": 144790,
       "stays_original_reviewed": 1826,
-      "score": 0.8933492817126607,
-      "fixture_only": 25624,
-      "remaining": 17476,
+      "score": 0.8947529018320294,
+      "fixture_only": 25665,
+      "remaining": 17246,
       "original_awaiting_review": 20,
       "reviewed_entries": 38,
       "checklist": {
@@ -281,11 +281,11 @@
         "by_class": {
           "credited": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 23494
+            "without_reviewed_entry": 23524
           },
           "never_run": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 4329
+            "without_reviewed_entry": 4299
           },
           "slots": {
             "with_reviewed_entry": 0,
@@ -293,11 +293,11 @@
           },
           "supp-credited": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 2130
+            "without_reviewed_entry": 2141
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 13243
+            "without_reviewed_entry": 13232
           },
           "unreached": {
             "with_reviewed_entry": 0,
@@ -337,10 +337,10 @@
         },
         "DSWAP": {
           "denominator": 3661,
-          "matched_route_run": 3420,
+          "matched_route_run": 3437,
           "stays_original_reviewed": 156,
           "fixture_only": 2037,
-          "remaining": 85,
+          "remaining": 68,
           "original_awaiting_review": 0,
           "not_in_denominator": 4710,
           "not_in_denominator_reviewed": 0,
@@ -348,10 +348,10 @@
         },
         "END": {
           "denominator": 15038,
-          "matched_route_run": 14487,
+          "matched_route_run": 14494,
           "stays_original_reviewed": 283,
           "fixture_only": 5882,
-          "remaining": 268,
+          "remaining": 261,
           "original_awaiting_review": 0,
           "not_in_denominator": 7722,
           "not_in_denominator_reviewed": 0,
@@ -403,10 +403,10 @@
         },
         "MISC": {
           "denominator": 65,
-          "matched_route_run": 60,
+          "matched_route_run": 65,
           "stays_original_reviewed": 0,
           "fixture_only": 0,
-          "remaining": 5,
+          "remaining": 0,
           "original_awaiting_review": 0,
           "not_in_denominator": 0,
           "not_in_denominator_reviewed": 0,
@@ -414,10 +414,10 @@
         },
         "MPS_LOGO": {
           "denominator": 6793,
-          "matched_route_run": 6296,
+          "matched_route_run": 6369,
           "stays_original_reviewed": 169,
-          "fixture_only": 2495,
-          "remaining": 328,
+          "fixture_only": 2521,
+          "remaining": 255,
           "original_awaiting_review": 0,
           "not_in_denominator": 4799,
           "not_in_denominator_reviewed": 0,
@@ -436,10 +436,10 @@
         },
         "PLAYER": {
           "denominator": 6501,
-          "matched_route_run": 6021,
+          "matched_route_run": 6077,
           "stays_original_reviewed": 156,
           "fixture_only": 1654,
-          "remaining": 324,
+          "remaining": 268,
           "original_awaiting_review": 0,
           "not_in_denominator": 3411,
           "not_in_denominator_reviewed": 0,
@@ -469,10 +469,10 @@
         },
         "SETUP": {
           "denominator": 3684,
-          "matched_route_run": 3301,
+          "matched_route_run": 3318,
           "stays_original_reviewed": 156,
           "fixture_only": 755,
-          "remaining": 227,
+          "remaining": 210,
           "original_awaiting_review": 0,
           "not_in_denominator": 4148,
           "not_in_denominator_reviewed": 0,
@@ -480,10 +480,10 @@
         },
         "START": {
           "denominator": 36791,
-          "matched_route_run": 36202,
+          "matched_route_run": 36257,
           "stays_original_reviewed": 283,
-          "fixture_only": 4385,
-          "remaining": 306,
+          "fixture_only": 4400,
+          "remaining": 251,
           "original_awaiting_review": 20,
           "not_in_denominator": 5924,
           "not_in_denominator_reviewed": 0,

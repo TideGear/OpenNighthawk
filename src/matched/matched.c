@@ -42817,7 +42817,7 @@ static int player_picture_open(machine_t *m)
     x86_push_reg(c, R_BP);
     c->r[R_BP] = c->r[R_SP];
     ds_put(c, 0x11BC, 0);                         /* remaining packed bits */
-    ds_put8(c, 0x11BE, 0);                        /* bit accumulator */
+    ds_put8(c, 0x11BE, 0);                        /* picture stream-end flag */
     c->r[R_AX] = 0x01B8;
     c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x1000, 1, 0);
     ds_put(c, 0x01B6, c->r[R_AX]);                 /* initially empty buffer */
@@ -86028,7 +86028,404 @@ static int player_get_video_mode(machine_t *m)
 #undef XB
 }
 
+/* MPS_LOGO 0146:1403: consume a near or far formatter pointer according to BP-4 bit 20h, returning it in ES:DI; near null has segment zero. */
+static int mps_logo_format_next_pointer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XN(at_,to_,ret_,pop_) do { SM4_NEED(1,(at_));XRUN(guest_call_pop(m,(to_),(ret_),(pop_))); } while(0)
+    XB(2, 0x1403);alu_logic(c,(uint32_t)bp_get8(c,-4)&0x20,0);
+    if(x86_cond(c,4))goto near_pointer;
+    XN(0x1409,0x13F7,0x140C,0);
+    XB(3, 0x140C);c->seg[S_ES]=c->r[R_DX];c->r[R_DI]=c->r[R_AX];near_ret(c);return 1;
+near_pointer:
+    XN(0x1411,0x13EF,0x1414,0);
+    XB(3, 0x1414);c->r[R_DI]=c->r[R_AX];c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(x86_cond(c,5))goto data_pointer;
+    XB(2, 0x141A);c->seg[S_ES]=c->r[R_AX];near_ret(c);return 1;
+data_pointer:
+    XB(3, 0x141D);cpu_push16(c,c->seg[S_DS]);c->seg[S_ES]=cpu_pop16(c);near_ret(c);return 1;
+#undef XN
+#undef XRUN
+#undef XB
+}
+
+/* MPS_LOGO 0146:08A8: XOR-check DS bytes 0 through 41h against 55h at exit; report a null-pointer assignment if it changed. */
+static int mps_logo_check_null_region(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 5)) return 0;
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XN(at_,to_,ret_,pop_) do { SM4_NEED(1,(at_));XRUN(guest_call_pop(m,(to_),(ret_),(pop_))); } while(0)
+    XB(5, 0x08A8);cpu_push16(c,c->r[R_SI]);
+    c->r[R_SI]=(uint16_t)alu_op(c,6,c->r[R_SI],c->r[R_SI],1);c->r[R_CX]=0x0042;
+    set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),get_r8(c,R_AH),0));c->flags&=~F_DF;
+checksum:
+    XB(3, 0x08B1);x86_lods(c,0,c->seg[S_DS]);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),get_r8(c,R_AL),0));
+    c->r[R_CX]=(uint16_t)(c->r[R_CX]-1);if(c->r[R_CX]!=0)goto checksum;
+    XB(2, 0x08B6);set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),0x55,0));
+    if(x86_cond(c,4))goto done;
+    XB(1, 0x08BB);cpu_push16(c,c->seg[S_CS]);
+    XN(0x08BC,0x0880,0x08BF,2);
+    XB(3, 0x08BF);c->r[R_AX]=1;cpu_push16(c,c->r[R_AX]);cpu_push16(c,c->seg[S_CS]);
+    XN(0x08C4,0x0B07,0x08C7,4);
+    XB(1, 0x08C7);c->r[R_AX]=1;
+done:
+    XB(2, 0x08CA);c->r[R_SI]=cpu_pop16(c);far_ret(c);return 1;
+#undef XN
+#undef XRUN
+#undef XB
+}
+
+/* START 0000:40CF: free the supplied DOS page segment; on failure print message 0D26 and shut down with code zero. */
+static int start_free_page_or_exit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XN(at_,to_,ret_,pop_) do { SM4_NEED(1,(at_));XRUN(guest_call_pop(m,(to_),(ret_),(pop_))); } while(0)
+    XB(3, 0x40CF);frame_open(c,0);cpu_push16(c,bp_get(c,4));
+    XN(0x40D5,0x8030,0x40D8,0);
+    XB(3, 0x40D8);c->r[R_BX]=cpu_pop16(c);
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(x86_cond(c,4))goto done;
+    XB(2, 0x40DD);c->r[R_AX]=0x0D26;cpu_push16(c,c->r[R_AX]);
+    XN(0x40E1,0x9430,0x40E4,0);
+    XB(3, 0x40E4);c->r[R_BX]=cpu_pop16(c);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);cpu_push16(c,c->r[R_AX]);
+    XN(0x40E8,0x76D1,0x40EB,0);
+    XB(1, 0x40EB);c->r[R_BX]=cpu_pop16(c);
+done:
+    XB(3, 0x40EC);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef XN
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0000:14CA: set an interrupt vector from the number and far pointer arguments, restoring DS and returning zero. */
+static int player_set_interrupt_vector(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 6)) return 0;
+#define XI(at_) do { SM4_NEED(1, (at_)); \
+    const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=st4_int21(m,(at_));m->run_until=until_; \
+    if(!returned_)return 1; } while(0)
+    XB(6, 0x14CA);
+    frame_open(c,0);c->r[R_AX]=bp_get(c,4);cpu_push16(c,c->seg[S_DS]);
+    c->r[R_DX]=bp_get(c,6);c->seg[S_DS]=bp_get(c,8);set_r8(c,R_AH,0x25);
+    XI(0x14D6);
+    XB(5, 0x14D8);
+    c->seg[S_DS]=cpu_pop16(c);c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef XI
+#undef XB
+}
+
+/* MPS_LOGO 0006:03E4: check stack room through the loaded far target, then set the BIOS video mode from the far-call argument. */
+static int mps_logo_set_video_mode(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XN(at_,to_,ret_,pop_) do { SM4_NEED(1,(at_));XRUN(guest_call_pop(m,(to_),(ret_),(pop_))); } while(0)
+    XB(3, 0x03E4);frame_open(c,0);c->r[R_AX]=0;
+    SM4_NEED(1,0x03EA);XRUN(guest_call_far(m,0x03EA,0x03EF));
+    XB(4, 0x03EF);cpu_push16(c,c->r[R_SI]);cpu_push16(c,c->r[R_DI]);
+    set_r8(c,R_AL,bp_get8(c,6));set_r8(c,R_AH,0);
+    SM4_NEED(1,0x03F6);if(!support_int(m,0x03F6))return 1;
+    XB(5, 0x03F8);c->r[R_DI]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);far_ret(c);return 1;
+#undef XN
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0000:14B8: get the interrupt vector named by the stack argument and return its far pointer in DX:AX. */
+static int player_get_interrupt_vector(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+#define XI(at_) do { SM4_NEED(1, (at_)); \
+    const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=st4_int21(m,(at_));m->run_until=until_; \
+    if(!returned_)return 1; } while(0)
+    XB(4, 0x14B8);
+    frame_open(c,0);c->r[R_AX]=bp_get(c,4);set_r8(c,R_AH,0x35);
+    XI(0x14C0);
+    XB(5, 0x14C2);
+    c->r[R_DX]=c->seg[S_ES];c->r[R_AX]=c->r[R_BX];
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* PLAYER 0000:0BCD: close the picture handle at 11B8; return one on DOS success and zero on failure. */
+static int player_close_picture_handle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+#define XI(at_) do { SM4_NEED(1, (at_)); \
+    const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=st4_int21(m,(at_));m->run_until=until_; \
+    if(!returned_)return 1; } while(0)
+    XB(2, 0x0BCD);
+    set_r8(c,R_AH,0x3E);c->r[R_BX]=ds_get(c,0x11B8);
+    XI(0x0BD3);
+    XB(4, 0x0BD5);
+    set_flag(c,F_CF,!(c->flags & F_CF));c->r[R_AX]=0;
+    c->r[R_AX]=(uint16_t)x86_shift(c,2,c->r[R_AX],1,1);
+    near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* DSWAP 0000:10D0: read the DOS default drive and convert its zero-based byte to a one-based word. */
+static int dswap_current_drive_one_based(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+#define XI(at_) do { SM4_NEED(1, (at_)); \
+    const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=st4_int21(m,(at_));m->run_until=until_; \
+    if(!returned_)return 1; } while(0)
+    XB(1, 0x10D0); set_r8(c,R_AH,0x19);
+    XI(0x10D2);
+    XB(3, 0x10D4);
+    set_r8(c,R_AH,0);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* START 0000:85A7: set the mouse position from E08A/E08C; the horizontal coordinate is doubled. */
+static int start_position_mouse_pointer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_=c->seg[S_CS]; const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    c->op_cs=cs_;c->op_ip=(at_);c->ip=(next_); \
+    cpu_interrupt(c,(vec_));c->icount++;m->run_until=until_; \
+    if(c->seg[S_CS]!=cs_ || c->ip!=(next_) || c->halted)return 1; } while(0)
+    XB(4, 0x85A7);
+    c->r[R_AX]=4;c->r[R_CX]=ds_get(c,0xE08A);
+    c->r[R_CX]=(uint16_t)x86_shift(c,4,c->r[R_CX],1,1);
+    c->r[R_DX]=ds_get(c,0xE08C);
+    XI(0x85B4, 0x85B6, 0x33);
+    XB(1, 0x85B6); near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* SETUP 0000:0A8C: increment the four calibration counters, preserving the original byte wrap and final flags. */
+static int setup_advance_calibration_counters(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 5)) return 0;
+    XB(5, 0x0A8C);
+    ds_put8(c, 0x0783, (uint8_t)alu_inc(c, ds_get8(c, 0x0783), 0));
+    ds_put8(c, 0x0784, (uint8_t)alu_inc(c, ds_get8(c, 0x0784), 0));
+    ds_put8(c, 0x0782, (uint8_t)alu_inc(c, ds_get8(c, 0x0782), 0));
+    ds_put8(c, 0x0785, (uint8_t)alu_inc(c, ds_get8(c, 0x0785), 0));
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* START 0000:8607: read BIOS INT 1Ah function zero and return the low tick word in AX. */
+static int start_bios_tick_low(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_=c->seg[S_CS]; const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    c->op_cs=cs_;c->op_ip=(at_);c->ip=(next_); \
+    cpu_interrupt(c,(vec_));c->icount++;m->run_until=until_; \
+    if(c->seg[S_CS]!=cs_ || c->ip!=(next_) || c->halted)return 1; } while(0)
+    XB(1, 0x8607);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    XI(0x8609, 0x860B, 0x1A);
+    XB(2, 0x860B);
+    c->r[R_AX]=c->r[R_DX]; near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* START 0000:9CA4: flush every open stream in count mode; the callee removes its one word and AX is the count. */
+static int start_flush_all_count(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x9CA4);
+    c->r[R_AX]=1; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1, 0x9CA8);
+    { const uint64_t until_=m->run_until;
+      if(m->run_until>c->stop_at)m->run_until=c->stop_at;
+      const int returned_=guest_call_pop(m,0x9CAC,0x9CAB,2);
+      m->run_until=until_; if(!returned_)return 1; }
+    XB(1, 0x9CAB);
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* END 0000:45A6: read BIOS INT 1Ah function zero and return the low tick word in AX. */
+static int end_bios_tick_low(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_=c->seg[S_CS]; const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    c->op_cs=cs_;c->op_ip=(at_);c->ip=(next_); \
+    cpu_interrupt(c,(vec_));c->icount++;m->run_until=until_; \
+    if(c->seg[S_CS]!=cs_ || c->ip!=(next_) || c->halted)return 1; } while(0)
+    XB(1, 0x45A6);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,6,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    XI(0x45A8, 0x45AA, 0x1A);
+    XB(2, 0x45AA);
+    c->r[R_AX]=c->r[R_DX]; near_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* MPS_LOGO 0146:13EF: consume a word from the formatter argument cursor at BP+10, honoring DF. */
+static int mps_logo_format_next_word(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x13EF);
+    c->r[R_SI] = bp_get(c, 10);
+    x86_lods(c, 1, c->seg[S_DS]);
+    bp_put(c, 10, c->r[R_SI]);
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* DSWAP 0000:1D14: flush every open stream in count mode; the callee removes its one word and AX is the count. */
+static int dswap_flush_all_count(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x1D14);
+    c->r[R_AX]=1; cpu_push16(c,c->r[R_AX]);
+    SM4_NEED(1, 0x1D18);
+    { const uint64_t until_=m->run_until;
+      if(m->run_until>c->stop_at)m->run_until=c->stop_at;
+      const int returned_=guest_call_pop(m,0x1D1C,0x1D1B,2);
+      m->run_until=until_; if(!returned_)return 1; }
+    XB(1, 0x1D1B);
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* START 0000:2A7E: read the remaining cel-animation step count as an unsigned word. */
+static int start_cel_steps_remaining(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x2A7E);
+    set_r8(c, R_AL, ds_get8(c, 0xB2F4));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c,R_AH), get_r8(c,R_AH), 0));
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* MISC 0007:0005: read a BIOS key with INT 16h function zero, returning AX through a far return. */
+static int misc_read_key(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_=c->seg[S_CS]; const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    c->op_cs=cs_;c->op_ip=(at_);c->ip=(next_); \
+    cpu_interrupt(c,(vec_));c->icount++;m->run_until=until_; \
+    if(c->seg[S_CS]!=cs_ || c->ip!=(next_) || c->halted)return 1; } while(0)
+    XB(1, 0x0005);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    XI(0x0007, 0x0009, 0x16);
+    XB(1, 0x0009); far_ret(c); return 1;
+#undef XI
+#undef XB
+}
+
+/* DSWAP 0000:0AAA: empty picture-driver hook. */
+static int dswap_picture_noop(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0AAA);
+    near_ret(c); return 1;
+#undef XB
+}
+
+/* PLAYER 0000:0BDC: read the picture stream-end flag as an unsigned word (one at end, zero at a stretch break). */
+static int player_picture_end_flag(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0BDC);
+    set_r8(c, R_AL, ds_get8(c, 0x11BE));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 6, get_r8(c,R_AH), get_r8(c,R_AH), 0));
+    near_ret(c); return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0BDC, player_picture_end_flag, "read the picture stream-end flag as an unsigned word", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0AAA, dswap_picture_noop, "empty picture-driver hook", 1 },
+    { "matched", "MISC.EXE", MISC_47304, 0x0007, 0x0005, misc_read_key, "read a BIOS key with INT 16h function zero, returning AX through a far return", 2 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2A7E, start_cel_steps_remaining, "read the remaining cel-animation step count as an unsigned word", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1D14, dswap_flush_all_count, "flush every open stream in count mode; the callee removes its one word and AX is the count", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x13EF, mps_logo_format_next_word, "consume a word from the formatter argument cursor at BP+10, honoring DF", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x45A6, end_bios_tick_low, "read BIOS INT 1Ah function zero and return the low tick word in AX", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9CA4, start_flush_all_count, "flush every open stream in count mode; the callee removes its one word and AX is the count", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8607, start_bios_tick_low, "read BIOS INT 1Ah function zero and return the low tick word in AX", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0A8C, setup_advance_calibration_counters, "increment the four calibration counters, preserving the original byte wrap and final flags", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x85A7, start_position_mouse_pointer, "set the mouse position from E08A/E08C; the horizontal coordinate is doubled", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x10D0, dswap_current_drive_one_based, "read the DOS default drive and convert its zero-based byte to a one-based word", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0BCD, player_close_picture_handle, "close the picture handle at 11B8; return one on DOS success and zero on failure", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x14B8, player_get_interrupt_vector, "get the interrupt vector named by the stack argument and return its far pointer in DX:AX", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0006, 0x03E4, mps_logo_set_video_mode, "check stack room through the loaded far target, then set the BIOS video mode from the far-call argument", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x14CA, player_set_interrupt_vector, "set an interrupt vector from the number and far pointer arguments, restoring DS and returning zero", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x40CF, start_free_page_or_exit, "free the supplied DOS page segment; on failure print message 0D26 and shut down with code zero", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x08A8, mps_logo_check_null_region, "XOR-check DS bytes 0 through 41h against 55h at exit; report a null-pointer assignment if it changed", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1403, mps_logo_format_next_pointer, "consume a near or far formatter pointer according to BP-4 bit 20h, returning it in ES:DI; near null has segment zero", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0520, player_get_video_mode, "current video mode (BIOS 10h function 0Fh via int86)", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1D69, setup_malloc, "allocate from the near heap", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x2097, dswap_malloc, "allocate from the near heap", 1 },

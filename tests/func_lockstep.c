@@ -49,6 +49,7 @@ typedef struct {
     int      ndirty, overflow;
     uint32_t dirty[1];
     uint64_t io;            /* port writes and reads (with their clock), interrupts */
+    uint64_t io_clocks;     /* separate so checking INT clocks does not change synthetic read answers */
     uint32_t nread;
     uint32_t nlog;
     io_event log[IO_LOG];
@@ -60,7 +61,7 @@ static side_t g_side[2];
 /* A fresh port record and device model, for a run from the entry state. */
 static void side_io_reset(side_t *s)
 {
-    s->io = 0; s->nread = 0; s->nlog = 0;
+    s->io = 0; s->io_clocks = 0; s->nread = 0; s->nlog = 0;
     memset(&s->dev, 0, sizeof s->dev);
     for (int ch = 0; ch < 3; ch++) s->dev.pit_access[ch] = 3;
 }
@@ -83,11 +84,30 @@ static uint64_t mix(uint64_t h, uint64_t v)
 
 static void io_note(side_t *s, uint8_t kind, uint16_t port, int width, uint32_t val, uint64_t clk)
 {
+    s->io_clocks = mix(s->io_clocks, clk);
     if (s->nlog < IO_LOG) {
         io_event *e = &s->log[s->nlog];
         e->kind = kind; e->port = port; e->width = (uint8_t)width; e->val = val; e->clk = clk; e->h = s->io;
     }
     s->nlog++;
+}
+
+/* A partial run may have only a prefix of the original's I/O. A changed
+ * event or an extra event is already a difference, even if the continuation
+ * cannot return. Do not turn that evidence into an unfinished-state skip. */
+static int io_prefix_changed(void)
+{
+    const side_t *a = &g_side[0], *b = &g_side[1];
+    if (b->nlog > a->nlog || (b->nlog == a->nlog &&
+        (b->io != a->io || b->io_clocks != a->io_clocks))) return 1;
+    unsigned common = a->nlog < b->nlog ? a->nlog : b->nlog;
+    if (common > IO_LOG) common = IO_LOG;
+    for (unsigned k = 0; k < common; k++) {
+        const io_event *x = &a->log[k], *y = &b->log[k];
+        if (x->kind != y->kind || x->width != y->width || x->port != y->port ||
+            x->val != y->val || x->clk != y->clk || x->h != y->h) return 1;
+    }
+    return 0;
 }
 
 /* Whether a byte written to a port makes the machine look at interrupts at
@@ -176,6 +196,13 @@ static struct { uint16_t ax; uint8_t cf; uint16_t put; } g_dos_script[16];   /* 
                                                                                put 100h|b: a read (3Fh) stores byte b at DS:DX */
 static unsigned g_dos_script_n;
 
+/* Scoped BIOS tick and DOS vector answers supplied by the entry fixtures. */
+static int g_native_int1a;
+static uint16_t g_int1a_cx, g_int1a_dx;
+static uint8_t g_int1a_al;
+static int g_vector_force;
+static uint16_t g_vector_segment, g_vector_offset;
+
 static int g_native_int10;   /* answer INT 10h too (the string writer under test) */
 static int g_int10_force;    /* private hunk: a fixture sets AL for INT 10h function 0Fh (get video mode) per state */
 static uint8_t g_int10_al;
@@ -190,6 +217,7 @@ static int int_h(cpu_t *c, uint8_t vec)
     s->io = mix(s->io, ((uint64_t)c->ip << 16) | c->flags);
     io_note(s, 3, vec, 0, c->r[R_AX], c->icount);
     if (g_kbd_force && (vec == 0x16 || vec == 0x21)) { s->nread++; c->r[R_AX] = g_kbd_ax; c->flags = (uint16_t)((c->flags & ~(F_CF | F_ZF)) | (g_kbd_fl & (F_CF | F_ZF))); return 1; }
+    if (g_vector_force && vec == 0x21 && get_r8(c,R_AH) == 0x35) { s->nread++; c->seg[S_ES]=g_vector_segment; c->r[R_BX]=g_vector_offset; return 1; }
     if (g_dos && vec == 0x21) {     /* a DOS that answers: AX (and DX), and CF one time in four */
         s->nread++;
         const uint8_t ah_in = get_r8(c, R_AH);
@@ -221,6 +249,7 @@ static int int_h(cpu_t *c, uint8_t vec)
         c->flags = (uint16_t)((c->flags & ~(F_CF | F_ZF)) | ((v & 0x400) ? F_CF : 0) | ((v & 0x800) ? F_ZF : 0));
         return 1;
     }
+    if (vec == 0x1A && g_native_int1a && get_r8(c,R_AH) == 0) { s->nread++; c->r[R_CX]=g_int1a_cx; c->r[R_DX]=g_int1a_dx; set_r8(c,R_AL,g_int1a_al); return 1; }
     if (vec == 0x33) {              /* the mouse driver: reset answers FFFFh or 0; function 3 gives buttons 0-7, column, row */
         s->nread++;
         const uint64_t v = mix(0x5000000ull | vec, s->nread);
@@ -426,13 +455,13 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
     else if (a->halted != b->halted) snprintf(why, sizeof why, "halted %d vs %d", a->halted, b->halted);
     else if (a->inhibit_at != b->inhibit_at) snprintf(why, sizeof why, "interrupt shadow");
     else if (a->int_depth != b->int_depth) snprintf(why, sizeof why, "interrupt depth %d vs %d", a->int_depth, b->int_depth);
-    else if (g_side[0].io != g_side[1].io) {
+    else if (g_side[0].io != g_side[1].io || g_side[0].io_clocks != g_side[1].io_clocks) {
         /* the first entry whose running record differs: what and at which clock (+0 is the entry) */
         static const char *KIND[4] = { "", "OUT", "IN", "INT" };
         const side_t *x = &g_side[0], *y = &g_side[1];
         const uint32_t n = x->nlog < y->nlog ? x->nlog : y->nlog;
         uint32_t i = 0;
-        while (i < n && i < IO_LOG && x->log[i].h == y->log[i].h) i++;
+        while (i < n && i < IO_LOG && x->log[i].h == y->log[i].h && x->log[i].clk == y->log[i].clk) i++;
         int len = snprintf(why, sizeof why, "ports or interrupts (entry %u of %u vs %u)", i + 1, x->nlog, y->nlog);
         for (int k = 0; k < 2 && i < IO_LOG; k++) {
             const side_t *z = k ? y : x;
@@ -760,6 +789,25 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "PLAYER.EXE", 0x0BDC, 0x0BDC, 0x0006 },
+    { "DSWAP.EXE", 0x0AAA, 0x0AAA, 0x0001 },
+    { "MISC.EXE", 0x0005, 0x0005, 0x0005 },
+    { "START.EXE", 0x2A7E, 0x2A7E, 0x0006 },
+    { "DSWAP.EXE", 0x1D14, 0x1D14, 0x0008 },
+    { "MPS_LOGO.EXE", 0x13EF, 0x13EF, 0x0008 },
+    { "END.EXE", 0x45A6, 0x45A6, 0x0007 },
+    { "START.EXE", 0x9CA4, 0x9CA4, 0x0008 },
+    { "START.EXE", 0x8607, 0x8607, 0x0007 },
+    { "SETUP.EXE", 0x0A8C, 0x0A8C, 0x0011 },
+    { "START.EXE", 0x85A7, 0x85A7, 0x0010 },
+    { "DSWAP.EXE", 0x10D0, 0x10D0, 0x0008 },
+    { "PLAYER.EXE", 0x0BCD, 0x0BCD, 0x000F },
+    { "PLAYER.EXE", 0x14B8, 0x14B8, 0x0012 },
+    { "MPS_LOGO.EXE", 0x03E4, 0x03E4, 0x001A },
+    { "PLAYER.EXE", 0x14CA, 0x14CA, 0x0015 },
+    { "START.EXE", 0x40CF, 0x40CF, 0x0021 },
+    { "MPS_LOGO.EXE", 0x08A8, 0x08A8, 0x0024 },
+    { "MPS_LOGO.EXE", 0x1403, 0x1403, 0x001D },
     { "PLAYER.EXE", 0x0520, 0x0520, 0x001F },
     { "SETUP.EXE", 0x1D69, 0x1D69, 0x0028 },
     { "DSWAP.EXE", 0x2097, 0x2097, 0x0028 },
@@ -1739,6 +1787,25 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "DSWAP.EXE", 0x0000, 0x2097, 0x0028, 21, 21, "allocate from the near heap" },
     { "SETUP.EXE", 0x0000, 0x1D69, 0x0028, 21, 21, "allocate from the near heap" },
     { "PLAYER.EXE", 0x0000, 0x0520, 0x001F, 15, 15, "current video mode (BIOS 10h function 0Fh via int86)" },
+    { "MPS_LOGO.EXE", 0x0146, 0x1403, 0x001D, 15, 15, "consume a near or far formatter pointer according to BP-4 bit 20h, returning it in ES:DI; near null has segment zero" },
+    { "MPS_LOGO.EXE", 0x0146, 0x08A8, 0x0024, 19, 19, "XOR-check DS bytes 0 through 41h against 55h at exit; report a null-pointer assignment if it changed" },
+    { "START.EXE", 0x0000, 0x40CF, 0x0021, 18, 18, "free the supplied DOS page segment; on failure print message 0D26 and shut down with code zero" },
+    { "PLAYER.EXE", 0x0000, 0x14CA, 0x0015, 12, 12, "set an interrupt vector from the number and far pointer arguments, restoring DS and returning zero" },
+    { "MPS_LOGO.EXE", 0x0006, 0x03E4, 0x001A, 14, 14, "check stack room through the loaded far target, then set the BIOS video mode from the far-call argument" },
+    { "PLAYER.EXE", 0x0000, 0x14B8, 0x0012, 10, 10, "get the interrupt vector named by the stack argument and return its far pointer in DX:AX" },
+    { "PLAYER.EXE", 0x0000, 0x0BCD, 0x000F, 7, 7, "close the picture handle at 11B8; return one on DOS success and zero on failure" },
+    { "DSWAP.EXE", 0x0000, 0x10D0, 0x0008, 5, 5, "read the DOS default drive and convert its zero-based byte to a one-based word" },
+    { "START.EXE", 0x0000, 0x85A7, 0x0010, 6, 6, "set the mouse position from E08A/E08C; the horizontal coordinate is doubled" },
+    { "SETUP.EXE", 0x0000, 0x0A8C, 0x0011, 5, 5, "increment the four calibration counters, preserving the original byte wrap and final flags" },
+    { "START.EXE", 0x0000, 0x8607, 0x0007, 4, 4, "read BIOS INT 1Ah function zero and return the low tick word in AX" },
+    { "START.EXE", 0x0000, 0x9CA4, 0x0008, 4, 4, "flush every open stream in count mode; the callee removes its one word and AX is the count" },
+    { "END.EXE", 0x0000, 0x45A6, 0x0007, 4, 4, "read BIOS INT 1Ah function zero and return the low tick word in AX" },
+    { "MPS_LOGO.EXE", 0x0146, 0x13EF, 0x0008, 4, 4, "consume a word from the formatter argument cursor at BP+10, honoring DF" },
+    { "DSWAP.EXE", 0x0000, 0x1D14, 0x0008, 4, 4, "flush every open stream in count mode; the callee removes its one word and AX is the count" },
+    { "START.EXE", 0x0000, 0x2A7E, 0x0006, 3, 3, "read the remaining cel-animation step count as an unsigned word" },
+    { "MISC.EXE", 0x0007, 0x0005, 0x0005, 3, 3, "read a BIOS key with INT 16h function zero, returning AX through a far return" },
+    { "DSWAP.EXE", 0x0000, 0x0AAA, 0x0001, 1, 1, "empty picture-driver hook" },
+    { "PLAYER.EXE", 0x0000, 0x0BDC, 0x0006, 3, 3, "read the picture stream-end flag as an unsigned word" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2344,6 +2411,20 @@ static int g_callover;          /* a call into original code was started with th
  * leaves through _write's ending on a failed write); the run stops there, as
  * the original side does. */
 static uint16_t g_back_cs, g_back_ip, g_back_sp;
+/* A callee can unwind the caller and RET n directly to its return address.
+ * Recognize that boundary only at the completed original's exact CPU state.
+ * The final comparison still checks all memory and I/O, and this escape
+ * cannot complete the named region. */
+static int same_original_return(const cpu_t *c)
+{
+    const cpu_t *a = &g_cpu[0];
+    return a->seg[S_CS] == g_back_cs && a->ip == g_back_ip &&
+           c->seg[S_CS] == g_back_cs && c->ip == g_back_ip &&
+           a->icount == c->icount && a->flags == c->flags &&
+           a->halted == c->halted && a->inhibit_at == c->inhibit_at &&
+           a->int_depth == c->int_depth &&
+           !memcmp(a->r, c->r, sizeof a->r) && !memcmp(a->seg, c->seg, sizeof a->seg);
+}
 static int step_runner_run(machine_t *mm);
 static int step_runner(machine_t *mm)       /* (the depth tells a body's own port writes from its callees') */
 {
@@ -2361,6 +2442,11 @@ static int step_runner_run(machine_t *mm)
     if (c->icount > c->stop_at) g_callover = 1;  /* the CALL itself ran at or after the limit */
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
+        if (c->r[R_SP] != g_back_sp && same_original_return(c)) {
+            g_callee_finished = 1;
+            g_finished++;
+            return RUN_SLICE;
+        }
         if (c->ip == g_back_ip && c->r[R_SP] == g_back_sp && c->seg[S_CS] == g_back_cs) {
             /* A tracked routine's call whose return was never caught although
              * the original did come back there from this call's depth: the
@@ -2517,16 +2603,99 @@ static int body_b_exact(machine_t *m) { return body_b(m, 1, 1); }
 static int body_b_runon(machine_t *m) { return body_b(m, 0, 1); }
 static int body_b_unclaimed(machine_t *m) { return body_b(m, 1, 0); }   /* stops after the EOI, but claims no room for it */
 
+/* Routine C reads a BIOS key and returns. A wrong interrupt instead enters
+ * a non-returning vector. The call is visibly different before that stall. */
+static int body_c(machine_t *m, unsigned mode)
+{
+    cpu_t *c = &m->cpu;
+    if (!io_room(c, 3)) return 0;
+    if (mode != 3) {
+        set_r8(c, R_AH, (uint8_t)alu_op(c, 6, get_r8(c,R_AH), get_r8(c,R_AH), 0));
+        c->icount++;
+        c->op_cs = c->seg[S_CS]; c->op_ip = 0x0302; c->ip = 0x0304;
+        if (mode == 4) c->icount++;   /* lump: the INT is one clock late, RET charged already */
+        cpu_interrupt(c, mode == 1 ? 0x1A : 0x16); c->icount++;
+        if (mode == 0 || mode == 4) {
+            c->ip = cpu_pop16(c);
+            if (mode == 0) c->icount++;
+            return 1;
+        }
+        if (mode == 2) { c->ip = 0x0304; cpu_interrupt(c, 0x16); c->icount++; }
+    }
+    c->seg[S_CS] = 0x5000; c->ip = 0x0200;
+    return 1;
+}
+static int body_c_exact(machine_t *m) { return body_c(m, 0); }
+static int body_c_wrong_vector(machine_t *m) { return body_c(m, 1); }
+static int body_c_extra_call(machine_t *m) { return body_c(m, 2); }
+static int body_c_empty_stall(machine_t *m) { return body_c(m, 3); }
+static int body_c_lump(machine_t *m) { return body_c(m, 4); }
+
+/* The 65th interrupt is beyond the diagnostic log. Its clock must still
+ * affect the verdict; the complete record cannot stop at IO_LOG entries. */
+static int body_d(machine_t *m, int late)
+{
+    cpu_t *c = &m->cpu;
+    if (!io_room(c, 197)) return 0;
+    c->r[R_CX] = 65; c->icount++;
+    do {
+        set_r8(c, R_AH, (uint8_t)alu_op(c, 6, get_r8(c,R_AH), get_r8(c,R_AH), 0));
+        c->icount++;
+        const int shifted = late && c->r[R_CX] == 1;
+        if (shifted) c->icount++;   /* charge the final LOOP before its INT */
+        c->op_cs = c->seg[S_CS]; c->op_ip = 0x0405; c->ip = 0x0407;
+        cpu_interrupt(c, 0x16); c->icount++;
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (!shifted) c->icount++;
+    } while (c->r[R_CX]);
+    c->ip = cpu_pop16(c); c->icount++;
+    return 1;
+}
+static int body_d_exact(machine_t *m) { return body_d(m, 0); }
+static int body_d_late(machine_t *m) { return body_d(m, 1); }
+
+/* Routine E's callee discards the nested return word and returns straight
+ * to the caller with RET 2. The bytes at the caller must never execute.
+ * Faulty CPU states must not acquire an early-return exception, and memory
+ * or I/O differences at an exact CPU boundary still fail compare(). */
+static int body_e(machine_t *m, unsigned mode)
+{
+    cpu_t *c = &m->cpu;
+    if (!io_room(c, 3)) return 0;
+    if (mode == 1) c->icount++;
+    if (mode == 2) c->r[R_BX] ^= 1;
+    if (mode == 3) c->flags ^= F_CF;
+    if (mode == 4) mem_write8(c, 0x70000, 0x5A);
+    if (mode == 5) io_w(c, 0x90, 0x5A, 1);
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    cpu_push16(c, 0x0503); c->ip = 0x0520; c->icount++;
+    m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x0503;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    step_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    return 1;
+}
+static int body_e_exact(machine_t *m) { return body_e(m, 0); }
+static int body_e_late(machine_t *m) { return body_e(m, 1); }
+static int body_e_register(machine_t *m) { return body_e(m, 2); }
+static int body_e_flags(machine_t *m) { return body_e(m, 3); }
+static int body_e_memory(machine_t *m) { return body_e(m, 4); }
+static int body_e_io(machine_t *m) { return body_e(m, 5); }
+
 /* One state of a synthetic routine through the comparison the table's routines get: the original
  * to its RET, the body (armed for wakes, `limit` instructions of room when not 0), the original
  * finishing what the body handed back, then compare(). Returns the wake verdict in *woke and the
  * comparison's verdict. */
 static int io_rules_state(uint16_t ip, int (*body)(machine_t *), unsigned limit, int *woke, int *credit)
 {
+    g_last_why[0] = 0;
     static const uint16_t r[8] = { 0x1111, 0x2222, 0x3333, 0x4444, 0x1000, 0x5555, 0x6666, 0x7777 };
     static const uint16_t seg[4] = { 0x6000, 0x4000, 0x5000, 0x6000 };
     static const uint16_t small[4] = { 0, 0, 0, 0 };
     const uint16_t cs = 0x4000, back = 0x0F00;
+    g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
+    g_callee_finished = 0;
     recomp_override o = {0};
     o.module = "IO-RULES"; o.seg = 0; o.ip = ip; o.matched = 1; o.what = "synthetic";
     g_entry = &o; g_from = ip; g_span = 0x80; g_below = 0; g_cov = -1; g_watch_transient = 0;
@@ -2546,7 +2715,13 @@ static int io_rules_state(uint16_t ip, int (*body)(machine_t *), unsigned limit,
     if (!ran) return -1;
     if (g_m.cpu.ip != back) {
         int more = 0;
-        if (run_to_ret(&g_m.cpu, entry_sp, 1, &more, cs, ip) != 1) return -1;
+        if (run_to_ret(&g_m.cpu, entry_sp, 1, &more, cs, ip) != 1) {
+            if (io_prefix_changed()) {
+                strcpy(g_last_why, "contradictory I/O before unfinished continuation");
+                return 1;
+            }
+            return -1;
+        }
     }
     g_cpu[1] = g_m.cpu;
     return compare(o.module, ip, cs, ip, 0);
@@ -2593,16 +2768,43 @@ static int check_io_rules(void)
     matched_runner = step_runner;
     static const uint8_t A[] = { 0xBA, 0xC8, 0x03, 0xB0, 0x05, 0xEE, 0x90, 0xC3 };
     static const uint8_t B[] = { 0xB0, 0x20, 0xE6, 0x20, 0x43, 0xC3 };
+    static const uint8_t C[] = { 0x32, 0xE4, 0xCD, 0x16, 0xC3 };
+    static const uint8_t D[] = { 0xB9, 0x41, 0x00, 0x32, 0xE4, 0xCD, 0x16, 0xE2, 0xFA, 0xC3 };
+    static const uint8_t E[] = { 0xE8, 0x1D, 0x00, 0xC3 };
+    static const uint8_t E_CALLEE[] = { 0x58, 0xC2, 0x02, 0x00 };
+    static const uint8_t caller[] = { 0xE6, 0x90, 0xEB, 0xFC };
+    static const uint8_t spin[] = { 0xEB, 0xFE };
     memcpy(g_pristine + 0x40100, A, sizeof A);
     memcpy(g_pristine + 0x40200, B, sizeof B);
+    memcpy(g_pristine + 0x40300, C, sizeof C);
+    memcpy(g_pristine + 0x40400, D, sizeof D);
+    memcpy(g_pristine + 0x40500, E, sizeof E);
+    memcpy(g_pristine + 0x40520, E_CALLEE, sizeof E_CALLEE);
+    memcpy(g_pristine + 0x40F00, caller, sizeof caller);
+    memcpy(g_pristine + 0x50200, spin, sizeof spin);
+    g_pristine[0x68] = 0x00; g_pristine[0x69] = 0x02;
+    g_pristine[0x6A] = 0x00; g_pristine[0x6B] = 0x50;   /* INT 1Ah -> the loop */
     /* `credit`: whether the stop completes the named region (wake_stop_reached). */
-    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); unsigned limit; int differs, woke, credit; const char *why; } CASES[] = {
+    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); unsigned limit; int differs, woke, credit; const char *why; int callee_finished; } CASES[] = {
         { "exact OUT clock", 0x0100, body_a_exact, 0, 0, 0, 0, "" },
         { "clock charged in one lump around the OUT", 0x0100, body_a_lump, 0, 1, 0, 0, "ports or interrupts" },
         { "exact stop after the EOI", 0x0200, body_b_exact, 0, 0, 0, 1, "" },
         { "run on past the EOI", 0x0200, body_b_runon, 0, 0, 1, 0, "" },
         { "EOI the last instruction of room", 0x0200, body_b_unclaimed, 2, 0, 0, 1, "" },
         { "EOI one instruction past the limit", 0x0200, body_b_unclaimed, 1, 0, 1, 0, "" },
+        { "exact BIOS key call", 0x0300, body_c_exact, 0, 0, 0, 0, "" },
+        { "INT clock late, final clock unchanged", 0x0300, body_c_lump, 0, 1, 0, 0, "ports or interrupts" },
+        { "wrong vector then unfinished handler", 0x0300, body_c_wrong_vector, 0, 1, 0, 0, "contradictory I/O" },
+        { "extra BIOS call then unfinished handler", 0x0300, body_c_extra_call, 0, 1, 0, 0, "contradictory I/O" },
+        { "unfinished without contradictory I/O", 0x0300, body_c_empty_stall, 0, -1, 0, 0, "" },
+        { "exact calls beyond diagnostic log", 0x0400, body_d_exact, 0, 0, 0, 0, "" },
+        { "late INT beyond diagnostic log", 0x0400, body_d_late, 0, 1, 0, 0, "ports or interrupts" },
+        { "callee returns with extra argument pop", 0x0500, body_e_exact, 0, 0, 0, 0, "", 1 },
+        { "extra-pop return at wrong clock", 0x0500, body_e_late, 0, 1, 0, 0, "clock" },
+        { "extra-pop return with wrong register", 0x0500, body_e_register, 0, 1, 0, 0, "contradictory I/O" },
+        { "extra-pop return with wrong flags", 0x0500, body_e_flags, 0, 1, 0, 0, "contradictory I/O" },
+        { "exact extra-pop CPU, wrong memory", 0x0500, body_e_memory, 0, 1, 0, 0, "memory", 1 },
+        { "exact extra-pop CPU, extra I/O", 0x0500, body_e_io, 0, 1, 0, 0, "ports or interrupts", 1 },
     };
     for (unsigned k = 0; k < sizeof CASES / sizeof CASES[0]; k++) {
         int woke = 0, credit = 0;
@@ -2610,6 +2812,7 @@ static int check_io_rules(void)
         /* the faulty bodies end where the original ends: registers, clock, memory all agree, so
          * the clock-free port record and the run-limit check this harness had saw nothing */
         const int ok = differs == CASES[k].differs && woke == CASES[k].woke && credit == CASES[k].credit &&
+                       g_callee_finished == CASES[k].callee_finished &&
                        !strncmp(g_last_why, CASES[k].why, strlen(CASES[k].why)) && (CASES[k].why[0] || !g_last_why[0]);
         printf("%-44s %s (comparison %s%s, wake %s, region %s)\n", CASES[k].what, ok ? "as expected" : "WRONG",
                differs < 0 ? "not run" : differs ? "differs: " : "equal", differs > 0 ? g_last_why : "",
@@ -39012,6 +39215,418 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0146 && o->ip==0x1403) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                r[R_BP]=(uint16_t)(r[R_SP]+0x0100+(XRAND()&0x00FE));
+                if(s&8)flags|=F_DF;
+                const uint8_t mode_=(uint8_t)((XRAND()&~0x20)|((s&1)?0x20:0));
+                const uint16_t ptr_=(s&16)?(uint16_t)(r[R_BP]+10):(uint16_t)XRAND();
+                for(unsigned j=0;j<12;j++)XW8(dg,(uint16_t)(ptr_-4+j),XRAND());
+                const uint16_t value_=(s&2)?(uint16_t)(XRAND()|1):0;
+                XW16(dg,ptr_,value_);XW16(seg[S_SS],(uint16_t)(r[R_BP]+10),ptr_);
+                XW8(seg[S_SS],(uint16_t)(r[R_BP]-4),mode_);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0146 && o->ip==0x08A8) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                if(s&8)flags|=F_DF;
+                uint8_t check_=0;
+                for(unsigned j=0;j<0x42;j++){const uint8_t b_=(uint8_t)XRAND();check_^=b_;XW8(dg,j,b_);}
+                const uint8_t target_=(s&1)?0x55:0x54;
+                const uint8_t first_=g_pristine[phys(dg,0)];XW8(dg,0,(uint8_t)(first_^check_^target_));
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+                static const uint16_t targets_[]={0x0880,0x0B07};
+                for(unsigned k=0;k<2;k++){
+                    const uint16_t at_=(uint16_t)(0xF000+0x80*k),ans_=(uint16_t)XRAND();
+                    XW8(0x0146,targets_[k],0xE9);XW16(0x0146,targets_[k]+1,(uint16_t)(at_-targets_[k]-3));
+                    const uint8_t stub_[]={0x55,0x8B,0xEC,0x53,0xFF,0x06,0x02,0xF8,0x8B,0x5E,0x06,0x31,0x1E,0x00,0xF8,0x5B,0x5D,0xB8,(uint8_t)ans_,(uint8_t)(ans_>>8),0xCA,(uint8_t)(2*k),0x00};
+                    for(unsigned j=0;j<sizeof stub_;j++)XW8(0x0146,at_+j,stub_[j]);
+                }
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0x0000 && o->ip==0x40CF) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                XW16(dg,0xF800,XRAND());
+                const uint16_t answers_[]={ (s&1)?(uint16_t)(XRAND()|1):0,(uint16_t)XRAND(),(uint16_t)XRAND() };
+                static const uint16_t targets_[]={0x8030,0x9430,0x76D1};
+                for(unsigned k=0;k<3;k++){
+                    const uint16_t ans_=answers_[k];
+                    const uint8_t stub_[]={0x55,0x8B,0xEC,0x53,0x8B,0x5E,0x04,0x31,0x1E,0x00,0xF8,0x5B,0x5D,0xB8,(uint8_t)ans_,(uint8_t)(ans_>>8),0xC3};
+                    for(unsigned j=0;j<sizeof stub_;j++)XW8(0,targets_[k]+j,stub_[j]);
+                }
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0x0000 && o->ip==0x14CA) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                g_dos=1;g_dos_script_n=1;g_dos_script[0].ax=(uint16_t)XRAND();
+                g_dos_script[0].cf=(uint8_t)(s&1);
+                /* The supplied vector segment is independent of the saved DS and SS. */
+                small[2]=(uint16_t)(0x7000+(XRAND()&0x0FFF));XW16(seg[S_SS],(uint16_t)(r[R_SP]+4),small[2]);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0006 && o->ip==0x03E4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                XW16(dg,0xF800,XRAND());
+                /* Include the encoded target, plus three loaded targets. */
+                const uint16_t target_seg_=(s&3)==0?0x0146:(uint16_t)(0x2000+0x100*(s&3));
+                const uint16_t target_ip_=(s&3)==0?0x0296:(uint16_t)(0xF000+0x20*(s&3));
+                XW16(0x0006,0x03EB,target_ip_);XW16(0x0006,0x03ED,target_seg_);
+                for(unsigned k=0;k<4;k++){
+                    const uint16_t sg_=k==0?0x0146:(uint16_t)(0x2000+0x100*k);
+                    const uint16_t off_=k==0?0x0296:(uint16_t)(0xF000+0x20*k),id_=(uint16_t)(0x1234+k);
+                    const uint8_t stub_[]={0x53,0x8B,0xD8,0x31,0x1E,0x00,0xF8,0x81,0x36,0x00,0xF8,(uint8_t)id_,(uint8_t)(id_>>8),0x5B,0xCB};
+                    for(unsigned j=0;j<sizeof stub_;j++)XW8(sg_,off_+j,stub_[j]);
+                }
+
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0x0000 && o->ip==0x14B8) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                g_vector_segment=(uint16_t)(XRAND()^seg[S_ES]);
+                if(g_vector_segment==seg[S_ES])g_vector_segment^=1;
+                g_vector_offset=(uint16_t)(XRAND()^r[R_BX]);
+                if(g_vector_offset==r[R_BX])g_vector_offset^=1;
+                g_dos=1;g_dos_script_n=1;g_dos_script[0].ax=(uint16_t)XRAND();
+                g_dos_script[0].cf=(uint8_t)(s&1);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0x0000 && o->ip==0x0BCD) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                g_dos=1;g_dos_script_n=1;g_dos_script[0].ax=(uint16_t)XRAND();
+                g_dos_script[0].cf=(uint8_t)(s&1);
+                for(unsigned j=0;j<8;j++)XW8(dg,0x11B5+j,XRAND());
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"DSWAP.EXE") && o->seg==0x0000 && o->ip==0x10D0) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                g_dos=1;g_dos_script_n=1;g_dos_script[0].ax=(uint16_t)XRAND();
+                g_dos_script[0].cf=(uint8_t)(s&1);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0x0000 && o->ip==0x85A7) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                static const uint16_t pos_[]={0,1,159,160,319,320,0x7FFF,0x8000,0xFFFF};
+                for(unsigned j=0;j<6;j++)XW16(dg,0xE086+2*j,XRAND());
+                XW16(dg,0xE08A,pos_[(s>>1)%9]);XW16(dg,0xE08C,XRAND());
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x0A8C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                static const uint8_t values_[]={0,1,0x7E,0x7F,0x80,0xFE,0xFF};
+                for(unsigned j=0;j<10;j++){const uint8_t v_=(s&8)?values_[(s+j)%7]:(uint8_t)XRAND();XW8(dg,0x077F+j,v_);}
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0x0000 && o->ip==0x8607) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                static const uint16_t ticks_[]={0,1,0x7FFF,0x8000,0xFFFE,0xFFFF};
+                g_int1a_dx=(s&8)?ticks_[(s>>1)%6]:(uint16_t)XRAND();
+                g_int1a_cx=(uint16_t)XRAND();g_int1a_al=(uint8_t)XRAND();
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0x0000 && o->ip==0x9CA4) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                const uint16_t answer_=(uint16_t)XRAND();
+                XW16(dg,0xF800,XRAND());
+                /* RET 2: the stream-sweep helper removes the wrapper's mode word. */
+                const uint8_t stub_[]={0x55,0x8B,0xEC,0x53,0x8B,0x5E,0x04,0x31,0x1E,0x00,0xF8,0x5B,0x5D,0xB8,(uint8_t)answer_,(uint8_t)(answer_>>8),0xC2,0x02,0x00};
+                for(unsigned j=0;j<sizeof stub_;j++)XW8(0,0x9CAC+j,stub_[j]);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0x0000 && o->ip==0x45A6) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                static const uint16_t ticks_[]={0,1,0x7FFF,0x8000,0xFFFE,0xFFFF};
+                g_int1a_dx=(s&8)?ticks_[(s>>1)%6]:(uint16_t)XRAND();
+                g_int1a_cx=(uint16_t)XRAND();g_int1a_al=(uint8_t)XRAND();
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0146 && o->ip==0x13EF) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                r[R_BP]=(uint16_t)(r[R_SP]+0x0100+(XRAND()&0x00FE));
+                if(s&8)flags|=F_DF;
+                static const uint16_t ptrs_[]={0,1,0xFFFE,0xFFFF,0x0010,0x8000};
+                const uint16_t ptr_=(s&16)?ptrs_[(s>>1)%6]:(uint16_t)XRAND();
+                for(unsigned j=0;j<10;j++)XW8(dg,(uint16_t)(ptr_-4+j),XRAND());
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]+8),XRAND());
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]+10),ptr_);
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]+12),XRAND());
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"DSWAP.EXE") && o->seg==0x0000 && o->ip==0x1D14) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                const uint16_t answer_=(uint16_t)XRAND();
+                XW16(dg,0xF800,XRAND());
+                /* RET 2: the stream-sweep helper removes the wrapper's mode word. */
+                const uint8_t stub_[]={0x55,0x8B,0xEC,0x53,0x8B,0x5E,0x04,0x31,0x1E,0x00,0xF8,0x5B,0x5D,0xB8,(uint8_t)answer_,(uint8_t)(answer_>>8),0xC2,0x02,0x00};
+                for(unsigned j=0;j<sizeof stub_;j++)XW8(0,0x1D1C+j,stub_[j]);
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0x0000 && o->ip==0x2A7E) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                for(unsigned j=0;j<8;j++)XW8(dg,0xB2F1+j,XRAND());
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MISC.EXE") && o->seg==0x0007 && o->ip==0x0005) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                g_kbd_force=1;g_kbd_ax=(uint16_t)XRAND();
+                g_kbd_fl=(uint16_t)(((s&1)?F_CF:0)|((s&2)?F_ZF:0));
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"DSWAP.EXE") && o->seg==0x0000 && o->ip==0x0AAA) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0x0000 && o->ip==0x0BDC) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w_=(uint16_t)(v_);XW8((s_),(o_),w_);XW8((s_),(uint16_t)((o_)+1),w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                static const uint16_t stacks_[]={0xF000,0x8000,0x0100,0x0020};
+                r[R_SP]=stacks_[(XRAND()>>2)&3];
+                for(unsigned j=0;j<0x240;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t a_=(uint16_t)XRAND();small[j]=a_;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),a_);}
+                for(unsigned j=0;j<8;j++)XW8(dg,0x11BB+j,XRAND());
+
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -39133,7 +39748,9 @@ int main(int argc, char **argv)
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
             g_step_cap = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) ? 2000000 : (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
-            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008) || (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0754) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x41CA) || (!strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && (o->ip == 0x04B6 || o->ip == 0x04FE));
+            g_native_int1a = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x8607) || (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x45A6);
+            g_vector_force = !strcmp(o->module,"PLAYER.EXE") && o->seg==0 && o->ip==0x14B8;
+            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008) || (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0754) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x41CA) || (!strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && (o->ip == 0x04B6 || o->ip == 0x04FE)) || (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0006 && o->ip==0x03E4);
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;
                 static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};
@@ -39369,7 +39986,15 @@ int main(int argc, char **argv)
                 if (nc_out) nc_begin(g_nc_fall);
                 const int fin = run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip);
                 g_nc_track = NULL;
-                if (!fin) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }
+                if (!fin) {
+                    if (io_prefix_changed()) {
+                        printf("  MISMATCH %s+%05X: unfinished continuation already changed I/O (state %d)\n",
+                               o->module, ((uint32_t)o->seg << 4) + ip, s);
+                        mc++; mb++; restore(); break;
+                    }
+                    if (g_cov >= 0) g_cov_skips[5]++;
+                    ms++; restore(); continue;
+                }
                 g_finished++;
             }
             mc++;

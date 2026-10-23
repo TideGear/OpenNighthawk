@@ -1327,6 +1327,44 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:1D69)
     add_test(NAME matched_player_get_video_mode COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:520)
+    add_test(NAME matched_mps_logo_format_next_pointer COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1403)
+    add_test(NAME matched_mps_logo_check_null_region COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:8A8)
+    add_test(NAME matched_start_free_page_or_exit COMMAND func_lockstep --states 5000
+      --only START.EXE:40CF)
+    add_test(NAME matched_player_set_interrupt_vector COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:14CA)
+    add_test(NAME matched_mps_logo_set_video_mode COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:3E4)
+    add_test(NAME matched_player_get_interrupt_vector COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:14B8)
+    add_test(NAME matched_player_close_picture_handle COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:BCD)
+    add_test(NAME matched_dswap_current_drive_one_based COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:10D0)
+    add_test(NAME matched_start_position_mouse_pointer COMMAND func_lockstep --states 5000
+      --only START.EXE:85A7)
+    add_test(NAME matched_setup_advance_calibration_counters COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:A8C)
+    add_test(NAME matched_start_bios_tick_low COMMAND func_lockstep --states 5000
+      --only START.EXE:8607)
+    add_test(NAME matched_start_flush_all_count COMMAND func_lockstep --states 5000
+      --only START.EXE:9CA4)
+    add_test(NAME matched_end_bios_tick_low COMMAND func_lockstep --states 5000
+      --only END.EXE:45A6)
+    add_test(NAME matched_mps_logo_format_next_word COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:13EF)
+    add_test(NAME matched_dswap_flush_all_count COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:1D14)
+    add_test(NAME matched_start_cel_steps_remaining COMMAND func_lockstep --states 5000
+      --only START.EXE:2A7E)
+    add_test(NAME matched_misc_read_key COMMAND func_lockstep --states 5000
+      --only MISC.EXE:5)
+    add_test(NAME matched_dswap_picture_noop COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:AAA)
+    add_test(NAME matched_player_picture_end_flag COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:BDC)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

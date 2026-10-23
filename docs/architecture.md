@@ -745,6 +745,21 @@ caught real defects:
   answer as port reads do (AX from the call count, a random carry and
   zero flag); through the vector table, which is the image's first bytes
   there, a DOS call used to lose the state.
+  Interrupt timestamps have their own full-record hash so checking their
+  order does not change the synthetic DOS answers derived from the existing
+  record. A contradictory event already observed before an unfinished
+  continuation is a mismatch; an unfinished run with no contradictory event
+  retains its skip. `matched_io_rules` covers both cases, a late INT whose
+  final instruction count is unchanged, and a late 65th INT beyond the
+  diagnostic log. A control retaining the two old gaps fails four of the
+  original 13 synthetic cases. The test runner also recognizes a callee's
+  direct return to the caller after extra argument pops, only when the
+  completed original's clock, registers, segments, flags, interrupt shadow,
+  depth and halt state agree exactly. It then compares all memory and I/O
+  and grants no named-region completion. Six more synthetic cases cover
+  this return and incorrect clocks, registers, flags, memory and I/O; all
+  19 pass. This prevents a correct return from running into synthetic
+  caller bytes merely because its stack differs from the usual RET level.
 - Shared code: the C runtime's DOS calls end with a JMP to endings the
   routines share, and itoa and ltoa end in one conversion, outside the
   routine's 0x300 bytes. `SHARED_ENDINGS` in the harness names those
@@ -766,7 +781,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,268 addresses are matched across the game's 17 code files (the census totals are in
+1,287 addresses are matched across the game's 17 code files (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries

@@ -64,12 +64,12 @@ quiz. It is off by default and is enabled only when named explicitly;
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,268 routine addresses have explained C equivalents
-  checked against their original bodies. They run 144,560 of the 163,862
+- **Named and matched:** 1,287 routine addresses have explained C equivalents
+  checked against their original bodies. They run 144,790 of the 163,862
   instruction bytes the scripted routes execute, plus 1,826 bytes of reviewed code that stays original
-  by design (89.33%, the gameplay score), and
-  cover 170,249 of 205,509 creditable bytes across all 17 game code files. The historical census has 1,110
-  rows wholly covered and 293 in part; executed code outside its rows now
+  by design (89.48%, the gameplay score), and
+  cover 170,520 of 205,509 creditable bytes across all 17 game code files. The historical census has 1,122
+  rows wholly covered and 291 in part; executed code outside its rows now
   counts too, along with reviewed static code. Static discoveries not yet
   reviewed remain outside the score ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in

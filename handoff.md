@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 22 October 2026 (batch aw accepted).
+more than once, what it costs). State as of 23 October 2026 (batch ax accepted).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,43 +15,67 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 87.60%, P3 100.00%, All 96.21%
+- **Scoreboard:** P1 100.00%, P2 87.73%, P3 100.00%, All 96.25%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,268 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **144,560 /
-  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 89.33%**. `docs/reference-reviewed.tsv` holds 38
+- **Phase 2:** 1,287 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **144,790 /
+  163,862 route-executed bytes plus 1,826 reviewed design-rule original bytes, 89.48%**. `docs/reference-reviewed.tsv` holds 38
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
   stays-original entry to name its design rule. The accounted-for checklist is 0 / 43,423. Previous
-  all-code measure (scores the naming item): **170,249 / 205,509 creditable bytes** across
+  all-code measure (scores the naming item): **170,520 / 205,509 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
-  Batches a to aw are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 509 CTests, 63 routes run as 62 sessions,
+  Batches a to ax are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Gate: 528 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Remaining work:** 17,476 route-executed bytes are unmatched; the all-code measure has 35,260 uncredited bytes.
+- **Remaining work:** 17,246 route-executed bytes are unmatched; the all-code measure has 34,989 uncredited bytes.
   Largest executed groups: ASOUND.117 5,373, ASOUND.LOG 2,615, RSOUND.117 2,213, RSOUND.LOG 2,128,
-  ISOUND.117 1,200, ISOUND.LOG 1,167, F117.COM 688, VGAME 549, MPS_LOGO 328, PLAYER 324 and START 306.
-  There are 13,243 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
+  ISOUND.117 1,200, ISOUND.LOG 1,167, F117.COM 688, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+  There are 13,232 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
-  Refresh using batch aw's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
-- **What "P2 100%" would take (22 Oct mapping, updated after aw: 2,780 remaining executed bytes in the ordinary programs; unverified beyond the mapping agent's disassembly).** About 290 B remain
-  provable by the kit today after batch aw (the leaf sweep in Next steps is about 190); about 440 B are possible with a capability nobody checked
-  (370 B of `EA 00 00 00 00` far-jump slots outside VGAME, whose cov bytes carry patched targets, plus computed-jump dispatchers and stubs); about 640 B are hard or declined
-  (VGAME `main`, wait loops, `strstr`/`memmove` with REP clocks, printf arms); about 430 B stay original or are blocked (STI-first timers, post-STI/POPF tails, exit INT 21h);
-  292 B are VGAME slots/thunks that carry presentation observers; F117.COM's 688 B is the EXEC chain (very hard). The six sound drivers (14,696 B) need plan step 2b first.
-  **Owner decisions that would move the number without proofs:** reviewed-original entries (second reader) for the C start-up copies (START `8F94`, PLAYER `114E`) and
-  SETUP's timer handler `104D` (about 150 B); whether far-jump slots and observer-owned VGAME slots get a body or a reference entry. Do not add reviewed entries on one reader's say-so.
-- **Batch aw accepted (22 Oct).** Seven routines integrated and fully gated: START `5E6F` selection change, `5A8A` theatre page,
-  `6045` message panel, `5FFA` panel rectangles; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query.
-  458 instructions, 372 caught mutants, 945 added named bytes, 509 CTests, acceptance 1,671 s.
-  Evidence: `D:/f117-gate/p2-batch-aw-accept/`; private proof names retain the `av` prefix. All six pre-gate whole-table seeds passed.
-  The private route proofs are thin, but the full gate reaches every new entry in 27 or more sessions (`5A8A`/`5FFA`: 27 calls each).
-  The theatre page (`5A8A`) retains 35 fixture-only instructions out of 143.
-  Existing unfinished proof `p2-player-vc-0540` has two unresolved missed mutants and runs only on `err_driver_overlay`;
-  `p2-player-vc-0520` is superseded by this batch.
+  Refresh using batch ax's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
+- **What P2 100% still requires:** 14,696 unmatched executed bytes are in the six sound drivers, 688 in the launcher's EXEC chain,
+  and 1,862 in the seven ordinary programs. The previous all-code measure also has unexecuted static/error-path work: no byte leaves
+  scope without its existing design rule or a strict dead certificate. Old private mapping counts are leads, not proofs or current
+  inventories. Reviewed-original credit still requires a second reader; do not convert declined routines into exclusions.
+- **Batch ax accepted (23 Oct).** Nineteen leaf routines: START cel steps, ticks, mouse position, flush count and free-or-exit;
+  END ticks; MISC key input; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode,
+  exit checksum and formatter readers; PLAYER picture close/end flag and vector get/set. All 141 instructions covered, 344 mutants
+  caught, 95 optimized seed checks. Added 271 named bytes: 230 executed, 41 fixture-only. Gate: 528 CTests, 63 routes / 62 fresh
+  interpreter sessions, both timing profiles, event limits and all routes-only entries; presentation N=1 all routes and boot N=4/9.
+  Core gate 1,584 s; acceptance 1,795 s. Evidence: `D:/f117-gate/p2-batch-ax-accept/final-gate-verdict.json` and `private-audit.json`.
+  Six whole-table precheck seeds passed in 1,407.72 s (`D:/f117-gate/ax-pre/`); 1,266 old reports identical, two changes explained.
+  Private audit verifies all 114 extra-seed logs, exact mutation names, freshness and boot/source hashes; explicit INT claims are now
+  recognized by the generic accept-kit auditors without relaxing completeness, disjointness, clocks or real-route requirements.
+  **Verification fixes:** unfinished continuations now reject already contradictory I/O, and a separate full interrupt-clock hash
+  preserves synthetic DOS answers. The first precheck attempt then exposed a return-tracking gap: callees in END `53DA` and SETUP
+  `1600` can consume extra stack words and return directly to the caller. The runner now recognizes only the exact completed
+  original CPU/clock state, still compares all memory/I/O, and grants no named completion. All 19 ROM-free cases pass. Pinned
+  controls/traces: `D:/f117-gate/harness-unfinished-io-20261022/` and `D:/f117-gate/ax-legacy-io-20261023/`. The latter includes
+  `rng-review.json`: SETUP recovers states 366/509; the existing mid-run probe at 509 consumes rnd(), changing later inputs from
+  state 510. All 4,000 iterations remain; comparison totals change from 649 to 631. END gains one comparison. Failed attempts remain
+  archived, including `ax-pre-attempt-1-legacy-return/`. No game-logic defect is claimed by these harness repairs.
+  START `2A7E` means cel-animation steps left; PLAYER `0BDC` is the stream-end flag (including the corrected old open comment).
+  Unfinished private `p2-player-vc-0540` still has two missed mutants and only `err_driver_overlay` reach; do not integrate it as proved.
+- **Next: relocation support, not another stale leaf list.** MISC `0007:0029` and F117.COM `03CB` were already matched in batch an;
+  ax finishes the remaining MISC BIOS-key wrapper. The launcher's remaining 688 executed bytes are its EXEC chain. Port clocks and
+  wake checks already exist; the missing capability is generated relocation metadata and nonzero load bases for driver proofs.
+  `D:/f117-gate/modules-loadbase-20261022/prepare-integration.py` prepares ten files privately under `staged/` and pins exact base /
+  staged hashes in `staged-manifest.json`; nothing is integrated. The standalone loader prototype passes word-wrap, bounds, COM-origin,
+  invalid-metadata/no-write and two-base CPU checks; a hardcoded DS=0 mutant passes at base zero but fails at 1000h and 3000h.
+  Four metadata unit tests pass. `generation-verdict.json` proves serial/parallel equality and no changes to existing generated C,
+  only a metadata file added. The staged harness is still unbuilt/unaccepted: it includes default-base contract checks, both reload
+  sites, a relocated named-coverage reference, COM fixture CS corrections, CMake and CI wiring. Before applying, require latest CI
+  green and kit libraries at HEAD, recheck every base hash, then perform zero-base report equivalence, two nonzero-base fixture
+  sweeps, the full gate and CI. Add the test-header include path to the private kit before refreshing its next baseline.
+  The fixture audit keeps MISC's BIOS 0000:0417 writes absolute; COM's CS=0 assumptions become actual cs. Driver leads and caveats:
+  `modules-loadbase-20261022/driver-leads/review-notes.md`. RSOUND.LOG `021B` is a 21-instruction stack-switching wrapper with live
+  CS-relative cells and two relocated operands, a candidate after the infrastructure gate. ASOUND.LOG `0344` and ISOUND.LOG `0253`
+  are not small leaves. ISOUND.LOG `0581` has an EOI-before-IRET arm and needs separately verified bounded-handler/resume support;
+  do not bypass the current whole-or-decline handler rule or run past its wake. All are leads, no new credit.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
@@ -165,13 +189,13 @@ Consolidate it instead of appending to it.
    RETF-at-entry+6 and JMP-SI exits need `run_to_ret` rules (hand-applied to `tests/func_lockstep.c`), and `03E8` also needs the bad-return skip test to accept
    SP-2. A wrong call-depth value never fires a trap, so mutations of it are invisible: use post-trap mutants and judge such calls by the real-route counts.
    A route must run the rare arms: `full_cycle` missed `02B9`'s loop and `031D`'s cut arm (`persian_gulf_air_training` runs it).
-   Next, in this order: (a) the cheap leaf sweep from the 22 Oct mapping (START `2A7E` `8607` `85A7` `9CA4` `40CF`, END `45A6`, MISC `0075`, DSWAP `1D14` `10D0` `0AAA`, SETUP `0A8C`, MPS_LOGO `0444` `1D08` `284F`/`2863`, PLAYER `0BCD` `0BDC` `14B8` `14CA` with `st4_int21`; about 190 B), then the remaining MISC wrappers (a keyboard wait loop is not a
-   candidate) and a few small F117.COM helpers to prove `.COM` addressing; follow the pilot's conventions (read every relocated word from the
-   loaded code and make the fixture patch it to several values; force each branch in a fixed share of states; six or more extra seeds;
-   stack segments only 0x5000/0x6000; replace 'entry room' mutations the harness cannot see). Use the kit prompt and the 'Launcher, graphics library and sound drivers' section of `BRIEF.md`. (b) Step 2b before any ASOUND/ISOUND/RSOUND or `.LOG` routine whose proof depends on
-   the load base: a relocation list from the recompiler (`gen_relocs.c`, declared under `tests/`), nonzero `LOAD_BASES` for the new modules,
-   the io-hash clock flag and the interrupt-wake flag, as its own gate (a planted DS=0 mutant must be caught). (c) Then ASOUND.117, the
-   `.LOG` drivers, ISOUND/RSOUND.117 and the F117.COM EXEC chain, each kind with its traps from the plan (STI-first handlers stay original).
+   Step 5 was already completed in batch an: F117.COM `03CB` is matched, and MISC `0029` too. Batch ax adds MISC `0005`;
+   check the registry and current named coverage before selecting any old lead. Next: step 2b, generated relocations and nonzero
+   LOAD_BASES using the private staged change described above. Preserve existing I/O-clock, interrupt-clock and PIC/PIT wake checks.
+   Prove a planted DS=0 error at two nonzero bases, retain historical inputs and a zero-base equivalence control, and gate this
+   infrastructure separately before driver claims. Then ASOUND.117, the .LOG drivers, ISOUND/RSOUND.117 and the launcher EXEC chain,
+   using the plan only for leads and traps; STI-first handlers remain original by design. The existing COM fixture needs explicit
+   adaptation from segment 0 to cs. Its helper already reads live CS, as do most MGRAPHIC fixtures.
 5. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
 
 ## Phase 2 batch workflow and its traps
