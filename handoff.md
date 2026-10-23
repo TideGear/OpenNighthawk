@@ -37,6 +37,27 @@ Consolidate it instead of appending to it.
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
   Refresh using batch av's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
+- **What "P2 100%" would take (22 Oct mapping of the 3,617 executed bytes in the ordinary programs; unverified beyond the mapping agent's disassembly).** About 1,130 B are
+  provable by the kit today (batch aw prepares about 840 of them; the leaf sweep in Next steps is about 190); about 440 B are possible with a capability nobody checked
+  (370 B of `EA 00 00 00 00` far-jump slots outside VGAME, whose cov bytes carry patched targets, plus computed-jump dispatchers and stubs); about 640 B are hard or declined
+  (VGAME `main`, wait loops, `strstr`/`memmove` with REP clocks, printf arms); about 430 B stay original or are blocked (STI-first timers, post-STI/POPF tails, exit INT 21h);
+  292 B are VGAME slots/thunks that carry presentation observers; F117.COM's 688 B is the EXEC chain (very hard). The six sound drivers (14,696 B) need plan step 2b first.
+  **Owner decisions that would move the number without proofs:** reviewed-original entries (second reader) for the C start-up copies (START `8F94`, PLAYER `114E`) and
+  SETUP's timer handler `104D` (about 150 B); whether far-jump slots and observer-owned VGAME slots get a body or a reference entry. Do not add reviewed entries on one reader's say-so.
+- **Prepared batch aw (proved privately; NOT integrated, no gate run; stopped here at the owner's request on 22 Oct).** Tracked code is the
+  accepted, pushed, CI-green commit of batch av. Seven routines, about 840 route-executed bytes, all `private-ready-for-integration`
+  (counts, hashes, checkpoints and all planted defects verified by the root; proof directories under `D:/f117-gate/`):
+  START `5E6F` `p2-start-av-5e6f` (395 B, 135 mutants, route `cargo_return`), `5A8A` `p2-start-av-5a8a` (358 B, 67; 35 of its 143 instructions run on no route),
+  `6045` `p2-start-av-6045` (151 B, 45), `5FFA` `p2-start-av-5ffa` (75 B, 40; route `recon_darken`, because `full_cycle` never reaches START's code),
+  DSWAP `2097` `p2-dswap-av-2097` (40 B, 30; it is the near-heap `malloc`, route `full_cycle`), SETUP `1D69` `p2-setup-av-1d69` (the same body, 30; route
+  `setup_extended_fixed`) and PLAYER `0520` `p2-player-av-0520` (get video mode, 31 B, 25; `full_cycle`). The directory prefix `av` is only a label: this
+  batch is `aw`. No agent reported a non-kit harness hunk. **Thin evidence to know about:** the real-route call counts are 1 (`5A8A`, `5FFA`), 3 (`6045`) and 2
+  (`1D69`), which satisfy the audit's "positive" but are few; consider a longer route for `checkpoints --route` before the gate. Resume: `py D:/f117-gate/accept-kit/integrate_many.py
+  p2-start-av-5e6f p2-start-av-5a8a p2-start-av-6045 p2-start-av-5ffa p2-dswap-av-2097 p2-setup-av-1d69 p2-player-av-0520` -> `build.cmd` from PowerShell and the new
+  CTests -> `new_batch.py aw av HEAD DIR:XB ...` (then copy `audit_private.py`/`finalize.py` from `p2-batch-av-accept`) -> run `audit_private.py` BEFORE the gate (the agents expect no
+  `partial`) -> `D:/f117-gate/precheck_parallel.py LOGDIR SEED...` for six seeds -> `affinity_launch.py py p2-batch-aw-accept/accept.py` -> audit, score refresh, then adapt
+  `D:/f117-gate/update-docs-av.py` (it holds the number substitutions; give it the new old->new values), commit, push, CI. Also existing and unfinished:
+  `p2-player-vc-0520`/`vc-0540` (20 Oct; `0520` is superseded by `av-0520`; `0540` has 2 unresolved missed mutants and runs only on the `err_driver_overlay` route).
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):
@@ -150,7 +171,7 @@ Consolidate it instead of appending to it.
    RETF-at-entry+6 and JMP-SI exits need `run_to_ret` rules (hand-applied to `tests/func_lockstep.c`), and `03E8` also needs the bad-return skip test to accept
    SP-2. A wrong call-depth value never fires a trap, so mutations of it are invisible: use post-trap mutants and judge such calls by the real-route counts.
    A route must run the rare arms: `full_cycle` missed `02B9`'s loop and `031D`'s cut arm (`persian_gulf_air_training` runs it).
-   Next, in this order: (a) the remaining MISC wrappers (a keyboard wait loop is not a
+   Next, in this order: (a) finish batch aw (above), then the cheap leaf sweep from the 22 Oct mapping (START `2A7E` `8607` `85A7` `9CA4` `40CF`, END `45A6`, MISC `0075`, DSWAP `1D14` `10D0` `0AAA`, SETUP `0A8C`, MPS_LOGO `0444` `1D08` `284F`/`2863`, PLAYER `0BCD` `0BDC` `14B8` `14CA` with `st4_int21`; about 190 B), then the remaining MISC wrappers (a keyboard wait loop is not a
    candidate) and a few small F117.COM helpers to prove `.COM` addressing; follow the pilot's conventions (read every relocated word from the
    loaded code and make the fixture patch it to several values; force each branch in a fixed share of states; six or more extra seeds;
    stack segments only 0x5000/0x6000; replace 'entry room' mutations the harness cannot see). Use the kit prompt and the 'Launcher, graphics library and sound drivers' section of `BRIEF.md`. (b) Step 2b before any ASOUND/ISOUND/RSOUND or `.LOG` routine whose proof depends on
