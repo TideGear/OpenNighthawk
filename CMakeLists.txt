@@ -1313,6 +1313,20 @@ if(F117R_BUILD_TESTS)
       --only MGRAPHIC.EXE:2B0)
     add_test(NAME matched_mgraphic_text_front_right_clipped_font_string COMMAND func_lockstep --states 5000
       --only MGRAPHIC.EXE:314)
+    add_test(NAME matched_start_selection_change COMMAND func_lockstep --states 5000
+      --only START.EXE:5E6F)
+    add_test(NAME matched_start_theatre_page_open COMMAND func_lockstep --states 5000
+      --only START.EXE:5A8A)
+    add_test(NAME matched_start_draw_message_panel COMMAND func_lockstep --states 5000
+      --only START.EXE:6045)
+    add_test(NAME matched_start_draw_panel_rectangles COMMAND func_lockstep --states 5000
+      --only START.EXE:5FFA)
+    add_test(NAME matched_dswap_malloc COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:2097)
+    add_test(NAME matched_setup_malloc COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:1D69)
+    add_test(NAME matched_player_get_video_mode COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:520)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

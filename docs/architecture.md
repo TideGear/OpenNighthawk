@@ -383,9 +383,9 @@ are in [roadmap.md](roadmap.md).
    outside the image) and runs one instruction through the machine's
    interpreter step and through the generated region entered there,
    comparing registers, segments, IP, flags, the clock, the interrupt shadow,
-   every byte written, every port access and every interrupt raised. 89,365
-   instruction starts at 64 states each: 5,718,848 comparisons per timing
-   profile, 0 mismatches (512 states are declined to the interpreter: bytes
+   every byte written, every port access and every interrupt raised. 89,433
+   instruction starts at 64 states each: 5,723,136 comparisons per timing
+   profile, 0 mismatches (576 states are declined to the interpreter: bytes
    the gap sweep took for code that are invalid 286 opcodes). The reference
    is the machine's own step (`cpu_step` plus the TF trap), not bare
    `cpu_step`. The gate repeats this under the 386 profile, comparing the
@@ -766,7 +766,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,261 addresses are matched across the game's 17 code files (the census totals are in
+1,268 addresses are matched across the game's 17 code files (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries

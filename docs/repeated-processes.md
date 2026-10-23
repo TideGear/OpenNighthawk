@@ -47,6 +47,8 @@ verification) is not an optimisation; it needs the owner's approval.
   all clean at 1,256 entries; the 1,251 older reports were unchanged. Evidence: `D:/f117-gate/au-pre3/` (final text) and `au-pre2/`.
 - **Batch av pre-checks.** Six seeds (the commit-keyed one, `0x27182818`, `0x20261022`, `0x31415926`, `0x1BADB002`, `0x600DF00D`) in two
   `precheck_parallel.py` rounds, all clean at 1,261 entries; the 1,256 older reports were unchanged. Evidence: `D:/f117-gate/av-pre/`.
+- **Batch aw checks.** Seven new optimized CTests passed in 2.28 s. Six whole-table seeds at 4,000 states
+  passed in two three-seed rounds (`D:/f117-gate/aw-pre/`); acceptance took 1,671 s with 509 CTests.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full
