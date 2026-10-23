@@ -1370,6 +1370,12 @@ if(F117R_BUILD_TESTS)
       --only DSWAP.EXE:AAA)
     add_test(NAME matched_player_picture_end_flag COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:BDC)
+    add_test(NAME matched_rsound_log_private_stack_tick COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:21B)
+    add_test(NAME matched_asound_log_timer_tick_service COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:344)
+    add_test(NAME matched_isound_speaker_tick COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:253)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

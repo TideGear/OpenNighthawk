@@ -166,8 +166,8 @@
     "creditable_bytes": 165425,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 40084,
-      "credited": 10517,
+      "bytes": 40500,
+      "credited": 11631,
       "reviewed_static_bytes": 13232,
       "by_module": {
         "ASOUND.117": {
@@ -176,8 +176,8 @@
           "reviewed_static_bytes": 0
         },
         "ASOUND.LOG": {
-          "bytes": 2615,
-          "credited": 0,
+          "bytes": 2726,
+          "credited": 225,
           "reviewed_static_bytes": 0
         },
         "DSWAP": {
@@ -201,8 +201,8 @@
           "reviewed_static_bytes": 0
         },
         "ISOUND.LOG": {
-          "bytes": 1167,
-          "credited": 0,
+          "bytes": 1472,
+          "credited": 835,
           "reviewed_static_bytes": 0
         },
         "MGRAPHIC": {
@@ -237,7 +237,7 @@
         },
         "RSOUND.LOG": {
           "bytes": 2128,
-          "credited": 0,
+          "credited": 54,
           "reviewed_static_bytes": 0
         },
         "SETUP": {
@@ -267,17 +267,17 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163862,
-      "matched_route_run": 144790,
+      "matched_route_run": 145488,
       "stays_original_reviewed": 1826,
-      "score": 0.8947529018320294,
-      "fixture_only": 25665,
-      "remaining": 17246,
+      "score": 0.899012583759505,
+      "fixture_only": 26081,
+      "remaining": 16548,
       "original_awaiting_review": 20,
       "reviewed_entries": 38,
       "checklist": {
-        "bytes": 43423,
+        "bytes": 43839,
         "with_reviewed_entry": 0,
-        "without_reviewed_entry": 43423,
+        "without_reviewed_entry": 43839,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 0,
@@ -293,7 +293,7 @@
           },
           "supp-credited": {
             "with_reviewed_entry": 0,
-            "without_reviewed_entry": 2141
+            "without_reviewed_entry": 2557
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 0,
@@ -306,10 +306,10 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 205439,
+        "previous_scope_distinct": 205855,
         "denominator_in_previous_scope": 162016,
         "denominator_outside_previous_scope": 1846,
-        "previous_scope_occurrences": 205509,
+        "previous_scope_occurrences": 205925,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
@@ -326,12 +326,12 @@
         },
         "ASOUND.LOG": {
           "denominator": 2615,
-          "matched_route_run": 0,
+          "matched_route_run": 114,
           "stays_original_reviewed": 0,
-          "fixture_only": 0,
-          "remaining": 2615,
+          "fixture_only": 111,
+          "remaining": 2501,
           "original_awaiting_review": 0,
-          "not_in_denominator": 0,
+          "not_in_denominator": 111,
           "not_in_denominator_reviewed": 0,
           "in_previous_scope": 2615
         },
@@ -381,12 +381,12 @@
         },
         "ISOUND.LOG": {
           "denominator": 1167,
-          "matched_route_run": 0,
+          "matched_route_run": 530,
           "stays_original_reviewed": 0,
-          "fixture_only": 0,
-          "remaining": 1167,
+          "fixture_only": 305,
+          "remaining": 637,
           "original_awaiting_review": 0,
-          "not_in_denominator": 0,
+          "not_in_denominator": 305,
           "not_in_denominator_reviewed": 0,
           "in_previous_scope": 1167
         },
@@ -458,10 +458,10 @@
         },
         "RSOUND.LOG": {
           "denominator": 2128,
-          "matched_route_run": 0,
+          "matched_route_run": 54,
           "stays_original_reviewed": 0,
           "fixture_only": 0,
-          "remaining": 2128,
+          "remaining": 2074,
           "original_awaiting_review": 0,
           "not_in_denominator": 0,
           "not_in_denominator_reviewed": 0,

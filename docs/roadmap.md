@@ -152,21 +152,21 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now (23 Oct):** 1,287 addresses matched. The score covers the expanded
+      **Now (23 Oct):** 1,290 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **170,520 / 205,509 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **144,790 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (89.48%); P2 87.73%, overall 96.25%**. In the census
+      **171,634 / 205,925 creditable bytes** (the previous measure, which now scores only the naming item).
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **145,488 of the 163,862
+      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (89.90%); P2 88.11%, overall 96.37%**. In the census
       alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
       291 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left:** 17,246 executed bytes remain unmatched (of them 20 are design-rule
-      original code awaiting reviewed entries). The largest groups are ASOUND.117 5,373, ASOUND.LOG 2,615,
-      RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, F117.COM 688,
+      **What is left:** 16,548 executed bytes remain unmatched (of them 20 are design-rule
+      original code awaiting reviewed entries). The largest groups are ASOUND.117 5,373, ASOUND.LOG 2,501,
+      RSOUND.117 2,213, RSOUND.LOG 2,074, ISOUND.117 1,200, ISOUND.LOG 637, F117.COM 688,
       VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251. The all-code measure has
-      34,989 uncredited bytes, including 13,232 uncredited reviewed static code bytes that no route runs.
+      34,291 uncredited bytes, including 13,232 uncredited reviewed static code bytes that no route runs.
       No new route or dead certificate has been established for those static ranges: indirect/callback/vector
       and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
       About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;
@@ -279,6 +279,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, five private seeds per entry, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,727 s. |
 | aw | 22 Oct | 1,268 | 945 named bytes | START selection change `5E6F`, theatre page `5A8A`, message panel `6045` and panel rectangles `5FFA`; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query. All 458 instructions covered, five private seeds per routine, all 372 mutations caught, exact boot and real-route proofs. The private route proofs are thin for `5A8A`/`5FFA` (once each), `6045` (three times) and `1D69` (twice); the full gate runs each in 27 or more sessions. The theatre page has 35 fixture-only instructions. Six whole-table pre-gate seeds clean; all 1,261 old reports unchanged at `0x27182818`. 509 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,671 s. |
 | ax | 23 Oct | 1,287 | 271 named bytes | 19 leaf routines: START cel steps, BIOS ticks, mouse position, flush count and free-or-exit; END ticks; MISC BIOS key read; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode, exit checksum and formatter word/pointer readers; PLAYER picture close/end flag and interrupt-vector get/set. All 141 instructions covered, 344 caught mutations, 95 optimized seed checks. Six whole-table prechecks pass: 1,266 old reports identical, two changes explained by exact callee-return recovery and the existing mid-run probe's random draw. The harness now rejects contradictory unfinished I/O, checks all INT clocks and recognizes exact original returns with extra stack pops without granting completion credit; 19 synthetic cases pass. 528 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, event limits, N=1 presentation and boot N=4/9 pass. Added gameplay credit 230 bytes, fixture-only credit 41; core gate 1,584 s, acceptance 1,795 s. |
+| ay | 23 Oct | 1,290 | 1,114 named bytes | First sound-driver overlay routines: RSOUND.LOG `021B` (private-stack wrapper around two tick callees, `roland_boot`), ASOUND.LOG `0344` (AdLib timer tick service, `full_cycle`) and ISOUND.LOG `0253` (PC-speaker sequencer tick, `ibm_boot`). 420 instructions covered, five private seeds per routine, all 199 mutations caught, exact boot and real-route proofs. `0344` and `0253` are audited as partial: each stops at the counter-0 control write (a run-loop wake) and the original finishes the reload, STI and RET. Real routes run only part of `0344` and `0253` (no route reaches the sweep arms or the stream readers); lockstep holds the rest. Two harness hunks: a coverage-origin line for each of the two, and a self-write exemption for ISOUND.LOG's call counter at `cs:0251`. Gameplay credit +698 bytes, fixture-only +416 (named code no route runs joins the all-code scope). Whole-table pre-check at `0xadb6a420a86f`: 1,290 routines, 0 mismatching. 532 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,896 s. |
 
 Notes that still matter:
 
