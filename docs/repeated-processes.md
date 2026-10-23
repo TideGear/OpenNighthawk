@@ -45,6 +45,8 @@ verification) is not an optimisation; it needs the owner's approval.
   gave identical tallies and identical per-routine lines either way, so no check changed; the saving is about 7 minutes a batch.
 - **Batch au pre-checks.** Three whole-table seeds and three extra seeds, each round through `precheck_parallel.py` (about 12 minutes a round),
   all clean at 1,256 entries; the 1,251 older reports were unchanged. Evidence: `D:/f117-gate/au-pre3/` (final text) and `au-pre2/`.
+- **Batch av pre-checks.** Six seeds (the commit-keyed one, `0x27182818`, `0x20261022`, `0x31415926`, `0x1BADB002`, `0x600DF00D`) in two
+  `precheck_parallel.py` rounds, all clean at 1,261 entries; the 1,256 older reports were unchanged. Evidence: `D:/f117-gate/av-pre/`.
 - **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
   from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
   prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full

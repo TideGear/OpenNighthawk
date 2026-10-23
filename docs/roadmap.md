@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (497),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (502),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -152,21 +152,21 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now (22 Oct):** 1,256 addresses matched. The score covers the expanded
+      **Now (22 Oct):** 1,261 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
       or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **169,175 / 205,499 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **143,604 of the 163,862
-      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (88.75%); P2 87.06%, overall 96.05%**. In the census
+      **169,304 / 205,509 creditable bytes** (the previous measure, which now scores only the naming item).
+      P2's matched item uses the gameplay score since 21 Oct: matched code runs **143,723 of the 163,862
+      bytes the routes execute, and 1,826 bytes of second-read code that stays original by design count as understood (88.82%); P2 87.13%, overall 96.07%**. In the census
       alone, named code runs 159,769 of 165,425 creditable bytes (1,108 rows wholly,
       294 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
       ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left:** 18,432 executed bytes remain unmatched (of them 20 are design-rule
+      **What is left:** 18,313 executed bytes remain unmatched (of them 20 are design-rule
       original code awaiting reviewed entries). The largest groups are ASOUND.117 5,373, ASOUND.LOG 2,615,
       RSOUND.117 2,213, RSOUND.LOG 2,128, ISOUND.117 1,200, ISOUND.LOG 1,167, START 1,042,
-      MGRAPHIC 119, F117.COM 688 and VGAME 549. The all-code measure has
-      36,324 uncredited bytes, including 13,351 reviewed static code bytes that no route runs.
+      F117.COM 688 and VGAME 549. The all-code measure has
+      36,205 uncredited bytes, including 13,351 reviewed static code bytes that no route runs.
       No new route or dead certificate has been established for those static ranges: indirect/callback/vector
       and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
       About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;
@@ -264,6 +264,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | as | 22 Oct | 1,248 | 263 named bytes | MGRAPHIC `0A02` (open the bitmap buffer and write its dimensions), `0A4D` (close it and advance the arena by its rounded paragraph count) and `0A6A` (encode a row, trimming leading and trailing zeros). All 94 instructions covered, eleven private seeds per routine, all 79 mutations caught; exact 66-checkpoint game and 26-checkpoint boot proofs. Three whole-table pre-gate seeds and the full gate passed: 489 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation on every route and boot N=4/9; acceptance 1,621 s. |
 | at | 22 Oct | 1,251 | 429 named bytes | MGRAPHIC `0BC0` (clip sprite bounds), `061A` (draw a font string: colour controls, variable widths, clipping, opaque/transparent glyphs) and `0F3B` (the one-instruction mode-zero prefix to `0F3D`, with its continuation left to the existing code). All 161 implemented instructions covered, eleven private seeds per entry, 108 mutations caught, exact game and boot proofs. The bounded prefix earns only its two bytes, and its wrong-flag mutants are caught. All 1,248 existing routine reports remained identical at seed `0x27182818`. Three pre-gate whole-table seeds, 492 CTests, 63 routes / 62 fresh interpreter sessions, all-route N=1 presentation and boot N=4/9 passed; acceptance 1,595 s. |
 | au | 22 Oct | 1,256 | 330 named bytes | MGRAPHIC text-string cluster: `02B9` and `037F` (clip helpers), `03D1` (the shared far-return tail), `03E8` (shared set-up, leaves by JMP SI) and `03C9` (a front end). All 130 implemented instructions covered, five private seeds per entry, 212 mutations caught, exact game and boot proofs on routes that run every branch (`central_america_ground_training` for `02B9` and `03D1`, `cargo_pilot` for `03E8`, `ibm_boot` for `03C9`, `full_cycle` for `037F`; `full_cycle` misses the rare arms of the others). `02B9`, `037F`, `03E8` and `03C9` are audited as partial: a rejected string leaves through the shared `03D1` tail (run inline or handed back to), `03E8` leaves a dead restore arm unwritten, `03C9` calls the original `03E8`. All 1,251 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. 497 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,920 s. |
+| av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, five private seeds per entry, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,727 s. |
 
 Notes that still matter:
 

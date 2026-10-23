@@ -85076,7 +85076,302 @@ static int mgraphic_text_front_font_string(machine_t *m)
 #undef XB
 }
 
+/* MGRAPHIC.EXE 019C:031D (near, entered by CALL from the text front ends with the CALLER's frame in BP;
+ * the stack holds the near return address, then the ES and DS the front end saved, then the far return of
+ * the thunk that called it): the right clip of a text string, the second of the three text clip helpers.
+ *
+ * The caller's frame word [BP+14h] is the clip window's right edge. The library's current text position is
+ * the word DS:[17FE]; SS:BX points at the string. DS:[1802] is the fixed glyph width (zero: proportional),
+ * DS:[1805] and DS:[1806] are the font's first and last character, DS:[17FA] is the base of the width table
+ * and DS:[1803] its bias.
+ *   - A text position already at or right of the edge (unsigned) leaves nothing to draw: reject.
+ *   - Otherwise CX becomes the edge plus one (it wraps to zero for an edge of FFFFh) and the characters are
+ *     walked from SS:BX with DX holding the position: a zero byte ends the string (a plain near return,
+ *     nothing written); a byte with its top bit set, one above the font's last character or one below its
+ *     first is skipped. A real character has index AL - [1805]. Its width is DS:[1802] when that is not
+ *     zero, else the byte of the width table at DS:[17FA + index] plus DS:[1803] (8-bit sum). DX is advanced
+ *     by the width (16-bit); while DX is below CX (unsigned) the walk goes on.
+ *   - The first character that carries DX to CX or beyond ends the walk: DX - CX, the part that overhangs the
+ *     edge, is stored as a byte in DS:[1808]. The byte after that character is saved in DS:[180B], replaced
+ *     by zero in the string (the string is cut there) and its address SI is saved in DS:[180C]; then a near
+ *     return. The saved byte and address are put back by the shared far-return tail 03D1.
+ * The reject exit drops its own near return address (POP AX) and jumps to 03D1, the library's shared
+ * far-return tail (pop ES, pop DS, RETF), which is another routine's code (separately named as the 03D1
+ * routine): this body hands back at 03D1 after the pop and the jump, and the original runs the tail.
+ * No callees. The instructions are claimed block by block (a block starts at every branch target); the RET
+ * at 0371 is reached by the string's end and by the cut, so it is claimed once, at its own label. */
+static int mgraphic_text_clip_right(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define DSB(o_) mem_read8(c, phys(c->seg[S_DS], (uint16_t)(o_)))
+#define DSW(o_) seg_read16(c, c->seg[S_DS], (uint16_t)(o_))
+    if (!room(c, 4)) return 0;
+    XB(4, 0x031D);
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x14));   /* the window's right edge */
+    c->r[R_DX] = DSW(0x17FE);                                                  /* the text position */
+    (void)alu_op(c, 7, c->r[R_DX], c->r[R_CX], 1);                             /* cmp dx, cx */
+    if (x86_cond(c, 3)) goto reject;                                           /* jae: already at the edge */
+    XB(4, 0x0328);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    set_r8(c, 4, (uint8_t)alu_op(c, 6, get_r8(c, 4), get_r8(c, 4), 0));        /* xor ah, ah */
+    c->r[R_SI] = c->r[R_BX];
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);                          /* dec si (only the first time) */
+next:
+    XB(4, 0x032E);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    set_r8(c, 0, mem_read8(c, phys(c->seg[S_SS], c->r[R_SI])));
+    set_r8(c, 0, (uint8_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0));        /* or al, al */
+    if (x86_cond(c, 4)) goto done;                                             /* je: the string's end */
+    XB(1, 0x0336);
+    if (x86_cond(c, 8)) goto next;                                             /* js: a byte with its top bit set */
+    XB(2, 0x0338);
+    (void)alu_op(c, 7, get_r8(c, 0), DSB(0x1806), 0);                          /* cmp al, [1806] */
+    if (x86_cond(c, 7)) goto next;                                             /* ja: past the font's last character */
+    XB(2, 0x033E);
+    set_r8(c, 0, (uint8_t)alu_op(c, 5, get_r8(c, 0), DSB(0x1805), 0));         /* sub al, [1805] */
+    if (x86_cond(c, 2)) goto next;                                             /* jb: before the font's first character */
+    XB(4, 0x0344);
+    c->r[R_DI] = c->r[R_AX];
+    set_r8(c, 0, DSB(0x1802));                                                 /* the fixed width */
+    set_r8(c, 0, (uint8_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0));        /* or al, al */
+    if (!x86_cond(c, 5)) {                                                     /* jne 0357: a fixed width */
+        XB(3, 0x034D);
+        c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], DSW(0x17FA), 1);       /* add di, [17FA] */
+        set_r8(c, 0, DSB(c->r[R_DI]));                                         /* the table's width */
+        set_r8(c, 0, (uint8_t)alu_op(c, 0, get_r8(c, 0), DSB(0x1803), 0));     /* add al, [1803] */
+    }
+    XB(3, 0x0357);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_AX], 1);            /* add dx, ax */
+    (void)alu_op(c, 7, c->r[R_DX], c->r[R_CX], 1);                             /* cmp dx, cx */
+    if (x86_cond(c, 2)) goto next;                                             /* jb: still inside the window */
+    XB(7, 0x035D);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_CX], 1);            /* sub dx, cx */
+    mem_write8(c, phys(c->seg[S_DS], 0x1808), get_r8(c, 2));                   /* the overhang */
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    set_r8(c, 0, mem_read8(c, phys(c->seg[S_SS], c->r[R_SI])));                /* the byte after the glyph */
+    mem_write8(c, phys(c->seg[S_SS], c->r[R_SI]), get_r8(c, 4));               /* cut the string there */
+    mem_write8(c, phys(c->seg[S_DS], 0x180B), get_r8(c, 0));
+    seg_write16(c, c->seg[S_DS], 0x180C, c->r[R_SI]);
+done:
+    XB(1, 0x0371);
+    c->ip = cpu_pop16(c);                                                      /* ret */
+    return 1;
+reject:
+    XB(2, 0x0372);
+    c->r[R_AX] = cpu_pop16(c);                                                 /* pop ax: drop our own return address */
+    c->ip = 0x03D1;                                                            /* jmp: the shared far-return tail */
+    return 1;
+#undef DSW
+#undef DSB
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0376, the front end of the graphics library's clipped font-string text routine. Like its
+ * sibling 03C9 it is entered by a near CALL from a thunk (0224), which pushed CS first, so the stack holds the
+ * near return address and then the CS word: the routine ends in a RETF (the shared tail 03D1), never in a RET.
+ * The caller's frame is in BP, the coordinate pair in CX and DX and the string pointer in BX; the frame also
+ * holds the two byte limits ([BP+0Eh] low, [BP+10h] high) that clip C uses.
+ *
+ *   CALL 03E8     the shared set-up (original code, not matched here): it pops the return address 0379
+ *                 into SI, pushes DS and ES, loads the library's data segment, sets the text position
+ *                 DS:[17FE] = CX and the window start DS:[1800] = DX, selects the font from the frame word
+ *                 [BP+0Ch] and fills in its metrics (DS:[1809] is the font height, the window width), then
+ *                 returns by JMP SI. SP is therefore two words lower on return than before the call: the
+ *                 call is trapped at SP - 4 (pops = FFFCh), not at SP. When the string is empty or the font
+ *                 index is bad it leaves by a JMP to 03D1 and does not come back at all.
+ *   CALL 037F     clip C (matched, plain RET): trims the window DS:[1800].. / DS:[1809] to the byte range
+ *                 in the frame. When the window lies wholly outside the range it drops its near return and
+ *                 leaves by JMP to 03D1 as well, so this call may also not come back.
+ *   JMP 03CC      to the body of the sibling front end 03C9 (its bytes, not claimed here):
+ *   MOV SI, BX    the string pointer for the renderer;
+ *   CALL 061A     draw the font string at SS:SI (the matched mgraphic_draw_font_string; plain RET).
+ *   falls into 03D1, the shared far-return tail (restore the saved byte, store the text position into the
+ *   frame, pop ES and DS, RETF). That tail is a routine of its own (mgraphic_text_return_tail_restore_byte):
+ *   this body hands back at 03D1 and the code there finishes the routine, so the tail is not credited here.
+ * Credited here: the eight bytes 0376-037D, three instructions (two calls and the JMP). The MOV at 03CC and
+ * the call at 03CE are the bytes of 03C9 and are run inline so that the hand-back can be at 03D1, exactly as
+ * 03C9 does; the MOV is one block (a jump target) and the call is trapped on its own. The callees charge their own clock.
+ * No flag is set by the routine's own instructions. */
+static int mgraphic_text_front_clipped_font_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RUN(guest_call_pop(m, 0x03E8, 0x0379, 0xFFFC));
+    SM4_NEED(1, 0x0379);
+    RUN(guest_call_pop(m, 0x037F, 0x037C, 0));
+    XB(1, 0x037C);                                  /* JMP 03CC */
+    XB(1, 0x03CC);                                  /* MOV SI,BX */
+    c->r[R_SI] = c->r[R_BX];
+    SM4_NEED(1, 0x03CE);
+    RUN(guest_call_pop(m, 0x061A, 0x03D1, 0));
+    c->ip = 0x03D1;
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:02A1, the front end of the graphics library's clipped font-string text routine. Like its
+ * sibling 03C9 (the unclipped one) it is entered by a near CALL from the far thunks, which pushed CS first, so
+ * the stack holds the near return address and then the CS word: the routine ends in a RETF (the shared tail
+ * 03D1), never in a RET. The caller's frame is in BP, the coordinate pair in CX and DX and the string pointer
+ * in BX.
+ *
+ *   CALL 03E8     the shared set-up (original code, not matched here): it pops the return address 02A4
+ *                 into SI, pushes DS and ES, loads the library's data segment, sets the text position
+ *                 DS:[17FE] = CX and DS:[1800] = DX, selects the font from the frame word [BP+0Ch] and
+ *                 fills in its metrics, then returns by JMP SI. SP is therefore two words lower on
+ *                 return than before the call: the call is trapped at SP - 4 (pops = FFFCh), not at SP.
+ *                 When the string is empty or the font index is bad it leaves by a JMP to 03D1 and does not
+ *                 come back at all.
+ *   CALL 031D     the right clip (original code): skips the string's characters that lie beyond the window's
+ *                 right edge [BP+14h]; a text position already at or past the edge rejects the string
+ *                 (POP AX, JMP 03D1: it does not come back).
+ *   CALL 02B9     the left clip (original code): advances the text position over the characters left of the
+ *                 window's left edge [BP+12h]; an empty window or a string that ends first rejects it the
+ *                 same way.
+ *   CALL 037F     the byte-window clip (original code): trims the live string window to the byte range in
+ *                 the frame ([BP+0Eh], [BP+10h]); a window wholly outside rejects it the same way.
+ *                 The three clips are plain near routines (RET, no arguments to remove).
+ *   JMP 03CC      to the glyph-drawing half of the sibling front end: MOV SI,BX / CALL 061A, then the
+ *                 shared tail 03D1. Those bytes belong to the routine at 03C9, so this body hands back at
+ *                 03CC and the code there finishes the routine; they are not credited here.
+ * Five instructions: the four calls and the JMP; the callees charge their own clock (a call charges its
+ * own). No flag is set by the routine's own instructions. */
+static int mgraphic_text_front_clipped_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RUN(guest_call_pop(m, 0x03E8, 0x02A4, 0xFFFC));
+    SM4_NEED(1, 0x02A4);
+    RUN(guest_call_pop(m, 0x031D, 0x02A7, 0));
+    SM4_NEED(1, 0x02A7);
+    RUN(guest_call_pop(m, 0x02B9, 0x02AA, 0));
+    SM4_NEED(1, 0x02AA);
+    RUN(guest_call_pop(m, 0x037F, 0x02AD, 0));
+    XB(1, 0x02AD);
+    c->ip = 0x03CC;
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:02B0, the front end of the graphics library's left-clipped font-string text routine. Like its
+ * siblings 03C9 and 0376 it is entered by a near CALL from a thunk, which pushed CS first, so the stack holds the
+ * near return address and then the CS word: the routine ends in a RETF (the shared tail 03D1), never in a RET.
+ * The caller's frame is in BP, the coordinate pair in CX and DX and the string pointer in BX; the frame also
+ * holds the two words of the clip window ([BP+12h] its left edge, [BP+14h] its right edge) that clip A uses.
+ *
+ *   CALL 03E8     the shared set-up (original code, not matched here): it pops the return address 02B3
+ *                 into SI, pushes DS and ES, loads the library's data segment, sets the text position
+ *                 DS:[17FE] = CX and the window start DS:[1800] = DX, selects the font from the frame word
+ *                 [BP+0Ch] and fills in its metrics, then returns by JMP SI. SP is therefore two words lower
+ *                 on return than before the call: the call is trapped at SP - 4 (pops = FFFCh), not at SP.
+ *                 When the string is empty or the font index is bad it leaves by a JMP to 03D1 and does not
+ *                 come back at all.
+ *   CALL 02B9     clip A (matched, plain RET): skips the characters of the string that lie left of the
+ *                 window's left edge. A window with its right edge below its left edge, or a string that ends
+ *                 before the edge, is rejected: clip A then drops its near return (POP AX) and leaves by JMP
+ *                 03D1, so this call may also not come back. Otherwise it returns here.
+ *   JMP 03CC      to the body of the sibling front end 03C9 (its bytes, not claimed here):
+ *   MOV SI, BX    the string pointer for the renderer;
+ *   CALL 061A     draw the font string at SS:SI (the matched mgraphic_draw_font_string; plain RET).
+ *   falls into 03D1, the shared far-return tail (restore the saved byte, store the text position into the
+ *   frame, pop ES and DS, RETF). That tail is a routine of its own (mgraphic_text_return_tail_restore_byte):
+ *   this body hands back at 03D1 and the code there finishes the routine, so the tail is not credited here.
+ * Credited here: the nine bytes 02B0-02B8, three instructions (two calls and the JMP). The MOV at 03CC and
+ * the call at 03CE are the bytes of 03C9 and are run inline so that the hand-back can be at 03D1, exactly as
+ * 03C9 does; the MOV is one block (a jump target) and the call is trapped on its own. The callees charge their own clock.
+ * Each instruction is claimed by exactly one claim: the room() test of the first call, the SM4_NEED of the
+ * second call, and one XB per straight run for the JMP and the MOV; the call at 03CE is claimed by its SM4_NEED.
+ * No flag is set by the routine's own instructions. */
+static int mgraphic_text_front_left_clipped_font_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RUN(guest_call_pop(m, 0x03E8, 0x02B3, 0xFFFC));
+    SM4_NEED(1, 0x02B3);
+    RUN(guest_call_pop(m, 0x02B9, 0x02B6, 0));
+    XB(1, 0x02B6);                                  /* JMP 03CC */
+    XB(1, 0x03CC);                                  /* MOV SI,BX */
+    c->r[R_SI] = c->r[R_BX];
+    SM4_NEED(1, 0x03CE);
+    RUN(guest_call_pop(m, 0x061A, 0x03D1, 0));
+    c->ip = 0x03D1;
+    return 1;
+#undef RUN
+#undef XB
+}
+
+/* MGRAPHIC.EXE 019C:0314, the front end of the graphics library's right-clipped font-string text routine. Like its
+ * siblings 0376 (byte-window clip) and 02A1 (three clips) it is entered by a near CALL from a thunk, which pushed CS
+ * first, so the stack holds the near return address and then the CS word: the routine ends in a RETF (the shared
+ * tail 03D1), never in a RET. The caller's frame is in BP, the coordinate pair in CX and DX and the string pointer
+ * in BX; the frame also holds the window's right edge in the word [BP+14h] (clip B reads it, as the right clip in
+ * the 02A1 front end does).
+ *
+ *   CALL 03E8     the shared set-up (original code, not matched here): it pops the return address 0317
+ *                 into SI, pushes DS and ES, loads the library's data segment, sets the text position
+ *                 DS:[17FE] = CX and the window start DS:[1800] = DX, selects the font from the frame word
+ *                 [BP+0Ch] and fills in its metrics, then returns by JMP SI. SP is therefore two words lower on
+ *                 return than before the call: the call is trapped at SP - 4 (pops = FFFCh), not at SP.
+ *                 When the string is empty or the font index is bad it leaves by a JMP to 03D1 and does not
+ *                 come back at all.
+ *   CALL 031D     clip B (original code here, being proved on its own; plain RET): walks the string from the text
+ *                 position and cuts it off where the running width reaches the right edge [BP+14h] (it writes a zero
+ *                 over the first character that does not fit and saves that character in DS:[180B], its address in
+ *                 DS:[180C]). When the text position is already at or past the edge it drops its near return
+ *                 (POP AX) and leaves by JMP to 03D1, so this call may also not come back.
+ *   JMP 03CC     to the body of the sibling front end 03C9 (its bytes, not claimed here):
+ *   MOV SI, BX    the string pointer for the renderer;
+ *   CALL 061A     draw the font string at SS:SI (the matched mgraphic_draw_font_string; plain RET).
+ *   falls into 03D1, the shared far-return tail (restore the saved byte, store the text position into the
+ *   frame, pop ES and DS, RETF). That tail is a routine of its own (mgraphic_text_return_tail_restore_byte):
+ *   this body hands back at 03D1 and the code there finishes the routine, so the tail is not credited here.
+ * Credited here: the nine bytes 0314-031C, three instructions (two calls and the JMP). The MOV at 03CC and
+ * the call at 03CE are the bytes of 03C9 and are run inline so that the hand-back can be at 03D1, exactly as
+ * 03C9 and 0376 do; the MOV is one block (a jump target) and the call is trapped on its own. The callees charge
+ * their own clock. No flag is set by the routine's own instructions. */
+static int mgraphic_text_front_right_clipped_font_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    RUN(guest_call_pop(m, 0x03E8, 0x0317, 0xFFFC));
+    SM4_NEED(1, 0x0317);
+    RUN(guest_call_pop(m, 0x031D, 0x031A, 0));
+    XB(1, 0x031A);                                  /* JMP 03CC */
+    XB(1, 0x03CC);                                  /* MOV SI,BX */
+    c->r[R_SI] = c->r[R_BX];
+    SM4_NEED(1, 0x03CE);
+    RUN(guest_call_pop(m, 0x061A, 0x03D1, 0));
+    c->ip = 0x03D1;
+    return 1;
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0314, mgraphic_text_front_right_clipped_font_string, "far text front end with a right-edge clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, trim the string at the window's right edge [BP+14h] with clip B (031D), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x02B0, mgraphic_text_front_left_clipped_font_string, "far text front end with a left clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, skip the string's characters left of the frame's window with clip A (02B9), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x02A1, mgraphic_text_front_clipped_string, "far text front end with window clipping (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, then the right, left and byte-window clips 031D, 02B9 and 037F, and hand back at 03CC where the glyph renderer is called", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x0376, mgraphic_text_front_clipped_font_string, "far text front end with a vertical clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, trim the string window to the frame's byte limits with clip C (037F), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1", 2 },
+    { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x031D, mgraphic_text_clip_right, "near, clip B: walk the string at SS:BX adding each glyph's width to the text position DS:17FE until it passes the clip window's right edge [bp+14h]; cut the string there (zero byte stored, the displaced byte and its address kept in DS:180B and 180C); reject a position already at the edge through the far-return tail 03D1", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03C9, mgraphic_text_front_font_string, "far text front end (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1", 2 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03E8, mgraphic_text_begin_font_string, "near, shared text-routine start: save the caller's DS and ES, switch to the library data segment, store the pen position and window start, clear the saved-byte state and load the font's metric words from its header; an empty string or a bad font index leaves through the far-return tail 03D1; otherwise ends by JMP SI to the popped return address", 1 },
     { "matched", "MGRAPHIC.EXE", MGRAPHIC_47304, 0x019C, 0x03D1, mgraphic_text_return_tail_restore_byte, "far return tail shared by the text routines: put the string byte saved at DS:180B back through the pointer DS:180C (when nonzero), store DS:17FE to [BP+8], pop ES and DS, RETF", 2 },

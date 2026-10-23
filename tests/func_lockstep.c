@@ -760,6 +760,11 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MGRAPHIC.EXE", 0x0314, 0x0314, 0x00D4 },
+    { "MGRAPHIC.EXE", 0x02B0, 0x02B0, 0x0138 },
+    { "MGRAPHIC.EXE", 0x02A1, 0x02A1, 0x0147 },
+    { "MGRAPHIC.EXE", 0x0376, 0x0376, 0x0072 },
+    { "MGRAPHIC.EXE", 0x031D, 0x031D, 0x00CB },
     { "MGRAPHIC.EXE", 0x03C9, 0x03C9, 0x001F },
     { "MGRAPHIC.EXE", 0x03E8, 0x03D1, 0x009E },
     { "MGRAPHIC.EXE", 0x03D1, 0x03D1, 0x0017 },
@@ -1715,6 +1720,11 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "MGRAPHIC.EXE", 0x019C, 0x03D1, 0x0017, 10, 10, "far return tail shared by the text routines: put the string byte saved at DS:180B back through the pointer DS:180C (when nonzero), store DS:17FE to [BP+8], pop ES and DS, RETF" },
     { "MGRAPHIC.EXE", 0x019C, 0x03E8, 0x0087, 51, 51, "near, shared text-routine start: save the caller's DS and ES, switch to the library data segment, store the pen position and window start, clear the saved-byte state and load the font's metric words from its header; an empty string or a bad font index leaves through the far-return tail 03D1; otherwise ends by JMP SI to the popped return address" },
     { "MGRAPHIC.EXE", 0x019C, 0x03C9, 0x0008, 3, 3, "far text front end (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x031D, 0x0058, 37, 37, "near, clip B: walk the string at SS:BX adding each glyph's width to the text position DS:17FE until it passes the clip window's right edge [bp+14h]; cut the string there (zero byte stored, the displaced byte and its address kept in DS:180B and 180C); reject a position already at the edge through the far-return tail 03D1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0376, 0x0008, 3, 3, "far text front end with a vertical clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, trim the string window to the frame's byte limits with clip C (037F), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x02A1, 0x000F, 5, 5, "far text front end with window clipping (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, then the right, left and byte-window clips 031D, 02B9 and 037F, and hand back at 03CC where the glyph renderer is called" },
+    { "MGRAPHIC.EXE", 0x019C, 0x02B0, 0x0009, 3, 3, "far text front end with a left clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, skip the string's characters left of the frame's window with clip A (02B9), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1" },
+    { "MGRAPHIC.EXE", 0x019C, 0x0314, 0x0009, 3, 3, "far text front end with a right-edge clip (entered by the thunks' PUSH CS / CALL): run the shared set-up 03E8, trim the string at the window's right edge [BP+14h] with clip B (031D), then draw the SS:BX font string with the glyph renderer 061A and hand back at the shared far-return tail 03D1" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1966,6 +1976,11 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
     { "PLAYER.EXE", 0x0000, 0x223A, 0x22AF },    /* raise(): the floating-point arm runs into the abort tail */
     { "MGRAPHIC.EXE", 0x019C, 0x037F, 0x03D1 },   /* clip C rejection: POP AX, JMP to the shared far-return tail; the named code ends there */
     { "MGRAPHIC.EXE", 0x019C, 0x03C9, 0x03D1 },   /* front end: CALL 03E8, CALL 061A, then the named code ends at the shared far-return tail */
+    { "MGRAPHIC.EXE", 0x019C, 0x031D, 0x03D1 },   /* clip B rejection: POP AX, JMP to the shared far-return tail; the named code ends there */
+    { "MGRAPHIC.EXE", 0x019C, 0x0376, 0x03D1 },   /* clipped front end: CALL 03E8, CALL 037F, CALL 061A, then the named code ends at the shared far-return tail */
+    { "MGRAPHIC.EXE", 0x019C, 0x02A1, 0x03CC },   /* clipped front end: CALL 03E8, 031D, 02B9, 037F, JMP 03CC; the named code ends there (a rejection leaves through the tail 03D1 instead) */
+    { "MGRAPHIC.EXE", 0x019C, 0x02B0, 0x03D1 },   /* left-clipped front end: CALL 03E8, CALL 02B9, CALL 061A, then the named code ends at the shared far-return tail */
+    { "MGRAPHIC.EXE", 0x019C, 0x0314, 0x03D1 },   /* right-clipped front end: CALL 03E8, CALL 031D, CALL 061A, then the named code ends at the shared far-return tail */
 };
 /* Routines whose named code ends with a POPF that restores the caller's IF: the POPF clears the run
  * limit so the run loop can take an interrupt, so the body stops after it with the machine at `stop`
@@ -2272,6 +2287,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         /* MGRAPHIC 02B9 and 037F (clip helpers): a rejected string leaves by POP AX / JMP 03D1, whose RETF returns through ES, DS, IP, CS: six bytes above the entry stack. */
         if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x02B9) && op == 0xCB && sp_before == (uint16_t)(entry_sp + 6)) return inside;
         if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x037F) && op == 0xCB && sp_before == (uint16_t)(entry_sp + 6)) return inside;
+        if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x031D) && op == 0xCB && sp_before == (uint16_t)(entry_sp + 6)) return inside;
         /* MGRAPHIC 03E8 (shared text set-up): it pops its near return into SI and leaves by JMP SI, two words pushed, so SP is entry_sp - 2 and IP is SI; a rejected string leaves through the 03D1 tail's RETF after its pops. */
         if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x03E8) && here == 0x046D && op == 0xFF && sp_before == (uint16_t)(entry_sp - 2) && a->ip == a->r[R_SI]) return inside;
         if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x03E8) && here == 0x03E7 && op == 0xCB && sp_before == (uint16_t)(entry_sp + 2)) return inside;
@@ -37982,6 +37998,465 @@ int main(int argc, char **argv)
                 static const uint8_t strings[8][7]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0}};
                 const unsigned sk=XPICK(8);
                 for(unsigned j=0;j<7;j++)XW8(seg[S_SS],(uint16_t)(r[R_BX]+j),strings[sk][j]);
+                r[R_CX]=x; r[R_DX]=row;
+                r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module, "MGRAPHIC.EXE") && o->seg == 0x019C && o->ip == 0x031D) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+#define XR8(s_,o_) (g_pristine[phys((s_),(uint16_t)(o_))])
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                {   const unsigned d_=XPICK(3); seg[S_DS]=d_==0?seg[S_SS]:d_==1?0x7000:0x8000; }
+                const uint16_t xs=seg[S_SS], xd=seg[S_DS];
+                const int alias=xs==xd;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(!XPICK(6)) flags=(uint16_t)(flags|F_DF);
+                seg[S_ES]=(uint16_t)XRAND();
+                for(unsigned j=0;j<8;j++) r[j]=(uint16_t)XRAND();
+                const int wrapbx=XPICK(8)==0;
+                {   static const uint16_t sps_[]={0xF000,0x8000,0x3000,0xFFE0};
+                    unsigned k_=XPICK(4); if(wrapbx && k_==3) k_=0;
+                    r[R_SP]=sps_[k_]; }
+                /* The stack: random below and above; at SP the four words the harness reads as arguments 0-3: the ES and DS the
+                 * front end saved, then the far return the reject exit's RETF takes (IP = back, CS = cs). */
+                for(unsigned j=0;j<0x50;j++) XW8(xs,(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                small[0]=(uint16_t)XRAND(); small[1]=(uint16_t)XRAND(); small[2]=back; small[3]=cs;
+                for(unsigned j=0;j<4;j++) XW16(xs,(uint16_t)(r[R_SP]+2*j),small[j]);
+                /* The caller's frame: BP low in the segment, away from everything else. */
+                r[R_BP]=(uint16_t)(0x0800+XPICK(0xF00));
+                for(unsigned j=0;j<0x20;j++) XW8(xs,(uint16_t)(r[R_BP]+j),XRAND());
+                /* The library's variables 17E0-182F: random, then the ones the routine reads. */
+                for(unsigned j=0;j<0x50;j++) XW8(xd,(uint16_t)(0x17E0+j),XRAND());
+                /* Font: first and last characters, the fixed width, the width table's bias and base. */
+                unsigned f1,f2,wfix,f3;
+                {   const unsigned p_=XPICK(10);
+                    f1=p_<6?0x20:p_<8?XPICK(0x60):p_==8?0:XPICK(0x91);
+                    const unsigned q_=XPICK(10);
+                    f2=q_<4?0x7E:q_<6?0x7F:q_<7?0xFF:q_<8?f1:(f1+XPICK(0x40))&0xFF; }
+                {   const unsigned p_=XPICK(20);
+                    wfix=p_<9?0:p_<16?1+XPICK(8):1+XPICK(255); }
+                f3=XPICK(3)==0?0:XPICK(3)==0?XPICK(256):XPICK(4);
+                XW8(xd,0x1802,wfix); XW8(xd,0x1803,f3); XW8(xd,0x1805,f1); XW8(xd,0x1806,f2);
+                uint16_t tb;
+                if(!alias && XPICK(5)==0) tb=(uint16_t)(0xFF80+XPICK(0x80)); else tb=alias?(uint16_t)(0x4000+XPICK(0x3000)):(uint16_t)(0x2000+XPICK(0x5000));
+                XW16(xd,0x17FA,tb);
+                for(unsigned j=0;j<0x80;j++) {
+                    const unsigned p_=XPICK(10);
+                    XW8(xd,(uint16_t)(tb+j),p_<6?XPICK(12):p_<8?XPICK(256):p_<9?0xF0+XPICK(16):0); }
+                /* The pen's saved byte and the pointer it is stored through (zero: not stored). */
+                XW8(xd,0x180B,XRAND());
+                {   const uint16_t ptr=XPICK(3)==0?0:(uint16_t)(0xB000+XPICK(0x100));
+                    XW16(xd,0x180C,ptr);
+                    for(unsigned j=0;j<0x100;j++) XW8(xs,(uint16_t)(0xB000+j),XRAND()); }
+                /* The string: characters at, around and away from the font's range, then the terminating zero. */
+                for(unsigned j=0;j<0x100;j++) XW8(xs,(uint16_t)(0xA000+j),XRAND());
+                r[R_BX]=wrapbx?(uint16_t)(0xFFF0+XPICK(8)):(uint16_t)(0xA000+XPICK(0x80));
+                /* The text position first: the walk adds each glyph's width to it. */
+                uint16_t pos;
+                {   const unsigned p_=XPICK(10);
+                    pos=p_<5?(uint16_t)XPICK(400):p_==5?(uint16_t)(0xFF00+XPICK(0x100)):p_==6?(uint16_t)(0x7FF0+XPICK(0x20)):
+                        p_==7?(uint16_t)0:(uint16_t)XRAND(); }
+                unsigned dxs[16], ndx=0, total=0;
+                {   const unsigned n_=XPICK(13);
+                    for(unsigned j=0;j<=n_;j++) {
+                        unsigned ch;
+                        if(j==n_) ch=0;
+                        else {
+                            const unsigned p_=XPICK(20);
+                            ch=p_<8?(f1+XPICK(0x80))&0x7F:p_<10?f1:p_<12?f2:p_<13?(f1-1)&0xFF:p_<14?(f2+1)&0xFF:
+                               p_<16?0x80+XPICK(0x80):p_<17?0x80:XPICK(0x100);
+                            if(p_<8 && XPICK(2)) ch=0x20+XPICK(0x5F);
+                            if(ch==0 && XPICK(4)) ch=0x41; }
+                        XW8(xs,(uint16_t)(r[R_BX]+j),ch);
+                        if(j<n_ && ch && ch<0x80 && ch<=f2 && ch>=f1) {
+                            const unsigned idx=ch-f1;
+                            const unsigned w=wfix?wfix:(unsigned)(uint8_t)(XR8(xd,(uint16_t)(tb+idx))+f3);
+                            total=(total+w)&0xFFFF; if(ndx<16) dxs[ndx++]=(pos+total)&0xFFFF; }
+                        if(ch==0) break; } }
+                /* The right edge: at, just below and far from the text position; and exactly on, one short of and one
+                 * past the position a glyph reaches (the walk stops when DX reaches the edge plus one). */
+                uint16_t right;
+                {   const unsigned q_=XPICK(14);
+                    if(q_==0) right=pos;
+                    else if(q_==1) right=(uint16_t)(pos-1-XPICK(3));
+                    else if(q_==2) right=(uint16_t)XRAND();
+                    else if(q_==3) right=0xFFFF;
+                    else if(q_==4) right=(uint16_t)(pos+1+XPICK(300));
+                    else if(ndx) {
+                        const unsigned t_=dxs[XPICK(ndx)];
+                        const unsigned e_=XPICK(5);
+                        right=(uint16_t)(t_-1+(e_==0?0:e_==1?0xFFFF:e_==2?1:e_==3?2:(unsigned)XPICK(5))); }
+                    else right=(uint16_t)(pos+XPICK(100)); }
+                XW16(xs,(uint16_t)(r[R_BP]+0x14),right);
+                XW16(xd,0x17FE,pos);
+#undef XPICK
+#undef XRAND
+#undef XR8
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0376) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The caller's stack segment alternates; the library's data segment (the word 03E8 loads into DS from
+                 * its relocated immediate at 03EC, patched here) is the stack segment itself or a page of its own. */
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                const uint16_t dsv=XPICK(2)?seg[S_SS]:0x3000;
+                seg[S_DS]=XPICK(2)?dsv:(uint16_t)XRAND();
+                XW16(cs,0x03EC,dsv);
+                flags=(uint16_t)(XPICK(6)?flags&~F_DF:flags|F_DF);
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x800));
+                r[R_BP]=(uint16_t)(0x2000+XPICK(0x100));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t v=XRAND();small[j]=v;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);}
+                /* The frame BP points at: [BP] the page index 03E8 loads into ES, [BP+2] the mode word (bit 0 adds the font's second
+                 * height byte; the renderer reads it too), [BP+4], [BP+6] its colours, [BP+0Ch] the font index. */
+                static const uint16_t page_segments[]={0x7000,0x8000,0x9000,0xA000};
+                XW16(seg[S_SS],r[R_BP],XPICK(5));          /* the page index: 061A turns it into a segment through the table at CS:0787 */
+                const unsigned mode=XPICK(3);
+                XW16(seg[S_SS],r[R_BP]+2,mode==0?1:mode==1?0:2);
+                XW16(seg[S_SS],r[R_BP]+4,XRAND()); XW16(seg[S_SS],r[R_BP]+6,XRAND());
+                XW16(seg[S_SS],r[R_BP]+8,XRAND()); XW16(seg[S_SS],r[R_BP]+10,XRAND());
+                /* The font table: DS:00D0 is the highest valid index N, the words from 00D2 are the font pointers (N + 1 of
+                 * them). A font record: the pointer p; widths table ending at p-9; first char p-8, last char p-7, shift
+                 * p-6, fixed width p-5, height p-4, spacing p-3, second height p-2; glyph rows from p. */
+                const unsigned nidx=2;
+                const unsigned big=XPICK(8)==0;                  /* N = FFFFh: index FFFFh/7FFFh wrap to a zero offset */
+                XW16(dsv,0x00D0,big?0xFFFF:nidx);
+                for(unsigned k=0;k<=nidx;k++){
+                    const uint16_t p=(uint16_t)(0x4040+k*0x300);
+                    XW16(dsv,0x00D2+2*k,p);
+                    for(unsigned j=0;j<0x240;j++)XW8(dsv,(uint16_t)(p-0x20+j),XRAND());
+                    const unsigned first=32, last=33+XPICK(3);   /* 33..35 */
+                    XW8(dsv,(uint16_t)(p-8),first);
+                    XW8(dsv,(uint16_t)(p-7),last);
+                    XW8(dsv,(uint16_t)(p-6),(uint8_t)(1+XPICK(4)));
+                    XW8(dsv,(uint16_t)(p-5),XPICK(2)?0:(uint8_t)(4+XPICK(13)));
+                    { XW8(dsv,(uint16_t)(p-4),(uint8_t)(1+XPICK(4))); }   /* never 0: the renderer's row counter would run 256 rows */
+                    XW8(dsv,(uint16_t)(p-3),(uint8_t)XPICK(3));
+                    { XW8(dsv,(uint16_t)(p-2),(uint8_t)XPICK(2)); }
+                    for(unsigned j=0;j<4;j++)XW8(dsv,(uint16_t)(p-9-(last-first)+j),(uint8_t)(1+XPICK(12)));
+                }
+                { /* the font index: mostly valid, sometimes past N, and the wrapping ones when N is FFFFh */
+                  unsigned idx=XPICK(nidx+1);
+                  const unsigned im=XPICK(10);
+                  if(im==0)idx=nidx+1;
+                  else if(im==1)idx=0xFFFF;
+                  else if(big&&im==2)idx=0x7FFF;
+                  else if(big&&im==3)idx=0xFFFF;
+                  if(big&&idx!=0xFFFF&&idx!=0x7FFF&&idx>nidx)idx=nidx;
+                  XW16(seg[S_SS],r[R_BP]+0x0C,idx); }
+                /* The page segments the renderer writes to, its row table, its far-call setter (relocated operands,
+                 * as in the 061A proof). */
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,page_segments[XPICK(4)]);
+                const uint16_t row=(uint16_t)XPICK(8),x=(uint16_t)(XPICK(8)==0?XPICK(360):XPICK(320));
+                XW16(cs,(uint16_t)(row*2+4),(uint16_t)XRAND());
+                { static const uint16_t deltas[]={0,1,0x10,0x20};
+                  const uint16_t delta=deltas[XPICK(4)];
+                  XW16(cs,0x0622,(uint16_t)(0x0561-16*delta));XW16(cs,0x0624,(uint16_t)(cs+delta)); }
+                { static const uint16_t setter_ds[]={0x3000,0x7000,0x8000,0x9000};
+                  XW16(cs,0x0563,setter_ds[XPICK(4)]); }
+                /* The string at SS:BX: empty, a plain run, colour escapes, out-of-range bytes, the ends of the font. */
+                r[R_BX]=(uint16_t)(0x3000+XPICK(0x100));
+                static const uint8_t strings[8][7]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0}};
+                const unsigned sk=XPICK(8);
+                for(unsigned j=0;j<7;j++)XW8(seg[S_SS],(uint16_t)(r[R_BX]+j),strings[sk][j]);
+                /* The clip limits in the frame: lo = [BP+0Eh], hi = [BP+10h], against the window start s = DL (the row, 0..7)
+                 * and the window end e = s + height - 1 (height 1..6 with the mode bit's second byte). lo runs from 2 below
+                 * the start to 6 above it, hi is lo plus 0..7 or, now and then, a free byte below lo or a random byte, so
+                 * the front trim, the back trim, both, neither and the two rejections (start above hi, end below lo) all
+                 * occur with the limits exactly on the window's edges as well. */
+                { const unsigned lo=(row+XPICK(9)+254)&255;
+                  unsigned hi;
+                  switch(XPICK(8)){ case 0:hi=XRAND()&255;break; case 1:hi=(lo+255-XPICK(3))&255;break; default:hi=(lo+XPICK(8))&255;break; }
+                  XW8(seg[S_SS],r[R_BP]+0x0E,lo); XW8(seg[S_SS],r[R_BP]+0x0F,XRAND());
+                  XW8(seg[S_SS],r[R_BP]+0x10,hi); XW8(seg[S_SS],r[R_BP]+0x11,XRAND()); }
+                r[R_CX]=x; r[R_DX]=row;
+                r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x02A1) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The caller's stack segment alternates; the library's data segment (the word 03E8 loads into DS from
+                 * its relocated immediate at 03EC, patched here) is the stack segment itself or a page of its own. */
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                const uint16_t dsv=XPICK(2)?seg[S_SS]:0x3000;
+                seg[S_DS]=XPICK(2)?dsv:(uint16_t)XRAND();
+                XW16(cs,0x03EC,dsv);
+                flags=(uint16_t)(XPICK(6)?flags&~F_DF:flags|F_DF);
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x800));
+                r[R_BP]=(uint16_t)(0x2000+XPICK(0x100));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t v=XRAND();small[j]=v;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);}
+                /* The frame BP points at: [BP] the page index 03E8 loads into ES, [BP+2] the mode word (bit 0 adds the font's second
+                 * height byte; the renderer reads it too), [BP+4], [BP+6] its colours, [BP+0Ch] the font index. */
+                static const uint16_t page_segments[]={0x7000,0x8000,0x9000,0xA000};
+                XW16(seg[S_SS],r[R_BP],XPICK(5));          /* the page index: 061A turns it into a segment through the table at CS:0787 */
+                const unsigned mode=XPICK(3);
+                XW16(seg[S_SS],r[R_BP]+2,mode==0?1:mode==1?0:2);
+                XW16(seg[S_SS],r[R_BP]+4,XRAND()); XW16(seg[S_SS],r[R_BP]+6,XRAND());
+                XW16(seg[S_SS],r[R_BP]+8,XRAND()); XW16(seg[S_SS],r[R_BP]+10,XRAND());
+                const uint16_t row=(uint16_t)XPICK(8),x=(uint16_t)(XPICK(8)==0?XPICK(360):XPICK(320));
+                /* The clip window in the caller's frame. [BP+14h] is the right edge: 031D rejects a text position (CX = x) at or
+                 * right of it. [BP+12h] is the left edge: 02B9 rejects an empty window (right below left) and skips characters
+                 * while the position is left of it. [BP+0Eh], [BP+10h] are the byte limits 037F trims the row window to. */
+                { uint16_t re_, le_, lo_, hi_;
+                  const unsigned pr=XPICK(10);
+                  re_= pr<5?(uint16_t)(x+1+XPICK(60)): pr==5?x: pr==6?(uint16_t)(x+1): pr==7?(uint16_t)(x-1-XPICK(3)): pr==8?0xFFFFu:(uint16_t)XRAND();
+                  const unsigned pl=XPICK(10);
+                  le_= pl<3?(uint16_t)(x-XPICK(20)): pl==3?x: pl<7?(uint16_t)(x+1+XPICK(30)): pl==7?(uint16_t)(re_+1+XPICK(3)): pl==8?re_:(uint16_t)XRAND();
+                  const unsigned pw=XPICK(8);
+                  lo_= pw<3?(uint16_t)(row-XPICK(3)): pw==3?row: pw<6?(uint16_t)(row+1+XPICK(4)): (uint16_t)XRAND()&0xFF;
+                  hi_= pw<3?(uint16_t)(row+XPICK(8)): pw==3?row: pw<6?(uint16_t)(row+XPICK(3)):(uint16_t)XRAND()&0xFF;
+                  if(XPICK(8)==0){ const uint16_t t_=lo_; lo_=hi_; hi_=t_; }
+                  XW16(seg[S_SS],r[R_BP]+0x0E,lo_);
+                  XW16(seg[S_SS],r[R_BP]+0x10,hi_);
+                  XW16(seg[S_SS],r[R_BP]+0x12,le_);
+                  XW16(seg[S_SS],r[R_BP]+0x14,re_); }
+                /* The font table: DS:00D0 is the highest valid index N, the words from 00D2 are the font pointers (N + 1 of
+                 * them). A font record: the pointer p; widths table ending at p-9; first char p-8, last char p-7, shift
+                 * p-6, fixed width p-5, height p-4, spacing p-3, second height p-2; glyph rows from p. */
+                const unsigned nidx=2;
+                const unsigned big=XPICK(8)==0;                  /* N = FFFFh: index FFFFh/7FFFh wrap to a zero offset */
+                XW16(dsv,0x00D0,big?0xFFFF:nidx);
+                for(unsigned k=0;k<=nidx;k++){
+                    const uint16_t p=(uint16_t)(0x4040+k*0x300);
+                    XW16(dsv,0x00D2+2*k,p);
+                    for(unsigned j=0;j<0x240;j++)XW8(dsv,(uint16_t)(p-0x20+j),XRAND());
+                    const unsigned first=32, last=33+XPICK(3);   /* 33..35 */
+                    XW8(dsv,(uint16_t)(p-8),first);
+                    XW8(dsv,(uint16_t)(p-7),last);
+                    XW8(dsv,(uint16_t)(p-6),(uint8_t)(1+XPICK(4)));
+                    XW8(dsv,(uint16_t)(p-5),XPICK(2)?0:(uint8_t)(4+XPICK(13)));
+                    { XW8(dsv,(uint16_t)(p-4),(uint8_t)(1+XPICK(4))); }   /* never 0: a zero height would run 256 rows */
+                    XW8(dsv,(uint16_t)(p-3),(uint8_t)XPICK(3));
+                    { XW8(dsv,(uint16_t)(p-2),(uint8_t)XPICK(2)); }
+                    for(unsigned j=0;j<4;j++)XW8(dsv,(uint16_t)(p-9-(last-first)+j),(uint8_t)(1+XPICK(12)));
+                }
+                { /* the font index: mostly valid, sometimes past N, and the wrapping ones when N is FFFFh */
+                  unsigned idx=XPICK(nidx+1);
+                  const unsigned im=XPICK(10);
+                  if(im==0)idx=nidx+1;
+                  else if(im==1)idx=0xFFFF;
+                  else if(big&&im==2)idx=0x7FFF;
+                  else if(big&&im==3)idx=0xFFFF;
+                  if(big&&idx!=0xFFFF&&idx!=0x7FFF&&idx>nidx)idx=nidx;
+                  XW16(seg[S_SS],r[R_BP]+0x0C,idx); }
+                /* The string at SS:BX: empty, a plain run, colour escapes, out-of-range bytes, the ends of the font. */
+                r[R_BX]=(uint16_t)(0x3000+XPICK(0x100));
+                static const uint8_t strings[8][7]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0}};
+                const unsigned sk=XPICK(8);
+                for(unsigned j=0;j<7;j++)XW8(seg[S_SS],(uint16_t)(r[R_BX]+j),strings[sk][j]);
+                r[R_CX]=x; r[R_DX]=row;
+                r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x02B0) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The caller's stack segment alternates; the library's data segment (the word 03E8 loads into DS from
+                 * its relocated immediate at 03EC, patched here) is the stack segment itself or a page of its own. */
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                const uint16_t dsv=XPICK(2)?seg[S_SS]:0x3000;
+                seg[S_DS]=XPICK(2)?dsv:(uint16_t)XRAND();
+                XW16(cs,0x03EC,dsv);
+                flags=(uint16_t)(XPICK(6)?flags&~F_DF:flags|F_DF);
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x800));
+                r[R_BP]=(uint16_t)(0x2000+XPICK(0x100));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t v=XRAND();small[j]=v;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);}
+                /* The frame BP points at: [BP] the page index 03E8 loads into ES, [BP+2] the mode word (bit 0 adds the font's second
+                 * height byte; the renderer reads it too), [BP+4], [BP+6] its colours, [BP+0Ch] the font index. */
+                static const uint16_t page_segments[]={0x7000,0x8000,0x9000,0xA000};
+                XW16(seg[S_SS],r[R_BP],XPICK(5));          /* the page index: 061A turns it into a segment through the table at CS:0787 */
+                const unsigned mode=XPICK(3);
+                XW16(seg[S_SS],r[R_BP]+2,mode==0?1:mode==1?0:2);
+                XW16(seg[S_SS],r[R_BP]+4,XRAND()); XW16(seg[S_SS],r[R_BP]+6,XRAND());
+                XW16(seg[S_SS],r[R_BP]+8,XRAND()); XW16(seg[S_SS],r[R_BP]+10,XRAND());
+                /* The font table: DS:00D0 is the highest valid index N, the words from 00D2 are the font pointers (N + 1 of
+                 * them). A font record: the pointer p; widths table ending at p-9; first char p-8, last char p-7, shift
+                 * p-6, fixed width p-5, height p-4, spacing p-3, second height p-2; glyph rows from p. */
+                const unsigned nidx=2;
+                const unsigned big=XPICK(8)==0;                  /* N = FFFFh: index FFFFh/7FFFh wrap to a zero offset */
+                XW16(dsv,0x00D0,big?0xFFFF:nidx);
+                for(unsigned k=0;k<=nidx;k++){
+                    const uint16_t p=(uint16_t)(0x4040+k*0x300);
+                    XW16(dsv,0x00D2+2*k,p);
+                    for(unsigned j=0;j<0x240;j++)XW8(dsv,(uint16_t)(p-0x20+j),XRAND());
+                    const unsigned first=32, last=33+XPICK(3);   /* 33..35 */
+                    XW8(dsv,(uint16_t)(p-8),first);
+                    XW8(dsv,(uint16_t)(p-7),last);
+                    XW8(dsv,(uint16_t)(p-6),(uint8_t)(1+XPICK(4)));
+                    XW8(dsv,(uint16_t)(p-5),XPICK(2)?0:(uint8_t)(4+XPICK(13)));
+                    { XW8(dsv,(uint16_t)(p-4),(uint8_t)(1+(XPICK(3)?0:XPICK(4)))); }   /* never 0: the renderer's row counter would run 256 rows */
+                    XW8(dsv,(uint16_t)(p-3),(uint8_t)XPICK(3));
+                    { XW8(dsv,(uint16_t)(p-2),(uint8_t)XPICK(2)); }
+                    for(unsigned j=0;j<4;j++)XW8(dsv,(uint16_t)(p-9-(last-first)+j),(uint8_t)(1+XPICK(12)));
+                }
+                { /* the font index: mostly valid, sometimes past N, and the wrapping ones when N is FFFFh */
+                  unsigned idx=XPICK(nidx+1);
+                  const unsigned im=XPICK(10);
+                  if(im==0)idx=nidx+1;
+                  else if(im==1)idx=0xFFFF;
+                  else if(big&&im==2)idx=0x7FFF;
+                  else if(big&&im==3)idx=0xFFFF;
+                  if(big&&idx!=0xFFFF&&idx!=0x7FFF&&idx>nidx)idx=nidx;
+                  XW16(seg[S_SS],r[R_BP]+0x0C,idx); }
+                /* The page segments the renderer writes to, its row table, its far-call setter (relocated operands,
+                 * as in the 061A proof). */
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,page_segments[XPICK(4)]);
+                const uint16_t row=(uint16_t)XPICK(8),x=(uint16_t)(XPICK(8)==0?XPICK(360):XPICK(320));
+                XW16(cs,(uint16_t)(row*2+4),(uint16_t)XRAND());
+                { static const uint16_t deltas[]={0,1,0x10,0x20};
+                  const uint16_t delta=deltas[XPICK(4)];
+                  XW16(cs,0x0622,(uint16_t)(0x0561-16*delta));XW16(cs,0x0624,(uint16_t)(cs+delta)); }
+                { static const uint16_t setter_ds[]={0x3000,0x7000,0x8000,0x9000};
+                  XW16(cs,0x0563,setter_ds[XPICK(4)]); }
+                /* The string at SS:BX: empty, a plain run, colour escapes, out-of-range bytes, the ends of the font. */
+                r[R_BX]=(uint16_t)(0x3000+XPICK(0x100));
+                static const uint8_t strings[16][7]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0},{32,0},{32,0},{32,0},{32,0},{31,0},{36,0}};
+                const unsigned sk=XPICK(16);
+                for(unsigned j=0;j<7;j++)XW8(seg[S_SS],(uint16_t)(r[R_BX]+j),strings[sk][j]);
+                /* The clip window in the frame: w1 = [BP+12h] (left edge), w2 = [BP+14h] (right edge); the text position set by 03E8 is x
+                 * (CX). Clip A accepts at once when x >= w1 (unsigned: w1 at, below or just above x with the wrap), skips characters when w1
+                 * is a little right of x (it returns normally, the part beyond the edge stored in DS:[1807]), rejects when the string ends
+                 * before the edge (w1 far right of x) and rejects when w2 - w1 has its sign bit set (w2 below w1, or 8000h and more above). */
+                r[R_CX]=x; r[R_DX]=row;
+                { uint16_t w1,w2;
+                  switch(XPICK(12)){
+                    case 0: case 1: case 2: case 3: case 4: w1=(uint16_t)(x-XPICK(3)); break;   /* at or just left of the position (x < 2 wraps to FFFFh) */
+                    case 5: case 6: case 7: w1=(uint16_t)(x+1+XPICK(12)); break;     /* skip a character or two */
+                    case 8: w1=(uint16_t)(x+1+XPICK(60)); break;                     /* up to the string's end */
+                    case 9: w1=(uint16_t)(x+1); break;
+                    case 10: w1=(uint16_t)(x+1+XPICK(200)); break;
+                    default: w1=(uint16_t)XRAND(); break; }
+                  switch(XPICK(12)){
+                    case 0: w2=(uint16_t)(w1-1-XPICK(3)); break;                     /* w2 below w1 */
+                    case 1: w2=(uint16_t)(w1+0x7FFF); break;                         /* the largest difference with the sign clear */
+                    case 2: w2=(uint16_t)(w1+0x8000); break;                         /* the smallest with it set */
+                    case 3: w2=(uint16_t)XRAND(); break;
+                    case 4: w2=w1; break;
+                    default: w2=(uint16_t)(w1+XPICK(40)); break; }
+                  XW16(seg[S_SS],r[R_BP]+0x12,w1); XW16(seg[S_SS],r[R_BP]+0x14,w2); }
+                r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
+                seg[S_ES]=(uint16_t)XRAND();
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"MGRAPHIC.EXE") && o->seg==0x019C && o->ip==0x0314) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* The caller's stack segment alternates; the library's data segment (the word 03E8 loads into DS from
+                 * its relocated immediate at 03EC, patched here) is the stack segment itself or a page of its own. */
+                seg[S_SS]=XPICK(2)?0x5000:0x6000;
+                const uint16_t dsv=XPICK(2)?seg[S_SS]:0x3000;
+                seg[S_DS]=XPICK(2)?dsv:(uint16_t)XRAND();
+                XW16(cs,0x03EC,dsv);
+                flags=(uint16_t)(XPICK(6)?flags&~F_DF:flags|F_DF);
+                r[R_SP]=(uint16_t)(0x8000+XPICK(0x800));
+                r[R_BP]=(uint16_t)(0x2000+XPICK(0x100));
+                for(unsigned j=0;j<64;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-64+j),XRAND());
+                for(unsigned j=0;j<4;j++){uint16_t v=XRAND();small[j]=v;XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);}
+                /* The frame BP points at: [BP] the page index 03E8 loads into ES, [BP+2] the mode word (bit 0 adds the font's second
+                 * height byte; the renderer reads it too), [BP+4], [BP+6] its colours, [BP+0Ch] the font index. */
+                static const uint16_t page_segments[]={0x7000,0x8000,0x9000,0xA000};
+                XW16(seg[S_SS],r[R_BP],XPICK(5));          /* the page index: 061A turns it into a segment through the table at CS:0787 */
+                const unsigned mode=XPICK(3);
+                XW16(seg[S_SS],r[R_BP]+2,mode==0?1:mode==1?0:2);
+                XW16(seg[S_SS],r[R_BP]+4,XRAND()); XW16(seg[S_SS],r[R_BP]+6,XRAND());
+                XW16(seg[S_SS],r[R_BP]+8,XRAND()); XW16(seg[S_SS],r[R_BP]+10,XRAND());
+                /* The font table: DS:00D0 is the highest valid index N, the words from 00D2 are the font pointers (N + 1 of
+                 * them). A font record: the pointer p; widths table ending at p-9; first char p-8, last char p-7, shift
+                 * p-6, fixed width p-5, height p-4, spacing p-3, second height p-2; glyph rows from p. */
+                const unsigned nidx=2;
+                const unsigned big=XPICK(8)==0;                  /* N = FFFFh: index FFFFh/7FFFh wrap to a zero offset */
+                XW16(dsv,0x00D0,big?0xFFFF:nidx);
+                for(unsigned k=0;k<=nidx;k++){
+                    const uint16_t p=(uint16_t)(0x4040+k*0x300);
+                    XW16(dsv,0x00D2+2*k,p);
+                    for(unsigned j=0;j<0x240;j++)XW8(dsv,(uint16_t)(p-0x20+j),XRAND());
+                    const unsigned first=32, last=33+XPICK(3);   /* 33..35 */
+                    XW8(dsv,(uint16_t)(p-8),first);
+                    XW8(dsv,(uint16_t)(p-7),last);
+                    XW8(dsv,(uint16_t)(p-6),(uint8_t)(1+XPICK(4)));
+                    XW8(dsv,(uint16_t)(p-5),XPICK(2)?0:(uint8_t)(4+XPICK(13)));
+                    { XW8(dsv,(uint16_t)(p-4),(uint8_t)(1+XPICK(4))); }   /* never 0: the renderer's row counter would run 256 rows */
+                    XW8(dsv,(uint16_t)(p-3),(uint8_t)XPICK(3));
+                    { XW8(dsv,(uint16_t)(p-2),(uint8_t)XPICK(2)); }
+                    for(unsigned j=0;j<4;j++)XW8(dsv,(uint16_t)(p-9-(last-first)+j),(uint8_t)(1+XPICK(12)));
+                }
+                { /* the font index: mostly valid, sometimes past N, and the wrapping ones when N is FFFFh */
+                  unsigned idx=XPICK(nidx+1);
+                  const unsigned im=XPICK(10);
+                  if(im==0)idx=nidx+1;
+                  else if(im==1)idx=0xFFFF;
+                  else if(big&&im==2)idx=0x7FFF;
+                  else if(big&&im==3)idx=0xFFFF;
+                  if(big&&idx!=0xFFFF&&idx!=0x7FFF&&idx>nidx)idx=nidx;
+                  XW16(seg[S_SS],r[R_BP]+0x0C,idx); }
+                /* The page segments the renderer writes to, its row table, its far-call setter (relocated operands,
+                 * as in the 061A proof). */
+                for(unsigned j=0;j<5;j++)XW16(cs,0x0787+2*j,page_segments[XPICK(4)]);
+                const uint16_t row=(uint16_t)XPICK(8),x=(uint16_t)(XPICK(8)==0?XPICK(360):XPICK(320));
+                XW16(cs,(uint16_t)(row*2+4),(uint16_t)XRAND());
+                { static const uint16_t deltas[]={0,1,0x10,0x20};
+                  const uint16_t delta=deltas[XPICK(4)];
+                  XW16(cs,0x0622,(uint16_t)(0x0561-16*delta));XW16(cs,0x0624,(uint16_t)(cs+delta)); }
+                { static const uint16_t setter_ds[]={0x3000,0x7000,0x8000,0x9000};
+                  XW16(cs,0x0563,setter_ds[XPICK(4)]); }
+                /* The string at SS:BX: empty, a plain run, colour escapes, out-of-range bytes, the ends of the font. */
+                r[R_BX]=(uint16_t)(0x3000+XPICK(0x100));
+                static const uint8_t strings[12][10]={{0},{0xA5,31,36,32,0},{32,33,34,0},{31,36,0},{32,0},{32,33,0},{0xFF,32,0},{32,33,34,35,0},
+                    {32,33,34,35,33,32,34,33,0},{33,0xA5,34,36,32,35,31,33,0},{34,34,34,34,34,34,34,34,0},{35,32,0xFF,33,34,35,32,0}};
+                const unsigned sk=XPICK(12);
+                for(unsigned j=0;j<10;j++)XW8(seg[S_SS],(uint16_t)(r[R_BX]+j),strings[sk][j]);
+                /* Clip B reads the window's right edge hi = [BP+14h] (a word; [BP+12h], the left edge, is the next clip's and only
+                 * gets a random word here, with the byte limits [BP+0Eh], [BP+10h] of clip C) and compares it with the text
+                 * position x = DS:[17FE] = CX: x >= hi rejects (POP AX / JMP 03D1, no return); otherwise the string is cut where
+                 * the running width passes hi + 1. hi - x runs from 1 to 40 (cut after one to a few characters, the usual case)
+                 * or to 120 (the whole string fits, so the walk meets the terminator), with x == hi, a little below x, FFFFh
+                 * (INC CX wraps to 0: the first character that counts is cut) and a random word as the other choices. */
+                { unsigned hi;
+                  switch(XPICK(10)){
+                  case 0: hi=x; break;
+                  case 1: hi=x>=3?x-XPICK(3):x; break;
+                  case 2: hi=0xFFFF; break;
+                  case 3: hi=XRAND()&0xFFFF; break;
+                  case 4: case 5: hi=x+1+XPICK(120); break;
+                  default: hi=x+1+XPICK(40); break; }
+                  XW16(seg[S_SS],r[R_BP]+0x0E,XRAND()); XW16(seg[S_SS],r[R_BP]+0x10,XRAND()); XW16(seg[S_SS],r[R_BP]+0x12,XRAND());
+                  XW16(seg[S_SS],r[R_BP]+0x14,hi); }
                 r[R_CX]=x; r[R_DX]=row;
                 r[R_AX]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_SI]=(uint16_t)XRAND();
                 seg[S_ES]=(uint16_t)XRAND();
