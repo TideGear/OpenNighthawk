@@ -143,6 +143,15 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+- **Completion scope (24 Oct).** The approved accounted-for checklist now has weight 10;
+  existing P2 weights scale proportionally to 90. Its first 585 / 44,654 reviewed bytes are
+  the two SETUP XOR code ranges, validated against source/decoded hashes, exact bounds and
+  instruction counts; no new matching credit. The full completion conditions, including
+  final indirect-entry closure, are in [progress.md](progress.md#phase-2-completion-requirements-owner-23-24-october-2026).
+  All 74 focused scoring/classification/encoded-validator tests pass; runtime sources match
+  batch bb's accepted hashes. Packer bootstrap measured at 203 bytes across seven files;
+  its packed representation still needs separate reviewed scoring (zero added credit).
+
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
@@ -154,10 +163,10 @@ not the recompilation:
       list.
       **Now (24 Oct):** 1,355 addresses matched. The score covers the expanded
       game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
-      or proofs execute and reviewed static code (`docs/census-code.tsv`, 154 ranges):
-      **175,154 / 206,155 creditable bytes** (the previous measure, which now scores only the naming item).
+      or proofs execute and reviewed static code (`docs/census-code.tsv` and two strictly validated encoded SETUP ranges):
+      **175,154 / 206,740 creditable bytes** (the previous measure, which now scores only the naming item).
       P2's matched item uses the gameplay score since 21 Oct: matched code runs **148,778 of the 163,862
-      bytes the routes execute, and 2,265 bytes of second-read code that stays original by design count as understood (92.18%); P2 90.04%, overall 96.96%**. In the census
+      bytes the routes execute, and 2,265 bytes of second-read code that stays original by design count as understood (92.18%); P2 81.09%, overall 94.23% after the approved checklist scoring revision**. In the census
       alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
       291 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
@@ -166,7 +175,7 @@ not the recompilation:
       original code awaiting reviewed entries). The largest groups are ASOUND.117 4,662, ASOUND.LOG 1,226,
       RSOUND.117 1,778, RSOUND.LOG 1,574, ISOUND.117 905, ISOUND.LOG 563, F117.COM 249,
       VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251. The all-code measure has
-      31,001 uncredited bytes, including 13,232 uncredited reviewed static code bytes that no route runs.
+      31,586 uncredited bytes, including 13,817 uncredited reviewed static code bytes that no route runs.
       No new route or dead certificate has been established for those static ranges: indirect/callback/vector
       and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
       About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;

@@ -72,7 +72,8 @@ REVIEW_STATUSES = ("stays-original", "machine-option-only", "dead-certified", "p
                    "unreached-held")
 # The design rules under which a routine stays original (owner, 21 Oct 2026; program launcher and hardware wait loop added 23 Oct 2026). A routine declined for any other
 # reason (unequal, waits the routes cannot check, main(), an interior arm) is remaining work.
-DESIGN_RULES = ("STI-first handler", "C start-up", "palette loader with STI", "program launcher", "hardware wait loop")
+DESIGN_RULES = ("STI-first handler", "C start-up", "palette loader with STI", "program launcher", "hardware wait loop",
+                "packer stub")
 SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run time patches
 
 
@@ -522,7 +523,12 @@ def run(census, cover_dir, route_dir, data_dir, scope=None, detail=None):
     totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead(),
                                dead_ranges=read_dead_ranges(), scope_bytes=scope_bytes)
     if scope is not None:
-        scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods), scope_bytes=scope_bytes))
+        from encoded_code import reviewed_bytes
+        static = reviewed_code_bytes(mods)
+        encoded = reviewed_bytes(mods, data_dir, os.path.join(ROOT, "docs", "census-encoded-code.json"), static)
+        for module, span in encoded.items():
+            static[module].update(span)
+        scope.update(supplemental_scope(rows, covered, ran, static, scope_bytes=scope_bytes))
         scope["route_records"] = audit
     if detail is not None:
         detail.update(rows=rows, covered=covered, ran=ran, scope_bytes=scope_bytes)

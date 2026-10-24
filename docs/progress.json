@@ -67,24 +67,31 @@
     "P2": [
       {
         "item": "Tooling: name leads, matched-routine runtime and its random-state lockstep",
-        "weight": 5,
+        "weight": 4.5,
         "done": 1.0,
         "kind": "estimate",
         "evidence": "tools/reimp_names.py, src/matched, tests/func_lockstep.c (planted defects caught), pipeline step 7."
       },
       {
         "item": "Routines named and explained in the repository",
-        "weight": 35,
+        "weight": 31.5,
         "done": "census_matched_bytes",
         "kind": "measured",
         "evidence": "Previous all-code measure, kept here on purpose (21 Oct 2026): naming and explaining is owed for the whole code inventory, including reviewed static code and error paths no route runs, which the gameplay score leaves out. Counted as bytes of routines that have a named, explained matched equivalent: the historical census plus executed and reviewed static code outside its rows in all 17 game code files. Names that are only leads (reimp_names.py) do not count; reviewed reference entries do not count yet either."
       },
       {
         "item": "Matched functions replacing translations",
-        "weight": 60,
+        "weight": 54.0,
         "done": "gameplay_score",
         "kind": "measured",
         "evidence": "Gameplay score (owner, 21 Oct 2026): of every instruction byte a validated route capture executes in the 17 game code files, the bytes a matched body runs that a route executes (fixture-only coverage does not count), plus executed bytes of routines that stay original by design rule where docs/reference-reviewed.tsv has a reviewed entry. Census.gameplay holds the figures; the previous all-code measure stays in census and scores the naming item."
+      },
+      {
+        "item": "Code outside routes accounted for by reviewed reference entries",
+        "weight": 10,
+        "done": "accounted_for",
+        "kind": "measured",
+        "evidence": "Owner-approved completion scope, 23-24 Oct 2026: every distinct byte of the previous all-code scope outside validated route execution needs a second-read reference entry. Any supported reference status counts for this review checklist; unresolved code still needs matching or a strict dead/data certificate before Phase 2 closes. Existing item weights scaled to 90 in their original proportions; this scope addition intentionally lowers the headline score."
       }
     ],
     "P3": [
@@ -147,7 +154,7 @@
     ]
   },
   "census": {
-    "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed and reviewed static instruction bytes outside those rows in all 17 game code files; added to numerator and denominator for scoring. Floating LZEXE decompressor and unreviewed static discoveries remain outside. gameplay (21 Oct 2026): the gameplay score's figures over the executed bytes only (denominator: every validated route-executed instruction byte; matched_route_run; stays_original_reviewed; fixture_only; remaining; checklist of previous-scope bytes outside the denominator with and without a docs/reference-reviewed.tsv entry). Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
+    "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed and reviewed static instruction bytes outside those rows in all 17 game code files; added to numerator and denominator for scoring. Strictly validated SETUP XOR code is included by physical byte union; floating LZEXE decompressor and unreviewed static discoveries remain outside. gameplay (21 Oct 2026): the gameplay score's figures over the executed bytes only (denominator: every validated route-executed instruction byte; matched_route_run; stays_original_reviewed; fixture_only; remaining; checklist of previous-scope bytes outside the denominator with and without a docs/reference-reviewed.tsv entry). Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
     "matched_functions": 1122,
@@ -166,9 +173,9 @@
     "creditable_bytes": 165425,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 40730,
+      "bytes": 41315,
       "credited": 15151,
-      "reviewed_static_bytes": 13232,
+      "reviewed_static_bytes": 13817,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5488,
@@ -241,9 +248,9 @@
           "reviewed_static_bytes": 0
         },
         "SETUP": {
-          "bytes": 3517,
+          "bytes": 4102,
           "credited": 102,
-          "reviewed_static_bytes": 3224
+          "reviewed_static_bytes": 3809
         },
         "START": {
           "bytes": 2509,
@@ -273,10 +280,10 @@
       "fixture_only": 26311,
       "remaining": 12819,
       "original_awaiting_review": 20,
-      "reviewed_entries": 39,
+      "reviewed_entries": 41,
       "checklist": {
-        "bytes": 44069,
-        "with_reviewed_entry": 0,
+        "bytes": 44654,
+        "with_reviewed_entry": 585,
         "without_reviewed_entry": 44069,
         "by_class": {
           "credited": {
@@ -296,7 +303,7 @@
             "without_reviewed_entry": 2787
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 0,
+            "with_reviewed_entry": 585,
             "without_reviewed_entry": 13232
           },
           "unreached": {
@@ -306,10 +313,10 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 206085,
+        "previous_scope_distinct": 206670,
         "denominator_in_previous_scope": 162016,
         "denominator_outside_previous_scope": 1846,
-        "previous_scope_occurrences": 206155,
+        "previous_scope_occurrences": 206740,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
@@ -474,8 +481,8 @@
           "fixture_only": 755,
           "remaining": 210,
           "original_awaiting_review": 0,
-          "not_in_denominator": 4148,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator": 4733,
+          "not_in_denominator_reviewed": 585,
           "in_previous_scope": 3528
         },
         "START": {

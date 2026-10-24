@@ -202,6 +202,12 @@ def compute(data):
     if "gameplay" in c:
         g = c["gameplay"]
         measures["gameplay_score"] = (g["matched_route_run"] + g["stays_original_reviewed"]) / g["denominator"]
+        if "checklist" in g:
+            k = g["checklist"]
+            reviewed, total = k["with_reviewed_entry"], k["bytes"]
+            if not 0 <= reviewed <= total or k["without_reviewed_entry"] != total - reviewed:
+                raise ValueError("accounted-for checklist counts do not partition its scope")
+            measures["accounted_for"] = reviewed / total if total else 1.0
     out = {}
     rows = []
     for phase, items in data["phases"].items():
@@ -258,7 +264,8 @@ def main():
         k = g["checklist"]
         print("  accounted for: %d of %d bytes of the previous all-code scope outside the denominator have a reviewed "
               "reference entry (%.2f%%; target 100%%), %d without (docs/reference-reviewed.tsv, %d entries)"
-              % (k["with_reviewed_entry"], k["bytes"], 100.0 * k["with_reviewed_entry"] / max(k["bytes"], 1),
+              % (k["with_reviewed_entry"], k["bytes"],
+                 100.0 * k["with_reviewed_entry"] / k["bytes"] if k["bytes"] else 100.0,
                  k["without_reviewed_entry"], g["reviewed_entries"]))
     print("census: %d of %d creditable bytes (%d in all; data, original and certified-dead code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
           % (c["matched_bytes"], c.get("creditable_bytes", c["bytes"]), c["bytes"], c["matched_functions"], c["functions"],

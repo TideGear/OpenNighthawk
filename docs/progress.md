@@ -40,7 +40,7 @@ stays on the roadmap.
 
 ### Phase 2: the gameplay score (21 October 2026)
 
-Owner decisions of 21 October 2026. P2's "Matched functions replacing translations" item (weight 60) is
+Owner decisions of 21 October 2026. P2's "Matched functions replacing translations" item (weight 54) is
 scored by the **gameplay score**, computed by `census_classify.gameplay()` during the usual
 `progress.py --census ...` refresh and recorded as `census.gameplay` in progress.json:
 
@@ -70,10 +70,10 @@ scored by the **gameplay score**, computed by `census_classify.gameplay()` durin
 
 **The previous measure is kept.** The all-code measure below (credited over creditable census bytes plus the
 supplement) is still computed and printed, labelled "previous measure". It still scores P2's "Routines named
-and explained" item (weight 35). Naming and explaining is owed for the whole code inventory, including
+and explained" item (weight 31.5). Naming and explaining is owed for the whole code inventory, including
 reviewed static code and error paths that no route runs, which the gameplay score leaves out. Moving that
 item too would score the same numerator twice. Reviewed reference entries do not count toward it yet; that
-would be a separate decision. The tooling item (weight 5) is unchanged.
+would be a separate decision. The tooling item has weight 4.5. The accounted-for checklist has weight 10. The three existing weights were scaled together to 90, preserving their relative proportions (24 October 2026).
 
 | 21 Oct 2026, batch am (`f3cbaff`) | previous measure | gameplay score |
 |---|---|---|
@@ -82,16 +82,47 @@ would be a separate decision. The tooling item (weight 5) is unchanged.
 | share | 80.77% | **85.68%** |
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
-Current (23 Oct, batch az): **(148,778 + 2,265) / 163,862 = 92.18%**
-(P2 90.04%, All 96.96%). The previous all-code measure is
-**175,154 / 206,155**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+Current byte inventory (24 Oct, batch bb): **(148,778 + 2,265) / 163,862 = 92.18%**
+(P2 81.09%, All 94.23% after checklist scoring and encoded-code adoption). The previous all-code measure is
+**175,154 / 206,740**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
 There are 12,819 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
 The largest remaining modules are ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778,
 RSOUND.LOG 1,574, ISOUND.117 905, ISOUND.LOG 563, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
-The accounted-for checklist is 0 / 44,069; the full module and
+The accounted-for checklist is 585 / 44,654; the full module and
 checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
 [roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement
 is retained privately in `D:/f117-gate/gameplay-score-20261021/`.
+
+### Phase 2 completion requirements (owner, 23-24 October 2026)
+
+The accounted-for checklist is a fourth measured item, weight 10: reviewed bytes divided by all
+previous-scope bytes outside the gameplay denominator. It starts at 0 / 44,069. Adding this work
+intentionally changes the headline P2 score from 90.04% to 81.04%; no matching credit was lost.
+Every entry needs a supported status, purpose, evidence and a second reader. An entry marked
+`probable-dead`, `needs-route` or `unreached-held` records a review but does not close that code's work.
+
+P2 is done only when all of the following hold:
+
+- Every validated route-executed byte is matched or covered by a second-read original-by-design
+  entry; all declined routines remain work until proved. No difficulty-based exclusions.
+- The entire all-code inventory is named and matched, except code covered by an existing design
+  rule or a strict dead/data certificate. Fixture proofs cover machine-option-only errors,
+  including out-of-memory, DOS file failures and the `_C_FILE_INFO` environment arm.
+- Every byte outside routes has a second-read reference entry, and each unresolved classification
+  has been resolved by a proof, a route or a strict certificate. The 831 probable-dead bytes cannot
+  close on probability alone.
+- Static discoveries are fully reviewed and adopted with strict validation. Encoded SETUP code
+  needs pinned file/region/decoded hashes, transform bounds and exact instruction counts before
+  adoption; no decoded binary is published.
+- The packer stub is measured and independently reviewed under an explicit design rule before
+  receiving any credit. Rejected capture records never earn credit merely by being rejected.
+- A final closure review covers indirect calls, jump/dispatch tables, callbacks, interrupt vectors,
+  overlay entry tables and self-modifying code, with evidence and unresolved findings recorded.
+  This is a required closing step, not a percentage of undiscovered code.
+- All required proof, mutation, full parity, event-limit and presentation gates pass for the final
+  code, and the documentation and published revision agree with the accepted evidence.
+
+A rounded display of 100.00% is insufficient if any bytes or closing requirements remain.
 
 ### The previous all-code measure
 

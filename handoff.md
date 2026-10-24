@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 24 October 2026 (batch bb accepted; P2 scoring under owner-approved revision, see Next steps).
+more than once, what it costs). State as of 24 October 2026 (batch bb accepted; P2 checklist/encoded review implemented locally, not yet published; remaining scope work in Next steps).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,27 +15,27 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 90.04%, P3 100.00%, All 96.96%
+- **Scoreboard:** P1 100.00%, P2 81.09%, P3 100.00%, All 94.23%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,355 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,778 /
-  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 92.18%**. `docs/reference-reviewed.tsv` holds 39
+  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 92.18%**. `docs/reference-reviewed.tsv` holds 41
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
-  stays-original entry to name its design rule. The accounted-for checklist is 0 / 44,069. Previous
-  all-code measure (scores the naming item): **175,154 / 206,155 creditable bytes** across
+  stays-original entry to name its design rule. The accounted-for checklist is 585 / 44,654. Previous
+  all-code measure (scores the naming item): **175,154 / 206,740 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to bb are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 597 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Remaining work:** 12,819 route-executed bytes are unmatched; the all-code measure has 31,001 uncredited bytes.
+- **Remaining work:** 12,819 route-executed bytes are unmatched; the all-code measure has 31,586 uncredited bytes.
   Largest executed groups: ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778, RSOUND.LOG 1,574,
   ISOUND.117 905, ISOUND.LOG 563, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
-  There are 13,232 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
-  machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
-  held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
+  There are 13,817 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv` plus the two encoded rows), about 2,500
+  machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 495
+  held static-discovery bytes (the remaining plain-code/data follow-up rows) and the floating LZEXE decompressor.
   Refresh using batch ax's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
 - **What P2 100% still requires:** 10,708 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
   and 1,862 in the seven ordinary programs. The previous all-code measure also has unexecuted static/error-path work: no byte leaves
@@ -123,7 +123,7 @@ Consolidate it instead of appending to it.
     decisions: [docs/static-code-review.md](docs/static-code-review.md); private `resumed-report.md` and
     `group-a-closure.md`. B/I remain held too; C needs declined floppy support or machine-option-only errors.
   - `static-review-20261021/` (DONE, independently audited): 117 code ranges and one 70-byte data range adopted on 21 Oct (`adoption-audit.md`);
-    held for a strict validator: 19 follow-up data rows, the plain follow-up code rows and the encoded SETUP region (`followup-review-report.md`).
+    held for a strict validator: 20 follow-up data rows, the plain follow-up code rows (`followup-review-report.md`); encoded SETUP code is now adopted with strict validation.
   - `unmatched-reference-20261021/` (DONE, checked, NOT published): `reference.tsv` has 793 rows / 43,362 bytes with a per-byte coverage proof
     against the old 201,697 scope (`coverage-check.json`, `independent-check.json`). Before publishing it as a repository doc: regenerate it
     against the current 205,509 scope, fix VGAME `ED10` `vgame_int86x_carry` (it says the DOS call never fails: too strong; see
@@ -219,32 +219,62 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-**0. P2 scoring revision (owner-approved 23-24 Oct, NOT YET IMPLEMENTED — do this first).** The owner approved widening what "P2 complete"
-means, on top of the existing gameplay/naming scores:
-- Count the accounted-for checklist (currently 0 / 44,069 bytes) as a fourth scored P2 item, weight 10 (my proposal; owner can adjust),
-  in `docs/progress.json` / `tools/progress.py`. **This will drop the headline P2 percentage** (today ~90%) **to roughly 81%** the moment
-  it lands, because the checklist starts at 0%. That is correct and expected, not a regression — flag it plainly in the commit message
-  and to the owner when it happens.
-- Add a seventh design rule, "packer stub" (`DESIGN_RULES` in `tools/census_classify.py`), for the 7 identical LZEXE decompressor-stub
-  records rejected by `route_instructions` (112 raw route records, one per program's `000E..002A`, all `060e1f8b` captured bytes vs
-  changed image — see the "changed" rejection bucket). It never returns (jumps into the unpacked program), so it is original by design,
-  not matchable; needs a reviewed entry + second reader like the other design rules. Byte count not yet measured — check it first.
-- Build the strict validator for the encoded (XOR-transformed) SETUP region before it can be adopted into the static-code review (pins
-  raw file hash, decoded hash, bounds, instruction counts; never publishes the decoded bytes — repo is public, code-only).
+**Publication pending:** current scoring/encoded-review changes are local and verified. Automatic approval review
+rejected the combined commit/push because this chat has no direct external-publication authorization;
+an approval question is pending. Do not retry publication until answered. All 74 focused tests pass,
+the full census refresh succeeds, and the three batch-bb runtime source hashes remain exact. No full
+game gate is required for these tooling/docs-only changes. The owner's three untracked launchers are untouched.
+
+**Private installer family ready (24 Oct, no new credit yet):** `D:/f117-gate/p2-installers-review-20261024/`
+has a passing copied batch-bb private audit and an additional literal-claim/source-hash review of four proofs:
+`p2-asoundlog-005a` (48 bytes/16 instructions/26 mutations, full_cycle 66 exact checkpoints),
+`p2-isoundlog-060e` (39/14/22, ibm_boot 26), `p2-rsoundlog-005b` (82/26/26, roland_boot 26),
+and `p2-rsoundlog-00ad` (1/1/6, roland_boot 26). Each has five kit seeds plus fresh 31415926,
+zero skips, complete instruction coverage, every mutation caught, positive own-route calls and passing
+IBM-boot controls. All 170 bytes / 57 instructions remain uncredited until integration and the full gate.
+Carry each proof's POPF_STOPS hunk into the main harness (005A->0089, 060E->0634, 005B->00AD).
+All hand-backs are `:partial`; the one-instruction 00AD return uses `NOBLOCKS`, not partial.
+Important distinction: RSOUND.LOG's already-installed branch targets STI at 00AC, not RET; both paths
+must enable interrupts. Its bounded dossier ends at 00AD (full dossier retained), and the separate
+return proof covers that final byte. ASOUND.LOG 005A and ISOUND.LOG 060E instead skip STI on their
+already-installed branch. The first ASOUND draft also exposed the STI clock trap: call x86_sti before
+charging its own instruction, so inhibit_at names the correct boundary. The original install was
+reverified after route runs: all 18 game files and all three optional GOG reference files match.
+`p2-asoundlog-008a` is only an initialized lead, not a proof: its first PIT control OUT wakes the machine;
+cover its following continuations explicitly rather than claiming unreachable fixture instructions.
+
+**0. P2 completion scope (owner-approved 23-24 Oct; scoring implemented).** The accounted-for checklist
+is now a fourth measured P2 item, weight 10. Existing weights were scaled proportionally to 90
+(tooling 4.5, naming 31.5, gameplay 54). This intentionally lowers P2 from 90.04% to 81.04%:
+no matching credit was removed. After encoded-code adoption and its second-read reference entries,
+585 / 44,654 checklist bytes are reviewed and current P2 is 81.09%. The full completion definition
+is in `docs/progress.md`. Remaining scope tasks:
+- **Packer bootstrap measured (24 Oct):** the `packer stub` design-rule name is now recognized, but no
+  reference entry or score credit is added. All seven packed programs have 16 raw-source-validated route
+  records covering 29 bytes at their original packed CS:000E..002A: 112 instructions / 203 bytes by file
+  occurrence (29 identical instruction bytes). These records are rejected correctly (109 changed,
+  3 undecodable against the unpacked image). They belong to the packed representation, so do not add
+  their addresses as original code in the unpacked image: that would alias unrelated code/data.
+  A separate source-representation-aware review/score path is still needed. The full floating
+  decompressor remains outside the score. Current unique-record audit is 64,829 records: 64,512 accepted,
+  306 changed and 11 decode rejects; the earlier 300-rejection lead was stale/unverified.
+- **Encoded SETUP adopted locally (24 Oct):** `tools/encoded_code.py` validates the two code rows in
+  `docs/census-encoded-code.json`, with raw-file, image, bootstrap, whole-source/decoded-block and per-row
+  hashes, fixed transform bounds, no relocations, exact instruction counts and disjoint reviews. All 585
+  bytes add workload, zero matching credit; independent 21 Oct transform review is retained. Five
+  synthetic adversarial tests pass; CI includes them. No decoded bytes are written. Two second-read
+  `unreached-held` reference entries account for all 585 bytes; their matching/entry-path work stays open.
 - Match the ~2,500 machine-option-only error-path bytes (OOM, DOS read/write/close errors, the `_C_FILE_INFO` environment arm) with
   test-input proofs instead of leaving them in permanent limbo; no test-only machine options needed (owner, 20 Oct, unchanged).
 - Resolve the 831 probable-dead bytes: either a strict dead certificate or a proof, not "probable" forever.
 - Before declaring P2 100%, run a closure review ("leave no stone unturned", owner's phrase, 23-24 Oct) of indirect calls, jump/dispatch
   tables, callbacks, interrupt vectors, overlay entry tables and self-modifying code, to catch code no discovery walk or route has found.
   This cannot be scored (you can't measure what you haven't found) — record what it covered as a closing step, not a percentage.
-- Write the full "P2 is done when ..." definition into `docs/progress.md` so it doesn't drift.
-Evidence for the packer-stub and machine-option items: this session's analysis (not yet filed anywhere else) found 300 of ~64,829 route
-records rejected; 187 are ISOUND.LOG error-route junk (captured zero bytes, correctly rejected), 112 are the packer stub (above), 1 is a
-stray VGAME/START cross-record. See conversation history (23-24 Oct) for the full breakdown if a private note was not saved.
+- The full "P2 is done when ..." definition is now in `docs/progress.md`; keep it current.
 
 1. **Reviewed static code (10,301 bytes):** resumed verification retains every range; no additional route or dead certificate is established ([review](docs/static-code-review.md)). Any later exclusion needs exact per-range closure of indirect and callback paths. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
 2. **Reference entries for unmatchable code:** regenerate and fix `D:/f117-gate/unmatched-reference-20261021/reference.tsv` as listed above, then publish it as a repository doc (one row per routine: name, purpose, status, why not matched, evidence); no private paths or binary dumps in the public copy.
-3. **Unreviewed static bytes:** the 117 audited code rows and the 70-byte VGAME data row are adopted (21 Oct, `D:/f117-gate/static-review-20261021/adoption-audit.md`). Still to adopt: the 19 follow-up data rows (`followup-data-rows.tsv`), the plain follow-up code rows (`followup-code-rows.tsv`) and the encoded SETUP code (`encoded-code-rows.json`; XOR low-IP transform of 1,300 bytes at IP 0050..0564), which needs a strict validator that pins raw file hash, decoded hash, bounds and instruction counts and never publishes the transformed binary.
+3. **Unreviewed static bytes:** the 117 audited code rows and the 70-byte VGAME data row are adopted (21 Oct, `D:/f117-gate/static-review-20261021/adoption-audit.md`). Still to adopt: the 20 follow-up data rows (`followup-data-rows.tsv`), the plain follow-up code rows (`followup-code-rows.tsv`). The encoded SETUP code is now adopted locally with the strict validator (585 code bytes within the 1,300-byte transform, no matching credit).
 4. **Drivers and launcher: matching, steps 4 onward of `D:/f117-gate/modules-scope-20261021/plan.md`.** Done: steps 0, 1a, 1b (scope),
    2a (module-keyed harness), 3 (kit widened) and the step 4 pilot (batch `am`, `261381c`: MISC `0000` `000A` `0018`, MGRAPHIC `023A`;
    module tokens are defined in `matched.c`), then MGRAPHIC batches `ao` (14), `ap` (6), `aq` (9) and `ar` (9: the large drawing routines). 0 executed MGRAPHIC bytes remain unmatched: all 3,237 route-executed MGRAPHIC bytes are matched (474 more matched bytes run only in fixtures).
@@ -280,7 +310,7 @@ stray VGAME/START cross-record. See conversation history (23-24 Oct) for the ful
    unrouted arms such as ASOUND.LOG `0344`'s voice sweeps and ISOUND.LOG `0253`'s stream readers). They are proven by lockstep and credited by the naming
    score, but no real play confirms them and the gameplay score does not count them. Classify each group as player-reachable (write a route, which also
    moves it into the gameplay table already credited) or not reachable (error path, hardware option, dead: a checklist entry in
-   `docs/reference-reviewed.tsv`). Mostly read-only work plus route writing; run it between proof batches. The same sorting applies to the 13,232
+   `docs/reference-reviewed.tsv`). Mostly read-only work plus route writing; run it between proof batches. The same sorting applies to the 13,817
    reviewed static bytes no route runs: each ends matched (a fixture proof is enough for the naming score), routed, or certified dead or data.
 7. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
 

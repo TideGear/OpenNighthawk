@@ -1,0 +1,33 @@
+{
+  "module": "SETUP",
+  "encoding": "xor-ip-low",
+  "segment": "01E1",
+  "start": "0050",
+  "end_exclusive": "0564",
+  "file_sha256": "b62a032582c114b6a522483f4291f3cd6dc491fa555e5dc57def5d49b987b040",
+  "image_sha256": "ade9cf8ac3303c47e95c9a7916afc901bfef4aa163a51ace8174cdb1f41768e4",
+  "bootstrap_sha256": "95c7c532313c2d571a8b6d17e9ddb34fe23656a96f4088c37df87344179c6f99",
+  "block_sha256": "d967fa215d0fc0437c14eb1e5f24dca5447879180662a3982a6118ae32ec8dc2",
+  "transform_raw_sha256": "4d7bca99d26273e58e18d6035a89db7d43ae438af012932b4f9c11549a0b81c8",
+  "decoded_block_sha256": "d2d6aa36250004f19010f196ef4efe8bdf6d38933c7838012480e4fc1ea5882e",
+  "rows": [
+    {
+      "ip": "0050",
+      "length": 126,
+      "count": 59,
+      "raw_sha256": "e3dfd9a52192452d9f530fd71a488a028f67c0723492d97fb48e289f26f6f8b6",
+      "decoded_sha256": "f2d1a924f1d2340e2623a65e488b685611c4f94c8188c9916d0d9f749c31ef24",
+      "purpose": "Media verification dispatcher: identify drive/media, bounded BIOS read/reset retries, call FCB/sector check, prompt/retry, branch to reencoder or saved error chain.",
+      "review": "Independent SETUP transform audit, 21 Oct 2026: reproduced the bootstrap XOR phase, matched all bytes and instruction lengths, checked code/data partition and retained unresolved entry paths. See static-code-review.md."
+    },
+    {
+      "ip": "0141",
+      "length": 459,
+      "count": 209,
+      "raw_sha256": "055a8e276641b7c23101ebc6080a1f0b7a7797cbce9495ae40e715f6fa07bce0",
+      "decoded_sha256": "238dd8d813b8b0fba8c08c349c506057d582c802f61c4728a5f61fe23902d3bc",
+      "purpose": "FCB/media and unusual-sector verification helpers; disk parameter changes/restoration, bounded reads and error returns; retry/remove-key-disk prompts and BIOS text/keyboard helpers with monochrome CRTC reset.",
+      "review": "Independent SETUP transform audit, 21 Oct 2026: reproduced the bootstrap XOR phase, matched all bytes and instruction lengths, checked code/data partition and retained unresolved entry paths. See static-code-review.md."
+    }
+  ]
+}

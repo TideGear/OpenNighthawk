@@ -102,6 +102,23 @@ class RefreshTests(unittest.TestCase):
 
 
 class GameplayScoreTests(unittest.TestCase):
+    def test_checklist_scores_reviewed_bytes_and_rejects_inconsistent_counts(self):
+        data = {"census": {"matched_bytes": 1, "bytes": 1,
+                           "gameplay": {"matched_route_run": 1, "stays_original_reviewed": 0,
+                                        "denominator": 1, "checklist": {
+                                            "bytes": 4, "with_reviewed_entry": 1,
+                                            "without_reviewed_entry": 3}}},
+                "phases": {"P2": [{"item": "accounted", "weight": 10,
+                                     "done": "accounted_for", "kind": "measured"}]},
+                "phase_weights": {"P2": 1}}
+        self.assertEqual(progress.compute(data)[0]["P2"], 25)
+        k = data["census"]["gameplay"]["checklist"]
+        k["without_reviewed_entry"] = 2
+        with self.assertRaises(ValueError):
+            progress.compute(data)
+        k.update(bytes=0, with_reviewed_entry=0, without_reviewed_entry=0)
+        self.assertEqual(progress.compute(data)[0]["P2"], 100)
+
     PHASES = {"P2": [{"item": "named", "weight": 1, "done": "census_matched_bytes", "kind": "measured"},
                      {"item": "matched", "weight": 3, "done": "gameplay_score", "kind": "measured"}]}
 

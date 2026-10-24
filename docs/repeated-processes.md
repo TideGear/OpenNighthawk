@@ -17,6 +17,23 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Current practice by kind of change
 
+- **Progress scoring changes.** Run `tests/test_progress.py` and `tests/test_census_classify.py`
+  with the installed Python interpreter, then print the scoreboard and inspect the saved byte
+  counts. Encoded review validation adds `tests/test_encoded_code.py` (five adversarial tests);
+  all 74 focused tests take under one second, and the full census refresh about ten seconds.
+  No game runtime changes means no matched-code gate is needed. Checklist scoring
+  (24 Oct) preserves every byte count and scales existing P2 weights to 90 before adding weight 10.
+
+- **Installer private proofs (24 Oct, awaiting integration).** The ordinary kit/finish/audit
+  workflow proved ASOUND.LOG 005A, ISOUND.LOG 060E and RSOUND.LOG 005B plus its separate
+  00AD return: 170 bytes, 57 instructions, 80 caught mutants and six seeds per entry.
+  Real-route proofs took 39.3 s (full_cycle), 23.6 s (ibm_boot), 27.1 s (Roland installer)
+  and 21.6 s (Roland return); IBM controls took 22-28 s. These are proof timings while
+  other private compilation shared the machine, not a gate comparison. A literal-claim
+  audit independently checks complete/disjoint XB and explicit SM4_NEED claims and pins
+  configs, dossiers and source hashes. Evidence: `D:/f117-gate/p2-installers-review-20261024/`.
+  No progress credit until the full integration gate passes.
+
 - **Matched routine batch (Phase 2).** Private proofs per routine in
   `D:/f117-gate/p2-*`, then one acceptance directory per batch
   (`p2-batch-<letter>-accept/`: `accept.py`, `overlap_accept.py`,

@@ -59,3 +59,30 @@ A later exclusion needs a certificate for each exact range, covering direct,
 computed, callback, vector, fallthrough and relevant writer paths under the
 supported machine and input conditions. Until that evidence exists, retain
 the workload. Lack of current route coverage is not a certificate.
+
+## Encoded SETUP code adopted (24 October 2026)
+
+`census-encoded-code.json` pins two independently reviewed code ranges at
+SETUP `01E1:0050..00CE` and `01E1:0141..030C`: 585 bytes / 268 instructions.
+`tools/encoded_code.py` validates them during every census refresh. It pins
+the shipped file and immutable image, bootstrap and complete source block,
+transform-region hash, complete decoded-block hash and both row hashes.
+Only the fixed XOR with the low byte of segment-relative IP over
+`01E1:0050..0564` is supported. Code rows must decode to whole instructions
+with exact counts and overlap neither another encoded row nor a plain review.
+Relocations in the source block are rejected. The installed file and module
+image remain untouched; decoded bytes exist only in memory.
+
+The bootstrap transforms 1,300 bytes. Of these, 585 are code and 715 are
+metadata, scratch and prompt data; transforming bytes does not make them code.
+The accepted rows add 585 workload bytes, zero matched credit. Second-read
+`unreached-held` reference entries account for those bytes in the checklist. No actual
+entry route or dead certificate is established. The media-check helpers,
+BIOS disk retries, saved DOS vector and reencoding tail remain proof work.
+
+The first semantic review and independent transform audit agree on all byte
+hashes, lengths, code/data boundaries and unresolved entry paths. Private
+evidence: `static-review-20261021/followup-review-report.md` and
+`static-route-verify-20261021/setup-xor-independent-report.md`. Five synthetic
+validator tests cover altered hashes, phase/bounds errors, overlaps,
+relocations, partial instructions, wrong counts and absent review evidence.
