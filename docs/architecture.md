@@ -57,12 +57,6 @@ guest memory, so fix state now travels with the snapshot. For the same reason
 the light check for presentation-only changes (`tools/present_light_check.py`)
 refuses changes to `drawfeed.c/.h` and `rerun.c/.h`; those need the full gate.
 
-Override placements are sorted by physical address when modules load or fixes
-change. Dispatch uses a binary address lookup and checks the exact CS within
-that address's entries. Registration order is preserved for ties, and enabled
-fixes still take precedence over matched routines and observers. This avoids
-scanning every module entry on each nested draw call.
-
 ## The CPU and its two engines
 
 `src/cpu/cpu.c` is the Reimp project's oracle interpreter (see
@@ -315,8 +309,9 @@ fallback instructions, not everything that ran.
   runner; the application enables all fifteen for normal play. `--fix none`
   clears the set and `--fix ID` adds a selection. Ordinary parity routes
   explicitly start with none; fix-specific routes enable their tested fixes.
-  Replays restore their recorded set (no header means none). Matched routines are overrides always on for the recompiled
-  engine, and so are observer hooks. A switched-on fix takes the place of the
+  Replays restore their recorded set (no header means none). Matched routines
+  are overrides always on for the recompiled engine, and so are observer
+  hooks. A switched-on fix takes the place of the
   matched routine (and any observer) at its address, whatever the order they
   were registered in, because the matched routine reproduces the original and
   the fix is the deviation that was asked for; a matched routine with a fix
@@ -334,7 +329,11 @@ fallback instructions, not everything that ran.
   and the original instruction runs. Each loaded module can place all 4,096
   registry entries; matched routines and observer hooks share that capacity,
   and the registry warns on stderr if it fills (a dropped entry is a lost
-  routine).
+  routine). Placements are sorted by physical address when modules load or
+  fixes change; dispatch uses a binary address lookup and checks the exact CS
+  within that address's entries, keeping registration order for ties and the
+  precedence of enabled fixes, so no nested draw call scans every module
+  entry.
 - **Data fixes.** The machine's one hook that may change what the guest
   sees, `file_data`, hands each DOS read's bytes to the fixes before they
   reach memory; a correction applies only to its named file, of its size,
@@ -483,8 +482,8 @@ are in [roadmap.md](roadmap.md).
      differ.
    - 86Box (the 386DX/33 profile, MS-DOS 5.00 with Microsoft MOUSE.COM
      6.26): 85 of 86 graphics pictures exact in 6-bit DAC values, in order,
-     the other a single sample of START's roster screen taken mid-draw; the check rejects any
-     difference other than the documented samples. The 8-bit captures differ
+     the other a single sample of START's roster screen taken mid-draw; the
+     check rejects any difference other than the documented samples. The 8-bit captures differ
      by up to 1 level because the two expand the DAC differently (86Box
      floor(v*255/63), ours v<<2|v>>4), so `compare_intro.py` compares v>>2.
      Timing differs by design: 86Box models a 386DX/33's instruction
@@ -618,13 +617,12 @@ caught real defects:
 - The seven ordinary programs retain their historical zero load base. The
   launcher, graphics and miscellaneous overlays, and six sound drivers use
   0800h; `--load-base` provides a zero control and alternatives from 0400h to
-  0800h. This reserves the complete code window below the graphics fixtures'
-  RAM buffers. Generated test metadata identifies each image by name and file
-  hash and records image-relative relocation words; the loader validates
-  bounds and overlapping sites before copying or patching memory. Both image
-  reload paths apply the fixups, and named coverage compares against the
-  relocated image. The production module descriptor is unchanged. The
-  infrastructure passed its full gate; P2 credit remains at batch ax.
+  0800h, all below the graphics fixtures' RAM buffers. Generated test metadata
+  identifies each image by name and file hash and records image-relative
+  relocation words; the loader validates bounds and overlapping sites before
+  copying or patching memory. Both image reload paths apply the fixups, and
+  named coverage compares against the relocated image. The production module
+  descriptor is unchanged.
 - Half the states put small words (-1, 0, 1, 0-31) where the arguments sit,
   and the other half use memory of mostly 00, FF and 01 bytes, so edge cases
   and exact tests on memory are reached.
@@ -726,8 +724,8 @@ caught real defects:
   The clock must be charged between port accesses, not in one lump after
   them: a stale clock at a PIT or CRT-status read changes what the routes
   read, and the lockstep records the clock of every port access
-  (`matched_io_rules` checks that it sees a lump). An interrupt handler that opens with STI cannot be
-  matched past that instruction (the run loop admits one more instruction
+  (`matched_io_rules` checks that it sees a lump). An interrupt handler that
+  opens with STI cannot be matched past that instruction (the run loop admits one more instruction
   after STI), so the timer handlers stay original code. A port write that
   makes the run loop look at interrupts (`io_write8`: an EOI or mask to the
   PIC, a counter 0 control word or reload to the PIT) lowers the limit to 0
@@ -751,25 +749,26 @@ caught real defects:
   `FATAL_JUMPS` likewise marks only the fatal-hook jump targets of START
   `8FC6`, END `4EBC` and MPS_LOGO `0146:010E` as named-region completion;
   the original fatal-exit code still runs and its resulting state is compared.
-  In the harness INT 21h and 16h
-  answer as port reads do (AX from the call count, a random carry and
-  zero flag); through the vector table, which is the image's first bytes
-  there, a DOS call used to lose the state.
-  Interrupt timestamps have their own full-record hash so checking their
+  In the harness INT 21h and 16h answer as port reads do (AX from the call
+  count, a random carry and zero flag); through the vector table, which is
+  the image's first bytes there, a DOS call used to lose the state.
+  Interrupt timestamps have their own full-record hash, so checking their
   order does not change the synthetic DOS answers derived from the existing
   record. A contradictory event already observed before an unfinished
   continuation is a mismatch; an unfinished run with no contradictory event
-  retains its skip. `matched_io_rules` covers both cases, a late INT whose
-  final instruction count is unchanged, and a late 65th INT beyond the
-  diagnostic log. A control retaining the two old gaps fails four of the
-  original 13 synthetic cases. The test runner also recognizes a callee's
-  direct return to the caller after extra argument pops, only when the
-  completed original's clock, registers, segments, flags, interrupt shadow,
-  depth and halt state agree exactly. It then compares all memory and I/O
-  and grants no named-region completion. Six more synthetic cases cover
-  this return and incorrect clocks, registers, flags, memory and I/O; all
-  19 pass. This prevents a correct return from running into synthetic
-  caller bytes merely because its stack differs from the usual RET level.
+  keeps its skip (a late INT whose final instruction count is unchanged, a
+  late 65th INT beyond the diagnostic log).
+- Direct returns past the caller: a callee that pops extra argument words
+  and returns straight to the routine's caller (as in END `53DA` and SETUP
+  `1600`) is
+  recognised only when the completed original's clock, registers, segments,
+  flags, interrupt shadow, depth and halt state agree exactly; all memory and
+  I/O are still compared and no named-region completion is granted. Without
+  this a correct return ran into synthetic caller bytes merely because its
+  stack differed from the usual RET level. `matched_io_rules` holds 19
+  synthetic cases for the port-clock, wake, interrupt-record and
+  direct-return rules, including wrong clocks, registers, flags, memory and
+  I/O.
 - Shared code: the C runtime's DOS calls end with a JMP to endings the
   routines share, and itoa and ltoa end in one conversion, outside the
   routine's 0x300 bytes. `SHARED_ENDINGS` in the harness names those
@@ -791,8 +790,8 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,355 addresses are matched across the game's 17 code files (the census totals are in
-[roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
+1,359 addresses are matched across the game's 17 code files (the census
+totals are in [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
 the same library built for a larger model: its calls are far (9A), or PUSH

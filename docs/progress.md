@@ -4,9 +4,10 @@ Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix), for example
 `(P1 100.00%, P2 67.82%, P3 96.33%, All 89.25%) Subject`, printed by
 `py tools/progress.py --title`. `py tools/progress.py` alone prints every item
-with its weight, completion and kind. This page says what the numbers mean, so
-that they can be checked and argued with. What each item covers is in
-[roadmap.md](roadmap.md).
+with its weight, completion and kind, and the Phase 2 module and checklist
+breakdowns. This page says what the numbers mean, so that they can be checked
+and argued with. What each item covers is in [roadmap.md](roadmap.md); the
+current figures are quoted in [../handoff.md](../handoff.md).
 
 ## The method
 
@@ -27,21 +28,25 @@ Phases 2 and 3 are large too (thousands of routines to name and match; a new
 presentation path for 60+ fps and 4K), and their weights say so.
 
 Items closed by scope keep only the weight of the work done (8 Oct 2026: the
-roadmap's "Settled" list), so dropping work never reads as finishing it; the
-exception is work the owner removes from scoring altogether (Phase 4, 15 Oct
-2026; the items under "Possible future work" in the roadmap, 17 Oct 2026),
-which is not scored and stays listed as possible later work.
-Phase 4 (what only a person or an independent reference can settle: a person
-playing the game, Roland output against a reference with a listening check) is
-not scored (owner, 15 Oct 2026: its estimates had stopped meaning anything); it
-stays on the roadmap.
+roadmap's "Settled" list), so dropping work never reads as finishing it. Work
+the owner removes from scoring altogether is not scored and stays listed as
+possible later work: Phase 4 (what only a person or an independent reference
+can settle, such as a person playing the game or Roland output against a
+reference with a listening check; owner, 15 Oct 2026: its estimates had stopped
+meaning anything) and the roadmap's "Possible future work" (17 Oct 2026).
 
 ## What is measured
 
-### Phase 2: the gameplay score (21 October 2026)
+Phase 2 has four items: tooling (weight 4.5, done), routines named and
+explained (31.5, the previous all-code measure below), matched functions
+replacing translations (54, the gameplay score) and the accounted-for
+checklist (10). The first three were scaled together from 100 to 90 on
+24 October 2026, keeping their proportions, when the checklist was added.
 
-Owner decisions of 21 October 2026. P2's "Matched functions replacing translations" item (weight 54) is
-scored by the **gameplay score**, computed by `census_classify.gameplay()` during the usual
+### Phase 2: the gameplay score (owner, 21 October 2026)
+
+P2's "Matched functions replacing translations" item is scored by the
+**gameplay score**, computed by `census_classify.gameplay()` during the usual
 `progress.py --census ...` refresh and recorded as `census.gameplay` in progress.json:
 
 - **Denominator:** every distinct instruction byte that any route executes, across all 17 game code files, from
@@ -51,88 +56,64 @@ scored by the **gameplay score**, computed by `census_classify.gameplay()` durin
 - **Numerator:** (a) bytes inside matched routine bodies (named cover) that a route executes; coverage only a
   fixture state reaches does not count; plus (b) executed bytes of routines that stay original **by design
   rule only**: STI-first interrupt handlers, the C start-up and its copies, palette loaders with an STI in
-  their loop, and the program launcher (F117.COM `0100`..`03CA`, owner 23 Oct 2026: it only runs the other programs
-  and tests their exit codes). Inside the census these are the `docs/census-original.tsv` rows; outside it an entry must name
-  its rule. Declined routines (VGAME main, MPS_LOGO `1ADC`/`1C82`, START `8427`, END `4393`, END `57B0`, and
-  the rest) are remaining work, not original code. (b) counts only where a **reviewed reference entry**
-  exists in `docs/reference-reviewed.tsv`. An entry counts only when a second reader has checked its name and
-  purpose against the disassembly. Each range has exactly one status (`stays-original`,
-  `machine-option-only`, `dead-certified`, `probable-dead`, `needs-route`, `data`, `unreached-held`). A
-  `stays-original` entry over a census row outside `census-original.tsv` stops the refresh. The table starts
-  empty, so (b) is 0 and the score starts at matched-only.
+  their loop, and the program launcher (F117.COM `0100`..`03CA`, owner 23 Oct 2026: it only runs the other
+  programs and tests their exit codes). Inside the census these are the `docs/census-original.tsv` rows;
+  outside it an entry must name its rule. Declined routines (VGAME main, MPS_LOGO `1ADC`/`1C82`, START `8427`,
+  END `4393`, END `57B0`, and the rest) are remaining work, not original code. (b) counts only where a
+  **reviewed reference entry** exists in `docs/reference-reviewed.tsv`. An entry counts only when a second
+  reader has checked its name and purpose against the disassembly. Each range has exactly one status
+  (`stays-original`, `machine-option-only`, `dead-certified`, `probable-dead`, `needs-route`, `data`,
+  `unreached-held`). A `stays-original` entry over a census row outside `census-original.tsv` stops the refresh.
 - **Published beside it:** the denominator in bytes; fixture-only matched bytes; executed but unmatched bytes
   by module (remaining work, which includes design-rule original code still waiting for its reviewed entry);
-  and the **accounted-for checklist**. The checklist counts every byte of the previous all-code scope
-  (204,747 by row occurrence, 204,677 distinct) that is not in the denominator, split by whether a reviewed
-  entry (any status) covers it. The target is 100%.
+  and the **accounted-for checklist**: every distinct byte of the previous all-code scope that is not in the
+  denominator, split by whether a reviewed entry (any status) covers it. The target is 100%.
 - **Cross-checks on every refresh:** (a) and (b) are disjoint; a + b + remaining = denominator; denominator
   bytes inside the previous scope + checklist bytes = the previous scope's distinct bytes.
 
+When it was introduced (21 Oct 2026, batch am, `f3cbaff`) it read 85.68% against the previous measure's
+80.77%, moving P2 from 81.73% to 84.67%; that measurement is retained privately in
+`D:/f117-gate/gameplay-score-20261021/`.
+
 **The previous measure is kept.** The all-code measure below (credited over creditable census bytes plus the
-supplement) is still computed and printed, labelled "previous measure". It still scores P2's "Routines named
-and explained" item (weight 31.5). Naming and explaining is owed for the whole code inventory, including
-reviewed static code and error paths that no route runs, which the gameplay score leaves out. Moving that
-item too would score the same numerator twice. Second-read `stays-original` reference entries outside the census (790 bytes on 24 Oct: the
-program launcher and the SETUP timer handler) leave its denominator as census-original rows do (owner, 24 Oct 2026);
-other statuses stay in it, and a byte a matched body covers stays counted. The tooling item has weight 4.5. The accounted-for checklist has weight 10. The three existing weights were scaled together to 90, preserving their relative proportions (24 October 2026).
+supplement) is still computed and printed, labelled "previous measure", and scores the "Routines named and
+explained" item. Naming and explaining is owed for the whole code inventory, including reviewed static code
+and error paths that no route runs, which the gameplay score leaves out; moving that item too would score the
+same numerator twice. Second-read `stays-original` reference entries outside the census (the program launcher
+and the SETUP timer handler, 790 bytes) leave its denominator as census-original rows do (owner, 24 Oct 2026;
+naming 84.80% -> 85.12%, P2 81.31% -> 81.41% by that change alone); other statuses stay in it, and a byte a
+matched body covers stays counted.
 
-| 21 Oct 2026, batch am (`f3cbaff`) | previous measure | gameplay score |
-|---|---|---|
-| denominator | 204,747 creditable bytes (all-code scope) | 163,862 route-executed bytes |
-| numerator | 165,370 named bytes (lockstep or routes) | 140,391 matched bytes a route runs + 0 reviewed original |
-| share | 80.77% | **85.68%** |
-| P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
+Per-batch credit is in the [roadmap's batch table](roadmap.md#batches-e-to-bc-16-24-october-2026).
 
-Current byte inventory (24 Oct, batch bc): **(148,948 + 2,631) / 163,907 = 92.48%**
-(P2 81.41%, P3 78.12% after the re-release items, All 88.80% after checklist scoring and encoded-code adoption). The previous all-code measure is
-**175,324 / 205,967**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
-There are 12,819 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
-The largest remaining modules are ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778,
-RSOUND.LOG 1,574, ISOUND.117 905, ISOUND.LOG 563, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
-The accounted-for checklist is 585 / 44,654; the full module and
-checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
-[roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement
-is retained privately in `D:/f117-gate/gameplay-score-20261021/`.
+### Validated capture and reference corrections (24 October 2026)
 
-### Capture and reference corrections (24 October 2026; refresh after batch bc)
-
-The launcher's approved 715-byte range uses guest addresses `0100..03CA`. Its earlier table
-start `0000` was a file-offset mistake; correcting the COM origin recognizes 249 executed
-launcher bytes under the existing rule. The loader at `03CB` stays outside that reference range.
-COM reference entries below `0100` now fail validation.
-
-Nine reviewed singleton far jumps need runtime target operands: five timer chains, the keyboard
-chain and three logo sound-overlay thunks. `census-runtime-jumps.tsv` pins each exact CS:IP and
-immutable file identity, records its original writer, and requires an original `EA 0000:0000`
-template plus captured EA opcode. Only its target operand may change. Other changed code,
-wrong identities and unreviewed singleton jumps remain rejected. This validates 17 capture
-records / 45 executed bytes, without inventing any matched credit. The remaining 300 rejected
-records are 112 packed-bootstrap records, 187 unbacked zero captures from the damaged-driver
-route and one wrong-program VGAME/START record; they receive no code credit.
-
-The original timer/keyboard reference entries stopped before their patched chain instructions.
-Their existing handler reviews now cover those final five bytes too. SETUP's independently
-reviewed static timer handler at `104D..10B3` (102 bytes / 51 instructions) starts with STI and
-now has a second-read reference entry under that existing rule. Its separate `10B3` retrace
-helper remains matching work. PLAYER's handler starts with PUSH AX, so it remains work.
-The three newly validated logo thunks also remain matching work.
-
-The launcher loader's six error blocks also received a second read: 128 bytes already covered
-only by matched fixtures, plus its two-byte DOS termination interrupt at `04E3`. The latter now
-has a strictly hashed static-code row; neither this review nor the row grants matching credit.
-Allocation/resize failures are machine-option-only; overlay-load/header failures and the common
-exit need routes. The unexpected successful FFFF-paragraph allocation arm remains held until
-its allocator and possible indirect entries are closed. No new dead-code exclusion is claimed.
-
-The naming measure excludes reviewed original-by-design supplemental bytes outside the historical census
-(688 launcher bytes, plus 102 SETUP timer bytes), as census-original rows are excluded inside it (owner, 24 Oct 2026).
+- **The launcher's reference range** uses guest addresses `0100..03CA`; its earlier table start `0000` was a
+  file-offset mistake, and correcting the COM origin recognized 249 executed launcher bytes under the existing
+  rule. The loader at `03CB` stays outside that range. COM reference entries below `0100` fail validation.
+- **Runtime-patched far jumps:** nine reviewed singleton jumps need runtime target operands (five timer chains,
+  the keyboard chain and three logo sound-overlay thunks). `docs/census-runtime-jumps.tsv` pins each exact CS:IP
+  and immutable file identity, records its original writer, and requires an original `EA 0000:0000` template plus
+  captured EA opcode; only the target operand may change. This validates 17 capture records / 45 executed bytes
+  without any matched credit. Other changed code, wrong identities and unreviewed singleton jumps stay rejected.
+- **Rejected records** earn nothing merely by being rejected. After these corrections 300 remain: 112
+  packed-bootstrap records, 187 unbacked zero captures from the damaged-driver route and one wrong-program
+  VGAME/START record (64,529 accepted).
+- **Handler reviews:** the original timer and keyboard reference entries now cover their final five-byte
+  chain instructions. SETUP's static timer handler at `104D..10B3` (102 bytes / 51 instructions) starts with
+  STI and has a second-read entry under that rule; its `10B3` retrace helper, PLAYER's handler (it starts with
+  PUSH AX) and the three logo thunks remain matching work.
+- **The launcher loader's six error blocks** have second-read entries (128 bytes already covered only by
+  matched fixtures, plus the two-byte DOS termination interrupt at `04E3`, now a strictly hashed static-code
+  row). Allocation/resize failures are machine-option-only; overlay-load/header failures and the common exit
+  need routes; the successful FFFF-paragraph allocation arm stays held until its allocator and possible
+  indirect entries are closed. None of this grants matching credit or a dead-code exclusion.
 
 ### Phase 2 completion requirements (owner, 23-24 October 2026)
 
-The accounted-for checklist is a fourth measured item, weight 10: reviewed bytes divided by all
-previous-scope bytes outside the gameplay denominator. It starts at 0 / 44,069. Adding this work
-intentionally changes the headline P2 score from 90.04% to 81.04%; no matching credit was lost.
-Every entry needs a supported status, purpose, evidence and a second reader. An entry marked
+The accounted-for checklist is the fourth measured item: reviewed bytes divided by all previous-scope bytes
+outside the gameplay denominator. Adding it lowered the headline P2 score from 90.04% to 81.04%; no matching
+credit was lost. Every entry needs a supported status, purpose, evidence and a second reader. An entry marked
 `probable-dead`, `needs-route` or `unreached-held` records a review but does not close that code's work.
 
 P2 is done only when all of the following hold:
@@ -143,13 +124,17 @@ P2 is done only when all of the following hold:
   rule or a strict dead/data certificate. Fixture proofs cover machine-option-only errors,
   including out-of-memory, DOS file failures and the `_C_FILE_INFO` environment arm.
 - Every byte outside routes has a second-read reference entry, and each unresolved classification
-  has been resolved by a proof, a route or a strict certificate. The 831 probable-dead bytes cannot
+  has been resolved by a proof, a route or a strict certificate. The probable-dead bytes cannot
   close on probability alone.
-- Static discoveries are fully reviewed and adopted with strict validation. Encoded SETUP code
-  needs pinned file/region/decoded hashes, transform bounds and exact instruction counts before
-  adoption; no decoded binary is published.
+- Static discoveries are fully reviewed and adopted with strict validation. Encoded code needs
+  pinned file/region/decoded hashes, transform bounds and exact instruction counts before
+  adoption; no decoded binary is published. (The two encoded SETUP ranges were adopted this way on
+  24 Oct 2026: `tools/encoded_code.py`, `docs/census-encoded-code.json`, 585 bytes of workload with no
+  matching credit.)
 - The packer stub is measured and independently reviewed under an explicit design rule before
-  receiving any credit. Rejected capture records never earn credit merely by being rejected.
+  receiving any credit; the design-rule name is recognized but grants nothing yet. Its records belong
+  to the packed representation, so their addresses must never be credited as original code in the
+  unpacked image.
 - A final closure review covers indirect calls, jump/dispatch tables, callbacks, interrupt vectors,
   overlay entry tables and self-modifying code, with evidence and unresolved findings recorded.
   This is a required closing step, not a percentage of undiscovered code.
@@ -173,27 +158,29 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   shared tail or another entry's code inline earns those bytes once, and a
   row holding library code the game never runs (printf's `%n`, `%p` and
   floating-point arms) is credited only for the arm it uses. Fixture states
-  count alongside routes, as for the proofs themselves. Refresh after every
-  batch: run `func_lockstep` with `F117_NAMED_COVER=FILE` (one file per shard
-  in a directory; it appends one line per matched routine), then
-  `py tools/progress.py --census <reimp_names.py output> --named-cover DIR
+  count alongside routes, as for the proofs themselves. Census rows keep their
+  recorded boundaries, so a byte in two rows earns two row-byte credits (batch
+  af: 697 credits from 692 distinct bytes, `p2-batch-af-accept/credit-reconciliation.json`).
+  Refresh after every batch: run `func_lockstep` with `F117_NAMED_COVER=FILE`
+  (one file per shard in a directory; it appends one line per matched routine),
+  then `py tools/progress.py --census <reimp_names.py output> --named-cover DIR
   --route-cover <interpreter captures of all routes> --data <game directory>`.
   The refresh stops if any matched routine has no coverage line.
   **The denominator is split** (owner, 17 October 2026): the score is credited bytes over the *creditable*
   census, which leaves out the bytes that can never earn credit. `tools/census_classify.py` puts every census
   byte in one class: `credited`; `ran` (a route ran it, no matched body covers it yet); `never_run` (decodes
   as code reachable from a census entry, but no route runs it); `unreached` (no walk reaches it and nothing
-  marks it as data); `slots` (unfilled entry-point jump vectors, `EA 00 00 00 00`, that the program's segment binder fills at
-  start-up: live code, so they stay in the denominator);
-  `data`; and `original`. Only `data` and `original` leave the denominator, and only the bytes of those
-  classes that are not credited. `data` needs strong evidence: a zero fill of eight bytes or more, a text
-  run of eight or more that is at least 80% letters and spaces and that no walk decodes as code (opcodes
-  are printable too: `cmp al,'s'` reads as text), or a range a person has read and listed in
-  `docs/census-data.tsv`. `original` is the table `docs/census-original.tsv`: the STI-first timer and keyboard
-  interrupts (VGAME 1132:006C keyboard handler, added 19 Oct: STI-first, never returns), the never-returning C start-up and its copies, the palette loaders with an STI inside their
-  loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
-  byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
-  that is only hard, blocked by tooling or not yet proved belongs in the denominator.
+  marks it as data); `slots` (unfilled entry-point jump vectors, `EA 00 00 00 00`, that the program's segment
+  binder fills at start-up: live code, so they stay in the denominator); `data`; `original`; and `dead`. Only
+  `data`, `original` and `dead` leave the denominator, and only the bytes of those classes that are not
+  credited. `data` needs strong evidence: a zero fill of eight bytes or more, a text run of eight or more that
+  is at least 80% letters and spaces and that no walk decodes as code (opcodes are printable too: `cmp al,'s'`
+  reads as text), or a range a person has read and listed in `docs/census-data.tsv`. `original` is the table
+  `docs/census-original.tsv`: the STI-first timer and keyboard interrupts (VGAME 1132:006C keyboard handler,
+  added 19 Oct: STI-first, never returns), the never-returning C start-up and its copies, the palette loaders
+  with an STI inside their loop, and the divide-error handler no route reaches. When in doubt a byte stays in
+  the denominator; a byte that a route ran or a matched body covers is credited whatever it was judged to be.
+  A routine that is only hard, blocked by tooling or not yet proved belongs in the denominator.
   **`dead` (owner rule, 19 October: only code we are certain we do not need):** `docs/census-dead.tsv` lists 73 rows
   (2,927 never-run bytes) certified unreachable in the shipped game, each with a certificate; `docs/census-dead-ranges.tsv` adds byte ranges that are not census rows (range-keyed): 868 bytes of jump slots in SETUP and PLAYER that no program binds or names, and 367 bytes of code no walk decodes (alternate entries of the exit and file-open routines, unreferenced library functions, printf arms no format string uses), each read on 21 Oct
   (`D:/f117-gate/phase2-final/dead-cert/certificates.tsv`, criteria c1-c7: no direct reference in any program image,
@@ -206,49 +193,35 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   quiz code is reachable and stays in the denominator; the routes `quiz_right` and `quiz_wrong` run it. Error paths
   (missing files, memory, usage, assert and fatal messages) are never listed: they stay in the denominator and are run on
   real routes instead (damaged-install routes). Only the never-run bytes leave: a byte a route ran or a body covers stays credited.
-  **Executed code outside the census is included** (17 October 2026). The old census rows and
-  their figures stay available for comparison. A separate `census.supplemental` count adds each byte
-  outside them once when an interpreter route or a matched body's proof executes its instruction,
-  across all 17 game code files (launcher, programs, resident graphics library and sound drivers). The score uses `(matched_bytes + supplemental.credited) /
-  (creditable_bytes + supplemental.bytes)`. This was a denominator change, not lost matched work:
-  P2 fell from 87.43% to 85.11% at the first correction. The route captures store four-byte
-  windows, **not instruction lengths**, so the tool decodes each instruction, checks the module's
-  file hash and its captured opcode/operand bytes against the image, allows relocated words and the
-  known bound jump vectors, and rejects changed or undecodable code (317 unique records rejected
-  against 64,512 accepted in the current 63-route captures; rejected records add no bytes). Fixture-only named bytes count by the same proof rule
-  as inside the old census.
-  **Reviewed static code** (`docs/census-code.tsv`, four tranches on 17-18 October): 37 ranges add
-  11,491 bytes to the workload with no matching credit (text and DOS helpers, printf arms, arithmetic,
-  pixel/span drawing, object spawning, picture wrappers, runtime handler shims, the complete VGAME
-  `09EFA` body, the logo mouse helpers). Each row records segment/IP, length, instruction count,
-  SHA256 and review evidence; every refresh verifies the hash, complete instruction boundaries,
-  count and absence of overlapping reviews, and the private review also checks each instruction's
-  length with Capstone. The reviews identify code to match; they do not claim a named equivalent.
-  Lessons that shaped the rules: decoder agreement alone is insufficient (the logo mouse helpers'
-  discovery lists overlapped at linear `1307`/`1308` until seven bounded walks resolved them);
-  a range must not end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the
-  census boundary bisects); canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`).
-  Evidence: `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`.
-  **Current total of this measure** (after batch am, the first matched routines outside the seven programs, and the 21 Oct module scope expansion): **165,370 / 204,747**, P2 **81.73%**, overall **94.42%** while it scored both P2 items (since the gameplay score, P2 84.67%, overall 95.32%) (2,927 never-run bytes certified dead left the denominator, 261 of them on 21 Oct, `docs/census-dead.tsv`; the 633 quiz bytes came back with `--fix QUIZ`) (P3 100.00% since the Stage 3 close).
-  The historical census retains its recorded row boundaries, including overlapping
-  positions: af adds 697 row-byte credits from 692 distinct instruction bytes
-  (five positions occur in two rows). The separate raw-byte audit reports 690
-  against the older route inventory; current captures supply the other two.
-  `p2-batch-af-accept/credit-reconciliation.json` records both measures against
-  the prior registry; the denominator and scoring method are unchanged.
-  **Launcher and drivers included (21 Oct):** the approved scope expansion adds 18,835
-  validated executed bytes across F117.COM, MGRAPHIC, MISC and six sound drivers. No matched
-  credit changed: the denominator rose from 182,862 to 201,697, taking P2 from 90.85% to
-  82.84% (the measured byte share is 81.93%; the completed tooling item supplies 5% of P2).
-  All 17 game code files are eligible; NSOUND.117 currently contributes zero because no route
-  runs it and it has no reviewed static range. On 21 Oct a fifth review tranche added 117 code ranges
-  (4,481 bytes, 3,050 of them not already executed or named) and one 70-byte data range; the denominator
-  rose from 201,697 to 204,747 and P2 fell from 82.84% to 81.68%, with no credit change. About 654
-  static-discovery bytes in 42 groups are still held (the SETUP region that is XOR-transformed before it
-  executes needs a strict validator first) and the shared floating LZEXE decompressor stays outside the measure. No new original-code
-  or dead-code exclusion was made. Measurement and validation: `D:/f117-gate/modules-scope-20261021/`.
-  `census_classify.py` prints the supplement, module counts and rejected-record counts;
-  `progress.py --census ...` refreshes the historical and expanded counts together.
+  **Executed code outside the census is included** (17 October 2026). A separate `census.supplemental` count
+  adds each byte outside the census rows once when an interpreter route or a matched body's proof executes its
+  instruction, across all 17 game code files (launcher, programs, resident graphics library and sound drivers).
+  The score uses `(matched_bytes + supplemental.credited) / (creditable_bytes + supplemental.bytes)`. The route
+  captures store four-byte windows, **not instruction lengths**, so the tool decodes each instruction, checks the
+  module's file hash and its captured opcode/operand bytes against the image, allows relocated words, the known
+  bound jump vectors and the reviewed runtime-patched jumps above, and rejects changed or undecodable code
+  (rejected records add no bytes). Fixture-only named bytes count by the same proof rule as inside the census.
+  **Reviewed static code** (`docs/census-code.tsv`, tranches from 17 October) adds code no route runs to the
+  workload with no matching credit (text and DOS helpers, printf arms, arithmetic, pixel/span drawing, object
+  spawning, picture wrappers, runtime handler shims, the complete VGAME `09EFA` body, the logo mouse helpers).
+  Each row records segment/IP, length, instruction count, SHA256 and review evidence; every refresh verifies the
+  hash, complete instruction boundaries, count and absence of overlapping reviews, and the private review also
+  checks each instruction's length with Capstone. The reviews identify code to match; they do not claim a named
+  equivalent. Lessons that shaped the rules: decoder agreement alone is insufficient (the logo mouse helpers'
+  discovery lists overlapped at linear `1307`/`1308` until seven bounded walks resolved them); a range must not
+  end inside an instruction (PLAYER `1AD4` stops at `1B9B`, before one that the census boundary bisects);
+  canonical segment spellings avoid operand aliases (VGAME `0FB2:02B4`). Evidence:
+  `D:/f117-gate/census-gap-20261017/`, `census-gap-20261018*/`. The strictly validated encoded SETUP code is
+  included by physical byte union; static discoveries not yet reviewed and the shared floating LZEXE
+  decompressor stay outside the measure.
+  **Denominator changes, none of which removed matched credit:** executed code outside the census
+  (17 Oct: P2 87.43% -> 85.11%); the launcher, MGRAPHIC, MISC and six sound drivers (owner, 21 Oct: 18,835
+  validated executed bytes, denominator 182,862 -> 201,697, P2 90.85% -> 82.84%; measurement and validation in
+  `D:/f117-gate/modules-scope-20261021/`); a fifth static review tranche (21 Oct: 117 code ranges and one 70-byte
+  data range, 201,697 -> 204,747, P2 82.84% -> 81.68%). All 17 game code files are eligible; NSOUND.117
+  contributes zero because no route runs it and it has no reviewed static range. `census_classify.py` prints
+  the supplement, module counts and rejected-record counts; `progress.py --census ...` refreshes the historical
+  and expanded counts together.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;
@@ -274,7 +247,14 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   frames (0.15), because the owner judged the motion not acceptable; P3 fell
   from 95.79% to 82.75%. After the owner played `--present rerun` fullscreen at
   4K ("good at least for now", 15 Oct, 22:32) Stage 3 went to 0.9: P3 96.33%. On
-17 Oct 2026 the owner removed the work he had decided against from the score
-(roadmap, "Possible future work" and the coastline item under Phase 4): Stage
-2's open share fell by the coastline item, 0.95 to 0.967, and P3 went to 96.62%; moving the refresh rates above 60 Hz to Phase 4 (Stage 3, 0.9 to 0.933) made it 97.22%.
-On 18 Oct 2026 the owner moved Stage 2's two open parts (line widths by drawing role, the physical-panel review) to Phase 4 as a "maybe": Stage 2 became 1.0 and P3 went to 97.79%.
+  17 Oct 2026 the owner removed the work he had decided against from the score
+  (roadmap, "Possible future work" and the coastline item under Phase 4): Stage
+  2's open share fell by the coastline item, 0.95 to 0.967, and P3 went to
+  96.62%; moving the refresh rates above 60 Hz to Phase 4 (Stage 3, 0.9 to
+  0.933) made it 97.22%. On 18 Oct 2026 the owner moved Stage 2's two open
+  parts (line widths by drawing role, the physical-panel review) to Phase 4 as
+  a "maybe": Stage 2 became 1.0 and P3 went to 97.79%. On 24 Oct 2026 the
+  owner added the re-release features (roadmap, Phase 3) as unstarted items
+  weighing 28 beside the existing 100, in two commits: P3 went from 100% to
+  89.29% and then 78.12%. The same day the Phase 2 checklist item was added
+  (above).

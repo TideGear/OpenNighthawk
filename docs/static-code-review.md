@@ -1,9 +1,11 @@
 # Reviewed static code: reachability audit
 
-The 63-route interpreter captures leave 10,301 reviewed static bytes unexecuted
-and uncredited. No additional route was identified by the 21 October analysis.
-That finding does not prove that no input can reach them. All these bytes remain
-in the Phase 2 denominator; this review certifies no new dead code.
+The 21 October analysis covered 10,301 reviewed static bytes that the 63-route
+interpreter captures leave unexecuted and uncredited (the current uncredited
+total, which includes later reviews and the encoded SETUP rows below, is in
+[roadmap.md](roadmap.md)). It identified no additional route, which does not
+prove that no input can reach them. All these bytes remain in the Phase 2
+denominator; this review certifies no new dead code.
 
 The resumed independent review checked 27 ranges (6,505 bytes) in groups A and
 D-H against the current installed images: hashes, complete instructions, exact
@@ -76,8 +78,8 @@ image remain untouched; decoded bytes exist only in memory.
 The bootstrap transforms 1,300 bytes. Of these, 585 are code and 715 are
 metadata, scratch and prompt data; transforming bytes does not make them code.
 The accepted rows add 585 workload bytes, zero matched credit. Second-read
-`unreached-held` reference entries account for those bytes in the checklist. No actual
-entry route or dead certificate is established. The media-check helpers,
+`unreached-held` reference entries account for those bytes in the checklist.
+No actual entry route or dead certificate is established. The media-check helpers,
 BIOS disk retries, saved DOS vector and reencoding tail remain proof work.
 
 The first semantic review and independent transform audit agree on all byte

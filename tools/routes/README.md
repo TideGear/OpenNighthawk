@@ -21,13 +21,13 @@ earlier pipeline's edited pilot cannot change its starting state.
 
 ## The quiz option
 
-`--fix QUIZ` (off by default; `--fix all` and normal play never switch it on) restores START's aircraft-identification
-quiz, the copy protection GOG's build patches out (`docs/bugs.md`). `quiz_right` clicks the right name (the A-10 shown), `quiz_wrong`
-a wrong one; both then continue to the roster screen. Together they run both verdict arms (START `073A` and `074B`).
+`--fix QUIZ` restores START's aircraft-identification quiz, the copy
+protection GOG's build patches out; it is off unless named
+([bugs.md](../../docs/bugs.md)).
 
 | Route | What it plays |
 |---|---|
-| `quiz_right`, `quiz_wrong` | PC-speaker boot, the quiz screen at START's start (silhouette and 18 names, `planes2.pic`), a click on the right or a wrong name, the verdict, the roster screen |
+| `quiz_right`, `quiz_wrong` | PC-speaker boot, the quiz screen at START's start (silhouette and 18 names, `planes2.pic`), a click on the right name (the A-10 shown) or a wrong one, the verdict, the roster screen; together they run both verdict arms (START `073A` and `074B`) |
 
 ## Damaged installs
 
@@ -167,7 +167,7 @@ none is distributed)
 
 Each observer replays the route's recording read-only under either engine
 (`--engine interp` or `recomp`) and checks what milestones cannot. All take
-`--data INSTALL --out PRIVATE_DIR`.
+`--data INSTALL`, and all but `d1_check.py` `--out PRIVATE_DIR`.
 
 | Route | Command (inputs under `tools/routes/`) | Checks |
 |---|---|---|
@@ -184,7 +184,8 @@ Each observer replays the route's recording read-only under either engine
 | `airair_type5`-`8` | `airair_pilot.py --replay airair_typeN.input` | the slot-0 kill and primary event at the credit sample, the consumed AMRAAM, the full landing result |
 | `d1_fast_machine` | `d1_check.py` | the same inputs at GOG's 9 MIPS without fixes and at 40 MIPS with D1: settled S, mission clock and frame rate agree |
 
-Per-route figures (checkpoints, final hashes, clocks) are in
+Checkpoints, final hashes and clocks for the routes the 4 October audit
+added are recorded, as of that date, in
 [parity-audit.md](../../docs/parity-audit.md).
 
 **Career chains beyond the routes.** `career_check.py --initial-roster

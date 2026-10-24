@@ -15,7 +15,7 @@ headers cite.
 |---|---|
 | `src/cpu/cpu.c`, `cpu.h` | Semantics moved to `x86_sem.h`; STI/MOV SS interrupt shadow; write tracking of translated bytes; `stop_at`; memory watch and tracing removed; faults leave IP at the instruction |
 | `src/cpu/x86_sem.h` | Moved out of `cpu.c`, not changed; `IDIV` of `0x80000000` by -1 now traps instead of faulting the host |
-| `src/machine/dos*.c`, `pc.c` | Split into DOS/BIOS and devices; extended for play (see architecture.md); DOS/BIOS later split by service (`dos.c` dispatch, `dos_memory.c`, `dos_programs.c`, `dos_files.c`, `dos_keyboard.c`, `dos_video.c`) |
+| `src/machine/dos*.c`, `pc.c` | Split into DOS/BIOS and devices, the DOS/BIOS part later by service; extended for play ([architecture.md](architecture.md#the-pc)) |
 | `tests/sstest.py`, `sst286.py`, `test186.c` | Paths made configurable |
 | `tests/cpu_api.c` | Supplies the two machine hooks itself |
 | `tools/unpack.py` | DLL path |

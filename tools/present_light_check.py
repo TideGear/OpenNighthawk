@@ -3,7 +3,7 @@
 
 A change confined to read-only presentation code cannot change the emulated machine: the guest runs the
 same instructions and the presentation only reads what the observer hands it. Such a change is
-checked by every CTest, the 45-route N=1 presentation check (which also holds every guest checkpoint
+checked by every CTest, the every-route N=1 presentation check (which also holds every guest checkpoint
 and final hash to the last full gate's baseline runs) and boot at N=4/9, instead of the full gate.
 
 This script refuses unless every file changed since BASE (the commit the last full gate passed on;

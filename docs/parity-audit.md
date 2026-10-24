@@ -98,9 +98,8 @@ dynamic-state equivalence.
 **Video.** Current-build replay against the saved GOG video matches 1,319
 exact RGB pictures in order. Seven reference pictures and 28 of ours remain
 unmatched, all for a single sample; the end transition is about 571 ms later
-here. Neither difference is dismissed as a pass. (Superseded: the current
-build matches 1,329 pictures with three one-sample differences per side and
-no end drift; see [roadmap.md](roadmap.md).)
+here. Neither difference is dismissed as a pass. (Since resolved: no end
+drift remains; see [roadmap.md](roadmap.md).)
 
 **Sound.** `audio_render` uses the application's actual audio
 implementation. `tools/audio_compare.py` extracts PCM from the DOSBox AVI and
@@ -181,19 +180,19 @@ and pywin32.
 
 ## Left open by the audit
 
-Earned retirement and further awards, air-combat hits and AI
-countermeasures, supply-drop home return, harder landing settings, in-flight
-video, and an audio reference for the digitised speech (the speaker's
-port-level stream and the intro's speaker audio are held to DOSBox-X by
-`tools/speaker_parity.py`). The original supply-drop credit bug must be
-preserved in parity mode; the supply drop itself has since been reproduced
-on DOSBox-X and 86Box ([bugs.md](bugs.md), D5). No WinMM joystick is
-attached on this machine, so physical calibration, deadzones and control
-feel need hardware and a player. MT-32 PCM needs a reference comparison with
-the supplied ROMs; the Roland boot route alone cannot validate rendered
-parity.
+Items marked *closed* have been settled since (see [roadmap.md](roadmap.md)).
 
-Since closed (see [roadmap.md](roadmap.md)): earned retirement (a rank-3
-career is paired through retirement at sortie 99), the supply-drop home
-return (route `cargo_return`), and the speech audio reference (captured from
-86Box on 9 October).
+- Earned retirement (*closed*: a rank-3 career is paired through retirement
+  at sortie 99) and further awards.
+- Air-combat hits and AI countermeasures; harder landing settings; in-flight
+  video.
+- The supply-drop home return (*closed*: route `cargo_return`). The original
+  supply-drop credit bug must be preserved in parity mode; the drop itself
+  has since been reproduced on DOSBox-X and 86Box ([bugs.md](bugs.md), D5).
+- An audio reference for the digitised speech (*closed*: captured from 86Box
+  on 9 October). The speaker's port-level stream and the intro's speaker
+  audio are held to DOSBox-X by `tools/speaker_parity.py`.
+- Physical controls: no WinMM joystick is attached on this machine, so
+  calibration, deadzones and control feel need hardware and a player.
+- MT-32 PCM needs a reference comparison with the supplied ROMs; the Roland
+  boot route alone cannot validate rendered parity.

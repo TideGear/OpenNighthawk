@@ -8,17 +8,17 @@ Nighthawk Stealth Fighter 2.0*, as GOG ships it (with MicroProse's final
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
-[How a fix attaches](#how-a-fix-attaches)). Normal play enables all fifteen
-by default, including the D1REAL timing and D1PROX balance choices (owner's
-decision, 17 October 2026). `--fix none` restores the original; follow it with
-`--fix ID` to select a subset. The headless runner starts with fixes off, and
-ordinary parity routes explicitly clear them. Fix-specific checks enable
-their selected fixes. Replays restore the recorded set; old logs without a
-fix header mean the original. This keeps original behavior independently testable.
-`--list-fixes` prints the fifteen normal-play fixes: D1, D1TTL, D1SLOT, D1PROX,
-D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8, D11, D12 and D34, plus the separate
-`QUIZ` option. `--fix QUIZ` restores the aircraft-identification quiz GOG
-disabled; it requires explicit selection and `--fix all` does not enable it.
+[How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
+fifteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12 and D34, including the D1REAL timing and D1PROX balance choices
+(owner's decision, 17 October 2026). `--fix none` restores the original;
+follow it with `--fix ID` to select a subset. The headless runner starts with
+fixes off, ordinary parity routes explicitly clear them, and fix-specific
+checks enable only theirs, so the original's behaviour stays independently
+testable. Replays restore the recorded set; old logs without a fix header
+mean the original. `--list-fixes` prints each fix and whether it is on. The
+separate `QUIZ` option ([below](#smaller-confirmed-defects-q-series-and-quirks))
+is never part of the normal-play set.
 
 Most entries were first established by the Reimp, the author's earlier
 private project (see [provenance.md](provenance.md)). They are restated here
@@ -135,52 +135,48 @@ Status values:
 
 ### D1REAL. Real-time simulation cadence
 
-- **Normal-play cadence:** `--sim-hz 15` selects S15 in both modes, with 15
-  updates/s normally and 30 during 2x compression. It rescales the remaining
-  deadline or overdue work when compression changes; the older D1 limiter
-  yields to D1REAL in this mode. The optional eight-step mode retains its existing
-  limiter behavior for replay compatibility. The choice is per machine and
-  recorded in input logs; an absent header means eight. Core/headless/API
-  still require explicit fix selection. Forty MIPS fails an undamaged
-  compressed-flight capacity check; the 60-MIPS default passes the
-  [broader timing and mission checks](cadence15-validation.md). Fifteen is
-  not a recovered developer target; it is the validated normal-play default.
-  Twenty MIPS also failed to sustain the prototype's compressed rate.
-- **Legacy eight-step timing: `--fix D1REAL --sim-hz 8`.** Pins the simulation divisor S
-  at 8 and admits eight frames per machine second; under the original's 2x
-  time compression S becomes 4 at the same frame cadence. The original
-  `0x0D441` code still derives every dependent rate. The frame counter at
-  `0x4359` waits at event boundaries, so timer interrupts continue normally.
-  Fractional time is kept, overruns catch up without losing time, and
-  entering the original pause (`0x3A4E`) or quit dialog (`0x2071`) clears
-  the deadline. State belongs to each machine and resets at program changes.
-  This replaces the original adaptive cadence on purpose. Eight was chosen
-  for this project, below the slowest 9 MIPS cohort's average orbit
-  frame rate (8.663 fps). Use `--present interp` to display interpolated
-  frames at the host refresh rate; at 8 Hz that adds about 125 ms of picture
-  delay. A CPU unable to run eight simulation frames a second still falls
-  behind. Eight is not a recovered developer target, and interpolated or rerun
-  presentation can run at 60 Hz without this timing change. An independent
+- **What it does.** Replaces the original adaptive cadence on purpose: the
+  simulation divisor S is pinned and frames are admitted at a fixed rate per
+  machine second. The original `0x0D441` code still derives every dependent
+  rate. The frame counter at `0x4359` waits at event boundaries, so timer
+  interrupts continue normally. Fractional time is kept, overruns catch up
+  without losing time, and entering the original pause (`0x3A4E`) or quit
+  dialog (`0x2071`) clears the deadline. State belongs to each machine and
+  resets at program changes. The rate is recorded in input logs; a log
+  without it means eight. The app enables D1REAL for normal play; the
+  headless runner and the machine API need `--fix D1REAL`.
+- **Fifteen steps (the default, `--sim-hz 15`).** S 15 with 15 updates a
+  second, 30 during 2x time compression, with phase-correct transitions: the
+  remaining deadline or overdue work is rescaled when compression changes,
+  and the older D1 limiter yields to D1REAL. The 60-MIPS app default passes
+  the [broader timing and mission checks](cadence15-validation.md): 960
+  airborne windows, including 35 min 40 s actually compressed, paired
+  clock/transition cases and a successful landing. At 40 MIPS an undamaged
+  compressed flight cannot keep up, and 20 MIPS could not sustain the
+  prototype's compressed rate. Fifteen is a tested project cadence within the
+  original S limit, not a recovered developer target.
+- **Eight steps (legacy, `--sim-hz 8`).** S 8 and eight frames a machine
+  second; under 2x compression S becomes 4 at the same frame cadence. It
+  keeps its original limiter behaviour for replay compatibility. Eight was
+  chosen for this project, below the slowest 9 MIPS cohort's average orbit
+  frame rate (8.663 fps); it is not a recovered developer target, and a CPU
+  unable to run eight simulation frames a second still falls behind.
+  `--present interp` shows interpolated frames at the host refresh rate (at
+  8 Hz that adds about 125 ms of picture delay); interpolated or rerun
+  presentation needs no timing change to run at 60 Hz. An independent
   original-game 86Box check also finds a clock mismatch, but does not establish
   intent; see [the reference measurement](speed-sweep.md#original-game-clock-on-86box-17-october-2026).
-- **Checks.** `tools/d1real_check.py` passes at 9, 20 and 40 MIPS in both
-  engines, every case hash matching within each speed: normal flight gives
-  240 frames and 30 mission seconds in 30 seconds; 2x compression 80 frames
-  and 20 mission seconds in 10; restored rate 80/10; pause 0/0 over 3
-  seconds, then resume 24/3; quit-dialog waiting and cancellation also 0/0
-  and 24/3. A separate pacer test covers fractional time, event-boundary
-  waits, lossless catch-up, program and speed changes and the dialog reset.
-  On 17 October the same seven normal-input cases also passed at 20 MIPS
-  with all fifteen fixes enabled together, with identical case hashes in both
-  engines (69.17 s). Evidence:
+- **Checks (eight steps).** `tools/d1real_check.py` passes at 9, 20 and 40
+  MIPS in both engines, every case hash matching within each speed: normal
+  flight gives 240 frames and 30 mission seconds in 30 seconds; 2x
+  compression 80 frames and 20 mission seconds in 10; restored rate 80/10;
+  pause 0/0 over 3 seconds, then resume 24/3; quit-dialog waiting and
+  cancellation also 0/0 and 24/3. A separate pacer test covers fractional
+  time, event-boundary waits, lossless catch-up, program and speed changes
+  and the dialog reset. On 17 October the same seven normal-input cases also
+  passed at 20 MIPS with all fifteen fixes enabled together, with identical
+  case hashes in both engines (69.17 s). Evidence:
   `D:/f117-gate/default-fixes-20261017/all-fixes-clock/verdict.json`.
-  Production also supports opt-in `--sim-hz 15`: S15 with 15 normal /30
-  compressed updates and phase-correct transitions; the older D1 cap yields
-  to this mode. The 40-MIPS budget fails an undamaged compressed-flight
-  capacity check. The [60-MIPS candidate's broader checks](cadence15-validation.md)
-  pass 960 airborne windows, including 35 min 40 s actually compressed,
-  paired clock/transition cases and a successful landing. This is a tested
-  project cadence within the original S limit, not a recovered fixed target.
 - **Natural flights.** With all five D1-family options, a 24-flight cohort
   holds S 8 and an in-flight mission clock of 1.000 at 9 and 20 MIPS. With
   VGAME's own seed and the pilot's input phase aligned, all 12 mission pairs
@@ -241,12 +237,11 @@ Status values:
   near miss that damages the aircraft at low S can miss at high S.
 - **Switchable balance change: `--fix D1PROX` (on for normal play).** A continuous swept octagonal
   slant band (overrides at `0x6C50` and `0x6EFB`), calibrated to terminal
-  weapon speed x 8/9. The S=9 reference is an explicit balance choice, not a
-  recovered warhead radius. S=9 came from the parked-aircraft GOG-speed
-  baseline; it is a compatibility reference, not evidence of the developers'
-  preferred hardware or lethality. No authoritative numeric radius has been
-  recovered from the inspected code or manual. Relative movement includes the player's previous
-  and current positions while the same live missile persists across
+  weapon speed x 8/9. The S=9 reference is an explicit balance choice taken
+  from the parked-aircraft GOG-speed baseline, not a recovered warhead radius
+  or evidence of the developers' preferred hardware or lethality; no numeric
+  radius has been recovered from the inspected code or manual. Relative
+  movement includes the player's previous and current positions while the same live missile persists across
   consecutive frames; fresh launches and program changes reset it. Guidance,
   movement, frame pacing, player weapons and the lifetime and damage guards
   keep their original code. This is the second version; the first, a floor
@@ -420,8 +415,9 @@ Status values:
   player's sector), `0x55EB`, `0x5654`.
 - **In this recompilation.** Reproduced exactly: it is the game's own
   arithmetic on the shipped world data.
-- **Fix available: `--fix D6`** (whether the cells are a defect is not
-  proven, so the original stays the default). An override at `0x55EB`
+- **Fix available: `--fix D6`** (in the normal-play set, although whether
+  the cells are a defect is not proven; `--fix none` restores the original).
+  An override at `0x55EB`
   replaces the load and the AND: a sector whose cover bits are 0 reads as 4,
   the lowest nonzero cover; every other sector runs the original's two
   instructions. `tools/d6_check.py` finds Central Europe's 12 cover-0
@@ -669,12 +665,13 @@ Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
 protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail
 has `E8 E3 06` (call `0x0703`). This recompilation translates whichever
 START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
-The option **`--fix QUIZ`** restores it on GOG's copy (an override at START `0x001D`
-pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail `call` does).
-It is an option, not a repair: **off by default, and `--fix all` and normal play never
-switch it on**; it is named explicitly, and `--fix none` clears it. The routes
-`quiz_right` and `quiz_wrong` run it (docs/progress.md: the quiz code is in the
-Phase 2 denominator, not in `docs/census-dead.tsv`).
+The option **`--fix QUIZ`** restores it on GOG's copy (an override at START
+`0x001D` pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail
+`call` does). It is an option, not a repair: **off unless named, and neither
+`--fix all` nor normal play switches it on**; `--fix none` clears it. The
+routes `quiz_right` and `quiz_wrong` run it, so the quiz code counts in the
+Phase 2 denominator ([progress.md](progress.md)), not in
+`docs/census-dead.tsv`.
 
 ## R1. Open questions from this project
 

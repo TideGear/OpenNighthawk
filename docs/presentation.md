@@ -17,16 +17,18 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
 
 - **Frame rate.** The app presents one picture per display refresh (vsync on), so the rate is whatever refresh the
   display is set to: 60 Hz gives 60 pictures a second, 144 Hz gives 144, if the PC keeps up. The game itself still
-  steps fifteen times a second normally and thirty during 2x compression with the default D1REAL fix (18 October); `interp` and `rerun` fill the gaps.
-  With `--fix none`, the original controller gives about 17 steps a second at the historical 20 MIPS setting,
-  fewer in slow scenes. The presentation modes do not require D1REAL.
+  steps fifteen times a second normally and thirty during 2x compression with the default D1REAL fix (18 October);
+  `interp` and `rerun` fill the gaps. With `--fix none`, the original controller gives about 17 steps a second at
+  the historical 20 MIPS setting, fewer in slow scenes. The presentation modes do not require D1REAL.
 - **The price of in-between pictures** is age: they show the game one logic step late (about 60 ms at 17 steps a
   second, or about 67 ms at the default fifteen), plus one display frame for the threaded drawing,
   plus about a third of a step for `rerun`'s smoothed clock.
 - **What never changes.** Original text, sprites and cockpit artwork keep their pixels (each becomes an N x N block);
   nothing is replaced with new graphics. The finer modes keep the original renderer's quirks: road and coastline
-  edges jitter as they do in the original, objects can overlap in the original's drawing order, and lines and dots
-  keep one thickness at any distance.
+  edges jitter as they do in the original, objects can overlap in the original's whole-object drawing order, and
+  lines and dots keep one thickness at any distance. A picture without the jitter or the sort, widescreen and a
+  longer draw distance are planned as the Remastered presentation, a new renderer
+  ([decisions](#decisions-that-constrain-the-work)).
 - **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
   selects fullscreen, `present = interp` and scale 9.
 
@@ -65,7 +67,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   the projection divides into an integer pixel, and the clip, edge accumulation, span tables and fill all work in
   whole pixels. Sub-pixel information exists only before the divide.
 - **The resident world is small.** Four rings of 32 tile slots (`DS:E330`, counts at `DS:061E`; 18-25 populated in
-  one capture): a longer view would need this project's own world loader.
+  one capture): a longer view (planned for Remastered) needs this project's own world loader.
 
 ## Decisions that constrain the work
 
@@ -80,10 +82,18 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   off ([below](#identity-pairing-and-the-step-clock-15-october-2026)). In-between pictures come from `rerun`.
 - **The jitter is the original's; no smoothing (owner, 15 October 2026).** Road and coastline jitter shows in the GOG
   DOSBox release and in the sharp mode without in-between pictures. On 15 October (21:23) the owner cancelled the
-  plan to smooth it, at N > 1 too: the finer modes are experimental and keep the original renderer's quirks. So
-  coastline topology transitions and refining clipped or off-screen outlines (6.1% of outline strokes in the owner's
-  sharp session, drawn from scaled whole-pixel endpoints) are not planned.
-- **Do not extend the draw distance (owner, 15 October 2026).**
+  plan to smooth it, at N > 1 too: the finer modes keep the original renderer's quirks. So smoothing it, coastline
+  topology transitions and refining clipped or off-screen outlines (6.1% of outline strokes in the owner's sharp
+  session, drawn from scaled whole-pixel endpoints) are not planned for this renderer; a jitter-free picture is
+  Remastered's (next item).
+- **Do not extend the draw distance (owner, 15 October 2026)** in the original renderer; a longer draw distance is
+  Remastered's.
+- **Three presentation settings (owner, 24 October 2026; planned, not started).** *Original* is the validated default
+  picture (320x200 at the original rate, nearest-neighbour 4:3); *Enhanced* is the finer 4:3 redraw with in-between
+  pictures at 60+ fps (the modes on this page), which keeps the original's jitter and whole-object sort;
+  *Remastered* is a new renderer: widescreen with a widened field of view, a longer draw distance, depth-correct
+  drawing instead of the original's whole-object sort, and no road or coastline jitter. Presentation never feeds the
+  simulation. Details and the other re-release features: [roadmap.md](roadmap.md), "Re-release features".
 - **Timing and visible tests (owner).** Checks run in the background; no visible or fullscreen test without asking
   first. Configuration defaults change only on the owner's call.
 
@@ -149,7 +159,7 @@ Each stage is judged by a check, as in the rest of the project.
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | done and live (`--present-scale N`): polygons from camera-space geometry, near-plane crossings verified against the original's; one stroke pen; original text/artwork as pixel blocks; HUD, panel items, map marker and sky/ground bands from game state; incompatible geometry scaled |
 | 3 | Draw intermediate poses at the host display rate | logic frames exact; extra draws leave live state unchanged; an unnudged copy reproduces its frame | `interp` live, exact at both ends of every pair, pairing frozen; `rerun` integrated with full route and isolation checks |
-| 4 | Pacing, vsync, picture age, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | built: vsync pacing, age setting, threaded presentation (isolated 4K/60 timing passed for `interp`), smoothed clock for `rerun`, `--present scan` as the switch. Open: skip/age tuning, `rerun` fullscreen timing, physical-display checks |
+| 4 | Pacing, vsync, picture age, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | built: vsync pacing, age setting, threaded presentation (isolated 4K/60 timing passed for `interp`), smoothed clock for `rerun`, `--present scan` as the switch; `rerun` fullscreen 4K/60 timing passes ([fullscreen](#fullscreen-4k60-timing-and-the-threaded-presentation)). Open: physical-display checks |
 
 ## Stage 0 and 1: the observer and the draw list
 
@@ -333,17 +343,6 @@ camera-space coordinate by a rounding unit, which a finer grid shows. At N = 9 t
 
 ### Where the blockiness comes from: the pixel-origin diagnostic
 
-Normal-width captured integer line strokes are clipped to their endpoint
-cells. A rotated square cap otherwise extends just beyond that rectangle;
-at the moving map's edge it leaves fine specks outside the restored map.
-Explicitly wider pens keep their extra coverage. The regression covers all
-octants and translated page origins at N=4/9, while the original coarse
-line rule stays unchanged. Evidence: `D:/f117-gate/map-specks-20261018/`.
-Before/after captures retain all 953 exact logic frames /951 endpoint pairs
-and the interpreter checkpoint hash; affected lower-border remnants fall
-from 22/32/38 pixels to zero. The presentation-only check passes all 243
-tests, all 45 N=1 routes and N=4/9 boot, with unchanged runner hashes.
-
 `F117_PRESENT_DIAG=DIR` (with `--present-scale N > 1`; off when unset) gives every replayed page a byte per fine
 pixel naming the path that last wrote it (`src/present/diagtag.h`: refined model polygon, refined span polygon, each
 fallback by reason, guard repairs, strokes, text, sprites, blits from pages the replay does not hold, copies); the
@@ -427,8 +426,16 @@ wide covers exactly the original's cells and joined strokes meet solidly (the Re
 point, made diagonals up to 1.4 times thicker). The width is one original cell (N fine pixels) unless
 `--present-line-width` sets 1-20 fine pixels; that setting applies to HUD lines, ticks, the state-driven HUD,
 world outlines, dots and thin span strips (a strip as thick as its footprint, one or two cells, takes the setting
-per cell). Widths by drawing role (ground markings against object
-outlines) are not assigned. Text, sprites and artwork never change with the width.
+per cell). Widths by drawing role (ground markings against object outlines) are not assigned. Text, sprites and
+artwork never change with the width.
+
+**Map-edge specks (fixed 18 October 2026).** A rotated square cap extends just beyond its stroke's end cells, and at
+the moving map's edge it left fine specks outside the restored map. Normal-width captured integer strokes are now
+clipped to their endpoint cells; explicitly wider pens keep their extra coverage, and the original coarse line rule
+is unchanged. The regression covers all octants and translated page origins at N=4/9. Before/after captures keep all
+953 exact logic frames / 951 endpoint pairs and the interpreter checkpoint hash; the lower-border remnants fall from
+22/32/38 pixels to zero. The presentation-only check passed all 243 tests, all 45 N=1 routes and N=4/9 boot, with
+unchanged runner hashes. Evidence: `D:/f117-gate/map-specks-20261018/`.
 
 **Checks.** `test_world_lines` (coarse equality at N=1/4/9, signed-coordinate and depth-boundary continuity,
 stale-slot and vertex-identity rejection, equal-width horizontal/diagonal strokes); `presentation_hud_lines` (coarse
@@ -642,7 +649,7 @@ memory and the fixes' state are compared; at t = 0 the unnudged copy must draw i
 fine. `tools/presentation_check.py --mode rerun` runs this over every route against the scan baselines.
 
 **Status (15 October 2026, commit `fe20913`).** The full gate passes (116 CTests, 45 routes identical, both instruction
-profiles, three matched seeds, reachability/event checks). The 45-route rerun N=1 check keeps 259,240 frames / 259,166
+profiles, three matched seeds, reachability/event checks). The rerun N=1 check (45 routes at the time) keeps 259,240 frames / 259,166
 pairs and every guest hash exact, with 1,638,579 copies, 1,378,030 in-between pictures drawn by the original, 0
 changes to the real machine and 0 blocked DOS calls; 259,787 unchanged-copy frames are exact, 0 unequal. Boot N=4/9
 is exact. A hidden threaded owner-flight smoke run keeps 1,610 of 1,610 logic frames exact with 4,933 original
@@ -654,10 +661,10 @@ not on master). On the owner's flight (1,609 logic frames) every re-run returned
 records exactly apart from the observer's own lazy line records; the real machine and final hash never changed.
 Nudging halfway put 97.2% of vertices within tolerance of the two real frames' midpoint (98.0% of those matched to an
 object in both frames). Nudging aircraft slots raised air-to-air scene-walk objects at the midpoint from 97.7% to
-98.9%; a small deferred-object group (`DF03`, upstream `C2C8`, about 1,700 vertices; the generic deferred-object draw
-in a secondary camera's nested terrain view) fell from 98.6% to 96.6%; that group is the air-target camera's inset, and the
-fall was one target in a vertical dive (see the nudge above; with the attitude nudged as one orientation the same flight's
-group is 100% within tolerance, `D:/f117-gate/df03-research/`). Cost per extra draw: 1.08M
+98.9%. A small deferred-object group (`DF03`, upstream `C2C8`, about 1,700 vertices: the air-target camera's inset,
+drawn by the generic deferred-object draw in its nested terrain view) fell from 98.6% to 96.6%; the fall was one
+target in a vertical dive, and with the attitude nudged as one orientation (above) the same flight's group is 100%
+within tolerance (`D:/f117-gate/df03-research/`). Cost per extra draw: 1.08M
 instructions (max 1.63M), **6.2 ms (max 8.8 ms) on one core**; at a 57 ms step, 60 Hz needs about 2.5 extra draws a
 step (~27% of a core) and 144 Hz about 7.5 (~80%), so high refresh rates need parallel copies. `F117_RERUN_PICS` on
 that branch dumped the copy's own 320x200 pictures beside the two real frames
@@ -720,9 +727,9 @@ set compares): scan 95.4 s, replay 120.8 s, interp 148.1 s; interp at N = 2 253.
 in-between picture costs about 1.6 ms more at N = 2 than at N = 1, 2.9 ms at N = 4 and 7.4 ms at N = 9; at N = 9 that
 is 5.2 million pixels through the palette and up to the GPU each frame, which is why the presentation is threaded.
 
-## Fullscreen 4K/60 timing and the threaded presentation (13 October 2026)
+## Fullscreen 4K/60 timing and the threaded presentation
 
-**Where the time went.** A single-threaded N=9 strike run (fullscreen Direct3D 11, 3840x2160, 59.99 Hz, vsync) kept
+**Where the time went (13 October 2026).** A single-threaded N=9 strike run (fullscreen Direct3D 11, 3840x2160, 59.99 Hz, vsync) kept
 every logic frame exact but had p99 24.30 ms (the checker rejects p99 above 20.833 ms): every frame in which a logic
 step closed took 21-25 ms, because that frame's replay at N=9 (6.4 ms) and its copies ran in one host frame, and the
 rest of the work had a median of 14.8 ms of the 16.67 ms budget (in-between picture 7.6 ms, palette conversion and
@@ -745,7 +752,7 @@ drawn one host frame ahead on a worker.
 - Cost: the picture shown was planned a frame earlier, for the machine clock then, so in-between pictures are one
   host frame (16.7 ms at 60 Hz) older. `F117_PRESENT_THREADS_OFF` runs everything on the main thread.
 
-**Results** for the `interp` build (`tools/presentation_timing.py`, isolated, one run at a time, fresh save, dummy
+**Results** for the `interp` build (13 October; `tools/presentation_timing.py`, isolated, one run at a time, fresh save, dummy
 audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
 
 | scene | flight pictures | interval median / p99 / max (ms) | over 25 ms | logic frames exact | final guest hash |
@@ -754,7 +761,7 @@ audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
 | air-to-air type 6 to 5.9B | 19,000 | 16.6675 / 16.7091 / 21.3108 | 0 | 3,679 of 3,679 | `b050542466c9a616` |
 | landing to 10.0B | 50,440 | 16.6677 / 16.7090 / 17.2537 | 0 | 13,408 of 13,408 | `efe080faa364f8f4` |
 
-All pass the checker (median within 10% of the refresh period, p99 within 125%, no interval above 150%, guest clock
+All pass the checker (median within 10% of the refresh period, p99 within 125%, at most 1% of intervals above 150%, guest clock
 within 100 ms of the host). In-between pictures are 96% of those shown; each final hash equals a headless run of the
 same input. An isolated N=9 strike run after the state-driven bands (15 October) passes too (p99 16.7314 ms, worst
 17.0385, same hash), and the strike flight passes pinned to four logical CPUs (p99 16.71 ms), so the thread design has
@@ -776,12 +783,12 @@ guest drift. The checker cannot judge tearing or the look of motion; that stays 
 | 18 Oct | compression excerpt (230 compressed seconds) from the broader validation | **pass**: 21,565 pictures, p99 16.92 ms, max 17.85 ms, zero over 25 ms, drift 21.84 ms | constant 4K/59.99-Hz target (an attempt that switched to 1080p/50 during setup is retained as invalid) |
 
 Every row keeps all logic frames exact and the final guest hash equal to a headless replay. Each repair also passed
-the full gate, the 45-route rerun check, boot N=4/9 and the same-record copy-isolation checks; evidence is under
+the full gate, the every-route rerun check, boot N=4/9 and the same-record copy-isolation checks; evidence is under
 `D:/f117-gate/present-v2/stage4-fullscreen-20261017`, `stage4-airair-long-20261017`, `cadence15-production-20261018/`,
 `4k60-fix-20261018/` and `airair-profile-20261017/` (instrumented sources, executable and matching PDB; offline symbol
 resolution needs the preferred base 0x140000000 and `SymSetOptions(0)`). Window capture timed out on every fresh
-selection, so visible motion is unverified; one encounter does not establish all-scene pacing. Eight was never
-measured on the type-5 workload. Earlier hidden throughput: 3840x2160 D3D11 runs at 119-150 fps uncapped with
+selection, so visible motion is unverified; one encounter does not establish all-scene pacing. The eight-step cadence
+was never measured on the type-5 workload. Earlier hidden throughput: 3840x2160 D3D11 runs at 119-150 fps uncapped with
 occasional ~100 ms upload stalls (`D:/f117-gate/present-v2/hud2`). Not established: the picture on a physical panel
 (tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
 
@@ -815,6 +822,22 @@ window on four cores would reach p99 16.67 ms with a core about 7% slower and 20
 (an estimate, not a measurement). Not shown: tearing, the look of motion, the real fullscreen swapchain path, other
 combat densities, flights over 30 minutes, Roland, per-core speed of an older CPU and a weaker GPU's fill rate. Evidence,
 commands and raw logs: `D:/f117-gate/stage4-capacity/` (`results.md`).
+
+**A long flight and a loaded machine (20 October 2026, hidden, Phase 4 coverage notes, unscored).** The
+`cargo_return` route (17.09 G clocks, a supply drop and the return, 9 MIPS as recorded) played through the real app
+(`--present rerun`, scale 2, dummy SDL, software renderer) for 31.7 minutes: exit 0; 22,096 logic frames, every one
+equal to the display at its close; 91,109 VGA frames presented, 91,066 of them in-between pictures drawn by the
+original on a copy, 30 fell back to interpolation (0.03%); the machine held its 9.0 MIPS in every five-minute window
+(1,899 s of wall time for 1,899 s of play: no drift); the working set was flat at 136 MB from minute 9 to the end (no
+leak); outside the mission-start block 42 frames had a speed under a tenth of the median (0.05%) and 12 over twice it,
+spread evenly over the six windows (`D:/f117-gate/present-v2/long-cargo/`). Then the roads flight (143 s of play at
+20 MIPS) ran with the app pinned to one core shared with one, two or three busy loops (about 50%, 33% and 25% of the
+core for the app; `D:/f117-gate/present-v2/clock-live/share/`): with one competitor the run took 143 s at the full
+19.9 MIPS and presented 3,300 pictures (5,660 on an idle machine), 6 copy draws fell back; with two, 155 s, 18.4 MIPS,
+1,611 pictures, 3 fallbacks; with three the machine fell behind real time (280 s for 143 s of play, 10.2 MIPS) and
+presented 1,611 pictures. Every run exited 0 and ended on the same logic frames: a starved host slows the game and
+thins the in-between pictures; it does not skip simulation steps, corrupt a picture or crash. A real older CPU or GPU
+is a physical test this PC cannot do (Phase 4).
 
 **Announced fullscreen long-flight run (19 October 2026, the owner's 4K screen).** The 15 Hz / 60 MIPS landing pilot
 recording (17.9 minutes of guest flight, 24 minutes of wall time), `f117a.exe --present rerun --present-age interp
@@ -872,31 +895,36 @@ the plain clock plans. In simulation it gives 2 freezes, 0 skips and 1.6% (p99 4
 scale-2 runs, the plain clock gave 274 freezes, 12 skips and 18.4% >20% speed changes, the smoothed clock 17-21, 23-34
 and 3.3-5.0% (`rerun-mode/app7`). On the gated build, one run each: defaults 6 freezes and 2.5%; alpha 0.4 / pull
 0.025, 3 and 1.3%; alpha 0.4 / pull 0.05, 4 and 1.3%; picture age not measured (`clock-tune`). A private simulation
-sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz. On 19 October the defaults became 0.4 / 0.025 (the owner delegated the decision). Hidden app replays of the two owner flights, two runs per setting (`D:/f117-gate/present-v2/clock-live`, frames whose speed is under 0.1 of the median count as freezes, over twice the median as skips; picture age was not measured): roads flight 0.2 / 0.05 gave 25 and 25 freezes, 15 and 16 skips, 2.4-2.6% >20% speed changes; 0.4 / 0.025 gave 14 and 15, 8 and 5, 1.3-1.9%. Sharp flight: 21 and 22 freezes, 17 and 16 skips, 3.5-4.5% against 17 and 13, 12 and 5, 3.4% and 1.9%. Skips against picture age remain to tune. Owner's A/B of the roads flight in a 960x720 window, new against old, 19 October: looked the same. Most of the freezes counted above are one block at mission start (frames 4-15 after the replay begins, 14 of 28 old and 13 of 17 new in the first run, the same in both settings); outside it the old setting had about 14 and the new about 4. **Known, accepted (owner, 19 October): the mission opens with about 7 presented frames (just over 100 ms) at the original 320x200, with the 3D view still missing from the cockpit, before the first logic step completes and the high-resolution pictures start,** because a high-resolution picture needs a completed pair of steps. It is one process switching mode (no exit or reload); a hold or fade over those frames is possible but not wanted. Captured with `F117_PRESENT_SHOTS`. The owner played rerun fullscreen at 4K on 15 October and
+sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz.
+
+**Defaults 0.4 / 0.025 (19 October 2026; the owner delegated the decision).** Hidden app replays of the two owner
+flights, two runs per setting (`D:/f117-gate/present-v2/clock-live`; frames whose speed is under 0.1 of the median
+count as freezes, over twice the median as skips; picture age was not measured):
+
+| flight | alpha / pull | freezes | skips | >20% speed changes |
+|---|---|---|---|---|
+| roads | 0.2 / 0.05 (old) | 25, 25 | 15, 16 | 2.4-2.6% |
+| roads | 0.4 / 0.025 (new) | 14, 15 | 8, 5 | 1.3-1.9% |
+| sharp | 0.2 / 0.05 (old) | 21, 22 | 17, 16 | 3.5-4.5% |
+| sharp | 0.4 / 0.025 (new) | 17, 13 | 12, 5 | 3.4%, 1.9% |
+
+Most of these freezes are one block at mission start (frames 4-15 after the replay begins: 14 of 28 old and 13 of 17
+new in the first run, the same in both settings); outside it the old setting had about 14 and the new about 4. The
+owner's A/B of the roads flight in a 960x720 window, new against old, looked the same, which closed Stage 3's clock
+work; skips could still be traded against picture age. The owner played `rerun` fullscreen at 4K on 15 October and
 accepted the motion "at least for now" (apart from the original's own jitter).
 
-**Long flight and loaded machine (20 October 2026, hidden, Phase 4 coverage notes, unscored).** The `cargo_return` route
-(17.09 G clocks, a supply drop and the return, 9 MIPS as recorded) played through the real app (`--present rerun`, scale 2,
-dummy SDL, software renderer) for 31.7 minutes: exit 0; 22,096 logic frames, every one equal to the display at its close;
-91,109 VGA frames presented, 91,066 of them in-between pictures drawn by the original on a copy, 30 fell back to interpolation
-(0.03%); the machine held its 9.0 MIPS in every five-minute window (the run took 1,899 s for 1,899 s of play: no drift);
-the working set was flat at 136 MB from minute 9 to the end (no leak); outside the mission-start block there were 42 frames
-whose speed was under a tenth of the median (0.05%) and 12 over twice it, spread evenly over the six windows
-(`D:/f117-gate/present-v2/long-cargo/`). The owner's A/B of the roads flight looked the same for the old and new clock.
-
-**A loaded machine (20 October 2026, hidden, unscored).** The roads flight (143 s of play at 20 MIPS) with the app pinned to
-one core that one, two or three busy loops share (the app gets about 50%, 33% and 25% of the core;
-`D:/f117-gate/present-v2/clock-live/share/`): with one competitor the run took 143 s at the full 19.9 MIPS and the
-app presented 3,300 pictures (it presents what it can: 5,660 on an idle machine), 6 copy draws fell back; with two, 155 s,
-18.4 MIPS, 1,611 pictures, 3 fallbacks; with three the machine fell behind real time (280 s for 143 s of play, 10.2 MIPS) and
-presented 1,611 pictures. Every run exited 0 and ended on the same logic frames: a starved host slows the game and thins the
-in-between pictures; it does not skip simulation steps, corrupt a picture or crash. A real older CPU or GPU is a physical
-test this PC cannot do (Phase 4).
+**Known, accepted (owner, 19 October 2026): the mission opens with about 7 presented frames (just over 100 ms) at the
+original 320x200, with the 3-D view still missing from the cockpit,** before the first logic step completes and the
+high-resolution pictures start, because a high-resolution picture needs a completed pair of steps. It is one process
+switching mode (no exit or reload); a hold or fade over those frames is possible but not wanted. Captured with
+`F117_PRESENT_SHOTS`.
 
 ## Consolidate world geometry before more clipping exceptions (15 October 2026)
 
 *Superseded as the main path the same day by [the current plan](#the-current-plan-for-60-fps-15-october-2026-owner).
-The findings and the scene-input capture stay valid; this project's own scene renderer (`src/present/scene_mesh.c`,
+The findings and the scene-input capture stay valid, and are background for the planned Remastered renderer
+([roadmap.md](roadmap.md), "Re-release features"); this project's own scene renderer (`src/present/scene_mesh.c`,
 with a synthetic CTest) is an unconnected draft, not a finished fix.*
 
 **The rule that stands (owner):** no one-off clipping exceptions, for coastlines or anything else. A clip-only
@@ -923,14 +951,12 @@ preparation is not independent. Evidence: `D:/f117-gate/present-v2/scene`.
 
 ## Verification
 
-The fullscreen results are in the pacing table above.
-
 A presentation change is held to these checks (commands and costs: [repeated-processes.md](repeated-processes.md);
 the latest full-gate tally: the handoff):
 
 - **The full gate** for anything that can reach the machine (every CTest, all routes, both instruction profiles,
   matched seeds, reachability/event checks). A read-only presentation change may use `tools/present_light_check.py
-  --base REV` instead: every CTest, the 45-route N=1 presentation check and boot at N=4/9; it refuses if any changed
+  --base REV` instead: every CTest, the every-route N=1 presentation check and boot at N=4/9; it refuses if any changed
   file is not presentation-only, and `drawfeed.c/.h` and `rerun.c/.h` (which snapshot and run machines) never are.
 - **`tools/presentation_check.py`** compares complete presentation routes with the full gate's saved interpreter scan
   baselines: every guest hash, route milestone, closed logic frame and interpolation endpoint; it rejects
@@ -945,17 +971,19 @@ the latest full-gate tally: the handoff):
 - **The owner's flight** (`session-20261015-103956` replay at N=9): 69 checkpoints, final `31c259b992340414`, 2,101
   exact logic frames / 2,099 exact pairs.
 - **Motion:** `tools/motion_check.py` (pairing, deformation, step timing), `test_world_jitter`, `test_hud_jitter`.
-  **Timing:** `tools/presentation_timing.py`, isolated and, for fullscreen, only with the owner's approval.
+  **Timing:** `tools/presentation_timing.py`, isolated and, for fullscreen, only with the owner's approval (results:
+  [fullscreen timing](#fullscreen-4k60-timing-and-the-threaded-presentation)).
 
 These are correctness checks; they do not establish physical refresh or the look of motion.
 
 ## Open questions and risks
 
-- **`rerun` motion.** The smoothed clock still skips; its tuning against picture age, the owner's verdict on a physical
-  display remains open. Parallel copies for refresh rates above 60 Hz (per-machine observer, runtime and fix state)
-  moved to the unscored Phase 4 on 17 October 2026: the owner has no convenient way to test above 60 Hz.
-- **`interp`.** Batch pairing covers 86-99% of painted polygons in the study windows, but unpaired shapes switch and
-  wrongly paired ones deform; pairing is frozen.
+- **`rerun` motion.** The smoothed clock still skips a little; its defaults are set (19 October) and further tuning
+  against picture age is optional. The owner's verdict on a physical display remains open. Parallel copies for refresh
+  rates above 60 Hz (per-machine observer, runtime and fix state) moved to the unscored Phase 4 on 17 October 2026:
+  the owner has no convenient way to test above 60 Hz.
+- **`interp`.** Batch pairing covers 86-99% of painted polygons in six of the seven study windows (30% in the night
+  take-off roll), but unpaired shapes switch and wrongly paired ones deform; pairing is frozen.
 - **Things that are not smooth** (explosions, tracers, discrete HUD readouts, a cut between views) are left alone:
   held, or switched on the logic frame.
 - **The wall.** If the original's rasteriser depends on state not in the draw list (a clip window held in a register,
@@ -964,6 +992,8 @@ These are correctness checks; they do not establish physical refresh or the look
   not explain their footprint, zero-area span polygons, missing metadata and the HUD items not drawn from state stay
   scaled. The clipper tolerances are measured bounds, not derived limits. Widths by drawing role are not
   assigned.
-- **Real display.** Refresh pacing on a physical panel, `rerun` fullscreen timing, the look of motion at 60 and
-  144 Hz, fullscreen acceptance of the latest HUD batch, cargo/career flights and slower machines all remain owner
-  (Phase 4) checks.
+- **Real display.** `rerun`'s submitted-picture timing at 4K/60 passes on the owner's screen (18-19 October). What
+  the panel shows (tearing, the look of motion at 60 and 144 Hz), fullscreen acceptance of the latest HUD batch,
+  fullscreen cargo/career flights and slower machines remain owner (Phase 4) checks.
+- **Remastered** (planned 24 October 2026, not started) needs a new renderer whose design is not written yet; the
+  roadmap's rule is that the simulation state stays equal across the three presentations on the same inputs.

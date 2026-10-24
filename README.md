@@ -193,7 +193,7 @@ set (and, for Munt, `mt32-roms`).
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` models a 1991 386DX/33 (original flight typically 5-9 fps with fixes off) |
 | `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (60,000,000 in `f117a`; 9,000,000 in `f117run` and route checks, GOG DOSBox's `cycles=9000`). Default D1REAL separately targets fifteen simulation steps per second |
-| `--sim-hz 8\|15` | D1REAL cadence (default 15). Normal play uses 15 updates/s normally and 30 during 2x compression at the default 60,000,000 ips; 40,000,000 missed compressed-flight capacity. Use `--sim-hz 8 --ips 20000000` for the previous play mode. [Broader validation and 4K60 results](docs/cadence15-validation.md). Replays restore their recorded choice; legacy logs use 8 |
+| `--sim-hz 8\|15` | the D1REAL simulation rate (below): 15 (default) or the earlier 8; `--sim-hz 8 --ips 20000000` is the previous play mode. Replays restore their recorded rate; logs without one use 8 |
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer (General MIDI: wrong instruments), or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
@@ -204,19 +204,21 @@ set (and, for Munt, `mt32-roms`).
 | `--present scan\|replay\|interp\|rerun` | the picture in flight; see [Presentation](#presentation) |
 | `--present-scale N` | with `replay`, `interp` or `rerun`: the picture N times finer, 1-16 |
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
-| `--present-age interp\|extrapolate` | with `interp`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
+| `--present-age interp\|extrapolate` | with `interp` or `rerun`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fix ID`, `--list-fixes` | enable a fix; `all` enables the fifteen normal-play fixes, `none` clears the set. Normal play starts with all fifteen enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 
-Any option the app does not recognise (for example `--help`) prints the full
-list, including diagnostic options not shown here.
+Any option the app does not recognise (for example `--help`) prints a usage
+summary, which also lists diagnostic options not shown here.
 
-The default D1REAL option uses fifteen simulation steps per real second
-and thirty during 2x time compression;
-`--present interp` interpolates their display. D1REAL replaces the original adaptive simulation
-cadence; see [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
-The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` options repair incoming
+The default D1REAL fix replaces the original adaptive simulation cadence with
+fifteen simulation steps per real second, thirty during 2x time compression;
+it is validated at the default 60,000,000 ips
+([validation and 4K60 results](docs/cadence15-validation.md); 40,000,000 ips
+cannot keep up in compressed flight). `--present interp` interpolates the
+picture between steps. See [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
+The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` fixes repair incoming
 missile lifetime, slot reuse, proximity sampling and acceleration.
 
 Host keys (chosen so as not to collide with the game's):
@@ -229,10 +231,11 @@ Host keys (chosen so as not to collide with the game's):
 
 ### Settings file
 
-Every option can also be kept in a settings file: copy `f117a.example.ini`
-(written beside `f117a.exe` by the build) to `f117a.ini` in the same folder
-and edit it - one option per line without its dashes (`data = C:\GOG Games\F-117A`,
-`roland = munt`, `mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = none`).
+Any option except `--config`, `--no-config` and `--list-fixes` can also be
+kept in a settings file: copy `f117a.example.ini` (copied beside `f117a.exe`
+by the build) to `f117a.ini` in the same folder and edit it - one option per
+line without its dashes (`data = C:\GOG Games\F-117A`, `roland = munt`,
+`mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = none`).
 Fix entries apply in order: `fix = none` followed by `fix = D4, D5` selects
 only those two; leaving fix settings out keeps all fixes enabled for normal play.
 Relative paths are taken from the file's folder, and an option given on the
@@ -270,10 +273,11 @@ others.
 **Frame rate.** `interp` and `rerun` are the modes that raise it. The window
 presents one picture per display refresh (vsync), so the frame rate follows
 the refresh rate Windows has set for that display: 60 fps at 60 Hz, 144 fps
-at 144 Hz, if the PC keeps up. The game's own logic still runs at its
-original rate (about 15-17 steps a second); the extra pictures are drawn
-between its steps, one step behind. `scan` and `replay` also present at the
-display's refresh but only show a new picture when the game draws one.
+at 144 Hz, if the PC keeps up. The game's own logic still runs at its own
+rate (fifteen steps a second under the default D1REAL, about 15-17 with
+fixes off); the extra pictures are drawn between its steps, one step behind.
+`scan` and `replay` also present at the display's refresh but only show a
+new picture when the game draws one.
 
 The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
 selects fullscreen, `present = interp` and scale 9:
@@ -388,11 +392,10 @@ py tools/airstrip_check.py --data "C:\GOG Games\F-117A" --replay tools/routes/se
 Every route and its observer:
 [docs/architecture.md](docs/architecture.md#observing-flights-through-normal-controls)
 and [tools/routes/README.md](tools/routes/README.md). Career routes chain
-actual earned saves; no saved game is distributed. The
-[parity audit](docs/parity-audit.md) documents independent DOSBox saves,
-flight observations, input stress, host pacing and rendered audio, including
-the remaining differences and checks requiring hardware or ROMs. Every
-process the project repeats, and what it costs, is listed in
+actual earned saves; no saved game is distributed. The dated
+[parity audit](docs/parity-audit.md) records the DOSBox save, flight, input
+stress, host pacing and rendered audio comparisons, with their differences.
+Every process the project repeats, and what it costs, is listed in
 [docs/repeated-processes.md](docs/repeated-processes.md).
 
 ## Repository layout

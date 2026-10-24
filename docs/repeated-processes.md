@@ -17,110 +17,17 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Current practice by kind of change
 
-- **Progress scoring changes.** Run `tests/test_progress.py` and `tests/test_census_classify.py`
-  with the installed Python interpreter, then print the scoreboard and inspect the saved byte
-  counts. Encoded review validation adds `tests/test_encoded_code.py` (five adversarial tests);
-  all 74 focused tests take under one second, and the full census refresh about ten seconds.
-  No game runtime changes means no matched-code gate is needed. Checklist scoring
-  (24 Oct) preserves every byte count and scales existing P2 weights to 90 before adding weight 10.
-
-- **Rare preset coverage repair (24 Oct, bc prechecks).** Five whole-table seeds passed;
-  600DF00D at 4000 states found only 301/303 instructions in the older ISOUND.LOG 0253
-  fixture. No compared state differed. A fixed input share now guarantees all eight byte
-  command presets, after the old RNG draws. Reproof retains all 96 mutation controls,
-  five private seeds, six production seeds, 303/303 coverage and two real IBM-boot checks
-  (22.7 s each, 26 checkpoints, 464 calls). The production rebuild only recompiled the
-  test runner; matched.c is unchanged. Repeat all six whole-table seeds and compare the
-  1358 unaffected primary reports with the archived failed attempt before the gate.
-  Evidence: `D:/f117-gate/p2-isound-log-0253-coverage-repair/` and its sibling audit.
-
-- **Reviewed capture patches (24 Oct).** Run the census-classification regressions (61 tests),
-  progress tests (13) and encoded-code tests (5): 79 tests took 1.82 s while the whole-table prechecks shared the machine. The real-image refresh validates the reviewed singleton-jump
-  identities/templates and reference range constraints. Preserve the ordinary rejection
-  checks: zero captures, wrong file/CS:IP, changed opcodes and unreviewed singletons still fail.
-  During a matched batch, defer the published byte refresh until its new named coverage passes.
-
-- **Installer private proofs (24 Oct, awaiting integration).** The ordinary kit/finish/audit
-  workflow proved ASOUND.LOG 005A, ISOUND.LOG 060E and RSOUND.LOG 005B plus its separate
-  00AD return: 170 bytes, 57 instructions, 80 caught mutants and six seeds per entry.
-  Real-route proofs took 39.3 s (full_cycle), 23.6 s (ibm_boot), 27.1 s (Roland installer)
-  and 21.6 s (Roland return); IBM controls took 22-28 s. These are proof timings while
-  other private compilation shared the machine, not a gate comparison. A literal-claim
-  audit independently checks complete/disjoint XB and explicit SM4_NEED claims and pins
-  configs, dossiers and source hashes. Evidence: `D:/f117-gate/p2-installers-review-20261024/`.
-  No progress credit until the full integration gate passes.
-
-- **Matched routine batch (Phase 2).** Private proofs per routine in
-  `D:/f117-gate/p2-*`, then one acceptance directory per batch
-  (`p2-batch-<letter>-accept/`: `accept.py`, `overlap_accept.py`,
-  `optimized.py`, `audit_private.py`, `finalize.py`). Batch al: acceptance
-  1,549 s with the presentation overlapped (427 CTests, 63 routes / 62 fresh
-  interpreter sessions, N=1 718 s started 793 s into the gate, boot N=4/9 75 s).
-  A keyed per-route baseline is what lets the presentation checks overlap the
-  gate; without a valid one (after a route or non-matched `src/` change) they
-  run sequentially (batch ai: 1,658 s in all). Before a gate, two cheap
-  pre-checks catch most failures: the commit-keyed seed through
-  `tools/func_lockstep_par.py --jobs 8` (about 8 minutes per seed in batch as) and every new route
-  once with `--engine recomp` for `[matched] OVERRUN`. `optimized.py` passes `--only` with
-  unpadded hex (a padded address once selected zero states) and requires
-  positive comparison counts; `finalize.py` validates old coverage against the
-  previous batch's own registration table and every new byte against the
-  dossiers. The census refresh afterwards takes seconds.
-- **Extra seed sweep before a matched batch.** Batch at checked all 1,251 entries at 4,000 states,
-  eight shards, using the commit-keyed seed, `0x27182818` and `0x20261022`; 1090 s in total.
-  The commit-keyed seed first failed on VGAME `73C8` (a latent clock undercount in its target-zero path, fixed in
-  batch at: the body now charges 6, 13 and 6 instructions where it charged 5, 10 and 6); 16 seeds at 20,000 states
-  then compared equal. Of the 1,248 old per-routine reports, 1,247 were unchanged at the common seed (`73C8` differs). New entries also passed six extra
-  private seeds beyond the kit's five, with every planted defect caught. Evidence:
-  `D:/f117-gate/at-precheck-verdict.json`; the three new optimized CTests took 2.80 s.
-- **Run the pre-check seeds together.** `D:/f117-gate/precheck_parallel.py LOGDIR SEED...` runs the three whole-table seeds at once
-  (8 workers each, 24 of the machine's 32 threads, BelowNormal): 11 minutes against 18 in series. Batch at's three seeds
-  gave identical tallies and identical per-routine lines either way, so no check changed; the saving is about 7 minutes a batch.
-- **Batch au pre-checks.** Three whole-table seeds and three extra seeds, each round through `precheck_parallel.py` (about 12 minutes a round),
-  all clean at 1,256 entries; the 1,251 older reports were unchanged. Evidence: `D:/f117-gate/au-pre3/` (final text) and `au-pre2/`.
-- **Batch av pre-checks.** Six seeds (the commit-keyed one, `0x27182818`, `0x20261022`, `0x31415926`, `0x1BADB002`, `0x600DF00D`) in two
-  `precheck_parallel.py` rounds, all clean at 1,261 entries; the 1,256 older reports were unchanged. Evidence: `D:/f117-gate/av-pre/`.
-- **Batch aw checks.** Seven new optimized CTests passed in 2.28 s. Six whole-table seeds at 4,000 states
-  passed in two three-seed rounds (`D:/f117-gate/aw-pre/`); acceptance took 1,671 s with 509 CTests.
-- **Batch ax checks.** Twenty targeted optimized CTests passed in 1.82 s; six whole-table seeds passed in two three-seed rounds
-  (1,407.72 s total, `D:/f117-gate/ax-pre/`). The core gate took 1,584 s and full acceptance 1,795 s: 528 CTests, 63 routes /
-  62 fresh interpreter sessions, both timing profiles, event limits, all N=1 presentation and boot N=4/9. All 95 new optimized seed
-  checks passed. The first precheck attempt exposed a missed callee-return boundary in the test runner; exact CPU-state recovery keeps
-  the final memory/I/O comparison and grants no named completion. Nineteen synthetic cases cover the return, prior interrupt gaps and
-  incorrect clocks, registers, flags, memory and I/O. No checks were removed.
-- **Relocated fixture infrastructure (23 Oct, accepted locally).** After the normal build, 76 focused CTests take about six seconds;
-  metadata, parallel-translation and region tests plus invalid-base CLI controls take about two seconds. A whole-table zero-base
-  control (4,000 states, eight shards) runs beside 73-entry sweeps at 0400h and 0800h. The first arena attempt took 613 s:
-  all 1,287 zero-base reports were unchanged, while one 0800h state exposed an uninitialized graphics fixture page table.
-  The repaired fixture fills disjoint pages without new random draws; fresh controls precede six standard precheck seeds and
-  the full gate. `D:/f117-gate/modules-loadbase-20261022/run-infrastructure-acceptance.py` sequences these checks;
-  `p2-batch-loadbase-accept/` additionally pins every changed code/test/CI file and requires zero added credit.
-  Fresh repaired controls passed in 608 s; six seeds took 1,530 s. The core gate took 1,369 s, followed by sequential presentation
-  (N=1 564 s; boot N=4/9 101 s in parallel), 1,955 s for the trial. The new CMake target changed the interpreter key, so the old
-  baseline was correctly unused. A closing-audit bug still checked it; the repaired generic audit independently verifies the
-  actual fresh sequential references and presentation results. The current baseline is promoted and the old one archived.
-  The final verdict's wall time includes the idle interval before that audit repair; use the stage timings for performance.
-- **Bounded entries and shared returns.** The private kit carries an optional self-write/return span separately
-  from the named coverage window and can emit an explicit completion boundary and clock count. Batch at's
-  prefix proof checks flags at its one-instruction boundary, then compares the original continuation's full
-  final state; only two bytes earn credit. Below-entry returns still need an explicit COV origin. Default
-  kit output is byte-identical; invalid zero, overflow and out-of-range bounds are rejected. Gate acceptance
-  and credit audits remain unchanged.
-- **Batch acceptance tooling (`D:/f117-gate/accept-kit/`, 18 October).**
-  `new_batch.py LETTER PREV BASE_COMMIT DIR...` creates `p2-batch-<letter>-accept/`
-  from generic scripts (no hand-editing of routine names, counts or hashes: tests, routine totals,
-  mutations and added bytes are read from the gate log, `matched.c` and the verdicts; far-segment
-  routines use linear addresses; `callfar` kinds and call macros are recognised); `accept.py` runs the
-  gate with the overlapped presentation, the ten optimized seeds, the baseline group verdict and the
-  credit audit, then `audit_private.py` is run by hand. `finish_all.py DIR[:ROUTE]...` runs each
-  directory's checkpoints, boot proof and verdict side by side on spare CPUs. Wall-time changes that
-  keep every check: the gate now starts the fresh interpreter sessions (62 today) (the critical path: the
-  career chain is ~1,285 s) right after the build and before the unit tests rather than after them
-  (`build_recomp.py`: the same tests run concurrently, a failure still fails the gate); the overlapped
-  N=1 presentation starts speculatively when coverage ends instead of after the re-translation check
-  (the closing runner-hash comparison turns a wrong guess into a failed acceptance, never a pass).
-  Expected saving: roughly 100-170 s of ~1,700 s; the remaining floor is the interpreter chain
-  (about 337 s of build and tests, plus the 1,285 s career run).
+- **Progress scoring and census classification.** Run `tests/test_census_classify.py`,
+  `tests/test_progress.py` and `tests/test_encoded_code.py` with the installed Python
+  interpreter, then print the scoreboard and inspect the saved byte counts. The 80 focused
+  tests take one to two seconds (79 took 1.82 s on 24 Oct with whole-table pre-checks
+  sharing the machine); the full census refresh takes about ten seconds. The real-image
+  refresh validates the reviewed singleton-jump identities and templates, the reference
+  range constraints and the encoded SETUP rows; the ordinary rejections must still fail
+  (zero captures, wrong file or CS:IP, changed opcodes, unreviewed singletons). No game
+  runtime change means no matched-code gate is needed. During a matched batch, defer the
+  published byte refresh until the batch's new named coverage passes. Scoring rules are in
+  [progress.md](progress.md).
 - **Static-code scope review.** Read each candidate range in full, decode every
   instruction independently with Capstone, then let `reviewed_code_bytes`
   verify image hashes, complete instruction boundaries, counts and
@@ -129,15 +36,88 @@ verification) is not an optimisation; it needs the owner's approval.
   (logo mouse helpers; SETUP `1E4F`). Refresh with the existing census file,
   the latest named coverage and batch-h route coverage. No gate is rerun for a
   scope-table-only change; the classifier, progress and dossier tests are
-  enough (`tests/test_census_classify.py` and the progress tests).
+  enough. Findings: [static-code-review.md](static-code-review.md).
 - **Module scope refresh.** Decode and validate the existing route captures against all 17
   game code files, then refresh progress with the current named proofs. The 21 Oct measurement
   took 2.8 s; the complete score refresh took about 9 s. Scope-only tooling changes use the
   progress, classifier and dossier regressions plus the normal gate CTests
   (`ctest --test-dir build -E func_lockstep --output-on-failure -j 8`). The standalone
   serial `func_lockstep` CTest duplicates the gate's separate sharded check; use
-  `tools/func_lockstep_par.py --jobs 8` for that comparison. Production and matched code are
-  unchanged. Evidence: `D:/f117-gate/modules-scope-20261021/`.
+  `tools/func_lockstep_par.py --jobs 8` for that comparison. Evidence:
+  `D:/f117-gate/modules-scope-20261021/`.
+- **Matched routine batch (Phase 2).** Private proofs per routine in
+  `D:/f117-gate/p2-*` ([below](#phase-2-proofs-matched-routines)), then one acceptance
+  directory per batch, `p2-batch-<letter>-accept/`, made by the accept kit
+  (`D:/f117-gate/accept-kit/`, 18 October): `new_batch.py LETTER PREV BASE_COMMIT DIR...`
+  writes generic scripts (`accept.py`, `overlap_accept.py`, `optimized.py`,
+  `audit_private.py`, `finalize.py`) that read tests, routine totals, mutations and added
+  bytes from the gate log, `matched.c` and the verdicts, so nothing is hand-edited
+  (far-segment routines use linear addresses; `callfar` kinds and call macros are
+  recognised). Run `audit_private.py` right after `new_batch.py`, before the gate.
+  `accept.py` runs the gate, the presentation checks, the optimized seeds, the baseline
+  group verdict and the credit audit. `finish_all.py DIR[:ROUTE]...` runs each proof
+  directory's checkpoints, boot proof and verdict side by side on spare CPUs.
+  `optimized.py` passes `--only` with unpadded hex (a padded address once selected zero
+  states) and requires positive comparison counts; `finalize.py` validates old coverage
+  against the previous batch's own registration table and every new byte against the
+  dossiers. A batch's new optimized CTests take two to three seconds (batches at to ax:
+  1.82-2.80 s); the census refresh afterwards takes seconds.
+- **The presentation overlaps the gate only with a keyed baseline.** With a frozen
+  per-route baseline whose interpreter key matches, the N=1 presentation runs beside the
+  gate's interpreter tail (batch al: acceptance 1,549 s, N=1 718 s started 793 s into the
+  gate); without one (after a route or non-matched `src/` change, or a new CMake target)
+  it runs after the gate (batch ai: 1,658 s in all). `new_batch.py` picks the newest
+  baseline whose `base_key` equals `build_recomp.interpreter_key` and prints which:
+  batches ay to bc copied the previous batch's stale baseline and all fell back to
+  sequential, an estimated 200 s a gate. Check the gate's log for "Started" lines and no
+  fallback message.
+- **Pre-checks before a batch's gate.** Two cheap checks catch most failures: every new
+  route once with `--engine recomp`, looking for `[matched] OVERRUN`, and the whole matched
+  table at six seeds (4,000 states, eight shards each): the commit-keyed seed,
+  `0x27182818`, `0x20261022`, `0x31415926`, `0x1BADB002` and `0x600DF00D`.
+  `D:/f117-gate/precheck_parallel.py LOGDIR SEED...` runs three seeds at once (8 workers
+  each, 24 of the 32 threads, BelowNormal): batch at's three seeds took 11 minutes against
+  18 in series, with identical tallies and per-routine lines. Two rounds of three took
+  1,407.72 s for batch ax (`D:/f117-gate/ax-pre/`) and 1,530 s for the load-base
+  infrastructure. One commit-keyed seed alone through `tools/func_lockstep_par.py --jobs 8`
+  took about 8 minutes (batch as). Every older per-routine report must equal the previous
+  batch's at the common seeds, and any change must be explained (batch ax: 1,266 identical,
+  two explained). New entries also pass six extra private seeds beyond the kit's five.
+  Found this way: a latent clock undercount on VGAME `73C8`'s target-zero path (the
+  commit-keyed seed; the body now charges 6, 13 and 6 instructions where it charged 5, 10
+  and 6), and an ISOUND.LOG `0253` fixture that reached 301 of 303 instructions with no
+  compared state differing (`0x600DF00D`, batch bc).
+- **Repairing a fixture that misses instructions.** Keep every existing random draw and
+  add the new inputs after them in a fixed share of states, so earlier states are
+  unchanged (ISOUND.LOG `0253`: a share of states forces each byte command preset). Reprove
+  the routine in its own directory (all private seeds, the original mutation controls, the
+  six production seeds at full coverage, its real route), then rerun the six whole-table
+  seeds and require every unaffected per-routine report to equal the failed attempt's.
+  Evidence: `D:/f117-gate/p2-isound-log-0253-coverage-repair/` and its sibling audit.
+- **Harness load-base changes.** A change to how the matched harness places images needs a
+  whole-table zero-base control (4,000 states, eight shards) beside sweeps of the affected
+  entries at 0400h and 0800h (73 entries; about 610 s together), then the six pre-check
+  seeds and the full gate, adding no credit.
+  `D:/f117-gate/modules-loadbase-20261022/run-infrastructure-acceptance.py` sequences these;
+  `p2-batch-loadbase-accept/` pins every changed code, test and CI file and requires zero
+  added credit. The 23 Oct run: core gate 1,369 s, then the presentation after it (N=1
+  564 s; boot N=4/9 101 s in parallel), 1,955 s in all. Its new CMake target changed the
+  interpreter key, so the old baseline was correctly unused; the closing audit must then
+  verify the fresh sequential references, not the old baseline (it once checked the old
+  one). Read stage timings for performance, not that verdict's wall time, which includes
+  an idle interval before the audit repair.
+- **Harness changes after an unexpected rotating-seed failure.** Reproduce on the
+  pre-change tree first. An escape-guard or return-recovery repair must keep exact
+  original-state evidence (clock, registers, segments, flags) at the recovered return,
+  still compare the whole final state and grant no named-code credit; a one-tick negative
+  control must still fail. If production source is unchanged, a rerun may reuse the
+  freshly verified interpreter cache while tests and registration are the only amendment.
+  A recovered state can change later fuzz inputs, because the one-in-four mid-run probe
+  draws from the routine's random stream: prove the stream equal up to that point with
+  fixed/control traces and keep every iteration. In batch ax SETUP's startup recovered two
+  returns; the probe at state 509 changed inputs from state 510 and its comparison count
+  went from 649 to 631, with all 4,000 iterations kept
+  (`D:/f117-gate/ax-legacy-io-20261023/rng-review.json`).
 - **Normal-play default changes.** `tests/test_fix_defaults.py` (ROM-free,
   dummy SDL video/audio, six synthetic COM session cases) must fail against the
   pre-change executable and pass after rebuilding the app and runner; run the
@@ -153,45 +133,32 @@ verification) is not an optimisation; it needs the owner's approval.
   rerun-engine check for every new input fixture; check that a fixture really
   fires or steers (engine equality of an inactive fixture is not coverage);
   home-orbit attempts give combat, not compression, coverage.
-- **Presentation-only changes** (`src/present`, observer, drawlist): full
-  CTests, all 63 N=1 routes and boot N=4/9 against the frozen interpreter
-  baselines of the preceding full gate (about 1,450 s in all); changes to
-  `drawfeed`/`rerun` need the full gate too. Diagnostics that replay a frozen
+- **Presentation-only changes** (`src/present`, observer, drawlist): the light
+  check, or full CTests, every N=1 route and boot N=4/9 against the frozen
+  interpreter baselines of the preceding full gate (about 1,450 s in all);
+  changes to `drawfeed`/`rerun` need the full gate too
+  ([Presentation checks](#presentation-checks)). Diagnostics that replay a frozen
   record (pixel-origin `DT_HUD_FINE` counts, before/after frames) are
   correctness checks, not pacing measurements. Dispatcher or observer
   micro-benchmarks never promote a default.
-- **Harness changes after an unexpected rotating-seed failure.** Reproduce on
-  the pre-change tree first. An escape-guard repair must keep exact
-  original-state evidence (clock, registers, segments, flags) at the destroyed
-  return, still compare the whole final state and grant no named-code credit;
-  a one-tick negative control must still fail. If production source is
-  unchanged, a rerun may reuse the freshly verified interpreter cache while
-  tests and registration are the only amendment.
-  A recovered state can also change later fuzz inputs: the existing one-in-four
-  mid-run probe draws from the routine's random stream. In batch ax's shared-seed
-  review, 1,266 old reports are identical, END's error reporter gains one valid
-  comparison, and SETUP's startup gains two recovered returns. The latter's new
-  probe at state 509 advances the stream, changing inputs from state 510 onward;
-  its total comparison count changes from 649 to 631 while all 4,000 iterations
-  remain. Fixed/control traces prove the first 510 random-stream values equal
-  and retain every check (`D:/f117-gate/ax-legacy-io-20261023/rng-review.json`).
 
 ## Practical traps
 
 - ROM-free tests that group the real route catalogue must provide a synthetic
   install: reading damaged-install route arguments stages their private copy.
-  `tests/test_build_recomp.py` now supplies one; all twelve checks pass with
-  `F117_DATA` pointing at a missing install. This repairs the previous CI
-  failure without changing route grouping or its assertions.
+  `tests/test_build_recomp.py` supplies one; all twelve checks pass with
+  `F117_DATA` pointing at a missing install.
 - **`matched.c` must compile with `/Os`.** From batch ab on, MSVC's `/O2` (which includes `/Ot`) took 90+ minutes
   to compile `src/matched/matched.c` (the first batch-ab gate took 108 minutes; later gates only looked fast because the
   object was reused). The slow functions are the big pre-existing VGAME routines (`vgame_draw_model_in_view`,
   `vgame_display_pass` at 125,787 instructions after inlining, ...), not the new ones; batch ab only tipped the optimiser
   over. Measured on 20 October 2026: `/O2 /Ob2` still running at 90 min, `/O2 /Os` 6.5 min, `/O1` 4.5 min, `/O2 /Ob0`
-  10 s (the forced-inline CPU helpers become calls), `/O1 /Ot` slow. `CMakeLists.txt` sets `/Os` on that one source file.
-  Find the slow functions of a compile with `cl ... /O1 /d2cgsummary` ("Anomalistic Compile Times"). A stuck `cl.exe` is
-  one core at 100%: check CPU time before concluding it is idle, and never run more than two or three of these at once
-  (3-4 GB each).
+  10 s (the forced-inline CPU helpers become calls), `/O1 /Ot` slow. `CMakeLists.txt` sets `/Os` on that one source file;
+  `player_unpack` alone also turns optimisation off (the PLAYER decompressor stalled the compiler more than 18 minutes,
+  8 Oct). Find the slow functions of a compile with `cl ... /O1 /d2cgsummary` ("Anomalistic Compile Times"). A stuck
+  `cl.exe` is one core at 100%: check CPU time before concluding it is idle, and never run more than two or three of these
+  at once (3-4 GB each). Stop an orphan compiler only after checking its source and output paths; otherwise its object
+  stays locked.
 - PowerShell-redirected pacer logs are UTF-16: decode them explicitly before
   looking for a success line. Restoring a source by copying can keep its old
   timestamp and fool Ninja into reusing an experimental object: touch it and
@@ -217,145 +184,126 @@ interpreter and requires identical checkpoints and final hashes ("parity").
 Beside those it runs the instruction lockstep (both timing profiles, steps 6
 and 6b) and the matched-routine lockstep (three seeds, steps 7-7c), then
 checks that every routes-only matched routine ran on a route (step 8) and that
-no matched routine ran past its event limit (step 9).
+no matched routine ran past its event limit (step 9). What each check
+establishes is in [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
 
-**Fix selection (17 October):** normal application play starts with all fifteen
-fixes, including D1REAL and D1PROX. `build_recomp.py` and `run_route.py`
-explicitly prepend `--fix none`; subsequent fix-specific route options or
-recorded headers select the intended test cases. The headless runner also
-starts with fixes off. Do not enable every fix for ordinary parity: both
-original behavior and repaired behavior need their separate checks.
-`tests/test_fix_defaults.py --app APP --runner RUNNER` is a ROM-free defaults
-process check, also in Windows CI. Private recording/replay checks verify all,
-none, a recorded subset and explicit replay additions; old logs retain none.
-Evidence: `D:/f117-gate/default-fixes-20261017/headers/verdict.json`.
-The combined-default check reuses `d1real_check.check` with all fifteen fixes
-at 20 MIPS in both engines: seven normal/compressed/pause/dialog cases and
-every case hash equal (69.17 s). Use separate processes: the Machine API
-allows one open machine per process. Private wrapper and evidence:
-`D:/f117-gate/default-fixes-20261017/{all_fixes_clock.py,all-fixes-clock/verdict.json}`.
-The hidden recorded-session app check took 165.69 s: both presentation modes
-retain 2,238 exact logic frames and equal presented/scanned palette counts;
-rerun draws 7,676 intermediate pictures (`app-session/verdict.json`). These
-checks shared the machine with the gate and are correctness checks, not
-performance acceptance.
+**Fix selection.** Normal application play starts with all fifteen fixes (17
+October); the headless runner starts with none, and `build_recomp.py` and
+`run_route.py` prepend `--fix none`, so ordinary parity checks original
+behaviour and fix-specific route options or recorded headers add the fixes
+they test. Do not enable every fix for ordinary parity: original and repaired
+behaviour each need their own checks. The defaults are checked by
+`tests/test_fix_defaults.py --app APP --runner RUNNER` (ROM-free, also in
+Windows CI); by private recording/replay checks of all, none, a recorded subset
+and explicit replay additions (old logs retain none); by a combined-default
+clock check that reuses `d1real_check.check` with all fifteen fixes at 20 MIPS
+in both engines (seven normal/compressed/pause/dialog cases, every case hash
+equal, 69.17 s; separate processes, since the Machine API allows one open
+machine per process); and by a hidden recorded-session app check (165.69 s:
+both presentation modes keep 2,238 exact logic frames and equal
+presented/scanned palette counts; rerun draws 7,676 intermediate pictures).
+Both timings shared the machine with a gate. Evidence:
+`D:/f117-gate/default-fixes-20261017/`.
 
 The standing command (the handoff has the local paths) is `py
 tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (21 October 2026, batch am):** 432 CTests; 63 routes identical, run
+**Current figures (24 October 2026, batch bc):** 601 CTests; 63 routes identical, run
 as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction states under each
-timing profile; 1,193 matched routines at three seeds; reachability and event limits clean.
-Gate 1,586 s; acceptance 1,572 s with the presentation checks overlapped (batch al: 63 N=1 routes,
-260,613 exact frames / 260,527 pairs; boot N=4/9 736 / 732). Evidence:
-`D:/f117-gate/p2-batch-am-accept/`. Typical gates take about 1,500-1,800 s; the longest
+timing profile; 1,359 matched routines at three seeds; reachability and event limits clean.
+Core gate 1,304 s; acceptance 1,741 s with the presentation after the gate (no valid keyed
+baseline: N=1 over 63 routes 420 s at 16 workers, boot N=4/9 79 s). Evidence:
+`D:/f117-gate/p2-batch-bc-accept/`. Typical gates take about 1,300-1,800 s; the longest
 career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
 | 1-2 translate, build | 87-113 s incremental (15 Oct); 7-8 min in a fresh work directory; about 6 min after a CPU-header edit | a fresh work directory builds everything; a CPU-header edit rebuilds all generated C and both matched objects | **fixed by practice**: reuse the previous run's work directory (`sync_tree` rewrites only files whose bytes changed, so the build recompiles `matched.c` and relinks); the output is a function of the sources either way. Generated regions are capped at 1,024 instructions (a 6,446-instruction VGAME function had dominated MSVC: 479 s before, 120 s after; both timing profiles keep their instruction verdicts) |
-| unit tests | 22.47 s for 75 tests at eight workers, against 159.76 s serially (14 Oct) | ran serially before the route workers | **fixed**: up to eight workers (`--unit-jobs N`; `--unit-jobs 1` is serial). Same executable, inputs, selection, affinity and priority: every test's captured output identical to the serial run. Proof: `D:/f117-gate/leaf-batch/unit-parallel-verdict.json` |
+| unit tests | 22.47 s for 75 tests at eight workers, against 159.76 s serially (14 Oct) | ran serially before the route workers | **fixed**: up to eight workers (`--unit-jobs N`; `--unit-jobs 1` is serial). Same executable, inputs, selection, affinity and priority: every test's captured output identical to the serial run. Proof: `D:/f117-gate/leaf-batch/unit-parallel-verdict.json`. The fresh interpreter sessions now start right after the build, before the unit tests, which run concurrently (a failure still fails the gate) |
 | 3 coverage | 711-815 s (15 Oct), or skipped | runs every route once only to find untranslated code; as long as its longest job (`career_promotion`, after its `career_serge` seed) | **skipped when provably empty**: a record (`~/f117-recomp-local/coverage-verified.json`, `--coverage-record`) holds the key of a pass that added nothing - translator, sources other than `matched.c`, game files, routes - and the digest of the generated code it ended on; the same key and digest skip the pass. A matched routine only replaces original instructions that already ran, so it cannot add code to cover; a wrong one fails parity or lockstep. Verified: full verdicts identical with and without the skip. The key hashes `CMakeLists.txt` without `add_test` entries, whole-line comments and blank lines (`build_digest`), so adding a test does not rerun coverage. A commit adding a matched entry still reruns it (the translator isolates each matched entry) |
 | 4 translate, build again | 35-41 s; about 220 s when coverage added code | regenerated and rebuilt everything though coverage usually adds nothing | **fixed**: only files whose bytes changed are rewritten; the rebuild is skipped when none did; `--seed-coverage DIR` starts from an earlier run's coverage. A rebuild restarts the locksteps, so their earlier results do not stand for the final build |
 | 5 parity | 345 s after overlap and reuse; 1,223 s with coverage skipped | as long as `career_promotion`'s interpreter run, which first replays its whole seed chain | **fixed**: longest jobs first; identical sessions run once (found by content, not name: `recon_career` and `recon_return`), with every route's milestones checked on the shared run. **Overlap**: `--overlap-jobs N` (default 8; 0 = off) starts the interpreter runs during coverage from a private copy of the first build's runner and libraries (`snapshot_runner`); parity then runs only the recompiled half and collects them. **Coverage-run reuse**: when coverage adds no translated code the first build stands, so the coverage runs (made with the parity checkpoints) are the recompiled half; `--check-coverage-reuse` reruns them and requires equality (proved 15 Oct: all 44 equal, every verdict identical), `--no-reuse-coverage-runs` turns reuse off. Measured 15 Oct: 1,706 s before (coverage 711 + parity 848), 1,556 s with the overlap. The gate now ends when `career_promotion`'s interpreter chain does, so reuse saves CPU (about 513 s of recompiled reruns) rather than wall time |
-| 5b interpreter half of parity | all 44 sessions run fresh in the standing command | an interpreter run is a pure function of the game files, the route and the interpreter's own code | **cached** (`--interp-cache DIR`): key over `src/` except `matched.c`, `CMakeLists.txt` (as above), the game files and the route (text, replay files, seed chain); entries expire after 14 days. Measured: parity 522 s to 174 s with 31 of 31 reused, every verdict identical. The standing command passes `--verify-interp-cache`, which reruns every session and requires equality, so "0 reused, 44 run" is expected and the cache saves nothing there |
+| 5b interpreter half of parity | every session (62) runs fresh in the standing command | an interpreter run is a pure function of the game files, the route and the interpreter's own code | **cached** (`--interp-cache DIR`): key over `src/` except `matched.c`, `CMakeLists.txt` (as above), the game files and the route (text, replay files, seed chain); entries expire after 14 days. Measured: parity 522 s to 174 s with 31 of 31 reused, every verdict identical. The standing command passes `--verify-interp-cache`, which reruns every session and requires equality, so "0 reused, 62 run" is expected and the cache saves nothing there |
 | 6-7 locksteps | add 0 s | waited for parity though they need only the build | **fixed**: start right after the first build, beside coverage and parity; output to files in the work directory (`*_lockstep.log`). Measured 7 Oct with coverage forced: 778 s to 572 s, the lockstep tail 241 s to 0, every route line and both tallies identical |
 
 Before these changes (6 Oct) a gate took 30-38 minutes; the first round
 alone cut the same code's gate from 1,895 s to 1,365 s with every route's
-clock, hash and verdict and both lockstep tallies identical.
+clock, hash and verdict and both lockstep tallies identical. The overlapped
+N=1 presentation also starts speculatively when coverage ends rather than
+after the re-translation check (the closing runner-hash comparison turns a
+wrong guess into a failed acceptance, never a pass); with the early interpreter
+start this was expected to save roughly 100-170 s of ~1,700 s. The remaining
+floor is the interpreter chain: about 337 s of build and tests, plus the
+1,285 s career run.
 
-**Translation preparation (20 October).** Discovery and emission now use one
-process per module, up to eighteen (`recomp.py --jobs 1` is serial), with the
-module list and console reports kept in load order. The larger saving came
-from building each module's relocation mask once during coverage loading,
-instead of rebuilding it for every captured instruction. The unchanged serial
-generator and the new parallel generator produced identical sets of 58 files,
-byte for byte, both without coverage and with the current coverage corpus:
-51.23 s became 5.20 s with coverage; without it, 2.05 s and 1.99 s. These were
-sequential runs on four assigned CPUs, beside private proof work, so they
-establish output equality and an observed saving, not a controlled gate timing.
-Evidence: `D:/f117-gate/translate-parallel-20261020/verdict.json`. Windows CI
-also compares actual spawned workers with serial translation on synthetic
-modules, including relocation, coverage, isolation and mutations, and requires
-a worker failure to propagate before a module list is published.
+**Translation preparation (20 October).** Discovery and emission run one
+process per module ([architecture.md](architecture.md#the-recompiler)), and
+each module's relocation mask is built once during coverage loading instead of
+for every captured instruction. The serial and parallel generators produced
+identical sets of 58 files, byte for byte, with and without the coverage
+corpus: 51.23 s became 5.20 s with coverage; without it, 2.05 s and 1.99 s.
+These were sequential runs on four assigned CPUs beside private proof work, so
+they establish output equality and an observed saving, not a controlled gate
+timing. Evidence: `D:/f117-gate/translate-parallel-20261020/verdict.json`.
+Windows CI also compares spawned workers with serial translation on synthetic
+modules (relocation, coverage, isolation, mutations) and requires a worker
+failure to propagate before a module list is published.
 
-For private proofs of routes shorter than 50 million clocks, the kit adds a
-fresh interpreter reference at one-million-clock intervals. Its final state
-must still match the keyed route result and its milestones must pass; the
-candidate must then match every finer checkpoint and that final state, with
-positive routine calls and no event overrun. This adds checkpoints to short
-proofs; the ordinary gate retains its existing routes and intervals.
+**Overlap worker count (15 Oct).** A batch tried 16 interpreter workers beside
+coverage: every one of the 44 sessions then still ran fresh, all 45 route
+results were identical, and every other check remained. It took 1,718 s
+against 1,553 s for the previous eight-worker batch, with different
+source/build work; after the build, 1,329 against 1,257 s. Not a controlled
+speed gain, so the default stays at eight (the owner declined changing it).
 
-**Overlap worker count (15 Oct).** The latest batch tried 16 interpreter
-workers beside coverage: every one of the 44 sessions still ran fresh, all
-45 route results were identical, and every other check remained. It took
-1,718 s versus 1,553 s for the previous eight-worker batch, with different
-source/build work; after the build, 1,329 versus 1,257 s. This is not a
-controlled speed gain, so the default stays at eight. Private proof
-parallelism and write-if-changed builds remain adopted.
-
-**Adaptive interpreter pool (16 Oct, private prototype).** At batch e's
-interpreter-only tail the eight-worker pool used 26% total CPU even though
-coverage had ended. `D:/f117-gate/p2-batch-e-accept/adaptive_pool.py` retains
-eight running jobs during coverage, then permits sixteen through a semaphore
-on the same executor. Scheduling tests require exactly 44 calls, identical
-results, the requested before/after concurrency, idempotent expansion and
-preserved exceptions. All pass (`adaptive-pool-verdict.json`). This is not
-integrated and establishes no real gate speed gain. Queue analysis of this run
-(`schedule-analysis.json`) gives 1,346 s observed interpreter wall and a 1,285 s
-longest job; keeping measured job durations fixed, eight-to-sixteen scheduling
-would save only about 61 s. This estimate ignores changed CPU contention and
-second translation. It may not justify adoption. Presentation overlap against
-frozen, current-key baselines has now passed the checks below. Every verification
-remains mandatory.
+**Adaptive interpreter pool (16 Oct, private prototype, not integrated).**
+`D:/f117-gate/p2-batch-e-accept/adaptive_pool.py` keeps eight interpreter jobs
+running during coverage, then permits sixteen; its scheduling tests pass
+(`adaptive-pool-verdict.json`). At batch e's interpreter-only tail the
+eight-worker pool used 26% of the CPU, but queue analysis
+(`schedule-analysis.json`: 1,346 s observed interpreter wall, 1,285 s longest
+job) puts the saving at only about 61 s with job durations held fixed,
+ignoring changed contention.
 
 **Presentation beside the interpreter tail (16 Oct, adopted batch practice).**
-The private acceptance wrapper `D:/f117-gate/p2-batch-f-accept/overlap_accept.py`
-freezes existing baselines and validates them against current interpreter/route
-cache keys, full checkpoints/final hashes and every route milestone. After the
-gate's final build settles, N=1 uses a frozen runner and baselines on 16 workers
-beside the eight fresh interpreter workers, under the existing 24-CPU affinity.
-Boot N=4/9 starts after the gate. Every command/check is retained. Before accepting,
-all fresh interpreter sessions must match the frozen baselines at every
-checkpoint/final and milestone; all frozen file and runner hashes must still match.
-Five deliberate faults are rejected (wrong final, wrong checkpoints, missing
-final, changed frozen file, stale result claimed as fresh). Evidence:
-`overlap-guards-verdict.json`, `fresh-baseline-verdict.json`, `overlap-verdict.json`.
-Batch f: gate 1,781.97 s, total acceptance 1,836.51 s;
-N=1 started at +1,087.12 s. These are observed
-concurrent timings, not a controlled speed comparison against batch e. Sequential
-checking remains the fallback if no valid keyed baseline is available. No change
-to the gate's default worker count or fresh interpreter verification.
-
-The wrapper also stores each route's own key within a shared session (20
-October). `recon_career` and `recon_return` run the same inputs but carry
-different milestone comments, so their route keys differ. Comparing both to
-the lead route's key rejected a freshly frozen baseline. The wrapper now
-validates every route's key and the exact session grouping, while retaining
-the lead's cached state, all routes' milestone checks, fresh interpreter
-comparisons and frozen-file checks. Eight guard checks include changed alias
-milestones, wrong lead/alias keys, changed grouping, expired references and
-changed files or interpreter inputs; evidence:
-`D:/f117-gate/p2-batch-af-accept/baseline-key-guards.json`.
-When the gate itself validates and reuses its unchanged coverage record,
-presentation starts after the unit tests instead of waiting for a coverage
-completion line that will not be printed. The final frozen-runner and fresh
-interpreter comparisons still apply.
+`overlap_accept.py` (first in `D:/f117-gate/p2-batch-f-accept/`) freezes
+existing baselines and validates them against the current interpreter/route
+cache keys, full checkpoints and final hashes and every route milestone. After
+the gate's final build settles, N=1 uses a frozen runner and baselines on 16
+workers beside the eight fresh interpreter workers, under the 24-CPU affinity;
+boot N=4/9 starts after the gate. Before accepting, every fresh interpreter
+session must match the frozen baselines at every checkpoint, final state and
+milestone, and every frozen file and runner hash must still match. Five
+deliberate faults are rejected (wrong final, wrong checkpoints, missing final,
+changed frozen file, stale result claimed as fresh): `overlap-guards-verdict.json`,
+`fresh-baseline-verdict.json`, `overlap-verdict.json`. Each route keeps its own
+key within a shared session (20 October): `recon_career` and `recon_return`
+run the same inputs with different milestone comments, so comparing both to
+the lead route's key had rejected a fresh baseline. The wrapper validates
+every route's key and the exact session grouping; eight guard checks cover
+changed alias milestones, wrong lead/alias keys, changed grouping, expired
+references and changed files or interpreter inputs
+(`D:/f117-gate/p2-batch-af-accept/baseline-key-guards.json`). When the gate
+validates and reuses its coverage record, the presentation starts after the
+unit tests instead of waiting for a coverage completion line that will not be
+printed. Sequential checking is the fallback when no valid keyed baseline
+exists; the gate's worker counts and fresh interpreter verification are
+unchanged.
 
 **What sets the wall time.** `parallel()` prints each stage's wall time,
 work, lower bound (the larger of the longest job and work / workers) and its
-four longest jobs; read that before changing worker counts. Measured 14 Oct
-(`--parity-only --verify-interp-cache`): 88 jobs, 16,736 s of work on 16
-workers (1,046 s if perfectly packed), stage 1,160 s, longest job 1,159 s
-(`career_promotion/interp`). A seeded route's job first replays its whole
-seed chain (`prepare_roster` in `run_route.py`): `career_serge` (790 s as its
-own job) plus its own run in sequence. The chain, not the worker count, sets
-the end; reusing the seed's roster would save work, not chain length. The
-remaining lever, dropping `--verify-interp-cache`, weakens a verification
-rather than speeding up the same one: the owner's decision, not yet taken.
+four longest jobs with their start and end offsets; read that before changing
+worker counts. Measured 14 Oct (`--parity-only --verify-interp-cache`): 88
+jobs, 16,736 s of work on 16 workers (1,046 s if perfectly packed), stage
+1,160 s, longest job 1,159 s (`career_promotion/interp`). A seeded route's job
+first replays its whole seed chain (`prepare_roster` in `run_route.py`):
+`career_serge` (790 s as its own job) plus its own run in sequence. The chain,
+not the worker count, sets the end; reusing the seed's roster would save work,
+not chain length. Dropping `--verify-interp-cache` or splitting the chain into
+checkpoint segments would weaken a verification rather than speed up the same
+one; the owner declined both (15 October).
 
 **Workers, affinity and priority.** 16 route workers (`--jobs 16`; the
 default would be 24 on this machine). A 24-worker run (12 Oct, coverage
@@ -397,13 +345,13 @@ route and lockstep workers remain experiments to benchmark first.
 ## Presentation checks
 
 **After a presentation-code change**, all headless:
-- `ctest -E func_lockstep -j 8`: the same 142 tests the gate runs (111 took
-  36.56 s on 15 Oct).
+- `ctest -E func_lockstep -j 8`: the gate's unit-test set (601 tests at batch
+  bc; 111 took 36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
-  --scales 1` over every route: 718 s for 63 routes at eight workers beside a gate
-  (batch al; 517.89-579.53 s for 45 routes at 16 workers alone). It keeps 260,613
-  exact logic frames / 260,527 exact interpolation pairs and every guest checkpoint
-  and final hash.
+  --scales 1` over every route: 718 s for 63 routes at 16 workers beside a gate
+  (batch al), 420 s alone after a gate (batch bc). It keeps every logic frame
+  and interpolation pair exact (260,613 / 260,527 in batch al) and every guest
+  checkpoint and final hash.
   Options: `--routes STEM...`, `--scales N...` (default 4 and 9), `--jobs N`
   (default 4), `--mode interp|rerun`. Run the full gate first for fresh
   baselines. It requires matching guest checkpoints, final hashes and route
@@ -412,8 +360,8 @@ route and lockstep workers remain experiments to benchmark first.
   short SETUP-only route may have no 50M-clock checkpoint and no flight
   frames). These concurrent runs check correctness, not refresh-rate
   performance.
-- `boot_to_flight` at `--scales 4 9`: about 56 s at two jobs, 368 frames /
-  366 pairs each.
+- `boot_to_flight` at `--scales 4 9`: about 56 s at two jobs (75-101 s in
+  recent acceptances), 368 frames / 366 pairs each.
 - `--mode rerun` (for `--present rerun`) adds to every check above: the
   unchanged machine copy draws its frame exactly at t = 0, real
   memory/machine/fix state is byte-identical around every copy, no DOS
@@ -443,11 +391,11 @@ since REV (the commit the last full gate passed on) is under `src/present/`
 and not included from guest-side code (it finds those headers itself), a
 presentation test or analysis tool, or documentation. `drawfeed.c/.h` and
 `rerun.c/.h` are refused despite their directory: they snapshot or execute
-machines, so changes there need the full gate plus the 45-route `--mode
-rerun` check. For eligible changes it builds, runs every CTest, the 45-route
-N=1 check against the last gate's baseline runs, and boot at N=4/9. A full
-gate is still needed before the next Phase 2 `kit.py checkpoints` (any `src/`
-change retires the interpreter cache entry).
+machines, so changes there need the full gate plus the all-route `--mode
+rerun` check. For eligible changes it builds, runs every CTest, the N=1 check
+over every route against the last gate's baseline runs, and boot at N=4/9. A
+full gate is still needed before the next Phase 2 `kit.py checkpoints` (any
+`src/` change retires the interpreter cache entry).
 
 *App-only changes* (owner-approved 15 Oct): `src/host/main.c` and the example
 ini files are built or copied only for `f117a.exe`, which neither the gate nor
@@ -547,41 +495,16 @@ CI. It measures submitted pictures on the available display, which may be
 virtual; tearing and perceived motion on a physical panel need the owner's
 eyes. Keep raw timing and game logs private.
 
-The owner's authorized longer fullscreen air-to-air run (17 October) took
-656.44 s, with no other heavy work: 17,241 pictures, p99 28.6976 ms and 3.7022%
-above 25 ms, failing both limits. Guest drift 0.005819 s; all 3,679 logic frames
-exact and final hash equal to a separate 56.2-second headless run. Evidence:
-`D:/f117-gate/present-v2/stage4-airair-long-20261017`. Further visible runs
-still need the owner's agreement; this result needs diagnosis, not more samples
-to explain away the failure.
-
-## Independent original-game clock
-
-The private `D:/f117-gate/default-fixes-20261017/clock86.py` uses the existing
-`b86_cargo_pilot.B86Machine` offscreen on a copied 386DX33/MS-DOS 5 profile.
-After 30 emulated seconds settling, capture 120 emulated seconds of mission
-time, S, compression and frame counter against 86Box's independent TSC clock.
-No flight input or fix is applied; START's mission RNG seed is staged by the
-existing front-end harness. Reuse `loop.state` for analysis rather than rerunning
-the VM when an analysis guard is wrong. The 17 October capture found 152 mission
-seconds in 119.994917 reference seconds at S=5 and normal compression=1;
-`analyze_clock86.py` and `finalize_clock86.py` retain samples, hashes and verdict.
-This tests original behavior on that profile, not developer intent or host
-wall-clock pacing. Interpretation: [speed-sweep.md](speed-sweep.md#original-game-clock-on-86box-17-october-2026).
-
-Latest (15 Oct, with state-driven bands): strike at 3840x2160 / 59.99 Hz /
-vsync / N=9, 7,718 flight pictures, p99 16.7314 ms, maximum 17.0385, no missed
-interval; 2,062 exact logic frames, final hash `bc8e3ae5a872405d` equal to a
-fresh headless reference. All three scenes and the four-CPU affinity run pass:
-[presentation.md](presentation.md). Run with nothing else heavy going; runs
-beside the gate are exploratory, not acceptance evidence. A private hidden
-3840x2160 Direct3D 11 probe (all state/interpolation flags, five
-intermediates per pair) measures strike / mode-2 / small windows at
-119.47 / 127.45 / 150.10 fps uncapped, regeneration/raster p99 below 5 ms,
-with occasional roughly 100 ms upload stalls; uncapped numbers do not prove
-refresh pacing. A visible fullscreen run the owner stopped is not evidence.
-Evidence: `D:/f117-gate/present-v2/band-finish`,
-`D:/f117-gate/present-v2/hud2`.
+Run with nothing else heavy going; runs beside the gate are exploratory, not
+acceptance evidence, and a visible fullscreen run needs the owner's agreement
+(one the owner stopped is not evidence). Results, including the 17 October
+air-to-air failure and its 18 October repair, are in
+[presentation.md](presentation.md). A private hidden 3840x2160 Direct3D 11
+probe (all state/interpolation flags, five intermediates per pair) measured
+strike / mode-2 / small windows at 119.47 / 127.45 / 150.10 fps uncapped,
+regeneration/raster p99 below 5 ms, with occasional roughly 100 ms upload
+stalls; uncapped numbers do not prove refresh pacing. Evidence:
+`D:/f117-gate/present-v2/band-finish`, `D:/f117-gate/present-v2/hud2`.
 
 ## Phase 2 proofs (matched routines)
 
@@ -592,21 +515,23 @@ lock, seeds, mutations, checkpoints, verdict, integrate; method and traps in
 verdict before starting the batch's gate; run no other heavy job during it
 (owner, 20 October).
 
-The current private queue uses three slots, each with one compiler job;
-larger routines start first, and a slot carries its routine through mutations,
-route checkpoints, boot and verdict before taking another. Batch ax's final
-pass took 1,240 s for 18 ready routines and one failed mutation list; the
-remaining routine passed after three equivalent edits were replaced with
-observable carry defects. This timing includes repeated proof work, not the
-whole batch's development cost. Fresh harness compiles still take roughly
-80-140 s per private project; reuse beyond the existing write-if-changed
-behavior needs an equivalence measurement before adoption. Three compiler
-processes remain the limit. The 114 extra-seed logs, exact mutation lists,
-source freshness and boot hashes were independently audited.
+The private queue uses three slots, each with one compiler job; larger
+routines start first, and a slot carries its routine through mutations, route
+checkpoints, boot and verdict before taking another. Batch ax's final pass
+took 1,240 s for 18 ready routines and one failed mutation list (that routine
+passed after three equivalent edits were replaced with observable carry
+defects); this includes repeated proof work, not the batch's whole
+development cost. Fresh harness compiles take roughly 80-140 s per private
+project, and three compiler processes are the limit. Proof workers can use
+separate CPU sets at BelowNormal priority beside the gate, leaving desktop
+CPUs free (two isolated lanes, `000FFF` and `FFF000`, refreshed two pending
+proofs in 192.62 s on 17 Oct: optimized libraries, five seeds each, all 115
+mutations, real-route and boot replays, source/coverage/mutation audits);
+keep each worker's mutation builds serial when sharing the machine.
 
 | Step | Cost | Note |
 |---|---|---|
-| private build loop | initial 9.9 s, edits 2.6-3.6 s | a direct candidate matched object linked before frozen generated/core libraries; no generated sources recompile. /Od is development evidence only (it avoided a very large optimizer peak); integration needs /O2, optimized seeds and a full gate. Library hashes kept with the private project |
+| private build loop | initial 9.9 s, edits 2.6-3.6 s | a direct candidate matched object linked before frozen generated/core libraries; no generated sources recompile. /Od is development evidence only (it avoided a very large optimizer peak); integration needs the production options, optimized seeds and a full gate. Library hashes kept with the private project |
 | private generation in a worktree | 21.9-30.7 s | from frozen coverage, its own generated directory; build with two workers and its own TEMP, after main's matched shards finish |
 | targeted seeds (`func_lockstep --only MODULE.EXE:IP --states 4000`) | 0.4-5 s per seed; 23.3 s for the 1,332-instruction mission generator | run every new body at four or five seeds: the default seed passed a body with a wrong resume point |
 | mutations | 37 edits about 8 min serially, 90 s four at a time | identical CAUGHT results; the kit never edits `body.c` |
@@ -615,62 +540,49 @@ source freshness and boot hashes were independently audited.
 | full gate | as above | one per batch |
 | census refresh (`reimp_names.py`, then `progress.py --census`) | about a minute for new leads; existing TSV refresh <1 s | the lead list changes only when the Reimp does; refresh the census each batch; explicitly proved interior spans retain credit without double counting |
 
-The census refresh now also validates and decodes the interpreter captures and refreshes the executed-code
-supplement outside the historical rows (17 Oct 2026; about 4 s for the current 45-route corpus).
-`py tests/test_census_classify.py` and `py tests/test_progress.py` cover classification, four-byte capture
-windows versus actual instruction lengths, relocated operands, bound vectors, stale hashes, changed code,
-COM origins, duplicate records and supplemental credit without duplicate counting (37 tests together).
-The private `census-gap-20261017/check_decoders.py` additionally checks every accepted instruction's length
-against Capstone: 57,646 agreements, zero differences; hashes of the capture corpus and tools are retained in
-`decoder-verdict.json`. This is a tooling/metric change; guest sources, matched bodies and parity evidence
-are unchanged. The supplement excludes static-only discoveries and reports other modules as unscored debt.
+The census refresh also validates and decodes the interpreter captures and
+refreshes the executed-code supplement outside the historical rows (about 4 s
+for the 45-route corpus of 17 Oct). The classifier and progress tests cover
+four-byte capture windows against actual instruction lengths, relocated
+operands, bound vectors, stale hashes, changed code, COM origins, duplicate
+records and supplemental credit without double counting. The private
+`census-gap-20261017/check_decoders.py` checked every accepted instruction's
+length against Capstone: 57,646 agreements, zero differences
+(`decoder-verdict.json`). The supplement excludes static-only discoveries and
+reports other modules as unscored debt.
 
-**Optimizer stalls (16 Oct).** START `1308` expanded four MOVSW/MOVSB
-palette copies into one optimizer graph: the batch's two normal /O2 compiles
-were stopped after more than 40 minutes. Compiling each new routine alone
-identified `1308` (still running at the 60-second cutoff; the other twelve
-took 1-5 seconds). A small MSVC-noinline palette-copy helper keeps the exact
-read/write and pointer-update order. The isolated routine then took 1.36 s,
-the complete `/d2cgsummary` compile 119.3 s and both normal /O2 matched objects
-about 149 s each. All five seeds, 53 mutations and both real routes were
-repeated for the revised body, then all 13 routines passed optimized seeds
-and the full gate. Evidence: `D:/f117-gate/p2-batch-b2-accept`.
+For private proofs of routes shorter than 50 million clocks, the kit adds a
+fresh interpreter reference at one-million-clock intervals. Its final state
+must still match the keyed route result and its milestones must pass; the
+candidate must then match every finer checkpoint and that final state, with
+positive routine calls and no event overrun. The ordinary gate keeps its
+existing routes and intervals.
 
-**Shared matched object (16 Oct).** Both runtime libraries used to compile
-`matched.c` separately with identical options. The `f117matched` object target
-now compiles it once and includes that object in both static archives; each
-archive remains self-contained. Normal /O2 settings and non-Windows PIC are
-preserved. Against both previous objects, all 9,372 non-debug sections have
-identical code, data, unwind tables, section characteristics and relocation
-targets (uninitialized BSS compared by size; linker-removed checksum records
-excluded). Evidence: `D:/f117-gate/p2-batch-c-accept/shared-object-verdict.json`.
-This removes one compiler invocation; a gate wall-time saving is not established.
-In one local build pair the two old compilations took 143.74 / 144.40 s
-concurrently, and the single shared compilation took 99.75 s (Ninja timings).
+The kit can carry an optional self-write/return span separately from the
+named coverage window, and emit an explicit completion boundary and clock
+count, for bounded entries and shared returns. Batch at's prefix proof checks
+flags at its one-instruction boundary, then compares the original
+continuation's full final state; only two bytes earn credit. Below-entry
+returns still need an explicit COV origin. Default kit output is
+byte-identical; invalid zero, overflow and out-of-range bounds are rejected.
 
-**Independent checks (17 Oct).** Two pending proofs were refreshed in two
-isolated lanes (`000FFF`, `FFF000`, BelowNormal), leaving eight CPUs for the
-desktop. The refresh took 192.62 s: optimized libraries/current bases,
-five seeds each, all 115 mutations repeated, real-route and boot replays, and
-source/coverage/mutation audits. Bodies, fixtures and library hashes held.
-Presentation N=1
-over all routes and boot N=4/9 can also overlap using a frozen runner and separate output directories
-(16 + 2 workers within the existing 24-CPU affinity). Gate workers and the
-default eight interpreter overlap workers are unchanged.
-
-The private kit writes generated project files only when their bytes change
-(15 Oct). An unchanged harness and CMake file therefore keep their timestamps
-across mutations; the candidate source still changes and is rebuilt. A
-mocked-build probe with real SETUP proof inputs requires identical generated
-SHA256s and build commands, retained unchanged timestamps, and a mutation
-changing only the candidate source. Evidence:
-`D:/f117-gate/kit-write-probe/verification.json`. An actual unchanged
-MPS_LOGO `08CC` proof build takes 1.59 s on its two assigned CPUs and Ninja
-reports no work (`D:/f117-gate/p2-logo-08cc/build-unchanged.log`). Actual
-seeds, mutations and route proofs still run normally; no proof is skipped.
-Proof workers can use
-separate CPU sets at BelowNormal priority beside the gate, leaving desktop
-CPUs free; keep each worker's mutation builds serial when sharing the machine.
+**Compile cost.** START `1308` expanded four MOVSW/MOVSB palette copies into
+one optimizer graph, and the batch's two normal compiles were stopped after
+more than 40 minutes (16 Oct). Compiling each new routine alone identified it
+(still running at a 60-second cutoff; the other twelve took 1-5 s); a small MSVC-noinline palette-copy helper that keeps the exact read/write and
+pointer-update order brought it to 1.36 s, after which the routine repeated
+all its proofs and the full gate (`D:/f117-gate/p2-batch-b2-accept`). Both
+runtime libraries now share one `f117matched` object target instead of
+compiling `matched.c` twice: against both previous objects all 9,372
+non-debug sections have identical code, data, unwind tables, characteristics
+and relocation targets (`D:/f117-gate/p2-batch-c-accept/shared-object-verdict.json`);
+in one build pair the two concurrent compilations took 143.74 / 144.40 s and
+the shared one 99.75 s, before the `/Os` change (Practical traps). The private
+kit writes generated project files only when their bytes change (15 Oct), so
+an unchanged harness and CMake file keep their timestamps across mutations
+while the candidate source is rebuilt; an unchanged MPS_LOGO `08CC` proof
+build takes 1.59 s and Ninja reports no work
+(`D:/f117-gate/kit-write-probe/verification.json`). No proof step is skipped.
 
 Each routine's states, calls and behaviour are in [roadmap.md](roadmap.md);
 the private evidence is in its named `D:/f117-gate/` directory. Typical
@@ -692,16 +604,29 @@ until every instruction is reached, swap in the named body, run the room-claim
 audit, the mutations, the real route, then the gate. If the first lockstep
 run is already equal, run the mutations before trusting it.
 
-Mutation catches require a passing unmodified baseline. The kit now refuses
+Mutation catches require a passing unmodified baseline. The kit refuses
 mutations or a verdict unless all five current seed logs show positive
 comparisons, zero skipped states for the selected entry, full instruction
-coverage and zero mismatches. Logs and mutation results must postdate their
-proof inputs. PLAYER `0010` exposed this: its baseline skipped almost every
-state, so its apparent mutation catches were invalid and it was rejected.
-The guard passes all 23 batch-af proofs; ten focused checks cover seed evidence
-and span aliases. Integration now refuses an automatic span for an IP already
-registered in another segment, requiring explicit handling and comparison of both;
-`D:/f117-gate/translate-parallel-20261020/seed-guards-verdict.json`.
+coverage and zero mismatches, and logs and mutation results must postdate
+their proof inputs. PLAYER `0010` exposed this: its baseline skipped almost
+every state, so its apparent mutation catches were invalid and it was
+rejected. Integration refuses an automatic span for an IP already registered
+in another segment, requiring explicit handling and comparison of both
+(`D:/f117-gate/translate-parallel-20261020/seed-guards-verdict.json`).
+
+**Changing an accepted routine.** Remove the routine's inherited named-byte
+coverage and collect fresh optimized coverage before computing its credit (a
+corrected RNG alias found by the rotating seed in batch j was reproved this
+way, with the failed gate kept under `p2-batch-j-accept/attempt-1-failed`).
+When replacing a named opening with its whole function, keep the old
+registered address, remove only its old wrapper and registration, preserve
+shared helpers used elsewhere, and add full span/coverage fixtures and a
+dedicated CTest (START `58DF` added 197 bytes this way without a new address).
+A census lead such as `5951` can be an interior arm: expand the enclosing
+function and its jump-table dossier before introducing a new override. Switch
+data are never byte credit. Screening joins actual byte credit: an
+unregistered census entry can be fully covered inside an existing named body,
+so a FREE lead alone is insufficient.
 
 **Traps that still apply.**
 - `SPANS` is keyed by module and IP, without a segment. A one-byte span for
@@ -721,17 +646,20 @@ registered in another segment, requiring explicit handling and comparison of bot
   overshoot. Every `SM4_NEED` resume address must be the instruction the state
   is actually at; no audit checks this, only other seeds.
 - A wait inside a matched routine must stop at `c->stop_at` (`SQ_RUN`), and a
-  nested INT run is clamped to the caller's next event (`support_int`):
+  nested INT run is clamped to the caller's next event (`support_int`);
   otherwise the run overruns the event limit on every route, which the
-  lockstep cannot see and step 9 of the gate catches. Private route checkers
-  reject overrun reports as well as differing hashes.
+  lockstep cannot see and step 9 of the gate catches
+  ([architecture.md](architecture.md#matched-routines-phase-2)). Private route
+  checkers reject overrun reports as well as differing hashes.
 - Stubs: write each into the segment its call executes in (data-segment
   writes left the real routines running and skipped 2,815 of 4,000 states).
   Stubs that fold their stack words into a checksum make a wrong pushed
   argument a memory difference; a plain RET stub hid one mutation.
-- Relocated operands: a segment immediate is relocated by the loader, not a
-  constant; zero-base fixtures miss it (Ctrl+Break installers, the logo record
-  builder). Use a nonzero image base or a varied operand.
+- Relocated operands are read from the loaded instruction
+  ([architecture.md](architecture.md#matched-routines-phase-2)). The harness
+  keeps the seven ordinary programs at load base zero (`--load-base` moves only
+  the launcher, overlays and drivers), where a constant zero segment passes:
+  plant a nonzero segment or vary the operand.
 - Terminal DOS error helpers do not return: replace them in fixtures with a
   jump to the routine's real epilogue so error arguments are compared. Real
   routes keep the original exits.
@@ -779,27 +707,6 @@ bookkeeping and state equality, not presentation pacing. Use fresh saves.
 42,391 states without differences (three targeted seeds: 23,978 interrupt
 states); a normal-driver replay reaching both handlers is still outstanding.
 
-**Batch j proof notes (17 Oct).** Four new routines retain five seeds each,
-full instruction coverage, 203 caught mutations and positive real-route calls;
-20 optimized seed runs repeat their checks. A pre-existing RNG alias bug found
-by the rotating gate seed was reproduced on main, corrected and independently
-proved with five seeds, 28 mutations, boot and `full_cycle`, then six optimized
-generic seed runs. The first failed gate is preserved under
-`p2-batch-j-accept/attempt-1-failed`; the complete gate and presentation checks
-were rerun after the correction. Inherited coverage for the changed RNG was
-removed and replaced with fresh optimized coverage before computing byte credit.
-Screening also joins actual byte credit: an unregistered census entry can be
-fully covered inside an existing named body, so a FREE lead alone is insufficient.
-
-**Existing-entry expansions (17 Oct).** Keep the old registered address
-when replacing a named opening with its whole function. Remove only its old
-wrapper/registration, preserve shared helpers used elsewhere, and add full
-span/coverage fixtures and a dedicated CTest. Retire that entry's inherited
-named-byte coverage and collect fresh optimized evidence. START `58DF` adds
-197 bytes this way without adding an address. A census lead such as `5951`
-can be an interior arm: expand the enclosing function and its jump-table
-dossier before introducing a new override. Switch data are never byte credit.
-
 ## Phase 2 candidate reading
 
 `tools/matched_draft.py --dossier` writes a private JSON beside the draft,
@@ -833,10 +740,9 @@ Windows CI runs them.
 
 | Process | Trigger | Measured cost | Redundancy and status |
 |---|---|---|---|
-| Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | 8 shards about 3 min 11 s for 653 routines (9 Oct; a single process took 21 min), the same report line for line | **sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does and a routine's states no longer move when others are added. Seeds 0x5EED0F117A, 0xC0FFEE and one from the gated commit's hash. Left: tracking writes instead of copying 1 MB a state |
-| Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | runs beside coverage and parity, no wait tail; 5,718,848 states per profile | the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
+| Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | 8 shards about 3 min 11 s for 653 routines (9 Oct; a single process took 21 min), the same report line for line; about 8 min a seed for the whole table by batch as | **sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does and a routine's states no longer move when others are added. Seeds 0x5EED0F117A, 0xC0FFEE and one from the gated commit's hash. Left: tracking writes instead of copying 1 MB a state |
+| Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | runs beside coverage and parity, no wait tail; 5,723,136 states per profile | the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
 | 386 flight engine parity (`stick_response.py --machine machine386 --engine interp/recomp`) | after a profile or translated timing change | 80 s interpreter, 60 s recomp, beside the gate (8 Oct) | all 574 memory/register/output/scanout checkpoints and stick responses identical; separate processes because the runtime is global |
-| MSVC matched-code compilation | every matched-code build | about 30 s for the file; the PLAYER decompressor stalled more than 18 min at /O2 (8 Oct) | only `player_unpack` disables MSVC optimisation. Stop an orphan compiler only after checking its source/output paths; otherwise its object stays locked |
 | Worktree build and generated code | per worktree | 8 min first, then incremental | give each tree its own TEMP; never share a generated directory between concurrent builds |
 | Route recording (adaptive pilots) | after a timing change moves a flight | 10-20 min per flight; try several parameters in parallel | recorded inputs replace them in the gate; a timing change invalidates all of them at once (see `airair_type5-8`, `strike`, `cargo`, `recon`) |
 | Targeted lockstep for one VGAME routine with returning driver thunks | before the full gate | 0.5-1.2 s per 4,000-state seed (9 Oct) | enabling thunk substitution changes test inputs to reach drawing branches (marker: 358 to 4,857 comparisons); it is not an identical-input optimisation. Full routes keep the actual driver |
@@ -858,6 +764,7 @@ Windows CI runs them.
 | Held-picture hashing in PC parity | each reference comparison | about one second on the saved capture | decodes only stationary scenes instead of every changing frame; eight regression tests (`tests/test_reference_timing.py`) take 0.13 s |
 | DOSBox-X closed-loop flight (`dosbox_cargo_pilot.py`) | per pilot change | 107 s wall in fast-forward (12 min paced); the same pilot on our machine about 1.5 min | fast-forward (`[cpu] turbo=true`) is the default: `result.json` and `flight.csv` identical to a real-time run. Run it beside the machine's flight |
 | 86Box closed-loop flight (`b86_cargo_pilot.py`) | per pilot change | about 200 s wall in fast-forward (`B86_FAST`) | deterministic (same `flight.csv` twice), so one flight is a verdict |
+| Original-game clock on 86Box (private `D:/f117-gate/default-fixes-20261017/clock86.py`) | evidence on the original's mission clock | 30 emulated seconds settling, then 120 emulated seconds captured; wall time not recorded | `b86_cargo_pilot.B86Machine` offscreen on a copied 386DX33/MS-DOS 5 profile; mission time, S, compression and frame counter against 86Box's TSC clock, no flight input or fix, START's mission seed staged by the front-end harness. Reuse `loop.state` for analysis instead of rerunning the VM when an analysis guard is wrong. Result: [speed-sweep.md](speed-sweep.md#original-game-clock-on-86box-17-october-2026) |
 | Machine-behaviour probe (`fidelity_all.py`) | after a machine-model change | about 2 min with a saved 86Box sheet; `--86box-run` adds 4 min | the 86Box sheet changes only with the model, so it is reused |
 | 86Box boot attempts | per BIOS or config change | 2-5 min per capture series | `hello_floppy.py` answers "does the BIOS boot" in one run first |
 | Silent 86Box speech waveform (`tools/ref86box/86box-audio.patch`, `B86_AUDIO=PREFIX`) | speech/sound comparison | incremental 86Box build 23 s; two intro runs together 28 s; takeoff-call flight 94 s; our interpreter replay 50 s; WAV render 1.6 s; comparison about 0.6 s (9 Oct) | records the mixer buffers before host playback (format and procedure in [build_86box.md](../tools/ref86box/build_86box.md#silent-speech-waveform-reference)). First require identical frame and port traces with capture off and on. Reuse captures while the binary, input and configuration hashes agree. Generated audio and game data stay outside the repo |
@@ -866,8 +773,7 @@ Windows CI runs them.
 
 The gate compares the recompiled engine with this project's own interpreter,
 so a model error shows in neither. Fidelity to a real PC is checked
-separately, against references: GOG's DOSBox 0.74 (`tools/fidelity.py`, saved
-video and flight captures), DOSBox-X for some timing traces, and 86Box running
-a 386DX/33 with MS-DOS 5.00, the 386 timing profile's reference
-([timing386.md](../tools/ref86box/timing386.md)). Those run per question or
-before a release (`pc_parity.py`), not per commit.
+separately against GOG's DOSBox 0.74, DOSBox-X and 86Box (a 386DX/33 with
+MS-DOS 5.00, the 386 timing profile's reference), per question or before a
+release (`pc_parity.py`), not per commit: layers 7 and 8 of
+[architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).

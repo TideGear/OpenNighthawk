@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (529),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (601),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -143,54 +143,35 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
-- **Completion scope (24 Oct).** The approved accounted-for checklist now has weight 10;
-  existing P2 weights scale proportionally to 90. Its first 585 / 44,654 reviewed bytes are
-  the two SETUP XOR code ranges, validated against source/decoded hashes, exact bounds and
-  instruction counts; no new matching credit. The full completion conditions, including
-  final indirect-entry closure, are in [progress.md](progress.md#phase-2-completion-requirements-owner-23-24-october-2026).
-  All 74 focused scoring/classification/encoded-validator tests pass; runtime sources match
-  batch bb's accepted hashes. Packer bootstrap measured at 203 bytes across seven files;
-  its packed representation still needs separate reviewed scoring (zero added credit).
-
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
       [architecture.md](architecture.md#matched-routines-phase-2); the table is
       at the end of `src/matched/matched.c`; how routines are proved now (the
-      private kit and parallel agents) and the next candidates:
-      [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
-      census (1,535 functions) with this project's regions as a private lead
-      list.
-      **Now (24 Oct):** 1,355 addresses matched. The score covers the expanded
-      game-code scope (all 17 files): the Reimp census rows plus code outside them that routes
-      or proofs execute and reviewed static code (`docs/census-code.tsv` and two strictly validated encoded SETUP ranges):
-      **175,324 / 205,967 creditable bytes** (the previous measure, which now scores only the naming item).
-      P2's matched item uses the gameplay score since 21 Oct: matched code runs **148,948 of the 163,907
-      bytes the routes execute, and 2,631 bytes of second-read code that stays original by design count as understood (92.48%); P2 81.41%, P3 78.12%, overall 88.80% after the approved checklist scoring revision**. In the census
-      alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
-      291 in part). Credit is by byte since 16 October; data, code that stays original
-      and certified-dead code leave the denominator
-      ([progress.md](progress.md#what-is-measured)). Per-batch credit is in the table below.
-      **What is left:** 12,819 executed bytes remain unmatched (of them 20 are design-rule
-      original code awaiting reviewed entries). The largest groups are ASOUND.117 4,662, ASOUND.LOG 1,226,
-      RSOUND.117 1,778, RSOUND.LOG 1,574, ISOUND.117 905, ISOUND.LOG 563, F117.COM 249,
-      VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251. The all-code measure has
-      31,586 uncredited bytes, including 13,817 uncredited reviewed static code bytes that no route runs.
-      No new route or dead certificate has been established for those static ranges: indirect/callback/vector
-      and writer closure remains incomplete ([static-code-review.md](static-code-review.md)).
-      About 2,500 machine-option-only error-path bytes stay in the denominator by the owner's decision;
-      831 probable-dead bytes still need evidence. The held static discoveries remain outside the score.
-      **Owner decision (21 Oct): no meaningful game code may be missed.** Approved: bring
-      the launcher, graphics library and sound drivers into the scope (the percentage
-      drops at first; measurement and scoring steps 0/1a/1b done in `D:/f117-gate/modules-scope-20261021/`;
-      harness and proof-kit work remains); the static-code work above; a review of the unreviewed bytes; and a
-      reference entry (name and one-line purpose) for every range that cannot be matched,
-      so nothing is left unexplained even when it earns no credit.
+      private kit and parallel agents), the current figures and the next
+      candidates: [../handoff.md](../handoff.md). `tools/reimp_names.py` joins
+      the Reimp's census (1,535 functions) with this project's regions as a
+      private lead list. How the scores are measured, and the full "P2 is done
+      when" definition (owner, 23-24 Oct):
+      [progress.md](progress.md#what-is-measured).
+      **Done:** 1,359 addresses matched in batches a to bc (table below). Every
+      route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
+      original by design; in the census alone, named code runs 160,003 of
+      165,425 creditable bytes (1,122 rows wholly, 291 in part).
+      **What is left:** the sound drivers hold most of the unmatched executed
+      bytes; the rest are the declined routines of the seven programs (below).
+      Beyond the routes: reviewed static code no route runs (no new route or dead
+      certificate yet: indirect/callback/vector and writer closure is incomplete,
+      [static-code-review.md](static-code-review.md)), matched code only fixtures
+      reach, the machine-option-only error paths (owner, 20 Oct: they stay in the
+      denominator), the probable-dead bytes, a second-read reference entry for
+      every byte outside the routes (the accounted-for checklist, weight 10 since
+      24 Oct), the packer stub's separate review, and the closing review of
+      indirect entries. Owner, 21 Oct: no meaningful game code may be missed.
       **Dead code** leaves the denominator only when certain (owner, 19 Oct), with a
-      certificate per row: `docs/census-dead.tsv` (73 rows, 2,927 bytes) and
-      `docs/census-dead-ranges.tsv` (868 bytes of jump slots no program binds or names
-      and 367 bytes of code no walk decodes; 21 Oct reviews). The START quiz is an option
-      (`--fix QUIZ`), not dead code, and its routines are matched.
+      certificate per row (`docs/census-dead.tsv`, `docs/census-dead-ranges.tsv`).
+      The START quiz is an option (`--fix QUIZ`), not dead code, and its routines
+      are matched.
       **Stays original code:** the timer interrupts (VGAME `1C9B`, START `8D0B`, END
       `4BEF`) open with STI, after which the run loop admits one more instruction
       before it looks at events, so a matched body could do nothing the original does
@@ -200,21 +181,14 @@ not the recompilation:
       inside their colour loop (VGAME `14C2:0000`, START `8378`, END `42E4`). The line
       clipper's divide-error handler (`0FB2:04DD`) is fixture-proven but no input reaches
       it (146,153 real clip divisions across 14 routes stay far under its threshold).
-      Declined: VGAME `0010` (`main`), START `8427` and END `4393` (wait loops routes
-      cannot finish), END `57B0` (an interior arm of printf), MPS_LOGO `1ADC` and `1C82`
-      (unequal); the list is `D:/f117-gate/kit/DECLINED.tsv`.
-
-### Relocation proof infrastructure (23 October)
-
-The test harness now loads the launcher, overlays and sound drivers at 0800h, applies generated relocation metadata at both image reloads,
-and compares named coverage against relocated bytes. The seven ordinary programs keep their historical zero base. Zero-base controls retain
-all 1,287 accepted per-routine reports; 73 affected entries pass at 0400h and 0800h without skips. A graphics fixture's missing renderer page
-initialization was repaired after a nonzero-base trace showed code being overwritten. No matched routine or score changed.
-
-Acceptance: 529 CTests, six whole-table precheck seeds, 63 routes / 62 fresh interpreter sessions, both timing profiles, three gate matched seeds,
-all N=1 presentation and boot N=4/9. Core gate 1,369 s; sequential gate/presentation trial 1,955 s. The inherited baseline key changed with the
-new CMake loader target; the closing audit now independently checks the fresh references actually used by that fallback. Evidence:
-`D:/f117-gate/p2-batch-loadbase-accept/` and `D:/f117-gate/modules-loadbase-20261022/`. Driver proofs remain next; no new credit.
+      SETUP's static timer handler `104D` opens with STI too (second-read entry,
+      24 Oct). The program launcher, F117.COM `0100`..`03CA`, only runs the other
+      programs and tests their exit codes (owner, 23 Oct; its overlay loader `03CB`
+      is matched).
+      Declined, and still Phase 2 work (owner, 23 Oct): VGAME `0010` (`main`), START
+      `8427` and END `4393` (wait loops routes cannot finish), END `57B0` (an interior
+      arm of printf), MPS_LOGO `1ADC` and `1C82` (unequal); the list is
+      `D:/f117-gate/kit/DECLINED.tsv`, the plan for each is in the handoff.
 
 ### How an entry is proved
 
@@ -233,7 +207,7 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to al (16-21 October 2026)
+### Batches e to bc (16-24 October 2026)
 
 Every batch below passed the same proof (see above): five seeds per routine
 with every instruction reached, all mutations caught, exact boot (26
@@ -288,10 +262,12 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, five private seeds per entry, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,727 s. |
 | aw | 22 Oct | 1,268 | 945 named bytes | START selection change `5E6F`, theatre page `5A8A`, message panel `6045` and panel rectangles `5FFA`; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query. All 458 instructions covered, five private seeds per routine, all 372 mutations caught, exact boot and real-route proofs. The private route proofs are thin for `5A8A`/`5FFA` (once each), `6045` (three times) and `1D69` (twice); the full gate runs each in 27 or more sessions. The theatre page has 35 fixture-only instructions. Six whole-table pre-gate seeds clean; all 1,261 old reports unchanged at `0x27182818`. 509 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,671 s. |
 | ax | 23 Oct | 1,287 | 271 named bytes | 19 leaf routines: START cel steps, BIOS ticks, mouse position, flush count and free-or-exit; END ticks; MISC BIOS key read; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode, exit checksum and formatter word/pointer readers; PLAYER picture close/end flag and interrupt-vector get/set. All 141 instructions covered, 344 caught mutations, 95 optimized seed checks. Six whole-table prechecks pass: 1,266 old reports identical, two changes explained by exact callee-return recovery and the existing mid-run probe's random draw. The harness now rejects contradictory unfinished I/O, checks all INT clocks and recognizes exact original returns with extra stack pops without granting completion credit; 19 synthetic cases pass. 528 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, event limits, N=1 presentation and boot N=4/9 pass. Added gameplay credit 230 bytes, fixture-only credit 41; core gate 1,584 s, acceptance 1,795 s. |
+| loadbase | 23 Oct | 1,287 | 0 (infrastructure) | Relocation proof infrastructure, no new routine: the harness loads the launcher, overlays and sound drivers at 0800h (CLI controls permit zero or 0400h..0800h), applies generated relocation metadata at both image reloads and compares named coverage against relocated bytes; the seven ordinary programs keep their historical zero base. All 1,287 zero-base reports identical; all 73 affected entries pass at 0400h and 0800h without skips; a planted DS=0 mutant invisible at zero is caught at both nonzero bases. A graphics fixture's empty renderer page table was repaired after a nonzero-base trace showed code being overwritten (a fixture repair, not a game bug). The new CMake loader target changed the interpreter key, so the closing audit now checks the fresh references the fallback actually used. 529 CTests, six whole-table precheck seeds, 63 routes / 62 fresh interpreter sessions, both timing profiles, N=1 presentation and boot N=4/9; core gate 1,369 s. Evidence also in `D:/f117-gate/modules-loadbase-20261022/` |
 | ay | 23 Oct | 1,290 | 1,114 named bytes | First sound-driver overlay routines: RSOUND.LOG `021B` (private-stack wrapper around two tick callees, `roland_boot`), ASOUND.LOG `0344` (AdLib timer tick service, `full_cycle`) and ISOUND.LOG `0253` (PC-speaker sequencer tick, `ibm_boot`). 420 instructions covered, five private seeds per routine, all 199 mutations caught, exact boot and real-route proofs. `0344` and `0253` are audited as partial: each stops at the counter-0 control write (a run-loop wake) and the original finishes the reload, STI and RET. Real routes run only part of `0344` and `0253` (no route reaches the sweep arms or the stream readers); lockstep holds the rest. Two harness hunks: a coverage-origin line for each of the two, and a self-write exemption for ISOUND.LOG's call counter at `cs:0251`. Gameplay credit +698 bytes, fixture-only +416 (named code no route runs joins the all-code scope). Whole-table pre-check at `0xadb6a420a86f`: 1,290 routines, 0 mismatching. 532 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,896 s. |
 | az | 23 Oct | 1,303 | 849 named bytes | First sound-driver leaf families, 13 routines in one gate: ASOUND.LOG `0515` (voice-record reset), `058F` (resets six records; hands back at its tail jump into `0515`, which runs as its own matched callee), `0A1C` and `0B30` (OPL operator-register writers, stubbed `02F6`) and `0333` (noise step, far return); ASOUND.117 `03C4` (its overlay twin); ISOUND.117 `0163` (sequencer and speaker-gate reset) and `0140` (song-state setup, calls the original `0168`); RSOUND.LOG `0171` (sequencer state, 63-iteration loop handed back at the loop head), `040C` and `020A`; RSOUND.117 `0B42` and `0B9C`. 272 instructions covered, five private seeds per routine, all 366 mutations caught, exact boot and real-route proofs (21,535 real calls for `03C4`, 8,155 for `0B9C`). Audit marks `058F`, `0140`, `0163` and `0171` partial. **Defect fixed:** the commit-keyed pre-check seed exposed START `28CE` (batch ax): the body read all four stack arguments up front, but the original reads `count` after it has stored `x`, so a stack overlapping the data segment gave a different AX (`28CE` now reads each argument through BP in the original's order; 14 seeds of 20,000 states and two whole-table seeds clean). 545 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,897 s. |
 | ba | 23 Oct | 1,322 | 1,048 named bytes | 19 sound-driver routines in one gate: ASOUND.LOG `019A` (chip init, 255 OPL register writes through stubbed `0300`) and the OPL register-writer family `07DC` `09B6` `0A00` `0A62` `0AAA` `0AEC` `0BB8` (stubbed `02F6`); ASOUND.117 `0839` and `05A5`; ISOUND.117 `0008`, `05A4`, `0626` and `0102` (speaker noise/vibrato tick with a forced vibrato arm); ISOUND.LOG `010B`; RSOUND.LOG `02BE`, `0580` and `0FA2` (six voice records, `08BE` stubbed); RSOUND.117 `0E2A`. 397 instructions covered, five private seeds per routine, all 595 mutations caught, exact boot and real-route proofs (23,898 real calls for `0102`, 53,520 for `0839`; `02BE`, `0008` and `010B`'s sibling arms are reached once or by lockstep only). Eight bodies are audited as partial (calls into original or already-matched code, claims the audit cannot count). **Defect fixed:** the commit-keyed seed exposed END `100D` (batch ad era): its block was checked with `room(c, 8)` but a CALL followed, and `guest_call` charges the CALL itself, so a stop limit landing exactly there ran the CALL one instruction late; the three call sites now reserve `+ 1`. A scan found 39 further bodies with the same shape (many false positives: bodies that claim the call in a separate `SM4_NEED`); all reserve `+ 1` now, which can only make a body decline sooner. 564 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,991 s. |
 | bb | 24 Oct | 1,355 | 1,623 named bytes | 33 more sound-driver routines in one gate: ASOUND.LOG `0640` `06AA` `0BE2` (eight calls to the matched OPL writers) `05DA` `0618` `05F7` (open/close/dispatch entries, relocated segment words, `05F7`'s indirect table call proved whole); ASOUND.117 `0E5E` family (`0DCE` `0D1C` `0C2E`), `03D8`/`03D5` (one body, claimed once), `0B90`, and the voice-reset group `05E7` with six thunk prefixes (`05E3` `05DC` `05D5` `05CE` `05C7` `05C0`, registered at the jump-only entry `05E7`); RSOUND.117 voice-start family (`0EDB` owns the shared tail, `0EBD` `0EC7` `0ED1` as bounded prefixes), `0444` `046D` `03D6` (stub `0C7C`); RSOUND.LOG `05F6` `05CC` `0611`; ISOUND.LOG `0051`; ISOUND.117 `008E` `00B5`. 641 instructions covered, five private seeds per routine, all 877 mutations caught. **Two audit catches, both fixed before the gate:** `05F7`'s two exit paths both claimed the shared tail at `0616`, which the disjointness check rejects — restructured to a single shared label; `05F6`'s fixture let two of its table's real targets (`0458`, `048E`) run as original code half the time, which would have credited their bytes to `05F6` without a proof — the fixture now always stubs them. Also added the sixth design rule "hardware wait loop" (unused: a first read found all 8 candidate loops can be completed by a fixture, so they were matched instead of exempted) and F117.COM's launcher as a reviewed "program launcher" original entry. 597 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 2,032 s. |
+| bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
 
 Notes that still matter:
 
@@ -712,42 +688,18 @@ Each is fixed; the named regressions keep the failing seed or case.
     40 MIPS in both engines and airborne clocks run at real time. The
     original's key-poll timing still limits exact whole-flight determinism
     across speeds, so it does not establish a safe speed.
-    The 17 Oct private cadence comparison keeps eight as the default:
-    14 passes the clock/dialog cases at 20 MIPS, 15 fails exact 2x
-    compression, and both higher rates fall behind at 9 MIPS. Input response
-    improves, but flight paths change; neither rate establishes developer intent.
-    A further private 15 Hz/S15 normal, 30 Hz/S15 compressed candidate passes
-    clock/dialog and rapid-transition checks at 40 MIPS after deadline phase
-    correction. Production `--sim-hz 15` is now implemented with recorded
-    cadence and explicit per-machine state; 239 CTests and all-fixes clock/
-    transition checks pass. Resumed 18 Oct full gate passes (45 routes,
-    both instruction profiles and three matched-routine seeds). Twelve fresh
-    Korea/Kuwait/North Cape flights agree between engines, but North Cape
-    compressed flight falls behind at 40 MIPS while airborne and undamaged
-    (272/300 updates, 18/20 mission seconds in ten seconds). A private 60-MIPS
-    reserve comparison keeps the same update cap: both engines pass ten
-    compressed minutes and all clock/transitions at 60 MIPS. The 40-MIPS
-    hidden app/replay and full presentation checks pass. Four 60-MIPS flight
-    pairs agree exactly with all airborne windows passing (31.8 observed
-    minutes, 73 enemy launches); full North Cape replay keeps 6,681 frames
-    exact and matches the API. The first native 4K/60 pursuit trace fails pacing
-    despite exact guest state (p99 32.93 ms, 12.95% over 25 ms, one startup
-    interpolation rewind). The later dispatch, row-capture and startup-clock
-    repairs pass that same recording at p99 16.94 ms with exact state.
-    [Broader 15/60 validation](cadence15-validation.md) adds twelve paired
-    cases, 960 exact airborne timing windows (160 unique minutes, including
-    35 min 40 s actually compressed), a successful landing, a confirmed
-    strike hit/credit and a paired thirty-minute compression soak. The
-    dedicated exposure flights record 183 enemy launches. Unsuccessful
-    automated air missions and the incomplete strike return remain explicit
-    limits. The separate native 4K60 compressed-flight capture also passes:
-    21,565 pictures, p99 16.92 ms, zero intervals over 25 ms, 21.84 ms
-    drift and all 8,992 logic frames/final state exact. The technical
-    recommendation is now 15/60 for normal play; after validation, the owner
-    approved making it the application default. Original 486/ET4000
-    parked references reach about 16.5 actual updates/s with S around 13,
-    supporting period-hardware responsiveness without establishing S15 intent.
-- [ ] **60+ fps and 4K presentation.** Optional and off by default
+    Production `--sim-hz 15` (15 normal / 30 compressed updates, S15, recorded
+    cadence and explicit per-machine state) became the normal-play default at
+    60 MIPS after [broader 15/60 validation](cadence15-validation.md) (owner,
+    18 Oct): twelve paired cases, 960 exact airborne timing windows (160 unique
+    minutes, 35 min 40 s actually compressed), a successful landing, a
+    confirmed strike hit/credit, a paired thirty-minute compression soak and a
+    native 4K60 compressed-flight capture (p99 16.92 ms, all logic frames
+    exact). At 40 MIPS North Cape's compressed flight falls behind, hence 60.
+    Unsuccessful automated air missions and the incomplete strike return
+    remain explicit limits. Original 486/ET4000 references reach about 16.5
+    updates/s with S around 13: period-hardware responsiveness, not S15 intent.
+- [x] **60+ fps and 4K presentation.** Optional and off by default
       (`--present replay|interp|rerun`, `--present-scale N`, `present =` in
       f117a.ini). Design, measurements and history:
       [presentation.md](presentation.md). Rules: the original's logic tick and
@@ -788,58 +740,19 @@ Each is fixed; the named regressions keep the failing seed or case.
     no longer the main path.
   - *Owner verdict (15 Oct):* rerun's motion at 4K accepted "at least for
     now" (fullscreen, apart from the original's jitter).
-  - *Open:* clock tuning against picture age; ask before any visible or
-    fullscreen test; the small `DF03`/`C2C8` vertex group that nudges less well;
-    fullscreen pacing: the longer 17 Oct air-to-air run fails (17,241 pictures,
-    p99 28.70 ms, 3.70% over 25 ms; exact guest state). Strike and landing
-    passed the earlier short checks. The 18 Oct 15-Hz /60-MIPS type-5 pursuit
-    capture also fails (18,606 flight pictures, p99 32.93 ms, 12.95% over
-    25 ms and one startup interpolation rewind; exact guest state, 5.2 ms
-    drift). Its scene differs, so cadence causality is untested. Screenshot
-    capture timed out twice; visual assessment remains open. See
-    presentation.md for evidence;
-    hidden profiling locates copied-draw CPU cost (46% main-thread samples
-    in linear override dispatch). The 18 Oct repair replaces those scans with
-    a sorted address lookup and keeps startup playback on one clock; fresh
-    full gate (241 CTests), all-route rerun and the same-record extra-draw
-    checks pass under `D:/f117-gate/4k60-fix-20261018/`. Fullscreen improves
-    to p99 21.58 ms, 0.03291% over 25 ms and no rewind, with exact guest
-    state, but still misses the 20.83-ms p99 limit. The observer follow-up
-    uses wrap-safe bulk row snapshots and skips unchanged pixel blocks.
-    Fresh full gate (242 CTests), all-route rerun, N=4/9 boot and combat
-    copy-isolation checks pass. The same-record fullscreen capture now
-    passes: 21,330 flight pictures, p99 16.94 ms, zero intervals over 25 ms,
-    no rewind, 15.94 ms clock drift and all 5,396 frames/final state exact.
-    Evidence is under `4k60-fix-20261018/observer/`. Visual assessment and
-    all-scene acceptance remained open at that checkpoint; broader validation
-    subsequently passed and the owner approved 15 Hz /60 MIPS as default. The owner
-    watched part of a later replay and found flight fine apart from map-edge
-    specks. Fine integer line caps were escaping their endpoint cells; the
-    clipping repair removes the reproduced remnants (22/32/38 pixels to zero)
-    with all 953 captured logic frames and the interpreter reference exact.
-    Evidence is under `D:/f117-gate/map-specks-20261018/`;
-    weapon and target symbology; long
-    cargo/career flights and slower machines. What the owner decided
-    against is under "Possible future work" below and is not scored.
+  - *Closed (18-19 Oct):* fullscreen 4K pacing (sorted override dispatch and
+    bulk observer row snapshots, `D:/f117-gate/4k60-fix-20261018/`; a 24-minute
+    fullscreen landing flight at 15 Hz / 60 MIPS: p99 16.95 ms, zero missed,
+    every logic frame exact); map-edge specks from fine line caps
+    (`D:/f117-gate/map-specks-20261018/`); the `DF03`/`C2C8` vertex group; the
+    playback-clock default 0.4 / 0.025; long flights and constrained cores as a
+    labelled proxy for slower machines. Evidence and figures:
+    [presentation.md](presentation.md) and the Stage 3/4 entries in
+    `docs/progress.json`. Other physical machines, other refresh rates and the
+    owner's visual judgement are a Phase 4 maybe; what the owner decided
+    against is under "Possible future work" below. Ask before any visible or
+    fullscreen test.
 
-## Possible future work (decided against for now, not scored)
-
-Things the owner decided not to do. They are not scored by `tools/progress.py`
-(owner, 17 Oct 2026) and stay here as ideas that may be taken up later, as with
-Phase 4. The decisions and their reasons are in
-[presentation.md](presentation.md) ("Stop improving primitive pairing", "The
-jitter is the original's; no smoothing", "Do not extend the draw distance").
-
-- [ ] **Smooth the original's road and coastline jitter**, at N=1 or any higher
-      scale (owner, 15 Oct 2026: it is the original's own, shown by the GOG
-      DOSBox release too; N=1 stays authentic and the finer modes keep the
-      original renderer's quirks).
-- [ ] **Refine clipped or off-screen outlines**: 6.1% of outline strokes in the
-      owner's sharp flight are still drawn from scaled whole-pixel endpoints.
-- [ ] **More work on primitive pairing** for in-between pictures (owner, 15 Oct
-      2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
-      because it deformed objects; in-between pictures come from `rerun`).
-- [ ] **A longer draw distance** (owner, 15 Oct 2026). Part of Mode 4 below.
 - [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 28, none started).
       *Two settings instead of preset modes.* **Presentation:** Original (320x200, original rate, nearest-neighbour 4:3, the validated
       default picture), Enhanced (the finer 4:3 redraw with in-between frames at 60+ fps; the final linear stretch is a setting with a
@@ -856,6 +769,25 @@ jitter is the original's; no smoothing", "Do not extend the draw distance").
       *Rules:* presentation never feeds the simulation, proved by equal simulation state across the three presentations on the same
       inputs; the mission clock stays real; saves carry their fix set and warn across the bug boundary. Conveniences that change play
       (save anywhere, difficulty) are not planned; if added they sit apart from both settings, off by default.
+
+## Possible future work (decided against for now, not scored)
+
+Things the owner decided not to do for the Original and Enhanced presentations (the original renderer). They are not scored by `tools/progress.py`
+(owner, 17 Oct 2026) and stay here as ideas that may be taken up later, as with
+Phase 4. The decisions and their reasons are in
+[presentation.md](presentation.md) ("Stop improving primitive pairing", "The
+jitter is the original's; no smoothing", "Do not extend the draw distance").
+
+- [ ] **Smooth the original's road and coastline jitter** in the original renderer, at N=1 or any higher
+      scale (owner, 15 Oct 2026: it is the original's own, shown by the GOG
+      DOSBox release too; N=1 stays authentic and the finer modes keep the
+      original renderer's quirks). A jitter-free picture is planned for Remastered (Phase 3, 24 Oct 2026).
+- [ ] **Refine clipped or off-screen outlines**: 6.1% of outline strokes in the
+      owner's sharp flight are still drawn from scaled whole-pixel endpoints.
+- [ ] **More work on primitive pairing** for in-between pictures (owner, 15 Oct
+      2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
+      because it deformed objects; in-between pictures come from `rerun`).
+- [ ] **A longer draw distance** in the original renderer (owner, 15 Oct 2026). Planned for Remastered instead (Phase 3, 24 Oct 2026).
 
 ## Phase 4 - checked by people and independent references
 
@@ -877,8 +809,8 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       display to test on, so it cannot be judged by the people who would use it.
 - [ ] **Coastline transitions:** the coastline's topology transitions are an
       issue of the original game itself (the owner, 17 Oct 2026; its jitter
-      shows in the GOG DOSBox release too). Not planned for the finer modes; a
-      person judges whether it is ever worth changing.
+      shows in the GOG DOSBox release too). Not planned for Original or Enhanced;
+      Remastered's new renderer replaces it (Phase 3).
 
 - [ ] **Maybe: line widths by drawing role, and a physical-panel review of the
       finer modes.** The remaining open parts of the high-resolution re-draw

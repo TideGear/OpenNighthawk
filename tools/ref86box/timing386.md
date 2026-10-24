@@ -365,8 +365,8 @@ same frame. `--box DIR`/`--ours DIR` reuse a run (rerun only ours after a
 profile change: about 15 s); `--only box|ours` makes one run. Both runs are
 deterministic: two runs gave byte-identical `frames.csv` on each side.
 
-Current result: see "File services" above (+39.3 ms end drift, 1,237 of 1,275
-picture changes exact in order). PASS is not met. The misses, as analysed on
+Current result: the last row of the EXEC table under "File services" above.
+PASS is not met. The misses, as analysed on
 the FreeDOS VM, are single-frame pictures taken mid-draw or mid-fade (86Box
 scans line by line, this machine in four 100-line parts) and START's mode-set
 blank, which this machine does not have. A steady 0.109-frame offset is where

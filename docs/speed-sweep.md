@@ -1,26 +1,28 @@
 # Emulated CPU speed and VGAME's frame-rate controller: measurements
 
 How the emulated machine's speed changes the original game's frame rate,
-world clock and combat (measured 9-10 October 2026). The defects and fixes
-these measurements support are in [bugs.md](bugs.md) (D1 and its family).
-Each section gives the setup, the key figures, the conclusion and where the
-evidence is; a superseded result says so. Private evidence lives under
-`D:/f117-gate/` as cited.
+world clock and combat, and how the play-mode cadence was chosen (measured
+9-18 October 2026). The defects and fixes these measurements support are in
+[bugs.md](bugs.md) (D1 and its family). Each section gives the setup, the
+key figures, the conclusion and where the evidence is; a superseded result
+says so. Private evidence lives under `D:/f117-gate/` as cited.
 
 ## Current conclusions
 
 - **Speed default (18 October).** The app (`f117a`) runs at 60 million
-  instructions a second, with D1REAL at 15 normal /30 compressed updates/s
-  after the [broader validation](cadence15-validation.md); the reference runner
-  defaults to GOG DOSBox's 9 million and routes keep their recorded settings. No
-  limiter was shipped at the time of these measurements. Since 17 October,
-  normal application play enables all fixes, including D1REAL and D1PROX;
-  use `--fix none` to reproduce the original measurements
-  ([Fast-machine default](#fast-machine-default-9-october-2026)).
+  instructions a second with D1REAL at 15 normal / 30 compressed updates/s
+  ([production candidate](#production-fifteen-step-candidate-accepted-18-october),
+  [broader validation](cadence15-validation.md)); since 17 October normal
+  play enables all fixes, D1REAL and D1PROX included. The reference runner
+  defaults to GOG DOSBox's 9 million and routes keep their recorded settings.
+  The measurements of the original's controller below were taken with fixes
+  off; reproduce them with `--fix none`
+  ([history](#fast-machine-default-9-october-2026)).
 - **No CPU speed keeps the world clock at real time** under the original's
   adaptive controller: about 1.29 times real time at GOG's 9 MIPS on the
-  parked jet, about 1.11 from 16 MIPS up. The switchable `--fix D1REAL`
-  gives 1.000
+  parked jet, about 1.11 from 16 MIPS up, and 1.17 to 1.31 for the original
+  on 86Box's 386 and 486 profiles ([86Box](#original-game-clock-on-86box-17-october-2026)).
+  The switchable `--fix D1REAL` gives 1.000
   ([Optional real-time cadence](#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete)).
 - **D1's reported 15-to-3 swing is not reproduced** in 199 flights (3-40
   MIPS and the 386 profile): the model that predicted it left out the
@@ -36,179 +38,6 @@ Reproduce the basic sweep with
 `py tools/speed_sweep.py --data D:/GOG/F-117A --out DIR --speeds 3 5 7 9 14 16 20 40 386 --seconds 300`
 (each route's 9 MIPS run first, then the others; `--table-only` reprints the
 tables).
-
-## Original game clock on 86Box (17 October 2026)
-
-An independent run of the original DOS game, outside the recompilation,
-used 86Box's OPTi 495SX / 386DX33 profile with 1 MB RAM, MS-DOS 5.00 and
-VGA. The VM ran offscreen on a private disk copy. The existing harness
-staged START's mission RNG seed for a repeatable front end; it applied no
-game fix or flight input. After 30 seconds settling, 601 samples covered
-119.994917 seconds of 86Box emulated time, measured by its TSC-based hook.
-The mission clock advanced 152 seconds: **1.26672 mission seconds per
-emulated second**. S stayed 5, the frame counter advanced 764 (6.36694 fps),
-and the time-compression multiplier stayed 1 (normal; 2 is accelerated).
-
-This independently confirms a clock mismatch on this original-game hardware
-profile. It is not a host wall-clock stopwatch test or proof of how every
-period PC behaved. The earlier sweep's `386` entries are our timing model,
-not independent 86Box measurements; do not conflate the two. The original's
-per-second normalization and normal/accelerated time controls suggest a
-real-time goal, but developer intent remains an inference. Neither this run
-nor the GOG S=9 parked baseline establishes a canonical update rate or
-warhead radius. D1REAL's eight-step cadence and D1PROX's S=9 calibration
-are project choices, enabled for normal play at the owner's request.
-
-Evidence: `D:/f117-gate/default-fixes-20261017/clock86/` (`loop.state`,
-`samples.json`, `verdict.json`, private profile and trace), with
-`analyze_clock86.py` beside it. The capture initially tripped a harness
-assertion expecting compression 0; normal is 1. Offline analysis retained
-the samples and corrected that guard without rerunning or changing the game.
-
-### Same-scene CPU comparison
-
-A controlled follow-up held the OPTi 495SX chipset, VGA, DOS installation,
-game files, mission and parked aircraft state constant, changing only the
-386DX clock. Each private disk copy settled for 30 seconds, then supplied
-901 samples over three consecutive 60-second windows. All eleven recorded
-scene fields agreed throughout every run; compression stayed at 1.
-
-| 386DX clock | S | Actual updates/s | Mission seconds in 180.007 emulated seconds | Clock ratio |
-|---|---|---|---|---|
-| 25 MHz | 4 | 5.2276 | 235 | 1.30551 |
-| 33.333 MHz | 5 | 6.3720 | 229 | 1.27218 |
-| 40 MHz | 6 | 7.0053 | 210 | 1.16662 |
-
-There is no exact common multiplier on these configurations. The differences
-are much larger than the approximately 0.0056 ratio uncertainty from a
-one-second mission-clock count over 180 seconds. This compares the same
-scene on one hardware family, not every historical PC, and still cannot
-establish intent. Retaining the original clock remains a preservation choice;
-normal play currently keeps D1REAL enabled. Evidence:
-`D:/f117-gate/clock-matrix-20261017/{matrix.py,matrix.json,verdict.json}`.
-
-The original executable was then measured on the same motherboard, VGA, DOS
-and parked scene with Intel 486 profiles. The motherboard's 86Box definition
-supports these Socket 1 processors. Each run again settles for 30 seconds
-and measures 180.007 native emulated seconds; all eleven scene fields agree
-with the 386 cohort. No gameplay fixes are applied.
-
-| Processor | S | Actual updates/s | Mission seconds | Clock ratio |
-|---|---|---|---|---|
-| 486DX-25 | 6 | 7.7830 | 234 | 1.29995 |
-| 486DX-33 | 7 | 8.7608 | 226 | 1.25551 |
-| 486DX-50 | 9 | 11.6718 | 233 | 1.29440 |
-| 486DX2-50 | 9 | 11.6718 | 233 | 1.29440 |
-| 486DX2-66 | 9 | 11.6829 | 233 | 1.29440 |
-
-These results do not approach 1.000 monotonically. They also do not establish
-the fastest possible 486 experience: the same basic VGA card was retained
-for control, so graphics throughput can limit the comparison. Faster-video
-follow-up is separate. The project's 40 MIPS instruction budget is not a
-measured equivalent of any of these processors. Private evidence:
-`D:/f117-gate/clock486-20261017/` and `D:/f117-gate/clock486dx2-20261017/`.
-
-Replacing only the basic VGA with an ET4000AX (1 MB, BIOS 8.01) yields
-16.4720 actual updates/s on the DX2-50 and 16.5720 on the DX2-66, in the
-same parked scene and windows. S is mostly 13 on the former (45 of 901
-samples at 12), always 13 on the latter; mission-clock ratios remain
-1.27221 and 1.27776. This demonstrates that basic VGA constrained the
-earlier throughput results and that about fifteen actual updates/s is
-achievable on these emulated period configurations. It does not establish
-S15 as a recovered target, a hardware ceiling, demanding-scene capacity or
-equivalence with the project's 40 MIPS budget. Evidence:
-`D:/f117-gate/clock486-et4000-20261017/`. Its video BIOS was obtained from
-the official 86Box ROM collection; game data and BIOS images stay private.
-
-### Production fifteen-step candidate (accepted 18 October)
-
-**Outcome:** after the [broader validation](cadence15-validation.md) the owner
-approved 15 Hz / 60 MIPS as the application default. `--sim-hz 15` selects an
-explicit per-machine cadence state: S15 at 15 normal / 30 compressed actual
-updates/s, phase rescaled on compression changes, D1's independent cap
-bypassed while D1REAL runs at fifteen. Eight keeps its old limiter behaviour
-and legacy log format. Input recordings carry the cadence; replay headers
-take precedence over CLI/config, and absent headers mean eight; unsupported or
-duplicate headers fail.
-
-What the evidence shows (private evidence under
-`D:/f117-gate/cadence15-production-20261017/` and `...-20261018/`, notably
-`flight60-review.json`, `clock60-verdict.json`,
-`candidate60-presentation-verdict.json`, `gate-final/presentation-verdict.json`,
-`live-airair60-baseline-verdict.json`, `display60-airair-live/`):
-
-- **Clock.** All-fixes checks at eight (20 MIPS) and fifteen (40 and 60 MIPS)
-  agree between the interpreter and the recompiled code: seven
-  normal/compressed/dialog cases, twelve settled transitions and 120 rapid
-  changes. Fifteen gives 450 updates / 30 mission seconds in 30 seconds
-  normally and 2,100 / 140 over 70 compressed seconds; its rapid test records
-  69 mission seconds against 68.083 integrated seconds (within counter
-  resolution). Eight's case hashes equal the earlier default-fixes results.
-- **40 MIPS is not enough.** Twelve flights (Korea, Kuwait, North Cape;
-  normal and compression-requested; both engines) agree exactly, but North
-  Cape has an undamaged airborne compressed window with 272/300 updates and
-  18/20 mission seconds. The 40-MIPS ten-minute compression, 991-frame
-  scan/interp/rerun and hidden app checks pass; they do not erase that failure.
-- **60 MIPS passes.** Both engines pass ten compressed minutes (18,000 updates,
-  1,200 mission seconds), seven clock/dialog cases, twelve settled transitions
-  and 120 rapid changes; four-region mixed flights (1,906.8 observed seconds,
-  73 enemy launches) agree in states, inputs, CSVs and windows, all 176
-  airborne windows passing, four fully compressed. Compression is usually
-  cancelled by the original's enemy-awareness and weapon code, so this is not
-  sustained 30-Hz combat coverage. Full North Cape scan/interp/rerun keeps
-  6,681 logic frames exact (29,729 extra isolated draws). More instruction
-  reserve is not a literal period-hardware equivalence.
-- **Display.** The first native 4K60 capture (a six-minute adaptive type-5
-  pursuit, scale 9, vsync, D3D11 3840x2160/59.99 Hz) kept all 5,396 logic
-  frames exact but failed pacing (p99 32.93 ms against 20.83; 12.95% of
-  intervals over 25 ms; one startup rewind). The dispatch, observer-copy,
-  playback-clock and map-stroke repairs in [presentation.md](presentation.md)
-  fixed it: later captures pass unchanged limits (p99 16.92 ms, zero intervals
-  over 25 ms). Sky screenshots timed out, so no visual-motion judgement is
-  claimed; the type-5 engagement is not the older type-6 trace, and the
-  results do not show that cadence caused the earlier failure.
-- **Retained failures and limits.** The 17 October run was stopped for a
-  handoff and gave no verdicts. One Middle East compression-requested window
-  failed (142/150 updates; impact and full damage) while the 66 fully airborne
-  windows passed. The derived old fixed-control fixture ends in END after about
-  161 flight seconds and is invalid for the objective-memory assertion.
-
-## Historical intent and faster-than-real-time simulation (17 October 2026)
-
-The closest contemporary written evidence is the predecessor's designers'
-notes. MicroProse's *F-19 Stealth Fighter* manual (1988), in its discussion of
-automatic CPU-speed adjustment, says **“the simulation moves at the same
-real-time speed”** across a 4.77 MHz 8088 and a 25 MHz 80386; graphics
-smoothness and detail are what change. This explicitly states hardware-independent
-real-time intent for F-19. Applying that intent to F-117A is an inference,
-not a recovered statement about its precise clock or update frequency.
-Source: [original manual, Designers' Notes](https://www.scribd.com/doc/39413077/F-19-Stealth-Fighter).
-
-Deliberately accelerated flight simulations did exist, for different purposes:
-
-- **Travel compression in games:** F-19 and F-117A describe a selectable
-  doubling of time, with normal time restored for combat/landing. That explains
-  their explicit acceleration control, not an undocumented CPU-dependent
-  multiplier at normal speed. [F-117A manual, Accelerate Time](https://steamcdn-a.akamaihd.net/steam/apps/328920/manuals/Manual.pdf).
-- **Training at a deliberately higher pace:** a 1994 F-16 simulator study
-  used 1.0x, 1.5x, 2.0x and mixed acceleration with 24 mission-capable pilots,
-  followed by real-time tests. A later NASA report traces this research to
-  Kolf (1973) and Hoey (1976). This establishes intentional faster-than-real-time
-  simulation before and around this game's era, but supplies no connection
-  to MicroProse's design. [1994 paper](https://ntrs.nasa.gov/citations/19940027968),
-  [2000 report](https://ntrs.nasa.gov/search.jsp?R=20000017960).
-- **Later games:** *JetFighter III*'s 1996 handbook explicitly defines its
-  default as 1:1 real time, with selectable 2x and 3x compression. Modern
-  Microsoft Flight Simulator documentation likewise defines simulation rate
-  1 as one simulated second per real second, independently of visual frame
-  rate. [JetFighter III handbook, Time Compression](https://www.scribd.com/document/505351766/Jetfighter-III-R-D-F-Handbook),
-  [Microsoft SDK](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/Environment_Variables.htm).
-
-This search found no primary evidence that F-117A's measured variable
-normal-speed acceleration was deliberate. F-19's explicit statement strengthens
-the case for real-time intent in this family; it does not prove D1REAL's
-eight-step choice, establish a canonical proximity radius, or show that every
-original timing discrepancy is an unintended defect.
 
 ## The controller (read from the VGAME listing)
 
@@ -410,23 +239,23 @@ final hashes (`D:/f117-gate/speed15/pair-interp/`).
 **Conclusion: rejected.** A 15 fps cap does not make the clock real: S
 settles at 12 (the controller's `60F / (R + F/2)` is about 12.1 at F = 15,
 R = 66.75) and the mission clock runs about 1.25 times real time, worse
-than the default's 1.12. A cap also cannot raise slower scenes to 15 fps.
+than the uncapped 1.12 at 20 MIPS. A cap also cannot raise slower scenes to
+15 fps.
 
 ## Fast-machine default (9 October 2026)
 
-**Historical CPU-speed decision (superseded by 15/60 on 18 October).** The app (`f117a`) runs at 20 million instructions a
-second (`MACHINE_APP_IPS` in `src/machine/machine.h`; `--ips` and `ips =`
-override it). `f117run` and every recorded route keep GOG DOSBox's 9
-million, so no route hash changes. At this decision fixes stayed off and no limiter was added: on
-every measured route from 16 MIPS up the game's own clamp holds S at 15 and
-the drawn rate near 16.7 frames a second, a clock of about 1.12 at 20 MIPS.
-At 9 MIPS a recompiled flight ran at about 68.7 million instructions a
-second on the development machine, so 20 million is about 3.4 times real
-time there.
-
-Since 17 October normal play enables all fixes; on 18 October its D1REAL
-default changed from eight steps to fifteen, with a 60-MIPS instruction budget. The figures below describe the unfixed controller; reproduce them
-with `--fix none`. CPU speed and simulation cadence are separate settings.
+**Historical CPU-speed decision (superseded by 15/60 on 18 October).** On 9
+October the app (`f117a`) was set to 20 million instructions a second
+(`MACHINE_APP_IPS` in `src/machine/machine.h`, now 60 million; `--ips` and
+`ips =` override it). `f117run` and every recorded route keep GOG DOSBox's 9
+million, so no route hash changed. Fixes stayed off and no limiter was
+added: on every measured route from 16 MIPS up the game's own clamp holds S
+at 15 and the drawn rate near 16.7 frames a second, a clock of about 1.12 at
+20 MIPS. At 9 MIPS a recompiled flight ran at about 68.7 million
+instructions a second on the development machine, so 20 million is about
+3.4 times real time there. The figures below describe the unfixed
+controller; reproduce them with `--fix none`. CPU speed and simulation
+cadence are separate settings.
 
 **Matrix.** Nine typed routes, eight boot-clock offsets (0, 3, 7, 11, 15, 19,
 23 and 27 s, each a different mission seed), 9, 16 and 20 MIPS: 214 flights
@@ -442,7 +271,7 @@ py tools/speed_compare.py D:/f117-gate/fastdefault/matrix/runs.jsonl
 |---|---|---|---|---|---|
 | 9 (GOG pace) | 70 | 15.27 | 12.95 | 0 | 1.202 |
 | 16 | 68 | 16.77 | 14.88 | 0 | 1.129 |
-| 20 (default) | 70 | 16.77 | 14.98 | 0 | 1.120 |
+| 20 (then default) | 70 | 16.77 | 14.98 | 0 | 1.120 |
 
 Combat in this matrix (about a quarter of a launch per flight, player hit in
 1-2 flights of 70 at each speed) showed no difference between speeds, but
@@ -565,20 +394,21 @@ pairs:
 
 **Result.** 20 minus 9 MIPS over 32 pairs: launches -1.4688 (95% -3.1562
 to +0.0625), bursts -1.5312 (-2.6250 to -0.5312), damage -3.0625 (-5.2500 to
--1.0625). Physics consistency alone does not
-close CPU-dependent combat; the rest came from the simulation cadence and
-the pilot's input phase (next section). Artifacts:
-`D:/f117-gate/threat-physics-v2/`. Staged checks: `py tools/d1physics_check.py
---data DIR --engine ENGINE`, then again with `--fix D1PROX --fix D1ACCEL`.
+-1.0625). Physics consistency alone does not close CPU-dependent combat;
+the rest came from the simulation cadence and the pilot's input phase (next
+section). Artifacts: `D:/f117-gate/threat-physics-v2/`. Staged checks:
+`py tools/d1physics_check.py --data DIR --engine ENGINE`, then again with
+`--fix D1PROX --fix D1ACCEL`.
 
 ## Optional real-time cadence (10 Oct; controlled airborne checks complete)
 
-**Setup.** D1REAL pins S at 8 (4 under the original's 2x compression) and
-admits eight simulation frames per machine second; the pacer keeps elapsed
-time through overruns, and the original pause and quit dialog reset its
-deadline. Its staged clock and dialog checks are in
+**Setup.** D1REAL as first built pins S at 8 (4 under the original's 2x
+compression) and admits eight simulation frames per machine second; the
+pacer keeps elapsed time through overruns, and the original pause and quit
+dialog reset its deadline. Its staged clock and dialog checks are in
 [bugs.md](bugs.md#d1real-real-time-simulation-cadence) (artifacts
-`D:/f117-gate/realtime-checks/`).
+`D:/f117-gate/realtime-checks/`). The default became fifteen on 18 October
+([below](#production-fifteen-step-candidate-accepted-18-october)).
 
 **First cohort (five options: TTL+PROX v2+SLOT+ACCEL+REAL).** 24 flights, 12
 matching mission pairs, no guest memory staged. S is 8 in every sampled row,
@@ -644,27 +474,22 @@ Kuwait seeds differ).
 
 ### Comparing fixed cadences (17 October 2026)
 
-The owner authorized a hidden comparison of 8 and 15 updates/s. A private
-build changes only D1REAL's integer divisor and fractional pacer; 14 Hz is
-an additional control because 15 cannot halve exactly under the original's
-2x compression scheme. Production code and the eight-step default are
-unchanged. All repairs remain enabled except D1 in the valid higher-rate
-comparison: its independent 11.6 Hz compatibility limiter otherwise caps
-both candidates. At eight, excluding D1 leaves the guest results unchanged.
+**Setup.** An owner-authorised hidden comparison of 8 and 15 updates/s, with
+14 as a control because 15 cannot halve exactly under the original's 2x
+compression. A private build changes only D1REAL's integer divisor and
+fractional pacer; production code and the then eight-step default were
+unchanged. All repairs are on except D1, whose independent 11.6 Hz
+compatibility limiter would otherwise cap both candidates (at eight,
+excluding D1 leaves the guest results unchanged). The experimental
+eight-step build reproduces the existing build's seven clock/dialog cases
+and scripted flight hashes exactly in both engines, and every higher-rate
+clock, flight, input and isolated weapon result is checked between the
+interpreter and recompiled engines.
 
-The experimental eight-step build first reproduces the existing build's
-seven clock/dialog cases and scripted flight hashes exactly in both
-engines. Every higher-rate clock, flight, input and isolated weapon result
-is also checked between the interpreter and recompiled engines. A failed
-clock assertion remains a failure, even where the prototype's integer
-arithmetic explains it.
-
-At the normal 20 MIPS setting, the seven-case clock check passes at 8 and
-14 Hz. At 15 Hz only compression fails: S becomes 7 and 70 seconds advance
-150 mission seconds instead of 140 (15/7 = 2.142857x). Normal time gives
-exactly 30 mission seconds and 450 updates in 30 seconds. Fixing 15 Hz
-compression would require another timing change; this experiment does not
-silently make it.
+**At 20 MIPS** the seven-case clock check passes at 8 and 14 Hz. At 15 Hz
+only compression fails: S becomes 7 and 70 seconds advance 150 mission
+seconds instead of 140 (15/7 = 2.142857x); normal time gives exactly 30
+mission seconds and 450 updates in 30 seconds.
 
 | Cadence | Normal updates in 30 s | Mission seconds in 70 s at 2x | Throttle response median / maximum |
 |---|---|---|---|
@@ -672,124 +497,262 @@ silently make it.
 | 14 Hz | 420 | 140 | 31.5 / 68 ms |
 | 15 Hz | 450 | 150 (fails) | 35.0 / 67 ms |
 
-Response uses 24 normal-input throttle pulses at varied phases, read at
-1 ms resolution; every pulse is observed. This measures guest control
-state, not input-to-photon delay or subjective handling. The small sample
-does not rank 14 against 15. Both higher rates reduce the waiting interval
-relative to eight. Interpolation's additional picture age is separate.
+Response uses 24 normal-input throttle pulses at varied phases, read at 1 ms
+resolution; every pulse is observed. It measures guest control state, not
+input-to-photon delay or handling, and the sample does not rank 14 against
+15; both reduce the wait relative to eight.
 
-At 9 MIPS, eight still passes. Both higher targets fall behind in the
-parked scene: only 348 updates in 30 seconds (11.6/s), giving 25 mission
-seconds at S=14 and 23 at S=15. Their compression cases both give 116
-mission seconds in 70 seconds. This is an emulated CPU execution-budget
-limit, distinct from host fullscreen rendering. It supports the original
-conservative choice of eight for the supported slower configuration.
+**At 9 MIPS** eight still passes, but both higher targets fall behind in the
+parked scene: 348 updates in 30 seconds (11.6/s), giving 25 mission seconds
+at S=14 and 23 at S=15; both compression cases give 116 mission seconds in
+70 seconds. This is an emulated CPU budget limit, distinct from host
+rendering.
 
-The same normal-input takeoff script produces different speed and climb at
-about 55 seconds. This demonstrates a gameplay change; it does not establish
-which cadence is authentic or isolate integer rounding from input sampling.
-In the isolated parked-aircraft missile pass, all three rates hit at offset
-20 and miss at 22 and 28 with D1PROX, and the tested missile accelerates
-from speed 1 to 10 in two seconds with D1ACCEL. These are staged boundary
-fixtures, not a recovered warhead radius or proof of identical guidance.
+**Gameplay.** The same normal-input takeoff script reaches a different speed
+and climb at about 55 seconds: the cadence changes play, but which cadence
+is authentic is not established. In staged boundary fixtures all three rates
+hit at offset 20 and miss at 22 and 28 with D1PROX, and the tested missile
+accelerates from speed 1 to 10 in two seconds with D1ACCEL; these are not a
+recovered warhead radius or proof of identical guidance. Six exploratory
+normal-input flights (two missions with their original combat seeds, 20
+MIPS, the 5 Hz feedback pilot): all three Middle East flights end early and
+all three Korea flights stay active through 600 seconds. Outcomes differ,
+and the early endings stay in; they are no lethality or equivalence
+verdict.
 
-Six exploratory normal-input flights use the same two missions and their
-original combat seeds, at 20 MIPS, with the existing 5 Hz feedback pilot.
-All three Middle East flights end early; all three Korea flights remain
-active through 600 seconds. Outcomes differ. Keep those early endings:
-different trajectories, input sampling and exposure prevent interpreting
-the counts as a lethality or equivalence verdict. No subjective handling
-or fullscreen acceptance is claimed.
+**Not established.** Cannon behaviour and guidance equivalence: the cannon
+probes were unsuccessful and a staged guidance probe did not acquire or
+steer. The initial all-fixes cap results and unfinished confounded combat
+runs are retained and must not be presented as successful tests. Evidence:
+`D:/f117-gate/cadence-20261017/` (the comparison excluding D1 under
+`without-d1/`); its verdict checks engine agreement and control integrity,
+not acceptance of a candidate.
 
-Evidence: `D:/f117-gate/cadence-20261017/`, with the comparison excluding
-D1 under `without-d1/`. The initial all-fixes cap results, unfinished
-confounded combat runs and unsuccessful cannon probes are retained and
-must not be presented as successful higher-rate or weapon tests. A separate
-staged guidance probe did not acquire/steer and does not establish guidance
-equivalence. The retained comparison verdict checks engine agreement and
-control integrity, not acceptance of every candidate. Cannon behavior and
-controlled guidance equivalence remain unverified by these probes.
-
-**Recommendation from this first comparison (before the follow-up below):** keep eight as the tested default. Fourteen is a stronger
-candidate than fifteen for further higher-cadence work because its divisor
-supports exact 2x compression, but it still needs sufficient emulated CPU
-speed, separate original-rate compatibility handling, and broader gameplay
-and physical-display assessment. Neither candidate recovers developer intent.
+**Recommendation then (superseded by the follow-up below):** keep eight;
+fourteen was the stronger higher-cadence candidate because its divisor
+supports exact 2x compression.
 
 ### Fifteen-step compression follow-up (17 October 2026)
 
 The owner's target is the best stable responsiveness the original could
-provide, at consistent intended world speed across systems; legitimate bug
-repairs do not count as unfair advantages. Eight is a tested compatibility
-baseline, not a recovered developer target. Two further private prototypes
-therefore keep normal play at 15 Hz/S15 and investigate compression.
-Neither changes the production default.
+provide, at a consistent intended world speed across systems; legitimate
+bug repairs do not count as unfair advantages, and eight is a tested
+compatibility baseline, not a recovered developer target. Two private
+prototypes therefore keep normal play at 15 Hz/S15 and work on compression;
+neither changed the production default.
 
-**Normal play:** 450 updates and 30 mission seconds in 30 elapsed seconds
-at both 20 and 40 MIPS, with interpreter/recompiled hashes identical. The
-first prototype's normal-only missile and throttle probes retain the prior
-fifteen-step hashes: 24 throttle pulses, median 35 ms, maximum 67 ms.
-Both normal-input flight scenarios also retain their prior hashes and
-agree between engines (Middle East `1936ec547dcedc78`, Korea
-`8e612cbc086ebd5f`). These do not prove a recovered intended cadence,
-guidance equivalence or physical-display performance.
+**Normal play** gives 450 updates and 30 mission seconds in 30 elapsed
+seconds at 20 and 40 MIPS, with interpreter and recompiled hashes identical.
+The first prototype's normal-only missile and throttle probes keep the prior
+fifteen-step hashes (24 throttle pulses, median 35 ms, maximum 67 ms), and
+both normal-input flight scenarios keep their hashes and agree between
+engines (Middle East `1936ec547dcedc78`, Korea `8e612cbc086ebd5f`).
 
-**15 Hz/S15 normal, 14 Hz/S7 compressed:** all seven settled clock/dialog
-cases pass at 20 and 40 MIPS, as do six compression round trips measured
-after settling. However, a 120-transition normal-input stress run advances
-82 mission seconds in 48 elapsed seconds, against 72.469 seconds obtained
-by integrating the observed compression mode. The eight-step control
-advances 72 against 72.000. The changing global-counter divisor and pacing
-phase need further correction; reject this prototype despite its steady
-clock results.
+- **15 Hz/S15 normal, 14 Hz/S7 compressed: rejected.** All seven settled
+  clock/dialog cases pass at 20 and 40 MIPS, as do six compression round
+  trips measured after settling, but a 120-transition normal-input stress
+  run advances 82 mission seconds in 48 elapsed seconds against 72.469
+  obtained by integrating the observed mode (the eight-step control: 72
+  against 72.000). The changing global-counter divisor and pacing phase
+  would need further correction.
+- **15 Hz/S15 normal, 30 Hz/S15 compressed (constant step, keeping the next
+  deadline): fails the stress test.** At 20 MIPS the parked scene cannot
+  supply 30 updates/s: the 70-second compressed window produces 1,636
+  updates / 109 mission seconds, then the restored normal window catches up
+  (234 updates / 15 mission seconds in ten elapsed seconds). At 40 MIPS the
+  seven steady cases pass (2,100 updates and 140 mission seconds in 70
+  compressed seconds) and so do six settled round trips, but rapid toggling
+  loses 1.957 mission seconds (68 counted against 69.957 integrated): an
+  old-rate deadline does not keep the remaining fraction of a step.
+- **Corrected constant step: passes.** At the existing rate-change hook,
+  the deadline's remaining time (or overdue work) is scaled by old/new
+  cadence. At 40 MIPS all seven clock/dialog cases, all twelve settled
+  windows in six round trips and all 120 rapid transitions pass, with every
+  case and final hash equal between engines; the rapid test counts 68
+  mission seconds against 68.012 integrated (mode sampled every millisecond),
+  within the integer counter's resolution. Normal-flight clock hashes are
+  unchanged, and twelve final consistency/acceptance checks pass
+  (`constant-step/phase-corrected/verdict.json`).
 
-**15 Hz/S15 normal, 30 Hz/S15 compressed:** a second prototype holds the
-simulation step size constant and doubles actual updates under compression.
-It retains the next deadline when changing cadence. At 20 MIPS the parked
-scene cannot supply 30 updates/s: the 70-second compressed window produces
-1,636 updates / 109 mission seconds, then the restored normal window catches
-up (234 updates / 15 mission seconds in ten elapsed seconds). At 40 MIPS,
-the seven steady clock/dialog checks pass, including 2,100 updates and
-140 mission seconds in 70 compressed seconds. This is an execution-capacity
-finding, not proof that 40 MIPS is the minimum or sufficient in every scene.
-At 40 MIPS six settled round trips also pass, but rapid toggling still loses
-1.957 mission seconds against 69.957 integrated seconds (68 counted).
-Retaining an old-rate deadline does not preserve the remaining fraction
-of a step when changing the rate. This second prototype also fails the
-transition stress requirement.
-
-**Corrected constant-step candidate:** at the existing rate-change hook,
-scale the deadline's remaining time (or overdue work) by old/new cadence.
-At 40 MIPS this passes all seven clock/dialog cases, all twelve settled
-windows in six round trips, and all 120 rapid transitions, with every case
-and final hash equal between engines. The rapid test counts 68 mission
-seconds against 68.012 integrated seconds (mode sampled every millisecond),
-within the integer mission counter's resolution. Initial normal-flight
-clock hashes remain unchanged. Twelve final consistency/acceptance checks
-pass in `constant-step/phase-corrected/verdict.json`.
-
-This makes normal fifteen-step timing a viable candidate, with constant-S
-compression and sufficient execution capacity, rather than proving that
-fourteen is the highest usable rate. Forty MIPS is the tested configuration;
-the earlier 20 MIPS capacity failure is not repaired by changing deadline
-arithmetic. This prototype still uses private packed pacer metadata. A
-production implementation needs explicit per-machine cadence state, the
-full gate, presentation checks and physical-display assessment before
-adoption. Fast original-hardware measurements remain necessary to assess
-the owner's fidelity target; these tests establish consistency, not intent.
-
-Both private pacers pass 32 simulated hour-long fractional-clock schedules,
+So fifteen-step normal timing is viable with constant-S compression and
+enough execution capacity; 40 MIPS was the tested configuration, and
+deadline arithmetic does not repair the 20 MIPS capacity failure. Both
+private pacers pass 32 simulated hour-long fractional-clock schedules,
 event waits, state-copy, overrun and reset checks. Fixes-off boot/quit runs
-retain all 54 checkpoints and the final hash between pre-experiment and
-candidate libraries and both engines. D1 is excluded because its separate
-11.6 Hz limiter conflicts; the other fourteen repairs are enabled. The
-first attempt at the reference harness assumed exact checkpoint stops;
-matched execution can cross the requested boundary, so corrected captures
-compare actual stops. Failed harness logs are retained separately.
+keep all 54 checkpoints and the final hash between pre-experiment and
+candidate libraries and both engines. D1 is excluded (its 11.6 Hz limiter
+conflicts); the other fourteen repairs are on. Matched execution can cross
+a requested checkpoint boundary, so the corrected reference captures
+compare actual stops; the failed harness logs are retained. These tests
+establish consistency, not developer intent. Evidence:
+`D:/f117-gate/cadence15-followup-20261017/` (the constant-step variant under
+`constant-step/`).
 
-Evidence: `D:/f117-gate/cadence15-followup-20261017/`, with the constant-step
-variant under `constant-step/`. These are API experiments; production source
-and default settings remain unchanged, and no fullscreen acceptance was run.
+### Production fifteen-step candidate (accepted 18 October)
+
+**Outcome:** after the [broader validation](cadence15-validation.md) the owner
+approved 15 Hz / 60 MIPS as the application default. `--sim-hz 15` selects an
+explicit per-machine cadence state: S15 at 15 normal / 30 compressed actual
+updates/s, phase rescaled on compression changes, D1's independent cap
+bypassed while D1REAL runs at fifteen. Eight keeps its old limiter behaviour
+and legacy log format. Input recordings carry the cadence; replay headers
+take precedence over CLI/config, and absent headers mean eight; unsupported or
+duplicate headers fail.
+
+What the evidence shows (private evidence under
+`D:/f117-gate/cadence15-production-20261017/` and `...-20261018/`, notably
+`flight60-review.json`, `clock60-verdict.json`,
+`candidate60-presentation-verdict.json`, `gate-final/presentation-verdict.json`,
+`live-airair60-baseline-verdict.json`, `display60-airair-live/`):
+
+- **Clock.** All-fixes checks at eight (20 MIPS) and fifteen (40 and 60 MIPS)
+  agree between the interpreter and the recompiled code: seven
+  normal/compressed/dialog cases, twelve settled transitions and 120 rapid
+  changes. Fifteen gives 450 updates / 30 mission seconds in 30 seconds
+  normally and 2,100 / 140 over 70 compressed seconds; its rapid test records
+  69 mission seconds against 68.083 integrated seconds (within counter
+  resolution). Eight's case hashes equal the earlier default-fixes results.
+- **40 MIPS is not enough.** Twelve flights (Korea, Kuwait, North Cape;
+  normal and compression-requested; both engines) agree exactly, but North
+  Cape has an undamaged airborne compressed window with 272/300 updates and
+  18/20 mission seconds. The 40-MIPS ten-minute compression, 991-frame
+  scan/interp/rerun and hidden app checks pass; they do not erase that failure.
+- **60 MIPS passes.** Both engines pass ten compressed minutes (18,000 updates,
+  1,200 mission seconds), seven clock/dialog cases, twelve settled transitions
+  and 120 rapid changes; four-region mixed flights (1,906.8 observed seconds,
+  73 enemy launches) agree in states, inputs, CSVs and windows, all 176
+  airborne windows passing, four fully compressed. Compression is usually
+  cancelled by the original's enemy-awareness and weapon code, so this is not
+  sustained 30-Hz combat coverage. Full North Cape scan/interp/rerun keeps
+  6,681 logic frames exact (29,729 extra isolated draws). More instruction
+  reserve is not a literal period-hardware equivalence.
+- **Display.** The first native 4K60 capture (a six-minute adaptive type-5
+  pursuit, scale 9, vsync, D3D11 3840x2160/59.99 Hz) kept all 5,396 logic
+  frames exact but failed pacing (p99 32.93 ms against 20.83; 12.95% of
+  intervals over 25 ms; one startup rewind). The dispatch, observer-copy and
+  playback-clock repairs in
+  [presentation.md](presentation.md#fullscreen-4k60-timing-and-the-threaded-presentation)
+  fixed it: the same recording then passes the unchanged limits (p99 16.94
+  ms, zero intervals over 25 ms). Sky screenshots timed out, so no
+  visual-motion judgement is claimed; the type-5 engagement is not the older
+  type-6 trace, and the results do not show that cadence caused the earlier
+  failure.
+- **Retained failures and limits.** The 17 October run was stopped for a
+  handoff and gave no verdicts. One Middle East compression-requested window
+  failed (142/150 updates; impact and full damage) while the 66 fully airborne
+  windows passed. The derived old fixed-control fixture ends in END after about
+  161 flight seconds and is invalid for the objective-memory assertion.
+
+## Original game clock on 86Box (17 October 2026)
+
+An independent run of the original DOS game, outside the recompilation,
+used 86Box's OPTi 495SX / 386DX33 profile with 1 MB RAM, MS-DOS 5.00 and
+VGA. The VM ran offscreen on a private disk copy. The existing harness
+staged START's mission RNG seed for a repeatable front end; it applied no
+game fix or flight input. After 30 seconds settling, 601 samples covered
+119.994917 seconds of 86Box emulated time, measured by its TSC-based hook.
+The mission clock advanced 152 seconds: **1.26672 mission seconds per
+emulated second**. S stayed 5, the frame counter advanced 764 (6.36694 fps),
+and the time-compression multiplier stayed 1 (normal; 2 is accelerated).
+
+This independently confirms a clock mismatch on this original-game hardware
+profile. It is not a host wall-clock stopwatch test or proof of how every
+period PC behaved. The earlier sweep's `386` entries are our timing model,
+not independent 86Box measurements; do not conflate the two. The original's
+per-second normalization and normal/accelerated time controls suggest a
+real-time goal, but developer intent remains an inference. Neither this run
+nor the GOG S=9 parked baseline establishes a canonical update rate or
+warhead radius. D1REAL's cadence (eight steps then, fifteen since 18
+October) and D1PROX's S=9 calibration are project choices, enabled for
+normal play at the owner's request.
+
+Evidence: `D:/f117-gate/default-fixes-20261017/clock86/` (`loop.state`,
+`samples.json`, `verdict.json`, private profile and trace), with
+`analyze_clock86.py` beside it. The capture initially tripped a harness
+assertion expecting compression 0; normal is 1. Offline analysis retained
+the samples and corrected that guard without rerunning or changing the game.
+
+### Same-scene CPU comparison
+
+A controlled follow-up held the OPTi 495SX chipset, VGA, DOS installation,
+game files, mission and parked aircraft state constant, changing only the
+processor. Each run uses a private disk copy, settles for 30 seconds, then
+supplies 901 samples over three consecutive 60-second windows (180.007
+emulated seconds). All eleven recorded scene fields agree throughout every
+run, compression stays at 1 and no gameplay fix is applied.
+
+| Processor | S | Actual updates/s | Mission seconds in 180.007 emulated seconds | Clock ratio |
+|---|---|---|---|---|
+| 386DX-25 | 4 | 5.2276 | 235 | 1.30551 |
+| 386DX-33.333 | 5 | 6.3720 | 229 | 1.27218 |
+| 386DX-40 | 6 | 7.0053 | 210 | 1.16662 |
+| 486DX-25 | 6 | 7.7830 | 234 | 1.29995 |
+| 486DX-33 | 7 | 8.7608 | 226 | 1.25551 |
+| 486DX-50 | 9 | 11.6718 | 233 | 1.29440 |
+| 486DX2-50 | 9 | 11.6718 | 233 | 1.29440 |
+| 486DX2-66 | 9 | 11.6829 | 233 | 1.29440 |
+
+There is no exact common multiplier, and the ratios do not approach 1.000
+monotonically with speed. The differences are much larger than the
+approximately 0.0056 ratio uncertainty from a one-second mission-clock count
+over 180 seconds. This is one scene on one hardware family, not every
+historical PC, and cannot establish intent. The 486 processors are Socket 1 parts the motherboard's
+86Box definition supports. The basic VGA card was kept for control, so
+graphics throughput can limit these results; they do not show the fastest
+possible 486 experience. The project's 40 MIPS instruction budget is not a
+measured equivalent of any of these processors. Retaining the original
+clock remains a preservation choice. Evidence:
+`D:/f117-gate/clock-matrix-20261017/{matrix.py,matrix.json,verdict.json}`,
+`D:/f117-gate/clock486-20261017/` and `D:/f117-gate/clock486dx2-20261017/`.
+
+**Faster video.** Replacing only the basic VGA with an ET4000AX (1 MB, BIOS
+8.01) yields 16.4720 actual updates/s on the DX2-50 and 16.5720 on the
+DX2-66, in the same parked scene and windows. S is mostly 13 on the former
+(45 of 901 samples at 12), always 13 on the latter; the clock ratios remain
+1.27221 and 1.27776. Basic VGA therefore constrained the earlier throughput,
+and about fifteen actual updates/s is achievable on these emulated period
+configurations. This does not establish S15 as a recovered target, a
+hardware ceiling, demanding-scene capacity or equivalence with the
+project's instruction budgets. Evidence:
+`D:/f117-gate/clock486-et4000-20261017/`; its video BIOS came from the
+official 86Box ROM collection, and game data and BIOS images stay private.
+
+## Historical intent and faster-than-real-time simulation (17 October 2026)
+
+The closest contemporary written evidence is the predecessor's designers'
+notes. MicroProse's *F-19 Stealth Fighter* manual (1988), in its discussion of
+automatic CPU-speed adjustment, says **“the simulation moves at the same
+real-time speed”** across a 4.77 MHz 8088 and a 25 MHz 80386; graphics
+smoothness and detail are what change. This explicitly states hardware-independent
+real-time intent for F-19. Applying that intent to F-117A is an inference,
+not a recovered statement about its precise clock or update frequency.
+Source: [original manual, Designers' Notes](https://www.scribd.com/doc/39413077/F-19-Stealth-Fighter).
+
+Deliberately accelerated flight simulations did exist, for different purposes:
+
+- **Travel compression in games:** F-19 and F-117A describe a selectable
+  doubling of time, with normal time restored for combat/landing. That explains
+  their explicit acceleration control, not an undocumented CPU-dependent
+  multiplier at normal speed. [F-117A manual, Accelerate Time](https://steamcdn-a.akamaihd.net/steam/apps/328920/manuals/Manual.pdf).
+- **Training at a deliberately higher pace:** a 1994 F-16 simulator study
+  used 1.0x, 1.5x, 2.0x and mixed acceleration with 24 mission-capable pilots,
+  followed by real-time tests. A later NASA report traces this research to
+  Kolf (1973) and Hoey (1976). This establishes intentional faster-than-real-time
+  simulation before and around this game's era, but supplies no connection
+  to MicroProse's design. [1994 paper](https://ntrs.nasa.gov/citations/19940027968),
+  [2000 report](https://ntrs.nasa.gov/search.jsp?R=20000017960).
+- **Later games:** *JetFighter III*'s 1996 handbook explicitly defines its
+  default as 1:1 real time, with selectable 2x and 3x compression. Modern
+  Microsoft Flight Simulator documentation likewise defines simulation rate
+  1 as one simulated second per real second, independently of visual frame
+  rate. [JetFighter III handbook, Time Compression](https://www.scribd.com/document/505351766/Jetfighter-III-R-D-F-Handbook),
+  [Microsoft SDK](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/Environment_Variables.htm).
+
+This search found no primary evidence that F-117A's measured variable
+normal-speed acceleration was deliberate. F-19's explicit statement strengthens
+the case for real-time intent in this family; it does not prove D1REAL's
+chosen cadence, establish a canonical proximity radius, or show that every
+original timing discrepancy is an unintended defect.
 
 ## S's self-calibration audit (10 Oct): closed
 
