@@ -4336,7 +4336,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
     const unsigned grow = (unsigned)(uint16_t)(sm3_after_call(c, write_at) - (s->entry + 0x51));
     /* Before each stretch of straight code: room for it, or leave at its first instruction. */
 #define NEED(n, off) do { if (!room(c, (n))) { c->ip = (uint16_t)(s->entry + (off) + ((off) > 0x4E ? grow : 0)); return 1; } } while (0)
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);       /* sub sp, 2 */
@@ -5469,7 +5469,7 @@ static int start_form_hover(machine_t *m)
 {
     cpu_t *c = &m->cpu;
 #define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
-    if (!room(c, 9)) return 0;
+    if (!room(c, 9 + 1)) return 0;
     frame_open(c, 2);
     set_r8(c, R_AL, ds_get8(c, 0x6FFD));
     set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
@@ -5636,7 +5636,7 @@ static int start_weapon_shortage(machine_t *m)
 {
     cpu_t *c = &m->cpu;
 #define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     frame_open(c, 6);
     bp_put(c, -2, 0);
     c->icount += 4;
@@ -7520,7 +7520,7 @@ static int start_obj_near(machine_t *m)
 {
     cpu_t *c = &m->cpu;
 #define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     frame_open(c, 0x24);
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
@@ -8183,7 +8183,7 @@ static int sm3_format_next_ptr(machine_t *m, uint16_t word_fn, uint16_t dword_fn
     c->icount += 2;
     if (!(c->flags & F_ZF)) {
         if (!guest_call(m, dword_fn, (uint16_t)(at + 9))) return 1;
-        if (!room(c, 3)) { c->ip = (uint16_t)(at + 9); return 1; }
+        if (!room(c, 3 + 1)) { c->ip = (uint16_t)(at + 9); return 1; }
         c->seg[S_ES] = c->r[R_DX];
         c->r[R_DI] = c->r[R_AX];
         c->icount += 3;
@@ -12377,7 +12377,7 @@ static int vgame_frame_mission_start(machine_t *m)
 static int vgame_panel_navigation(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 7)) return 0;
+    if (!room(c, 7 + 1)) return 0;
     x86_push_reg(c, R_BP);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0C)));
@@ -12388,7 +12388,7 @@ static int vgame_panel_navigation(machine_t *m)
     c->icount += 7;
     if (!guest_call_far(m, 0x02E1, 0x02E6)) return 1;
 
-    if (!room(c, 6)) { c->ip = 0x02E6; return 1; }
+    if (!room(c, 6 + 1)) { c->ip = 0x02E6; return 1; }
     c->r[R_SP] = c->r[R_BP];
     cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0C)));
     cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0A)));
@@ -12413,7 +12413,7 @@ static int vgame_panel_navigation(machine_t *m)
 static int end_ribbons_draw(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;          /* the block, then the CALL of 400F */
     x86_push_reg(c, R_BP);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 2, 1);
@@ -12425,7 +12425,7 @@ static int end_ribbons_draw(machine_t *m)
     c->icount += 8;
     if (!guest_call(m, 0x400F, 0x1022)) return 1;
 
-    if (!room(c, 4)) { c->ip = 0x1022; return 1; }
+    if (!room(c, 4 + 1)) { c->ip = 0x1022; return 1; }   /* the block, then the CALL of 4648 */
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_BX] = cpu_pop16(c);
     seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
@@ -12433,7 +12433,7 @@ static int end_ribbons_draw(machine_t *m)
     c->icount += 4;
     if (!guest_call(m, 0x4648, 0x102B)) return 1;
 
-    if (!room(c, 2)) { c->ip = 0x102B; return 1; }
+    if (!room(c, 2 + 1)) { c->ip = 0x102B; return 1; }   /* the block, then the CALL of 40BD */
     c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
     cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)));
     c->icount += 2;
@@ -17824,7 +17824,7 @@ static int st2_draw_text(machine_t *m, uint16_t entry)
 static int st2_text_width(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     frame_open(c, 6);
     c->r[R_BX] = bp_get(c, 4);
     c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0C));
@@ -18060,7 +18060,7 @@ static int start_publish_text(machine_t *m)
 static int st2_draw_text_shadowed(machine_t *m, uint16_t entry, uint16_t draw_fn)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     frame_open(c, 0x16);
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
@@ -18705,7 +18705,7 @@ static int end_fill_rect(machine_t *m) { return st2_fill_rect(m, 0x49D2, 0x4A40,
 static int start_draw_target_block(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 13)) return 0;
+    if (!room(c, 13 + 1)) return 0;
     frame_open(c, 0x104);
     cpu_push16(c, c->r[R_SI]);
     c->r[R_AX] = 0x12;
@@ -20032,7 +20032,7 @@ after_cells:                                                      /* 0x029EB: th
 static int start_draw_stores_panel(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 6)) return 0;
+    if (!room(c, 6 + 1)) return 0;
     frame_open(c, 0x0A);
     cpu_push16(c, c->r[R_SI]);
     alu_sub(c, bp_get(c, 4), 0x14, 1, 0);
@@ -20714,7 +20714,7 @@ static int end_widget_hover(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t entry = 0x046E;
-    if (!room(c, 9)) return 0;
+    if (!room(c, 9 + 1)) return 0;
     frame_open(c, 2);
     set_r8(c, R_AL, ds_get8(c, 0x50B8));
     set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
@@ -21918,7 +21918,7 @@ static int start_theatre_lists(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t entry = 0x7E88;
-    if (!room(c, 7)) return 0;
+    if (!room(c, 7 + 1)) return 0;
     frame_open(c, 0x0A);
     c->r[R_AX] = 0x108B;
     cpu_push16(c, c->r[R_AX]);
@@ -22296,7 +22296,7 @@ static int start_roster_read(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t entry = 0x7218;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     frame_open(c, 4);
     c->r[R_AX] = 0x0EBC;                                          /* "rb" */
     cpu_push16(c, c->r[R_AX]);
@@ -22595,7 +22595,7 @@ static int vgame_cockpit_number(machine_t *m)
 static int vgame_countermeasure_gauge(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 11)) return 0;
+    if (!room(c, 11 + 1)) return 0;
     x86_enter(c, 4, 0);
     alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
     if (c->flags & F_ZF) {                                        /* the cockpit is hidden */
@@ -23037,7 +23037,7 @@ static int vgame_nav_bar(machine_t *m)
 static int vgame_recon_range_text(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     x86_enter(c, 0x0A, 0);
     cpu_push16(c, 0x4338);
     cpu_push16(c, 0x98A6);
@@ -27445,7 +27445,7 @@ static int vgame_boxed_line_far(machine_t *m) { return vg3_raster_far_entry(m, 0
 static int vgame_stick_centre(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 1)) return 0;
+    if (!room(c, 1 + 1)) return 0;
     VG3_NEAR(0x0CC1, 0x0C94, 2);                                  /* read the port */
     c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
     c->icount += 1;
@@ -27462,7 +27462,7 @@ static int vgame_stick_centre(machine_t *m)
 static int vgame_stick_read(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 1)) return 0;
+    if (!room(c, 1 + 1)) return 0;
     VG3_NEAR(0x0CC1, 0x0CB5, 2);                                  /* read the port */
     c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
     c->icount += 1;
@@ -27481,7 +27481,7 @@ static int vgame_stick_read(machine_t *m)
 static int sm4_stick_centre(machine_t *m, uint16_t d)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 1)) return 0;
+    if (!room(c, 1 + 1)) return 0;
     VG3_NEAR((uint16_t)(0x0CC1 - d), (uint16_t)(0x0C94 - d), 2);
     c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
     c->icount += 1;
@@ -27497,7 +27497,7 @@ static int sm4_stick_centre(machine_t *m, uint16_t d)
 static int sm4_stick_read(machine_t *m, uint16_t d)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 1)) return 0;
+    if (!room(c, 1 + 1)) return 0;
     VG3_NEAR((uint16_t)(0x0CC1 - d), (uint16_t)(0x0CB5 - d), 2);
     c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
     c->icount += 1;
@@ -28935,7 +28935,7 @@ static int vgame_fclose(machine_t *m)
 static int vgame_objective_kinds(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 5)) return 0;
+    if (!room(c, 5 + 1)) return 0;
     x86_enter(c, 4, 0);
     x86_push_reg(c, R_SI);
     c->r[R_AX] = ds_get(c, 0x0610);
@@ -31043,7 +31043,7 @@ static int vgame_mfd_left_select(machine_t *m)
 static int vgame_cockpit_redraw(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 2)) return 0;
+    if (!room(c, 2 + 1)) return 0;
     x86_enter(c, 2, 0);
     VG3_SETFRAME(-2, 0);
     unsigned n = 2;
@@ -32354,7 +32354,7 @@ static int vgame_polygon_fill(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (g_f117_observer) observe_span_polygon(m);                /* this placement shadows the observer's own */
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->seg[S_ES]);
@@ -32429,7 +32429,7 @@ static int vgame_polygon_fill(machine_t *m)
 static int vgame_span_edge_clipped(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 10)) return 0;
+    if (!room(c, 10 + 1)) return 0;
     c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
     c->seg[S_ES] = c->r[R_AX];
     cpu_push16(c, seg_read16(c, c->seg[S_ES], 0));
@@ -32872,7 +32872,7 @@ static int vgame_timer_tick(machine_t *m)
 static int vgame_objectives_panel(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     x86_enter(c, 0x22, 0);
     x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
     c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
@@ -33072,7 +33072,7 @@ objective_test:
 static int start_armament_screen(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 10)) return 0;
+    if (!room(c, 10 + 1)) return 0;
     cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
     c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 0x16, 1, 0);
     x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
@@ -33227,7 +33227,7 @@ static void navgrid_line_args(cpu_t *c)
 static int vgame_navigation_grid(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 7)) return 0;
+    if (!room(c, 7 + 1)) return 0;
     x86_enter(c, 0x18, 0); x86_push_reg(c, R_SI);
     c->r[R_AX] = ds_get(c, 0x40B0); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
     bp_put(c, -0x12, c->r[R_AX]); cpu_push16(c, 0); c->icount += 6;
@@ -34489,7 +34489,7 @@ restore_origin:
 static int vgame_moving_objects(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     x86_enter(c, 0x36, 0); x86_push_reg(c, R_SI);
     alu_sub(c, ds_get(c, 0xC0A6), 0x8B, 1, 0); c->icount += 4;
     if (!(c->flags & F_ZF)) goto ground_selection;
@@ -35183,7 +35183,7 @@ image_return:
 static int vgame_flight_input(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     if (fix_inside(c, 0x1EB1, 0x2C87)) return 0;
     x86_enter(c, 0x30, 0); x86_push_reg(c, R_SI);
     alu_sub(c, ds_get(c, 0xC0DA), 0, 1, 0); c->icount += 4;
@@ -35858,7 +35858,7 @@ flight_return:
 static int vgame_frame_update(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 8)) return 0;
+    if (!room(c, 8 + 1)) return 0;
     if (fix_inside(c, 0x3ADB, 0x450A)) return 0;
     /* Map cell X = (X position + 10h) >> 5; Y = 8000h - ((Y + 10h) >> 5). */
     x86_enter(c, 0x12, 0); x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
@@ -36502,7 +36502,7 @@ static int vgame_ground_defences(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     uint16_t bx;
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     x86_enter(c, 0x0E, 0); x86_push_reg(c, R_SI);
     alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 4;
     if (c->flags & F_ZF) goto bars;
@@ -36634,7 +36634,7 @@ warning_body:
     {   /* the 32-bit divide takes its two long arguments off (RET 8) */
         SM4_NEED(1, 0x51CF);
         if (!guest_call_pop(m, 0xEE9C, 0x51D2, 8)) return 1;
-        if (!room(c, 3)) { c->ip = 0x51D2; return 1; }
+        if (!room(c, 3 + 1)) { c->ip = 0x51D2; return 1; }
     }
     c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 6, 1); VG3_SETFRAME(GD_FRAME_WARN, c->r[R_AX]); c->icount += 3;
     goto warning_marker;
@@ -71407,7 +71407,7 @@ static int vgame_armament_panel_refresh(machine_t *m)
 #define CALL_FAR(at_, ret_) do { SM4_NEED(1, (at_)); RUN(guest_call_far(m, (at_), (ret_))); } while (0)
 
     /* Entry: the frame, the row and colour, the station count from the settings. */
-    if (!room(c, 19)) return 0;
+    if (!room(c, 19 + 1)) return 0;
     c->icount += 19;
     x86_enter(c, 8, 0);
     x86_push_reg(c, R_SI);
@@ -77574,7 +77574,7 @@ static int player_finish(machine_t *m)
     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
 #define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
 #define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     /* push bp / mov bp, sp / sub ax, ax / push ax */
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -78337,7 +78337,7 @@ static int player_abort(machine_t *m)
     if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
 #define XNEAR(at_, target_, ret_, pops_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), (pops_))); } while (0)
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_AX] = ABNORMAL;
@@ -80271,7 +80271,7 @@ static int mps_logo_clear_text_screen(machine_t *m)
     cpu_t *c = &m->cpu;
     enum { TEXT_SEGMENT = 0xB800, WORDS = 0x7D00 };
 #define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
-    if (!room(c, 3)) return 0;
+    if (!room(c, 3 + 1)) return 0;
     /* push bp / mov bp, sp / mov ax, 0 */
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -80347,7 +80347,7 @@ static int mps_logo_fatal_error(machine_t *m)
 #define XFAR(call_, ret_) do { SM4_NEED(1, (call_)); const uint64_t until_ = m->run_until; \
     if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
     const int ok_ = guest_call_far(m, (call_), (ret_)); m->run_until = until_; if (!ok_) return 1; } while (0)
-    if (!room(c, 3)) return 0;
+    if (!room(c, 3 + 1)) return 0;
     /* push bp / mov bp, sp / xor ax, ax: no locals for the stack check */
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -80505,7 +80505,7 @@ static int end_load_report_picture(machine_t *m)
 #define XRUN(call_) do { const uint64_t until_ = m->run_until; \
     if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
     const int ok_ = (call_); m->run_until = until_; if (!ok_) return 1; } while (0)
-    if (!room(c, 4)) return 0;
+    if (!room(c, 4 + 1)) return 0;
     /* mov ax, 3B41 / push ax / mov ax, 10B7 / push ax, then call 1901 */
     c->icount += 4;
     c->r[R_AX] = DRAW_STEP;
@@ -87704,7 +87704,966 @@ static int rsound_log_random_step(machine_t *m)
 #undef XB
 }
 
+/* RSOUND.LOG 0FA2: the Roland driver's "mark the six voice records busy" step, the near callee of the tick
+ * wrapper at 021Bh (which runs it as original code).
+ *  - Sets the driver data byte DS:[0492h] to 1 (DS is whatever the caller left; the routine neither reads
+ *    nor sets it).
+ *  - Then, for each of the six record addresses 0382h, 03A4h, 03C6h, 03E8h, 040Ah and 042Ch (22h apart),
+ *    loads the address into AX, pushes it, calls the large indirect-jump routine at 08BEh (the voice
+ *    handler, original code here: it takes the record address as its one stack argument and leaves with a
+ *    plain RET) and removes the argument again with ADD SP,2 (the ADD's flags are kept).
+ *  - Returns with a near RET. AX, BX, CX, DX, DS and the flags are whatever the last call left, except for
+ *    the final ADD SP,2.
+ * When a call has not returned (the clock's limit came first) the original carries on from where the
+ * machine is; the callee's own instructions earn this routine no credit. */
+static int rsound_log_update_six_voice_records(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HANDLER = 0x08BE, BUSY_FLAG = 0x0492 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    static const uint16_t records[6] = { 0x0382, 0x03A4, 0x03C6, 0x03E8, 0x040A, 0x042C };
+    /* 0FA2..0FAA: mov byte [0492h],1 / mov ax,record / push ax: 3 instructions, then the first call */
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0FA2);
+    ds_put8(c, BUSY_FLAG, 0x01);
+    c->r[R_AX] = records[0];
+    x86_push_reg(c, R_AX);
+    for (unsigned k = 0; k < 6; k++) {
+        const uint16_t call_at = (uint16_t)(0x0FAB + 10 * k);
+        SM4_NEED(1, call_at);
+        XRUN(guest_call_pop(m, HANDLER, (uint16_t)(call_at + 3), 0));
+        if (k < 5) {
+            XB(3, (uint16_t)(call_at + 3));                          /* add sp,2 / mov ax,next record / push ax */
+            c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1);
+            c->r[R_AX] = records[k + 1];
+            x86_push_reg(c, R_AX);
+        }
+    }
+    XB(2, 0x0FE0);                                                   /* add sp,2 / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* RSOUND.LOG 02BE: the Roland driver's one-shot initialisation guard.
+ *  - Compares the driver data byte DS:[02FEh] with zero (the flags are the compare's) and, when it is not
+ *    zero (already initialised), returns at once with a near RET.
+ *  - When it is zero, runs two routines as original code: the sequencer/synth set-up at 0580h and the
+ *    voice-table walk at 0390h (neither takes arguments, both leave with a plain RET), then sets
+ *    DS:[02FEh] to FFh (MOV, flags kept) so the next call does nothing, and returns.
+ * DS is whatever the caller left; the routine neither reads nor sets it. When a call has not returned
+ * (the clock's limit came first) the original carries on from where the machine is; the callees'
+ * own instructions earn this routine no credit. */
+static int rsound_log_init_once(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DONE_FLAG = 0x02FE };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    /* 02BE..02C3: cmp byte [02FEh],0 / je 02C8 */
+    if (!room(c, 2)) return 0;
+    XB(2, 0x02BE);
+    (void)alu_op(c, 7, ds_get8(c, DONE_FLAG), 0x00, 0);
+    if (x86_cond(c, 4)) {
+        SM4_NEED(1, 0x02C8);
+        XRUN(guest_call_pop(m, 0x0580, 0x02CB, 0));
+        SM4_NEED(1, 0x02CB);
+        XRUN(guest_call_pop(m, 0x0390, 0x02CE, 0));
+        XB(1, 0x02CE);                                              /* mov byte [02FEh],0FFh */
+        ds_put8(c, DONE_FLAG, 0xFF);
+    } else {
+        XB(1, 0x02C5);                                              /* jmp 02D3 */
+    }
+    XB(1, 0x02D3);                                                  /* ret */
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* RSOUND.LOG 0580: the Roland driver's start-up sequence for the synthesiser, in three parts. It takes no
+ * arguments; DS is whatever the caller left and is neither read nor set. Everything it calls is original code
+ * here and returns with a plain RET.
+ *  - Calls 0171h (the sequencer reset), then loads CX with 9: one pass per voice, CX counting 9 down to 1.
+ *  - Each pass pushes CX, builds BL = (CX as a byte) OR B0h (the MIDI "controller/mode" status of the voice,
+ *    flags as that OR leaves them), stores it in the driver byte DS:[0376h], and calls the byte-sender at 0310h
+ *    nine times with BL = that status, then 7Bh, 00h, 79h, 00h, 07h, 64h, 0Ah, 40h (each MOV BL, imm sets only
+ *    the low byte of BX). It pops CX again (the sender may change it) and LOOPs back while CX stays non-zero.
+ *  - After the last pass it loads AX with 031Eh (the offset of a byte list) and calls the list sender at 0349h,
+ *    then returns with a near RET. AX, BX, CX, DX and the flags are what the last callee left (CX is 0 after the LOOP).
+ * When a call has not returned (the clock's limit came first) the original carries on from where the machine
+ * is; the callees' own instructions earn this routine no credit. */
+static int rsound_log_reset_and_program_nine_voices(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RESET = 0x0171, SEND_BYTE = 0x0310, SEND_LIST = 0x0349, PASS_HEAD = 0x0586, STATUS_CELL = 0x0376, LIST = 0x031E };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    static const uint8_t tail_bl[8] = { 0x7B, 0x00, 0x79, 0x00, 0x07, 0x64, 0x0A, 0x40 };
+    if (!room(c, 1)) return 0;
+    XRUN(guest_call_pop(m, RESET, 0x0583, 0));                            /* call 0171 */
+    XB(1, 0x0583);                                                         /* mov cx,9 */
+    c->r[R_CX] = 0x0009;
+    for (;;) {
+        XB(4, PASS_HEAD);                                                  /* push cx / mov bl,cl / or bl,B0h / mov [0376h],bl */
+        x86_push_reg(c, R_CX);
+        set_r8(c, R_BL, get_r8(c, R_CL));
+        { const uint16_t r_ = (uint16_t)alu_op(c, 1, get_r8(c, R_BL), 0xB0, 0); set_r8(c, R_BL, (uint8_t)r_); }
+        ds_put8(c, STATUS_CELL, get_r8(c, R_BL));
+        SM4_NEED(1, 0x0590);
+        XRUN(guest_call_pop(m, SEND_BYTE, 0x0593, 0));                     /* call 0310 with the status */
+        for (unsigned i = 0; i < 8; i++) {
+            const uint16_t mov_at = (uint16_t)(0x0593 + 5 * i);
+            XB(1, mov_at);                                                 /* mov bl,imm */
+            set_r8(c, R_BL, tail_bl[i]);
+            SM4_NEED(1, (uint16_t)(mov_at + 2));
+            XRUN(guest_call_pop(m, SEND_BYTE, (uint16_t)(mov_at + 5), 0)); /* call 0310 */
+        }
+        XB(2, 0x05BB);                                                     /* pop cx / loop 0586h */
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0) break;
+    }
+    XB(1, 0x05BE);                                                         /* lea ax,[031Eh] */
+    c->r[R_AX] = LIST;
+    SM4_NEED(1, 0x05C2);
+    XRUN(guest_call_pop(m, SEND_LIST, 0x05C5, 0));                         /* call 0349 */
+    XB(1, 0x05C5);                                                         /* ret */
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* ISOUND.LOG 010B: the PC-speaker driver's "effect divisor" step, a far routine (RETF) with no arguments.
+ * DS is the driver's data segment, as the caller left it. The cells (all DS-relative): [AB] the effect mode
+ * (FFh = noise), [95] the vibrato period (0 = no vibrato), [97] its countdown, [67] the current counter-2
+ * divisor (0 = rest), [6B] the vibrato step (negated each time it is applied, or the noise mask), [69] the noise
+ * add-in, [A5] the noise seed.
+ *  - If [AB] is not FFh, returns at once.
+ *  - If [95] is not zero, the vibrato arm (at 00DEh, below this entry): when the divisor [67] is zero it returns; else
+ *    it decrements the countdown [97], returns while it is still positive (signed), otherwise reloads [97] from
+ *    [95], negates the step [6B], adds it to the divisor, sends the new divisor to the speaker (OUT 42h, low byte
+ *    then high byte: counter 2's data port, which never wakes the machine) and stores it in [67].
+ *  - If [95] is zero (the noise arm): AX = 9248h + seed [A5], rotated right three times, stored back in [A5]; then
+ *    AX = (AX AND [6B]) + [69] is sent to the speaker, low byte then high byte through OUT 42h.
+ *  Every port access happens at the clock the original makes it. The routine returns with a far RETF. */
+static int isound_log_speaker_noise_vibrato_tick(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEEDP(n_, k_, at_) SM4_NEED((n_) + IO_SLACK(k_), (at_))
+#define CH(n_) (c->icount += (n_))
+    if (!room(c, 2)) return 0;
+    CH(2);                                                                        /* 010B cmp byte [AB],FFh / jne 0137 */
+    (void)alu_op(c, 7, ds_get8(c, 0x00AB), 0xFF, 0);
+    if (x86_cond(c, 5)) goto L137;
+    SM4_NEED(2, 0x0112);                                                          /* cmp word [95],0 / jne 00DE */
+    (void)alu_op(c, 7, ds_get(c, 0x0095), 0x0000, 1);
+    CH(2);
+    if (x86_cond(c, 5)) goto LDE;
+    NEEDP(11, 2, 0x0119);                                                         /* the noise mix and its two OUTs */
+    c->r[R_AX] = 0x9248;
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x00A5), 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    ds_put(c, 0x00A5, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], ds_get(c, 0x006B), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x0069), 1);
+    CH(8);
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 0131 out 42h,al */
+    set_r8(c, R_AL, get_r8(c, R_AH)); CH(1);                                      /* 0133 mov al,ah */
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 0135 out 42h,al */
+L137: SM4_NEED(1, 0x0137);
+    CH(1);
+    far_ret(c);                                                                   /* 0137 retf */
+    return 1;
+LDE: SM4_NEED(2, 0x00DE);                                                         /* the vibrato arm: cmp word [67],0 / je 010A */
+    (void)alu_op(c, 7, ds_get(c, 0x0067), 0x0000, 1);
+    CH(2);
+    if (x86_cond(c, 4)) goto L10A;
+    SM4_NEED(3, 0x00E5);                                                          /* dec word [97] / cmp word [97],0 / jg 010A */
+    ds_put(c, 0x0097, (uint16_t)alu_dec(c, ds_get(c, 0x0097), 1));
+    (void)alu_op(c, 7, ds_get(c, 0x0097), 0x0000, 1);
+    CH(3);
+    if (x86_cond(c, 15)) goto L10A;
+    NEEDP(9, 2, 0x00F0);                                                          /* reload, bend, send, store */
+    c->r[R_AX] = ds_get(c, 0x0095);
+    ds_put(c, 0x0097, c->r[R_AX]);
+    ds_put(c, 0x006B, (uint16_t)alu_sub(c, 0, ds_get(c, 0x006B), 1, 0));          /* neg word [6B] */
+    c->r[R_AX] = ds_get(c, 0x0067);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x006B), 1);
+    CH(5);
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 0101 out 42h,al */
+    ds_put(c, 0x0067, c->r[R_AX]); CH(1);                                         /* 0103 */
+    set_r8(c, R_AL, get_r8(c, R_AH)); CH(1);                                      /* 0106 mov al,ah */
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 0108 out 42h,al */
+L10A: SM4_NEED(1, 0x010A);
+    CH(1);
+    far_ret(c);                                                                   /* 010A retf */
+    return 1;
+#undef NEEDP
+#undef CH
+}
+
+/* ISOUND.117 019C:0102 (far, no arguments): the PC-speaker overlay's "effect divisor" step, the overlay's twin
+ * of the driver's routine at ISOUND.LOG 010B (the cells sit at other offsets and every OUT is followed by two
+ * JMP $+2 I/O delays). It saves AX and the caller's DS, loads DS with the driver's own data segment (the
+ * immediate of the MOV AX at 0104h is a relocated word: read from the loaded code, never taken as 0), and works
+ * on the cells (DS-relative): [83] the effect mode (FFh = noise), [73] the vibrato period (0 = none), [75] its
+ * countdown, [45] the current counter-2 divisor (0 = rest), [49] the step (vibrato) or noise mask, [47] the noise
+ * add-in, [7D] the noise seed.
+ *  - [83] not FFh: nothing to do (restore and return).
+ *  - [73] not zero (the vibrato arm, at 00CBh, below this entry): if the divisor [45] is zero, nothing; else it
+ *    decrements [75], and while that is still positive (signed) nothing; otherwise it reloads [75] from [73],
+ *    negates the step [49], adds it to the divisor, sends the divisor to the speaker (OUT 42h low byte, JMP, JMP,
+ *    store in [45], then the high byte, JMP, JMP: counter 2's data port, which never wakes the machine).
+ *  - [73] zero (the noise arm): AX = 9248h + seed [7D], rotated right three times and stored back in [7D]; then
+ *    AX = (AX AND [49]) + [47] is sent the same way (low byte, delays, high byte, delays).
+ *  - Every exit pops DS and AX (so AX comes back as the caller had it) and returns FAR with RETF.
+ * Every port access happens at the clock the original makes it. */
+static int isound_117_speaker_noise_vibrato_tick(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEEDP(n_, k_, at_) SM4_NEED((n_) + IO_SLACK(k_), (at_))
+#define CH(n_) (c->icount += (n_))
+#define LEAVE() do { c->seg[S_DS] = cpu_pop16(c); c->r[R_AX] = cpu_pop16(c); far_ret(c); CH(3); return 1; } while (0)
+    if (!room(c, 6)) return 0;
+    x86_push_reg(c, R_AX);                                                        /* 0102 push ax */
+    cpu_push16(c, c->seg[S_DS]);                                                  /* 0103 push ds */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0105);                             /* 0104 mov ax,imm (relocated segment) */
+    c->seg[S_DS] = c->r[R_AX];                                                    /* 0107 mov ds,ax */
+    (void)alu_op(c, 7, ds_get8(c, 0x0083), 0xFF, 0);                              /* 0109 cmp byte [83],FFh */
+    CH(6);                                                                        /* ... and 010E jne 013D */
+    if (x86_cond(c, 5)) goto L13D;
+    SM4_NEED(2, 0x0110);
+    (void)alu_op(c, 7, ds_get(c, 0x0073), 0x0000, 1);                             /* 0110 cmp word [73],0 */
+    CH(2);                                                                        /* 0115 jne 00CB */
+    if (x86_cond(c, 5)) goto LCB;
+    NEEDP(15, 2, 0x0117);                                                         /* the noise mix and its two OUTs */
+    c->r[R_AX] = 0x9248;
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x007D), 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 1, c->r[R_AX], 1, 1);
+    ds_put(c, 0x007D, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], ds_get(c, 0x0049), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x0047), 1);
+    CH(8);
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 012F out 42h,al */
+    CH(2);                                                                        /* 0131, 0133 jmp $+2 */
+    set_r8(c, R_AL, get_r8(c, R_AH)); CH(1);                                      /* 0135 mov al,ah */
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 0137 out 42h,al */
+    CH(2);                                                                        /* 0139, 013B jmp $+2 */
+L13D: SM4_NEED(3, 0x013D);
+    LEAVE();                                                                      /* pop ds / pop ax / retf */
+LCB: SM4_NEED(2, 0x00CB);                                                         /* the vibrato arm: cmp word [45],0 / je 00FF */
+    (void)alu_op(c, 7, ds_get(c, 0x0045), 0x0000, 1);
+    CH(2);
+    if (x86_cond(c, 4)) goto LFF;
+    SM4_NEED(3, 0x00D2);                                                          /* dec word [75] / cmp word [75],0 / jg 00FF */
+    ds_put(c, 0x0075, (uint16_t)alu_dec(c, ds_get(c, 0x0075), 1));
+    (void)alu_op(c, 7, ds_get(c, 0x0075), 0x0000, 1);
+    CH(3);
+    if (x86_cond(c, 15)) goto LFF;
+    NEEDP(13, 2, 0x00DD);                                                         /* reload, bend, send, store */
+    c->r[R_AX] = ds_get(c, 0x0073);
+    ds_put(c, 0x0075, c->r[R_AX]);
+    ds_put(c, 0x0049, (uint16_t)alu_sub(c, 0, ds_get(c, 0x0049), 1, 0));          /* neg word [49] */
+    c->r[R_AX] = ds_get(c, 0x0045);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, 0x0049), 1);
+    CH(5);
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 00EE out 42h,al */
+    CH(2);                                                                        /* 00F0, 00F2 jmp $+2 */
+    ds_put(c, 0x0045, c->r[R_AX]); CH(1);                                         /* 00F4 */
+    set_r8(c, R_AL, get_r8(c, R_AH)); CH(1);                                      /* 00F7 mov al,ah */
+    x86_out(c, 0x42, 0); CH(1);                                                   /* 00F9 out 42h,al */
+    CH(2);                                                                        /* 00FB, 00FD jmp $+2 */
+LFF: SM4_NEED(3, 0x00FF);
+    LEAVE();                                                                      /* pop ds / pop ax / retf */
+#undef NEEDP
+#undef CH
+#undef LEAVE
+}
+
+/* ASOUND.117 01B6:0839 (near, no arguments): the union of the AdLib driver's voice flags.
+ * The driver keeps its voice records 1Eh bytes apart in the data segment; the byte at
+ * offset 0 of each record (DS:[190Ah], [1928h], [1946h], [1964h], [1982h], [19A0h],
+ * [19BEh]) is that voice's flag byte. The routine clears AX (XOR AX,AX: AH stays 0
+ * and ZF/PF set, CF/OF/AF clear), loads AL from the first record and ORs in the other
+ * six, so AL says which flag bits any voice has set. The flags left to the caller are
+ * those of the last OR (byte width). Nothing is written to memory; plain RET, no
+ * operands. The Roland overlay's twin (RSOUND.117 023E:0E2A) is a separate routine. */
+static int asound_117_voice_flags_union(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);                         /* 0839: xor ax,ax */
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x190A)));                              /* 083B: mov al,[190Ah] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x1928)), 0)); /* 083E: or al,[1928h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x1946)), 0)); /* 0842: or al,[1946h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x1964)), 0)); /* 0846: or al,[1964h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x1982)), 0)); /* 084A: or al,[1982h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x19A0)), 0)); /* 084E: or al,[19A0h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x19BE)), 0)); /* 0852: or al,[19BEh] */
+    c->ip = cpu_pop16(c);                                                                   /* 0856: ret */
+    c->icount += 9;
+    return 1;
+}
+
+/* RSOUND.117 023E:0E2A (near, no arguments): the union of the Roland driver's voice flags.
+ * The Roland overlay keeps eight voice records 22h bytes apart in the data segment; the
+ * byte at offset 0 of each record (DS:[2290h], [22B2h], [22D4h], [22F6h], [2318h], [233Ah],
+ * [235Ch], [237Eh]) is that voice's flag byte. The routine clears AX (XOR AX,AX: AH stays 0
+ * and ZF/PF set, CF/OF/AF clear), loads AL from the first record and ORs in the other
+ * seven, so AL says which flag bits any voice has set. The flags left to the caller are
+ * those of the last OR (byte width). Nothing is written to memory; plain RET, no operands.
+ * The AdLib overlay's look-alike (ASOUND.117 01B6:0839) has seven records 1Eh apart at
+ * other offsets: the two bodies are not interchangeable. */
+static int rsound_117_voice_flags_union(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);                         /* 0E2A: xor ax,ax */
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x2290)));                              /* 0E2C: mov al,[2290h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x22B2)), 0)); /* 0E2F: or al,[22B2h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x22D4)), 0)); /* 0E33: or al,[22D4h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x22F6)), 0)); /* 0E37: or al,[22F6h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x2318)), 0)); /* 0E3B: or al,[2318h] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x233A)), 0)); /* 0E3F: or al,[233Ah] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x235C)), 0)); /* 0E43: or al,[235Ch] */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, 0), mem_read8(c, phys(c->seg[S_DS], 0x237E)), 0)); /* 0E47: or al,[237Eh] */
+    c->ip = cpu_pop16(c);                                                                   /* 0E4B: ret */
+    c->icount += 10;
+    return 1;
+}
+
+/* ISOUND.117 019C:05A4 (near, no arguments): arm the PC-speaker effect flag.
+ * DS is the driver's data segment. The byte [7C] is a switch and the word [78] its
+ * companion value: the routine compares [7C] with 1 (CMP sets the flags) and, when it
+ * is not 1, stores 1 into [7C] and 1 into [78]; when it already is 1 it changes
+ * nothing. Both ways end in a plain RET (nothing popped). The not-1 arm returns at
+ * 05B6; the equal arm jumps to the RET at 05C9, which is the last instruction of the
+ * neighbouring routine at 05B7 (that one tests for 0FFh and stores 0FFh, 0FFFFh; it
+ * is a separate routine and is not run from here). The flags the caller sees are
+ * the CMP's on the equal arm, and the CMP's on the other arm too (the MOVs do not
+ * change them). The code is not read, so the load base does not matter. */
+static int isound_arm_effect_timer_flag(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    (void)alu_op(c, 7, ds_get8(c, 0x007C), 0x01, 0);                               /* 05A4: cmp byte ptr [7Ch],1 */
+    c->icount += 2;                                                                /* 05A9: je 05C9 */
+    if (x86_cond(c, 4)) goto L5C9; goto L5AB;
+
+L5AB:
+    SM4_NEED(3, 0x05AB);
+    ds_put8(c, 0x007C, 0x01);                                                      /* 05AB: mov byte ptr [7Ch],1 */
+    ds_put(c, 0x0078, 0x0001);                                                     /* 05B0: mov word ptr [78h],1 */
+    c->ip = cpu_pop16(c);                                                          /* 05B6: ret */
+    c->icount += 3;
+    return 1;
+
+L5C9:
+    SM4_NEED(1, 0x05C9);
+    c->ip = cpu_pop16(c);                                                          /* 05C9: ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ISOUND.117 019C:0626 (near, no arguments): the union of two sequencer words.
+ * DS is the driver's data segment. AX is loaded from the word [41] (MOV: flags
+ * untouched) and the word [43] is ORed into it, so AX is non-zero when either
+ * cell is, and ZF/SF/PF tell the caller so; CF and OF are cleared and AF is
+ * left clear by the OR. The routine ends in a plain RET (nothing popped).
+ * [41] and [43] are among the cells the sequencer reset (019C:0163) clears.
+ * The code is not read, so the load base does not matter. */
+static int isound_117_pair_union(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    c->r[R_AX] = ds_get(c, 0x0041);                                                /* 0626: mov ax,[41h] */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], ds_get(c, 0x0043), 1);        /* 0629: or ax,[43h] */
+    c->ip = cpu_pop16(c);                                                          /* 062D: ret */
+    c->icount += 3;
+    return 1;
+}
+
+/* ASOUND.117 01B6:05A5 (near, no arguments): arm a pair of driver flags.
+ * DS is the driver's data segment. The word [17DE] is a switch and [17DC] its
+ * companion: the routine compares [17DE] with 1 (CMP sets the flags) and, when
+ * it is not 1, stores 1 into [17DE] and then 1 into [17DC]; when it already is
+ * 1 it changes nothing. Both ways end at the same plain RET (05B8, nothing
+ * popped), and the flags the caller sees are the CMP's (the MOVs leave them).
+ * The cells lie next to the noise step's seed [17E4] (01B6:03C4) but are not
+ * it. The code is not read, so the load base does not matter. */
+static int asound_117_arm_effect_flags(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    (void)alu_op(c, 7, ds_get(c, 0x17DE), 0x0001, 1);                              /* 05A5: cmp word ptr [17DEh],1 */
+    c->icount += 2;                                                                /* 05AA: je 05B8 */
+    if (x86_cond(c, 4)) goto L5B8; goto L5AC;
+
+L5AC:
+    SM4_NEED(2, 0x05AC);
+    ds_put(c, 0x17DE, 0x0001);                                                     /* 05AC: mov word ptr [17DEh],1 */
+    ds_put(c, 0x17DC, 0x0001);                                                     /* 05B2: mov word ptr [17DCh],1 */
+    c->icount += 2;
+    goto L5B8;
+
+L5B8:
+    SM4_NEED(1, 0x05B8);
+    c->ip = cpu_pop16(c);                                                          /* 05B8: ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ISOUND.117 019C:0008 (far, no arguments): the PC-speaker driver's start-song entry.
+ * It builds a frame (PUSH BP; MOV BP,SP) and saves the caller's DS (PUSH DS), then
+ * loads DS with the driver's own data segment: the immediate of the MOV AX,imm at
+ * 000Ch is a relocated segment word, so it is read from the loaded code (offset
+ * 000Dh), never baked in. It reads port 61h (the PC-speaker/gate port: IN AL,61h at
+ * the clock the original makes it) and keeps the value in the byte [77]. Then it
+ * calls the sequencer's song preparation at 0140 (near, plain RET, nothing popped:
+ * it resets the sequencer cells through 0168 and stores the default track), stores
+ * FFh into the byte [82] (the driver's "started" flag), restores DS and BP, clears
+ * AX (XOR AX,AX: ZF/PF set, CF/OF/AF clear) and returns FAR (RETF, nothing popped).
+ * The call goes through the registry (guest_call_pop to 0140), so the callee runs as
+ * its matched body when one is installed and as the original's instructions when
+ * not; its proof is exact either way. No argument is read through BP: the frame is
+ * only pushed and popped. */
+static int isound_117_start_song_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7 + IO_SLACK(1))) return 0;
+    x86_push_reg(c, R_BP); c->icount += 1;                                        /* 0008: push bp */
+    c->r[R_BP] = c->r[R_SP]; c->icount += 1;                                      /* 0009: mov bp,sp */
+    cpu_push16(c, c->seg[S_DS]); c->icount += 1;                                  /* 000B: push ds */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x000D); c->icount += 1;             /* 000C: mov ax,imm (relocated segment) */
+    c->seg[S_DS] = c->r[R_AX]; c->icount += 1;                                    /* 000F: mov ds,ax */
+    x86_in(c, 0x61, 0); c->icount += 1;                                           /* 0011: in al,61h */
+    ds_put8(c, 0x0077, get_r8(c, R_AL)); c->icount += 1;                          /* 0013: mov [77h],al */
+    SM4_NEED(1, 0x0016);
+    RUN(guest_call_pop(m, 0x0140, 0x0019, 0));                                    /* 0016: call 0140 */
+    SM4_NEED(5, 0x0019);
+    ds_put8(c, 0x0082, 0xFF); c->icount += 1;                                     /* 0019: mov byte ptr [82h],0FFh */
+    c->seg[S_DS] = cpu_pop16(c); c->icount += 1;                                  /* 001E: pop ds */
+    c->r[R_BP] = cpu_pop16(c); c->icount += 1;                                    /* 001F: pop bp */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1); c->icount += 1; /* 0020: xor ax,ax */
+    far_ret(c); c->icount += 1;                                                   /* 0022: retf */
+#undef RUN
+    return 1;
+}
+
+/* ASOUND.LOG 0000:019A (near, no arguments): the AdLib driver's chip init.
+ * DS is the driver's data segment. The routine zeroes AX and with it:
+ *  - the words [03DC], [03DA], [03DE] and the byte [043A];
+ *  - the first three bytes of each of the eight 1Ah-byte voice tables at [043C],
+ *    [0456], [0470], [048A], [04A4], [04BE], [04D8], [04F2] (a LEA BX, then three
+ *    byte stores through BX, BX+1, BX+2: BX ends at 04F2);
+ *  - the bytes [050C], [050D], the words [050E], [0510], [0432], [0434], [0436],
+ *    [0438], and then [043A] again, this time FFh.
+ * Then it writes the value 0 to all 255 OPL registers: BX = 0 (the value) and a loop
+ * of AX = 0FFh down to 1 that pushes AX (the register number, in AL), calls the OPL
+ * register writer at 0300 (near, plain RET, nothing popped: it stores BL in the shadow
+ * table at [0516+register], waits out the chip's delay loops and writes the register
+ * number to port 388h and the value to 389h) and pops AX again; the DEC's flags steer
+ * the JNE. Finally AL = 1 and BL = 20h (register 1, value 20h: waveform select
+ * enable) and one more call to 0300, then RET. The callee runs as the original's
+ * code from this body (guest_call_pop), so its delay loops and ports are its own; the
+ * lockstep fixture replaces it by a logging stub. Registers left over are the last
+ * call's. Nothing here reads the driver's code, so the load base does not matter. */
+static int asound_log_chip_init(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WRITER = 0x0300 };
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    /* 019A..0228: 48 straight instructions up to the loop head */
+    if (!room(c, 48)) return 0;
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);                 /* 019A: xor ax,ax */
+    ds_put(c, 0x03DC, c->r[R_AX]);                                                  /* 019C: mov [03DCh],ax */
+    ds_put(c, 0x03DA, c->r[R_AX]);                                                  /* 019F: mov [03DAh],ax */
+    ds_put(c, 0x03DE, c->r[R_AX]);                                                  /* 01A2: mov [03DEh],ax */
+    ds_put8(c, 0x043A, get_r8(c, R_AL));                                            /* 01A5: mov [043Ah],al */
+    c->r[R_BX] = 0x043C;                                                 /* 01A8: lea bx,[043Ch] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01AC: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01AE: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01B1: mov [bx+2],al */
+    c->r[R_BX] = 0x0456;                                                 /* 01B4: lea bx,[0456h] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01B8: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01BA: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01BD: mov [bx+2],al */
+    c->r[R_BX] = 0x0470;                                                 /* 01C0: lea bx,[0470h] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01C4: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01C6: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01C9: mov [bx+2],al */
+    c->r[R_BX] = 0x048A;                                                 /* 01CC: lea bx,[048Ah] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01D0: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01D2: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01D5: mov [bx+2],al */
+    c->r[R_BX] = 0x04A4;                                                 /* 01D8: lea bx,[04A4h] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01DC: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01DE: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01E1: mov [bx+2],al */
+    c->r[R_BX] = 0x04BE;                                                 /* 01E4: lea bx,[04BEh] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01E8: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01EA: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01ED: mov [bx+2],al */
+    c->r[R_BX] = 0x04D8;                                                 /* 01F0: lea bx,[04D8h] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 01F4: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 01F6: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 01F9: mov [bx+2],al */
+    c->r[R_BX] = 0x04F2;                                                 /* 01FC: lea bx,[04F2h] */
+    ds_put8(c, c->r[R_BX], get_r8(c, R_AL));                                   /* 0200: mov [bx],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 1), get_r8(c, R_AL));                   /* 0202: mov [bx+1],al */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 2), get_r8(c, R_AL));                   /* 0205: mov [bx+2],al */
+    ds_put8(c, 0x050C, get_r8(c, R_AL));                                            /* 0208: mov [050Ch],al */
+    ds_put8(c, 0x050D, get_r8(c, R_AL));                                            /* 020B: mov [050Dh],al */
+    ds_put(c, 0x050E, c->r[R_AX]);                                                  /* 020E: mov [050Eh],ax */
+    ds_put(c, 0x0510, c->r[R_AX]);                                                  /* 0211: mov [0510h],ax */
+    ds_put(c, 0x0432, c->r[R_AX]);                                                  /* 0214: mov [0432h],ax */
+    ds_put(c, 0x0434, c->r[R_AX]);                                                  /* 0217: mov [0434h],ax */
+    ds_put(c, 0x0436, c->r[R_AX]);                                                  /* 021A: mov [0436h],ax */
+    ds_put(c, 0x0438, c->r[R_AX]);                                                  /* 021D: mov [0438h],ax */
+    ds_put8(c, 0x043A, 0xFF);                                                       /* 0220: mov byte ptr [043Ah],0FFh */
+    c->r[R_BX] = 0x0000;                                                            /* 0225: mov bx,0 */
+    c->r[R_AX] = 0x00FF;                                                            /* 0228: mov ax,0FFh */
+    c->icount += 48;
+    for (;;) {
+        SM4_NEED(1, 0x022B);
+        x86_push_reg(c, R_AX);                                                      /* 022B: push ax */
+        c->icount += 1;
+        SM4_NEED(1, 0x022C);
+        RUN(guest_call_pop(m, WRITER, 0x022F, 0));                                  /* 022C: call 0300 */
+        SM4_NEED(3, 0x022F);
+        c->r[R_AX] = cpu_pop16(c);                                                  /* 022F: pop ax */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                           /* 0230: dec ax */
+        c->icount += 3;                                                             /* 0231: jne 022B */
+        if (!x86_cond(c, 5)) break;
+    }
+    SM4_NEED(2, 0x0233);
+    set_r8(c, R_AL, 0x01);                                                          /* 0233: mov al,1 */
+    set_r8(c, 3, 0x20);                                                          /* 0235: mov bl,20h */
+    c->icount += 2;
+    SM4_NEED(1, 0x0237);
+    RUN(guest_call_pop(m, WRITER, 0x023A, 0));                                      /* 0237: call 0300 */
+    SM4_NEED(1, 0x023A);
+    near_ret(c);                                                                    /* 023A: ret */
+    c->icount += 1;
+    return 1;
+#undef RUN
+}
+
+/* ASOUND.LOG 0A62, near: write the AdLib "scale and level" style register at 0C0h + voice offset (the feedback /
+ * connection register bank) of the voice whose instrument record the driver is working on. DS is the driver's data
+ * segment; no arguments. A two-word frame (BP-2 = the value being built, BP-4 = the register number); keeps nothing
+ * for the caller but BP; AX, BX and the flags come back as the last work leaves them (CX is untouched).
+ *  - register = [066Eh] + 0C0h: the word at 066Eh (not 0670h as in the sibling writers) plus the base register 0C0h.
+ *  - BX = [0674h], the instrument record. value = (record byte 0Ah << 1) | flag, where the byte is masked to 8 bits
+ *    first (AL is loaded, AX masked with FFh, then shifted left once, so bit 7 of the byte spills into bit 8),
+ *    and flag is 1 when record byte 0Dh (reloaded into AL and masked with FFh) is ZERO, 0 when it is non-zero.
+ *  - Pushes the value, then the register, calls the register write at 02F6 (plain RET) and removes the two
+ *    words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_feedback_connection(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BASE = 0x066E, RECORD = 0x0674 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 15)) return 0;
+    XB(15, 0x0A62);                                               /* frame, register, byte 0Ah << 1, byte 0Dh test, je */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0004, 1);   /* sub sp,4 */
+    c->r[R_AX] = ds_get(c, BASE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x00C0, 1);   /* add ax,0C0h */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0A)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0D)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    if (x86_cond(c, 4)) goto zero_byte;
+    XB(2, 0x0A8D);                                                /* xor ax,ax / jmp 0A95 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    goto merge;
+zero_byte:
+    XB(1, 0x0A92);                                                /* mov ax,1 */
+    c->r[R_AX] = 0x0001;
+merge:
+    XB(4, 0x0A95);                                                /* [bp-2] |= AX / reload / both pushes */
+    {
+        const uint16_t at_ = (uint16_t)(c->r[R_BP] - 2);
+        const uint16_t r_ = (uint16_t)alu_op(c, 1, seg_read16(c, c->seg[S_SS], at_), c->r[R_AX], 1);   /* or [bp-2],ax */
+        seg_write16(c, c->seg[S_SS], at_, r_);
+    }
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    x86_push_reg(c, R_AX);                                        /* push ax: the value */
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));   /* push [bp-4]: the register */
+    SM4_NEED(1, 0x0A9F);
+    XRUN(guest_call_pop(m, 0x02F6, 0x0AA2, 0));                   /* call 02F6 */
+    XB(4, 0x0AA2);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 0AAA, near: write the AdLib "attack / decay" register (60h bank) of the voice whose instrument record
+ * the driver is working on. DS is the driver's data segment; no arguments. A two-word frame (BP-2 = the value being
+ * built, BP-4 = the register number); keeps nothing for the caller but BP; AX, BX and the flags come back as the last
+ * work leaves them (CX is untouched).
+ *  - register = [0670h] + 60h: the current voice's operator offset plus the base register 60h.
+ *  - BX = [0674h], the instrument record. value = (record byte 0 << 4) | (record byte 1 & 0Fh): byte 0 is loaded into
+ *    AL and masked to 8 bits, shifted left four times as four separate `shl ax,1` (the top nibble spills into AH),
+ *    and the low nibble of byte 1 is OR-ed in.
+ *  - Pushes the value, then the register, calls the register write at 02F6 (plain RET) and removes the two
+ *    words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_attack_decay(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BASE = 0x0670, RECORD = 0x0674 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 21)) return 0;
+    XB(21, 0x0AAA);                                               /* the frame, register, value and both pushes */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0004, 1);   /* sub sp,4 */
+    c->r[R_AX] = ds_get(c, BASE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x0060, 1);   /* add ax,60h */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));                      /* mov al,[bx] */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 1)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x000F, 1);   /* and ax,0Fh */
+    {
+        const uint16_t at_ = (uint16_t)(c->r[R_BP] - 2);
+        const uint16_t r_ = (uint16_t)alu_op(c, 1, seg_read16(c, c->seg[S_SS], at_), c->r[R_AX], 1);   /* or [bp-2],ax */
+        seg_write16(c, c->seg[S_SS], at_, r_);
+    }
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    x86_push_reg(c, R_AX);                                        /* push ax: the value */
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));   /* push [bp-4]: the register */
+    SM4_NEED(1, 0x0AE2);
+    XRUN(guest_call_pop(m, 0x02F6, 0x0AE5, 0));                   /* call 02F6 */
+    XB(4, 0x0AE5);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 0AEC, near: write the AdLib "sustain level / release rate" register (80h bank) of the voice whose instrument record
+ * the driver is working on. DS is the driver's data segment; no arguments. A two-word frame (BP-2 = the value being
+ * built, BP-4 = the register number); keeps nothing for the caller but BP; AX, BX and the flags come back as the last
+ * work leaves them (CX is untouched).
+ *  - register = [0670h] + 80h: the current voice's operator offset plus the base register 80h.
+ *  - BX = [0674h], the instrument record. value = (record byte 2 << 4) | (record byte 3 & 0Fh): byte 2 is loaded into
+ *    AL and masked to 8 bits, shifted left four times as four separate `shl ax,1` (the top nibble spills into AH),
+ *    and the low nibble of byte 3 is OR-ed in.
+ *  - Pushes the value, then the register, calls the register write at 02F6 (plain RET) and removes the two
+ *    words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_sustain_release(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BASE = 0x0670, RECORD = 0x0674 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 21)) return 0;
+    XB(21, 0x0AEC);                                               /* the frame, register, value and both pushes */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0004, 1);   /* sub sp,4 */
+    c->r[R_AX] = ds_get(c, BASE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x0080, 1);   /* add ax,80h */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)));       /* mov al,[bx+2] */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);     /* shl ax,1 */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 3)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x000F, 1);   /* and ax,0Fh */
+    {
+        const uint16_t at_ = (uint16_t)(c->r[R_BP] - 2);
+        const uint16_t r_ = (uint16_t)alu_op(c, 1, seg_read16(c, c->seg[S_SS], at_), c->r[R_AX], 1);   /* or [bp-2],ax */
+        seg_write16(c, c->seg[S_SS], at_, r_);
+    }
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    x86_push_reg(c, R_AX);                                        /* push ax: the value */
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));   /* push [bp-4]: the register */
+    SM4_NEED(1, 0x0B25);
+    XRUN(guest_call_pop(m, 0x02F6, 0x0B28, 0));                   /* call 02F6 */
+    XB(4, 0x0B28);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 0A00, near: write the AdLib "tremolo depth / vibrato depth / rhythm" register 08h, set from one flag
+ * of the driver's data. DS is the driver's data segment; no arguments, no frame: it keeps no BP and leaves AX (the
+ * register number, 8), the flags (from the cleanup `add sp,4`) and the registers 02F6 leaves as the last work leaves them.
+ *  - The byte at [0402h] is loaded into AL and masked with FFh (AH of the caller is dropped), which sets ZF.
+ *    A non-zero flag gives the value 40h; a zero flag gives 0 (that arm clears AX with XOR).
+ *  - Pushes the value, then the register number 8 (through AX), calls the register write at 02F6 (plain RET) and
+ *    removes the two words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_depth_flag(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAG = 0x0402 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0A00);                                                /* mov al,[0402] / and ax,0FFh / je */
+    set_r8(c, R_AL, ds_get8(c, FLAG));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    if (x86_cond(c, 4)) goto flag_clear;
+    XB(2, 0x0A08);                                                /* mov ax,40h / jmp 0A10 */
+    c->r[R_AX] = 0x0040;
+    goto push_value;
+flag_clear:
+    XB(1, 0x0A0E);                                                /* xor ax,ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+push_value:
+    XB(3, 0x0A10);                                                /* push ax / mov ax,8 / push ax */
+    x86_push_reg(c, R_AX);                                        /* the value */
+    c->r[R_AX] = 0x0008;
+    x86_push_reg(c, R_AX);                                        /* the register number */
+    SM4_NEED(1, 0x0A15);
+    XRUN(guest_call_pop(m, 0x02F6, 0x0A18, 0));                   /* call 02F6 */
+    XB(2, 0x0A18);                                                /* add sp,4 / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 07DC, near: write the AdLib "frequency / key-on" register B0h+voice with the key-on bit cleared:
+ * the key-off write for one voice. DS is the driver's data segment; no arguments. A one-word frame (BP-2 = the
+ * register number); keeps nothing for the caller but BP; AX, BX and the flags come back as the last work leaves them.
+ *  - register = [0512h] (a byte, the voice number) + 0B0h; it stays in BX and in the frame.
+ *  - value = the byte at [register + 0516h] (the driver's shadow copy of that register, a table that starts at
+ *    0516h and is indexed by the register number) with bit 5 (the key-on bit, 20h) cleared: `and ax,0DFh` also
+ *    clears the high byte, so the pushed word is only that byte.
+ *  - Pushes the value, then the register (BX), calls the register write at 02F6 (plain RET) and removes the two
+ *    words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_key_off(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { VOICE = 0x0512, SHADOW = 0x0516 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 12)) return 0;
+    XB(12, 0x07DC);                                               /* frame, register, shadow byte with key-on cleared, both pushes */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0002, 1);   /* sub sp,2 */
+    set_r8(c, R_AL, ds_get8(c, VOICE));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x00B0, 1);   /* add ax,0B0h */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + SHADOW)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00DF, 1);   /* and ax,0DFh */
+    x86_push_reg(c, R_AX);                                        /* the value */
+    x86_push_reg(c, R_BX);                                        /* the register */
+    SM4_NEED(1, 0x07FA);
+    XRUN(guest_call_pop(m, 0x02F6, 0x07FD, 0));                   /* call 02F6 */
+    XB(4, 0x07FD);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 0BB8, near: write the AdLib "waveform select" register (E0h bank) of the voice whose instrument record
+ * the driver is working on. DS is the driver's data segment; no arguments. A one-word frame (BP-2 = the register
+ * number); keeps nothing for the caller but BP; AX, BX and the flags come back as the last work leaves them.
+ *  - register = [0670h] + 0E0h: the current voice's operator offset plus the base register 0E0h.
+ *  - BX = [0674h], the instrument record. value = record byte 8 & 3 (the waveform number; `and ax,3` also clears AH).
+ *  - Pushes the value, then reloads the register from the frame and pushes it, calls the register write at 02F6
+ *    (plain RET) and removes the two words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_waveform_select(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BASE = 0x0670, RECORD = 0x0674 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 12)) return 0;
+    XB(12, 0x0BB8);                                               /* frame, register, waveform value, both pushes */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0002, 1);   /* sub sp,2 */
+    c->r[R_AX] = ds_get(c, BASE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x00E0, 1);   /* add ax,0E0h */
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, RECORD);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 8)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0003, 1);   /* and ax,3 */
+    x86_push_reg(c, R_AX);                                        /* the value */
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    x86_push_reg(c, R_AX);                                        /* the register */
+    SM4_NEED(1, 0x0BD7);
+    XRUN(guest_call_pop(m, 0x02F6, 0x0BDA, 0));                   /* call 02F6 */
+    XB(4, 0x0BDA);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.LOG 09B6, near: write the AdLib "rhythm / depth" register BDh (tremolo depth, vibrato depth and the rhythm
+ * switch and drum bits) from the driver's data. DS is the driver's data segment; no arguments. A one-word frame whose
+ * low byte (BP-2) collects the value; only that byte is ever written or read, the high byte of the frame word stays
+ * whatever the stack held. Keeps nothing for the caller but BP; AX and the flags come back as the last work leaves them.
+ *  - value = [05D3h] & 3Fh: the six low bits of the driver's rhythm word (stored with `mov [bp-2],al`).
+ *  - the byte [0400h] is loaded into AL and masked with FFh to set ZF: non-zero ORs 80h into the value (the tremolo
+ *    depth bit), zero ORs 0 (that arm clears AX with XOR). The OR is a byte operation on the frame.
+ *  - the same for the byte [0401h] with 40h (the vibrato depth bit).
+ *  - Pushes the value (the frame byte reloaded into AL, masked with FFh), then the register number 0BDh (through AX),
+ *    calls the register write at 02F6 (plain RET) and removes the two words with `add sp,4`.
+ * Callees: 02F6 (plain ret, no pops). */
+static int asound_log_write_rhythm_depth(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RHYTHM = 0x05D3, TREMOLO = 0x0400, VIBRATO = 0x0401 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+/* or byte [bp-2],al : an 8-bit OR on the frame byte */
+#define XOR_FRAME() do { const uint32_t at_ = phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)); \
+    const uint16_t r_ = (uint16_t)alu_op(c, 1, mem_read8(c, at_), get_r8(c, R_AL), 0); \
+    mem_write8(c, at_, (uint8_t)r_); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x09B6);                                                /* frame, value = [05D3] & 3Fh, tremolo test, je */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0002, 1);   /* sub sp,2 */
+    set_r8(c, R_AL, ds_get8(c, RHYTHM));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x003F, 1);   /* and ax,3Fh */
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)), get_r8(c, R_AL));   /* mov byte [bp-2],al */
+    set_r8(c, R_AL, ds_get8(c, TREMOLO));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    if (x86_cond(c, 4)) goto tremolo_off;
+    XB(2, 0x09CE);                                                /* mov ax,80h / jmp 09D6 */
+    c->r[R_AX] = 0x0080;
+    goto tremolo_or;
+tremolo_off:
+    XB(1, 0x09D4);                                                /* xor ax,ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+tremolo_or:
+    XB(4, 0x09D6);                                                /* or [bp-2],al / vibrato test / je */
+    XOR_FRAME();
+    set_r8(c, R_AL, ds_get8(c, VIBRATO));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    if (x86_cond(c, 4)) goto vibrato_off;
+    XB(2, 0x09E1);                                                /* mov ax,40h / jmp 09E8 */
+    c->r[R_AX] = 0x0040;
+    goto vibrato_or;
+vibrato_off:
+    XB(1, 0x09E6);                                                /* xor ax,ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+vibrato_or:
+    XB(6, 0x09E8);                                                /* or [bp-2],al / reload the value / both pushes */
+    XOR_FRAME();
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2))));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1);   /* and ax,0FFh */
+    x86_push_reg(c, R_AX);                                        /* the value */
+    c->r[R_AX] = 0x00BD;
+    x86_push_reg(c, R_AX);                                        /* the register number */
+    SM4_NEED(1, 0x09F6);
+    XRUN(guest_call_pop(m, 0x02F6, 0x09F9, 0));                   /* call 02F6 */
+    XB(4, 0x09F9);                                                /* add sp,4 / mov sp,bp / pop bp / ret */
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0004, 1);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XOR_FRAME
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x09B6, asound_log_write_rhythm_depth, "write the rhythm/depth register BDh: [05D3] low six bits plus 80h and 40h for the two depth flags", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0BB8, asound_log_write_waveform_select, "write the waveform select register: 0E0h + voice offset, record byte 8 masked to 2 bits", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x07DC, asound_log_write_key_off, "key-off write: register B0h + voice, the shadow byte with the key-on bit cleared", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0A00, asound_log_write_depth_flag, "write the depth register 08h: 40h when the flag byte [0402] is non-zero, else 0", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0AEC, asound_log_write_sustain_release, "write the sustain/release register: 80h + voice offset, record byte 2 as the high nibble, byte 3 low nibble", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0AAA, asound_log_write_attack_decay, "write the attack/decay register: 60h + voice offset, record byte 0 as the high nibble, byte 1 low nibble", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0A62, asound_log_write_feedback_connection, "write the feedback/connection register: 0C0h + voice offset, record byte shifted left plus a flag for a zero second byte", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x019A, asound_log_chip_init, "AdLib driver chip init: clear the sequencer cells and the nine voice tables, write 0 to all 255 OPL registers, then register 1 = 20h", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0008, isound_117_start_song_entry, "PC-speaker overlay far entry: switch DS to the driver's data segment, save port 61h in [77], prepare the sequencer for a song (call 0140), set [82] to FFh, return AX = 0", 2 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x05A5, asound_117_arm_effect_flags, "AdLib overlay: if the word [17DE] is not 1, set [17DE] and [17DC] to 1 (arm the flag pair); either way return", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0626, isound_117_pair_union, "PC-speaker overlay: AX = the word [41] OR the word [43] (are the two sequencer cells both idle?), flags from the OR", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x05A4, isound_arm_effect_timer_flag, "PC-speaker overlay: if the flag byte [7C] is not 1, set it to 1 and the word [78] to 1 (arms the effect); either way return (the RET at 05C9 is shared with the routine at 05B7)", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0E2A, rsound_117_voice_flags_union, "Roland overlay: AL = OR of the flag byte of each of the eight voice records (cells 2290h, 22B2h ... 237Eh, 22h apart), AH cleared", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0839, asound_117_voice_flags_union, "AdLib overlay: AL = OR of the flag byte of each of the seven voice records (cells 190Ah, 1928h, 1946h, 1964h, 1982h, 19A0h, 19BEh, 1Eh apart), AH cleared", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0102, isound_117_speaker_noise_vibrato_tick, "PC speaker overlay noise step or vibrato bend of the sequencer tick, sent to counter 2 with I/O delays (far return)", 2 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x010B, isound_log_speaker_noise_vibrato_tick, "PC speaker noise step or vibrato bend of the sequencer tick, sent to counter 2", 2 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0580, rsound_log_reset_and_program_nine_voices, "reset the sequencer state, send the nine-voice set-up byte list and the table at 031E", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x02BE, rsound_log_init_once, "run the two set-up routines once and mark the driver initialised", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0FA2, rsound_log_update_six_voice_records, "set the busy byte and run the voice handler on the six voice records", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x020A, rsound_log_random_step, "pseudo-random step on the state word DS:0308, returned in AX", 2 },
     { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0B9C, rsound_117_random_step, "pseudo-random step on the state word DS:1531, returned in AX", 2 },
     { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0B42, rsound_117_reset_sequencer_records, "zero the Roland overlay sequencer records and lock word", 1 },

@@ -15,29 +15,29 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 88.72%, P3 100.00%, All 96.56%
+- **Scoreboard:** P1 100.00%, P2 89.23%, P3 100.00%, All 96.71%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,303 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **146,330 /
-  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 90.68%**. `docs/reference-reviewed.tsv` holds 39
+- **Phase 2:** 1,322 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **147,270 /
+  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 91.26%**. `docs/reference-reviewed.tsv` holds 39
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
-  stays-original entry to name its design rule. The accounted-for checklist is 0 / 43,846. Previous
-  all-code measure (scores the naming item): **172,483 / 205,932 creditable bytes** across
+  stays-original entry to name its design rule. The accounted-for checklist is 0 / 43,954. Previous
+  all-code measure (scores the naming item): **173,531 / 206,040 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to az are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 545 CTests, 63 routes run as 62 sessions,
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 564 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Remaining work:** 15,267 route-executed bytes are unmatched; the all-code measure has 33,449 uncredited bytes.
-  Largest executed groups: ASOUND.117 5,356, ASOUND.LOG 2,154, RSOUND.117 2,106, RSOUND.LOG 1,828,
-  ISOUND.117 1,075, ISOUND.LOG 637, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+- **Remaining work:** 14,327 route-executed bytes are unmatched; the all-code measure has 32,509 uncredited bytes.
+  Largest executed groups: ASOUND.117 5,306, ASOUND.LOG 1,615, RSOUND.117 2,072, RSOUND.LOG 1,673,
+  ISOUND.117 958, ISOUND.LOG 592, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
   There are 13,232 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
   Refresh using batch ax's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
-- **What P2 100% still requires:** 13,156 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
+- **What P2 100% still requires:** 12,216 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
   and 1,862 in the seven ordinary programs. The previous all-code measure also has unexecuted static/error-path work: no byte leaves
   scope without its existing design rule or a strict dead certificate. Old private mapping counts are leads, not proofs or current
   inventories. Reviewed-original credit still requires a second reader; do not convert declined routines into exclusions.
@@ -90,21 +90,29 @@ Consolidate it instead of appending to it.
   below their entry (`g_cov_ip` lines in `tests/func_lockstep.c`, keyed by module and IP), a call counter stored in the code window
   needs a self-write exemption (ISOUND.LOG `0251`), and `integrate_many.py` carries neither. `finish_all.py DIR:ROUTE` must run before
   `audit_private.py` (the audit needs `ibm-boot-proof`; running `checkpoints` and `verdict` by hand is not enough).
-- **Batch az accepted (23 Oct): 13 routines in one gate** (roadmap row; evidence `D:/f117-gate/p2-batch-az-accept/final-gate-verdict.json`: 545 CTests,
-  1,303 routines, 366 mutations, acceptance 1,897 s). Three agents, each taking a family of routines one after another, replaced one routine per
-  agent; that is the pattern to keep (owner, 23 Oct: safe improvements only, larger batches that save time overall are approved; no proof agents
-  while the gate runs). **Defect fixed:** START `28CE` read its four stack arguments up front; the original reads `count` after storing `x`,
-  so a stack overlapping the data segment differed (found only by the commit-keyed pre-check seed; read arguments through BP in the original's
-  order, with `bp_arg`, never `arg()` after `push bp`). Other bodies that read several arguments up front are candidates for the same defect:
-  the whole-table seeds (two ran clean) are the net, and `--only MODULE:IP --seed S --states 20000` reproduces one. **Audit notes:** a body
-  that hands back, calls original code or whose first room claim is an expression (`14 + 3 + IO_SLACK(2)`) is marked `partial` in
-  `batch.json` (with a `note`); the batch az audit copy also accepts lines between `if (!room(c, N)) return 0;` and `c->icount += N;` but
-  never across a call. Carry `p2-batch-az-accept/audit_private.py` forward, not the stock copy.
-  **Next:** `D:/f117-gate/ay-next-leads/leads.md` (ranked, with exclusions): the ASOUND.LOG OPL wrapper family (`07DC`, `0A00`, `0A62`, `0AAA`,
-  `0AEC`, `0BB8`, `09B6`, `0640`, `06AA`, then caller `0BE2`), `019A` chip init, ASOUND.117 voice-reset group (body at `05E7`, a jump target: check
-  that a matched entry can dispatch there first) and its `0E5E` family, RSOUND.117 Roland voice-start family (`0EBD`..), small flag leaves, the
-  installers that end `CLI ... STI; RET` (stop after the STI). ISOUND.LOG `0581` needs separately verified bounded-handler/resume support for
-  its EOI-before-IRET arm. Plan: two proof rounds per gate, three agents per round on masks 0x000F0000, 0x00F00000, 0x0F000000.
+- **Batches az and ba accepted (23 Oct): 13 and 19 routines per gate** (roadmap rows; evidence `D:/f117-gate/p2-batch-az-accept/` and
+  `p2-batch-ba-accept/final-gate-verdict.json`: 564 CTests, 1,322 routines, 595 mutations, acceptance 1,991 s). Three agents, each taking a family of
+  routines one after another (not one routine per agent), is the pattern to keep (owner, 23 Oct: safe improvements only, larger batches that save
+  time overall are approved; no proof agents while the gate runs). The root runs `finish_all.py DIR:ROUTE` for every proof (it makes `ibm-boot-proof`
+  that the audit needs), then `integrate_many.py`, hand-applies the harness hunks it does not carry (`g_cov_ip` lines for routines that begin below
+  their entry, the self-write exemption for a call counter inside the code window), builds, runs the whole-table seeds, `new_batch.py`, the audit, the gate.
+  **Defects fixed from the commit-keyed seed:** (1) START `28CE` read its four stack arguments up front; the original reads `count` after storing `x`,
+  so a stack overlapping the data segment differed (read through BP in the original's order, with `bp_arg`, never `arg()` after `push bp`).
+  (2) END `100D` checked `room(c, 8)` for a block followed by a CALL, but `guest_call` charges the CALL itself: a stop limit landing exactly there ran the
+  CALL one instruction late (`OVERRUN ... +101 with the limit at +100`, `g_callover`). A block followed by a call needs `room(c, N + 1)` (new bodies claim the
+  call separately with `SM4_NEED(1, ip)`). A scan of `matched.c` found 39 more bodies with the shape; all now reserve `+ 1` (it can only make a body
+  decline sooner; many were false positives that claim the call separately, harmless). Do not run such a scan over bodies with a private proof:
+  `finalize.py` requires each proof's `body.c` verbatim in `matched.c` (it failed once on ASOUND.LOG `019A`, restored). The class cannot be seen at
+  ordinary seeds (the limit must land exactly on the boundary and the routine must complete in lockstep), so run two whole-table seeds before every gate.
+  **Audit notes:** a body that hands back, calls original code or whose first room claim is an expression (`14 + 3 + IO_SLACK(2)`) is marked `partial`
+  in `batch.json` (with a `note`); carry `p2-batch-az-accept/audit_private.py` forward (it also accepts lines between `if (!room(c, N)) return 0;` and
+  `c->icount += N;`, never across a call). `new_batch.py` needs a fresh directory: a failed gate's `runner/` blocks a rerun, so archive the directory
+  (`p2-batch-X-accept-run1`) and recreate it with `new_batch.py`, then restore `batch.json` and the two copied scripts.
+  **Next:** ASOUND.LOG `0640` `06AA` and caller `0BE2`, the ASOUND.117 voice-reset group (body at `05E7`, a jump target: check that a matched entry can
+  dispatch there first) and its `0E5E` family, the RSOUND.117 Roland voice-start family (`0EBD`..), RSOUND.117 `0444` `046D` `03D6`, wrapper/dispatch
+  entry points (relocated `mov ds`, indirect calls), the installers that end `CLI ... STI; RET` (stop after the STI), and the large routines
+  (`D:/f117-gate/ay-next-leads/leads.md`). ISOUND.LOG `0581` needs separately verified bounded-handler/resume support for its EOI-before-IRET arm.
+  Plan: two proof rounds per gate, three agents per round on masks 0x000F0000, 0x00F00000, 0x0F000000.
 - **Phase 2 scope work (21 Oct).** The interrupted analyses below remain private under
   `D:/f117-gate/`; adopt only what you verify. Module scope steps 0/1a/1b are now implemented:
   - `static-route-plan-20261021/` (route-planning lead) and `static-route-verify-20261021/` (resumed review DONE):

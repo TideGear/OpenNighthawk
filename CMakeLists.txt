@@ -1402,6 +1402,44 @@ if(F117R_BUILD_TESTS)
       --only RSOUND.117:B9C)
     add_test(NAME matched_rsound_log_random_step COMMAND func_lockstep --states 5000
       --only RSOUND.LOG:20A)
+    add_test(NAME matched_rsound_log_update_six_voice_records COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:FA2)
+    add_test(NAME matched_rsound_log_init_once COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:2BE)
+    add_test(NAME matched_rsound_log_reset_and_program_nine_voices COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:580)
+    add_test(NAME matched_isound_log_speaker_noise_vibrato_tick COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:10B)
+    add_test(NAME matched_isound_117_speaker_noise_vibrato_tick COMMAND func_lockstep --states 5000
+      --only ISOUND.117:102)
+    add_test(NAME matched_asound_117_voice_flags_union COMMAND func_lockstep --states 5000
+      --only ASOUND.117:839)
+    add_test(NAME matched_rsound_117_voice_flags_union COMMAND func_lockstep --states 5000
+      --only RSOUND.117:E2A)
+    add_test(NAME matched_isound_arm_effect_timer_flag COMMAND func_lockstep --states 5000
+      --only ISOUND.117:5A4)
+    add_test(NAME matched_isound_117_pair_union COMMAND func_lockstep --states 5000
+      --only ISOUND.117:626)
+    add_test(NAME matched_asound_117_arm_effect_flags COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5A5)
+    add_test(NAME matched_isound_117_start_song_entry COMMAND func_lockstep --states 5000
+      --only ISOUND.117:8)
+    add_test(NAME matched_asound_log_chip_init COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:19A)
+    add_test(NAME matched_asound_log_write_feedback_connection COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:A62)
+    add_test(NAME matched_asound_log_write_attack_decay COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:AAA)
+    add_test(NAME matched_asound_log_write_sustain_release COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:AEC)
+    add_test(NAME matched_asound_log_write_depth_flag COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:A00)
+    add_test(NAME matched_asound_log_write_key_off COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:7DC)
+    add_test(NAME matched_asound_log_write_waveform_select COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:BB8)
+    add_test(NAME matched_asound_log_write_rhythm_depth COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:9B6)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
