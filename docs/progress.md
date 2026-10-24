@@ -72,8 +72,9 @@ scored by the **gameplay score**, computed by `census_classify.gameplay()` durin
 supplement) is still computed and printed, labelled "previous measure". It still scores P2's "Routines named
 and explained" item (weight 31.5). Naming and explaining is owed for the whole code inventory, including
 reviewed static code and error paths that no route runs, which the gameplay score leaves out. Moving that
-item too would score the same numerator twice. Reviewed reference entries do not count toward it yet; that
-would be a separate decision. The tooling item has weight 4.5. The accounted-for checklist has weight 10. The three existing weights were scaled together to 90, preserving their relative proportions (24 October 2026).
+item too would score the same numerator twice. Second-read `stays-original` reference entries outside the census (790 bytes on 24 Oct: the
+program launcher and the SETUP timer handler) leave its denominator as census-original rows do (owner, 24 Oct 2026);
+other statuses stay in it, and a byte a matched body covers stays counted. The tooling item has weight 4.5. The accounted-for checklist has weight 10. The three existing weights were scaled together to 90, preserving their relative proportions (24 October 2026).
 
 | 21 Oct 2026, batch am (`f3cbaff`) | previous measure | gameplay score |
 |---|---|---|
@@ -83,8 +84,8 @@ would be a separate decision. The tooling item has weight 4.5. The accounted-for
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
 Current byte inventory (24 Oct, batch bc): **(148,948 + 2,631) / 163,907 = 92.48%**
-(P2 81.31%, All 94.29% after checklist scoring and encoded-code adoption). The previous all-code measure is
-**175,154 / 206,740**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+(P2 81.41%, All 94.33% after checklist scoring and encoded-code adoption). The previous all-code measure is
+**175,324 / 205,967**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
 There are 12,819 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
 The largest remaining modules are ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778,
 RSOUND.LOG 1,574, ISOUND.117 905, ISOUND.LOG 563, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.

@@ -273,13 +273,20 @@ class SupplementalTests(unittest.TestCase):
                                       {"T": {2, 3, 4, 5}, "U": {0, 1}, "DRIVER.117": {0, 1}})
         self.assertEqual(scope["bytes"], 5)   # T: 3,4,5,7; U: 1
         self.assertEqual(scope["credited"], 3)
-        self.assertEqual(scope["by_module"]["T"], dict(bytes=4, credited=3, reviewed_static_bytes=0))
+        self.assertEqual(scope["by_module"]["T"], dict(bytes=4, credited=3, reviewed_static_bytes=0, original_reviewed_bytes=0))
         self.assertEqual(scope["other_modules_executed_bytes"], {"DRIVER.117": 2})
         self.assertEqual(rows[1], ("T", 0x10, 0))
 
     def test_reviewed_static_code_adds_work_without_inventing_matching_credit(self):
         scope = cc.supplemental_scope([("T", 0, 2)], {"T": {2}}, {"T": {3}}, {"T": {0, 2, 3, 4, 5}})
         self.assertEqual((scope["bytes"], scope["credited"], scope["reviewed_static_bytes"]), (4, 1, 2))
+
+
+    def test_reviewed_original_leaves_the_denominator_unless_credited(self):
+        scope = cc.supplemental_scope([("T", 0, 2)], {"T": {5}}, {"T": {4, 5, 6}}, {"T": {7}},
+                                      original={"T": {4, 5, 7}})
+        # 4 and 7 stay original and leave; 5 is covered by a matched body and stays counted; 6 is ordinary work.
+        self.assertEqual((scope["bytes"], scope["credited"], scope["original_reviewed_bytes"]), (2, 1, 2))
 
 
 class ReviewedCodeTests(unittest.TestCase):

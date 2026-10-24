@@ -382,7 +382,7 @@ def modules_scope():
     return {progress.module_key(name) for name in CODE_FILES}
 
 
-def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None):
+def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None, original=None):
     """Executed and reviewed code outside the old census, across all game code files.
 
     Keep the historical rows intact. Add each outside byte once if a validated
@@ -393,9 +393,13 @@ def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None):
     a static review supplies its workload. Unknown modules and the floating
     decompressor remain separately reported and never enter the score.
     scope_bytes, when given, also collects each outside byte as supp-credited, supp-ran or supp-reviewed-static.
+    original ({module: linear addresses}, owner 24 Oct 2026) holds the bytes of second-read stays-original
+    reference entries: code that stays original by design rule leaves the naming denominator outside the
+    census as it does inside (census-original.tsv). A byte a matched body covers stays credited and counted.
     """
     inside = collections.defaultdict(set)
     reviewed = reviewed or {}
+    original = original or {}
     for module, linear, size in rows:
         inside[module].update(range(linear, linear + size))
     by_module = {}
@@ -405,8 +409,10 @@ def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None):
         named = covered.get(module, set())
         executed = ran.get(module, set()) | named
         extra = (executed | reviewed.get(module, set())) - census
+        stays = (extra & original.get(module, set())) - named
+        extra -= stays
         by_module[module] = dict(bytes=len(extra), credited=len(extra & named),
-                                reviewed_static_bytes=len(extra - executed))
+                                reviewed_static_bytes=len(extra - executed), original_reviewed_bytes=len(stays))
         if scope_bytes is not None:
             out = scope_bytes.setdefault(module, {})
             for b in extra:
@@ -417,6 +423,7 @@ def supplemental_scope(rows, covered, ran, reviewed=None, scope_bytes=None):
                 bytes=sum(v["bytes"] for v in by_module.values()),
                 credited=sum(v["credited"] for v in by_module.values()),
                 reviewed_static_bytes=sum(v["reviewed_static_bytes"] for v in by_module.values()),
+                original_reviewed_bytes=sum(v["original_reviewed_bytes"] for v in by_module.values()),
                 by_module=by_module, other_modules_executed_bytes=other)
 
 
@@ -570,7 +577,13 @@ def run(census, cover_dir, route_dir, data_dir, scope=None, detail=None):
         encoded = reviewed_bytes(mods, data_dir, os.path.join(ROOT, "docs", "census-encoded-code.json"), static)
         for module, span in encoded.items():
             static[module].update(span)
-        scope.update(supplemental_scope(rows, covered, ran, static, scope_bytes=scope_bytes))
+        stays = collections.defaultdict(set)
+        entries = read_reference_reviewed()
+        check_design_rule(entries, rows, read_original())
+        for e in entries:
+            if e["status"] == "stays-original":
+                stays[e["module"]].update(range(e["start"], e["start"] + e["bytes"]))
+        scope.update(supplemental_scope(rows, covered, ran, static, scope_bytes=scope_bytes, original=stays))
         scope["route_records"] = audit
     if detail is not None:
         detail.update(rows=rows, covered=covered, ran=ran, scope_bytes=scope_bytes)

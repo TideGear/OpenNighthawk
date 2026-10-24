@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.31%, P3 100.00%, All 94.29%
+- **Scoreboard:** P1 100.00%, P2 81.41%, P3 100.00%, All 94.33%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,359 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,948 /
@@ -25,7 +25,7 @@ Consolidate it instead of appending to it.
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
   stays-original entry to name its design rule. The accounted-for checklist is 585 / 44,654. Previous
-  all-code measure (scores the naming item): **175,154 / 206,740 creditable bytes** across
+  all-code measure (scores the naming item): **175,324 / 205,967 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
   Batches a to bc are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 597 CTests, 63 routes run as 62 sessions,
@@ -273,7 +273,7 @@ Do not start a second acceptance. Its `coordinator-status.json` is advisory; ver
 and the terminal gate verdict. After acceptance, refresh the census using bc named-cover.
 Do not change matched.c/tests/CMake or the five files pinned in `measurement-input-manifest.json`
 during validation. Batch bc was accepted (gate 1,741 s, 601 CTests, 1,359 routines, 80 mutants, +170 named bytes; `D:/f117-gate/p2-batch-bc-accept/final-gate-verdict.json`) and progress.json now reads 81.31%.
-Keep publication pending, and do not change the naming denominator without the owner's answer.
+Published through `51a70f1`.
 
 **Measurement repairs queued with bc (24 Oct):** the COM launcher reference was wrongly keyed by
 file offset 00000. It now uses the already approved guest range 00100..003CA (715 bytes), resolving
@@ -302,11 +302,9 @@ table to 48 rows and add 130 checklist-reviewed bytes. The earlier read-only mea
 predates these 130 bytes and the two-byte scope addition; refresh after the gate, never infer its
 final score. A launcher-level missing resident overlay is a route lead for these error paths.
 
-**Naming denominator decision pending:** an optional question asks whether the existing original-code
-exclusion should also apply to reviewed supplemental bytes. The naming score currently retains 688
-launcher bytes that the owner has decided stay original; the newly reviewed SETUP ISR adds 102 bytes
-of the same kind. Do not change this denominator before the owner's answer (progress.md reserves
-reviewed-reference naming changes for a separate decision). Other matching and gate work can continue.
+**Naming denominator (owner decided 24 Oct):** second-read `stays-original` reference entries outside the census leave the naming
+denominator (790 bytes: the 688 launcher bytes and the 102-byte SETUP timer handler); all other statuses stay in. Naming moved
+84.80% -> 85.12% by this change alone (P2 81.31% -> 81.41%), not by matching work.
 
 **0. P2 completion scope (owner-approved 23-24 Oct; scoring implemented).** The accounted-for checklist
 is now a fourth measured P2 item, weight 10. Existing weights were scaled proportionally to 90

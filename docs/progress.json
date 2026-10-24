@@ -173,94 +173,112 @@
     "creditable_bytes": 165425,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 41332,
+      "bytes": 40542,
       "credited": 15321,
-      "reviewed_static_bytes": 13814,
+      "reviewed_static_bytes": 13809,
+      "original_reviewed_bytes": 790,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5488,
           "credited": 826,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "ASOUND.LOG": {
           "bytes": 2739,
           "credited": 1561,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "DSWAP": {
           "bytes": 2210,
           "credited": 140,
-          "reviewed_static_bytes": 2009
+          "reviewed_static_bytes": 2009,
+          "original_reviewed_bytes": 0
         },
         "END": {
           "bytes": 800,
           "credited": 26,
-          "reviewed_static_bytes": 628
+          "reviewed_static_bytes": 628,
+          "original_reviewed_bytes": 0
         },
         "F117.COM": {
-          "bytes": 967,
+          "bytes": 279,
           "credited": 277,
-          "reviewed_static_bytes": 2
+          "reviewed_static_bytes": 2,
+          "original_reviewed_bytes": 688
         },
         "ISOUND.117": {
           "bytes": 1255,
           "credited": 350,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "ISOUND.LOG": {
           "bytes": 1517,
           "credited": 993,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "MGRAPHIC": {
           "bytes": 3711,
           "credited": 3711,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "MISC": {
           "bytes": 65,
           "credited": 65,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "MPS_LOGO": {
           "bytes": 1671,
           "credited": 110,
-          "reviewed_static_bytes": 1448
+          "reviewed_static_bytes": 1448,
+          "original_reviewed_bytes": 0
         },
         "NSOUND.117": {
           "bytes": 0,
           "credited": 0,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "PLAYER": {
           "bytes": 1320,
           "credited": 33,
-          "reviewed_static_bytes": 1241
+          "reviewed_static_bytes": 1241,
+          "original_reviewed_bytes": 0
         },
         "RSOUND.117": {
           "bytes": 2213,
           "credited": 435,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "RSOUND.LOG": {
           "bytes": 2130,
           "credited": 639,
-          "reviewed_static_bytes": 0
+          "reviewed_static_bytes": 0,
+          "original_reviewed_bytes": 0
         },
         "SETUP": {
-          "bytes": 4102,
+          "bytes": 4000,
           "credited": 102,
-          "reviewed_static_bytes": 3804
+          "reviewed_static_bytes": 3799,
+          "original_reviewed_bytes": 102
         },
         "START": {
           "bytes": 2509,
           "credited": 1189,
-          "reviewed_static_bytes": 1177
+          "reviewed_static_bytes": 1177,
+          "original_reviewed_bytes": 0
         },
         "VGAME": {
           "bytes": 8635,
           "credited": 4864,
-          "reviewed_static_bytes": 3505
+          "reviewed_static_bytes": 3505,
+          "original_reviewed_bytes": 0
         }
       },
       "other_modules_executed_bytes": {},
@@ -283,8 +301,8 @@
       "original_awaiting_review": 20,
       "reviewed_entries": 48,
       "checklist": {
-        "bytes": 44646,
-        "with_reviewed_entry": 720,
+        "bytes": 44641,
+        "with_reviewed_entry": 715,
         "without_reviewed_entry": 43926,
         "by_class": {
           "credited": {
@@ -304,7 +322,7 @@
             "without_reviewed_entry": 2659
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 592,
+            "with_reviewed_entry": 587,
             "without_reviewed_entry": 13222
           },
           "unreached": {
@@ -314,10 +332,10 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 206687,
-        "denominator_in_previous_scope": 162041,
-        "denominator_outside_previous_scope": 1866,
-        "previous_scope_occurrences": 206757,
+        "previous_scope_distinct": 205897,
+        "denominator_in_previous_scope": 161256,
+        "denominator_outside_previous_scope": 2651,
+        "previous_scope_occurrences": 205967,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
@@ -374,7 +392,7 @@
           "original_awaiting_review": 0,
           "not_in_denominator": 130,
           "not_in_denominator_reviewed": 130,
-          "in_previous_scope": 837
+          "in_previous_scope": 149
         },
         "ISOUND.117": {
           "denominator": 1200,
@@ -482,9 +500,9 @@
           "fixture_only": 755,
           "remaining": 118,
           "original_awaiting_review": 0,
-          "not_in_denominator": 4728,
-          "not_in_denominator_reviewed": 590,
-          "in_previous_scope": 3533
+          "not_in_denominator": 4723,
+          "not_in_denominator_reviewed": 585,
+          "in_previous_scope": 3436
         },
         "START": {
           "denominator": 36796,
