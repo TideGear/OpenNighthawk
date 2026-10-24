@@ -395,6 +395,11 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
 `D:/f117-gate/accept-kit/`; copy `audit_private.py` and `finalize.py` forward from the newest accepted batch
 (they carry the allowances below), since `new_batch.py` copies stock ones.
 
+- **The keyed baseline must match the current interpreter key (found 24 Oct).** `new_batch.py` copied the previous batch's baseline, which keeps
+  the key it was frozen under (`c70206..`, 22 Oct), so batches ay to bc all ran the sequential no-overlap fallback ("No valid keyed baseline") although
+  `p2-batch-loadbase-accept` holds a baseline for the current key (`cf87d6..`). The kit's `new_batch.py` now picks the newest baseline whose
+  `base_key` equals `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid. Expect the
+  presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for "Started" lines and no fallback message.
 - **Run `audit_private.py` BEFORE the gate.** It reads only the proof directories and takes seconds; batch au's failed after a 27-minute
   gate and forced a second gate. Mark `:partial` at `new_batch.py` time for bodies that hand back, inline a tail, leave a dead arm unwritten or
   call original code (`partial` is read only by the audit). Claimed blocks must be disjoint: an instruction reached by two paths (a shared `RET`)
