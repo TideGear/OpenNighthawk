@@ -400,6 +400,10 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   `p2-batch-loadbase-accept` holds a baseline for the current key (`cf87d6..`). The kit's `new_batch.py` now picks the newest baseline whose
   `base_key` equals `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid. Expect the
   presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for "Started" lines and no fallback message.
+- **Queued (owner, 24 Oct): optimization pass 2, after batch bd's gate.** Read bd's `gate.log`, precheck logs and stage timings for where wall time goes
+  (precheck sharding, proof build/mutation loop, repeated audit/finalize/verdict work, idle CPU in the gate); first confirm the baseline fix above made the
+  presentation overlap. Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure on the gate's own logs, never run
+  extra heavy jobs beside a gate.
 - **Run `audit_private.py` BEFORE the gate.** It reads only the proof directories and takes seconds; batch au's failed after a 27-minute
   gate and forced a second gate. Mark `:partial` at `new_batch.py` time for bodies that hand back, inline a tail, leave a dead arm unwritten or
   call original code (`partial` is read only by the audit). Claimed blocks must be disjoint: an instruction reached by two paths (a shared `RET`)
