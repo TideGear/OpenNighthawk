@@ -82,8 +82,8 @@ would be a separate decision. The tooling item has weight 4.5. The accounted-for
 | share | 80.77% | **85.68%** |
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
-Current byte inventory (24 Oct, batch bb): **(148,778 + 2,265) / 163,862 = 92.18%**
-(P2 81.09%, All 94.23% after checklist scoring and encoded-code adoption). The previous all-code measure is
+Current byte inventory (24 Oct, batch bc): **(148,948 + 2,631) / 163,907 = 92.48%**
+(P2 81.31%, All 94.29% after checklist scoring and encoded-code adoption). The previous all-code measure is
 **175,154 / 206,740**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
 There are 12,819 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
 The largest remaining modules are ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778,
@@ -92,6 +92,41 @@ The accounted-for checklist is 585 / 44,654; the full module and
 checklist breakdowns come from `py tools/progress.py`. Per-batch measurements are in the
 [roadmap](roadmap.md#batches-e-to-al-16-21-october-2026); the original gameplay-score measurement
 is retained privately in `D:/f117-gate/gameplay-score-20261021/`.
+
+### Capture and reference corrections (24 October 2026; refresh after batch bc)
+
+The launcher's approved 715-byte range uses guest addresses `0100..03CA`. Its earlier table
+start `0000` was a file-offset mistake; correcting the COM origin recognizes 249 executed
+launcher bytes under the existing rule. The loader at `03CB` stays outside that reference range.
+COM reference entries below `0100` now fail validation.
+
+Nine reviewed singleton far jumps need runtime target operands: five timer chains, the keyboard
+chain and three logo sound-overlay thunks. `census-runtime-jumps.tsv` pins each exact CS:IP and
+immutable file identity, records its original writer, and requires an original `EA 0000:0000`
+template plus captured EA opcode. Only its target operand may change. Other changed code,
+wrong identities and unreviewed singleton jumps remain rejected. This validates 17 capture
+records / 45 executed bytes, without inventing any matched credit. The remaining 300 rejected
+records are 112 packed-bootstrap records, 187 unbacked zero captures from the damaged-driver
+route and one wrong-program VGAME/START record; they receive no code credit.
+
+The original timer/keyboard reference entries stopped before their patched chain instructions.
+Their existing handler reviews now cover those final five bytes too. SETUP's independently
+reviewed static timer handler at `104D..10B3` (102 bytes / 51 instructions) starts with STI and
+now has a second-read reference entry under that existing rule. Its separate `10B3` retrace
+helper remains matching work. PLAYER's handler starts with PUSH AX, so it remains work.
+The three newly validated logo thunks also remain matching work.
+
+The launcher loader's six error blocks also received a second read: 128 bytes already covered
+only by matched fixtures, plus its two-byte DOS termination interrupt at `04E3`. The latter now
+has a strictly hashed static-code row; neither this review nor the row grants matching credit.
+Allocation/resize failures are machine-option-only; overlay-load/header failures and the common
+exit need routes. The unexpected successful FFFF-paragraph allocation arm remains held until
+its allocator and possible indirect entries are closed. No new dead-code exclusion is claimed.
+
+The naming measure still includes reviewed original-by-design supplemental bytes (688 launcher
+bytes, plus 102 SETUP timer bytes). Applying its existing original-code denominator exclusion
+outside the historical census is a pending owner decision; no denominator change is made here.
+This must be resolved before the defined P2 score can reach 100%.
 
 ### Phase 2 completion requirements (owner, 23-24 October 2026)
 

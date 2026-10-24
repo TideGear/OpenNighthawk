@@ -141,12 +141,12 @@ class TableTests(unittest.TestCase):
 
 
 class RouteTests(unittest.TestCase):
-    def capture(self, image, records, *, origin=0, relocs=()):
+    def capture(self, image, records, *, origin=0, relocs=(), runtime_jumps=()):
         mod = Module("T.EXE", 0x1234, "exe", image, set(relocs), origin=origin)
         audit = {}
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "route.cov").write_text(records, encoding="utf-8")
-            ran = cc.route_instructions(directory, {"T": mod}, audit)
+            ran = cc.route_instructions(directory, {"T": mod}, audit, runtime_jumps=runtime_jumps)
         return ran.get("T", set()), audit
 
     def test_the_window_is_not_the_instruction_length(self):
@@ -187,6 +187,20 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(ran, set())
         self.assertEqual(audit["changed"], 1)
 
+    def test_reviewed_singleton_jump_accepts_only_its_target_operand(self):
+        ran, audit = self.capture(SLOT * 2,
+                                  "T.EXE 1234 0000 0000 ea341278\n"
+                                  "T.EXE 1234 0000 0000 e9341278\n"
+                                  "T.EXE 1234 0000 0005 ea341278\n"
+                                  "T.EXE 9999 0000 0000 ea341278\n",
+                                  runtime_jumps={("T", 0, 0)})
+        self.assertEqual(ran, set(range(5)))
+        self.assertEqual((audit["accepted"], audit["reviewed_runtime_jumps"], audit["changed"], audit["identity"]),
+                         (1, 1, 2, 1))
+        ran, _ = self.capture(bytes.fromhex("ea01000000"), "T.EXE 1234 0000 0000 ea341278\n",
+                              runtime_jumps={("T", 0, 0)})
+        self.assertEqual(ran, set())
+
     def test_com_origin_is_not_a_byte_offset_or_a_segment_alias(self):
         ran, _ = self.capture(bytes.fromhex("c3909090"),
                               "T.EXE 1234 0010 0000 c3909090\n", origin=0x100)
@@ -210,6 +224,32 @@ class RouteTests(unittest.TestCase):
         for record in ("", "T.EXE 1234 0000 0000\n", "T.EXE 1234 0000 0000 c3\n"):
             with self.assertRaises(ValueError):
                 self.capture(b"\xc3", record)
+
+
+class RuntimeJumpReviewTests(unittest.TestCase):
+    def read(self, text, image=SLOT * 4):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "jumps.tsv"
+            path.write_text(text, encoding="utf-8")
+            return cc.read_runtime_jumps({"T": Module("T.EXE", 0x1234, "exe", image, set())}, path)
+
+    def test_pinned_source_identity_exact_template_and_writer_review_are_required(self):
+        row = "T\t1234\t0000\t0000\told vector\toriginal writer checked\n"
+        self.assertEqual(self.read(row), {("T", 0, 0)})
+        for bad in (row.replace("1234", "9999"), row.replace("T\t", "U\t"),
+                    row.replace("\told vector\t", "\t \t"), row.replace("original writer checked", " "),
+                    row.replace("0000\t0000", "0000\tFFFF")):
+            with self.subTest(row=bad), self.assertRaises(ValueError):
+                self.read(bad)
+        for image in (bytes(20), bytes.fromhex("ea01000000"), SLOT[:4]):
+            with self.subTest(image=image), self.assertRaisesRegex(ValueError, "template"):
+                self.read(row, image)
+
+    def test_duplicate_segment_aliases_are_rejected(self):
+        first = "T\t1234\t0000\t0010\tvector\twriter checked\n"
+        alias = "T\t1234\t0001\t0000\tvector\twriter checked\n"
+        with self.assertRaisesRegex(ValueError, "aliased"):
+            self.read(first + alias, image=bytes(16) + SLOT)
 
 
 class SupplementalTests(unittest.TestCase):
@@ -337,7 +377,20 @@ class ReferenceTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "reference.tsv"
             path.write_text(text, encoding="utf-8")
-            return cc.read_reference_reviewed(str(path), modules={"T", "VGAME"})
+            return cc.read_reference_reviewed(str(path), modules={"T", "VGAME", "F117.COM"})
+
+    def test_com_review_uses_guest_addresses_and_preserves_the_approved_launcher_range(self):
+        with self.assertRaisesRegex(ValueError, "COM review addresses"):
+            self.read(entry("F117.COM", 0, 715, "stays-original", why="program launcher"))
+        [e] = self.read(entry("F117.COM", 0x100, 715, "stays-original", why="program launcher"))
+        self.assertEqual((e["start"], e["start"] + e["bytes"]), (0x100, 0x3CB))
+        launcher = next(e for e in cc.read_reference_reviewed() if e["module"] == "F117.COM")
+        self.assertEqual((launcher["start"], launcher["bytes"]), (0x100, 715))
+
+    def test_launcher_review_covers_its_end_but_never_the_separate_loader(self):
+        [e] = self.read(entry("F117.COM", 0x100, 715, "stays-original", why="program launcher"))
+        g = cc.gameplay({}, {"F117.COM": {0x100, 0x2CB, 0x3CA, 0x3CB}}, {}, {}, [e], {"F117.COM"})
+        self.assertEqual((g["stays_original_reviewed"], g["remaining"]), (3, 1))
 
     def test_the_committed_table_parses_and_every_original_entry_names_its_design_rule(self):
         entries = cc.read_reference_reviewed()

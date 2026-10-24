@@ -813,6 +813,10 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "RSOUND.LOG", 0x00AD, 0x00AD, 0x0001 },
+    { "RSOUND.LOG", 0x005B, 0x005B, 0x0053 },
+    { "ISOUND.LOG", 0x060E, 0x060E, 0x0027 },
+    { "ASOUND.LOG", 0x005A, 0x005A, 0x0030 },
     { "ISOUND.117", 0x00B5, 0x00B5, 0x0016 },
     { "ISOUND.117", 0x008E, 0x008E, 0x001F },
     { "ISOUND.LOG", 0x0051, 0x0051, 0x001D },
@@ -1966,6 +1970,10 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ISOUND.LOG", 0x0000, 0x0051, 0x001D, 15, 15, "PC-speaker driver far entry: switch DS to the driver's data segment, save port 61h in [9F], prepare the sequencer for a song (call 0138), set [AA] to FFh, return AX = 0" },
     { "ISOUND.117", 0x019C, 0x008E, 0x001F, 17, 17, "PC-speaker overlay function dispatch (far): for a function number up to 2Dh (signed), call the near routine in the code word table at 05CA with the driver data segment loaded" },
     { "ISOUND.117", 0x019C, 0x00B5, 0x0016, 10, 10, "PC-speaker overlay far entry: with the driver data segment loaded, run the sequencer tick 026C, then return the word [78] in AX and clear it" },
+    { "ASOUND.LOG", 0x0000, 0x005A, 0x0030, 16, 16, "install the timer once: save INT8 in the driver code cells, call the timer programmer, stop after STI" },
+    { "ISOUND.LOG", 0x0000, 0x060E, 0x0027, 14, 14, "save the old INT8 chain once in the PC-speaker driver, stop immediately after STI" },
+    { "RSOUND.LOG", 0x0000, 0x005B, 0x0052, 26, 26, "install Roland INT0A and preserve old INT8 once, call timer programmer, stop after STI" },
+    { "RSOUND.LOG", 0x0000, 0x00AD, 0x0001, 1, 1, "near return after the timer install STI hand-back, including wrapped stack words" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2228,6 +2236,9 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
  * (the RET), the original's code. A named routine stopped there, its limit cleared by its own POPF,
  * has completed its named region. */
 static const struct { const char *module; uint16_t seg, ip, stop; } POPF_STOPS[] = {
+    { "ASOUND.LOG", 0x0000, 0x005A, 0x0089 }, /* timer installer stops immediately after STI */
+    { "ISOUND.LOG", 0x0000, 0x060E, 0x0634 }, /* save the timer chain, stop immediately after STI */
+    { "RSOUND.LOG", 0x0000, 0x005B, 0x00AD }, /* both installer paths stop immediately after STI */
     { "SETUP.EXE", 0x0000, 0x111A, 0x11AE },   /* timer calibrate */
     { "PLAYER.EXE", 0x026B, 0x0272, 0x0306 },   /* timer calibrate */
     { "PLAYER.EXE", 0x026B, 0x0244, 0x0271 },   /* program the timer chip, nothing to send: the STI lets interrupts in (sending stops at the control word: wake_stop_reached) */
@@ -40124,6 +40135,22 @@ int main(int argc, char **argv)
                 XW16(cs,0x0251,XPICK(8)==0?(uint16_t)(0xFFFF-XPICK(2)):(uint16_t)XRAND());
                 /* The vector 0:20h and 0:22h, which the timer installers write. */
                 XW16(0,0x0020,(uint16_t)XRAND());XW16(0,0x0022,(uint16_t)XRAND());
+                /* Every sixteenth state guarantees one of all eight byte-command presets.
+                 * Randomly generated streams previously made 68h/6Ch chance-only: seed
+                 * 600DF00Dh at 4000 states reached 301/303 instructions. Keep every RNG
+                 * draw above, and preserve all other states, aliases and random streams. */
+                if (((unsigned)s & 15u) == 0) {
+                    seg[S_SS]=0x7000;r[R_SP]=0xF100;
+                    XW8(ds_,0xAA,0xFF);
+                    XW16(ds_,0x63,0);XW16(ds_,0x5D,0);
+                    XW16(ds_,0x65,1);XW16(ds_,0x57,0);
+                    XW8(ds_,0x8E,1);
+                    XW16(ds_,0x5B,0x1000);
+                    XW8(ds_,0x1000,(uint8_t)(0x65+(((unsigned)s>>4)&7u)));
+                    XW8(ds_,0x1001,2);
+                    XW16(ds_,0x1002,0x1234);
+                    XW8(ds_,0xA4,1); /* existing timer: the preset completes instead of waking at PIT0 control */
+                }
 #undef XPTR
 #undef XCNT
 #undef XPOOL
@@ -43425,6 +43452,127 @@ int main(int argc, char **argv)
 #undef XRAND
 #undef XW16
 #undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x005A) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0020+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                for(unsigned j=0;j<8;j++)XW8(cs,(uint16_t)(0x0048+j),XRAND());
+                XW8(cs,0x004F,(s&1)?(uint8_t)(1+(XRAND()%255)):0);
+                for(unsigned j=0;j<0x80;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x80+j),XRAND());
+                for(unsigned j=0;j<8;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                const uint16_t LOG=0xF7F0,CNT=0xF7F2;
+                XW16(cs,LOG,XRAND());XW16(cs,CNT,0);
+                unsigned out_=0xF200;
+#define EB(v_) do { XW8(cs,out_,(v_)); out_++; } while(0)
+#define EW(v_) do { const uint16_t w_=(uint16_t)(v_); EB(w_&0xFF); EB(w_>>8); } while(0)
+#define FOLD() do { EB(0x31);EB(0xC3);EB(0xD1);EB(0xC3); } while(0)
+#define FOLDBP(d_) do { EB(0x8B);EB(0x46);EB(d_);FOLD(); } while(0)
+                /* Plain-RET programmer stub observes flags, register/stack arguments,
+                 * DS and saved IVT fields, without executing the callee's own STI. */
+                EB(0x9C);EB(0x50);EB(0x53);EB(0x51);EB(0x52);EB(0x55);EB(0x89);EB(0xE5);
+                EB(0x2E);EB(0x8B);EB(0x1E);EW(LOG);
+                FOLDBP(10);FOLDBP(8);FOLDBP(6);FOLDBP(4);FOLDBP(2);FOLDBP(0);
+                FOLDBP(12);FOLDBP(14);FOLDBP(16);FOLDBP(18);
+                EB(0x8C);EB(0xD8);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x0048);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004A);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004C);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004E);FOLD();
+                EB(0x2E);EB(0x89);EB(0x1E);EW(LOG);
+                EB(0x2E);EB(0xFF);EB(0x06);EW(CNT);
+                EB(0x5D);EB(0x5A);EB(0x59);EB(0x5B);EB(0x58);EB(0x83);EB(0xC4);EB(0x02);EB(0xC3);
+                XW8(cs,0x03F8,0xE9);XW16(cs,0x03F9,(uint16_t)(0xF200-0x03FB));
+#undef FOLDBP
+#undef FOLD
+#undef EW
+#undef EB
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.LOG") && o->seg==0 && o->ip==0x060E) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(s&4)?cs:(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&8)?0:((s&16)?seg[S_DS]:0x6000);
+                const uint16_t sp_choices[]={0x0024,0x0028,0x0058,0x005A};
+                r[R_SP]=(s&32)?sp_choices[XRAND()%4]:(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)(flags & ~F_DF);
+                if(s&2)flags|=F_IF;else flags=(uint16_t)(flags & ~F_IF);
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                for(unsigned j=0;j<8;j++)XW8(cs,(uint16_t)(0x053F+j),XRAND());
+                for(unsigned j=0;j<0x20;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x20+j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                /* Both flag outcomes are forced independently of all random data.
+                 * A non-CS DS proves that the flag is not CS-relative. */
+                XW8(cs,0x0054,(s&1)?0:0xFF);
+                XW8(seg[S_DS],0x0054,(s&1)?(uint8_t)(1+XRAND()%255):0);
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x005B) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0020+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                XW16(0,0x0028,XRAND());XW16(0,0x002A,XRAND());
+                for(unsigned j=0;j<14;j++)XW8(cs,(uint16_t)(0x0048+j),XRAND());
+                XW8(cs,0x0054,(s&1)?(uint8_t)(1+(XRAND()%255)):0);
+                for(unsigned j=0;j<0x80;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x80+j),XRAND());
+                for(unsigned j=0;j<8;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                const uint16_t LOG=0xF7F0,CNT=0xF7F2;
+                XW16(cs,LOG,XRAND());XW16(cs,CNT,0);
+                unsigned out_=0xF200;
+#define EB(v_) do { XW8(cs,out_,(v_)); out_++; } while(0)
+#define EW(v_) do { const uint16_t w_=(uint16_t)(v_); EB(w_&0xFF); EB(w_>>8); } while(0)
+#define FOLD() do { EB(0x31);EB(0xC3);EB(0xD1);EB(0xC3); } while(0)
+#define FOLDBP(d_) do { EB(0x8B);EB(0x46);EB(d_);FOLD(); } while(0)
+                /* Plain-RET programmer stub observes flags, register/stack arguments,
+                 * DS and saved IVT fields, without executing the callee's own STI. */
+                EB(0x9C);EB(0x50);EB(0x53);EB(0x51);EB(0x52);EB(0x55);EB(0x89);EB(0xE5);
+                EB(0x2E);EB(0x8B);EB(0x1E);EW(LOG);
+                FOLDBP(10);FOLDBP(8);FOLDBP(6);FOLDBP(4);FOLDBP(2);FOLDBP(0);
+                FOLDBP(12);FOLDBP(14);FOLDBP(16);FOLDBP(18);
+                EB(0x8C);EB(0xD8);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x0048);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004A);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004C);FOLD();
+                EB(0x2E);EB(0xA1);EW(0x004E);FOLD();
+                EB(0x2E);EB(0x89);EB(0x1E);EW(LOG);
+                EB(0x2E);EB(0xFF);EB(0x06);EW(CNT);
+                EB(0x5D);EB(0x5A);EB(0x59);EB(0x5B);EB(0x58);EB(0x83);EB(0xC4);EB(0x02);EB(0xC3);
+                XW8(cs,0x0251,0xE9);XW16(cs,0x0252,(uint16_t)(0xF200-0x0254));
+#undef FOLDBP
+#undef FOLD
+#undef EW
+#undef EB
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x00AD) {
+                const uint16_t stack_offsets[]={0,1,2,0xFFFE,0xFFFF,0x2000,0x2001};
+                seg[S_SS]=(s&1)?cs:0x6000;
+                r[R_SP]=stack_offsets[(unsigned)s%7];
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

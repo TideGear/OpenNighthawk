@@ -67,6 +67,7 @@ DEAD_RANGES = os.path.join(ROOT, "docs", "census-dead-ranges.tsv")
 DATA_TABLE = os.path.join(ROOT, "docs", "census-data.tsv")
 CODE_TABLE = os.path.join(ROOT, "docs", "census-code.tsv")
 REFERENCE_REVIEWED = os.path.join(ROOT, "docs", "reference-reviewed.tsv")
+RUNTIME_JUMPS = os.path.join(ROOT, "docs", "census-runtime-jumps.tsv")
 CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original", "dead")
 REVIEW_STATUSES = ("stays-original", "machine-option-only", "dead-certified", "probable-dead", "needs-route", "data",
                    "unreached-held")
@@ -181,15 +182,50 @@ def segment_of(linear):
     return (linear >> 4) & 0xF000 if linear > 0xFFFF else 0
 
 
-def route_instructions(route_dir, mods, audit=None):
+def read_runtime_jumps(mods, path=RUNTIME_JUMPS):
+    """Reviewed singleton far-jump operands written by the game's own installers.
+
+    A review pins the file identity and exact CS:IP, and requires the immutable
+    five-byte EA 0000:0000 template. Only its target operand may differ in a
+    capture; neither the opcode nor any other changed instruction is accepted.
+    The evidence names the original writer, not just a decodable byte pattern.
+    """
+    out, physical = set(), set()
+    with open(path, encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 6 or not all(f.strip() for f in fields):
+                raise ValueError("%s:%d: expected module, file FNV64, segment, IP, purpose, writer review"
+                                 % (path, number))
+            name, identity, seg, ip, _purpose, _review = fields
+            name = progress.module_key(name)
+            identity, seg, ip = int(identity, 16), int(seg, 16), int(ip, 16)
+            mod = mods.get(name)
+            if mod is None or mod.file_hash != identity or not (0 <= seg <= 0xFFFF and 0 <= ip <= 0xFFFB):
+                raise ValueError("%s:%d: stale runtime-jump identity or invalid address" % (path, number))
+            off = mod.off(seg, ip)
+            if off < 0 or off + 5 > len(mod.image) or mod.image[off:off + 5] != SLOT:
+                raise ValueError("%s:%d: runtime jump is not the pinned zero-target far-jump template"
+                                 % (path, number))
+            if (name, off) in physical:
+                raise ValueError("%s:%d: duplicate or aliased runtime-jump review" % (path, number))
+            physical.add((name, off))
+            out.add((name, seg, ip))
+    return out
+
+
+def route_instructions(route_dir, mods, audit=None, runtime_jumps=()):
     """Decode executed instructions, after checking module identity and the captured bytes.
 
     recomp.c records a FOUR-BYTE WINDOW, not the instruction's bytes or its length.
     Decode the image for the length; compare only the captured part of that instruction
     (the window can extend into the next instruction). Ignore relocated operands, as
     the translator does. Reject the unpacker's overlapping addresses and other changed
-    code. The one supported patch is a bound entry vector: EA remains EA and the four
-    operand bytes are filled by the segment binder. Addresses remain module-relative
+    code. A bound entry vector keeps EA and fills its target operand. A singleton
+    vector needs a separately validated runtime_jumps review; run() loads that table.
+    Addresses remain module-relative
     CS:IP until after validation; COM's origin affects image indexing, not the result.
 
     audit counts unique records, since the same instruction occurs in many routes.
@@ -236,7 +272,8 @@ def route_instructions(route_dir, mods, audit=None):
             counts["decode"] += 1
             continue
         bound_slot = (mod.image[off:off + 5] == SLOT and off in slots[name] and raw[0] == 0xEA)
-        if not bound_slot and any(mod.image[off + k] != raw[k] for k in range(min(4, ins.length))
+        reviewed_jump = ((name, seg, ip) in runtime_jumps and mod.image[off:off + 5] == SLOT and raw[0] == 0xEA)
+        if not (bound_slot or reviewed_jump) and any(mod.image[off + k] != raw[k] for k in range(min(4, ins.length))
                                   if off + k not in reloc[name]):
             counts["changed"] += 1
             continue
@@ -244,6 +281,8 @@ def route_instructions(route_dir, mods, audit=None):
         counts["accepted"] += 1
         if bound_slot:
             counts["bound_slots"] += 1
+        if reviewed_jump:
+            counts["reviewed_runtime_jumps"] += 1
     if audit is not None:
         audit.update(counts)
     return ran
@@ -406,6 +445,9 @@ def read_reference_reviewed(path=REFERENCE_REVIEWED, modules=None):
                 raise ValueError("%s:%d: linear start must be hex and bytes decimal" % (path, number)) from error
             if module not in modules or start < 0 or size <= 0:
                 raise ValueError("%s:%d: unknown module or empty range" % (path, number))
+            if module.endswith(".COM") and start < 0x100:
+                raise ValueError("%s:%d: COM review addresses start at guest origin 0100, not file offset zero"
+                                 % (path, number))
             if status not in REVIEW_STATUSES:
                 raise ValueError("%s:%d: status must be exactly one of %s" % (path, number, ", ".join(REVIEW_STATUSES)))
             span = set(range(start, start + size))
@@ -518,7 +560,7 @@ def run(census, cover_dir, route_dir, data_dir, scope=None, detail=None):
     rows = load_rows(census)
     covered = progress.named_bytes(cover_dir, data_dir, route_dir)
     audit = {}
-    ran = route_instructions(route_dir, mods, audit)
+    ran = route_instructions(route_dir, mods, audit, runtime_jumps=read_runtime_jumps(mods))
     scope_bytes = {} if detail is not None else None
     totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table(), dead=read_dead(),
                                dead_ranges=read_dead_ranges(), scope_bytes=scope_bytes)

@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 24 October 2026 (batch bb accepted; P2 checklist/encoded review implemented locally, not yet published; remaining scope work in Next steps).
+more than once, what it costs). State as of 24 October 2026 (batch bc accepted; census refreshed; committed locally, not yet published).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.09%, P3 100.00%, All 94.23%
+- **Scoreboard:** P1 100.00%, P2 81.31%, P3 100.00%, All 94.29%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,355 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,778 /
-  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 92.18%**. `docs/reference-reviewed.tsv` holds 41
+- **Phase 2:** 1,359 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,948 /
+  163,907 route-executed bytes plus 2,631 reviewed design-rule original bytes, 92.48%**. `docs/reference-reviewed.tsv` holds 41
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
@@ -27,7 +27,7 @@ Consolidate it instead of appending to it.
   stays-original entry to name its design rule. The accounted-for checklist is 585 / 44,654. Previous
   all-code measure (scores the naming item): **175,154 / 206,740 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
-  Batches a to bb are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
+  Batches a to bc are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
   `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 597 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
 - **Remaining work:** 12,819 route-executed bytes are unmatched; the all-code measure has 31,586 uncredited bytes.
@@ -219,20 +219,21 @@ Consolidate it instead of appending to it.
 
 ## Next steps
 
-**Publication pending:** current scoring/encoded-review changes are local and verified. Automatic approval review
+**Publication pending:** scoring/encoded-review changes are verified in local commit `9478498`. Automatic approval review
 rejected the combined commit/push because this chat has no direct external-publication authorization;
 an approval question is pending. Do not retry publication until answered. All 74 focused tests pass,
-the full census refresh succeeds, and the three batch-bb runtime source hashes remain exact. No full
-game gate is required for these tooling/docs-only changes. The owner's three untracked launchers are untouched.
+the full census refresh succeeded, and commit 9478498 preserved the three batch-bb runtime source hashes.
+The tooling/docs commit needed no full game gate; the installer changes below do require one. The owner's three untracked launchers are untouched.
 
-**Private installer family ready (24 Oct, no new credit yet):** `D:/f117-gate/p2-installers-review-20261024/`
+**Installer family integrated locally (24 Oct, validation pending; no new credit yet):** `D:/f117-gate/p2-installers-review-20261024/`
 has a passing copied batch-bb private audit and an additional literal-claim/source-hash review of four proofs:
 `p2-asoundlog-005a` (48 bytes/16 instructions/26 mutations, full_cycle 66 exact checkpoints),
 `p2-isoundlog-060e` (39/14/22, ibm_boot 26), `p2-rsoundlog-005b` (82/26/26, roland_boot 26),
 and `p2-rsoundlog-00ad` (1/1/6, roland_boot 26). Each has five kit seeds plus fresh 31415926,
 zero skips, complete instruction coverage, every mutation caught, positive own-route calls and passing
-IBM-boot controls. All 170 bytes / 57 instructions remain uncredited until integration and the full gate.
-Carry each proof's POPF_STOPS hunk into the main harness (005A->0089, 060E->0634, 005B->00AD).
+IBM-boot controls. All 170 bytes / 57 instructions remain uncredited until the full gate. The four bodies, fixtures,
+CMake tests and three POPF_STOPS rows are integrated locally (1359 registered entries, 1355 accepted).
+The main harness carries each POPF_STOPS hunk (005A->0089, 060E->0634, 005B->00AD).
 All hand-backs are `:partial`; the one-instruction 00AD return uses `NOBLOCKS`, not partial.
 Important distinction: RSOUND.LOG's already-installed branch targets STI at 00AC, not RET; both paths
 must enable interrupts. Its bounded dossier ends at 00AD (full dossier retained), and the separate
@@ -242,6 +243,70 @@ charging its own instruction, so inhibit_at names the correct boundary. The orig
 reverified after route runs: all 18 game files and all three optional GOG reference files match.
 `p2-asoundlog-008a` is only an initialized lead, not a proof: its first PIT control OUT wakes the machine;
 cover its following continuations explicitly rather than claiming unreachable fixture instructions.
+
+**Resume the live repaired prechecks before starting anything heavy:** the first six-seed attempt
+passed five seeds but 600DF00D exposed an older ISOUND.LOG 0253 fixture's coverage floor: 4856 equal
+comparisons, zero skipped, 301/303 instructions (missing 04FA and 0522 preset assignments). The terminal
+failure is preserved in `D:/f117-gate/bc-pre-attempt-1-coverage-floor/`; session 73187 is closed.
+The fixture now forces every 65h..6Ch byte command in one sixteenth of states after preserving every
+original RNG draw; other states stay unchanged. Source/body comparisons prove that only this fixture
+changed since the failed attempt, not matched.c or CMake. Separate reproof in
+`p2-isound-log-0253-coverage-repair` passes all five private seeds, all 96 original mutants, all six
+production 4000-state seeds (303/303), and real IBM boot (26 exact checkpoints, 464 calls) plus boot
+control. Its audit is `p2-isound-log-0253-coverage-repair-audit`; the original proof is untouched.
+`p2-batch-bc-accept/fixture-repair-verdict.json` pins the reproof; it is not a new routine/credit entry.
+The production test runner rebuilt successfully; five new/repaired CTests passed in 1.11 s.
+
+Unified execution session `61709` is running `D:/f117-gate/bc-pre/run_repaired.py`: six whole-table
+seeds in two rounds, then an assertion that all 1358 unaffected primary per-routine reports are
+identical to the archived attempt. Re-poll this same handle; do not restart on observation timeout
+or trust status.json alone. Round 1: `0x94784986bfbe`, `0x27182818`, `0x20261022`; round 2:
+`0x31415926`, `0x1BADB002`, `0x600DF00D`. No other heavy proof work is active. Source manifests,
+logs and the final `precheck-verdict.json` (only on success) are in `D:/f117-gate/bc-pre/`.
+Batch `D:/f117-gate/p2-batch-bc-accept/` is already prepared (prev bb, base 9478498), with latest bb
+private audit/finalize scripts and a passing four-new-proof audit (57 instructions/80 mutants).
+Do not recreate it. Coordinator PID `100424`, verified live with its exact command line, runs
+`continue_after_prechecks.py` in that acceptance directory. It holds a native handle to precheck
+PID `100752`, requires its successful exit and six unchanged-report checks, revalidates the private
+proofs and measurement inputs, then runs accept.py through affinity_launch.py automatically.
+Do not start a second acceptance. Its `coordinator-status.json` is advisory; verify live processes
+and the terminal gate verdict. After acceptance, refresh the census using bc named-cover.
+Do not change matched.c/tests/CMake or the five files pinned in `measurement-input-manifest.json`
+during validation. Batch bc was accepted (gate 1,741 s, 601 CTests, 1,359 routines, 80 mutants, +170 named bytes; `D:/f117-gate/p2-batch-bc-accept/final-gate-verdict.json`) and progress.json now reads 81.31%.
+Keep publication pending, and do not change the naming denominator without the owner's answer.
+
+**Measurement repairs queued with bc (24 Oct):** the COM launcher reference was wrongly keyed by
+file offset 00000. It now uses the already approved guest range 00100..003CA (715 bytes), resolving
+249 misclassified executed bytes; loader 03CB remains separate. COM references below 0100 reject.
+`docs/census-runtime-jumps.tsv` and the new strict parser validate nine exact singleton EA templates
+by file identity, CS:IP and original writer review (17 records / 45 executed bytes): six interrupt
+chains and MPS_LOGO 00DA:0307/030E/0315 sound thunks. No generic changed-code allowance was added.
+The original three timer and keyboard reference spans now include their final five-byte chain;
+SETUP 104D..10B3 has a new second-read STI-first-handler entry based on its earlier static review
+(102 bytes/51 instructions; 10B3 and other callees are excluded from this entry). PLAYER's handler
+still starts with PUSH AX and remains work; the logo thunks also remain work. All 79 focused tests
+pass. On the old bb named coverage, the corrected read-only measurement is P2 81.20%, All 94.26%,
+gameplay 148778 matched + 2631 original / 163907 bytes, remaining 12498, checklist 590 / 44644.
+Do not publish those as bc's result: use bc's accepted named coverage for the final refresh.
+Saved progress.json still holds the previous 81.09% until bc acceptance. After the runtime-patch
+validation, exactly 300 records remain rejected: 112 bootstrap, 187 zero-driver captures, one
+VGAME/START cross-record. Preserve all rejection rules.
+
+The F117.COM loader review also accounts for 128 already-matched fixture-only bytes in six
+error arms. The successful FFFF-paragraph allocation arm remains `unreached-held`; allocation
+and resize failures are `machine-option-only`; overlay-load/header failures and the common exit
+are `needs-route`. No dead certificate is claimed. The final INT 21h at `04E3..04E5` adds two
+strictly validated static code bytes, with no matched credit; the old draft's fallthrough into
+string data after this nonreturning exit is rejected. These six reference entries raise the
+table to 48 rows and add 130 checklist-reviewed bytes. The earlier read-only measurement above
+predates these 130 bytes and the two-byte scope addition; refresh after the gate, never infer its
+final score. A launcher-level missing resident overlay is a route lead for these error paths.
+
+**Naming denominator decision pending:** an optional question asks whether the existing original-code
+exclusion should also apply to reviewed supplemental bytes. The naming score currently retains 688
+launcher bytes that the owner has decided stay original; the newly reviewed SETUP ISR adds 102 bytes
+of the same kind. Do not change this denominator before the owner's answer (progress.md reserves
+reviewed-reference naming changes for a separate decision). Other matching and gate work can continue.
 
 **0. P2 completion scope (owner-approved 23-24 Oct; scoring implemented).** The accounted-for checklist
 is now a fourth measured P2 item, weight 10. Existing weights were scaled proportionally to 90
@@ -256,8 +321,14 @@ is in `docs/progress.md`. Remaining scope tasks:
   3 undecodable against the unpacked image). They belong to the packed representation, so do not add
   their addresses as original code in the unpacked image: that would alias unrelated code/data.
   A separate source-representation-aware review/score path is still needed. The full floating
-  decompressor remains outside the score. Current unique-record audit is 64,829 records: 64,512 accepted,
-  306 changed and 11 decode rejects; the earlier 300-rejection lead was stale/unverified.
+  decompressor remains outside the score. After the singleton-jump repairs above, the audit accepts
+  64,529 of 64,829 records; 289 changed and 11 decode rejects remain.
+  Read-only source plan `D:/f117-gate/packer-representation-plan-20261024/` verifies identical
+  packed code in all seven files: 163 instructions / 325 bytes in `000E..00F7` and `00FC..0158`,
+  excluding the five-byte signature between them. The copied core adds 147 instructions / 296
+  bytes per source file beyond the bootstrap, but has no complete existing route capture.
+  First-read semantics and exact file/code hashes are saved privately; no independent adoption,
+  scope change or credit is claimed. A copied runtime instance must not count its source twice.
 - **Encoded SETUP adopted locally (24 Oct):** `tools/encoded_code.py` validates the two code rows in
   `docs/census-encoded-code.json`, with raw-file, image, bootstrap, whole-source/decoded-block and per-row
   hashes, fixed transform bounds, no relocations, exact instruction counts and disjoint reviews. All 585

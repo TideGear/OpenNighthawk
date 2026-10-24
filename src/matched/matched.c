@@ -90187,7 +90187,159 @@ static int isound_117_tick_and_take_pending(machine_t *m)
 #undef XB
 }
 
+/* ASOUND.LOG 005A, near: install the AdLib timer only once. CS:004F is the
+ * installed flag. With interrupts disabled, save DS, clear the timer mode byte
+ * CS:004C, read the old INT 8 offset/segment from 0000:0020/0022, restore DS and
+ * save that vector in CS:0048/004A. Call 03F8 (plain RET) to program the timer.
+ * Stop immediately after STI at 0088 so the machine can deliver its interrupt;
+ * the original executes RET at 0089. The already-installed arm executes RET here.
+ * Memory accesses follow the original order, including a stack overlapping IVT. */
+static int asound_log_install_timer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x005A);  /* installed-byte comparison and branch */
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_CS], 0x004F)), 0, 0);
+    if (x86_cond(c, 5)) goto installed;
+    XB(11, 0x0062);
+    x86_cli(c);
+    mem_write8(c, phys(c->seg[S_CS], 0x004F), 0xFF);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    mem_write8(c, phys(c->seg[S_CS], 0x004C), get_r8(c, R_AL));
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = ds_get(c, 0x0020);
+    c->r[R_CX] = ds_get(c, 0x0022);
+    c->seg[S_DS] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_CS], 0x0048, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], 0x004A, c->r[R_CX]);
+    SM4_NEED(1, 0x0085);
+    XRUN(guest_call_pop(m, 0x03F8, 0x0088, 0));
+    SM4_NEED(1, 0x0088);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0089;
+    return 1;
+installed:
+    XB(1, 0x0089);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ISOUND.LOG 060E, near: save the old timer chain once. Unlike the AdLib
+ * entry, the installed flag is addressed through the caller's DS, at 0054.
+ * Mark it FF before CLI, save DS on the real stack, zero AX with SUB, load
+ * DS=0 and read INT8 from 0020/0022. Restore DS before writing the old vector
+ * into CS:0541/0543, then STI. The original RET at 0634 runs after hand-back;
+ * the already-installed path executes that RET in this body. No callees. */
+static int isound_log_save_timer_vector(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x060E);
+    (void)alu_op(c, 7, ds_get8(c, 0x0054), 0, 0);
+    if (x86_cond(c, 5)) goto installed;
+    XB(10, 0x0615);
+    ds_put8(c, 0x0054, 0xFF);
+    x86_cli(c);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = ds_get(c, 0x0020);
+    c->r[R_CX] = ds_get(c, 0x0022);
+    c->seg[S_DS] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_CS], 0x0541, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], 0x0543, c->r[R_CX]);
+    SM4_NEED(1, 0x0633);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0634;
+    return 1;
+installed:
+    XB(1, 0x0634);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* RSOUND.LOG 005B, near: hook the Roland driver's timers once. CS:0054 is
+ * the installed flag. With interrupts disabled, save DS, read INT 0A from
+ * 0000:0028/002A into CS:004C/004E and replace it with live CS:03D9. Restore
+ * DS, clear the timer mode CS:0051, save DS again, read old INT8 from 0020/0022
+ * and preserve it in CS:0048/004A. Call the plain-RET programmer at 0251.
+ * Hand back immediately after STI at 00AC; already-installed calls take the same STI hand-back. The RET at 00AD is
+ * outside this named region and remains original continuation code.
+ * The two distinct push/pop pairs and every read/write retain their order. */
+static int rsound_log_install_timers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x005B);
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_CS], 0x0054)), 0, 0);
+    if (x86_cond(c, 5)) goto enable;
+    XB(22, 0x0063);
+    x86_cli(c);
+    mem_write8(c, phys(c->seg[S_CS], 0x0054), 0xFF);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = ds_get(c, 0x0028);
+    c->r[R_CX] = ds_get(c, 0x002A);
+    seg_write16(c, c->seg[S_CS], 0x004C, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], 0x004E, c->r[R_CX]);
+    c->r[R_AX] = 0x03D9;
+    ds_put(c, 0x0028, c->r[R_AX]);
+    ds_put(c, 0x002A, c->seg[S_CS]);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    mem_write8(c, phys(c->seg[S_CS], 0x0051), get_r8(c, R_AL));
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = ds_get(c, 0x0020);
+    c->r[R_CX] = ds_get(c, 0x0022);
+    c->seg[S_DS] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_CS], 0x0048, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], 0x004A, c->r[R_CX]);
+    SM4_NEED(1, 0x00A9);
+    XRUN(guest_call_pop(m, 0x0251, 0x00AC, 0));
+enable:
+    SM4_NEED(1, 0x00AC);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x00AD;
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 00AD: the near RET immediately after the timer installer
+ * enables interrupts. A separate entry preserves the machine's required
+ * boundary after STI while still replacing the original return instruction. */
+static int rsound_log_timer_install_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x00AD, rsound_log_timer_install_return, "near return after the timer install STI hand-back, including wrapped stack words", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x005B, rsound_log_install_timers, "install Roland INT0A and preserve old INT8 once, call timer programmer, stop after STI", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x060E, isound_log_save_timer_vector, "save the old INT8 chain once in the PC-speaker driver, stop immediately after STI", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x005A, asound_log_install_timer, "install the timer once: save INT8 in the driver code cells, call the timer programmer, stop after STI", 1 },
     { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x00B5, isound_117_tick_and_take_pending, "PC-speaker overlay far entry: with the driver data segment loaded, run the sequencer tick 026C, then return the word [78] in AX and clear it", 2 },
     { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x008E, isound_117_driver_function_dispatch, "PC-speaker overlay function dispatch (far): for a function number up to 2Dh (signed), call the near routine in the code word table at 05CA with the driver data segment loaded", 2 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0051, isound_log_start_song_entry, "PC-speaker driver far entry: switch DS to the driver's data segment, save port 61h in [9F], prepare the sequencer for a song (call 0138), set [AA] to FFh, return AX = 0", 2 },

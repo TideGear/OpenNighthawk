@@ -1506,6 +1506,14 @@ if(F117R_BUILD_TESTS)
       --only ISOUND.117:8E)
     add_test(NAME matched_isound_117_tick_and_take_pending COMMAND func_lockstep --states 5000
       --only ISOUND.117:B5)
+    add_test(NAME matched_asound_log_install_timer COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:5A)
+    add_test(NAME matched_isound_log_save_timer_vector COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:60E)
+    add_test(NAME matched_rsound_log_install_timers COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:5B)
+    add_test(NAME matched_rsound_log_timer_install_return COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:AD)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

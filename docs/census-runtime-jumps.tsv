@@ -1,0 +1,13 @@
+# Reviewed runtime far-jump target operands, 24 October 2026.
+# Columns: module, immutable file FNV64, segment, IP, purpose, original writer review.
+# Only a captured EA at the exact reviewed EA 0000:0000 source template is accepted.
+# This adds validated execution, never matching or original-by-design credit on its own.
+END	FA7167EE4E377EC1	0000	4C50	Old INT8 chain jump in the STI-first timer handler	Original writes at 0000:4BAD/4BB2 store BX/ES into CS:4C51/4C53 after DOS get-vector; handler keeps EA opcode.
+MPS_LOGO	02B05A7CAB0B4197	00DA	0307	Sound-overlay entry 100 far-jump thunk	Original 00DA:0491 binder takes LOG first index 100/count 11, computes 0049+7*index, preserves three bytes, then MOVSW/STOSW at 04BB/04BC fill target words. Entry 100 operand starts at 0308; destination segment is relocated code word 04AD (00DA before relocation).
+MPS_LOGO	02B05A7CAB0B4197	00DA	030E	Sound-overlay entry 101 far-jump thunk	Same reviewed 0491 binder: entry 101 target words at 030F/0311, preserving EA at 030E. ASOUND/ISOUND/RSOUND LOG headers each declare first index 100 and eleven entries.
+MPS_LOGO	02B05A7CAB0B4197	00DA	0315	Sound-overlay entry 102 far-jump thunk	Same reviewed 0491 binder: entry 102 target words at 0316/0318, preserving EA at 0315. Actual route captures contain all three driver variants; this establishes execution, not a matched proof.
+PLAYER	F61A7BE2C4607B24	026B	020C	Old INT8 chain jump in the player timer handler	Original writes at 026B:0036/003B store BX/ES into CS:020D/020F after DOS get-vector; the installed chain keeps EA. Handler is not excluded merely by this capture validation.
+SETUP	EDD5021CF28E7FC4	0000	10AE	Old INT8 chain jump in the STI-first timer handler	Original writes at 0000:0FE1/0FE6 store BX/ES into CS:10AF/10B1 after DOS get-vector; handler keeps EA.
+START	C65ECC83823E4907	0000	8D6C	Old INT8 chain jump in the STI-first timer handler	Original writes at 0000:8CC9/8CCE store BX/ES into CS:8D6D/8D6F after DOS get-vector; handler keeps EA.
+VGAME	8287450CCA85106F	0000	1CFC	Old INT8 chain jump in the STI-first timer handler	Original writes at 0000:1C2F/1C34 store BX/ES into CS:1CFD/1CFF after DOS get-vector; handler keeps EA.
+VGAME	8287450CCA85106F	1132	0180	Old INT9 chain jump in the STI-first keyboard handler	Original 1132:0002 installer (linear alias 1058:0DA2) reads IVT 0024/0026; writes at 003B/003F store AX/DX into CS:0181/0183. The opcode at 0180 remains EA.

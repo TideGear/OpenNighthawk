@@ -24,6 +24,22 @@ verification) is not an optimisation; it needs the owner's approval.
   No game runtime changes means no matched-code gate is needed. Checklist scoring
   (24 Oct) preserves every byte count and scales existing P2 weights to 90 before adding weight 10.
 
+- **Rare preset coverage repair (24 Oct, bc prechecks).** Five whole-table seeds passed;
+  600DF00D at 4000 states found only 301/303 instructions in the older ISOUND.LOG 0253
+  fixture. No compared state differed. A fixed input share now guarantees all eight byte
+  command presets, after the old RNG draws. Reproof retains all 96 mutation controls,
+  five private seeds, six production seeds, 303/303 coverage and two real IBM-boot checks
+  (22.7 s each, 26 checkpoints, 464 calls). The production rebuild only recompiled the
+  test runner; matched.c is unchanged. Repeat all six whole-table seeds and compare the
+  1358 unaffected primary reports with the archived failed attempt before the gate.
+  Evidence: `D:/f117-gate/p2-isound-log-0253-coverage-repair/` and its sibling audit.
+
+- **Reviewed capture patches (24 Oct).** Run the census-classification regressions (61 tests),
+  progress tests (13) and encoded-code tests (5): 79 tests took 1.82 s while the whole-table prechecks shared the machine. The real-image refresh validates the reviewed singleton-jump
+  identities/templates and reference range constraints. Preserve the ordinary rejection
+  checks: zero captures, wrong file/CS:IP, changed opcodes and unreviewed singletons still fail.
+  During a matched batch, defer the published byte refresh until its new named coverage passes.
+
 - **Installer private proofs (24 Oct, awaiting integration).** The ordinary kit/finish/audit
   workflow proved ASOUND.LOG 005A, ISOUND.LOG 060E and RSOUND.LOG 005B plus its separate
   00AD return: 170 bytes, 57 instructions, 80 caught mutants and six seeds per entry.
