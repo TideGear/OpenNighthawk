@@ -166,7 +166,7 @@ not the recompilation:
       or proofs execute and reviewed static code (`docs/census-code.tsv` and two strictly validated encoded SETUP ranges):
       **175,324 / 205,967 creditable bytes** (the previous measure, which now scores only the naming item).
       P2's matched item uses the gameplay score since 21 Oct: matched code runs **148,948 of the 163,907
-      bytes the routes execute, and 2,631 bytes of second-read code that stays original by design count as understood (92.48%); P2 81.41%, P3 89.29%, overall 91.62% after the approved checklist scoring revision**. In the census
+      bytes the routes execute, and 2,631 bytes of second-read code that stays original by design count as understood (92.48%); P2 81.41%, P3 78.12%, overall 88.80% after the approved checklist scoring revision**. In the census
       alone, named code runs 160,003 of 165,425 creditable bytes (1,122 rows wholly,
       291 in part). Credit is by byte since 16 October; data, code that stays original
       and certified-dead code leave the denominator
@@ -840,18 +840,22 @@ jitter is the original's; no smoothing", "Do not extend the draw distance").
       2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
       because it deformed objects; in-between pictures come from `rerun`).
 - [ ] **A longer draw distance** (owner, 15 Oct 2026). Part of Mode 4 below.
-- [ ] **Preset modes** (owner, 24 Oct 2026; scored in P3 at weight 12, none started). Every mode keeps 4:3 except Mode 4.
-      Presets expand to explicit settings; Custom mixes any of them. Modes 2 to 4 share one simulation: only Mode 1 keeps the bugs.
-      1. *Original*: 320x200, original rate, nearest-neighbour 4:3 display, 473.04 with every fix off (the validated default).
-      2. *Original, Fixed*: as 1 with every fix on: the final patch, the fan-community patches (included and credited where appropriate)
-         and OpenNighthawk's own fixes.
-      3. *Enhanced*: Mode 2's simulation with the finer 4:3 redraw and in-between frames at 60+ fps; the final linear stretch is a setting
-         with a sharp option; the original's road and coastline jitter stays.
-      4. *Remastered*: widescreen with a widened field of view, a longer draw distance and graphical quirk fixes (the road and coastline
-         jitter may be fixed here only), simulation identical to Mode 2 apart from an explicit presentation-only list.
-      5. *Custom*.
-      Rules: presentation never feeds the simulation, proved by equal simulation state across Modes 2 to 4 on the same inputs;
-      the mission clock stays real; saves carry their mode and warn or refuse across the bug boundary.
+- [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 28, none started).
+      *Two settings instead of preset modes.* **Presentation:** Original (320x200, original rate, nearest-neighbour 4:3, the validated
+      default picture), Enhanced (the finer 4:3 redraw with in-between frames at 60+ fps; the final linear stretch is a setting with a
+      sharp option; the original's road and coastline jitter stays) or Remastered (below). **Fixes:** Original (473.04, every fix off),
+      Recommended (every fix: the final patch, the fan-community patches, credited, and OpenNighthawk's own) or Custom. Any presentation
+      combines with any fix set; the shipped default is Enhanced with Recommended. Everything but Remastered stays 4:3.
+      *Remastered:* widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
+      objects, so a far hangar's edge can be drawn over a nearer hangar until the camera is closer; owner's screenshots, 24 Oct) and no
+      road or coastline jitter.
+      *Also:* an in-game settings menu for every option now set on the command line or in an .ini; controller and HOTAS support with
+      remapping, an on-screen key reference and mouse where the original had it; the sound device (AdLib, Roland MT-32 via Munt, PC
+      speaker) chosen in the menu; an optional CRT filter for the 4:3 presentations; flight replays (save a sortie and watch it back,
+      other cameras in Remastered); accessibility (subtitles for the speech, full remapping, a colourblind-safe HUD in Remastered).
+      *Rules:* presentation never feeds the simulation, proved by equal simulation state across the three presentations on the same
+      inputs; the mission clock stays real; saves carry their fix set and warn across the bug boundary. Conveniences that change play
+      (save anywhere, difficulty) are not planned; if added they sit apart from both settings, off by default.
 
 ## Phase 4 - checked by people and independent references
 

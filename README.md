@@ -98,6 +98,16 @@ quiz. It is off by default and is enabled only when named explicitly;
   and broader hardware checks; play by a person at the
   keyboard; rendered Roland output against an independent reference, and
   listening checks.
+- **Planned re-release features** (not started; [roadmap](docs/roadmap.md)):
+  two choices instead of preset modes. *Presentation:* Original (320x200,
+  sharp 4:3), Enhanced (finer 4:3 at 60+ fps) or Remastered (widescreen with
+  a wider field of view, a longer draw distance, objects drawn in correct
+  depth order and no road or coastline jitter). *Fixes:* Original (none),
+  Recommended (every fix, including credited fan-community patches) or
+  Custom. Also an in-game settings menu, controller and HOTAS support with
+  remapping, the sound device chosen in the menu, an optional CRT filter,
+  flight replays, and subtitles and other accessibility options. The game's
+  logic is the same under every presentation.
 
 The figures and evidence for each check are in
 [docs/roadmap.md](docs/roadmap.md) (what is done and left) and

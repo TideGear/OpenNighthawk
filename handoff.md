@@ -15,7 +15,7 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.41%, P3 89.29%, All 91.62%
+- **Scoreboard:** P1 100.00%, P2 81.41%, P3 78.12%, All 88.80%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
 - **Phase 2:** 1,359 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,948 /
