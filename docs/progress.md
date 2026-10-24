@@ -124,10 +124,8 @@ Allocation/resize failures are machine-option-only; overlay-load/header failures
 exit need routes. The unexpected successful FFFF-paragraph allocation arm remains held until
 its allocator and possible indirect entries are closed. No new dead-code exclusion is claimed.
 
-The naming measure still includes reviewed original-by-design supplemental bytes (688 launcher
-bytes, plus 102 SETUP timer bytes). Applying its existing original-code denominator exclusion
-outside the historical census is a pending owner decision; no denominator change is made here.
-This must be resolved before the defined P2 score can reach 100%.
+The naming measure excludes reviewed original-by-design supplemental bytes outside the historical census
+(688 launcher bytes, plus 102 SETUP timer bytes), as census-original rows are excluded inside it (owner, 24 Oct 2026).
 
 ### Phase 2 completion requirements (owner, 23-24 October 2026)
 
