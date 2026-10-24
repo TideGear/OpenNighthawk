@@ -84,7 +84,7 @@ other statuses stay in it, and a byte a matched body covers stays counted. The t
 | P2 / All | 81.73% / 94.42% | **84.67% / 95.32%** |
 
 Current byte inventory (24 Oct, batch bc): **(148,948 + 2,631) / 163,907 = 92.48%**
-(P2 81.41%, All 94.33% after checklist scoring and encoded-code adoption). The previous all-code measure is
+(P2 81.41%, P3 89.29% after the preset-modes items, All 91.62% after checklist scoring and encoded-code adoption). The previous all-code measure is
 **175,324 / 205,967**; 26,311 matched bytes run only in fixtures and earn no gameplay credit.
 There are 12,819 unmatched executed bytes, including 20 design-rule original bytes awaiting a reviewed entry.
 The largest remaining modules are ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778,
