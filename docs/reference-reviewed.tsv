@@ -7,7 +7,7 @@
 #   stays-original  its executed bytes enter the gameplay score's numerator, only for a routine that stays original
 #                   by design rule: inside the census every byte must lie in a docs/census-original.tsv row; outside
 #                   the census `why not matched` must start with the rule (STI-first handler, C start-up, palette
-#                   loader with STI, program launcher). A declined routine (VGAME main, MPS_LOGO 1ADC/1C82, START 8427, END 4393,
+#                   loader with STI, program launcher, hardware wait loop). A declined routine (VGAME main, MPS_LOGO 1ADC/1C82, START 8427, END 4393,
 #                   END 57B0, ...) is remaining work and cannot be listed as stays-original.
 #   any status      a byte of the previous all-code scope that no route executes is "accounted for" in the checklist.
 # Columns (tab-separated): module, linear start (hex), bytes (decimal), name, purpose, status, why not matched,

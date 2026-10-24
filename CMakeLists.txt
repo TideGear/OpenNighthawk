@@ -1440,6 +1440,72 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.LOG:BB8)
     add_test(NAME matched_asound_log_write_rhythm_depth COMMAND func_lockstep --states 5000
       --only ASOUND.LOG:9B6)
+    add_test(NAME matched_asound_log_write_operator_level_scaled COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:640)
+    add_test(NAME matched_asound_log_write_operator_pitch COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:6AA)
+    add_test(NAME matched_asound_log_write_voice_operator_registers COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:BE2)
+    add_test(NAME matched_asound_log_open_driver COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:5DA)
+    add_test(NAME matched_asound_log_close_driver COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:618)
+    add_test(NAME matched_asound_log_driver_function_dispatch COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:5F7)
+    add_test(NAME matched_asound_117_write_voice_key_register COMMAND func_lockstep --states 5000
+      --only ASOUND.117:E5E)
+    add_test(NAME matched_asound_117_write_voice_pitch COMMAND func_lockstep --states 5000
+      --only ASOUND.117:DCE)
+    add_test(NAME matched_asound_117_write_voice_pitch_from_note COMMAND func_lockstep --states 5000
+      --only ASOUND.117:D1C)
+    add_test(NAME matched_asound_117_write_voice_level COMMAND func_lockstep --states 5000
+      --only ASOUND.117:C2E)
+    add_test(NAME matched_asound_117_set_clamped_rate COMMAND func_lockstep --states 5000
+      --only ASOUND.117:3D8)
+    add_test(NAME matched_asound_117_load_rate_argument COMMAND func_lockstep --states 5000
+      --only ASOUND.117:3D5)
+    add_test(NAME matched_asound_117_store_command_word_17e2 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B90)
+    add_test(NAME matched_asound_117_reset_voice_record COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5E7)
+    add_test(NAME matched_asound_117_reset_record_190a COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5E3)
+    add_test(NAME matched_asound_117_reset_record_1928 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5DC)
+    add_test(NAME matched_asound_117_reset_record_1946 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5D5)
+    add_test(NAME matched_asound_117_reset_record_1964 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5CE)
+    add_test(NAME matched_asound_117_reset_record_1982 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5C7)
+    add_test(NAME matched_asound_117_reset_record_19a0 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5C0)
+    add_test(NAME matched_rsound_117_start_voice_one COMMAND func_lockstep --states 5000
+      --only RSOUND.117:EDB)
+    add_test(NAME matched_rsound_117_start_voice_4_prefix COMMAND func_lockstep --states 5000
+      --only RSOUND.117:EBD)
+    add_test(NAME matched_rsound_117_start_voice_3_prefix COMMAND func_lockstep --states 5000
+      --only RSOUND.117:EC7)
+    add_test(NAME matched_rsound_117_start_voice_2_prefix COMMAND func_lockstep --states 5000
+      --only RSOUND.117:ED1)
+    add_test(NAME matched_rsound_117_send_note_on COMMAND func_lockstep --states 5000
+      --only RSOUND.117:444)
+    add_test(NAME matched_rsound_117_send_program_change COMMAND func_lockstep --states 5000
+      --only RSOUND.117:46D)
+    add_test(NAME matched_rsound_117_flush_pending_notes COMMAND func_lockstep --states 5000
+      --only RSOUND.117:3D6)
+    add_test(NAME matched_rsound_log_driver_function_dispatch COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:5F6)
+    add_test(NAME matched_rsound_log_open_driver COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:5CC)
+    add_test(NAME matched_rsound_log_close_driver COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:611)
+    add_test(NAME matched_isound_log_start_song_entry COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:51)
+    add_test(NAME matched_isound_117_driver_function_dispatch COMMAND func_lockstep --states 5000
+      --only ISOUND.117:8E)
+    add_test(NAME matched_isound_117_tick_and_take_pending COMMAND func_lockstep --states 5000
+      --only ISOUND.117:B5)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 23 October 2026 (batch az accepted).
+more than once, what it costs). State as of 24 October 2026 (batch bb accepted; P2 scoring under owner-approved revision, see Next steps).
 
 This file holds only the current state, standing practice and traps, not a
 session log: earlier detail is in `git log -p handoff.md`, and per-batch
@@ -15,29 +15,29 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 89.23%, P3 100.00%, All 96.71%
+- **Scoreboard:** P1 100.00%, P2 90.04%, P3 100.00%, All 96.96%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,322 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **147,270 /
-  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 91.26%**. `docs/reference-reviewed.tsv` holds 39
+- **Phase 2:** 1,355 addresses matched. Gameplay score (owner, 21 Oct; scores the matched item): **148,778 /
+  163,862 route-executed bytes plus 2,265 reviewed design-rule original bytes, 92.18%**. `docs/reference-reviewed.tsv` holds 39
   second-read entries (the C start-up copies, the STI-first timer and keyboard handlers, the STI palette loaders; evidence
   `D:/f117-gate/reference-reviewed-20261021/`). Rejected by both readers and now remaining work: PLAYER `02853` (an interrupt handler
   whose STI is its 13th instruction, not STI-first) and `028C1` (a retrace re-sync), both taken off `docs/census-original.tsv`, and
   START `08F94` (the run time's divide-error entry, inside the C start-up row). The scoring check now requires every
-  stays-original entry to name its design rule. The accounted-for checklist is 0 / 43,954. Previous
-  all-code measure (scores the naming item): **173,531 / 206,040 creditable bytes** across
+  stays-original entry to name its design rule. The accounted-for checklist is 0 / 44,069. Previous
+  all-code measure (scores the naming item): **175,154 / 206,155 creditable bytes** across
   all 17 game code files (credit by byte; rules in [docs/progress.md](docs/progress.md)).
-  Batches a to az are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
-  `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 564 CTests, 63 routes run as 62 sessions,
+  Batches a to bb are accepted (table in [docs/roadmap.md](docs/roadmap.md); evidence
+  `D:/f117-gate/p2-batch-<letter>-accept/`). Latest gate: 597 CTests, 63 routes run as 62 sessions,
   5,723,136 instruction states per timing profile, all matched routines at three seeds.
-- **Remaining work:** 14,327 route-executed bytes are unmatched; the all-code measure has 32,509 uncredited bytes.
-  Largest executed groups: ASOUND.117 5,306, ASOUND.LOG 1,615, RSOUND.117 2,072, RSOUND.LOG 1,673,
-  ISOUND.117 958, ISOUND.LOG 592, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
+- **Remaining work:** 12,819 route-executed bytes are unmatched; the all-code measure has 31,001 uncredited bytes.
+  Largest executed groups: ASOUND.117 4,662, ASOUND.LOG 1,226, RSOUND.117 1,778, RSOUND.LOG 1,574,
+  ISOUND.117 905, ISOUND.LOG 563, F117.COM 249, VGAME 549, PLAYER 268, END 261, MPS_LOGO 255 and START 251.
   There are 13,232 uncredited reviewed static bytes that no route runs (`docs/census-code.tsv`, 154 ranges), about 2,500
   machine-option-only error-path bytes and 831 probable-dead bytes still retained. Outside the score: about 654
   held static-discovery bytes (42 groups; encoded SETUP needs a strict validator) and the floating LZEXE decompressor.
   Refresh using batch ax's `named-cover` and `D:/f117-gate/route-cover-20261020b`.
-- **What P2 100% still requires:** 12,216 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
+- **What P2 100% still requires:** 10,708 unmatched executed bytes are in the six sound drivers, 249 in F117.COM outside the launcher (lead: executed bytes of the `03CB` loader region the named cover does not claim),
   and 1,862 in the seven ordinary programs. The previous all-code measure also has unexecuted static/error-path work: no byte leaves
   scope without its existing design rule or a strict dead certificate. Old private mapping counts are leads, not proofs or current
   inventories. Reviewed-original credit still requires a second reader; do not convert declined routines into exclusions.
@@ -199,9 +199,11 @@ Consolidate it instead of appending to it.
   `--verify-interp-cache`, changing the default overlap of eight workers.
 - **Program launcher stays original (23 Oct):** F-117.COM `0100`..`03CA` (715 bytes) is a fifth design rule ("program launcher"), reviewed by an
   independent second reader (no copy protection, no checks beyond child exit codes); the overlay loader `03CB` stays matched. Owner chose it over
-  matching the launcher in nested-run proofs. **Still undecided (asked 23 Oct):** whether hardware calibration/wait loops and the sound drivers'
-  STI installers may stay original; recommended class by class (allow loops no test state can finish, each with a second reader; keep matching
-  installers and OPL write routines). Do not treat any of them as original until the owner answers.
+  matching the launcher in nested-run proofs. **Hardware wait loops (owner, 23 Oct, option C):** a sixth design rule, "hardware wait loop", lets a wait or
+  calibration loop stay original only if no lockstep state can complete it, each with a second reader; the STI installers (18 routines, about 1,280 bytes)
+  and the OPL write primitives (8, about 361 bytes) must be matched. A first read (`D:/f117-gate/wait-loops-first-read/first-read.md`) found that none of
+  the 8 candidate loops qualifies: ASOUND.LOG `00FE` `0140`, RSOUND.LOG `012D` `03A2`, RSOUND.117 `0AFE` `0D07`, ASOUND.117 `0A17` `0B01` can all be completed
+  by a fixture (three as the harness stands, five once the callee that executes STI is stubbed, as SETUP `111A`'s fixture does). Match them; the rule has no users.
 - **Dead code leaves the denominator only when certain** (19 Oct), with a certificate per row.
 - **Machine-option-only error paths stay original code (20 Oct):** out-of-memory arms, DOS read/write/close
   errors, the `_C_FILE_INFO` environment arm (about 2,500 bytes). Do not build test-only machine options for
@@ -216,6 +218,29 @@ Consolidate it instead of appending to it.
 - Keep going item by item; ask only on policy.
 
 ## Next steps
+
+**0. P2 scoring revision (owner-approved 23-24 Oct, NOT YET IMPLEMENTED — do this first).** The owner approved widening what "P2 complete"
+means, on top of the existing gameplay/naming scores:
+- Count the accounted-for checklist (currently 0 / 44,069 bytes) as a fourth scored P2 item, weight 10 (my proposal; owner can adjust),
+  in `docs/progress.json` / `tools/progress.py`. **This will drop the headline P2 percentage** (today ~90%) **to roughly 81%** the moment
+  it lands, because the checklist starts at 0%. That is correct and expected, not a regression — flag it plainly in the commit message
+  and to the owner when it happens.
+- Add a seventh design rule, "packer stub" (`DESIGN_RULES` in `tools/census_classify.py`), for the 7 identical LZEXE decompressor-stub
+  records rejected by `route_instructions` (112 raw route records, one per program's `000E..002A`, all `060e1f8b` captured bytes vs
+  changed image — see the "changed" rejection bucket). It never returns (jumps into the unpacked program), so it is original by design,
+  not matchable; needs a reviewed entry + second reader like the other design rules. Byte count not yet measured — check it first.
+- Build the strict validator for the encoded (XOR-transformed) SETUP region before it can be adopted into the static-code review (pins
+  raw file hash, decoded hash, bounds, instruction counts; never publishes the decoded bytes — repo is public, code-only).
+- Match the ~2,500 machine-option-only error-path bytes (OOM, DOS read/write/close errors, the `_C_FILE_INFO` environment arm) with
+  test-input proofs instead of leaving them in permanent limbo; no test-only machine options needed (owner, 20 Oct, unchanged).
+- Resolve the 831 probable-dead bytes: either a strict dead certificate or a proof, not "probable" forever.
+- Before declaring P2 100%, run a closure review ("leave no stone unturned", owner's phrase, 23-24 Oct) of indirect calls, jump/dispatch
+  tables, callbacks, interrupt vectors, overlay entry tables and self-modifying code, to catch code no discovery walk or route has found.
+  This cannot be scored (you can't measure what you haven't found) — record what it covered as a closing step, not a percentage.
+- Write the full "P2 is done when ..." definition into `docs/progress.md` so it doesn't drift.
+Evidence for the packer-stub and machine-option items: this session's analysis (not yet filed anywhere else) found 300 of ~64,829 route
+records rejected; 187 are ISOUND.LOG error-route junk (captured zero bytes, correctly rejected), 112 are the packer stub (above), 1 is a
+stray VGAME/START cross-record. See conversation history (23-24 Oct) for the full breakdown if a private note was not saved.
 
 1. **Reviewed static code (10,301 bytes):** resumed verification retains every range; no additional route or dead certificate is established ([review](docs/static-code-review.md)). Any later exclusion needs exact per-range closure of indirect and callback paths. About 1,800 executed bytes outside the census still need proofs; one cheap extra route is proposed in `D:/f117-gate/static-route-plan-20261021/proposal_err_dswap_keys.args` (`err_dswap_nostart` plus two keys; needs `# expect-` lines).
 2. **Reference entries for unmatchable code:** regenerate and fix `D:/f117-gate/unmatched-reference-20261021/reference.tsv` as listed above, then publish it as a repository doc (one row per routine: name, purpose, status, why not matched, evidence); no private paths or binary dumps in the public copy.
@@ -237,7 +262,27 @@ Consolidate it instead of appending to it.
    Continue with ASOUND.117, the remaining .LOG routines, ISOUND/RSOUND.117 and the launcher EXEC chain,
    using the plan only for leads and traps; STI-first handlers remain original by design. The existing COM fixture needs explicit
    adaptation from segment 0 to cs. Its helper already reads live CS, as do most MGRAPHIC fixtures.
-5. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
+5. **The hard tail: declined routines are Phase 2 work, not exclusions** (owner, 23 Oct: put them in). They are in the gameplay denominator today (they are
+   part of the unmatched executed bytes: VGAME 549, PLAYER 268, END 261, MPS_LOGO 255, START 251, SETUP 210, DSWAP 68) and P2 cannot reach 100% without them.
+   List (from `D:/f117-gate/kit/DECLINED.tsv`, the roadmap and the rejected reviewed entries); each needs the stated unit before it can be proved:
+   - VGAME `0x00010` `main()` (the whole game): a nested-run proof or a decision; check before assigning.
+   - MPS_LOGO `1ADC` and `1C82`, START `11DB` (with its interior arm `1285`, an 86-byte fragment of a 131-byte tail): earlier proofs found the draft unequal;
+     find the difference first (start from the saved private proofs named in the roadmap), then prove the whole function.
+   - START `8427` and END `4393`: earlier routes missed planted defects and the routines wait; needs routes and inputs that reach the arms and wait handling.
+   - END `57B0`: an interior arm of the 795-byte printf-like function (RET at `5B4C`, 11 other census rows); the whole function is the unit.
+   - VGAME `137CE`: a 9-byte far table thunk at the observer hook's address (`hook_fill_rows`); the body must call the observer itself and join the
+     `deliberate` list in `tests/test_overrides.c`.
+   - PLAYER `02853` (interrupt handler whose STI is its 13th instruction) and `028C1` (retrace re-sync, STI inside its loop): rejected as original by both
+     readers; match with the stop-after-STI hand-back.
+   - START `08F94` (the run time's divide-error entry, inside the C start-up row).
+   Not on the list: DSWAP `3DF3` (2,791 zero bytes of data, already excluded) and the design-rule originals. Add these to a batch once the driver leaves run low.
+6. **Sort the matched code no route runs** (owner, 21 and 23 Oct): about 26,196 fixture-only bytes (about 88 whole routines no route reaches, plus
+   unrouted arms such as ASOUND.LOG `0344`'s voice sweeps and ISOUND.LOG `0253`'s stream readers). They are proven by lockstep and credited by the naming
+   score, but no real play confirms them and the gameplay score does not count them. Classify each group as player-reachable (write a route, which also
+   moves it into the gameplay table already credited) or not reachable (error path, hardware option, dead: a checklist entry in
+   `docs/reference-reviewed.tsv`). Mostly read-only work plus route writing; run it between proof batches. The same sorting applies to the 13,232
+   reviewed static bytes no route runs: each ends matched (a fixture proof is enough for the naming score), routed, or certified dead or data.
+7. **Phase 4 stays unscored:** refresh rates above 60 Hz, the hardware-only parts, a person playing.
 
 ## Phase 2 batch workflow and its traps
 
