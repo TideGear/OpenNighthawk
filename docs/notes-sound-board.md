@@ -62,3 +62,12 @@ parked and below a speed threshold - this is the idle/throttle engine note the s
 engine note's definition" at DS 0x0E94. Running total of distinct VGAME-raised ids: 4, 5, 6, 8, 9, 10,
 11, 12, 14, 15, 17, 24, 25 (thirteen). `0xD43A`'s own body (what it does with the id, and whether it
 has further gates of its own) is still unread.
+
+**Confirmed: one driver entry point.** Drafted both `0xD414` and `0xD43A` straight from VGAME.EXE's
+image (`tools/matched_draft.py`): both are a bare `lcall 0x1e42, 0x313` and nothing else (pop the
+argument word, ret). So every VGAME sound request, from either gate, converges on the single far call
+`1E42:0313`, matching the old project's memory note (`f117a-sound-requests.md`) independently from this
+codebase's own image. `1E42` is a runtime load segment (wherever SETUP loaded the resident driver that
+session), not an address in VGAME.EXE's own image, so the real per-id dispatch has to be read from each
+driver file's own image at its own entry offset (ASOUND.117's documented table: 46 near pointers at
+cs:0x0911) - next step, one driver at a time.
