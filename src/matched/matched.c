@@ -45074,6 +45074,7 @@ done:
 static int start_brief_key_loop(machine_t *m)
 {
     cpu_t *c=&m->cpu;
+    if (fix_inside(c, 0x0FA3, 0x11DB)) return 0;
     enum { KEY=-4, CODE=-2, ROW=-8 };
 #define LB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
 #define LP(r_) cpu_push16(c,c->r[r_])

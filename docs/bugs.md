@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-four: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18 and Q19, including the D1REAL timing and D1PROX balance choices
+twenty-five: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19 and Q20, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -71,7 +71,7 @@ Status values:
 | Q17 | Confirmed | VGAME | Pitch-ladder label index runs outside its table past 90 degrees | `--fix Q17` |
 | Q18 | Confirmed | START | The campaign date loop reads past its month table, printing January 32 and later | `--fix Q18` |
 | Q19 | Confirmed | START | The Enemy Troops overlay stores pixel coordinates into its own loop counters | `--fix Q19` |
-| Q20 | Confirmed | START | A stuck briefing popup (below) | planned |
+| Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -825,6 +825,24 @@ Status values:
   fixed overlay one per troop cell), then stops and resumes (5,810 staged runs,
   0 failures).
 
+### Q20. A click can leave the briefing popup on the map
+
+- **What happens.** A click on a map site in the briefing key loop redraws the
+  page and draws the site's popup itself (`0x011D1`, CALL `0x1C2F`). The hover
+  hook (`0x011DB`) remembers the last item it drew in `[D096h]`. When the cursor
+  moved onto the site in the same poll that took the click, the hook still holds
+  the old item, draws and saves the popup again on its next pass, and the popup
+  stays on the map until the next redraw (restore `0x03588`). Not located in the
+  other versions.
+- **Fix.** `--fix Q20` leaves the click's CALL out when the remembered item is not
+  a site (`[D096h]` <= 8), since the hover hook will draw the popup; otherwise the
+  original call runs. The pushed argument stays where the original's CALL leaves
+  it. The containing matched routine at `0x00FA3` declines while Q20 is placed.
+- **Check.** `build/check_q20 path/to/START.EXE` runs the click from `0x011C8` in
+  both engines with Q20 off and on for every remembered item from 0 to 14, with
+  the popup routine as a recording stub (120 staged runs, 0 failures). It proves
+  the click's decision, not the hover hook's redraw on screen.
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -847,12 +865,8 @@ original](#not-defects-of-the-original).
 
 ### Defects to fix
 
-Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18 and Q19 are described above.
-
-| ID | Was | Program | Defect | Effect | Where | Later versions |
-|---|---|---|---|---|---|---|
-| Q20 | - | START | A click in the same poll that moves the cursor onto a site draws the popup; the hover hook, still on the old item, then draws and saves it again | The popup stays on the map until the next redraw | `0x011D1`, `0x0129D`, restore `0x03588` | Not located |
+All ten are fixed, each on its own switch that normal play enables, with tests
+of both states (Q7, Q11, Q12 and Q14 to Q20, described above).
 
 Q12's sibling at `0x0707B` passes three arguments where the routine's other
 six callers pass four, so a player weapon's map marker size comes from the

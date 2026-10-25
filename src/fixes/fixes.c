@@ -822,7 +822,27 @@ static int fix_q19_skip(machine_t *m, uint16_t next)
 static int fix_q19_column(machine_t *m) { return fix_q19_skip(m, 0x1AFA); }
 static int fix_q19_row(machine_t *m) { return fix_q19_skip(m, 0x1B0C); }
 
+/* Q20. In the briefing key loop a click on a map site redraws the page and
+ * then draws the site's popup itself (0x011D1, CALL 0x1C2F). The hover hook
+ * (0x011DB) remembers the item it last drew in [D096h]; when the cursor moved
+ * onto the site in the same poll that took the click, the hook still holds the
+ * old item, so it draws and saves the popup again on its next pass and the
+ * popup stays on the map until the next redraw. When the remembered item is
+ * not a site ([D096h] <= 8) the hook will draw the popup, so the click leaves
+ * the CALL out; its pushed argument stays where the original's CALL leaves it
+ * (nothing pops it on either path). */
+static int fix_q20_popup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (mem_read8(c, phys(c->seg[S_DS], 0xD096)) > 8) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x11D4;
+    c->icount++;                     /* the CALL */
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q20", "START.EXE", START_47304, 0x0000, 0x11D1, fix_q20_popup, "briefing popup is left to the hover hook" },
     { "Q19", "START.EXE", START_47304, 0x0000, 0x1AF7, fix_q19_column, "troop overlay keeps its column counter" },
     { "Q19", "START.EXE", START_47304, 0x0000, 0x1B09, fix_q19_row, "troop overlay keeps its row counter" },
     { "Q18", "START.EXE", START_47304, 0x0000, 0x2613, fix_q18_month_wrap, "campaign date wraps past December" },
@@ -884,6 +904,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q20", "a briefing-map click no longer leaves its popup stuck on the map" },
     { "Q19", "the Enemy Troops overlay draws every troop cell instead of resuming its scan from a pixel coordinate" },
     { "Q18", "the campaign date wraps into the next year instead of printing January 32 and later" },
     { "Q17", "pitch-ladder labels past 90 degrees mirror inside the table instead of reading past it" },
