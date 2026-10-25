@@ -859,7 +859,30 @@ static int fix_q13a_sensorless(machine_t *m)
     return 0;
 }
 
+/* Q21. The steering bracket's half-width [DEBE] is worked out at 0xAE9F from
+ * the bracket corner [bp-30h]/[bp-2Eh] when the weapon type [bp-12h] is 1Eh.
+ * The code that computes that corner (0xAD79-0xADDC) is skipped when the
+ * aircraft is banked 45 degrees or more (|[2DF2]| >= 2000h, tested at
+ * 0xAD81), so on that path the corner is stale stack and the width is
+ * garbage. Chosen behaviour (owner, 25 October 2026): keep the previous
+ * frame's width, that is, go on to 0xAEDE without storing. The roll test is
+ * the original's: the 16-bit absolute value, compared signed. */
+static int fix_q21_bracket_width(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    if (seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 0x12)) != 0x1E) return 0;
+    const int16_t roll = (int16_t)seg_read16(c, c->seg[S_DS], 0x2DF2);
+    const int16_t magnitude = (int16_t)(roll < 0 ? -roll : roll);
+    if (magnitude < 0x2000) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0xAEDE;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q21", "VGAME.EXE", VGAME_47304, 0x0000, 0xAE9F, fix_q21_bracket_width, "steering bracket keeps its width when banked 45 degrees or more" },
     { "Q13a", "VGAME.EXE", VGAME_47304, 0x0000, 0x5594, fix_q13a_sensorless, "a sensorless unit reports itself far away" },
     { "Q20", "START.EXE", START_47304, 0x0000, 0x11D1, fix_q20_popup, "briefing popup is left to the hover hook" },
     { "Q19", "START.EXE", START_47304, 0x0000, 0x1AF7, fix_q19_column, "troop overlay keeps its column counter" },
@@ -923,6 +946,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q21", "the steering bracket keeps the previous frame's width when banked 45 degrees or more, instead of computing it from stale stack" },
     { "Q13a", "a unit with no sensor reports a far range instead of stale stack to the detection tests" },
     { "Q20", "a briefing-map click no longer leaves its popup stuck on the map" },
     { "Q19", "the Enemy Troops overlay draws every troop cell instead of resuming its scan from a pixel coordinate" },

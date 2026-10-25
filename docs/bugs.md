@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-six: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20 and Q13a, including the D1REAL timing and D1PROX balance choices
+twenty-seven: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a and Q21, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -73,7 +73,8 @@ Status values:
 | Q19 | Confirmed | START | The Enemy Troops overlay stores pixel coordinates into its own loop counters | `--fix Q19` |
 | Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
 | Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
-| Q21, Q22 | Confirmed | VGAME, START | Two smaller defects with a chosen correct behaviour (below) | planned |
+| Q21 | Confirmed | VGAME | The steering bracket's half-width is computed from stale stack when banked 45 degrees or more with weapon 1Eh | `--fix Q21` |
+| Q22 | Confirmed | START | One smaller defect with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
@@ -863,6 +864,25 @@ Status values:
   registers, memory and clock, then stops and resumes at every instruction
   (48 staged runs, 0 failures).
 
+### Q21. The steering bracket's width comes from stale stack
+
+- **What happens.** For a weapon of type 1Eh the steering bracket's half-width
+  `[DEBE]` is worked out at `0x0AE9F` from the corner `[bp-30h]`/`[bp-2Eh]`.
+  The code that writes that corner (`0x0AD79`-`0x0ADDC`) is skipped when the
+  aircraft is banked 45 degrees or more (`|[2DF2]| >= 2000h`, tested at `0x0AD81`),
+  so the width is computed from whatever the stack held. Macintosh and Amiga have
+  the same flaw, and no version shows the intended width.
+- **Chosen behaviour (owner, 25 October 2026).** Keep the previous frame's width.
+- **Fix.** `--fix Q21` at `0x0AE9F`: when the weapon is 1Eh and the original's
+  16-bit absolute-value roll test (compared signed) fails, go on to `0x0AEDE`
+  without storing; otherwise the hook declines. The containing display pass
+  (`0x09EFA`) already declines while any of its fixes is placed.
+- **Check.** `build/check_q21 path/to/VGAME.EXE` tries nine roll values (around
+  +-2000h, 7FFFh and 8000h) with weapons 1Eh, 1Dh and 1Fh in both engines: the hook
+  skips exactly when the weapon is 1Eh and the roll test fails, declines with
+  nothing changed otherwise, and the skipped run ends at `0x0AEDE` with `[DEBE]`
+  untouched and the same state in both engines (110 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -898,11 +918,10 @@ draws 2x2 markers, and the fix pins that size.
 
 No version shows the intended behaviour, or the one a port shows is no better.
 Owner, 25 October 2026: fix all three as below, each on its own switch
-(Q13a is built and described under "Q13a" above the Q-series).
+(Q13a and Q21 are built and described above the Q-series).
 
 | ID | Was | Program | Defect | Effect | Where | Later versions | Chosen fix |
 |---|---|---|---|---|---|---|---|
-| Q21 | D75 | VGAME | The steering bracket's half-width is computed from `[bp-0x30]`/`[bp-0x2E]`, which this path never writes, when the roll is 45 degrees or more with weapon type 1Eh | `[0xDEBE]` from stale stack | skip `0x0AD81`; reads `0x0AEB5`, `0x0AEC4` | Mac and Amiga present | Keep the previous frame's width |
 | Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
 
 ### Hardening
