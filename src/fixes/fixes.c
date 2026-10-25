@@ -805,7 +805,26 @@ static int fix_q18_month_wrap(machine_t *m)
     return 0;
 }
 
+/* Q19. START's Enemy Troops overlay (0x01AB6) scans a 16 by 16 grid with the
+ * loop counters [bp-6] (column) and [bp-4] (row), and after each troop cell
+ * stores the sprite's pixel x and y into those same counters (0x01AF7,
+ * 0x01B09), so the scan resumes from a screen coordinate: a theatre's 4-17
+ * troop cells show 1-4 markers. Each hook skips its store (the MOV is three
+ * bytes, one instruction); the pixel position was already pushed from AX. */
+static int fix_q19_skip(machine_t *m, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount++;
+    return 1;
+}
+static int fix_q19_column(machine_t *m) { return fix_q19_skip(m, 0x1AFA); }
+static int fix_q19_row(machine_t *m) { return fix_q19_skip(m, 0x1B0C); }
+
 static const recomp_override OVERRIDES[] = {
+    { "Q19", "START.EXE", START_47304, 0x0000, 0x1AF7, fix_q19_column, "troop overlay keeps its column counter" },
+    { "Q19", "START.EXE", START_47304, 0x0000, 0x1B09, fix_q19_row, "troop overlay keeps its row counter" },
     { "Q18", "START.EXE", START_47304, 0x0000, 0x2613, fix_q18_month_wrap, "campaign date wraps past December" },
     { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x08FB, fix_q17_left, "pitch-ladder label index stays inside the table" },
     { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x095C, fix_q17_right, "pitch-ladder label index stays inside the table" },
@@ -865,6 +884,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q19", "the Enemy Troops overlay draws every troop cell instead of resuming its scan from a pixel coordinate" },
     { "Q18", "the campaign date wraps into the next year instead of printing January 32 and later" },
     { "Q17", "pitch-ladder labels past 90 degrees mirror inside the table instead of reading past it" },
     { "Q15", "AdLib noise take-over on generator B tests B's own count, not A's" },

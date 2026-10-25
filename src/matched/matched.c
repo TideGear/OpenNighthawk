@@ -19510,6 +19510,7 @@ static int start_open_modal(machine_t *m)
 static int start_draw_troops(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x1AB6, 0x1B37)) return 0;
     if (!room(c, 7 + 2 + 2 + 2 + 4)) return 0;
     frame_open(c, 6);                                             /* [bp-2] the caption, [bp-4] row, [bp-6] column */
     cpu_push16(c, c->r[R_SI]);
