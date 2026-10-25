@@ -173,7 +173,7 @@
         "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
       },
       {
-        "item": "In-game settings menu for every option now set by command line or .ini",
+        "item": "In-game settings menu for every option now set by command line or .ini; SETUP's joystick and sound-driver questions answered from the settings (option to show them)",
         "weight": 4.0,
         "done": 0.0,
         "kind": "estimate",

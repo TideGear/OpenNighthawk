@@ -762,7 +762,8 @@ Each is fixed; the named regressions keep the failing seed or case.
       *Remastered:* widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
       objects, so a far hangar's edge can be drawn over a nearer hangar until the camera is closer; owner's screenshots, 24 Oct) and no
       road or coastline jitter.
-      *Also:* an in-game settings menu for every option now set on the command line or in an .ini; controller and HOTAS support with
+      *Also:* an in-game settings menu for every option now set on the command line or in an .ini, which also answers SETUP's
+      joystick and sound-driver questions as typed keys (from the controller and sound-device settings; an option still shows them); controller and HOTAS support with
       remapping, an on-screen key reference and mouse where the original had it; the sound device (AdLib, Roland MT-32 via Munt, PC
       speaker, or hybrid: MT-32 music with AdLib sound effects, owner 24 Oct; the game keeps the Roland driver and a hidden
       AdLib driver on a machine copy receives the same sound requests, so only its effects are heard) chosen in the menu; an optional CRT filter for the 4:3 presentations; flight replays (save a sortie and watch it back,
