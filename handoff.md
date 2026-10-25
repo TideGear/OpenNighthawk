@@ -8,8 +8,10 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 25 October 2026: batch bd2 (an engine fix plus bd's
-four held-back routines) is accepted and pushed; the re-release settings are merged (`ab4256b`). Owner,
-25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of matching (Next steps 1).
+four held-back routines) is accepted and pushed (`fe825bd`); batch be is integrated in the main tree but
+uncommitted and blocked on a pre-check mismatch in an older routine (Next steps 2); the re-release settings
+are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of
+matching; the 31 unfixed rows are re-verified and the fixes specified, none built yet (Next steps 1).
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -156,16 +158,57 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Bug fixes first (owner, 25 Oct).** Every entry in [docs/bugs.md](docs/bugs.md)'s "Smaller confirmed
-   defects" table (31 rows, none fixed) is being re-verified against the DOS instructions (the owner warned some
-   may be Reimp-only bugs: the Reimp's D0 and D13-D18 were defects in its own port), compared with Mac 2.3.2 and
-   Amiga 3.01, and then fixed as a default-on switch with tests of both states, or given a written reason it is
-   not fixed. Reviews: `D:/f117-gate/qsweep/`. Fixes are built in a worktree and gated as their own batch.
-2. **Batch be** (proof round done, 24 Oct): eight ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0`
-   `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` are proved privately (`D:/f117-gate/p2-asound-117-<IP>-be`,
-   `p2-rsound-log-00ae-be`); RSOUND.LOG `0251` (`p2-rsound-log-0251-be`) is resumable. Their checkpoints need
-   the interpreter cache for the current `src/` key (bd2 changed `recomp.c`; its gate refilled it); then
-   `finish_all.py`, `audit_private.py` and a gate.
+1. **Bug fixes first (owner, 25 Oct).** The 31 rows of [docs/bugs.md](docs/bugs.md)'s "Smaller confirmed
+   defects" table (none fixed, no reason recorded) were re-verified on 25 Oct against the DOS instructions and
+   compared with Mac 2.3.2 and Amiga 3.01. The owner warned some may be Reimp-only, and ten are on the Reimp's
+   "introduced by this port" list (`catalogue.md:148`: D17, D18, D44, D61, D63, D75, D97, D98, D101, D103);
+   bugs.md had copied the original's side of each. **Verdicts, fix specifications (sites, replacement
+   semantics, port evidence) and the address conventions: `D:/f117-gate/qsweep/verdicts.md`** (raw reviews in
+   `render/`, `gameplay/`, `start/`, `sound/` beside it). The main session re-read the deciding instructions of
+   every fix. Summary:
+   - **Fix, default on (10):** Q7 zoomed-view range (VGAME `0x0E4AC`), Q11 32-bit range cull (`0x0BC00`), Q12
+     the cannon test's missing argument (`0x0A153`), Q14 the overdue objective text (`0x0969C`), Q15 AdLib noise
+     take-over (was D44; ASOUND IP `0x0F8B`), Q16 MT-32 volume/pan saturated, never masked (RSOUND `0x0348`,
+     `0x039D`), Q17 pitch-ladder labels past 90 degrees (was D61; VGAME `1058:08FB`, `095C`), Q18 the campaign
+     date past December (was D17; START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
+     `0x01B09`), Q20 the stuck briefing popup (START `0x011D1`).
+   - **Owner decisions (asked 25 Oct, not yet answered; ask before building):** Q13a (sensorless units; the
+     Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), D75 (stale bracket
+     width; no version shows the intended value), the armoury shortage self-check (changes RNG use, so mission
+     generation). Recommended to the owner: fix all three, default on. Q13a as "a sensorless unit cannot
+     detect" (range far, so no announcement or launch on that path, the original's usual outcome), not the
+     Amiga's zero; D75 keeps the previous frame's width (`0x0AE9F` -> `0x0AEDE` in that case); the armoury
+     adds the missing self-check at `0x00E71` (the RNG is clock-seeded, and replays record the fix set).
+     The 12 no-effect rows: recommended no fix, reasons in bugs.md (Q13b, D18 and the roster fix-up bite only
+     modified data).
+   - **No fix, reason to write in bugs.md (18):** Q2, Q3, Q4, Q5, Q8, Q9, Q10, Q13b, D18, D44's expiry arms,
+     D63, D97, D98, D101 (measure first), D103, ASOUND `0x2EC0`, END timer, terrain lookup above 4, roster
+     fix-up. Also the bugs.md corrections listed at the end of `verdicts.md`.
+   - **To build** in the worktree `D:/f117-wt/bugfix` (branch `bugfix-q`, from `fe825bd`, built, no edits
+     yet): each override in `src/fixes/fixes.c` (RSOUND.117 hash `0x14F2AE43AE88ED82`, base `0x023E`; ASOUND
+     base `0x01B6`), a FIXES entry and description, `if (fix_inside(c, from, to)) return 0;` in every matched
+     routine containing a site (vgame_display_pass `0x9EFA`, vgame_objectives_panel `0x9515`,
+     vgame_camera_transform `0xE3BF` and vgame_cull `0xE3AC` if its body reaches `0xE4AC`,
+     vgame_draw_model_in_view `0xBB0D`, vgame_hud_pass `1058:0016`); only enabled fixes are placed, so parity
+     with fixes off is untouched. Decline (return 0) where the fixed result equals the original's, as D6 and D3
+     do. Tests of both states for each (staged `tools/machine_api.py` runs like `tools/d34_check.py`, or a route
+     plus observer like `cargo_d5_fixed`), `tests/test_fix_defaults.py`, bugs.md rows and the fix count
+     ("fifteen") everywhere, then its own gate. Open: whether the fixes item should move from P3 to P2 in
+     `docs/progress.json` (the owner said "top of Phase 2"; scores unchanged so far).
+2. **Batch be (integrated in the main tree, uncommitted; pre-check failed in an older routine).** Eight
+   ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG
+   `00AE`: `finish_all.py` passed all nine on 25 Oct (`D:/f117-gate/be-finish.out`; routes strike, korea_strike,
+   korea_release_eject, roland_boot), `safe_integrate.py` put them in `matched.c`, `func_lockstep.c` and
+   `CMakeLists.txt` (uncommitted in the main tree), plus the hand-applied `POPF_STOPS` row
+   `{ "RSOUND.LOG", 0x0000, 0x00AE, 0x00FC }`; the main tree builds. Pre-checks (`D:/f117-gate/be-pre/`): the
+   commit-keyed seed `0xfe825bd272ab` gives **1 mismatch, VGAME `EDC2` "upper-case a string"** (matched long
+   ago, not part of be): `unfinished continuation already changed I/O (state 911)`, reproduced alone with
+   `build/func_lockstep.exe --states 4000 --verbose --seed 0xfe825bd272ab --only VGAME.EXE:EDC2`. Next: reproduce
+   it on master without be (stash the three files, rebuild `func_lockstep`, or configure the worktree with
+   `-DF117R_GEN_DIR=...`: its build has no `func_lockstep` target), find whether the body, its fixture or the
+   harness is at fault (message at `tests/func_lockstep.c:45386`), fix it, then rerun both seeds, `new_batch.py
+   be ...`, `audit_private.py` and the gate. Second seed `0x5EED0BE1`: 1,396 routines, 0 mismatching.
+   RSOUND.LOG `0251` (`p2-rsound-log-0251-be`) is a resumable proof, not in be.
 3. **Match the rest of the sound drivers** (9,610 of the 11,400 unmatched executed bytes before be). The
    remaining ISOUND.117 and ASOUND.LOG routines are all large (90-320 instructions).
    Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
@@ -258,7 +301,9 @@ governs day-to-day work.
 ## Phase 2 batch workflow and its traps
 
 Per batch: proofs (agents, steps 1-7 of the kit) -> `finish_all.py DIR:ROUTE ...` (checkpoints, boot proof,
-verdict; at most three at once) -> `integrate_many.py DIR ...` -> hand-apply the harness hunks it does not carry
+verdict; at most three at once) -> `integrate_many.py DIR ...` (or `safe_integrate.py DIR ...`, which restores and
+retries a routine when the synced folder locks a file mid-write, but carries no table rows) -> diff each proof's
+`tests-base.c` table rows against `tests/func_lockstep.c` and hand-apply the ones not carried
 -> build (`build.cmd` from PowerShell) and the new CTests -> pre-checks -> `new_batch.py LETTER PREV HEAD
 [--no-baseline] DIR ...` -> `audit_private.py` -> `affinity_launch.py py p2-batch-LETTER-accept/accept.py` ->
 `finalize.py` -> score refresh (`py tools/progress.py --census ... --named-cover

@@ -143,6 +143,25 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+- [ ] **First: fix the original's remaining bugs** (owner, 25 Oct 2026: bug
+      fixes come before matching). The 31 rows of [bugs.md](bugs.md)'s
+      "Smaller confirmed defects" table had no fix and no recorded reason. All
+      31 were re-read against the DOS instructions and compared with Mac 2.3.2
+      and Amiga 3.01. The Reimp catalogue lists ten of them (D17, D18, D44,
+      D61, D63, D75, D97, D98, D101, D103) as deviations of its own port, and
+      bugs.md had copied the original's side of each as a defect. Four of
+      those are real defects of the original (D17, D44's take-over arm, D61,
+      D75). The others are not defects, or have no effect anyone can reach.
+      Verdicts:
+      ten fixes (new IDs Q7, Q11, Q12, Q14-Q20: zoomed-view range, 32-bit
+      range cull, the cannon's missing argument, the overdue objective text,
+      the AdLib noise take-over, MT-32 volume and pan held in range, pitch
+      ladder labels past 90 degrees, the campaign date past December, the
+      Enemy Troops overlay, the stuck briefing popup), three owner decisions
+      (Q13a, D75, the armoury shortage) and 18 rows with no fix and a reason.
+      Not yet built: each fix needs a default-on switch, a guard in any
+      matched routine containing its site, tests of both states, bugs.md
+      corrections and a gate. Details: [../handoff.md](../handoff.md).
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
