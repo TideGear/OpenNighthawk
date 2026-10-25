@@ -385,6 +385,8 @@ if(F117R_BUILD_TESTS)
     # Phase 2: every matched routine against the original from random states.
     add_executable(check_q7 tests/check_q7.c)
     target_link_libraries(check_q7 PRIVATE f117present f117recomp)
+    add_executable(check_q14 tests/check_q14.c)
+    target_link_libraries(check_q14 PRIVATE f117present f117recomp)
     add_executable(check_q12 tests/check_q12.c)
     target_link_libraries(check_q12 PRIVATE f117present f117recomp)
     add_executable(check_q11 tests/check_q11.c)

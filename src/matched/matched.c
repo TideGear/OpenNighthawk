@@ -32873,6 +32873,7 @@ static int vgame_timer_tick(machine_t *m)
 static int vgame_objectives_panel(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x9515, 0x9720)) return 0;
     if (!room(c, 8 + 1)) return 0;
     x86_enter(c, 0x22, 0);
     x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);

@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-eighteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11 and Q12, including the D1REAL timing and D1PROX balance choices
+nineteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12 and Q14, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -65,7 +65,8 @@ Status values:
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
 | Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
 | Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
-| Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Seven smaller defects (below) | planned |
+| Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
+| Q15-Q20 | Confirmed | START, ASOUND.117, RSOUND.117, VGAME | Six smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -716,6 +717,22 @@ Status values:
   at every instruction count followed by a resume (182 staged runs, 0 failures).
   This proves the decision, not a flight screenshot.
 
+### Q14. An overdue objective never shows "Time expired"
+
+- **What happens.** The objectives panel builds each timed objective's line
+  in a local buffer (`[bp-18h]`), then, past the deadline, copies "Time
+  expired" into the shared buffer `0x98A6` at `0x0969C`, after that buffer was
+  already copied into the line that is displayed. The panel keeps showing
+  "Before HH:MM". Macintosh has the same order; Amiga displays the right text.
+- **Fix.** `--fix Q14` replaces the push of the shared buffer's address at
+  `0x0969C` with BP-18h, so the original string copy writes the displayed line.
+  The instruction count is unchanged. The containing matched routine at
+  `0x09515` declines while Q14 is placed.
+- **Check.** `build/check_q14 path/to/VGAME.EXE` runs the original string
+  copy from `0x09699` in both engines with Q14 off and on and compares the
+  local line, the shared buffer, registers, memory and clock, then stops at
+  every instruction count and resumes (176 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -739,11 +756,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7, Q11 and Q12 are described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12 and Q14 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |
 | Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |
 | Q16 | - | RSOUND.117 | The volume and pan modulators add a signed step with no bound, and the senders pass the byte unmasked | The title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of 80h and above per play (pan FF down to BF, volume 80-8C), which an MT-32 reads as status bytes: lost updates, possibly a stray program change, bend or notes on parts 3 and 7. Munt behaves the same. Planned fix: saturate at 0 and 7Fh, never mask | modulators IP `0x0348`, `0x039D`; senders `0x0490`, `0x04E1` | DOS driver only |
 | Q17 | D61 | VGAME, MGRAPHIC | The pitch-ladder label index has no bound: at pitch -90 degrees or below it reads index -1 (the index word itself, FF FF), past +90 index 23 (the output slot) | A top-bit byte becomes MGRAPHIC's colour, so ladder labels are drawn in colour 7Fh for the rest of the flight | `1058:08FB`, `1058:095C` (linear `0x10E7B`, `0x10EDC`); MGRAPHIC `047E:060A` | Amiga fixed (clamps and mirrors, `0x402554`, `0x4025FE`); Mac undetermined |

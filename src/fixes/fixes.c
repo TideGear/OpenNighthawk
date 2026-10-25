@@ -709,7 +709,23 @@ static int fix_q12_return(machine_t *m)
     return 1;
 }
 
+/* Q14. The overdue branch copies "Time expired" into the shared buffer
+ * 0x98A6, but that buffer was already copied into the local line at
+ * [bp-18h] that the panel displays, so the text never shows. Copy it into
+ * the local line instead: the PUSH of the buffer's address at 0x969C
+ * becomes a push of BP-18h. */
+static int fix_q14_overdue(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    cpu_push16(c, (uint16_t)(c->r[R_BP] - 0x18));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x969F;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q14", "VGAME.EXE", VGAME_47304, 0x0000, 0x969C, fix_q14_overdue, "overdue objective text goes to the displayed line" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA153, fix_q12_call, "cannon ground test is given the unit hit" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA154, fix_q12_return, "cannon ground test: drop the argument" },
     { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC0E, fix_q11_x, "full-width model x range" },
@@ -762,6 +778,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q14", "an overdue objective shows \"Time expired\" instead of the stale deadline" },
     { "Q12", "the cannon's ground test is given the unit it hit, not a stale stack word" },
     { "Q11", "model range checks use the full 32-bit coordinates, rejecting distant objects before they wrap nearby" },
     { "Q7", "zoomed views use object distance instead of the frustum limit for detail and far clipping" },
