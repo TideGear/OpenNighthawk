@@ -256,7 +256,12 @@ itself:
   rate with no in-between frames, and is the verified, sharp mode. Scale 9
   fills a 4K screen's 2160 lines at 4:3.
 - `--present interp` adds in-between frames at the display's own rate, one
-  logic step behind. It is experimental: some objects still move unevenly.
+  logic step behind, by matching shapes between two frames and moving each
+  part of the way. Anything without a match (objects entering or leaving,
+  shapes crossing the screen edge, explosions, text, numbers, sprites and
+  target boxes) holds and then switches halfway: 1.5-14% of the polygons in
+  measured flights, more in the night take-off. Superseded by `rerun`; kept
+  as an experiment.
 - `--present rerun` draws intermediate poses with the original's own,
   unmodified drawing code on a disposable machine copy, then refines them
   at the chosen scale. Its smoothed playback clock reduces uneven motion;
