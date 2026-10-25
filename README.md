@@ -202,11 +202,13 @@ set (and, for Munt, `mt32-roms`).
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
+| `--presentation original\|enhanced` | the picture as a single choice: `original` is the exact 320x200 picture, sharp, at 4:3 (the default); `enhanced` draws in-between frames at the display's refresh rate, as fine as the display's height allows at 4:3 (`--present rerun` with a matching `--present-scale`). A later `--present` option refines it. `remastered` is planned ([roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)) |
 | `--present scan\|replay\|interp\|rerun` | the picture in flight; see [Presentation](#presentation) |
 | `--present-scale N` | with `replay`, `interp` or `rerun`: the picture N times finer, 1-16 |
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp` or `rerun`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
+| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the fifteen normal-play fixes (the default). Later `--fix ID` options make a custom set |
 | `--fix ID`, `--list-fixes` | enable a fix; `all` enables the fifteen normal-play fixes, `none` clears the set. Normal play starts with all fifteen enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 
@@ -236,7 +238,8 @@ Any option except `--config`, `--no-config` and `--list-fixes` can also be
 kept in a settings file: copy `f117a.example.ini` (copied beside `f117a.exe`
 by the build) to `f117a.ini` in the same folder and edit it - one option per
 line without its dashes (`data = C:\GOG Games\F-117A`, `roland = munt`,
-`mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = none`).
+`mt32-roms = C:\ROMs`, `fullscreen = yes`, `presentation = enhanced`,
+`fixes = original`).
 Fix entries apply in order: `fix = none` followed by `fix = D4, D5` selects
 only those two; leaving fix settings out keeps all fixes enabled for normal play.
 Relative paths are taken from the file's folder, and an option given on the

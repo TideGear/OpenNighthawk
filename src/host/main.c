@@ -85,6 +85,7 @@ static drawfeed g_feed;
 static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
 static int g_scale, g_age, g_line_width; /* optional presentation settings */
+static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
 static FILE *g_present_log;           /* --present-log */
 
@@ -342,6 +343,37 @@ static int find_mt32_roms(const char *dir, const char **ctrl, const char **pcm, 
     return mt32_find_roms(files, n, ctrl, pcm, what, what_size);
 }
 
+/* Saves carry the fix set that last wrote them (docs/roadmap.md, Phase 3), in a file beside the save
+ * folder, never in it: the game sees only its own files. Crossing between the original game (every fix
+ * off) and a fixed set warns once, since a saved state one setting produces may be one the other never
+ * could; other changes of the set pass silently. */
+static void save_fixset_check(const char *save, SDL_Window *win)
+{
+    char path[760], cur[512], prev[512] = { 0 };
+    size_t len = strlen(save);
+    while (len && (save[len - 1] == '/' || save[len - 1] == '\\')) len--;   /* beside the folder, not in it */
+    snprintf(path, sizeof path, "%.*s.fixset", (int)len, save);
+    fixes_enabled(cur, sizeof cur);
+    FILE *f = fopen(path, "rb");
+    if (f) {
+        const size_t n = fread(prev, 1, sizeof prev - 1, f);
+        prev[n] = 0;
+        prev[strcspn(prev, "\r\n")] = 0;
+        fclose(f);
+        if (!prev[0] != !cur[0]) {
+            char text[400];
+            snprintf(text, sizeof text,
+                     "These saves were last played %s, and this session plays %s.\n\n"
+                     "A pilot's saved state from one may be one the other could never produce.",
+                     prev[0] ? "with fixes" : "as the original game, with every fix off",
+                     cur[0] ? "with fixes" : "as the original game, with every fix off");
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "F-117A", text, win);
+        }
+    }
+    f = fopen(path, "wb");
+    if (f) { fprintf(f, "%s\n", cur); fclose(f); }
+}
+
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL;
@@ -491,7 +523,25 @@ int main(int argc, char **argv)
             fprintf(g_present_log, "host_ns icount older newer t replayed\n");
             i++;
         }
+        else if (!strcmp(a, "--presentation") && v) {
+            /* the re-release's presentation setting (docs/roadmap.md, Phase 3): shorthand for the --present
+             * options, which a later one still refines; Remastered needs its own renderer */
+            if (!strcmp(v, "original")) { g_replay = g_rerun = g_scale = g_fit_scale = 0; }
+            else if (!strcmp(v, "enhanced")) { g_replay = 2; g_rerun = 1; g_fit_scale = 1; }
+            else if (!strcmp(v, "remastered")) { fprintf(stderr, "--presentation remastered is not built yet\n"); return 2; }
+            else { fprintf(stderr, "--presentation takes original or enhanced\n"); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--fixes") && v) {
+            /* the re-release's fix setting: original (none) or recommended (the normal-play set); a later
+             * --fix ID adds one, or after --fix none picks single fixes (Custom) */
+            if (!strcmp(v, "original")) fixes_enable("all", 0);
+            else if (!strcmp(v, "recommended")) { fixes_enable("all", 0); fixes_enable("all", 1); }
+            else { fprintf(stderr, "--fixes takes original or recommended\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--present-scale") && v) {
+            g_fit_scale = 0;
             g_scale = atoi(v);
             if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
             i++;
@@ -518,6 +568,7 @@ int main(int argc, char **argv)
                 "             [--sim-hz 8|15] (D1REAL cadence; default 15 at 60000000 ips; replay restores recorded choice)\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
+                "             [--presentation original|enhanced] [--fixes original|recommended]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
                 "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
@@ -589,6 +640,13 @@ int main(int argc, char **argv)
         return 1;
     }
     SDL_SetRenderVSync(ren, 1);
+    if (g_fit_scale) {
+        /* Enhanced: as fine as the display's height allows at 4:3 (2160 lines: 9, 1440: 6, 1080: 4) */
+        const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(win));
+        g_scale = mode ? mode->h / 240 : 4;
+        if (g_scale < 1) g_scale = 1;
+        if (g_scale > 16) g_scale = 16;
+    }
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, 640, 400);
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
@@ -678,6 +736,7 @@ int main(int argc, char **argv)
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (!time_us) time_us = machine_local_time_us();
+    if (!replay) save_fixset_check(save, win);      /* a replay brings its recorded set */
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;

@@ -46,6 +46,10 @@ int main(void)
     n = config_merge("present-line-width = 2\n", NULL, 1, argv, &v, err, sizeof err);
     const char *const want_width[] = { "f117a", "--present-line-width", "2", CONFIG_CLI_MARK, NULL };
     CHECK(n == 4 && same(v, n, want_width));
+    /* the re-release's two settings */
+    n = config_merge("presentation = enhanced\nfixes = original\n", NULL, 1, argv, &v, err, sizeof err);
+    const char *const want_settings[] = { "f117a", "--presentation", "enhanced", "--fixes", "original", CONFIG_CLI_MARK, NULL };
+    CHECK(n == 6 && same(v, n, want_settings));
     /* errors name the line */
     CHECK(config_merge("data = x\nvolume = 11\n", NULL, 1, argv, &v, err, sizeof err) < 0);
     CHECK(strstr(err, "line 2") && strstr(err, "volume"));
