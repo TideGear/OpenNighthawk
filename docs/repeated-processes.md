@@ -17,6 +17,13 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Current practice by kind of change
 
+- **Original-game bug fix.** Check the faulty and corrected decisions with
+  the switch off and on in both engines, then check defaults and replay
+  selection before the two whole-table seeds, full gate and presentation
+  checks. Q7's staged native check (`build/check_q7 path/to/VGAME.EXE`,
+  generated build required) covers 56 runs plus 149 event limits in about
+  five seconds; the defaults/replay suite takes about six seconds. These
+  focused checks supplement the gate. Evidence: `D:/f117-gate/q7-20261025/`.
 - **Progress scoring and census classification.** Run `tests/test_census_classify.py`,
   `tests/test_progress.py` and `tests/test_encoded_code.py` with the installed Python
   interpreter, then print the scoreboard and inspect the saved byte counts. The 80 focused
@@ -199,8 +206,8 @@ checks that every routes-only matched routine ran on a route (step 8) and that
 no matched routine ran past its event limit (step 9). What each check
 establishes is in [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
 
-**Fix selection.** Normal application play starts with all fifteen fixes (17
-October); the headless runner starts with none, and `build_recomp.py` and
+**Fix selection.** Normal application play starts with all sixteen fixes (Q7
+added 25 October); the headless runner starts with none, and `build_recomp.py` and
 `run_route.py` prepend `--fix none`, so ordinary parity checks original
 behaviour and fix-specific route options or recorded headers add the fixes
 they test. Do not enable every fix for ordinary parity: original and repaired
@@ -222,13 +229,15 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (24 October 2026, batch bd):** 625 CTests; 63 routes identical, run
+**Current figures (25 October 2026, Q7):** 630 CTests; 63 routes identical, run
 as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction states under each
-timing profile; 1,383 matched routines at three seeds; reachability and event limits clean.
-Core gate 1,692 s including a full 635 s coverage pass; acceptance 1,822 s with the presentation
-overlapped (keyed baseline valid). Batch bc, before the baseline fix: core gate 1,304 s, acceptance
+timing profile; 1,387 matched routines at three seeds; reachability and event limits clean.
+Core gate 1,385 s including a full 841 s coverage pass; acceptance 1,914 s with presentation
+after the gate (N=1 523 s; boot N=4/9 89 s). Evidence: `D:/f117-gate/q7-20261025/`.
+For the overlap comparison, batch bd's core gate took 1,692 s including a full 635 s coverage pass;
+acceptance took 1,822 s with a valid keyed baseline. Batch bc, before the baseline fix: core gate 1,304 s, acceptance
 1,741 s with the presentation after the gate (no saving from the overlap, [above](#current-practice-by-kind-of-change)).
-Evidence: `D:/f117-gate/p2-batch-bd-accept/`. Typical gates take about 1,300-1,800 s; the
+Evidence: `D:/f117-gate/p2-batch-bd-accept/`. Typical core gates take about 1,300-1,800 s; the
 longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |

@@ -644,7 +644,22 @@ static int fix_quiz(machine_t *m)
     return 1;
 }
 
+/* Q7. The zoomed frustum leaves its vertical limit in SI and signed z in
+ * DI. The shared range tail expects |x| and |z|, as the cockpit arm supplies.
+ * Restore those inputs before the original five instructions compute |y|.
+ * Returning zero keeps their flags, clocks and event boundaries intact. */
+static int fix_q7_range(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const int32_t x = (int16_t)seg_read16(c, c->seg[S_DS], 0x498A);
+    const int32_t z = (int16_t)c->r[R_DI];
+    c->r[R_SI] = (uint16_t)(x < 0 ? -x : x);
+    c->r[R_DI] = (uint16_t)(z < 0 ? -z : z);
+    return 0;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q7", "VGAME.EXE", VGAME_47304, 0x0000, 0xE4AC, fix_q7_range, "zoomed-view range uses absolute camera coordinates" },
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
     { "QUIZ", "START.EXE", START_47304, 0x0000, 0x001D, fix_quiz, "the aircraft-identification quiz call GOG patched out" },
@@ -692,6 +707,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q7", "zoomed views use object distance instead of the frustum limit for detail and far clipping" },
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
     { "D1SLOT", "cancelled incoming missiles release their launcher slots instead of underflowing life to FFFF" },

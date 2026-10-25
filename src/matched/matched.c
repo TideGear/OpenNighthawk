@@ -13354,6 +13354,7 @@ static int camera_cull(cpu_t *c, uint16_t di, unsigned *n)
 static int vgame_camera_transform(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0xE3BF, 0xE530)) return 0;
     if (!room(c, 118)) return 0;
     cpu_push16(c, c->r[R_SI]);
     const uint16_t bx = c->r[R_BX], cx = c->r[R_CX], bp = c->r[R_BP];

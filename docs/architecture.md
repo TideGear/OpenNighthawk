@@ -308,7 +308,7 @@ fallback instructions, not everything that ran.
   generation and makes running code stop at the next boundary.
 - **Code overrides.** Hand-written C registered for one address of one
   module (by name and file hash). Fixes start off in the core and headless
-  runner; the application enables all fifteen for normal play (`--fixes
+  runner; the application enables all sixteen for normal play (`--fixes
   recommended`; `--fixes original` turns them all off). `--fix none`
   clears the set and `--fix ID` adds a selection. Ordinary parity routes
   explicitly start with none; fix-specific routes enable their tested fixes.

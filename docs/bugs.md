@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-fifteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12 and D34, including the D1REAL timing and D1PROX balance choices
+sixteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34 and Q7, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -62,7 +62,8 @@ Status values:
 | D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state | `--fix D34` |
 | D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
-| Q7, Q11, Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Ten smaller defects (below) | planned |
+| Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
+| Q11, Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Nine smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -646,6 +647,27 @@ Status values:
 - **Detail.** Reimp catalogue:1430-1439. Evidence and commands:
   [legacy-reports.md](legacy-reports.md).
 
+### Q7. Zoomed-view distance uses the view limit
+
+- **What happens.** The weapon-seeker frustum (`[0x438E]` set) leaves its
+  vertical limit in SI and signed z in DI. The shared range tail at VGAME
+  `0x0E513` expects absolute x and z. Its result controls detail and far
+  clipping, so visible objects can disappear too early. Macintosh 2.3.2
+  recomputes the three absolutes (`CODE11:03864`); Amiga is undetermined.
+- **Fix.** `--fix Q7` supplies absolute x and z at `0x0E4AC`, then runs the
+  original instructions for absolute y and the shared range calculation.
+  Clocks, flags and instruction boundaries remain the original's. The
+  containing matched camera routine declines while Q7 is enabled.
+- **Check.** `build/check_q7 path/to/VGAME.EXE` runs staged camera points and
+  the stack-argument wrapper in both engines with Q7 off and on, comparing
+  registers, flags, clocks and all memory. For x=20, y=40, z=1000 and a far
+  limit of 1050, the original computes 1080 and rejects the object; Q7
+  computes 1015 and keeps it. Negative coordinates, negative z, cockpit
+  mode, early rejection and event limits are also checked. This is staged
+  evidence of the range and culling decisions, not a measured flight image.
+  Accepted 25 October 2026: full gate (630 tests, 63 routes), two pre-check
+  seeds and presentation checks; evidence `D:/f117-gate/q7-20261025/`.
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -668,12 +690,11 @@ original](#not-defects-of-the-original).
 
 ### Defects to fix
 
-Each is planned as a switch that normal play enables, with tests of both
-states; none is built yet ([roadmap.md](roadmap.md)).
+Each remaining defect is planned as a switch that normal play enables, with
+tests of both states ([roadmap.md](roadmap.md)). Q7 is described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q7 | Q7 | VGAME | The zoomed frustum (the weapon-seeker view, `[0x438E]` set) reaches the shared range tail with SI still its vertical limit and DI the signed z, so the range is (limit + abs y) / 4 + z instead of (abs x + abs y) / 4 + abs z | Wrong level of detail and far clip in that view (not measured) | accept arm `0x0E4AC`, tail `0x0E513` | Mac fixed (`CODE11:03864` recomputes the three absolutes); Amiga undetermined |
 | Q11 | Q11 | VGAME | The object range cull takes a 16-bit absolute value of a 32-bit offset: low words 0x7FFF and 0x8001 are culled, 0x8000 passes, and larger offsets pass with only their low word | A far object drawn at a wrapped, nearby position; only beyond 32,767 scaled units, which no known route reaches | `0x0BC00`-`0x0BC1E`, abs `0x0EE0C` | Mac present; Amiga undetermined |
 | Q12 | Q12 | VGAME | The cannon's ground-eligibility test is called with no argument: `0x0A153` pushes nothing, so `0x0792E` reads the display pass's saved SI; the intended unit is `[bp-0xA]`, the unit hit | The wreck test follows the wrong unit's class: a hit on a wreck can be admitted (a second "destroyed by gunfire") or refused | `0x0A153` -> `0x0792E`; the other caller `0x074BE` passes its unit | Mac fixed (`CODE10:00CAC` passes the unit hit); Amiga undetermined |
 | Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |

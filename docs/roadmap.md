@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (625 at batch bd),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (630 at Q7),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -164,7 +164,11 @@ not the recompilation:
       19 fixes (the ten, the three with chosen behaviours, and the hardening
       group Q4, Q13b, D18, Q23), then measure D101 and Q12's marker-size
       sibling; the 10 no-effect quirks and four non-defects stay documented.
-      Not yet built: each fix needs a default-on switch, a guard in any
+      **Q7 accepted, 25 Oct:** default-on zoomed-view range correction; 56 staged
+      runs and 149 event limits, defaults/replay checks, two whole-table seeds,
+      full gate (630 tests, 63 routes) and presentation checks pass. Evidence:
+      `D:/f117-gate/q7-20261025/` (1,914 s acceptance). Each remaining
+      fix needs a default-on switch, a guard in any
       matched routine containing its site, tests of both states, bugs.md
       corrections and a gate. Details: [../handoff.md](../handoff.md).
 - [ ] **Name the translated routines and data**, with explanations, drawing on
@@ -681,7 +685,7 @@ Each is fixed; the named regressions keep the failing seed or case.
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
       address, pinned to the shipped file by hash. Normal play enables all
-      fifteen; core/headless and ordinary parity keep them off. `--fix none`
+      sixteen; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
 - [x] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch:
