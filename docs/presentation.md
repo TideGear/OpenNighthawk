@@ -31,6 +31,10 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
   ([decisions](#decisions-that-constrain-the-work)).
 - **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
   selects fullscreen, `present = rerun` and scale 9.
+- **One setting.** The app's `--presentation original|enhanced` (`presentation =` in `f117a.ini`) chooses for you:
+  `original` is `--present scan` (the default); `enhanced` is `--present rerun` with `--present-scale` taken from the
+  display's height (height / 240, 1 to 16: 2,160 lines give 9, 1,440 give 6, 1,080 give 4). A later `--present...`
+  option refines either.
 
 ## The constraint that matters: the presentation must not touch the machine
 
@@ -88,10 +92,10 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   Remastered's (next item).
 - **Do not extend the draw distance (owner, 15 October 2026)** in the original renderer; a longer draw distance is
   Remastered's.
-- **Three presentation settings (owner, 24 October 2026; planned, not started).** *Original* is the validated default
-  picture (320x200 at the original rate, nearest-neighbour 4:3); *Enhanced* is the finer 4:3 redraw with in-between
-  pictures at 60+ fps (the modes on this page), which keeps the original's jitter and whole-object sort;
-  *Remastered* is a new renderer: widescreen with a widened field of view, a longer draw distance, depth-correct
+- **Three presentation settings (owner, 24 October 2026).** *Original* is the validated default picture (320x200 at
+  the original rate, nearest-neighbour 4:3); *Enhanced* is the finer 4:3 redraw with in-between pictures at 60+ fps
+  (the modes on this page), which keeps the original's jitter and whole-object sort; both are built
+  (`--presentation`, [above](#in-short)). *Remastered*, not started, is a new renderer: widescreen with a widened field of view, a longer draw distance, depth-correct
   drawing instead of the original's whole-object sort, and no road or coastline jitter. Presentation never feeds the
   simulation. Details and the other re-release features: [roadmap.md](roadmap.md), "Re-release features".
 - **Timing and visible tests (owner).** Checks run in the background; no visible or fullscreen test without asking
@@ -125,6 +129,7 @@ without its dashes (`present = rerun`).
 
 | Setting | Effect |
 |---|---|
+| `--presentation original\|enhanced` | app only: `scan`, or `rerun` at the display height's scale ([in short](#in-short)) |
 | `--present scan` | the scanned-out picture, the original at every scale (default) |
 | `--present replay` | the replayed display, one logic frame at a time ([live path](#the-live-path-feed-replay-pacing-and-picture-age)) |
 | `--present interp` | in-between pictures by moving paired primitives ([Stage 3](#stage-3-interpolation-between-logic-frames)), drawn on a worker thread in the app |

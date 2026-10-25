@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (601),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (625 at batch bd),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -154,7 +154,8 @@ not the recompilation:
       private lead list. How the scores are measured, and the full "P2 is done
       when" definition (owner, 23-24 Oct):
       [progress.md](progress.md#what-is-measured).
-      **Done:** 1,383 addresses matched in batches a to bd (table below). Every
+      **Done:** 1,383 addresses matched in batches a to bd (table below; batch
+      bd2, an engine fix plus bd's four held-back routines, is in its gate). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
@@ -268,7 +269,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | ba | 23 Oct | 1,322 | 1,048 named bytes | 19 sound-driver routines in one gate: ASOUND.LOG `019A` (chip init, 255 OPL register writes through stubbed `0300`) and the OPL register-writer family `07DC` `09B6` `0A00` `0A62` `0AAA` `0AEC` `0BB8` (stubbed `02F6`); ASOUND.117 `0839` and `05A5`; ISOUND.117 `0008`, `05A4`, `0626` and `0102` (speaker noise/vibrato tick with a forced vibrato arm); ISOUND.LOG `010B`; RSOUND.LOG `02BE`, `0580` and `0FA2` (six voice records, `08BE` stubbed); RSOUND.117 `0E2A`. 397 instructions covered, five private seeds per routine, all 595 mutations caught, exact boot and real-route proofs (23,898 real calls for `0102`, 53,520 for `0839`; `02BE`, `0008` and `010B`'s sibling arms are reached once or by lockstep only). Eight bodies are audited as partial (calls into original or already-matched code, claims the audit cannot count). **Defect fixed:** the commit-keyed seed exposed END `100D` (batch ad era): its block was checked with `room(c, 8)` but a CALL followed, and `guest_call` charges the CALL itself, so a stop limit landing exactly there ran the CALL one instruction late; the three call sites now reserve `+ 1`. A scan found 39 further bodies with the same shape (many false positives: bodies that claim the call in a separate `SM4_NEED`); all reserve `+ 1` now, which can only make a body decline sooner. 564 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,991 s. |
 | bb | 24 Oct | 1,355 | 1,623 named bytes | 33 more sound-driver routines in one gate: ASOUND.LOG `0640` `06AA` `0BE2` (eight calls to the matched OPL writers) `05DA` `0618` `05F7` (open/close/dispatch entries, relocated segment words, `05F7`'s indirect table call proved whole); ASOUND.117 `0E5E` family (`0DCE` `0D1C` `0C2E`), `03D8`/`03D5` (one body, claimed once), `0B90`, and the voice-reset group `05E7` with six thunk prefixes (`05E3` `05DC` `05D5` `05CE` `05C7` `05C0`, registered at the jump-only entry `05E7`); RSOUND.117 voice-start family (`0EDB` owns the shared tail, `0EBD` `0EC7` `0ED1` as bounded prefixes), `0444` `046D` `03D6` (stub `0C7C`); RSOUND.LOG `05F6` `05CC` `0611`; ISOUND.LOG `0051`; ISOUND.117 `008E` `00B5`. 641 instructions covered, five private seeds per routine, all 877 mutations caught. **Two audit catches, both fixed before the gate:** `05F7`'s two exit paths both claimed the shared tail at `0616`, which the disjointness check rejects — restructured to a single shared label; `05F6`'s fixture let two of its table's real targets (`0458`, `048E`) run as original code half the time, which would have credited their bytes to `05F6` without a proof — the fixture now always stubs them. Also added the sixth design rule "hardware wait loop" (unused: a first read found all 8 candidate loops can be completed by a fixture, so they were matched instead of exempted) and F117.COM's launcher as a reviewed "program launcher" original entry. 597 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 2,032 s. |
 | bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
-| bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines through region refusal at PIT wake boundaries (open item; `D:/f117-gate/p2-batch-bd-accept/flaky-parity-investigation.md`). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
+| bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
 
 Notes that still matter:
 
@@ -636,6 +637,16 @@ Each is fixed; the named regressions keep the failing seed or case.
   granting named coverage. Regression `matched_projectile_changed_return`;
   wrong-trap, clock and movement negative controls all fail. Reproduced on
   unchanged master before fixing the harness.
+- **Stale module instance (24 Oct; fix in batch bd2, gate running).** A
+  module's recomp instance stayed live after its memory was reused without
+  another module load overlapping it, so matched overrides fired on whatever
+  bytes were there: with ISOUND.LOG's `0603`-`0663` registered,
+  `err_vgame_no_photo` first diverged at `169B:060D`. Each instance now keeps
+  its loaded file bytes, and an override runs only while its entry still holds
+  the module's opcode byte (`src/recomp/recomp.c`; regression
+  `tests/test_stale_override.c`). An earlier "region refusal at PIT wake
+  boundaries" explanation was wrong: it reproduces with no translated module.
+  Evidence `D:/f117-gate/p2-batch-bd-accept/flaky-parity-investigation.md`.
 - **SETUP event-limit alert (14 Oct).** Not a game-code defect: two atomic
   native service clocks were counted as guest instructions; the ledger now
   tells them apart (`native_service_boundary`;
@@ -701,8 +712,8 @@ Each is fixed; the named regressions keep the failing seed or case.
     remain explicit limits. Original 486/ET4000 references reach about 16.5
     updates/s with S around 13: period-hardware responsiveness, not S15 intent.
 - [x] **60+ fps and 4K presentation.** Optional and off by default
-      (`--present replay|interp|rerun`, `--present-scale N`, `present =` in
-      f117a.ini). Design, measurements and history:
+      (`--presentation enhanced`, or `--present replay|interp|rerun` with
+      `--present-scale N`; `presentation =` / `present =` in f117a.ini). Design, measurements and history:
       [presentation.md](presentation.md). Rules: the original's logic tick and
       control timing are unchanged; its bitmap text, sprites and artwork are
       kept and integer-scaled; N=1 stays the exact original; an old path is
@@ -712,8 +723,10 @@ Each is fixed; the named regressions keep the failing seed or case.
       original renderer's quirks (road and coastline jitter, which the
       original shows too; drawing-order mistakes; lines of one width at any
       distance).
-  - *Done:* every mode, rerun included, keeps all 45 N=1 routes exact
-    (259,240 logic frames, 259,166 in-between pairs, every guest hash); the
+  - *Done:* every mode, rerun included, keeps every N=1 route exact (every
+    guest hash; rerun's own check at 45 routes, 15 Oct: 259,240 logic frames,
+    259,166 in-between pairs; the gate's check over all 63 routes: 260,613 /
+    260,527 at batch al); the
     original executable matches 2,619 fill-style and 3,953 graphics-driver
     fixtures. **Sharp mode** (`--present replay --present-scale N`, verified):
     model polygons re-projected from exact camera snapshots, including
@@ -754,7 +767,14 @@ Each is fixed; the named regressions keep the failing seed or case.
     against is under "Possible future work" below. Ask before any visible or
     fullscreen test.
 
-- [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, none started).
+- [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, nothing credited yet).
+      *Built so far* (24 Oct, `ab4256b`): `--presentation original|enhanced` and `--fixes original|recommended`, also as
+      `presentation =` and `fixes =` in f117a.ini (`remastered` is refused as not built; later `--fix` options make a custom set);
+      saves tagged with the fix set that last wrote them (a `.fixset` file beside the save folder, never in it), warning once when
+      a session crosses between the original game and a fixed set. The picture default is still Original. Design notes, not built:
+      [setup-autoanswer.md](setup-autoanswer.md) (SETUP's answers from the settings) and
+      [sound-board.md](sound-board.md) (every sound through each driver, with the Macintosh recordings as a fourth
+      column, deciding hybrid sound's split).
       *Two settings instead of preset modes.* **Presentation:** Original (320x200, original rate, nearest-neighbour 4:3, the validated
       default picture), Enhanced (the finer 4:3 redraw with in-between frames at 60+ fps; the final linear stretch is a setting with a
       sharp option; the original's road and coastline jitter stays) or Remastered (below). **Fixes:** Original (473.04, every fix off),

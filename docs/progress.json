@@ -156,7 +156,7 @@
         "weight": 2.0,
         "done": 0.0,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "Added 24 Oct 2026 at the owner's direction. Partly built, not yet credited: --presentation original|enhanced, --fixes original|recommended (also f117a.ini keys) and fix-set-tagged saves (commit ab4256b); Remastered, the custom mix and the settings menu are not. Scoped in docs/roadmap.md Phase 3 'Re-release features'."
       },
       {
         "item": "Fan-community patches in the Recommended fix set, credited",

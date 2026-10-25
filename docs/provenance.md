@@ -8,8 +8,8 @@ traced and a licence question answered.
 Some of this repository's core CPU and DOS modules began as a port from an
 earlier, unpublished reverse-engineering project of the author's own (also
 GPL-3.0; nothing here builds against its tree, and it is not public). The
-port was taken at that project's commit `cfb8cec9`, which the ported files'
-headers cite.
+port was taken at that project's commit `cfb8cec9`, which the headers of
+`cpu.c`, `cpu.h`, `x86_sem.h`, `dos.c` and `pc.c` cite.
 
 | Here | Changes from the ported source |
 |---|---|
@@ -20,7 +20,7 @@ headers cite.
 | `tests/cpu_api.c` | Supplies the two machine hooks itself |
 | `tools/unpack.py` | DLL path |
 | `src/host/midistream.c`, `.h` | Include guard |
-| `src/host/main.c` (`pc_scancode`) | The SDL-to-set-1 table |
+| `src/host/host_keys.h` (`pc_scancode`) | The SDL-to-set-1 table |
 
 `tools/fade_calibration.py` uses calibration routine locations and probe
 design from that earlier project's own ISR probe. It assembles its own

@@ -67,10 +67,12 @@ verification) is not an optimisation; it needs the owner's approval.
   gate's interpreter tail (batch al: acceptance 1,549 s, N=1 718 s started 793 s into the
   gate); without one (after a route or non-matched `src/` change, or a new CMake target)
   it runs after the gate (batch ai: 1,658 s in all). `new_batch.py` picks the newest
-  baseline whose `base_key` equals `build_recomp.interpreter_key` and prints which:
-  batches ay to bc copied the previous batch's stale baseline and all fell back to
-  sequential, an estimated 200 s a gate. Check the gate's log for "Started" lines and no
-  fallback message.
+  baseline whose `base_key` equals `build_recomp.interpreter_key` and prints which
+  (batches ay to bc copied the previous batch's stale baseline and all fell back to
+  sequential). Check the gate's log for "Started" lines and no fallback message. The one
+  measured pair shows no saving: bc sequential, acceptance 1,741 s (coverage 766 s,
+  parity 343 s, N=1 420 s alone after the gate); bd overlapped, 1,822 s (coverage 635 s,
+  parity 879 s, N=1 916 s beside it). One sample each, with different code.
 - **Pre-checks before a batch's gate.** Two cheap checks catch most failures: every new
   route once with `--engine recomp`, looking for `[matched] OVERRUN`, and the whole matched
   table at six seeds (4,000 states, eight shards each): the commit-keyed seed,
@@ -172,6 +174,16 @@ verification) is not an optimisation; it needs the owner's approval.
 - A failed or stopped run is retained as evidence in its own directory and is
   never an acceptance verdict; restart in a fresh directory. Keep failed display
   captures and invalid fixtures immutable and labelled.
+- **Bisecting a route divergence between engines.** Narrow the clock window
+  with `f117run --hash-every N` and `--hash-from CLOCK`, then run `--trace
+  FROM:TO:FILE` over the first differing interval on both engines and diff the
+  traces: the first differing line names the instruction. Run route commands
+  as an argument list, never through a shell `eval`: one turned the `\r` keys
+  of a route into `r`, both engines then agreed on a run that never reached
+  the mission, and the divergence looked as if it did not reproduce.
+- The synced working folder can lock a file mid-write. Integrating many
+  proofs at once therefore restores and retries each routine on its own when a
+  write fails, rather than abandoning or half-applying the batch.
 
 ## The gate (`tools/build_recomp.py`)
 
@@ -215,8 +227,9 @@ as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction 
 timing profile; 1,383 matched routines at three seeds; reachability and event limits clean.
 Core gate 1,692 s including a full 635 s coverage pass; acceptance 1,822 s with the presentation
 overlapped (keyed baseline valid). Batch bc, before the baseline fix: core gate 1,304 s, acceptance
-1,741 s with the presentation after the gate. Evidence: `D:/f117-gate/p2-batch-bd-accept/`. Typical gates take about 1,300-1,800 s; the longest
-career seed chain sets the route time.
+1,741 s with the presentation after the gate (no saving from the overlap, [above](#current-practice-by-kind-of-change)).
+Evidence: `D:/f117-gate/p2-batch-bd-accept/`. Typical gates take about 1,300-1,800 s; the
+longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
@@ -234,7 +247,8 @@ clock, hash and verdict and both lockstep tallies identical. The overlapped
 N=1 presentation also starts speculatively when coverage ends rather than
 after the re-translation check (the closing runner-hash comparison turns a
 wrong guess into a failed acceptance, never a pass); with the early interpreter
-start this was expected to save roughly 100-170 s of ~1,700 s. The remaining
+start this was expected to save roughly 100-170 s of ~1,700 s; the one
+measured pair (bc against bd, above) showed none. The remaining
 floor is the interpreter chain: about 337 s of build and tests, plus the
 1,285 s career run.
 
@@ -345,8 +359,8 @@ route and lockstep workers remain experiments to benchmark first.
 ## Presentation checks
 
 **After a presentation-code change**, all headless:
-- `ctest -E func_lockstep -j 8`: the gate's unit-test set (601 tests at batch
-  bc; 111 took 36.56 s on 15 Oct).
+- `ctest -E func_lockstep -j 8`: the gate's unit-test set (625 CTests at batch
+  bd; 111 took 36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
   --scales 1` over every route: 718 s for 63 routes at 16 workers beside a gate
   (batch al), 420 s alone after a gate (batch bc). It keeps every logic frame
@@ -394,8 +408,8 @@ presentation test or analysis tool, or documentation. `drawfeed.c/.h` and
 machines, so changes there need the full gate plus the all-route `--mode
 rerun` check. For eligible changes it builds, runs every CTest, the N=1 check
 over every route against the last gate's baseline runs, and boot at N=4/9. A
-full gate is still needed before the next Phase 2 `kit.py checkpoints` (any
-`src/` change retires the interpreter cache entry).
+full gate is still needed before the next Phase 2 `kit.py checkpoints`
+([below](#phase-2-proofs-matched-routines)).
 
 *App-only changes* (owner-approved 15 Oct): `src/host/main.c` and the example
 ini files are built or copied only for `f117a.exe`, which neither the gate nor
@@ -513,7 +527,9 @@ stalls; uncapped numbers do not prove refresh pacing. Evidence:
 lock, seeds, mutations, checkpoints, verdict, integrate; method and traps in
 `D:/f117-gate/kit/BRIEF.md`). Finish the proof workers and verify every
 verdict before starting the batch's gate; run no other heavy job during it
-(owner, 20 October).
+(owner, 20 October). `kit.py checkpoints` needs the interpreter cache entry for
+the current `src/` key, so after any `src/` change run the gate before proof
+checkpoints.
 
 The private queue uses three slots, each with one compiler job; larger
 routines start first, and a slot carries its routine through mutations, route

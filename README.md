@@ -101,13 +101,16 @@ quiz. It is off by default and is enabled only when named explicitly;
   and broader hardware checks; play by a person at the
   keyboard; rendered Roland output against an independent reference, and
   listening checks.
-- **Planned re-release features** (not started; [roadmap](docs/roadmap.md)):
+- **Re-release features** (mostly planned; [roadmap](docs/roadmap.md)):
   two choices instead of preset modes. *Presentation:* Original (320x200,
   sharp 4:3), Enhanced (finer 4:3 at 60+ fps) or Remastered (widescreen with
   a wider field of view, a longer draw distance, objects drawn in correct
   depth order and no road or coastline jitter). *Fixes:* Original (none),
   Recommended (every fix, including credited fan-community patches) or
-  Custom. Also an in-game settings menu, controller and HOTAS support with
+  Custom. Built so far: `--presentation original|enhanced`,
+  `--fixes original|recommended` and saves that remember their fix set
+  (below); Remastered and the fan-community patches are not built yet.
+  Also planned: an in-game settings menu, controller and HOTAS support with
   remapping, the sound device chosen in the menu (including a hybrid of
   MT-32 music with AdLib sound effects), an optional CRT filter,
   flight replays, and subtitles and other accessibility options. The game's
@@ -211,7 +214,7 @@ set (and, for Munt, `mt32-roms`).
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp` or `rerun`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
-| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the fifteen normal-play fixes (the default). Later `--fix ID` options make a custom set |
+| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the fifteen normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
 | `--fix ID`, `--list-fixes` | enable a fix; `all` enables the fifteen normal-play fixes, `none` clears the set. Normal play starts with all fifteen enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 
@@ -424,7 +427,7 @@ Every process the project repeats, and what it costs, is listed in
 | `recompiler/` | the translator (Python) |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |
 | `tests/` | silicon-vector harnesses for the interpreter and for generated code; lockstep and unit tests |
-| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md) |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md), [other versions](docs/other-versions.md) (Macintosh, Amiga) |
 
 ## Licence
 

@@ -295,7 +295,9 @@ fallback instructions, not everything that ran.
 - **Instances.** Every program and overlay DOS loads is announced before its
   image is written; the run-time matches it to a module by file hash and
   registers it at its load segment. A module it has no translation for is
-  registered anyway, so coverage can name it.
+  registered anyway, so coverage can name it. An instance stays live until a
+  later load overlaps its range, even if its memory is reused meanwhile (a
+  buffer, a later program's data).
 - **Dispatch.** CS:IP inside an instance, an entry for that image offset, a
   region that expects this CS, and a region whose bytes are verified: then
   the region runs. Otherwise the interpreter runs one instruction.
@@ -306,7 +308,8 @@ fallback instructions, not everything that ran.
   generation and makes running code stop at the next boundary.
 - **Code overrides.** Hand-written C registered for one address of one
   module (by name and file hash). Fixes start off in the core and headless
-  runner; the application enables all fifteen for normal play. `--fix none`
+  runner; the application enables all fifteen for normal play (`--fixes
+  recommended`; `--fixes original` turns them all off). `--fix none`
   clears the set and `--fix ID` adds a selection. Ordinary parity routes
   explicitly start with none; fix-specific routes enable their tested fixes.
   Replays restore their recorded set (no header means none). Matched routines
@@ -326,7 +329,18 @@ fallback instructions, not everything that ran.
   refused, so the recompiler gives each override address a region of its own
   (one instruction) and the function around it stays translated. An override
   leaves CS:IP and the clock where the replaced code would have, or declines
-  and the original instruction runs. Each loaded module can place all 4,096
+  and the original instruction runs. Verification protects regions from
+  reused memory; overrides have their own check. Each instance keeps a copy
+  of the loaded file's bytes (the MZ image after its header, a .COM as is),
+  taken from the file because the module is announced before its bytes are
+  written, and an override runs only while the byte at its entry equals the
+  copy's: an opcode, which relocations and run-time patches never change
+  (they change operands). Otherwise the original instruction, whatever is
+  there now, runs. Without this check matched routines kept firing on foreign
+  bytes once a module's memory was reused (found at ISOUND.LOG `060D`, run
+  at 169B:060D). `stale_override` (`tests/test_stale_override.c`) tests it,
+  and `code_overrides` writes module images into memory as the loader does.
+  Each loaded module can place all 4,096
   registry entries; matched routines and observer hooks share that capacity,
   and the registry warns on stderr if it fills (a dropped entry is a lost
   routine). Placements are sorted by physical address when modules load or

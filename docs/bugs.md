@@ -78,11 +78,6 @@ Status values:
   from a model that left out the original's frame wait (Reimp
   `src/core/compose.h:166`); it was not reproduced in 199 flights at 3-40
   MIPS and on the 386 profile.
-- **Later versions** ([other-versions.md](other-versions.md)). The 1993 Amiga
-  release replaced S with an elapsed-time scale and a frame-time floor. The
-  1994 Macintosh port kept S, porting `0x0D441` formula for formula, but
-  raised its cap from 15 to 60. Both say the cap of 15 was tuned to 1991
-  machines rather than chosen as a gameplay constant.
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide
@@ -120,6 +115,11 @@ Status values:
   15 fps cap settles at S 12 with a clock of about 1.25: a cap alone does
   not correct it. Figures and methods:
   [speed-sweep.md](speed-sweep.md).
+- **Later versions.** The 1993 Amiga port replaced S with an elapsed-time
+  scale and a frame-time floor; the 1994 Macintosh port kept S, porting
+  `0x0D441` formula for formula, but raised its cap from 15 to 60. Both
+  support reading the cap of 15 as tuned to 1991 machines rather than chosen
+  as a gameplay constant ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, which every frame passes once, holds a frame that arrives before
   its slot (time passes and interrupts are serviced, as in a HLT loop), so
@@ -199,11 +199,11 @@ Status values:
   proximity-hit until 3,233 frames have passed, about 194 seconds at the
   measured frame rate. The Reimp's `frame_weapons.c` has the same guard; its
   starting S of 5 avoids the boundary.
-- **The Macintosh port.** Mac 2.3.2 keeps the signed `4*S` guard and stores
-  `range*16*S` in a 16-bit word with S up to 60, so the SA-5 case spans S
-  14-27 and wraps above ([other-versions.md](other-versions.md)).
 - **Where.** VGAME `0x708D` tests active life against zero; `0x6F15`
   compares life with `4*S`; signed `JLE` at `0x6F19` skips damage.
+- **Later versions.** Mac 2.3.2 keeps the signed `4*S` guard and stores
+  `range*16*S` in a 16-bit word with S up to 60, so the SA-5 case spans S
+  14-27 and wraps above ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1TTL`.** Uses an unsigned comparison for valid
   shipped lifetimes (up to 36,000) and keeps the original signed branch above
   that, so seeker-abandoned FFFF missiles (see D1SLOT) stay harmless. It is
@@ -224,6 +224,10 @@ Status values:
   and aircraft launch `0x65C3` need their `(unit_index & 7)` slot at zero
   life, so the abandoned missile can block that launcher. This happens at
   low S too, and remains in the Reimp.
+- **Later versions.** Mac 2.3.2 also decrements the lifetime with no zero
+  test and has a cancel path that zeroes it; whether a cancelled slot reaches
+  the decrement was not traced, so the defect is plausible there, not
+  confirmed ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1SLOT`.** Keeps a cancelled incoming lifetime at
   zero when the countdown reaches it, with DEC's flags and instruction count;
   positive lifetimes and player-weapon slots run the original DEC. It
@@ -243,6 +247,10 @@ Status values:
   admit a hit when that unsigned reach exceeds the slant distance. This
   allowance for movement between frames also acts as the hit radius, so a
   near miss that damages the aircraft at low S can miss at high S.
+- **Later versions.** Mac 2.3.2 keeps `(speed << 3) / S` as the hit test
+  while raising S's cap from 15 to 60, so its radius at the cap is a quarter
+  of DOS's: the radius was never tied to a design value, which supports
+  treating this as a defect ([other-versions.md](other-versions.md)).
 - **Switchable balance change: `--fix D1PROX` (on for normal play).** A continuous swept octagonal
   slant band (overrides at `0x6C50` and `0x6EFB`), calibrated to terminal
   weapon speed x 8/9. The S=9 reference is an explicit balance choice taken
@@ -255,10 +263,6 @@ Status values:
   keep their original code. This is the second version; the first, a floor
   at the S=9 reach, still admitted a wider band below S 9 and could miss
   between samples, and is withdrawn.
-- **The Macintosh port.** Mac 2.3.2 keeps `(speed << 3) / S` as the hit test
-  unchanged while raising S's cap from 15 to 60, so its radius at the cap is
-  a quarter of DOS's ([other-versions.md](other-versions.md)): the radius was
-  never tied to a design value, which supports treating this as a defect.
 - **Check.** `tests/test_weapon_sweep.c` compares 20,000 paths against
   independent half-space clipping and checks strict boundaries, reversal,
   subdivision and wrapped deltas. `tools/d1physics_check.py` flies complete
@@ -277,7 +281,7 @@ Status values:
   and 16 at S 15. Both engines reproduce this. It favours high S, so it does
   not by itself explain weaker high-speed combat.
   [Probe](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
-- **The Macintosh port.** Mac 2.3.2 keeps the odd-frame increment without
+- **Later versions.** Mac 2.3.2 keeps the odd-frame increment without
   dividing by S ([other-versions.md](other-versions.md)).
 - **Optional timing repair: `--fix D1ACCEL`.** Integrates 9/2 speed units
   per simulated second, the original S=9 rate, with exact integer fractions
