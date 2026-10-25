@@ -37,6 +37,12 @@ readers in `tools/` (`rsrc.py`, `hfsx.py`, `f117/cvpc.py`, `f117/macsnd.py`, `f1
   read from their arguments and the match with DOS, not traced further. So the 1994 Mac port kept
   frame counting (the 1993 Amiga did not), and treated 15 as a platform ceiling it could raise.
   Read 24 Oct 2026 from a capstone disassembly of the owner's 2.3.2 copy.
+- **D1PROX unchanged, so worse at the higher cap.** `CODE13:04A72`-`04A88` computes the incoming
+  missile's reach as `(speed << 3) / S` from a 28-byte object record and admits a hit only when it
+  exceeds a slant-style distance (horizontal distance plus `|altitude difference| >> 5`), followed
+  by a slot-below-8 and a `4*S` age guard - the DOS shape. With S allowed up to 60, the hit radius at
+  the cap is a quarter of DOS's at its cap of 15: the porters raised the frame-rate ceiling without
+  touching a radius that depends on it. A consequence of the code, not measured (no 68k emulator).
 - **Asides.** Its fonts are named `CivBabylon`, `CivZulu` and so on, reused from MicroProse's
   Macintosh *Civilization*.
 

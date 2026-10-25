@@ -252,6 +252,10 @@ Status values:
   keep their original code. This is the second version; the first, a floor
   at the S=9 reach, still admitted a wider band below S 9 and could miss
   between samples, and is withdrawn.
+- **The Macintosh port.** Mac 2.3.2 keeps `(speed << 3) / S` as the hit test
+  unchanged while raising S's cap from 15 to 60, so its radius at the cap is
+  a quarter of DOS's ([other-versions.md](other-versions.md)): the radius was
+  never tied to a design value, which supports treating this as a defect.
 - **Check.** `tests/test_weapon_sweep.c` compares 20,000 paths against
   independent half-space clipping and checks strict boundaries, reversal,
   subdivision and wrapped deltas. `tools/d1physics_check.py` flies complete
