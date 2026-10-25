@@ -286,7 +286,7 @@ fixes off); the extra pictures are drawn between its steps, one step behind.
 new picture when the game draws one.
 
 The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
-selects fullscreen, `present = interp` and scale 9:
+selects fullscreen, `present = rerun` and scale 9:
 `build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`. Select
 3840x2160 at 60 Hz in Windows' display settings first. The build copies the
 repository's `f117a.4k.ini` into `build\` whenever it changes, replacing the

@@ -30,7 +30,7 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
   longer draw distance are planned as the Remastered presentation, a new renderer
   ([decisions](#decisions-that-constrain-the-work)).
 - **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
-  selects fullscreen, `present = interp` and scale 9.
+  selects fullscreen, `present = rerun` and scale 9.
 
 ## The constraint that matters: the presentation must not touch the machine
 
@@ -133,7 +133,7 @@ without its dashes (`present = rerun`).
 | `--present-age interp\|extrapolate` | `interp` (default) shows the step before the newest; `extrapolate` predicts past the newest ([picture age](#the-live-path-feed-replay-pacing-and-picture-age)). With `rerun` and its smoothed clock nothing is predicted; the clock is only read one display frame later |
 | `--present-line-width N` | at N > 1, stroke width of HUD lines, ticks, world outlines, dots and thin span strips: 1-20 pixels of the fine picture; 0, the default, is one original cell ([pen](#projected-outlines-point-markers-and-one-stroke-pen)) |
 | `--present-log FILE` | app only: per presented picture, the host clock, the machine's clock, the logic frames shown and t, plus the display mode |
-| `f117a.4k.ini` | optional fullscreen preset: `scale = 9`, `present = interp`, `present-scale = 9` |
+| `f117a.4k.ini` | optional fullscreen preset: `scale = 9`, `present = rerun`, `present-scale = 9` |
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` (or `0`, `off`) | the captured-call HUD / sky and ground instead of the state-driven ones |
 | `F117_PRESENT_IDENT=1` | the identity-pairing experiment (off by default) |
 | `F117_PRESENT_CLOCK=raw` | `rerun` uses the plain step clock instead of the smoothed playback clock |
