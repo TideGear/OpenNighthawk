@@ -256,5 +256,5 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   a "maybe": Stage 2 became 1.0 and P3 went to 97.79%. On 24 Oct 2026 the
   owner added the re-release features (roadmap, Phase 3) as unstarted items
   weighing 28 beside the existing 100, in two commits: P3 went from 100% to
-  89.29% and then 78.12%. The same day the Phase 2 checklist item was added
+  89.29% and then 78.12%; hybrid sound (weight 3) the same evening took it to 76.34%. The same day the Phase 2 checklist item was added
   (above).
