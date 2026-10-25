@@ -264,7 +264,7 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   sequential no-overlap fallback ("No valid keyed baseline") although `p2-batch-loadbase-accept` holds a baseline for
   the current key (`cf87d6..`). The kit's `new_batch.py` now picks the newest baseline whose `base_key` equals
   `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid.
-  Expect the presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for
+  The presentation then overlaps the gate (it saved no time in bd: see optimization pass 2 below); check the first gate's log for
   "Started" lines and no fallback message.
 - **Optimization pass 2 (owner, 24 Oct), first finding: the presentation overlap does not save time.** Comparable
   gates, both with a full coverage pass: bc sequential (coverage 766 s, parity 343 s, N=1 420 s alone) accepted in
