@@ -82,3 +82,15 @@ a Mac player in the same row. Music (3 pieces: title, death, good mission) still
 confirmed; speech is 9 recorded words the game chains into phrases, against DOS's single 3.3 s
 `SPEECH.117`, so speech gets rows of its own. Decoding is plain conversion (no driver to emulate) and
 can be done first. Mac audio goes only into the private page's asset store, never the repository.
+
+**Macintosh column: decoded (24 Oct 2026).** `unar` (The Unarchiver's command-line build, user folder
+`%USERPROFILE%\f117-recomp-local\tools\unar`, no install) extracted the 2.3.2 archive to the private
+`%USERPROFILE%\f117-recomp-local\mac-extract`; the earlier project's `tools/rsrc.py` and
+`tools/f117/macsnd.py` decoded all 33 `snd ` resources of `F117a Sound` to WAV there (`snd-wav/`):
+effects 304-320 plus 323-325 (bay door, hangar door, impact), the engine loop 500, music 200/321/322,
+and speech words 1000-1008. Nothing from them enters the repository.
+
+**No MacsBug names in the Mac program.** The 13 `CODE` resources (252,860 bytes) of `F117a Stealth
+Fighter 2.0` carry only four embedded symbol names - `GETWDINFO`, `HCREATE`, `HDELETE`, `HOPEN`, file
+system glue from the compiler's interface library - so the game's own code was built without symbols
+and the Mac binary offers no function names to borrow for naming DOS routines.
