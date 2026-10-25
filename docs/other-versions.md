@@ -16,10 +16,13 @@ see [provenance.md](provenance.md)): `docs/formats/cvpc.md`, `docs/re/10-sound.m
 `docs/re/08-amiga.md`, with readers in its `tools/` (`rsrc.py`, `hfsx.py`, `f117/cvpc.py` and
 `f117/macsnd.py` for the Mac; `f117/adf.py`, `f117/amigacat.py` and `f117/amigaexe.py` for the
 Amiga). They are used from that project's folder, not vendored here. The Mac code readings (timing
-and the incoming-missile defects) are this project's, from a capstone disassembly of the owner's
-2.3.2 copy on 24 October 2026.
+and the bug comparison) are this project's, from capstone disassemblies of two builds the owner
+holds: **2.1.0** (the program in the `F117a Stealth Fighter 2.1` folder of the 2.3.2 archive, whose
+version resource says "Version 2.1.0, 1994") and **2.3.2** (inside `F117A Version 2.32 Update.image`,
+code 248,520 bytes against 252,860). An earlier version of this page read 2.1.0 and called it 2.3.2;
+addresses below are 2.3.2 unless marked 2.1.0.
 
-## Macintosh (2.0 to 2.3.2, 1994)
+## Macintosh (2.1.0 and 2.3.2, 1994)
 
 - **Files.** The owner's archives in `references/Mac Version`. `unar` (The Unarchiver's
   command-line build, run from a user folder without installing) extracts the 2.3.2 archive to a
@@ -40,36 +43,42 @@ and the incoming-missile defects) are this project's, from a capstone disassembl
   6 and later 7. It carries no MacsBug function names: its only four symbols (`GETWDINFO`,
   `HCREATE`, `HDELETE`, `HOPEN`) are file-system glue from the compiler's interface library, so it
   offers no names to borrow for DOS routines.
-- **Timing: DOS's S, with the cap raised to 60.** `CODE13:01238` is a port of DOS
-  `timing_recompute` (`0x0D441`): the same frame-wait formula `clamp((9 - 120/S) >> 1, 1, 4)` and
-  the same clamp `[4 - time_scale, cap]` on S, with the cap 60 (the Mac's tick rate) instead of 15.
-  Each frame `CODE13:06584` takes `TickCount` minus the previous reading and keeps a history of
-  frame times under 30 ticks; every `4*S` frames it sets S = 60 / (average ticks per frame) /
-  time_scale (`[b8e6]`). Game rates divide by it (`divs.w [b8e6]` at dozens of sites).
-  `CODE13:00566` halves S when time compression goes to 2. The time-scale cell (`[b900]`) and the
-  clamp helper (`jsr $922`) are identified from their arguments and the match with DOS, not traced
-  further. So the 1994 Mac port kept frame counting (the 1993 Amiga port did not) and treated 15
-  as a platform ceiling it could raise.
-- **Incoming-missile defects** (all in `CODE13`, on the same 28-byte object records):
-  - *D1PROX, present, so a smaller radius at the higher cap.* `04A72`-`04A88` computes the reach
-    as `(speed << 3) / S` and admits a hit only when it exceeds a slant-style distance (horizontal
-    distance plus `|altitude difference| >> 5`), followed by a slot-below-8 and a `4*S` age guard:
-    the DOS shape. At S 60 the hit radius is a quarter of DOS's at its cap of 15; the porters raised
-    the ceiling without touching a radius that depends on it.
-  - *D1TTL, present over a wider range.* A ground launch (`038DA`-`03932`) starts at speed 1 with
-    lifetime `range * 16 * S / speed`, stored as a 16-bit word; the hit guard (`04AA0`-`04AB0`)
-    skips damage while the lifetime is at or below `4*S` as a signed word, as DOS does. An SA-5
-    (range 150) gets `2400 * S`: a negative word for S 14-27, so it cannot hit until the count falls
-    below 32,768 (the DOS defect over a wider S range), and from S 28 the product wraps, leaving
-    erratic short lives (S 28: 1,664 frames; S 55: 928).
-  - *D1ACCEL, present.* `040B6`-`040D2` (and its twin at `041AE`) adds one speed unit on odd
-    frames (`btst #0` of the frame counter) up to the type's terminal speed, with no division by
-    S, so acceleration per second scales with S: four times DOS's S 15 rate at the cap of 60.
-  - *D1SLOT, plausible, not confirmed.* The movement path decrements the lifetime with no zero
-    test (`046E6`), as DOS's `0x6CA6` does, and a cancel path zeroes it (`04DF6`); whether a
-    cancelled slot reaches the decrement depends on call order across routines, not traced.
-- **Other bugs.** D10 (mountain-collision stack corruption) is a Mac defect, from MicroProse's
-  2.3.0 release notes ([bugs.md](bugs.md#d10-mountain-collision-stack-corruption-macintosh)).
+- **Timing: DOS's S with the cap raised to 60.** Every frame `CODE13:05824` (2.3.2) takes the
+  `TickCount` difference, keeps a history of frame times under 30 ticks, and every 8 frames sets
+  S = 60 / (average ticks per frame), clamped to `[4 - time_scale, 60]` (`058A4`-`058D4`, `[b8e6]`);
+  game rates divide by it at dozens of sites. DOS caps S at 15. 2.1.0 also ported DOS's frame wait
+  (`CODE13:0123C`) but it only runs above S 60, so it never fires; 2.3.2 removed it.
+- **A speed setting (2.3.0 onward).** `[b8e8]` selects Realistic (0, S measured), Quick (3), Fast (2)
+  or Warp (1); a nonzero setting pins S to that value and skips the measurement
+  (`CODE13:0589A`, `01360`). Menu handler `CODE02:040AC`; the 2.3.0 notes warn that Warp makes AI
+  aircraft "crash a little too often" and missiles less accurate, which matches the S-dependent
+  per-frame steps below. The pinned values 1-3 are below DOS's floor of 4.
+- **Bug catalogue against 2.3.2** (full sweep, 24 Oct 2026; all read from code, none measured):
+  - *Present, same mechanism:* D1 (Realistic setting only), D1TTL (`03FB2`-`03FC0`, signed `4*S`
+    guard; launch `0314C`-`031E4`), D1SLOT (`04268` cancel, `03CB8` decrement; call order traced so
+    no path skips it), D1PROX (`03F8C`-`03F9E`, `(speed << 3) / S`), D1ACCEL (`0383A`-`03858`), D4
+    (mission table `CODE02:00D90`; the world data is byte-identical), D5 (`03D3A`-`03D5C`), D6
+    (`032C0`-`03314`), D7 through D8 (`03C16`-`03C26`), D12 (`CODE07:005B2`), D17's mechanism, D75,
+    the Q9, Q10, Q11, Q13a and Q13b defects, and the roster, armoury, overdue-string and Enemy
+    Troops-overlay defects.
+  - *Changed:* D1REAL (no real-time pacing; the speed setting pins S instead), D11 (the roster is
+    overwritten in place, not truncated: `CODE05:054DC`-`055A0`), D34 (worse: records are 10 bytes
+    and record 31 overwrites the table's own count, `CODE12:01F54`), Q8, D18, and the terrain lookup
+    above level 4.
+  - *Fixed or absent:* Q3 and Q12.
+  - *Not applicable:* D2, D3, D35, D36 and the sound-driver defects (DOS-only code).
+  - *Undetermined:* Q2, Q5, Q7, D61, D97, D98, D101, D103 and the briefing popup (no counterpart
+    found).
+  - *Consequences of the raised cap:* the D1PROX radius at S 60 is a quarter of DOS's at 15; an SA-5's
+    16-bit lifetime `2400 * S` goes negative for S 14-27 and wraps from S 28; D1ACCEL's per-second
+    acceleration is four times DOS's. These bite in the Realistic setting only.
+- **Mac-only defects.** D10 (mountain-collision stack corruption), from MicroProse's 2.3.0 notes
+  ([bugs.md](bugs.md#d10-mountain-collision-stack-corruption-macintosh)), is located: 2.1.0
+  `CODE09:011CA`-`011D0` pushes a word and pops four bytes (`addq.l #4`); 2.3.2 `011C4`-`011CA` pops
+  two. Also noticed, unreported by MicroProse: in Realistic the S computation divides by the average
+  frame time with no zero guard (`CODE13:058AC`, 2.1.0 `06672`) and frames of under one tick are
+  recorded, so a fast enough machine could divide by zero; and flight set-up at `CODE13:04C4C` looks
+  as if it starts a pinned-speed game at S 4 until the speed is changed (suspected, not run).
 - **Aside.** Its fonts are named `CivBabylon`, `CivZulu` and so on, reused from MicroProse's
   Macintosh *Civilization*.
 

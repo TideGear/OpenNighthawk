@@ -201,9 +201,10 @@ Status values:
   starting S of 5 avoids the boundary.
 - **Where.** VGAME `0x708D` tests active life against zero; `0x6F15`
   compares life with `4*S`; signed `JLE` at `0x6F19` skips damage.
-- **Later versions.** Mac 2.3.2 keeps the signed `4*S` guard and stores
+- **Later versions.** Mac 2.1.0 and 2.3.2 keep the signed `4*S` guard and store
   `range*16*S` in a 16-bit word with S up to 60, so the SA-5 case spans S
-  14-27 and wraps above ([other-versions.md](other-versions.md)).
+  14-27 and wraps above, in the Realistic speed setting
+  ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1TTL`.** Uses an unsigned comparison for valid
   shipped lifetimes (up to 36,000) and keeps the original signed branch above
   that, so seeker-abandoned FFFF missiles (see D1SLOT) stay harmless. It is
@@ -224,10 +225,10 @@ Status values:
   and aircraft launch `0x65C3` need their `(unit_index & 7)` slot at zero
   life, so the abandoned missile can block that launcher. This happens at
   low S too, and remains in the Reimp.
-- **Later versions.** Mac 2.3.2 also decrements the lifetime with no zero
-  test and has a cancel path that zeroes it; whether a cancelled slot reaches
-  the decrement was not traced, so the defect is plausible there, not
-  confirmed ([other-versions.md](other-versions.md)).
+- **Later versions.** Mac 2.3.2 has it too: the seeker zeroes the lifetime
+  (`CODE13:04268`) and no branch in the movement routine skips the
+  unconditional decrement (`03CB8`), so zero becomes FFFF; both launchers wait
+  for a lifetime of zero ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1SLOT`.** Keeps a cancelled incoming lifetime at
   zero when the countdown reaches it, with DEC's flags and instruction count;
   positive lifetimes and player-weapon slots run the original DEC. It
@@ -247,7 +248,7 @@ Status values:
   admit a hit when that unsigned reach exceeds the slant distance. This
   allowance for movement between frames also acts as the hit radius, so a
   near miss that damages the aircraft at low S can miss at high S.
-- **Later versions.** Mac 2.3.2 keeps `(speed << 3) / S` as the hit test
+- **Later versions.** Mac 2.1.0 and 2.3.2 keep `(speed << 3) / S` as the hit test
   while raising S's cap from 15 to 60, so its radius at the cap is a quarter
   of DOS's: the radius was never tied to a design value, which supports
   treating this as a defect ([other-versions.md](other-versions.md)).
@@ -281,7 +282,7 @@ Status values:
   and 16 at S 15. Both engines reproduce this. It favours high S, so it does
   not by itself explain weaker high-speed combat.
   [Probe](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
-- **Later versions.** Mac 2.3.2 keeps the odd-frame increment without
+- **Later versions.** Mac 2.1.0 and 2.3.2 keep the odd-frame increment without
   dividing by S ([other-versions.md](other-versions.md)).
 - **Optional timing repair: `--fix D1ACCEL`.** Integrates 9/2 speed units
   per simulated second, the original S=9 rate, with exact integer fractions
