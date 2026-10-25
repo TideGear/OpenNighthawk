@@ -364,6 +364,9 @@ if(F117R_BUILD_TESTS)
   add_executable(test_native_boundary tests/test_native_boundary.c)
   target_link_libraries(test_native_boundary PRIVATE f117present f117recomp_none)
   add_test(NAME native_service_boundary COMMAND test_native_boundary)
+  add_executable(test_stale_override tests/test_stale_override.c)
+  target_link_libraries(test_stale_override PRIVATE f117present f117recomp_none)
+  add_test(NAME stale_override COMMAND test_stale_override)
 
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).
@@ -1562,6 +1565,14 @@ if(F117R_BUILD_TESTS)
       --only RSOUND.LOG:754)
     add_test(NAME matched_rsound_log_send_pan_message COMMAND func_lockstep --states 5000
       --only RSOUND.LOG:860)
+    add_test(NAME matched_isound_log_reload_timer_speaker_rate COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:603)
+    add_test(NAME matched_isound_log_return_after_install_sti COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:60D)
+    add_test(NAME matched_isound_log_restore_timer_vector COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:635)
+    add_test(NAME matched_isound_log_reload_timer_zero COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:663)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

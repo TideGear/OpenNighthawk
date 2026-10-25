@@ -91186,7 +91186,111 @@ static int rsound_log_send_pan_message(machine_t *m)
 #undef XB
 }
 
+/* ISOUND.LOG 0603 (near, interior entry): the second half of the PC-speaker driver's timer reprogramming, after
+ * its counter-0 control word has been written to port 43h. AX is loaded with the reload value (4C90h),
+ * AL goes to port 40h (the low byte), AL is set from AH and goes to port 40h again (the high byte). The
+ * second write loads counter 0, which makes the machine look at interrupts at the next instruction, so the
+ * routine stops right after that OUT, at 060C; the STI and the RET after it are the original's. Every port
+ * access is made at the clock the original makes it. No memory is touched and nothing is called. */
+static int isound_log_reload_timer_speaker_rate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4 + IO_SLACK(2))) return 0;
+    c->r[R_AX] = 0x4C90;                                                           /* 0603: mov ax,4C90h */
+    c->icount += 1;
+    x86_out(c, 0x40, 0);                                                           /* out 40h,al: the low byte */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_AH));                                              /* mov al,ah */
+    c->icount += 1;
+    x86_out(c, 0x40, 0);                                                           /* out 40h,al: the high byte, loads counter 0 */
+    c->icount += 1;
+    c->ip = 0x060C;
+    return 1;
+}
+
+/* ISOUND.LOG 060D: the near RET immediately after the PC-speaker driver's timer handler install enables interrupts
+ * (the timer installer at 05DC, STI at 060C). A separate entry preserves the machine's required boundary after the STI while
+ * still replacing the original return instruction. No memory but the stack word is read.*/
+static int isound_log_return_after_install_sti(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* ISOUND.LOG 0635, near: put the old timer chain back once (the undo of the installer at 060E). Unlike the AdLib
+ * driver, the installed flag is addressed through the caller's DS: the byte [0054] is the "timer saved" mark and
+ * [00A4] the "handler installed" mark.
+ * When [0054] is zero there is nothing to undo: the routine returns through the RET at 0634 (executed here).
+ * Otherwise: [0054] and [00A4] are cleared, interrupts are disabled (CLI), DS is saved on the real stack, the old
+ * INT 8 offset and segment are read from the code words CS:[0541] and CS:[0543] (patched at run time by the
+ * installer, so read from the loaded code), DS is set to 0 with SUB AX,AX / MOV DS,AX and the vector at
+ * 0000:0020 / 0000:0022 is rewritten, DS is restored, and the control word 36h (counter 0, mode 3, 16-bit) is
+ * written to port 43h. That write makes the machine look at interrupts at the next instruction, so the routine
+ * stops right after the OUT, at 0663; the counter-0 reload (two bytes of 0000 through port 40h), the STI and the
+ * RET at 066C are the original's. Every port access is made at the clock the original makes it. No callee. */
+static int isound_log_restore_timer_vector(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0635);                                                /* cmp byte [54],0 / je 0634 */
+    (void)alu_op(c, 7, ds_get8(c, 0x0054), 0, 0);
+    if (x86_cond(c, 4)) goto nothing;
+    SM4_NEED(12 + IO_SLACK(1), 0x063C);
+    ds_put8(c, 0x0054, 0x00);
+    ds_put8(c, 0x00A4, 0x00);
+    x86_cli(c);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x0541);
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], 0x0543);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);               /* sub ax,ax */
+    c->seg[S_DS] = c->r[R_AX];
+    ds_put(c, 0x0020, c->r[R_BX]);
+    ds_put(c, 0x0022, c->r[R_CX]);
+    c->seg[S_DS] = cpu_pop16(c);
+    set_r8(c, R_AL, 0x36);
+    c->icount += 12;
+    x86_out(c, 0x43, 0);                                          /* counter 0's control word: wakes the run loop */
+    c->icount += 1;
+    c->ip = 0x0663;                                               /* the reload, STI and RET are the original's */
+    return 1;
+nothing:
+    XB(1, 0x0634);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* ISOUND.LOG 0663 (near, interior entry): the second half of the PC-speaker driver's timer reprogramming, after
+ * its counter-0 control word has been written to port 43h. AX is loaded with the reload value (0000),
+ * AL goes to port 40h (the low byte), AL is set from AH and goes to port 40h again (the high byte). The
+ * second write loads counter 0, which makes the machine look at interrupts at the next instruction, so the
+ * routine stops right after that OUT, at 066B; the STI and the RET after it are the original's. Every port
+ * access is made at the clock the original makes it. No memory is touched and nothing is called. */
+static int isound_log_reload_timer_zero(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4 + IO_SLACK(2))) return 0;
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);                  /* 0663: xor ax,ax */
+    c->icount += 1;
+    x86_out(c, 0x40, 0);                                                           /* out 40h,al: the low byte */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_AH));                                              /* mov al,ah */
+    c->icount += 1;
+    x86_out(c, 0x40, 0);                                                           /* out 40h,al: the high byte, loads counter 0 */
+    c->icount += 1;
+    c->ip = 0x066B;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0663, isound_log_reload_timer_zero, "PC-speaker driver: send the counter-0 reload 0000 (low then high byte) to port 40h, stop at the STI", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0635, isound_log_restore_timer_vector, "put the old INT8 chain back once in the PC-speaker driver, stop immediately after the counter-0 control word", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x060D, isound_log_return_after_install_sti, "near return after the PC-speaker driver's timer install STI hand-back, including wrapped stack words", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0603, isound_log_reload_timer_speaker_rate, "PC-speaker driver: send the counter-0 reload 4C90h (low then high byte) to port 40h, stop at the STI", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0860, rsound_log_send_pan_message, "Roland driver: send a MIDI control-change message for controller 0Ah, pan (status B0h with running status) through the far byte-out routine", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0754, rsound_log_send_program_change_message, "Roland driver: send a MIDI program-change message (status C0h with running status, program) through the far byte-out routine", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x06F4, rsound_log_send_note_on_message, "Roland driver: send a MIDI note-on message (status 90h with running status, key, velocity) through the far byte-out routine", 1 },

@@ -813,6 +813,10 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "ISOUND.LOG", 0x0663, 0x0663, 0x000A },
+    { "ISOUND.LOG", 0x0635, 0x0634, 0x0039 },
+    { "ISOUND.LOG", 0x060D, 0x060D, 0x0001 },
+    { "ISOUND.LOG", 0x0603, 0x0603, 0x000B },
     { "RSOUND.LOG", 0x0860, 0x0860, 0x005D },
     { "RSOUND.LOG", 0x0754, 0x0754, 0x0051 },
     { "RSOUND.LOG", 0x06F4, 0x06F4, 0x0060 },
@@ -2022,6 +2026,10 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "RSOUND.LOG", 0x0000, 0x06F4, 0x0060, 35, 35, "Roland driver: send a MIDI note-on message (status 90h with running status, key, velocity) through the far byte-out routine" },
     { "RSOUND.LOG", 0x0000, 0x0754, 0x0051, 30, 30, "Roland driver: send a MIDI program-change message (status C0h with running status, program) through the far byte-out routine" },
     { "RSOUND.LOG", 0x0000, 0x0860, 0x005D, 34, 34, "Roland driver: send a MIDI control-change message for controller 0Ah, pan (status B0h with running status) through the far byte-out routine" },
+    { "ISOUND.LOG", 0x0000, 0x0603, 0x0009, 4, 4, "PC-speaker driver: send the counter-0 reload 4C90h (low then high byte) to port 40h, stop at the STI" },
+    { "ISOUND.LOG", 0x0000, 0x060D, 0x0001, 1, 1, "near return after the PC-speaker driver's timer install STI hand-back, including wrapped stack words" },
+    { "ISOUND.LOG", 0x0000, 0x0635, 0x002E, 15, 15, "put the old INT8 chain back once in the PC-speaker driver, stop immediately after the counter-0 control word" },
+    { "ISOUND.LOG", 0x0000, 0x0663, 0x0008, 4, 4, "PC-speaker driver: send the counter-0 reload 0000 (low then high byte) to port 40h, stop at the STI" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -44714,6 +44722,55 @@ int main(int argc, char **argv)
 #undef XRAND
 #undef XW16
 #undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.LOG") && o->seg==0 && o->ip==0x0603) {
+                const uint16_t stack_offsets[]={0,1,2,0xFFFE,0xFFFF,0x2000,0x2001,0x00C0};
+                seg[S_SS]=(s&1)?cs:0x6000;
+                r[R_SP]=stack_offsets[(unsigned)(s/2)%8];
+                r[R_AX]=(uint16_t)(0x1111*(unsigned)(s%13)+s*7919u);
+                r[R_BX]=(uint16_t)(s*31u); r[R_CX]=(uint16_t)(s*17u+3);
+                if(s%3==0) flags=(uint16_t)(flags|F_CF|F_OF|F_SF|F_ZF); else if(s%3==1) flags=(uint16_t)(flags&~(F_CF|F_OF|F_SF|F_ZF));
+            }
+            if (!strcmp(o->module,"ISOUND.LOG") && o->seg==0 && o->ip==0x060D) {
+                const uint16_t stack_offsets[]={0,1,2,0xFFFE,0xFFFF,0x2000,0x2001};
+                seg[S_SS]=(s&1)?cs:0x6000;
+                r[R_SP]=stack_offsets[(unsigned)s%7];
+            }
+            if (!strcmp(o->module,"ISOUND.LOG") && o->seg==0 && o->ip==0x0635) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                /* DS: a segment of its own (the marks [54] and [A4] are then not the module's code), now and then CS itself;
+                 * SS: DS, segment 0 with SP near the vector (the pushes land on the vector the routine rewrites) or a
+                 * separate segment. */
+                seg[S_DS]=(s&4)?cs:(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&8)?0:((s&16)?seg[S_DS]:0x6000);
+                const uint16_t sp_choices[]={0x0026,0x0028,0x0058,0x005A};
+                r[R_SP]=(s&32)?sp_choices[XRAND()%4]:(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)(flags & ~F_DF);
+                if(s&2)flags|=F_IF;else flags=(uint16_t)(flags & ~F_IF);
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                for(unsigned j=0;j<8;j++)XW8(cs,(uint16_t)(0x053F+j),XRAND());
+                for(unsigned j=0;j<0x20;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x20+j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();
+                /* The mark [54] zero (nothing to undo) in half the states, non-zero (any value) otherwise; [A4] random so
+                 * its clearing shows. With DS = CS the marks are code bytes the routine writes over. */
+                for(unsigned j=0x50;j<0x58;j++)XW8(seg[S_DS],(uint16_t)j,XRAND());
+                XW8(seg[S_DS],0x00A4,XRAND());
+                XW8(seg[S_DS],0x0054,(s&1)?0:(uint8_t)(1+XRAND()%255));
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.LOG") && o->seg==0 && o->ip==0x0663) {
+                const uint16_t stack_offsets[]={0,1,2,0xFFFE,0xFFFF,0x2000,0x2001,0x00C0};
+                seg[S_SS]=(s&1)?cs:0x6000;
+                r[R_SP]=stack_offsets[(unsigned)(s/2)%8];
+                r[R_AX]=(uint16_t)(0x1111*(unsigned)(s%13)+s*7919u);
+                r[R_BX]=(uint16_t)(s*31u); r[R_CX]=(uint16_t)(s*17u+3);
+                if(s%3==0) flags=(uint16_t)(flags|F_CF|F_OF|F_SF|F_ZF); else if(s%3==1) flags=(uint16_t)(flags&~(F_CF|F_OF|F_SF|F_ZF));
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

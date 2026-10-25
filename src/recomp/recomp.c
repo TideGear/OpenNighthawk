@@ -52,6 +52,8 @@ typedef struct instance {
     placed_override ov[MAX_PLACED]; /* address sorted, registration order within each address */
     int       nov;
     uint8_t  *refused;             /* per region: contains an override */
+    uint8_t  *img;                 /* the loaded file's bytes from lo (NULL: floating) */
+    uint32_t  img_len;
 } instance;
 
 #define MAX_INST 32
@@ -412,6 +414,17 @@ int recomp_override_step(machine_t *m)
         /* Their hand-written clocks count instructions, not 386 cycles.
          * Interpret the entry, then resume the translated original body. */
         if (is_parity(o) && c->t386) continue; /* a shared observer still reads the original path */
+        /* The module's memory may have been reused without another module loading over it (a buffer,
+         * a later program's data): then this address no longer holds the routine, and the original
+         * instruction - whatever is there now - runs instead. The reference is the module's unpacked
+         * image where it is known (a packed program's file bytes are not what runs), else the loaded
+         * file's own bytes. */
+        {
+            const uint32_t at = lin - in->lo;
+            if (in->mod && at < in->mod->size) {
+                if (c->mem[lin] != in->mod->image[at]) return 0;
+            } else if (in->img && at < in->img_len && c->mem[lin] != in->img[at]) return 0;
+        }
         if (is_parity(o) && g_shadow_off) return 0;
         const uint64_t limit = c->stop_at, charged = c->charged;
         c->io_cross = 0;
@@ -445,6 +458,7 @@ static void unregister(instance *in)
     if (g_rt.last_exec == in) g_rt.last_exec = NULL;
     unplace_overrides(in);
     free(in->refused);
+    free(in->img);
     flush_coverage(in);
     set_codebits(in, 0);
     for (uint32_t p = in->lo >> 4; p <= ((in->hi - 1) >> 4) && p < 0x10000; p++)
@@ -525,6 +539,21 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
     in->lo = lo;
     in->hi = hi;
     in->gen = 1;
+    /* The file's bytes as they land at lo (an MZ image after its header, a COM file as is): an override
+     * runs only while its entry still holds the module's opcode byte. The loader announces a module
+     * before writing it, so memory cannot be sampled here; relocation and run-time patches change
+     * operand words only, never an opcode. */
+    {
+        size_t skip = 0;
+        if (kind != MODLOAD_COM && len >= 28 && file[0] == 'M' && file[1] == 'Z')
+            skip = (size_t)(file[8] | (file[9] << 8)) * 16u;
+        if (skip < len) {
+            size_t n = len - skip;
+            if (n > (size_t)(hi - lo)) n = hi - lo;
+            in->img = (uint8_t *)malloc(n);
+            if (in->img) { memcpy(in->img, file + skip, n); in->img_len = (uint32_t)n; }
+        }
+    }
     if (mod) {
         in->ok_gen = (uint32_t *)calloc(mod->nregions ? mod->nregions : 1, sizeof(uint32_t));
         in->bad_gen = (uint32_t *)calloc(mod->nregions ? mod->nregions : 1, sizeof(uint32_t));

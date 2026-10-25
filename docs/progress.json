@@ -244,7 +244,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 40542,
-      "credited": 16185,
+      "credited": 16249,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
@@ -286,7 +286,7 @@
         },
         "ISOUND.LOG": {
           "bytes": 1517,
-          "credited": 1090,
+          "credited": 1154,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -363,11 +363,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 149812,
+      "matched_route_run": 149876,
       "stays_original_reviewed": 2631,
-      "score": 0.9300578986864503,
+      "score": 0.930448364011299,
       "fixture_only": 26311,
-      "remaining": 11464,
+      "remaining": 11400,
       "original_awaiting_review": 20,
       "reviewed_entries": 48,
       "checklist": {
@@ -477,10 +477,10 @@
         },
         "ISOUND.LOG": {
           "denominator": 1167,
-          "matched_route_run": 740,
+          "matched_route_run": 804,
           "stays_original_reviewed": 0,
           "fixture_only": 350,
-          "remaining": 427,
+          "remaining": 363,
           "original_awaiting_review": 0,
           "not_in_denominator": 350,
           "not_in_denominator_reviewed": 0,

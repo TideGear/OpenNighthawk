@@ -154,8 +154,7 @@ not the recompilation:
       private lead list. How the scores are measured, and the full "P2 is done
       when" definition (owner, 23-24 Oct):
       [progress.md](progress.md#what-is-measured).
-      **Done:** 1,383 addresses matched in batches a to bd (table below; batch
-      bd2, an engine fix plus bd's four held-back routines, is in its gate). Every
+      **Done:** 1,387 addresses matched in batches a to bd2 (table below). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
@@ -270,6 +269,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bb | 24 Oct | 1,355 | 1,623 named bytes | 33 more sound-driver routines in one gate: ASOUND.LOG `0640` `06AA` `0BE2` (eight calls to the matched OPL writers) `05DA` `0618` `05F7` (open/close/dispatch entries, relocated segment words, `05F7`'s indirect table call proved whole); ASOUND.117 `0E5E` family (`0DCE` `0D1C` `0C2E`), `03D8`/`03D5` (one body, claimed once), `0B90`, and the voice-reset group `05E7` with six thunk prefixes (`05E3` `05DC` `05D5` `05CE` `05C7` `05C0`, registered at the jump-only entry `05E7`); RSOUND.117 voice-start family (`0EDB` owns the shared tail, `0EBD` `0EC7` `0ED1` as bounded prefixes), `0444` `046D` `03D6` (stub `0C7C`); RSOUND.LOG `05F6` `05CC` `0611`; ISOUND.LOG `0051`; ISOUND.117 `008E` `00B5`. 641 instructions covered, five private seeds per routine, all 877 mutations caught. **Two audit catches, both fixed before the gate:** `05F7`'s two exit paths both claimed the shared tail at `0616`, which the disjointness check rejects — restructured to a single shared label; `05F6`'s fixture let two of its table's real targets (`0458`, `048E`) run as original code half the time, which would have credited their bytes to `05F6` without a proof — the fixture now always stubs them. Also added the sixth design rule "hardware wait loop" (unused: a first read found all 8 candidate loops can be completed by a fixture, so they were matched instead of exempted) and F117.COM's launcher as a reviewed "program launcher" original entry. 597 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 2,032 s. |
 | bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
 | bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
+| bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests, 63 routes / 62 fresh interpreter sessions, three matched seeds; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
 
 Notes that still matter:
 
@@ -637,13 +637,14 @@ Each is fixed; the named regressions keep the failing seed or case.
   granting named coverage. Regression `matched_projectile_changed_return`;
   wrong-trap, clock and movement negative controls all fail. Reproduced on
   unchanged master before fixing the harness.
-- **Stale module instance (24 Oct; fix in batch bd2, gate running).** A
+- **Stale module instance (24 Oct; fixed in batch bd2).** A
   module's recomp instance stayed live after its memory was reused without
   another module load overlapping it, so matched overrides fired on whatever
   bytes were there: with ISOUND.LOG's `0603`-`0663` registered,
-  `err_vgame_no_photo` first diverged at `169B:060D`. Each instance now keeps
-  its loaded file bytes, and an override runs only while its entry still holds
-  the module's opcode byte (`src/recomp/recomp.c`; regression
+  `err_vgame_no_photo` first diverged at `169B:060D`. An override now runs
+  only while its entry still holds the module's opcode byte, taken from the
+  unpacked image where the translator has one, else from the loaded file
+  (`src/recomp/recomp.c`; regression
   `tests/test_stale_override.c`). An earlier "region refusal at PIT wake
   boundaries" explanation was wrong: it reproduces with no translated module.
   Evidence `D:/f117-gate/p2-batch-bd-accept/flaky-parity-investigation.md`.

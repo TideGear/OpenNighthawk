@@ -7,10 +7,9 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 24 October 2026 (late): batch bd is accepted and pushed
-(`4cf1600`); batch bd2 (an engine fix plus bd's four held-back routines) is in its gate, NOT yet
-accepted, and its changes are uncommitted in the main tree; the re-release settings are merged
-(`ab4256b`).
+more than once, what it costs). State as of 25 October 2026: batch bd2 (an engine fix plus bd's
+four held-back routines) is accepted and pushed; the re-release settings are merged (`ab4256b`). Owner,
+25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of matching (Next steps 1).
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -19,43 +18,39 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.83%, P3 76.34%, All 88.47%
+- **Scoreboard:** P1 100.00%, P2 81.86%, P3 76.34%, All 88.48%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
-- **Phase 2 figures** (`docs/progress.json` after batch bd's refresh; `py tools/progress.py` prints them;
+- **Phase 2 figures** (`docs/progress.json` after batch bd2's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,383 addresses matched; batches a to bd are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,387 addresses matched; batches a to bd2 are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(149,812 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 93.01%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
-  - **11,464 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 9,674: ASOUND.117 4,594, RSOUND.117 1,533, RSOUND.LOG 1,037, ASOUND.LOG 1,178,
-    ISOUND.117 905, ISOUND.LOG 427. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
+  - Gameplay score (scores the matched item): **(149,876 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 93.04%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+  - **11,400 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
+    entry). Sound drivers 9,610: ASOUND.117 4,594, RSOUND.117 1,533, RSOUND.LOG 1,037, ASOUND.LOG 1,178,
+    ISOUND.117 905, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **176,188 / 205,967** creditable bytes; of the 29,779
+  - Naming item (the previous all-code measure): **176,252 / 205,967** creditable bytes; of the 29,715
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
   - Accounted-for checklist: 715 / 44,641 bytes; `docs/reference-reviewed.tsv` has 48 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Latest accepted gate** (batch bd, 24 Oct, `4cf1600`): 24 sound-driver routines, 864 named bytes (list in
-  the roadmap's batch table); 625 CTests, 63 routes as 62 fresh interpreter sessions, all 1,383 matched
-  routines at three seeds; acceptance 1,822 s with the presentation check beside the gate (no time saved:
-  optimization pass 2 below). Evidence `D:/f117-gate/p2-batch-bd-accept/`.
-- **Batch bd2 (gate running, not accepted): an engine fix plus bd's four held-back routines.** ISOUND.LOG
-  `0603` `060D` `0635` `0663` (the PC-speaker timer install/restore path, 19 bytes) were proved but held out of
-  bd because registering them made `err_vgame_no_photo` differ between engines. The cause was an engine bug,
-  not the bodies (an earlier "region refusal at PIT wake boundaries" explanation was wrong; it reproduces with
-  zero translated modules): a module's recomp instance stayed live after its memory was reused without another
-  module load overlapping it, so its matched overrides fired on foreign bytes (first divergence `169B:060D`,
-  found by a `--trace` diff). Fix: `src/recomp/recomp.c` keeps each instance's loaded file bytes and runs an
-  override only while its entry still holds the module's opcode byte (relocations and run-time patches change
-  operands only); regression `tests/test_stale_override.c`. Evidence and the investigation:
-  `D:/f117-gate/p2-batch-bd2-accept/`, `p2-batch-bd-accept/flaky-parity-investigation.md` (its "ROOT CAUSE"
-  section supersedes its "Mechanism" section); proofs `p2-isound-log-0603-bd` and siblings.
+- **Latest accepted gate** (batch bd2, 25 Oct): the stale-override engine fix plus ISOUND.LOG `0603` `060D`
+  `0635` `0663` (the PC-speaker timer install/restore path, held out of bd). A module's recomp instance stayed
+  live after its memory was reused without another module load overlapping it, so its overrides fired on
+  foreign bytes (first divergence `169B:060D` in `err_vgame_no_photo`, found by a `--trace` diff; an earlier
+  "region refusal at PIT wake boundaries" explanation was wrong). `src/recomp/recomp.c` now runs an override
+  only while its entry holds the module's opcode byte, read from the unpacked image (`mod->image`) where the
+  translator has one, else from the loaded file (the first gate attempt compared packed START bytes and
+  declined the QUIZ override; archived in `attempt1/`); regression `tests/test_stale_override.c`. 630 CTests,
+  63 routes / 62 fresh interpreter sessions, 1,387 matched routines at three seeds; acceptance 1,883 s.
+  Evidence `D:/f117-gate/p2-batch-bd2-accept/`, `p2-batch-bd-accept/flaky-parity-investigation.md` (its
+  "ROOT CAUSE" section supersedes its "Mechanism" section).
 - **Routes:** 63. Damaged-install routes (`--damage ACTION:FILE`, `tools/route_damage.py`: a private hard-linked
   copy; the install is never written) run the original's own error handlers: `err_player_assert`,
   `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `err_start_no_world`,
@@ -161,16 +156,17 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Finish batch bd2.** When its gate ends, read the tally in `D:/f117-gate/p2-batch-bd2-accept/gate.log`; on a
-   pass run `finalize.py`, the score refresh and the docs (roadmap row, the bd row's held-back note, this file),
-   then commit with the title from `py tools/progress.py --title` and push. On a failure archive the directory
-   (trap below) before a rerun.
+1. **Bug fixes first (owner, 25 Oct).** Every entry in [docs/bugs.md](docs/bugs.md)'s "Smaller confirmed
+   defects" table (31 rows, none fixed) is being re-verified against the DOS instructions (the owner warned some
+   may be Reimp-only bugs: the Reimp's D0 and D13-D18 were defects in its own port), compared with Mac 2.3.2 and
+   Amiga 3.01, and then fixed as a default-on switch with tests of both states, or given a written reason it is
+   not fixed. Reviews: `D:/f117-gate/qsweep/`. Fixes are built in a worktree and gated as their own batch.
 2. **Batch be** (proof round done, 24 Oct): eight ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0`
    `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` are proved privately (`D:/f117-gate/p2-asound-117-<IP>-be`,
-   `p2-rsound-log-00ae-be`); RSOUND.LOG `0251` (`p2-rsound-log-0251-be`) is resumable. Their checkpoints wait for
-   the bd2 gate, because `kit.py checkpoints` needs the interpreter cache for the current `src/` key (bd2 changed
-   `recomp.c`); then `finish_all.py`, `audit_private.py` and a gate.
-3. **Match the rest of the sound drivers** (9,674 of the 11,464 unmatched executed bytes before bd2 and be). The
+   `p2-rsound-log-00ae-be`); RSOUND.LOG `0251` (`p2-rsound-log-0251-be`) is resumable. Their checkpoints need
+   the interpreter cache for the current `src/` key (bd2 changed `recomp.c`; its gate refilled it); then
+   `finish_all.py`, `audit_private.py` and a gate.
+3. **Match the rest of the sound drivers** (9,610 of the 11,400 unmatched executed bytes before be). The
    remaining ISOUND.117 and ASOUND.LOG routines are all large (90-320 instructions).
    Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
    predates batches bb to be, which matched many of its entries. Still open there: wrapper/dispatch entry points

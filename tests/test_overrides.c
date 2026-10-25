@@ -378,6 +378,7 @@ int main(int argc, char **argv)
 
     /* Registered but off: nothing is placed, before or after a load. */
     recomp_module_load(NULL, &m, "game.ovl", file, sizeof file, MODLOAD_OVERLAY, 0x2000, 0x2000);
+    memcpy(m.mem + 0x20000, file, sizeof file);   /* the loader writes the image after announcing it */
     CHECK(recomp_overrides_live == 0);
     CHECK(step_at(0x2001, 0x0020) == 0 && calls == 0);
 
@@ -408,10 +409,12 @@ int main(int argc, char **argv)
      * gone when another load overwrites the module. */
     recomp_override_enable("T1", 1);
     recomp_module_load(NULL, &m, "game.ovl", file, sizeof file, MODLOAD_OVERLAY, 0x3000, 0x3000);
+    memcpy(m.mem + 0x30000, file, sizeof file);
     CHECK(recomp_overrides_live == 2);
     CHECK(step_at(0x3001, 0x0020) == 1 && calls == 3);
     static uint8_t junk[0x40];
     recomp_module_load(NULL, &m, "junk.ovl", junk, sizeof junk, MODLOAD_OVERLAY, 0x3002, 0x3002);
+    memcpy(m.mem + 0x30020, junk, sizeof junk);
     CHECK(recomp_overrides_live == 1);
     CHECK(step_at(0x3001, 0x0020) == 0 && calls == 3);
     CHECK(step_at(0x2001, 0x0020) == 1 && calls == 4);
