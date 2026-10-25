@@ -20,6 +20,7 @@
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
 #define ASOUND_47304 0x9CD012D9D4A2CF30ULL
+#define RSOUND_47304 0x14F2AE43AE88ED82ULL
 #define END_47304   0xFA7167EE4E377EC1ULL
 #define SETUP_47304 0xEDD5021CF28E7FC4ULL
 
@@ -724,7 +725,47 @@ static int fix_q14_overdue(machine_t *m)
     return 1;
 }
 
+/* Q15. ASOUND.117's noise take-over for generator B (IP 0x0F8B, image
+ * 0x2AEB) tests generator A's count [19DCh] where the A arm at 0x0EF6 tests
+ * it and B's own is [19FCh]. Read B's count: AL = [19FCh], and the original
+ * AND/JE that follow decide on it. */
+static int fix_q15_noise_b(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x19FC)));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x0F8E;
+    c->icount++;
+    return 1;
+}
+
+/* Q16. RSOUND.117's volume (0x0348) and pan (0x039D) modulators add a signed
+ * step to a byte with no bound; past 7Fh the MT-32 reads the byte as a status
+ * byte. Each three-instruction run (load step, add to the field, reload the
+ * field) becomes one saturating update, clamped to 0..7Fh, never masked, and
+ * the original `sub ah, ah` that follows rebuilds the flags. */
+static int q16_modulate(machine_t *m, uint16_t step, uint16_t field, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t bx = c->r[R_BX];
+    const int v = (int)mem_read8(c, phys(ds, (uint16_t)(bx + field)))
+                + (int)(int8_t)mem_read8(c, phys(ds, (uint16_t)(bx + step)));
+    const uint8_t out = (uint8_t)(v < 0 ? 0 : v > 0x7F ? 0x7F : v);
+    mem_write8(c, phys(ds, (uint16_t)(bx + field)), out);
+    set_r8(c, R_AL, out);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount += 3;
+    return 1;
+}
+static int fix_q16_volume(machine_t *m) { return q16_modulate(m, 2, 0x0C, 0x0351); }
+static int fix_q16_pan(machine_t *m) { return q16_modulate(m, 3, 0x0E, 0x03A6); }
+
 static const recomp_override OVERRIDES[] = {
+    { "Q15", "ASOUND.117", ASOUND_47304, 0x01B6, 0x0F8B, fix_q15_noise_b, "AdLib noise take-over reads generator B's own count" },
+    { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x0348, fix_q16_volume, "MT-32 volume modulator saturates at 0..7Fh" },
+    { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x039D, fix_q16_pan, "MT-32 pan modulator saturates at 0..7Fh" },
     { "Q14", "VGAME.EXE", VGAME_47304, 0x0000, 0x969C, fix_q14_overdue, "overdue objective text goes to the displayed line" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA153, fix_q12_call, "cannon ground test is given the unit hit" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA154, fix_q12_return, "cannon ground test: drop the argument" },
@@ -778,6 +819,8 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q15", "AdLib noise take-over on generator B tests B's own count, not A's" },
+    { "Q16", "MT-32 volume and pan modulation saturate at 0 and 7Fh instead of running into status bytes" },
     { "Q14", "an overdue objective shows \"Time expired\" instead of the stale deadline" },
     { "Q12", "the cannon's ground test is given the unit it hit, not a stale stack word" },
     { "Q11", "model range checks use the full 32-bit coordinates, rejecting distant objects before they wrap nearby" },

@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-nineteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12 and Q14, including the D1REAL timing and D1PROX balance choices
+twenty-one: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15 and Q16, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -66,7 +66,9 @@ Status values:
 | Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
 | Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
 | Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
-| Q15-Q20 | Confirmed | START, ASOUND.117, RSOUND.117, VGAME | Six smaller defects (below) | planned |
+| Q15 | Confirmed | ASOUND.117 | AdLib noise take-over on generator B reads generator A's count | `--fix Q15` |
+| Q16 | Confirmed | RSOUND.117 | MT-32 volume and pan modulation run past 7Fh into status bytes | `--fix Q16` |
+| Q17-Q20 | Confirmed | VGAME, START | Four smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -733,6 +735,36 @@ Status values:
   local line, the shared buffer, registers, memory and clock, then stops at
   every instruction count and resumes (176 staged runs, 0 failures).
 
+### Q15. AdLib noise take-over reads the wrong generator's count
+
+- **What happens.** ASOUND.117's take-over for noise generator B (IP `0x0F8B`,
+  image `0x2AEB`) is generator A's arm (`0x0EF6`) with only the channel changed:
+  it tests A's count `[19DCh]` where B's own is `[19FCh]`. Repeated noise effects
+  on B's channel lose their re-attack, and with B idle a stray key-off can cut
+  another voice (not measured). Only the DOS driver has it.
+- **Fix.** `--fix Q15` reads `[19FCh]` into AL at `0x0F8B`; the original AND and
+  JE decide on it. The instruction count is unchanged.
+- **Check.** `build/check_drivers path/to/ASOUND.117 path/to/RSOUND.117` steps
+  the site with four count pairs, fix off and on, and compares AL, AH, the next
+  branch, the counts and the clock.
+
+### Q16. MT-32 volume and pan modulation overrun the data range
+
+- **What happens.** RSOUND.117's modulators add a signed step to the volume
+  (`[bx+0Ch]`, step `[bx+2]`, IP `0x0348`) and pan (`[bx+0Eh]`, step `[bx+3]`,
+  IP `0x039D`) bytes with no bound, and the senders pass the byte unmasked. The
+  title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of
+  80h and above per play, which an MT-32 reads as status bytes (lost updates,
+  possibly a stray program change, bend or notes on parts 3 and 7). Munt
+  behaves the same. Only the DOS driver has it.
+- **Fix.** `--fix Q16` replaces each three-instruction update (load step, add to
+  the field, reload the field) with one that saturates at 0 and 7Fh, never masks,
+  and leaves AL as the original does; the `sub ah, ah` after it rebuilds the
+  flags. It charges the same three instructions.
+- **Check.** The same `check_drivers` runs ten field/step cases for both
+  modulators, fix off and on: in range the two agree, out of range the original
+  wraps and the fix saturates.
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -756,12 +788,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12 and Q14 are described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15 and Q16 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |
-| Q16 | - | RSOUND.117 | The volume and pan modulators add a signed step with no bound, and the senders pass the byte unmasked | The title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of 80h and above per play (pan FF down to BF, volume 80-8C), which an MT-32 reads as status bytes: lost updates, possibly a stray program change, bend or notes on parts 3 and 7. Munt behaves the same. Planned fix: saturate at 0 and 7Fh, never mask | modulators IP `0x0348`, `0x039D`; senders `0x0490`, `0x04E1` | DOS driver only |
 | Q17 | D61 | VGAME, MGRAPHIC | The pitch-ladder label index has no bound: at pitch -90 degrees or below it reads index -1 (the index word itself, FF FF), past +90 index 23 (the output slot) | A top-bit byte becomes MGRAPHIC's colour, so ladder labels are drawn in colour 7Fh for the rest of the flight | `1058:08FB`, `1058:095C` (linear `0x10E7B`, `0x10EDC`); MGRAPHIC `047E:060A` | Amiga fixed (clamps and mirrors, `0x402554`, `0x4025FE`); Mac undetermined |
 | Q18 | D17 | START | Date roll: the month loop has no bound and reads past the 12-entry table (the 13th byte is 80, the 'P' of "Photograph") | Middle East careers, missions 71-98: "Jan 32" to "Jan 59, 1990" on the written orders; in the other theatres the first bad date falls after retirement at 99 | `0x0260D`-`0x0261F`, `0x02621` | Mac and Amiga run the same loop with other bytes after the table ("Mar N", "Feb N") |
 | Q19 | - | START | The Enemy Troops overlay stores each marker's pixel x and y into its own loop counters | One to four markers of the 4-17 troop cells (counted from the shipped worlds) | `0x01AF7`, `0x01B09` | Mac present (`CODE08:027CE`); Amiga present (`0x43BEA6`) |
