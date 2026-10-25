@@ -199,6 +199,9 @@ Status values:
   proximity-hit until 3,233 frames have passed, about 194 seconds at the
   measured frame rate. The Reimp's `frame_weapons.c` has the same guard; its
   starting S of 5 avoids the boundary.
+- **The Macintosh port.** Mac 2.3.2 keeps the signed `4*S` guard and stores
+  `range*16*S` in a 16-bit word with S up to 60, so the SA-5 case spans S
+  14-27 and wraps above ([other-versions.md](other-versions.md)).
 - **Where.** VGAME `0x708D` tests active life against zero; `0x6F15`
   compares life with `4*S`; signed `JLE` at `0x6F19` skips damage.
 - **Fix available: `--fix D1TTL`.** Uses an unsigned comparison for valid
@@ -274,6 +277,8 @@ Status values:
   and 16 at S 15. Both engines reproduce this. It favours high S, so it does
   not by itself explain weaker high-speed combat.
   [Probe](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
+- **The Macintosh port.** Mac 2.3.2 keeps the odd-frame increment without
+  dividing by S ([other-versions.md](other-versions.md)).
 - **Optional timing repair: `--fix D1ACCEL`.** Integrates 9/2 speed units
   per simulated second, the original S=9 rate, with exact integer fractions
   for every allowed S; the starting parity keeps the S=9 increment pattern.

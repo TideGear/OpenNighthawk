@@ -43,6 +43,19 @@ readers in `tools/` (`rsrc.py`, `hfsx.py`, `f117/cvpc.py`, `f117/macsnd.py`, `f1
   by a slot-below-8 and a `4*S` age guard - the DOS shape. With S allowed up to 60, the hit radius at
   the cap is a quarter of DOS's at its cap of 15: the porters raised the frame-rate ceiling without
   touching a radius that depends on it. A consequence of the code, not measured (no 68k emulator).
+- **The other incoming-missile S defects** (same 28-byte records, `CODE13`):
+  - *D1TTL, present and worse.* A ground launch (`038DA`-`03932`) starts at speed 1 with lifetime
+    `range * 16 * S / speed`, stored as a 16-bit word; the hit guard (`04AA0`-`04AB0`) skips damage
+    while the lifetime is at or below `4*S` as a signed word, as DOS does. An SA-5 (range 150) gets
+    `2400 * S`: a negative word for S 14-27, so it cannot hit until the count falls below 32,768 (the
+    DOS defect, now over a wider S range), and from S 28 the product wraps, leaving erratic short
+    lives (S 28: 1,664 frames; S 55: 928).
+  - *D1ACCEL, present.* `040B6`-`040D2` (and its twin at `041AE`) adds one speed unit on odd frames
+    (`btst #0` of the frame counter) up to the type's terminal speed, with no division by S, so
+    acceleration per second scales with S - four times DOS's S=15 rate at the Mac's cap of 60.
+  - *D1SLOT, plausible, not confirmed.* The movement path decrements the lifetime with no zero test
+    (`046E6`), as DOS's `0x6CA6` does, and a cancel path zeroes it (`04DF6`); whether a cancelled slot
+    reaches the decrement depends on call order across routines, which was not traced.
 - **Asides.** Its fonts are named `CivBabylon`, `CivZulu` and so on, reused from MicroProse's
   Macintosh *Civilization*.
 
