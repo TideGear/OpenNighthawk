@@ -841,7 +841,26 @@ static int fix_q20_popup(machine_t *m)
     return 1;
 }
 
+/* Q13a. The detection routine (0x5582) leaves at 0x5594 without writing its
+ * two outputs when the unit has no sensor (sensor word 0 or -1), so the
+ * caller's bearing and range locals hold stale stack: usually a value that
+ * fails every test, but a small one can announce "Visual ID" or launch. A
+ * sensorless unit cannot detect: report it as far away (range 7FFFh, bearing
+ * 0) before the original `sub ax, ax` returns strength 0, which makes the
+ * range tests refuse as they do in the common case. */
+static int fix_q13a_sensorless(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    const uint16_t bearing = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 0x0C));
+    const uint16_t range = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 0x0E));
+    seg_write16(c, ds, bearing, 0);
+    seg_write16(c, ds, range, 0x7FFF);
+    return 0;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q13a", "VGAME.EXE", VGAME_47304, 0x0000, 0x5594, fix_q13a_sensorless, "a sensorless unit reports itself far away" },
     { "Q20", "START.EXE", START_47304, 0x0000, 0x11D1, fix_q20_popup, "briefing popup is left to the hover hook" },
     { "Q19", "START.EXE", START_47304, 0x0000, 0x1AF7, fix_q19_column, "troop overlay keeps its column counter" },
     { "Q19", "START.EXE", START_47304, 0x0000, 0x1B09, fix_q19_row, "troop overlay keeps its row counter" },
@@ -904,6 +923,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q13a", "a unit with no sensor reports a far range instead of stale stack to the detection tests" },
     { "Q20", "a briefing-map click no longer leaves its popup stuck on the map" },
     { "Q19", "the Enemy Troops overlay draws every troop cell instead of resuming its scan from a pixel coordinate" },
     { "Q18", "the campaign date wraps into the next year instead of printing January 32 and later" },

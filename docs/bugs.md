@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-five: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19 and Q20, including the D1REAL timing and D1PROX balance choices
+twenty-six: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20 and Q13a, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -72,7 +72,8 @@ Status values:
 | Q18 | Confirmed | START | The campaign date loop reads past its month table, printing January 32 and later | `--fix Q18` |
 | Q19 | Confirmed | START | The Enemy Troops overlay stores pixel coordinates into its own loop counters | `--fix Q19` |
 | Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
-| Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
+| Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
+| Q21, Q22 | Confirmed | VGAME, START | Two smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
@@ -843,6 +844,25 @@ Status values:
   the popup routine as a recording stub (120 staged runs, 0 failures). It proves
   the click's decision, not the hover hook's redraw on screen.
 
+### Q13a. A sensorless unit reports a stale range
+
+- **What happens.** The detection routine (`0x05582`) returns strength 0 at
+  `0x05594` for a unit whose sensor word is 0 or -1 without writing its bearing and
+  range outputs, so the caller's locals hold stale stack (`0x06559`-`0x065FF`).
+  While the player's visibility exceeds 100, usually the stale value fails every
+  test (silent), but a small one can announce "Visual ID" or launch (the Reimp
+  caught a spurious "Visual ID"). Macintosh has the same exit; the Amiga zeroes both,
+  which makes such a unit announce "Visual ID" at any distance and never launch.
+- **Chosen behaviour (owner, 25 October 2026).** A sensorless unit cannot detect:
+  the range is far, which is the original's usual outcome, so no announcement or launch.
+- **Fix.** `--fix Q13a` writes bearing 0 and range `7FFFh` through the routine's two
+  output pointers at `0x05594`, then lets the original `sub ax, ax` return strength 0.
+  The routine is already guarded in its matched body (`0x05583`-`0x056A8`).
+- **Check.** `build/check_q13a path/to/VGAME.EXE` calls the routine in both engines
+  with Q13a off and on for sensor words 0 and -1, comparing the outputs, strength,
+  registers, memory and clock, then stops and resumes at every instruction
+  (48 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -877,11 +897,11 @@ draws 2x2 markers, and the fix pins that size.
 ### Defects with a chosen correct behaviour
 
 No version shows the intended behaviour, or the one a port shows is no better.
-Owner, 25 October 2026: fix all three as below, each on its own switch.
+Owner, 25 October 2026: fix all three as below, each on its own switch
+(Q13a is built and described under "Q13a" above the Q-series).
 
 | ID | Was | Program | Defect | Effect | Where | Later versions | Chosen fix |
 |---|---|---|---|---|---|---|---|
-| Q13a | Q13a | VGAME | A sensorless unit's range and bearing are never written (`0x05582` exits early for sensor 0 or -1) and are then read from the stack | When the player's visibility exceeds 100: usually a stale 0x1566 that fails every test (silent); a small stale value can announce "Visual ID" or launch (the Reimp caught a spurious "Visual ID") | exit `0x05594`; reads `0x06559`-`0x065FF` | Mac present (`CODE13:0327C`); Amiga zeroes both (`0x40E2EA`), so such a unit always announces and never launches | "Cannot detect": range far, the original's usual outcome |
 | Q21 | D75 | VGAME | The steering bracket's half-width is computed from `[bp-0x30]`/`[bp-0x2E]`, which this path never writes, when the roll is 45 degrees or more with weapon type 1Eh | `[0xDEBE]` from stale stack | skip `0x0AD81`; reads `0x0AEB5`, `0x0AEC4` | Mac and Amiga present | Keep the previous frame's width |
 | Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
 
