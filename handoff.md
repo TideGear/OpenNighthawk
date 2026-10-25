@@ -275,6 +275,10 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   goes (precheck sharding, proof build/mutation loop, repeated audit/finalize/verdict work, idle CPU in the gate).
   Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure on the
   gate's own logs, never run extra heavy jobs beside a gate.
+- **Proof checkpoints need a gate after any `src/` change.** `kit.py checkpoints` reads the interpreter-cache entry
+  for the current key (`src/` except `matched.c`, `CMakeLists.txt` minus tests, the game files); after an engine or
+  host change it fails with `FileNotFoundError ... interp-cache\<key>esult.json` for every routine. Run the gate
+  first (it stores the new entries), then the batch's `finish_all.py` (24 Oct: batch be after the bd2 engine fix).
 - **`finish_all.py DIR:ROUTE` before `audit_private.py`:** the audit needs `ibm-boot-proof`; running `checkpoints`
   and `verdict` by hand is not enough.
 - **Run `audit_private.py` BEFORE the gate.** It reads only the proof directories and takes seconds; batch au's
