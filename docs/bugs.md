@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-one: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15 and Q16, including the D1REAL timing and D1PROX balance choices
+twenty-two: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16 and Q17, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -68,7 +68,8 @@ Status values:
 | Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
 | Q15 | Confirmed | ASOUND.117 | AdLib noise take-over on generator B reads generator A's count | `--fix Q15` |
 | Q16 | Confirmed | RSOUND.117 | MT-32 volume and pan modulation run past 7Fh into status bytes | `--fix Q16` |
-| Q17-Q20 | Confirmed | VGAME, START | Four smaller defects (below) | planned |
+| Q17 | Confirmed | VGAME | Pitch-ladder label index runs outside its table past 90 degrees | `--fix Q17` |
+| Q18-Q20 | Confirmed | START | Three smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -765,6 +766,23 @@ Status values:
   modulators, fix off and on: in range the two agree, out of range the original
   wraps and the fix saturates.
 
+### Q17. Pitch-ladder labels read outside their table
+
+- **What happens.** The HUD pass picks each ladder label from a 23-entry table
+  (`2C30h`) by the index `[2C2Ch]`, which is 2 at pitch -90 degrees and 20 at +90.
+  A steeper attitude reads index -1 (the index word itself, whose FFh becomes
+  MGRAPHIC's colour 7Fh, so ladder labels draw in that colour for the rest of the
+  flight) or 23 (the output slot `2C8Ch`). The Amiga port clamps and mirrors;
+  Macintosh is undetermined.
+- **Fix.** `--fix Q17` at `1058:08FB` (left labels) and `1058:095C` (right) mirrors
+  an out-of-table index about the vertical (4 - i below, 40 - i above), clamps it
+  to 0..22 and loads DI as the original's three instructions do. In-range indices
+  decline. The containing matched HUD pass (`1058:0016`) declines while Q17 is
+  placed, after its presentation observer has run.
+- **Check.** `build/check_q17 path/to/VGAME.EXE` runs the original index load in
+  both engines with Q17 off and on for every index from -6 to 30 on both sides,
+  and a hand-back at every instruction count (372 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -788,11 +806,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15 and Q16 are described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15, Q16 and Q17 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q17 | D61 | VGAME, MGRAPHIC | The pitch-ladder label index has no bound: at pitch -90 degrees or below it reads index -1 (the index word itself, FF FF), past +90 index 23 (the output slot) | A top-bit byte becomes MGRAPHIC's colour, so ladder labels are drawn in colour 7Fh for the rest of the flight | `1058:08FB`, `1058:095C` (linear `0x10E7B`, `0x10EDC`); MGRAPHIC `047E:060A` | Amiga fixed (clamps and mirrors, `0x402554`, `0x4025FE`); Mac undetermined |
 | Q18 | D17 | START | Date roll: the month loop has no bound and reads past the 12-entry table (the 13th byte is 80, the 'P' of "Photograph") | Middle East careers, missions 71-98: "Jan 32" to "Jan 59, 1990" on the written orders; in the other theatres the first bad date falls after retirement at 99 | `0x0260D`-`0x0261F`, `0x02621` | Mac and Amiga run the same loop with other bytes after the table ("Mar N", "Feb N") |
 | Q19 | - | START | The Enemy Troops overlay stores each marker's pixel x and y into its own loop counters | One to four markers of the 4-17 troop cells (counted from the shipped worlds) | `0x01AF7`, `0x01B09` | Mac present (`CODE08:027CE`); Amiga present (`0x43BEA6`) |
 | Q20 | - | START | A click in the same poll that moves the cursor onto a site draws the popup; the hover hook, still on the old item, then draws and saves it again | The popup stays on the map until the next redraw | `0x011D1`, `0x0129D`, restore `0x03588` | Not located |

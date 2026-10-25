@@ -34011,6 +34011,7 @@ static int vgame_hud_pass(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (g_f117_observer) observe_hud_pass(m);                   /* the state the pass starts from (the original path has no hook) */
+    if (fix_inside(c, 0x0016, 0x09D8)) return 0;
     if (!room(c, 1)) return 0;
     SM4_NEED(1, 0x0016); VG3_FAR(0x0016, 11);
     set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));

@@ -266,7 +266,7 @@ cover them.
    boundaries, INT hooks that may wait or switch programs, the TF trap after
    POPF and IRET.
 
-Discovery and emission run in separate processes per module (up to twenty-one;
+Discovery and emission run in separate processes per module (up to twenty-two;
 `recomp.py --jobs 1` keeps the serial path). Each worker writes only its own
 module's files; the parent writes the module list in the original load order
 after every worker succeeds. Serial and parallel output are checked byte for
@@ -308,7 +308,7 @@ fallback instructions, not everything that ran.
   generation and makes running code stop at the next boundary.
 - **Code overrides.** Hand-written C registered for one address of one
   module (by name and file hash). Fixes start off in the core and headless
-  runner; the application enables all twenty-one for normal play (`--fixes
+  runner; the application enables all twenty-two for normal play (`--fixes
   recommended`; `--fixes original` turns them all off). `--fix none`
   clears the set and `--fix ID` adds a selection. Ordinary parity routes
   explicitly start with none; fix-specific routes enable their tested fixes.

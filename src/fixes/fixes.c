@@ -762,7 +762,33 @@ static int q16_modulate(machine_t *m, uint16_t step, uint16_t field, uint16_t ne
 static int fix_q16_volume(machine_t *m) { return q16_modulate(m, 2, 0x0C, 0x0351); }
 static int fix_q16_pan(machine_t *m) { return q16_modulate(m, 3, 0x0E, 0x03A6); }
 
+/* Q17. The pitch ladder's label index [2C2Ch] has no bound: it runs from 2
+ * (pitch -90) to 20 (+90) in the 23-entry label table at 2C30h, and a steeper
+ * attitude reads index -1 (the index word itself, whose FFh becomes a label
+ * colour of 7Fh for the rest of the flight) or 23 (the output slot). Outside
+ * the table the fix mirrors about the vertical (4 - i below, 40 - i above), as
+ * the Amiga port does, clamped to 0..22, and loads DI as the original's mov
+ * and two shl do (0x08FB, left side; 0x095C, right side). */
+static int q17_label(machine_t *m, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    const int idx = (int16_t)seg_read16(c, c->seg[S_DS], 0x2C2C);
+    if (idx >= 0 && idx <= 22) return 0;
+    int mirrored = idx < 0 ? 4 - idx : 40 - idx;
+    if (mirrored < 0) mirrored = 0;
+    if (mirrored > 22) mirrored = 22;
+    c->r[R_DI] = (uint16_t)(mirrored * 4);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount += 3;
+    return 1;
+}
+static int fix_q17_left(machine_t *m) { return q17_label(m, 0x0903); }
+static int fix_q17_right(machine_t *m) { return q17_label(m, 0x0964); }
+
 static const recomp_override OVERRIDES[] = {
+    { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x08FB, fix_q17_left, "pitch-ladder label index stays inside the table" },
+    { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x095C, fix_q17_right, "pitch-ladder label index stays inside the table" },
     { "Q15", "ASOUND.117", ASOUND_47304, 0x01B6, 0x0F8B, fix_q15_noise_b, "AdLib noise take-over reads generator B's own count" },
     { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x0348, fix_q16_volume, "MT-32 volume modulator saturates at 0..7Fh" },
     { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x039D, fix_q16_pan, "MT-32 pan modulator saturates at 0..7Fh" },
@@ -819,6 +845,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q17", "pitch-ladder labels past 90 degrees mirror inside the table instead of reading past it" },
     { "Q15", "AdLib noise take-over on generator B tests B's own count, not A's" },
     { "Q16", "MT-32 volume and pan modulation saturate at 0 and 7Fh instead of running into status bytes" },
     { "Q14", "an overdue objective shows \"Time expired\" instead of the stale deadline" },

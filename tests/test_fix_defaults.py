@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unittest
 
-REPAIRS = {"D1", "D1TTL", "D1SLOT", "D1ACCEL", "D2", "D3", "D4", "D5", "D6", "D8", "D11", "D12", "D34", "Q7", "Q11", "Q12", "Q14", "Q15", "Q16"}
+REPAIRS = {"D1", "D1TTL", "D1SLOT", "D1ACCEL", "D2", "D3", "D4", "D5", "D6", "D8", "D11", "D12", "D34", "Q7", "Q11", "Q12", "Q14", "Q15", "Q16", "Q17"}
 OPTIONS = {"D1REAL", "D1PROX"}
 QUIZ = {"QUIZ"}          # START's copy-protection quiz: an option that no switch but its own name turns on
 APP = RUNNER = None
