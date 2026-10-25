@@ -450,10 +450,21 @@ closed. Buy it; it is inexpensive and still available.
 
 ## Acknowledgements
 
-- **SingleStepTests**, for the 8088 and 80286 hardware vectors.
-- **Nuked OPL3** (nukeykt), for the AdLib's chip.
-- **DOSBox DBOPL** (The DOSBox Team), for the reference OPL2 synthesizer.
-- **debugcom**, for the mission-generator and secret-airstrip analysis the
-  bug tracker cites.
 - **MicroProse / MPS Labs**, for the game, and for release notes that are
   still telling us how it works.
+- **86Box** (the 86Box team), for the 386DX/33 reference PC the timing profile
+  is held to, and the source its cycle costs come from.
+- **DOSBox** (the DOSBox Team), for GOG's release, the timing reference; for the
+  DOS services, mixer and VGA behaviour ported from its source; and for DBOPL,
+  the reference OPL2 synthesizer.
+- **DOSBox-X** (Jonathan Campbell and contributors), for a second reference
+  machine.
+- **Munt** (the Munt team), for the Roland MT-32 emulation.
+- **Nuked OPL3** (nukeykt), for the AdLib's chip.
+- **SDL** (Sam Lantinga and the SDL contributors), for the window, input and
+  audio.
+- **SingleStepTests**, for the 8088 and 80286 hardware vectors.
+- **Capstone**, for the disassembly in the matched-routine drafts.
+- **debugcom**, for the mission-generator and secret-airstrip analysis the
+  bug tracker cites.
+- **GOG** and **Steam**, for keeping the game on sale.
