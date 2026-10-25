@@ -115,11 +115,13 @@ Status values:
   15 fps cap settles at S 12 with a clock of about 1.25: a cap alone does
   not correct it. Figures and methods:
   [speed-sweep.md](speed-sweep.md).
-- **Later versions.** The 1993 Amiga port replaced S with an elapsed-time
-  scale and a frame-time floor; the 1994 Macintosh port kept S, porting
-  `0x0D441` formula for formula, but raised its cap from 15 to 60. Both
-  support reading the cap of 15 as tuned to 1991 machines rather than chosen
-  as a gameplay constant ([other-versions.md](other-versions.md)).
+- **Later versions.** Both later ports kept S and changed only its range:
+  the 1993 Amiga port computes S = 64 / ticks per frame, clamped to 3-10,
+  with a 6-tick frame floor; the 1994 Macintosh port ported `0x0D441`
+  formula for formula and raised the cap from 15 to 60. Neither moved the
+  game off frame counting, and each chose a cap to suit its machines, which
+  supports reading DOS's cap of 15 as tuned to 1991 PCs rather than chosen as
+  a gameplay constant ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, which every frame passes once, holds a frame that arrives before
   its slot (time passes and interrupts are serviced, as in a HLT loop), so

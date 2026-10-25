@@ -84,7 +84,8 @@ entry. Consolidate it instead of appending to it.
   the sound board are design notes only. The settings' progress item is still 0%: raise it only with evidence,
   and only for what is built.
 - **Other versions:** [docs/other-versions.md](docs/other-versions.md) (Macintosh and Amiga ports; evidence for
-  D1 and its sub-fixes). Mac-version improvements are an unscored Phase 4 maybe.
+  D1 and its sub-fixes). Both later ports kept frame counting (Mac cap 60, Amiga cap 10), so D1 is
+  not a DOS-only quirk. Mac-version improvements are an unscored Phase 4 maybe.
 
 ### Presentation facts worth keeping
 

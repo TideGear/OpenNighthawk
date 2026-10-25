@@ -96,9 +96,38 @@ addresses below are 2.3.2 unless marked 2.1.0.
   cross-references resolve statically where DOS's go through load-time-patched jump tables. That
   makes it a map for orienting a reading of DOS code reached through pointers; it is never a
   reference for behaviour, being a later revision on a different CPU and renderer.
-- **Timing: S replaced.** MicroProse replaced the DOS frame-counting rate S with an elapsed-time
-  scale (1.15 fixed point, saturating at 16 ticks) and a floor of 6 ticks per frame, applied
-  through one multiply idiom at all 18 rate sites. That supports reading D1 as an assumption about
-  machine speed rather than gameplay intent. It is not evidence for the 15/3 oscillation once
-  reported for DOS, which this project did not reproduce ([bugs.md](bugs.md), D1).
-- **Bugs.** Not yet compared with the DOS entries.
+- **Timing: DOS's S, capped at 10.** The Amiga did not replace S. Each frame
+  `f117f:0x4106D4`-`0x4106EC` sets S = 64 / (ticks this frame), clamped to 3-10, in `[43E1D8]`
+  (halved under time compression, `0x4106F2`-`0x4106FE`); the mission second advances every S
+  frames (`0x410712`-`0x410720`); and 31 sites divide a rate by S (DOS: 32), including player
+  position, airspeed and heading. The tick is a CIA-B timer at 64.00 Hz (PAL), so 64 / ticks is
+  frames per second, and a 6-tick floor (`0x40005C`) matches the cap of 10. The elapsed-time scale
+  `[43B6A2]` (tick count x 2048, `0x400022`-`0x400038`) is real but feeds only 17 sites:
+  chase-camera and view smoothers, audio slew limits and animation ramps - none of the flight model,
+  AI or weapons. The earlier project's note that the Amiga replaced S with elapsed time was wrong
+  (verified 24 Oct 2026 by reading the loop). Like the Mac, the Amiga kept frame counting and picked
+  a cap to suit its machines.
+- **Bug catalogue against v3.01** (24 Oct 2026; read from code, none measured; addresses are
+  `f117f` unless marked `f117:` for the front end):
+  - *Present:* D1ACCEL (`0x40E638`-`0x40E656`, +1 on odd frames), D1PROX (`0x40EEBC`-`0x40EECC`,
+    `(speed << 3) / S`, S 3-10: reach 75 units at S 3, 22 at S 10, DOS 15 at S 15), D4 (mission
+    table at `f117:0x42A32E`, entries 0-3 identical; the worlds are compressed `.WLD` files that
+    decompress to DOS's layout with the same zero class bytes at LB, ME and NC), D6 (`0x40E1E4`-
+    `0x40E210`; the decompressed worlds have the same 20 cover-0 cells), D8 (`0x40EAE8`-`0x40EAFC`),
+    D11 (`f117:0x4307D4`, `"wb"` in place), D12 (`0x455328`-`0x455352`), D34 with a bound of 128
+    records (`0x41B8F6`; the overflow runs into the mission records and then the cover grid), the
+    roster fix-up, and D7 through D8.
+  - *Fixed:* D1TTL (lifetime = `range << 4` x S / terminal speed, at most 24,000, so the signed
+    guard cannot see a wrapped value), D1SLOT (the decrement at `0x40EBCC`-`0x40EBD4` tests for
+    zero first), D5's gate (admits type `0x26`; the credit inside `0x40F5BA` is not traced), Q3
+    and Q13a.
+  - *Changed:* D1 (S capped at 10, no averaging, no frame wait, plus an unguarded `divu` at
+    `0x4106DC`), D1REAL (bounded, not real time) and D17 (the same unbounded loop, but it reads 0
+    then `b` past the table and shows "Feb N" of the next year).
+  - *Not applicable:* D2, D3, D35, D36 and the sound-driver defects. *Undetermined:* D10, D18 and
+    most of the Q-series.
+  - *Amiga-only, unreproduced:* the proximity test uses `bgt` where DOS uses `JGE`
+    (`0x40EEE2`-`0x40EEE8`), so a slot-8 player weapon would take the incoming-missile hit branch.
+  - Unscaled per-frame rates exist (missile launch delay, ground-site alert gain, takeoff pitch),
+    as they do on DOS; nothing measured shows the Amiga is more frame-dependent. The reports of a
+    "broken flight model" are not explained by any scaling gap found here.
