@@ -48537,6 +48537,7 @@ place:
 static int vgame_draw_model_in_view(machine_t *m)
 {
     cpu_t *c=&m->cpu;
+    if (fix_inside(c, 0xBB0D, 0xBC5F)) return 0;
     enum { MODEL=4, WORLD_X=6, WORLD_Y=0xA, WORLD_Z=0xE, ANGLE_A=0x10, ANGLE_B=0x12, ANGLE_C=0x14,
            SCALE=0x16,
            DESCRIPTOR=-4, VIEW_BYTE=-2, REL_X=-8, REL_Y=-0xC, REL_Z=-0xE, COUNT=-0x10 };

@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-sixteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34 and Q7, including the D1REAL timing and D1PROX balance choices
+seventeen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7 and Q11, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -63,7 +63,8 @@ Status values:
 | D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
-| Q11, Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Nine smaller defects (below) | planned |
+| Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
+| Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Eight smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -668,6 +669,30 @@ Status values:
   Accepted 25 October 2026: full gate (630 tests, 63 routes), two pre-check
   seeds and presentation checks; evidence `D:/f117-gate/q7-20261025/`.
 
+### Q11. Far model positions wrap into the nearby scene
+
+- **What happens.** VGAME's model-placement routine keeps scaled x/y offsets
+  as 32-bit values but calls the 16-bit absolute-value helper at `0x0EE0C`.
+  Its signed comparisons admit a low word of 8000h and far coordinates whose
+  low words look nearby. For example, x=65536 passes as x=0, and can reach
+  the model draw at the wrapped coordinate. No normal route is known to
+  reach the faulty range. Macintosh has the same defect; Amiga is undetermined.
+- **Fix.** `--fix Q11` checks each coordinate's full-width magnitude against
+  7FFFh at the two branches (`0x0BC0E`, `0x0BC1E`). When the original already
+  makes the correct decision, the hook declines. A changed branch keeps
+  AX, BX, DX and the original flags and charges only the replaced jump.
+  The containing matched routine at `0x0BB0D` declines while Q11 is placed.
+- **Check.** `build/check_q11 path/to/VGAME.EXE` executes the original
+  placement routine and its abs/shift helpers with Q11 off and on in both
+  engines. Descriptor lookup and the drawing callees are returning test
+  stubs; reaching the model draw is observed. The staged cases cover both
+  axes, threshold boundaries, negative offsets, INT32_MIN, wrapped far
+  coordinates and scaling. Branch preservation and event limits are checked
+  separately. All 108 staged runs, eight branch-preservation checks and 358 paired
+  event limits pass, along with Q7 regression, defaults/replay, both whole-table
+  pre-check seeds, the full gate (630 tests, 63 routes) and presentation checks
+  (`D:/f117-gate/q11-20261025/`). This proves the admission decision, not a flight screenshot.
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -691,11 +716,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7 is described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7 and Q11 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q11 | Q11 | VGAME | The object range cull takes a 16-bit absolute value of a 32-bit offset: low words 0x7FFF and 0x8001 are culled, 0x8000 passes, and larger offsets pass with only their low word | A far object drawn at a wrapped, nearby position; only beyond 32,767 scaled units, which no known route reaches | `0x0BC00`-`0x0BC1E`, abs `0x0EE0C` | Mac present; Amiga undetermined |
 | Q12 | Q12 | VGAME | The cannon's ground-eligibility test is called with no argument: `0x0A153` pushes nothing, so `0x0792E` reads the display pass's saved SI; the intended unit is `[bp-0xA]`, the unit hit | The wreck test follows the wrong unit's class: a hit on a wreck can be admitted (a second "destroyed by gunfire") or refused | `0x0A153` -> `0x0792E`; the other caller `0x074BE` passes its unit | Mac fixed (`CODE10:00CAC` passes the unit hit); Amiga undetermined |
 | Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |
 | Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |

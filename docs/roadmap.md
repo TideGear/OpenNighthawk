@@ -69,7 +69,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (630 at Q7),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (630 at Q11),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 26-30 minutes with every
@@ -161,16 +161,25 @@ not the recompilation:
       (Q13a, Q21, Q22), 10 code quirks with no effect, four rows that were
       never the original's defects and D101 to measure, all in
       [bugs.md](bugs.md#smaller-defects-q-series). Owner's plan (25 Oct): build
-      19 fixes (the ten, the three with chosen behaviours, and the hardening
-      group Q4, Q13b, D18, Q23), then measure D101 and Q12's marker-size
-      sibling; the 10 no-effect quirks and four non-defects stay documented.
+      19 items: 17 specified fixes (the ten, the three with chosen behaviours,
+      and the hardening group Q4, Q13b, D18, Q23), then measure D101 and Q12's
+      marker-size sibling and fix or close each with evidence. The 10 no-effect
+      quirks and four non-defects stay documented.
       **Q7 accepted, 25 Oct:** default-on zoomed-view range correction; 56 staged
       runs and 149 event limits, defaults/replay checks, two whole-table seeds,
       full gate (630 tests, 63 routes) and presentation checks pass. Evidence:
-      `D:/f117-gate/q7-20261025/` (1,914 s acceptance). Each remaining
-      fix needs a default-on switch, a guard in any
-      matched routine containing its site, tests of both states, bugs.md
-      corrections and a gate. Details: [../handoff.md](../handoff.md).
+      `D:/f117-gate/q7-20261025/` (1,914 s acceptance).
+      **Q11 accepted, 25 Oct:** full-width model-range branches, default-on switch
+      and covering matched guard; 108 staged runs, eight register/flag preservation
+      checks, 358 paired event limits, Q7 regression, defaults/replay, two whole-table
+      seeds, full gate (630 tests, 63 routes) and presentation checks pass. Evidence:
+      `D:/f117-gate/q11-20261025/` (1,971 s acceptance). No scoring credit added.
+      Next: Q12. Owner delegated gate frequency subject to unchanged P2 accuracy:
+      remaining fixes proceed in order as one batch, each with a default-on switch,
+      covering matched guards, on/off tests in both engines and bugs.md corrections.
+      The combined final source must pass both whole-table pre-check seeds, the unchanged
+      full P2 gate, defaults/replay and presentation before commit/merge/push.
+      Details: [../handoff.md](../handoff.md).
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
@@ -685,7 +694,7 @@ Each is fixed; the named regressions keep the failing seed or case.
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
       address, pinned to the shipped file by hash. Normal play enables all
-      sixteen; core/headless and ordinary parity keep them off. `--fix none`
+      seventeen; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
 - [x] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch:

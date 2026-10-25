@@ -11,8 +11,9 @@ more than once, what it costs). State as of 25 October 2026: batch bd2 (an engin
 four held-back routines) is accepted and pushed (`fe825bd`); batch be is integrated in the main tree but
 uncommitted and blocked on a pre-check mismatch in an older routine (Next steps 2); the re-release settings
 are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of
-matching; the 31 rows are re-verified and the fixes specified. **Q7 is accepted** (zoomed-view
-range, default on; sixteen normal-play fixes now). **Q11 is next** (Next steps 1).
+matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted** (zoomed-view
+range and full-width model culling, default on; seventeen normal-play fixes). **Q12 is next**
+(Next steps 1). Owner requested this handoff, commit, push and stop; no Q12 work has begun.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -43,11 +44,11 @@ entry. Consolidate it instead of appending to it.
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Latest fix gate** (Q7, 25 Oct): `D:/f117-gate/q7-20261025/final-verdict.json`. 56 staged runs
-  (both states, both engines, direct camera and wrapper), 149 event limits, default/replay checks,
+- **Latest fix gate** (Q11, 25 Oct): `D:/f117-gate/q11-20261025/final-verdict.json`. 108 staged runs
+  (both states and engines), eight branch-preservation checks, 358 paired event limits, Q7 regression, default/replay checks,
   two whole-table pre-check seeds; 630 CTests, 63 routes / 62 fresh interpreter sessions, 1,387 matched
   routines at three seeds; N=1 260,613 exact frames / 260,527 pairs, boot N=4/9 736 frames / 732 pairs.
-  Core gate 1,385 s; full acceptance 1,914 s. No matching or scoring credit was added.
+  Core gate 1,454 s; full acceptance 1,971 s. No matching or scoring credit was added.
 - **Latest accepted matched batch** (bd2, 25 Oct): the stale-override engine fix plus ISOUND.LOG `0603` `060D`
   `0635` `0663` (the PC-speaker timer install/restore path, held out of bd). A module's recomp instance stayed
   live after its memory was reused without another module load overlapping it, so its overrides fired on
@@ -76,7 +77,7 @@ entry. Consolidate it instead of appending to it.
 - **Quiz option (owner, 20 Oct):** `--fix QUIZ` restores the aircraft-identification quiz GOG patched out (an
   override at START `001D` runs `0703`); off by default, `--fix all` and normal play never switch it on. Routes
   `quiz_right`/`quiz_wrong`; the quiz routines are matched (batch ah).
-- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all sixteen fixes on (Q7 added 25 Oct). S15, 15 normal / 30
+- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all seventeen fixes on (Q11 added 25 Oct). S15, 15 normal / 30
   compressed updates, recorded per-machine cadence; legacy recordings keep eight. Do not promote 15/40. The
   previous mode is `--sim-hz 8 --ips 20000000`. Validation: [docs/cadence15-validation.md](docs/cadence15-validation.md).
   Core, API and headless runs start with fixes off; parity commands prepend `--fix none`.
@@ -156,7 +157,7 @@ governs day-to-day work.
   label behaviours by evidence. Gameplay and logic parity outrank rendering.
 - **Keep all original graphics** (fonts, sprites, the map arrow); smooth and re-render existing geometry, no
   vector replacements.
-- **Bug fixes are on by default for normal play** (all sixteen); parity gates keep the original reference.
+- **Bug fixes are on by default for normal play** (all seventeen); parity gates keep the original reference.
 - **No screen takeover.** Ask before any visible or fullscreen test; emulators run headless, silent, hidden.
 - The owner's untracked `4k60.bat` and `original-fixed.bat` (settings live in `build/f117a.ini` and
   `build/f117a.4k60.ini`, outside the repository) stay untouched: never stage them.
@@ -173,25 +174,41 @@ governs day-to-day work.
    **fix specifications (sites, replacement semantics) are in `D:/f117-gate/qsweep/verdicts.md`** (raw reviews
    in `render/`, `gameplay/`, `start/`, `sound/` beside it; its D75 and armoury rows are bugs.md's Q21 and
    Q22). The main session re-read the deciding instructions of every fix. Summary:
-   - **Q7 accepted:** `D:/f117-gate/q7-20261025/`, worktree `D:/f117-wt/bugfix`.
-     The hook at VGAME `E4AC` supplies absolute x and z, then lets the original five instructions
-     calculate absolute y: their flags, clocks and event boundaries stay intact. The matched
-     `vgame_camera_transform` declines while the hook is placed; its wrapper calls it normally.
-     Checks are in `run_checks.py`; generated code and route outputs use the isolated work
-     directory `C:/Users/Tideg/f117-recomp-local/bugfix-work`. Next fix: **Q11**.
-   - **Remaining confirmed fixes, default on (9):** Q11 32-bit range cull (`0x0BC00`), Q12
-     the cannon test's missing argument (`0x0A153`), Q14 the overdue objective text (`0x0969C`), Q15 AdLib noise
-     take-over (was D44; ASOUND IP `0x0F8B`), Q16 MT-32 volume/pan saturated, never masked (RSOUND `0x0348`,
-     `0x039D`), Q17 pitch-ladder labels past 90 degrees (was D61; VGAME `1058:08FB`, `095C`), Q18 the campaign
-     date past December (was D17; START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
+   - **Q7 and Q11 accepted:** evidence `D:/f117-gate/q7-20261025/` and
+     `D:/f117-gate/q11-20261025/`, worktree `D:/f117-wt/bugfix` (branch `bugfix-q`).
+     Q11's two JGE hooks at VGAME `BC0E`/`BC1E` reject full-width scaled coordinates
+     while preserving the original abs helper's registers and flags; equal decisions decline.
+     `vgame_draw_model_in_view` has its covering guard. All checks pass: 108 staged runs,
+     eight branch-preservation checks, 358 paired event limits, Q7 regression, defaults/replay,
+     both whole-table pre-checks (1,387 routines, zero mismatches; 543 s / 540 s), full gate
+     and presentation (current figures above). `final-verdict.json` pins the accepted source hashes.
+     Generated code and route outputs use `C:/Users/Tideg/f117-recomp-local/bugfix-work`.
+     Release/build/restore details are in the evidence directory's `completion.json`.
+     No verification session remains running. Next fix: **Q12**; do not rerun Q11's full gate.
+   - **Remaining confirmed fixes, default on (8):** Q12 the cannon test's missing argument
+     (`0x0A153`), Q14 the overdue objective text (`0x0969C`), Q15 AdLib noise take-over
+     (was D44; ASOUND IP `0x0F8B`), Q16 MT-32 volume/pan saturated, never masked
+     (RSOUND `0x0348`, `0x039D`), Q17 pitch-ladder labels past 90 degrees (was D61;
+     VGAME `1058:08FB`, `095C`), Q18 the campaign date past December (was D17;
+     START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
      `0x01B09`), Q20 the stuck briefing popup (START `0x011D1`).
-   - **Owner's plan (25 Oct): build 19 fixes in this order, each its own default-on switch with tests of both
-     states:** Q7 (done), the nine above; then Q13a, Q21, Q22 as recommended below; then the hardening group Q4 (divide
-     guard), Q13b, D18, Q23 (the roster fix-up), each tested by staging the bad data; then measure D101 (stage
-     the unwritten slot; fix if it can draw on screen, else close with the evidence) and Q12's sibling at
-     `0x0707B` (histogram the stale SI across routes; pin 2x2 if it is almost always nonzero). The other 14 rows (10 quirks, 4 non-defects)
-     stay documented ([docs/bugs.md](docs/bugs.md#code-quirks-with-no-effect)). Rule: a fix must be observable
-     (testable on and off) and restore clear intent, not invent behaviour.
+   - **Owner's plan (25 Oct): 19 items in this order:** 17 specified fixes, each with its own
+     default-on switch and tests of both states, then two measure-and-fix-or-close cases.
+     Q7 and Q11 are done; next the eight above, then Q13a, Q21, Q22 as recommended below;
+     then hardening Q4 (divide guard), Q13b, D18, Q23 (roster fix-up), each tested by staging
+     bad data; then measure D101 (stage the unwritten slot; fix if it can draw on screen,
+     else close with evidence) and Q12's sibling at `0x0707B` (histogram stale SI across
+     routes; pin 2x2 if almost always nonzero). The other 14 rows (10 quirks, 4 non-defects)
+     stay documented ([docs/bugs.md](docs/bugs.md#code-quirks-with-no-effect)). A fix must
+     be observable (testable on and off) and restore clear intent, not invent behaviour.
+   - **Gate frequency delegated by owner, 25 Oct:** "whatever you recommend as long as p2
+     accuracy is unaffected". Recommendation adopted: finish Q11's already-passed release,
+     then implement the remaining fixes in order as one bug-fix batch, with focused on/off
+     tests in both engines per fix and all earlier regressions. Before committing/merging/pushing
+     the combined batch, run defaults/replay checks, both whole-table pre-check seeds, the
+     unchanged full P2 gate (fresh interpreter verification retained) and presentation checks.
+     This supersedes the earlier separate full gate and commit before investigating every fix;
+     no final accuracy check is removed or weakened. Stop here for the requested handoff.
    - **The three decided behaviours:** Q13a (sensorless units; the
      Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), Q21 (was D75:
      stale bracket width; no version shows the intended value), Q22 (the armoury shortage self-check; changes
@@ -212,7 +229,7 @@ governs day-to-day work.
      do. Tests of both states for each (staged `tools/machine_api.py` runs like `tools/d34_check.py`, or a route
      plus observer like `cargo_d5_fixed`), `tests/test_fix_defaults.py`, bugs.md (move each row to the main
      table when built) and the current normal-play fix count everywhere (keep dated measurements' actual sets),
-     then its own gate. Open: whether the fixes item should move from P3 to P2 in
+     then the combined batch gate described above. Open: whether the fixes item should move from P3 to P2 in
      `docs/progress.json` (the owner said "top of Phase 2"; scores unchanged so far).
 2. **Batch be (integrated in the main tree, uncommitted; pre-check failed in an older routine).** Eight
    ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG
@@ -563,7 +580,8 @@ Presentation:
 
 - **No AI attribution** in commits or PRs: the user's global CLAUDE.md outranks
   any harness reminder asking for a trailer.
-- **Commit and push together**, each verified fix before the next investigation.
+- **Commit and push together**, each verified step; the remaining bug fixes use the
+  owner-authorized combined batch above, with per-fix focused checks before moving on.
   Commit titles start with `py tools/progress.py --title`'s scoreboard line.
 - **Public repo, code only:** no game data, generated C, raw captures/logs or
   private-project references (see `docs/provenance.md`).

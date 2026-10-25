@@ -22,8 +22,12 @@ verification) is not an optimisation; it needs the owner's approval.
   selection before the two whole-table seeds, full gate and presentation
   checks. Q7's staged native check (`build/check_q7 path/to/VGAME.EXE`,
   generated build required) covers 56 runs plus 149 event limits in about
-  five seconds; the defaults/replay suite takes about six seconds. These
-  focused checks supplement the gate. Evidence: `D:/f117-gate/q7-20261025/`.
+  five seconds; Q11's model-placement fixture covers 108 runs, eight branch
+  preservation checks and 358 paired event limits in 19 seconds. The defaults/replay suite takes about six seconds. These
+  focused checks supplement the gate. Owner delegated gate frequency on 25 Oct,
+  conditional on unchanged P2 accuracy: after Q11, test remaining fixes in order
+  within one batch, then run both whole-table seeds and the unchanged full gate,
+  defaults/replay and presentation on the final combined source before commit/merge/push. Evidence: `D:/f117-gate/q7-20261025/`, `q11-20261025/`.
 - **Progress scoring and census classification.** Run `tests/test_census_classify.py`,
   `tests/test_progress.py` and `tests/test_encoded_code.py` with the installed Python
   interpreter, then print the scoreboard and inspect the saved byte counts. The 80 focused
@@ -206,7 +210,7 @@ checks that every routes-only matched routine ran on a route (step 8) and that
 no matched routine ran past its event limit (step 9). What each check
 establishes is in [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
 
-**Fix selection.** Normal application play starts with all sixteen fixes (Q7
+**Fix selection.** Normal application play starts with all seventeen fixes (Q11
 added 25 October); the headless runner starts with none, and `build_recomp.py` and
 `run_route.py` prepend `--fix none`, so ordinary parity checks original
 behaviour and fix-specific route options or recorded headers add the fixes
@@ -229,11 +233,11 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (25 October 2026, Q7):** 630 CTests; 63 routes identical, run
+**Current figures (25 October 2026, Q11):** 630 CTests; 63 routes identical, run
 as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction states under each
 timing profile; 1,387 matched routines at three seeds; reachability and event limits clean.
-Core gate 1,385 s including a full 841 s coverage pass; acceptance 1,914 s with presentation
-after the gate (N=1 523 s; boot N=4/9 89 s). Evidence: `D:/f117-gate/q7-20261025/`.
+Core gate 1,454 s including a full 766 s coverage pass; acceptance 1,971 s with presentation
+after the gate (N=1 516 s; boot N=4/9 89 s). Evidence: `D:/f117-gate/q11-20261025/`.
 For the overlap comparison, batch bd's core gate took 1,692 s including a full 635 s coverage pass;
 acceptance took 1,822 s with a valid keyed baseline. Batch bc, before the baseline fix: core gate 1,304 s, acceptance
 1,741 s with the presentation after the gate (no saving from the overlap, [above](#current-practice-by-kind-of-change)).
@@ -765,7 +769,7 @@ Windows CI runs them.
 
 | Process | Trigger | Measured cost | Redundancy and status |
 |---|---|---|---|
-| Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | 8 shards about 3 min 11 s for 653 routines (9 Oct; a single process took 21 min), the same report line for line; about 8 min a seed for the whole table by batch as | **sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does and a routine's states no longer move when others are added. Seeds 0x5EED0F117A, 0xC0FFEE and one from the gated commit's hash. Left: tracking writes instead of copying 1 MB a state |
+| Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | 8 shards about 3 min 11 s for 653 routines (9 Oct; a single process took 21 min), the same report line for line; about 8 min a seed for the whole table by batch as; Q11 (1,387 routines, verbose, eight shards) measured 543 s and 540 s for its two pre-check seeds | **sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does and a routine's states no longer move when others are added. Seeds 0x5EED0F117A, 0xC0FFEE and one from the gated commit's hash. Left: tracking writes instead of copying 1 MB a state |
 | Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | runs beside coverage and parity, no wait tail; 5,723,136 states per profile | the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
 | 386 flight engine parity (`stick_response.py --machine machine386 --engine interp/recomp`) | after a profile or translated timing change | 80 s interpreter, 60 s recomp, beside the gate (8 Oct) | all 574 memory/register/output/scanout checkpoints and stick responses identical; separate processes because the runtime is global |
 | Worktree build and generated code | per worktree | 8 min first, then incremental | give each tree its own TEMP; never share a generated directory between concurrent builds |

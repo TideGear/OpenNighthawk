@@ -385,6 +385,8 @@ if(F117R_BUILD_TESTS)
     # Phase 2: every matched routine against the original from random states.
     add_executable(check_q7 tests/check_q7.c)
     target_link_libraries(check_q7 PRIVATE f117present f117recomp)
+    add_executable(check_q11 tests/check_q11.c)
+    target_link_libraries(check_q11 PRIVATE f117present f117recomp)
     add_executable(func_lockstep tests/func_lockstep.c)
     target_link_libraries(func_lockstep PRIVATE f117recomp)
     add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
