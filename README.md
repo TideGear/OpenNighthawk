@@ -105,7 +105,8 @@ quiz. It is off by default and is enabled only when named explicitly;
   depth order and no road or coastline jitter). *Fixes:* Original (none),
   Recommended (every fix, including credited fan-community patches) or
   Custom. Also an in-game settings menu, controller and HOTAS support with
-  remapping, the sound device chosen in the menu, an optional CRT filter,
+  remapping, the sound device chosen in the menu (including a hybrid of
+  MT-32 music with AdLib sound effects), an optional CRT filter,
   flight replays, and subtitles and other accessibility options. The game's
   logic is the same under every presentation.
 

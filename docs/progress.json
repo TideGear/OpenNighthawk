@@ -213,6 +213,13 @@
         "done": 0.0,
         "kind": "estimate",
         "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+      },
+      {
+        "item": "Hybrid sound: Roland MT-32 (Munt) music with AdLib sound effects, from a second, hidden AdLib driver fed the same sound requests; the game's own driver and logic stay Roland's",
+        "weight": 3.0,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
       }
     ]
   },

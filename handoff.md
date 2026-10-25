@@ -18,10 +18,10 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.41%, P3 78.12%, All 88.80%
+- **Scoreboard:** P1 100.00%, P2 81.41%, P3 76.34%, All 88.35%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because the re-release features (roadmap,
-  weight 28) are not started; the presentation stages are complete.
+  weight 31) are not started; the presentation stages are complete.
 - **Phase 2 figures** (`docs/progress.json` after batch bc's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
   - 1,359 addresses matched; batches a to bc are accepted (table in [docs/roadmap.md](docs/roadmap.md);

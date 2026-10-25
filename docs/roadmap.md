@@ -753,7 +753,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     against is under "Possible future work" below. Ask before any visible or
     fullscreen test.
 
-- [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 28, none started).
+- [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, none started).
       *Two settings instead of preset modes.* **Presentation:** Original (320x200, original rate, nearest-neighbour 4:3, the validated
       default picture), Enhanced (the finer 4:3 redraw with in-between frames at 60+ fps; the final linear stretch is a setting with a
       sharp option; the original's road and coastline jitter stays) or Remastered (below). **Fixes:** Original (473.04, every fix off),
@@ -764,7 +764,8 @@ Each is fixed; the named regressions keep the failing seed or case.
       road or coastline jitter.
       *Also:* an in-game settings menu for every option now set on the command line or in an .ini; controller and HOTAS support with
       remapping, an on-screen key reference and mouse where the original had it; the sound device (AdLib, Roland MT-32 via Munt, PC
-      speaker) chosen in the menu; an optional CRT filter for the 4:3 presentations; flight replays (save a sortie and watch it back,
+      speaker, or hybrid: MT-32 music with AdLib sound effects, owner 24 Oct; the game keeps the Roland driver and a hidden
+      AdLib driver on a machine copy receives the same sound requests, so only its effects are heard) chosen in the menu; an optional CRT filter for the 4:3 presentations; flight replays (save a sortie and watch it back,
       other cameras in Remastered); accessibility (subtitles for the speech, full remapping, a colourblind-safe HUD in Remastered).
       *Rules:* presentation never feeds the simulation, proved by equal simulation state across the three presentations on the same
       inputs; the mission clock stays real; saves carry their fix set and warn across the bug boundary. Conveniences that change play
