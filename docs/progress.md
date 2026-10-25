@@ -84,7 +84,7 @@ and the SETUP timer handler, 790 bytes) leave its denominator as census-original
 naming 84.80% -> 85.12%, P2 81.31% -> 81.41% by that change alone); other statuses stay in it, and a byte a
 matched body covers stays counted.
 
-Per-batch credit is in the [roadmap's batch table](roadmap.md#batches-e-to-bc-16-24-october-2026).
+Per-batch credit is in the [roadmap's batch table](roadmap.md#batches-e-to-bd-16-24-october-2026).
 
 ### Validated capture and reference corrections (24 October 2026)
 

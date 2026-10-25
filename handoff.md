@@ -22,7 +22,7 @@ entry. Consolidate it instead of appending to it.
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because the re-release features (roadmap,
   weight 31) are not started; the presentation stages are complete.
-- **Phase 2 figures** (`docs/progress.json` after batch bc's refresh; `py tools/progress.py` prints them;
+- **Phase 2 figures** (`docs/progress.json` after batch bd's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
   - 1,383 addresses matched; batches a to bd are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
@@ -60,8 +60,10 @@ entry. Consolidate it instead of appending to it.
   region at a wake boundary): `D:/f117-gate/p2-batch-bd-accept/flaky-parity-investigation.md`. Their
   proofs are kept privately (`p2-isound-log-0603-bd`, `-060d-bd`, `-0635-bd`, `-0663-bd`); bring them
   back once the engine-side cause is found and fixed.
-- **The keyed-baseline fix (same session) is confirmed working across two batches** (bc's and bd's
-  acceptance both showed "Started presentation-n1" alongside the gate, no fallback message).
+- **The keyed-baseline fix works** (bd only: bc ran before it and took the sequential fallback). Every bd
+  attempt with a valid baseline started `presentation-n1` beside the gate. No wall-time saving is established
+  yet: bd's acceptance (1,822 s, core gate 1,692 s) included a full 635 s coverage pass that bc's did not, so
+  the two are not comparable; measure it in optimization pass 2.
 - **Routes:** 63. Damaged-install routes (`--damage ACTION:FILE`, `tools/route_damage.py`: a private hard-linked
   copy; the install is never written) run the original's own error handlers: `err_player_assert`,
   `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `err_start_no_world`,
@@ -264,8 +266,7 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid.
   Expect the presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for
   "Started" lines and no fallback message.
-- **Optimization pass 2 still queued (owner, 24 Oct).** The baseline fix is now confirmed working across two
-  batches (bc and bd both overlapped). Read bd's `gate.log`, precheck logs and stage timings for where wall time
+- **Optimization pass 2 still queued (owner, 24 Oct).** The baseline fix works (bd overlapped; no saving measured yet). Read bd's `gate.log`, precheck logs and stage timings for where wall time
   goes (precheck sharding, proof build/mutation loop, repeated audit/finalize/verdict work, idle CPU in the gate).
   Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure on the
   gate's own logs, never run extra heavy jobs beside a gate.
