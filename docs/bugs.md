@@ -78,10 +78,11 @@ Status values:
   from a model that left out the original's frame wait (Reimp
   `src/core/compose.h:166`); it was not reproduced in 199 flights at 3-40
   MIPS and on the 386 profile.
-- **Later versions.** The 1993 Amiga release replaced S with an elapsed-time
-  scale and a frame-time floor ([other-versions.md](other-versions.md)): the
-  original authors moved off frame counting, which supports reading S as an
-  assumption about machine speed.
+- **Later versions** ([other-versions.md](other-versions.md)). The 1993 Amiga
+  release replaced S with an elapsed-time scale and a frame-time floor. The
+  1994 Macintosh port kept S, porting `0x0D441` formula for formula, but
+  raised its cap from 15 to 60. Both say the cap of 15 was tuned to 1991
+  machines rather than chosen as a gameplay constant.
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide

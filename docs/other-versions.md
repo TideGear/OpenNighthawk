@@ -26,8 +26,17 @@ readers in `tools/` (`rsrc.py`, `hfsx.py`, `f117/cvpc.py`, `f117/macsnd.py`, `f1
 - **Code.** 13 `CODE` resources (252,860 bytes), built with THINK C 6 and later 7. It carries no
   MacsBug function names (only four library-glue symbols), so it offers no names to borrow.
 - **Bugs.** D10 (mountain-collision stack corruption) is a Mac defect, from MicroProse's 2.3.0
-  release notes ([bugs.md](bugs.md)). Nothing in the Mac's notes or code read so far bears on D1;
-  whether its main loop counts frames or scales by elapsed time has not been examined.
+  release notes ([bugs.md](bugs.md)).
+- **Timing: DOS's S, with the cap raised to 60.** `CODE13:01238` is a port of DOS `timing_recompute`
+  (`0x0D441`): the same frame-wait formula `clamp((9 - 120/S) >> 1, 1, 4)` and the same clamp
+  `[4 - time_scale, cap]` on S, with the cap 60 (the Mac's tick rate) instead of 15. Per frame,
+  `CODE13:06584` takes `TickCount` minus the previous reading, keeps a history of frame times under
+  30 ticks, and every `4*S` frames sets S = 60 / (average ticks per frame) / time_scale (`[b8e6]`);
+  game rates divide by it (`divs.w [b8e6]` at dozens of sites). `CODE13:00566` halves S when time
+  compression goes to 2. The time-scale cell (`[b900]`) and the clamp helper (`jsr $922`) are
+  read from their arguments and the match with DOS, not traced further. So the 1994 Mac port kept
+  frame counting (the 1993 Amiga did not), and treated 15 as a platform ceiling it could raise.
+  Read 24 Oct 2026 from a capstone disassembly of the owner's 2.3.2 copy.
 - **Asides.** Its fonts are named `CivBabylon`, `CivZulu` and so on, reused from MicroProse's
   Macintosh *Civilization*.
 
