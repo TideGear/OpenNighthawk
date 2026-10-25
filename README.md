@@ -71,7 +71,10 @@ quiz. It is off by default and is enabled only when named explicitly;
   cover 176,188 of 205,967 creditable bytes across all 17 game code files. The historical census has 1,122
   rows wholly covered and 291 in part; executed code outside its rows now
   counts too, along with reviewed static code. Static discoveries not yet
-  reviewed remain outside the score ([how progress is measured](docs/progress.md)).
+  reviewed remain outside the score. These two figures are parts of Phase 2's
+  score, not the score itself: with the tooling and the review of code no
+  route runs (1.6% done), they make up P2's 81.83%
+  ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the
