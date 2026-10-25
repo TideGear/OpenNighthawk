@@ -1,7 +1,8 @@
 Design note (not yet implemented): the sound listening board, and from it hybrid sound.
 
 **Purpose.** Hear every sound the game can make through each of the three drivers side by side
-(AdLib, Roland MT-32 through Munt, PC speaker), mark each one as music, sound effect or speech, and
+(AdLib, Roland MT-32 through Munt, PC speaker), plus a fourth column: the Macintosh release's own
+digitised recording of the same sound (owner, 24 Oct 2026), mark each one as music, sound effect or speech, and
 mark which driver sounds best. The marks decide hybrid sound's split (MT-32 music with AdLib effects)
 and its defaults. Owner's request, 24 Oct 2026.
 
@@ -71,3 +72,13 @@ codebase's own image. `1E42` is a runtime load segment (wherever SETUP loaded th
 session), not an address in VGAME.EXE's own image, so the real per-id dispatch has to be read from each
 driver file's own image at its own entry offset (ASOUND.117's documented table: 46 near pointers at
 cs:0x0911) - next step, one driver at a time.
+
+**The Macintosh column (owner, 24 Oct 2026).** The earlier project (`F-117A Reimp`, `docs/re/10-sound.md`,
+decoder `tools/f117/macsnd.py`, StuffIt/HFS/resource-fork readers) decoded all 33 Mac `snd ` resources
+(1.1 MB, 8-bit mono, 7.4-11.1 kHz, named) from the owner's Mac archives in `references/Mac Version`
+(git-ignored). The Mac port kept the DOS ids and added 300: DOS effect ids 0x04-0x14 are Mac resources
+304-320, one to one, checked there against 13 ids of independently known meaning. Effects therefore get
+a Mac player in the same row. Music (3 pieces: title, death, good mission) still needs its DOS ids
+confirmed; speech is 9 recorded words the game chains into phrases, against DOS's single 3.3 s
+`SPEECH.117`, so speech gets rows of its own. Decoding is plain conversion (no driver to emulate) and
+can be done first. Mac audio goes only into the private page's asset store, never the repository.
