@@ -158,14 +158,15 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Bug fixes first (owner, 25 Oct).** The 31 rows of [docs/bugs.md](docs/bugs.md)'s "Smaller confirmed
-   defects" table (none fixed, no reason recorded) were re-verified on 25 Oct against the DOS instructions and
-   compared with Mac 2.3.2 and Amiga 3.01. The owner warned some may be Reimp-only, and ten are on the Reimp's
-   "introduced by this port" list (`catalogue.md:148`: D17, D18, D44, D61, D63, D75, D97, D98, D101, D103);
-   bugs.md had copied the original's side of each. **Verdicts, fix specifications (sites, replacement
-   semantics, port evidence) and the address conventions: `D:/f117-gate/qsweep/verdicts.md`** (raw reviews in
-   `render/`, `gameplay/`, `start/`, `sound/` beside it). The main session re-read the deciding instructions of
-   every fix. Summary:
+1. **Bug fixes first (owner, 25 Oct).** The 31 rows of the old "Smaller confirmed defects" table (none
+   fixed, no reason recorded) were re-verified on 25 Oct against the DOS instructions and compared with Mac
+   2.3.2 and Amiga 3.01. The owner warned some may be Reimp-only, and ten are on the Reimp's "introduced by
+   this port" list (`catalogue.md:148`: D17, D18, D44, D61, D63, D75, D97, D98, D101, D103); bugs.md had
+   copied the original's side of each. **The result is now [docs/bugs.md](docs/bugs.md#smaller-defects-q-series)**
+   (defects to fix, owner decisions, code quirks with no effect, not defects of the original);
+   **fix specifications (sites, replacement semantics) are in `D:/f117-gate/qsweep/verdicts.md`** (raw reviews
+   in `render/`, `gameplay/`, `start/`, `sound/` beside it; its D75 and armoury rows are bugs.md's Q21 and
+   Q22). The main session re-read the deciding instructions of every fix. Summary:
    - **Fix, default on (10):** Q7 zoomed-view range (VGAME `0x0E4AC`), Q11 32-bit range cull (`0x0BC00`), Q12
      the cannon test's missing argument (`0x0A153`), Q14 the overdue objective text (`0x0969C`), Q15 AdLib noise
      take-over (was D44; ASOUND IP `0x0F8B`), Q16 MT-32 volume/pan saturated, never masked (RSOUND `0x0348`,
@@ -173,17 +174,18 @@ governs day-to-day work.
      date past December (was D17; START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
      `0x01B09`), Q20 the stuck briefing popup (START `0x011D1`).
    - **Owner decisions (asked 25 Oct, not yet answered; ask before building):** Q13a (sensorless units; the
-     Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), D75 (stale bracket
-     width; no version shows the intended value), the armoury shortage self-check (changes RNG use, so mission
-     generation). Recommended to the owner: fix all three, default on. Q13a as "a sensorless unit cannot
-     detect" (range far, so no announcement or launch on that path, the original's usual outcome), not the
-     Amiga's zero; D75 keeps the previous frame's width (`0x0AE9F` -> `0x0AEDE` in that case); the armoury
-     adds the missing self-check at `0x00E71` (the RNG is clock-seeded, and replays record the fix set).
-     The 12 no-effect rows: recommended no fix, reasons in bugs.md (Q13b, D18 and the roster fix-up bite only
-     modified data).
-   - **No fix, reason to write in bugs.md (18):** Q2, Q3, Q4, Q5, Q8, Q9, Q10, Q13b, D18, D44's expiry arms,
-     D63, D97, D98, D101 (measure first), D103, ASOUND `0x2EC0`, END timer, terrain lookup above 4, roster
-     fix-up. Also the bugs.md corrections listed at the end of `verdicts.md`.
+     Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), Q21 (was D75:
+     stale bracket width; no version shows the intended value), Q22 (the armoury shortage self-check; changes
+     RNG use, so mission generation). Recommended to the owner: fix all three, default on. Q13a as "a
+     sensorless unit cannot detect" (range far, so no announcement or launch on that path, the original's
+     usual outcome), not the Amiga's zero; Q21 keeps the previous frame's width (`0x0AE9F` -> `0x0AEDE` in
+     that case); Q22 adds the missing self-check at `0x00E71` (the RNG is clock-seeded, and replays record the
+     fix set).
+   - **No fix, written in bugs.md:** 14 code quirks with no effect (owner, 25 Oct: a bug with no effect is not
+     a bug; Q13b, D18 and the roster fix-up bite only modified data, and the owner was offered them as an
+     optional hardening group) and five rows that are not defects of the original (D63, D97, D98, D103; D101
+     unproven, measure before deciding). Overlapping objects drawn in the wrong order (the hangars at takeoff)
+     are Remastered work (owner), noted under bugs.md R1.
    - **To build** in the worktree `D:/f117-wt/bugfix` (branch `bugfix-q`, from `fe825bd`, built, no edits
      yet): each override in `src/fixes/fixes.c` (RSOUND.117 hash `0x14F2AE43AE88ED82`, base `0x023E`; ASOUND
      base `0x01B6`), a FIXES entry and description, `if (fix_inside(c, from, to)) return 0;` in every matched
@@ -192,8 +194,8 @@ governs day-to-day work.
      vgame_draw_model_in_view `0xBB0D`, vgame_hud_pass `1058:0016`); only enabled fixes are placed, so parity
      with fixes off is untouched. Decline (return 0) where the fixed result equals the original's, as D6 and D3
      do. Tests of both states for each (staged `tools/machine_api.py` runs like `tools/d34_check.py`, or a route
-     plus observer like `cargo_d5_fixed`), `tests/test_fix_defaults.py`, bugs.md rows and the fix count
-     ("fifteen") everywhere, then its own gate. Open: whether the fixes item should move from P3 to P2 in
+     plus observer like `cargo_d5_fixed`), `tests/test_fix_defaults.py`, bugs.md (move each row to the main
+     table when built) and the fix count ("fifteen") everywhere, then its own gate. Open: whether the fixes item should move from P3 to P2 in
      `docs/progress.json` (the owner said "top of Phase 2"; scores unchanged so far).
 2. **Batch be (integrated in the main tree, uncommitted; pre-check failed in an older routine).** Eight
    ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG

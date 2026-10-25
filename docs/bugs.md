@@ -17,7 +17,7 @@ fixes off, ordinary parity routes explicitly clear them, and fix-specific
 checks enable only theirs, so the original's behaviour stays independently
 testable. Replays restore the recorded set; old logs without a fix header
 mean the original. `--list-fixes` prints each fix and whether it is on. The
-separate `QUIZ` option ([below](#smaller-confirmed-defects-q-series-and-quirks))
+separate `QUIZ` option ([below](#smaller-defects-q-series))
 is never part of the normal-play set.
 
 Most entries were first established by the Reimp, the author's earlier
@@ -62,7 +62,9 @@ Status values:
 | D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state | `--fix D34` |
 | D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
-| Q2-Q13 | Confirmed | VGAME, START | Smaller latent defects (below) | - |
+| Q7, Q11, Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Ten smaller defects (below) | planned |
+| Q13a, Q21, Q22 | Confirmed | VGAME, START | Defects whose correct behaviour is the owner's decision (below) | - |
+| quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
 ## The confirmed and reported defects
@@ -643,44 +645,89 @@ Status values:
 - **Detail.** Reimp catalogue:1430-1439. Evidence and commands:
   [legacy-reports.md](legacy-reports.md).
 
-## Smaller confirmed defects (Q-series and quirks)
+## Smaller defects (Q-series)
 
-These are reproduced, and some are visible. Each has its evidence in the
-Reimp catalogue's Q sections and the cited Reimp documents. None has a fix.
+Re-verified on 25 October 2026 against the DOS instructions, and compared with
+Macintosh 2.3.2 and Amiga 3.01 ([other-versions.md](other-versions.md)). Every
+verdict is read from code unless a measurement is named; each fix's deciding
+instructions were re-read by a second reader. Evidence:
+`D:/f117-gate/qsweep/` (`verdicts.md` and the four reviews). Addresses are
+linear image offsets unless marked: ASOUND.117 rows give the image offset and
+the code-segment IP (segment `0x01B6`, IP = image - `0x1B60`), RSOUND.117 rows
+the IP (segment `0x023E`).
 
-| ID | Program | Defect | Where |
+Ten rows of the earlier table carried the Reimp's D-numbers (D17, D18, D44,
+D61, D63, D75, D97, D98, D101, D103). The Reimp files those under defects
+"introduced by this port" (its `catalogue.md:148`): each records where its own
+port departed from the original, and the earlier table copied the original's
+side of each as a defect of the game. Four of them are real defects of the
+original (D17, D44's take-over arm, D61, D75); the rows below give them new
+IDs. The others are listed under [not defects of the
+original](#not-defects-of-the-original).
+
+### Defects to fix
+
+Each is planned as a switch that normal play enables, with tests of both
+states; none is built yet ([roadmap.md](roadmap.md)).
+
+| ID | Was | Program | Defect | Effect | Where | Later versions |
+|---|---|---|---|---|---|---|
+| Q7 | Q7 | VGAME | The zoomed frustum (the weapon-seeker view, `[0x438E]` set) reaches the shared range tail with SI still its vertical limit and DI the signed z, so the range is (limit + abs y) / 4 + z instead of (abs x + abs y) / 4 + abs z | Wrong level of detail and far clip in that view (not measured) | accept arm `0x0E4AC`, tail `0x0E513` | Mac fixed (`CODE11:03864` recomputes the three absolutes); Amiga undetermined |
+| Q11 | Q11 | VGAME | The object range cull takes a 16-bit absolute value of a 32-bit offset: low words 0x7FFF and 0x8001 are culled, 0x8000 passes, and larger offsets pass with only their low word | A far object drawn at a wrapped, nearby position; only beyond 32,767 scaled units, which no known route reaches | `0x0BC00`-`0x0BC1E`, abs `0x0EE0C` | Mac present; Amiga undetermined |
+| Q12 | Q12 | VGAME | The cannon's ground-eligibility test is called with no argument: `0x0A153` pushes nothing, so `0x0792E` reads the display pass's saved SI; the intended unit is `[bp-0xA]`, the unit hit | The wreck test follows the wrong unit's class: a hit on a wreck can be admitted (a second "destroyed by gunfire") or refused | `0x0A153` -> `0x0792E`; the other caller `0x074BE` passes its unit | Mac fixed (`CODE10:00CAC` passes the unit hit); Amiga undetermined |
+| Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |
+| Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |
+| Q16 | - | RSOUND.117 | The volume and pan modulators add a signed step with no bound, and the senders pass the byte unmasked | The title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of 80h and above per play (pan FF down to BF, volume 80-8C), which an MT-32 reads as status bytes: lost updates, possibly a stray program change, bend or notes on parts 3 and 7. Munt behaves the same. Planned fix: saturate at 0 and 7Fh, never mask | modulators IP `0x0348`, `0x039D`; senders `0x0490`, `0x04E1` | DOS driver only |
+| Q17 | D61 | VGAME, MGRAPHIC | The pitch-ladder label index has no bound: at pitch -90 degrees or below it reads index -1 (the index word itself, FF FF), past +90 index 23 (the output slot) | A top-bit byte becomes MGRAPHIC's colour, so ladder labels are drawn in colour 7Fh for the rest of the flight | `1058:08FB`, `1058:095C` (linear `0x10E7B`, `0x10EDC`); MGRAPHIC `047E:060A` | Amiga fixed (clamps and mirrors, `0x402554`, `0x4025FE`); Mac undetermined |
+| Q18 | D17 | START | Date roll: the month loop has no bound and reads past the 12-entry table (the 13th byte is 80, the 'P' of "Photograph") | Middle East careers, missions 71-98: "Jan 32" to "Jan 59, 1990" on the written orders; in the other theatres the first bad date falls after retirement at 99 | `0x0260D`-`0x0261F`, `0x02621` | Mac and Amiga run the same loop with other bytes after the table ("Mar N", "Feb N") |
+| Q19 | - | START | The Enemy Troops overlay stores each marker's pixel x and y into its own loop counters | One to four markers of the 4-17 troop cells (counted from the shipped worlds) | `0x01AF7`, `0x01B09` | Mac present (`CODE08:027CE`); Amiga present (`0x43BEA6`) |
+| Q20 | - | START | A click in the same poll that moves the cursor onto a site draws the popup; the hover hook, still on the old item, then draws and saves it again | The popup stays on the map until the next redraw | `0x011D1`, `0x0129D`, restore `0x03588` | Not located |
+
+Q12's sibling at `0x0707B` passes three arguments where the routine's other
+six callers pass four, so a player weapon's map marker size comes from the
+saved SI (1 pixel only when it is 0). The intended size is unknown, so it is
+left as it is.
+
+### Defects whose correct behaviour is the owner's decision
+
+| ID | Was | Program | Defect | Effect | Where | Later versions | Recommended |
+|---|---|---|---|---|---|---|---|
+| Q13a | Q13a | VGAME | A sensorless unit's range and bearing are never written (`0x05582` exits early for sensor 0 or -1) and are then read from the stack | When the player's visibility exceeds 100: usually a stale 0x1566 that fails every test (silent); a small stale value can announce "Visual ID" or launch (the Reimp caught a spurious "Visual ID") | exit `0x05594`; reads `0x06559`-`0x065FF` | Mac present (`CODE13:0327C`); Amiga zeroes both (`0x40E2EA`), so such a unit always announces and never launches | "Cannot detect": range far, the original's usual outcome |
+| Q21 | D75 | VGAME | The steering bracket's half-width is computed from `[bp-0x30]`/`[bp-0x2E]`, which this path never writes, when the roll is 45 degrees or more with weapon type 1Eh | `[0xDEBE]` from stale stack | skip `0x0AD81`; reads `0x0AEB5`, `0x0AEC4` | Mac and Amiga present | Keep the previous frame's width |
+| Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
+
+### Code quirks with no effect
+
+Wrong code whose result is right, or whose wrong case needs data the shipped
+game never has. Not fixed: a fix could not be shown to do anything, and one
+inside a matched routine would make that routine stand aside in normal play.
+
+| ID | Program | What the code does | Why nothing changes | Where |
+|---|---|---|---|---|
+| Q2 | VGAME | Pitch-ladder label offsets: x is chosen by the label index (its sign), y by the vertex index | The two y tables (`DS:0x26CC`, `0x27CC`) are identical | `0x10E9F`, `0x10EBA` |
+| Q3 | VGAME | The override lookup returns in AL with AH stale, so from 257 records "not found" reads as found in the scene walk | D34, on in normal play, holds the table at 30 records; Mac and Amiga clear the register | `0x0FBD`; caller `0x06F6`/`0x06FF` |
+| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no zero test | Calibration writes a span before any divide; only a corrupt settings block reaches zero | `0x112BC`, `0x112E7` |
+| Q5 | VGAME | The depth-sort tree treats a negative child[0] as a leaf and a negative child[1] as a node | None of the 189 trees in the shipped models has a negative child | `0x12F6A`, `0x12F7A` |
+| Q8 | VGAME | The model visibility bound adds z twice (`2z + r`) | It only passes extra off-screen objects to later clipping; it never hides a visible one | `0x12352`-`0x12376` |
+| Q9 | VGAME | The padlock cameras store per-kind zooms | The player's zoom, saved first, is restored at `0x033A9` before any read; Mac identical | `0x032CF`, `0x03304`, `0x03341` |
+| Q10 | VGAME | The fixed (crash and ejection) camera never writes its heading | It keeps the previous view's heading, which reads as a held camera; Mac identical | `0x03522`-`0x0355E` |
+| Q13b | START | The written orders test the departure base's record, then read the landing base's name | No base record in the shipped worlds has a zero first word; Amiga tests the landing record | `0x022E7`, `0x022F4` |
+| D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | Every airbase record in the nine shipped worlds is named | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
+| - | ASOUND.117 | Generator B's expiry arm branches the opposite way from A's | Only in the load-time state where both share channel 0, and the noise envelopes decay anyway | image `0x208C`, A `0x2051` |
+| - | ASOUND.117 | A "level changed" local is read before it is written | One redundant write of the same level | `0x2EC0`, read `0x32B8` |
+| - | END | The six-in-seven tick skip lacks VGAME's `xor ax,ax`, so END runs four interrupts a tick | Ticks, music tempo and screen timing are unchanged | `0x4D59`-`0x4D6C` |
+| - | VGAME | The terrain lookup returns `level - 4` above level 4 | Every caller passes a level of 1 to 4 | `0x0969` |
+| - | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once | The game writes that field only as 0 or 1; only an edited roster shows it | `0x06D1C` |
+
+### Not defects of the original
+
+| Was | Program | The original's behaviour | Why it is not a defect |
 |---|---|---|---|
-| Q2 | VGAME | Pitch-ladder labels: x tested on the rung index, y on the vertex index; rungs 11-13 mix near and far sides | `0x10E9F`, `0x10EBA` |
-| Q3 | VGAME | Override lookup returns in AL with AH stale: from 256 overrides, "not found" reads as found | `0x0FBD`; caller `0x06EC` |
-| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no guard; a zero span would raise INT 0 | `0x11289`, `0x112B6`, `0x112E3` |
-| Q5 | VGAME | Depth-sort tree treats a negative child[0] as a leaf, a negative child[1] as a node | `0x12F6A`, `0x12F7A` |
-| Q7 | VGAME | Zoomed frustum reaches the shared tail without reloading SI/DI: its "range" is not a distance (LOD and far clip) | `0x0E3BF`, tail `0x0E513` |
-| Q8 | VGAME | Model visibility bound adds z twice (`adc`): `2z + r` instead of `z + r` | `0x12352`, `0x12367` |
-| Q9 | VGAME | Padlock cameras' per-kind zooms are overwritten before use (dead stores) | `0x032CF`, `0x03304`, `0x03341` |
-| Q10 | VGAME | The fixed camera never writes the heading `[0xE478]` | `0x03522`-`0x0355E` |
-| Q11 | VGAME | Object range cull: 16-bit `abs` of a 32-bit value; objects at 0x7FFF, 0x17FFF... culled, far ones pass | `0x0BC00`, `abs` `0x0EE0C` |
-| Q12 | VGAME | Cannon ground eligibility called with no argument: the "target" is whatever SI the HUD left | `0x0A153` -> `0x0792E`; also `0x0707B` |
-| Q13a | VGAME | A sensorless unit's range and bearing are read uninitialised from the stack | `0x063F2`, `0x05588` |
-| Q13b | START | Written orders test the departure record for the secondary target's name fallback | `0x022E7`, `0x022F4` |
-| D17 | START | Date roll: the month table is read past its end ('P' of "Photograph"): "Jan 40, 1987" | `0x025D9`, `0x02621` |
-| D18 | START | NULL passed to `sprintf %s` prints "(null)" | `0x02651`, `0x0267B` |
-| D44 | ASOUND.117 | Noise take-over's second arm tests the first generator's count (copy-paste) | `0x202E`, `0x2089` |
-| - | ASOUND.117 | A "level changed" local is uninitialised and leaks between voices | `0x2EC0` |
-| - | RSOUND.117 | Volume and pan are sent unmasked: music fades send values of 80h and more (pan from FFh down in steps of 4, volume 82h-89h; 31 in one strike session), which a real MT-32 reads as status bytes | volume `0x0490`, pan `0x04E1` |
-| D61 | VGAME | A ladder rung past the 23-entry label table reads bytes outside it | MGRAPHIC `047E:064F` |
-| D63 | MGRAPHIC | Right clip is an unsigned compare: a string at negative x is dropped whole | entry 6, `0x031D` |
-| D75 | VGAME | Stale `[bp-0x30]`/`[bp-0x2E]` read when the impact point is skipped past 0x2000 of roll | `0x0AEB5`, `0x0AD81` |
-| D97 | START | The name-typing loop draws one more random number than the name is long (shifts the RNG stream) | `0x06F17` |
-| D98 | START | Box 14 is never swapped back | `0x039D5` |
-| D101 | START | Entry 42 reads a stale slot's y past the row table and writes off-screen | `0x05CAA` |
-| D103 | START/VGAME | The secondary objective block persists between missions | `0x04B73`, `0x047C0` |
-| - | START | Roster fix-up masks record 0's +0x42 ten times instead of each record once | `0x06D07` |
-| - | START | Armoury shortage tests one index and writes another, so fewer weapons are refused than drawn | `0x00E23`, `0x00E6B`, `0x00E74` |
-| - | VGAME | Overdue objective string copied, then the old copy displayed | `0x09690`-`0x0969F` |
-| - | END | END's six-in-seven tick skip omits VGAME's `xor ax,ax`; four-interrupt mode from its seventh tick | END timer |
-| - | VGAME | Terrain lookup above level 4 falls off the decrement chain and returns `level - 4` | `0x0969` |
-| - | START | A briefing popup can stick on the map | `0x01C2F`, restore `0x03588` |
-| - | START | The Enemy Troops overlay shows one marker: it stores X/Y into its own loop counters | `0x01AB6`, `0x01AF7` |
+| D63 | MGRAPHIC | A string at negative x is dropped whole by an unsigned right clip | The left clip is unsigned too; consistent and plausibly intended (the Reimp's defect was in its own per-pixel clip) |
+| D97 | START | The name-typing loop draws a random number before testing for the end, n + 1 draws for n letters | Nothing visible changes; the generator is clock-seeded |
+| D98 | START | Box 14, once disabled, is never re-enabled | The clearance that disables it cannot change within one run of START |
+| D103 | START | The secondary objective's route word is never written | No program reads it; START clears it at every launch |
+| D101 | START | The Transfer page's tick erase can read an unwritten slot past its row table | Effect unproven: the one measured case drew off-screen. Measure before deciding |
 
 Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
 protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail
@@ -708,6 +755,12 @@ Phase 2 denominator ([progress.md](progress.md)), not in
   MGRAPHIC uses part of MISC.EXE's image as a buffer. Not defects in the
   game: they cost the recompilation speed, never correctness, and are
   tracked in [architecture.md](architecture.md).
+- **Overlapping objects drawn in the wrong order.** Taking off, one hangar's
+  corner can be painted over another that is nearer; facing them, the order
+  is right. The game sorts whole objects back to front, which large
+  overlapping objects at an angle can defeat. The owner places this with the
+  Remastered presentation's depth-correct drawing
+  ([roadmap.md](roadmap.md)); the sort key itself has not been examined.
 
 ## How a fix attaches
 

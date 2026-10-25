@@ -158,7 +158,9 @@ not the recompilation:
       the AdLib noise take-over, MT-32 volume and pan held in range, pitch
       ladder labels past 90 degrees, the campaign date past December, the
       Enemy Troops overlay, the stuck briefing popup), three owner decisions
-      (Q13a, D75, the armoury shortage) and 18 rows with no fix and a reason.
+      (Q13a, Q21, Q22), 14 code quirks with no effect and five rows that were
+      never the original's defects, all now in
+      [bugs.md](bugs.md#smaller-defects-q-series).
       Not yet built: each fix needs a default-on switch, a guard in any
       matched routine containing its site, tests of both states, bugs.md
       corrections and a gate. Details: [../handoff.md](../handoff.md).

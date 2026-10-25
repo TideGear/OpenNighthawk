@@ -53,22 +53,27 @@ addresses below are 2.3.2 unless marked 2.1.0.
   (`CODE13:0589A`, `01360`). Menu handler `CODE02:040AC`; the 2.3.0 notes warn that Warp makes AI
   aircraft "crash a little too often" and missiles less accurate, which matches the S-dependent
   per-frame steps below. The pinned values 1-3 are below DOS's floor of 4.
-- **Bug catalogue against 2.3.2** (full sweep, 24 Oct 2026; all read from code, none measured):
+- **Bug catalogue against 2.3.2** (full sweep, 24 Oct 2026, the Q-series re-checked 25 Oct with the new
+  IDs of [bugs.md](bugs.md#smaller-defects-q-series); all read from code, none measured):
   - *Present, same mechanism:* D1 (Realistic setting only), D1TTL (`03FB2`-`03FC0`, signed `4*S`
     guard; launch `0314C`-`031E4`), D1SLOT (`04268` cancel, `03CB8` decrement; call order traced so
     no path skips it), D1PROX (`03F8C`-`03F9E`, `(speed << 3) / S`), D1ACCEL (`0383A`-`03858`), D4
     (mission table `CODE02:00D90`; the world data is byte-identical), D5 (`03D3A`-`03D5C`), D6
-    (`032C0`-`03314`), D7 through D8 (`03C16`-`03C26`), D12 (`CODE07:005B2`), D17's mechanism, D75,
-    the Q9, Q10, Q11, Q13a and Q13b defects, and the roster, armoury, overdue-string and Enemy
-    Troops-overlay defects.
+    (`032C0`-`03314`), D7 through D8 (`03C16`-`03C26`), D12 (`CODE07:005B2`), Q9, Q10, Q11, Q13a
+    (`CODE13:0327C`), Q13b (`CODE08:0092C`), Q14 (the overdue string, `CODE12:0198C`), Q19 (Enemy
+    Troops, `CODE08:027CE`), Q21 (was D75, `CODE10:0207A`), Q22 (the armoury, `CODE05:017B8`) and the
+    roster fix-up (`CODE05:0531C`).
   - *Changed:* D1REAL (no real-time pacing; the speed setting pins S instead), D11 (the roster is
     overwritten in place, not truncated: `CODE05:054DC`-`055A0`), D34 (worse: records are 10 bytes
-    and record 31 overwrites the table's own count, `CODE12:01F54`), Q8, D18, and the terrain lookup
-    above level 4.
-  - *Fixed or absent:* Q3 and Q12.
+    and record 31 overwrites the table's own count, `CODE12:01F54`), Q5 (`CODE09:01EB6` skips a
+    negative child[0]), Q8 (a 32-bit `z + r` bound), Q18 (was D17: the same loop at `CODE08:00E14`, with
+    zeros after the table, so Dec 31 is followed by "Mar 1"), D18 (no "(null)" literal) and the terrain
+    lookup above level 4 (returns `level - 5`).
+  - *Fixed:* Q3 (`CODE12:01FE8` clears the register), Q7 (`CODE11:03864` recomputes the range) and
+    Q12 (`CODE10:00CAC` passes the unit hit).
   - *Not applicable:* D2, D3, D35, D36 and the sound-driver defects (DOS-only code).
-  - *Undetermined:* Q2, Q5, Q7, D61, D97, D98, D101, D103 and the briefing popup (no counterpart
-    found).
+  - *Undetermined:* Q2, Q17 (was D61), Q20 (the popup), D98 and D101 (no counterpart found); D97 is
+    absent.
   - *Consequences of the raised cap:* the D1PROX radius at S 60 is a quarter of DOS's at 15; an SA-5's
     16-bit lifetime `2400 * S` goes negative for S 14-27 and wraps from S 28; D1ACCEL's per-second
     acceleration is four times DOS's. These bite in the Realistic setting only.
@@ -107,7 +112,8 @@ addresses below are 2.3.2 unless marked 2.1.0.
   AI or weapons. The earlier project's note that the Amiga replaced S with elapsed time was wrong
   (verified 24 Oct 2026 by reading the loop). Like the Mac, the Amiga kept frame counting and picked
   a cap to suit its machines.
-- **Bug catalogue against v3.01** (24 Oct 2026; read from code, none measured; addresses are
+- **Bug catalogue against v3.01** (24 Oct 2026, the Q-series re-checked 25 Oct with the new IDs of
+  [bugs.md](bugs.md#smaller-defects-q-series); read from code, none measured; addresses are
   `f117f` unless marked `f117:` for the front end):
   - *Present:* D1ACCEL (`0x40E638`-`0x40E656`, +1 on odd frames), D1PROX (`0x40EEBC`-`0x40EECC`,
     `(speed << 3) / S`, S 3-10: reach 75 units at S 3, 22 at S 10, DOS 15 at S 15), D4 (mission
@@ -116,16 +122,22 @@ addresses below are 2.3.2 unless marked 2.1.0.
     `0x40E210`; the decompressed worlds have the same 20 cover-0 cells), D8 (`0x40EAE8`-`0x40EAFC`),
     D11 (`f117:0x4307D4`, `"wb"` in place), D12 (`0x455328`-`0x455352`), D34 with a bound of 128
     records (`0x41B8F6`; the overflow runs into the mission records and then the cover grid), the
-    roster fix-up, and D7 through D8.
+    roster fix-up (`f117:0x42FFE2`), Q19 (Enemy Troops, `f117:0x43BEA6`), Q21 (was D75, `0x412548`),
+    Q22 (the armoury, `f117:0x4347D6`), and D7 through D8.
   - *Fixed:* D1TTL (lifetime = `range << 4` x S / terminal speed, at most 24,000, so the signed
     guard cannot see a wrapped value), D1SLOT (the decrement at `0x40EBCC`-`0x40EBD4` tests for
     zero first), D5's gate (admits type `0x26`; the credit inside `0x40F5BA` is not traced), Q3
-    and Q13a.
+    (`0x41B9CC` clears the register), Q5 (word children, negative meaning none, `0x4090C0`), Q13a
+    (range and bearing zeroed, `0x40E2EA`, so a sensorless unit always announces and never launches),
+    Q13b (`f117:0x43BA5C`), Q14 (`0x416E54`) and Q17 (pitch clamped and the index mirrored,
+    `0x402554`, `0x4025FE`).
   - *Changed:* D1 (S capped at 10, no averaging, no frame wait, plus an unguarded `divu` at
-    `0x4106DC`), D1REAL (bounded, not real time) and D17 (the same unbounded loop, but it reads 0
-    then `b` past the table and shows "Feb N" of the next year).
-  - *Not applicable:* D2, D3, D35, D36 and the sound-driver defects. *Undetermined:* D10, D18 and
-    most of the Q-series.
+    `0x4106DC`), D1REAL (bounded, not real time), Q18 (was D17: the same unbounded loop, but it reads
+    0 then `b` past the table and shows "Feb N" of the next year), Q2 (no offset tables), Q4 (no
+    calibrated divide), Q8 (a full frustum test, `0x4087E4`), Q9 (the player's zoom for every kind),
+    Q10 (a look-at camera) and D18 (no "(null)" literal).
+  - *Not applicable:* D2, D3, D35, D36 and the sound-driver defects. *Undetermined:* D10, Q7, Q11,
+    Q12, Q20, D98, D101 and the terrain lookup; D97 is absent.
   - *Amiga-only, unreproduced:* the proximity test uses `bgt` where DOS uses `JGE`
     (`0x40EEE2`-`0x40EEE8`), so a slot-8 player weapon would take the incoming-missile hit branch.
   - Unscaled per-frame rates exist (missile launch delay, ground-site alert gain, takeoff pitch),
