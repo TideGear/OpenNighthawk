@@ -67783,6 +67783,7 @@ state1:
 static int vgame_display_pass(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x9EFA, 0xB0D0)) return 0;
     /* ------------------------------------------------------------------
      * Names.  Everything below is block-scoped to this routine.  "Reimp" is the
      * project's reimplementation (F-117A Reimp, src/core), which transcribes this

@@ -679,7 +679,39 @@ static int q11_range_branch(machine_t *m, uint16_t local, uint16_t next)
 static int fix_q11_x(machine_t *m) { return q11_range_branch(m, 8, 0xBC10); }
 static int fix_q11_y(machine_t *m) { return q11_range_branch(m, 12, 0xBC20); }
 
+/* Q12. The display pass calls the ground-impact eligibility test (0x792E)
+ * with nothing pushed, so the callee reads whatever word is on top of the
+ * stack for the unit hit; its other caller pushes the unit. Push [bp-0Ah]
+ * (the unit hit) under the call and return to 0xA154, inside the CALL's own
+ * operand and so never an instruction start, where the second hook drops the
+ * argument and resumes at the original return address. The extra word lives
+ * in the guest stack, so a stop anywhere in the callee leaves a consistent
+ * machine. A unit equal to the stale word changes nothing and declines. */
+static int fix_q12_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t unit = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x0A));
+    if (unit == seg_read16(c, c->seg[S_SS], c->r[R_SP])) return 0;
+    cpu_push16(c, unit);
+    cpu_push16(c, 0xA154);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x792E;
+    c->icount++;                     /* the CALL; the pushed argument is free */
+    return 1;
+}
+static int fix_q12_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    c->ip = 0xA156;
+    c->icount++;                     /* the POP that drops the argument */
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA153, fix_q12_call, "cannon ground test is given the unit hit" },
+    { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA154, fix_q12_return, "cannon ground test: drop the argument" },
     { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC0E, fix_q11_x, "full-width model x range" },
     { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC1E, fix_q11_y, "full-width model y range" },
     { "Q7", "VGAME.EXE", VGAME_47304, 0x0000, 0xE4AC, fix_q7_range, "zoomed-view range uses absolute camera coordinates" },
@@ -730,6 +762,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q12", "the cannon's ground test is given the unit it hit, not a stale stack word" },
     { "Q11", "model range checks use the full 32-bit coordinates, rejecting distant objects before they wrap nearby" },
     { "Q7", "zoomed views use object distance instead of the frustum limit for detail and far clipping" },
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },

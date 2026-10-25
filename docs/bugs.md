@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-seventeen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7 and Q11, including the D1REAL timing and D1PROX balance choices
+eighteen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11 and Q12, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -64,7 +64,8 @@ Status values:
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
 | Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
-| Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Eight smaller defects (below) | planned |
+| Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
+| Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Seven smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -693,6 +694,28 @@ Status values:
   pre-check seeds, the full gate (630 tests, 63 routes) and presentation checks
   (`D:/f117-gate/q11-20261025/`). This proves the admission decision, not a flight screenshot.
 
+### Q12. The cannon's ground test reads a stale stack word
+
+- **What happens.** The display pass's call at `0x0A153` to the ground-impact
+  eligibility test (`0x0792E`) pushes no argument, so the callee reads the
+  word on top of the stack (the caller's saved register) as the unit hit; the
+  other caller `0x074BE` pushes its unit. The wreck test then follows the wrong
+  unit's class, so a hit on a wreck can be admitted (a second "destroyed by
+  gunfire") or refused. Macintosh passes the unit (`CODE10:00CAC`); Amiga is
+  undetermined.
+- **Fix.** `--fix Q12` pushes `[bp-0Ah]` (the unit hit) under the call
+  (`0x0A153`) and returns to `0x0A154`, inside the CALL's operand and so never
+  an instruction start, where a second hook drops the argument and resumes at
+  `0x0A156`. The extra word is in the guest stack, so a stop inside the callee
+  leaves a consistent machine. When the unit already equals the stale word the
+  hook declines. The clock is one instruction longer (the POP). The containing
+  matched routine at `0x09EFA` declines while Q12 is placed.
+- **Check.** `build/check_q12 path/to/VGAME.EXE` runs the original `0x0792E` and
+  `0x0B9F6` in both engines with Q12 off and on: opposite answers for
+  different classes, the model-record mark, the decline, the clock, and a stop
+  at every instruction count followed by a resume (182 staged runs, 0 failures).
+  This proves the decision, not a flight screenshot.
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -716,11 +739,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7 and Q11 are described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7, Q11 and Q12 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q12 | Q12 | VGAME | The cannon's ground-eligibility test is called with no argument: `0x0A153` pushes nothing, so `0x0792E` reads the display pass's saved SI; the intended unit is `[bp-0xA]`, the unit hit | The wreck test follows the wrong unit's class: a hit on a wreck can be admitted (a second "destroyed by gunfire") or refused | `0x0A153` -> `0x0792E`; the other caller `0x074BE` passes its unit | Mac fixed (`CODE10:00CAC` passes the unit hit); Amiga undetermined |
 | Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |
 | Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |
 | Q16 | - | RSOUND.117 | The volume and pan modulators add a signed step with no bound, and the senders pass the byte unmasked | The title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of 80h and above per play (pan FF down to BF, volume 80-8C), which an MT-32 reads as status bytes: lost updates, possibly a stray program change, bend or notes on parts 3 and 7. Munt behaves the same. Planned fix: saturate at 0 and 7Fh, never mask | modulators IP `0x0348`, `0x039D`; senders `0x0490`, `0x04E1` | DOS driver only |
