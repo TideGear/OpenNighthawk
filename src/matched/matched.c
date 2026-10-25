@@ -90335,7 +90335,882 @@ static int rsound_log_timer_install_return(machine_t *m)
     return 1;
 }
 
+/* ASOUND.117 01B6:041E (near, no arguments, the sequencer command handler for the table entry at 0941h; DS is the driver's
+ * data segment): stores 0FFh in the byte [17F6h] (`mov byte ptr [17F6h],0FFh`) and returns with a plain RET. Registers
+ * and flags are untouched; the sibling handler at 0424 stores 0 in the same byte. */
+static int asound_117_command_set_flag_17f6_on(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    ds_put8(c, 0x17F6, 0xFF);                                           /* 041E: mov byte ptr [17F6h],0FFh */
+    near_ret(c);                                                        /* 0423: ret */
+    c->icount += 2;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0424 (near, no arguments, the sequencer command handler for the table entry at 0943h; DS is the driver's
+ * data segment): stores 0 in the byte [17F6h] (`mov byte ptr [17F6h],0`), stores 0FFFFh in the word [17E6h]
+ * (`mov word ptr [17E6h],0FFFFh`) and returns with a plain RET. Registers and flags are untouched; the sibling handler
+ * at 041E stores 0FFh in [17F6h]. */
+static int asound_117_command_clear_flag_17f6_and_rate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    ds_put8(c, 0x17F6, 0x00);                                           /* 0424: mov byte ptr [17F6h],0 */
+    ds_put(c, 0x17E6, 0xFFFF);                                          /* 0429: mov word ptr [17E6h],0FFFFh */
+    near_ret(c);                                                        /* 042F: ret */
+    c->icount += 3;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0634 (near, the sequencer command handler for a table entry of the dispatcher at 0B98: `call cs:[bx+0911h]`):
+ * a two-instruction thunk. It loads CX with the offset 0E9Ch in the driver's data segment (`lea cx,[0E9Ch]`, an offset,
+ * not a relocated segment word) and jumps to the thunk at 05C0 (`jmp 05C0`), which selects the voice record at 19A0h
+ * and goes on into the shared record reset at 05E7; that code ends in the plain RET back to whoever called the handler.
+ * This body claims only the handler's own 2 instructions (6 bytes, 2 clocks) and hands back at 05C0, which is claimed once by its
+ * own proof. AX, BX, DX and the flags are untouched. */
+static int asound_117_command_reset_record_19a0_data_0e9c(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0634);                                                /* lea cx,[0E9Ch] / jmp 05C0 */
+    c->r[R_CX] = 0x0E9C;
+    c->ip = 0x05C0;                                               /* the record thunk */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0647 (near, the sequencer command handler for a table entry of the dispatcher at 0B98: `call cs:[bx+0911h]`):
+ * a two-instruction thunk. It loads CX with the offset 0EB4h in the driver's data segment (`lea cx,[0EB4h]`, an offset,
+ * not a relocated segment word) and jumps to the thunk at 05E3 (`jmp 05E3`), which selects the voice record at 190Ah
+ * and goes on into the shared record reset at 05E7; that code ends in the plain RET back to whoever called the handler.
+ * This body claims only the handler's own 2 instructions (6 bytes, 2 clocks) and hands back at 05E3, which is claimed once by its
+ * own proof. AX, BX, DX and the flags are untouched. */
+static int asound_117_command_reset_record_190a_data_0eb4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0647);                                                /* lea cx,[0EB4h] / jmp 05E3 */
+    c->r[R_CX] = 0x0EB4;
+    c->ip = 0x05E3;                                               /* the record thunk */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0686 (near, the sequencer command handler for a table entry of the dispatcher at 0B98: `call cs:[bx+0911h]`):
+ * a two-instruction thunk. It loads CX with the offset 0EE4h in the driver's data segment (`lea cx,[0EE4h]`, an offset,
+ * not a relocated segment word) and jumps to the thunk at 05D5 (`jmp 05D5`), which selects the voice record at 1946h
+ * and goes on into the shared record reset at 05E7; that code ends in the plain RET back to whoever called the handler.
+ * This body claims only the handler's own 2 instructions (6 bytes, 2 clocks) and hands back at 05D5, which is claimed once by its
+ * own proof. AX, BX, DX and the flags are untouched. */
+static int asound_117_command_reset_record_1946_data_0ee4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0686);                                                /* lea cx,[0EE4h] / jmp 05D5 */
+    c->r[R_CX] = 0x0EE4;
+    c->ip = 0x05D5;                                               /* the record thunk */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:075D (near; BX = a voice record in the driver's data segment, CX = the value): the tail of the voice
+ * command 0720's setup. It stores CX in the record's word field at offset 1Ah (`mov [bx+1Ah],cx`; the record reset
+ * at 05E7 stores AX in the same field) and returns with a plain RET. The effective address wraps at 64K and the word
+ * store uses the data segment; BX, CX and the flags are untouched. The store happens before the RET reads its return
+ * address, so a stack that overlaps the field sees the new value. */
+static int asound_117_store_cx_in_record_field_1a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x1A), c->r[R_CX]);               /* 075D: mov [bx+1Ah],cx */
+    near_ret(c);                                                        /* 0760: ret */
+    c->icount += 2;
+    return 1;
+}
+
+/* ASOUND.117 01B6:08B0 (near, the sequencer command handler for a table entry of the dispatcher at 0B98: `call cs:[bx+0911h]`):
+ * a two-instruction thunk. It loads CX with the offset 0F4Ah in the driver's data segment (`lea cx,[0F4Ah]`, an offset,
+ * not a relocated segment word) and jumps to the thunk at 05CE (`jmp 05CE`), which selects the voice record at 1964h
+ * and goes on into the shared record reset at 05E7; that code ends in the plain RET back to whoever called the handler.
+ * This body claims only the handler's own 2 instructions (6 bytes, 2 clocks) and hands back at 05CE, which is claimed once by its
+ * own proof. AX, BX, DX and the flags are untouched. */
+static int asound_117_command_reset_record_1964_data_0f4a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x08B0);                                                /* lea cx,[0F4Ah] / jmp 05CE */
+    c->r[R_CX] = 0x0F4A;
+    c->ip = 0x05CE;                                               /* the record thunk */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0BF4 (near; AL = a packed BCD byte, as DOS and the BIOS clock return their time fields): converts it to
+ * binary. It saves AX on the stack, shifts AL right four times (the high digit), multiplies by 10 (`mov bl,0Ah / mul bl`,
+ * AX = digit * 10), pops the saved AX into BX (BX = the caller's AX, so BL = the original AL), masks BL to its low
+ * digit (`and bl,0Fh`) and adds it to AL. Result in AL = high digit * 10 + low digit (a byte add: AL can exceed 99 and wrap
+ * for non-BCD input), AH = the high byte of the product (0 for any input, since 15 * 10 < 256); BX = the old AX with
+ * BL masked to 0..0Fh. The flags are those of the final byte ADD; the caller (0BD4, the clock read) converts hours, minutes and
+ * seconds with it. Plain RET. */
+static int asound_117_bcd_to_binary_al(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    x86_push_reg(c, R_AX);                                                       /* 0BF4: push ax */
+    set_r8(c, 0, (uint8_t)(x86_shift(c, 5, get_r8(c, 0), 1, 0)));                /* 0BF5: shr al,1 */
+    set_r8(c, 0, (uint8_t)(x86_shift(c, 5, get_r8(c, 0), 1, 0)));                /* 0BF7: shr al,1 */
+    set_r8(c, 0, (uint8_t)(x86_shift(c, 5, get_r8(c, 0), 1, 0)));                /* 0BF9: shr al,1 */
+    set_r8(c, 0, (uint8_t)(x86_shift(c, 5, get_r8(c, 0), 1, 0)));                /* 0BFB: shr al,1 */
+    set_r8(c, 3, 0x0A);                                                          /* 0BFD: mov bl,0Ah */
+    x86_mul8(c, (uint8_t)get_r8(c, 3));                                          /* 0BFF: mul bl */
+    c->r[R_BX] = cpu_pop16(c);                                                   /* 0C01: pop bx */
+    set_r8(c, 3, (uint8_t)alu_op(c, 4, get_r8(c, 3), 0x0F, 0));                  /* 0C02: and bl,0Fh */
+    set_r8(c, 0, (uint8_t)alu_op(c, 0, get_r8(c, 0), get_r8(c, 3), 0));          /* 0C05: add al,bl */
+    near_ret(c);                                                                 /* 0C07: ret */
+    c->icount += 11;
+    return 1;
+}
+
+/* ISOUND.LOG 0000:006E (near; AL = a packed-BCD byte): convert it to binary. The routine saves AX, shifts AL
+ * right four times (the tens digit; the last shift's carry and the flags of the earlier ones are left in
+ * the flags, as the original's SHRs leave them), multiplies it by 10 (BL = 0Ah, MUL BL: AX = tens * 10, with
+ * the MUL's carry/overflow flags), restores the original AX into BX, keeps its low nibble in BL (AND BL,0Fh)
+ * and adds it to AL (ADD AL,BL: the final flags). AX = tens * 10 + units (a nibble above 9 is converted as it
+ * stands, and AH is the product's high byte, which is always 0 here); BX = the original AX with BL masked to
+ * the units digit; the routine ends in a plain RET.
+ * The driver's clock helper at 0082 calls it three times (hours, minutes, seconds).
+ * No callee; no memory but the stack is touched, and the driver's code is not read. */
+static int isound_log_bcd_byte_to_binary(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    x86_push_reg(c, R_AX);                                                              /* 006E: push ax */
+    for (unsigned k = 0; k < 4; k++)                                                    /* 006F..0075: shr al,1 x4 */
+        set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));
+    set_r8(c, R_BL, 0x0A);                                                              /* 0077: mov bl,0Ah */
+    x86_mul8(c, get_r8(c, R_BL));                                                       /* 0079: mul bl */
+    c->r[R_BX] = cpu_pop16(c);                                                          /* 007B: pop bx */
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 4, get_r8(c, R_BL), 0x0F, 0));                   /* 007C: and bl,0Fh */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), get_r8(c, R_BL), 0));        /* 007F: add al,bl */
+    c->ip = cpu_pop16(c);                                                               /* 0081: ret */
+    c->icount += 11;
+    return 1;
+}
+
+/* ISOUND.LOG 0000:0161 (near, no arguments): reset the PC-speaker driver's state and silence the speaker.
+ * DS is the driver's data segment. The routine clears, in this order, the words [78], [82], the bytes
+ * [8F], [8E], the words [67], [6D], [63], [65], [55], [57], [5D], [95], [97] (all to zero), then switches
+ * the speaker off: read port 61h, clear its two low bits (timer-2 gate and speaker data) and write it back.
+ * It ends in a plain RET straight after the OUT.
+ * Every port access is made at the clock the original makes it (the IN is the 14th instruction, the OUT
+ * the 16th); port 61h is the speaker port, which wakes neither the PIC nor the PIT handling. No callee;
+ * the driver's code is not read, so the load base does not matter. */
+static int isound_log_reset_state_and_speaker_off(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n_, at_) SM4_NEED((n_), (at_))
+#define CH(n_) (c->icount += (n_))
+    if (!room(c, 13 + 4 + IO_SLACK(2))) return 0;
+    ds_put(c, 0x0078, 0x0000); CH(1);                  /* 0161 */
+    ds_put(c, 0x0082, 0x0000); CH(1);                  /* 0167 */
+    ds_put8(c, 0x008F, 0x00); CH(1);                   /* 016D */
+    ds_put8(c, 0x008E, 0x00); CH(1);                   /* 0172 */
+    ds_put(c, 0x0067, 0x0000); CH(1);                  /* 0177 */
+    ds_put(c, 0x006D, 0x0000); CH(1);                  /* 017D */
+    ds_put(c, 0x0063, 0x0000); CH(1);                  /* 0183 */
+    ds_put(c, 0x0065, 0x0000); CH(1);                  /* 0189 */
+    ds_put(c, 0x0055, 0x0000); CH(1);                  /* 018F */
+    ds_put(c, 0x0057, 0x0000); CH(1);                  /* 0195 */
+    ds_put(c, 0x005D, 0x0000); CH(1);                  /* 019B */
+    ds_put(c, 0x0095, 0x0000); CH(1);                  /* 01A1 */
+    ds_put(c, 0x0097, 0x0000); CH(1);                  /* 01A7 */
+    x86_in(c, 0x61, 0); CH(1);                         /* 01AD: in al,61h */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0xFC, 0)); CH(1);   /* 01AF: and al,0FCh */
+    x86_out(c, 0x61, 0); CH(1);                        /* 01B1: out 61h,al */
+    NEED(1, 0x01B3);
+    c->ip = cpu_pop16(c); CH(1);                       /* 01B3: ret */
+#undef CH
+#undef NEED
+    return 1;
+}
+
+/* ISOUND.LOG 066C: the near RET immediately after the PC-speaker driver's timer handler restore enables interrupts
+ * (the timer restore at 0635, STI at 066B). A separate entry preserves the machine's required boundary after the STI while
+ * still replacing the original return instruction. No memory but the stack word is read.*/
+static int isound_log_return_after_restore_sti(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* RSOUND.117 0490: the Roland overlay's "channel volume (controller 7)" sender: a MIDI control change (status B0h OR the channel in
+ * the byte DS:[23A0h]) for controller 7, followed by one data byte. One stacked argument: [BP+4], the data
+ * byte (only its low byte is used; read through BP after the frame is built). DS is the driver's data segment,
+ * whatever the caller left; the routine neither reads nor sets it. The caller removes the argument (plain RET).
+ *  - PUSH BP / MOV BP,SP; BL = [23A0h] OR B0h (flags as that OR leaves them); the status is stored in the byte
+ *    [130Dh] (the "current status" cell) and compared (CMP [130Ch],BL) with the last status written, [130Ch].
+ *  - Running status: if they are equal the status byte is not sent again. If they differ, [130Ch] = BL and the
+ *    status goes out through 0C7Ch (the MPU-401 byte writer: BL = the byte; polls port 331h, writes port 330h;
+ *    plain RET; here original code or a fixture stub).
+ *  - Then BX = 7 (the controller number), call 0C7C; BL = [BP+4], call 0C7C; POP BP; RET. AX, BX, CX, DX and
+ *    the flags are what the last call left. When a call has not returned (the clock's limit came first) the
+ *    original carries on from where the machine is. */
+static int rsound_117_send_channel_volume(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CHANNEL = 0x23A0, STATUS_NOW = 0x130D, STATUS_SENT = 0x130C, WRITER = 0x0C7C };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x0490);                                       /* push bp .. je 0x04AB */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_BL, ds_get8(c, CHANNEL));
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 1, get_r8(c, R_BL), 0xB0, 0));
+    ds_put8(c, STATUS_NOW, get_r8(c, R_BL));
+    (void)alu_op(c, 7, ds_get8(c, STATUS_SENT), get_r8(c, R_BL), 0);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x04A4);                                   /* mov [130Ch],bl */
+        ds_put8(c, STATUS_SENT, get_r8(c, R_BL));
+        SM4_NEED(1, 0x04A8);
+        XRUN(guest_call_pop(m, WRITER, 0x04AB, 0));      /* call 0C7C */
+    }
+    XB(1, 0x04AB);                                   /* mov bx,7 */
+    c->r[R_BX] = 7;
+    SM4_NEED(1, 0x04AE);
+    XRUN(guest_call_pop(m, WRITER, 0x04B1, 0));          /* call 0C7C */
+    XB(1, 0x04B1);                                   /* mov bl,[bp+4] */
+    set_r8(c, R_BL, bp_get8(c, 4));
+    SM4_NEED(1, 0x04B4);
+    XRUN(guest_call_pop(m, WRITER, 0x04B7, 0));          /* call 0C7C */
+    XB(2, 0x04B7);                                   /* pop bp / ret */
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* RSOUND.117 04E1: the Roland overlay's "channel pan (controller 10)" sender: a MIDI control change (status B0h OR the channel in
+ * the byte DS:[23A0h]) for controller 10, followed by one data byte. One stacked argument: [BP+4], the data
+ * byte (only its low byte is used; read through BP after the frame is built). DS is the driver's data segment,
+ * whatever the caller left; the routine neither reads nor sets it. The caller removes the argument (plain RET).
+ *  - PUSH BP / MOV BP,SP; BL = [23A0h] OR B0h (flags as that OR leaves them); the status is stored in the byte
+ *    [130Dh] (the "current status" cell) and compared (CMP [130Ch],BL) with the last status written, [130Ch].
+ *  - Running status: if they are equal the status byte is not sent again. If they differ, [130Ch] = BL and the
+ *    status goes out through 0C7Ch (the MPU-401 byte writer: BL = the byte; polls port 331h, writes port 330h;
+ *    plain RET; here original code or a fixture stub).
+ *  - Then BX = 10 (the controller number), call 0C7C; BL = [BP+4], call 0C7C; POP BP; RET. AX, BX, CX, DX and
+ *    the flags are what the last call left. When a call has not returned (the clock's limit came first) the
+ *    original carries on from where the machine is. */
+static int rsound_117_send_channel_pan(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CHANNEL = 0x23A0, STATUS_NOW = 0x130D, STATUS_SENT = 0x130C, WRITER = 0x0C7C };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x04E1);                                       /* push bp .. je 0x04FC */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_BL, ds_get8(c, CHANNEL));
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 1, get_r8(c, R_BL), 0xB0, 0));
+    ds_put8(c, STATUS_NOW, get_r8(c, R_BL));
+    (void)alu_op(c, 7, ds_get8(c, STATUS_SENT), get_r8(c, R_BL), 0);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x04F5);                                   /* mov [130Ch],bl */
+        ds_put8(c, STATUS_SENT, get_r8(c, R_BL));
+        SM4_NEED(1, 0x04F9);
+        XRUN(guest_call_pop(m, WRITER, 0x04FC, 0));      /* call 0C7C */
+    }
+    XB(1, 0x04FC);                                   /* mov bx,10 */
+    c->r[R_BX] = 10;
+    SM4_NEED(1, 0x04FF);
+    XRUN(guest_call_pop(m, WRITER, 0x0502, 0));          /* call 0C7C */
+    XB(1, 0x0502);                                   /* mov bl,[bp+4] */
+    set_r8(c, R_BL, bp_get8(c, 4));
+    SM4_NEED(1, 0x0505);
+    XRUN(guest_call_pop(m, WRITER, 0x0508, 0));          /* call 0C7C */
+    XB(2, 0x0508);                                   /* pop bp / ret */
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* RSOUND.117 0E95: the Roland overlay's "start voice 9 (the percussion channel)" entry. Three instructions: DX = 9 (the voice and
+ * channel number), BX = 237Eh (this voice's record offset in the data segment) and JMP 0EE2, the tail shared
+ * with the other voice-start entries (0EDB falls into it). Only these three instructions belong to this body;
+ * the tail is claimed by the proof of 0EDB and runs here as original code (a hand-back at 0EE2 after 3 clocks).
+ * No flags are touched (MOV, LEA and JMP leave them); CX, the one input of the tail, is not read here. */
+static int rsound_117_start_voice_9_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0E95);                                                         /* mov dx,imm / lea bx,[record] / jmp 0EE2 */
+    c->r[R_DX] = 0x0009;
+    c->r[R_BX] = 0x237E;
+    c->ip = 0x0EE2;
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 0EB3: the Roland overlay's "start voice 5" entry. Three instructions: DX = 5 (the voice and
+ * channel number), BX = 2318h (this voice's record offset in the data segment) and JMP 0EE2, the tail shared
+ * with the other voice-start entries (0EDB falls into it). Only these three instructions belong to this body;
+ * the tail is claimed by the proof of 0EDB and runs here as original code (a hand-back at 0EE2 after 3 clocks).
+ * No flags are touched (MOV, LEA and JMP leave them); CX, the one input of the tail, is not read here. */
+static int rsound_117_start_voice_5_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x0EB3);                                                         /* mov dx,imm / lea bx,[record] / jmp 0EE2 */
+    c->r[R_DX] = 0x0005;
+    c->r[R_BX] = 0x2318;
+    c->ip = 0x0EE2;
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 0A6B: the Roland overlay's "hook interrupt 0Ah once" installer (near, no arguments, no result). The
+ * byte CS:[0A64] is its "installed" flag: when it already holds FFh the routine only returns (RET, executed here).
+ * Otherwise, with interrupts disabled (CLI): the flag is set to FFh; DS is saved on the real stack and loaded with
+ * 0 (XOR AX,AX, flags as that XOR leaves them) so that the interrupt vector table is addressed; the old vector of
+ * interrupt 0Ah, 0000:0028 (offset) and 0000:002A (segment), goes through BX and CX into the code-segment cells
+ * CS:[0A5C] and CS:[0A5E]; the vector is replaced by this overlay's handler, offset 0D3Bh (an offset, loaded with LEA
+ * into AX) and the segment CS; DS is restored (POP DS); STI enables interrupts. The machine must stop right after STI,
+ * so this body hands back at 0A9E, where the original RET runs. AX = 0D3Bh, BX and CX = the old vector, DX untouched.
+ * The vector table and the stack may overlap (a stack placed over 0000:0028 makes PUSH DS visible to the reads). */
+static int rsound_117_hook_interrupt_0a_once(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAG = 0x0A64, SAVED_OFF = 0x0A5C, SAVED_SEG = 0x0A5E, VECTOR = 0x0028, HANDLER = 0x0D3B };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0A6B);                                                /* cmp byte cs:[0A64],FFh / je 0A9E */
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_CS], FLAG)), 0xFF, 0);
+    if (x86_cond(c, 4)) goto installed;
+    XB(13, 0x0A73);                                               /* mov flag,FFh .. pop ds */
+    mem_write8(c, phys(c->seg[S_CS], FLAG), 0xFF);
+    x86_cli(c);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = ds_get(c, VECTOR);
+    c->r[R_CX] = ds_get(c, VECTOR + 2);
+    seg_write16(c, c->seg[S_CS], SAVED_OFF, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], SAVED_SEG, c->r[R_CX]);
+    c->r[R_AX] = HANDLER;
+    ds_put(c, VECTOR, c->r[R_AX]);
+    ds_put(c, VECTOR + 2, c->seg[S_CS]);
+    c->seg[S_DS] = cpu_pop16(c);
+    SM4_NEED(1, 0x0A9D);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0A9E;
+    return 1;
+installed:
+    XB(1, 0x0A9E);                                                /* ret */
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 10CF: a two-instruction thunk of the Roland overlay's music code: CX = 006Ah (the word that the voice
+ * start stores into the record's four time/pitch fields; `lea cx,[006Ah]` loads a plain constant, not a relocated
+ * word) and JMP 0EB3, the "start voice 5" entry, which loads DX = 5 and the record offset 2318h and joins the
+ * shared tail 0EE2. Only these two instructions belong to this body; 0EB3 and the tail have their own proofs and
+ * run here as original code (a hand-back at 0EB3 after 2 clocks). No flags are touched (LEA and JMP leave them);
+ * AX, BX, DX and the stack are untouched. */
+static int rsound_117_start_voice_5_with_default_time(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x10CF);                                                         /* lea cx,[006Ah] / jmp 0EB3 */
+    c->r[R_CX] = 0x006A;
+    c->ip = 0x0EB3;
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 1119: the Roland overlay's "start voice 1 with a random note" thunk (near, no arguments). It calls the
+ * pseudo-random step 0B9C (a far call: `lcall 023E:0B9C`, the segment read from the loaded code; AX = the new state
+ * word of DS:[1531h]), keeps one random bit (AND AX,4: flags as that AND leaves them), adds 3Ch (ADD AL,3Ch: flags as
+ * that add leaves them, so AL = 3Ch or 40h, the note number) and stores it in the byte DS:[0084h + 4] = DS:[0088h]
+ * (lea bx,[0084h] is a plain offset in the data segment). Then CX = BX = 0084h (the word the voice start copies into
+ * the time/pitch fields) and JMP 0EDB, "start voice 1". Only the instructions up to the jump belong to this body;
+ * 0EDB and the shared tail have their own proofs and run here as original code (a hand-back at 0EDB after 14 clocks:
+ * the far call counts 1, the step 0B9C's seven instructions, and the six that follow). DS is the driver's data
+ * segment, whatever the caller left; the routine neither sets nor changes it. When the callee has not returned (the
+ * clock's limit came first) the original carries on from where the machine is. */
+static int rsound_117_start_voice_1_random_note(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x1119);
+    XRUN(guest_call_far(m, 0x1119, 0x111E));                               /* lcall 023E:0B9C */
+    XB(6, 0x111E);                                                         /* and ax,4 .. jmp 0EDB */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0004, 1);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x3C, 0));
+    c->r[R_BX] = 0x0084;
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x04), get_r8(c, R_AL));
+    c->r[R_CX] = c->r[R_BX];
+    c->ip = 0x0EDB;
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 11F9: the Roland overlay's far "start the MPU-401 driver" entry (RETF, no arguments). It saves BP, SI, DI and the
+ * caller's DS, loads the driver's own data segment (`mov ax,imm16` at 1200h, a relocated word: the loaded value is read
+ * from the code at CS:1200h, never the encoded 0) and runs the start-up chain; the result is in AX.
+ *  - call 0AFE (measures the timer ticks per MPU poll with the PIT latch reader, stores the delay count [1524h]),
+ *    call 0B42 (zeroes the sequencer records), call 0D07 (resets the MPU-401: command FFh, waits for the FEh answer; AX = 0
+ *    when it answered, otherwise 52h; it leaves interrupts enabled). All three are plain-RET routines whose registers and
+ *    flags are not kept; here original code or fixture stubs.
+ *  - CMP AX,0 / JNE: if the reset failed (AX not 0) the routine skips the rest and returns that AX.
+ *  - Otherwise call 0A6B (hook interrupt 0Ah once), BL = 3Fh (the MPU command "UART mode") and call 0C43 (the MPU command
+ *    writer: waits for the port ready, writes the command, waits for the acknowledge FEh), call 0C2D (once-only channel set-up,
+ *    flag [151Eh]) and AX = 0.
+ *  - POP DS / DI / SI / BP, RETF. AX is the result; BX, CX, DX and the flags are what the last callee or MOV left.
+ * When a call has not returned (the clock's limit came first) the original carries on from where the machine is. */
+static int rsound_117_start_mpu_driver(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SEGMENT_IMM = 0x1200 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x11F9);                                                         /* push bp .. mov ds,ax */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], SEGMENT_IMM);
+    c->seg[S_DS] = c->r[R_AX];
+    SM4_NEED(1, 0x1204);
+    XRUN(guest_call_pop(m, 0x0AFE, 0x1207, 0));                            /* call 0AFE */
+    SM4_NEED(1, 0x1207);
+    XRUN(guest_call_pop(m, 0x0B42, 0x120A, 0));                            /* call 0B42 */
+    SM4_NEED(1, 0x120A);
+    XRUN(guest_call_pop(m, 0x0D07, 0x120D, 0));                            /* call 0D07 */
+    XB(2, 0x120D);                                                         /* cmp ax,0 / jne 1220 */
+    (void)alu_op(c, 7, c->r[R_AX], 0, 1);
+    if (!x86_cond(c, 5)) {
+        SM4_NEED(1, 0x1212);
+        XRUN(guest_call_pop(m, 0x0A6B, 0x1215, 0));                        /* call 0A6B */
+        XB(1, 0x1215);                                                     /* mov bl,3Fh */
+        set_r8(c, R_BL, 0x3F);
+        SM4_NEED(1, 0x1217);
+        XRUN(guest_call_pop(m, 0x0C43, 0x121A, 0));                        /* call 0C43 */
+        SM4_NEED(1, 0x121A);
+        XRUN(guest_call_pop(m, 0x0C2D, 0x121D, 0));                        /* call 0C2D */
+        XB(1, 0x121D);                                                     /* mov ax,0 */
+        c->r[R_AX] = 0x0000;
+    }
+    XB(5, 0x1220);                                                         /* pop ds / di / si / bp, retf */
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 1309: the Roland overlay's far entry that runs the sequencer tick (0BAD) in the driver's own data segment and
+ * hands back the pending-request word. Far routine (RETF), no arguments; DS on entry is the caller's and is restored.
+ *  - PUSH DS; AX = the segment constant in the code (`mov ax,imm16` at 130Bh, a relocated word: the loaded value is read
+ *    from the code at CS:130Bh, never the encoded 0); DS = AX.
+ *  - Call 0BAD (the tick: plain RET, no arguments; it uses AX, BX, CX, DX, SI, DI and the flags as it likes, here
+ *    original code or a fixture stub).
+ *  - AX = word [1520h] (the request word the tick or an interrupt left), then [1520h] = 0 (cleared after it is read);
+ *    POP DS; RETF. AX is the result; BX, CX, DX and the flags are what the tick left (the MOV instructions touch none).
+ * When the call has not returned (the clock's limit came first) the original carries on from where the machine is. */
+static int rsound_117_take_pending_request(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SEGMENT_IMM = 0x130B, TICK = 0x0BAD, REQUEST = 0x1520 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x1309);                                                         /* push ds / mov ax,imm16 / mov ds,ax */
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], SEGMENT_IMM);
+    c->seg[S_DS] = c->r[R_AX];
+    SM4_NEED(1, 0x130F);
+    XRUN(guest_call_pop(m, TICK, 0x1312, 0));                              /* call 0BAD */
+    XB(4, 0x1312);                                                         /* mov ax,[1520h] .. retf */
+    c->r[R_AX] = ds_get(c, REQUEST);
+    ds_put(c, REQUEST, 0x0000);
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 0000:063C (near, no arguments): turn off every note the Roland driver has sounding on the
+ * current channel. DS is the driver's data segment; [0492] (low byte) is the channel, and the notes held
+ * on it are the four bytes at [0494 + 4 * channel + i], i = 0..3, FFh meaning the slot is free.
+ * A local byte counter [bp-2] runs i from 0 to 3 (signed compare against 4). For each slot that holds a note
+ * (kept in the local byte [bp-4]):
+ *  - the status byte is the channel ORed with 90h (note on), stored in [0377] and compared with the last
+ *    status sent [0376] (kept in the local word [bp-6]); only when they differ is it sent through the far
+ *    byte-out routine 0000:03FA (one word argument, cdecl; removed with ADD SP,2) and kept in [0376];
+ *  - the note number is sent, then a zero velocity (a note on with velocity 0 is a note off);
+ *  - the slot is set to FFh.
+ * A free slot ends the whole routine at once (it does not skip to the next one), as does the counter
+ * reaching 4: MOV SP,BP / POP BP / RET (plain, nothing popped). The frame is PUSH BP / MOV BP,SP / SUB SP,6.
+ * Callee: 03FA, a far routine with a RETF (replaced by a stub in the proof). */
+static int rsound_log_release_channel_notes(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define AND_FF() (c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1))     /* and ax,0FFh */
+#define DROP2() (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1))      /* add sp,2 */
+#define SHL1() (c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1))         /* shl ax,1 */
+    enum { CHANNEL = 0x0492, TABLE = 0x0494, STATUS_NEW = 0x0377, STATUS_SENT = 0x0376 };
+    if (!room(c, 5)) return 0;
+    XB(5, 0x063C);               /* push bp / mov bp,sp / sub sp,6 / mov byte [bp-2],0 / jmp 06E2 */
+    frame_open(c, 6);
+    bp_put8(c, -2, 0);
+    goto check;
+slot:
+    XB(15, 0x064A);              /* the slot's note: the table byte at 494h + 4 * channel + i */
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    SHL1();
+    SHL1();
+    c->r[R_BX] = TABLE;
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    set_r8(c, R_AL, bp_get8(c, -2));
+    AND_FF();
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+    bp_put8(c, -4, get_r8(c, R_AL));
+    set_r8(c, R_AL, bp_get8(c, -4));
+    AND_FF();
+    (void)alu_op(c, 7, c->r[R_AX], 0x00FF, 1);                                    /* cmp ax,0FFh */
+    if (!x86_cond(c, 5)) {                                                        /* free slot: leave */
+        XB(1, 0x0671);
+        goto leave;
+    }
+    XB(12, 0x0674);              /* the status build and compare */
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], 0x0090, 1);                   /* or ax,90h */
+    ds_put8(c, STATUS_NEW, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+    AND_FF();
+    bp_put(c, -6, c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, STATUS_SENT));
+    AND_FF();
+    c->r[R_CX] = bp_get(c, -6);
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1);                                /* cmp cx,ax */
+    if (!x86_cond(c, 4)) {                                                        /* the status changed: send it */
+        XB(3, 0x0696);           /* mov al,[377] / and ax,0FFh / push ax */
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        AND_FF();
+        x86_push_reg(c, R_AX);
+        SM4_NEED(1, 0x069D);
+        XRUN(guest_call_far(m, 0x069D, 0x06A2));
+        XB(3, 0x06A2);           /* add sp,2 / mov al,[377] / mov [376],al */
+        DROP2();
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        ds_put8(c, STATUS_SENT, get_r8(c, R_AL));
+    }
+    XB(3, 0x06AB);               /* mov al,[bp-4] / and ax,0FFh / push ax: the note number */
+    set_r8(c, R_AL, bp_get8(c, -4));
+    AND_FF();
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x06B2);
+    XRUN(guest_call_far(m, 0x06B2, 0x06B7));
+    XB(3, 0x06B7);               /* add sp,2 / xor ax,ax / push ax: the velocity 0 */
+    DROP2();
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x06BD);
+    XRUN(guest_call_far(m, 0x06BD, 0x06C2));
+    XB(12, 0x06C2);              /* add sp,2 / the slot's address again / mov byte [bx],0FFh / inc byte [bp-2] */
+    DROP2();
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    SHL1();
+    SHL1();
+    c->r[R_BX] = TABLE;
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    set_r8(c, R_AL, bp_get8(c, -2));
+    AND_FF();
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    ds_put8(c, c->r[R_BX], 0xFF);
+    bp_put8(c, -2, (uint8_t)alu_inc(c, bp_get8(c, -2), 0));
+check:
+    XB(4, 0x06E2);               /* mov al,[bp-2] / and ax,0FFh / cmp ax,4 / jge 06F0 */
+    set_r8(c, R_AL, bp_get8(c, -2));
+    AND_FF();
+    (void)alu_op(c, 7, c->r[R_AX], 0x0004, 1);
+    if (x86_cond(c, 13)) goto leave;
+    XB(1, 0x06ED);               /* jmp 064A */
+    goto slot;
+leave:
+    XB(3, 0x06F0);               /* mov sp,bp / pop bp / ret */
+    frame_close_ret(c);
+    return 1;
+#undef SHL1
+#undef DROP2
+#undef AND_FF
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 0000:06F4 (near; two word arguments, only their low bytes are used): send a Roland MIDI note
+ * message, "note on" status 90h, with running status. DS is the driver's data segment, [bp+4] the first
+ * data byte (the key), [bp+6] the second (the velocity).
+ * The status byte is the current channel [0492] (low byte) ORed with 90h and stored in [0377]; it is
+ * compared with the last status sent, [0376]. Only when they differ is the status sent (through the far
+ * byte-out routine 0000:03FA, one word argument, cdecl) and kept in [0376]. Then the two data bytes are
+ * sent the same way. Each call's argument is removed with ADD SP,2 (its flags are kept); the frame is
+ * closed with MOV SP,BP / POP BP and the routine returns with a plain RET. AX is the last argument
+ * pushed's value or whatever the callee leaves; CX holds the status compared.
+ * Callee: 03FA, a far routine with a RETF that takes one pushed word (replaced by a stub in the proof). */
+static int rsound_log_send_note_on_message(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define AND_FF() (c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1))     /* and ax,0FFh */
+#define DROP2() (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1))      /* add sp,2 */
+    enum { CHANNEL = 0x0492, STATUS_NEW = 0x0377, STATUS_SENT = 0x0376 };
+    if (!room(c, 15)) return 0;
+    XB(15, 0x06F4);              /* push bp / mov bp,sp / sub sp,2 / the status build and compare / je */
+    frame_open(c, 2);
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], 0x0090, 1);                   /* or ax,90h */
+    ds_put8(c, STATUS_NEW, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+    AND_FF();
+    bp_put(c, -2, c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, STATUS_SENT));
+    AND_FF();
+    c->r[R_CX] = bp_get(c, -2);
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1);                                /* cmp cx,ax */
+    if (!x86_cond(c, 4)) {                                                        /* the status changed: send it */
+        XB(3, 0x071D);           /* mov al,[377] / and ax,0FFh / push ax */
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        AND_FF();
+        x86_push_reg(c, R_AX);
+        SM4_NEED(1, 0x0724);
+        XRUN(guest_call_far(m, 0x0724, 0x0729));
+        XB(3, 0x0729);           /* add sp,2 / mov al,[377] / mov [376],al */
+        DROP2();
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        ds_put8(c, STATUS_SENT, get_r8(c, R_AL));
+    }
+    XB(3, 0x0732);               /* mov al,[bp+4] / and ax,0FFh / push ax */
+    set_r8(c, R_AL, bp_get8(c, 4));
+    AND_FF();
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0739);
+    XRUN(guest_call_far(m, 0x0739, 0x073E));
+    XB(4, 0x073E);               /* add sp,2 / mov al,[bp+6] / and ax,0FFh / push ax */
+    DROP2();
+    set_r8(c, R_AL, bp_get8(c, 6));
+    AND_FF();
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0748);
+    XRUN(guest_call_far(m, 0x0748, 0x074D));
+    XB(4, 0x074D);               /* add sp,2 / mov sp,bp / pop bp / ret */
+    DROP2();
+    frame_close_ret(c);
+    return 1;
+#undef DROP2
+#undef AND_FF
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 0000:0754 (near; one word argument, only its low byte is used): send a Roland MIDI "program
+ * change" message, status C0h, with running status. DS is the driver's data segment, [bp+4] the program
+ * number.
+ * The status byte is the current channel [0492] (low byte) ORed with C0h and stored in [0377]; it is
+ * compared with the last status sent, [0376]. Only when they differ is the status sent (through the far
+ * byte-out routine 0000:03FA, one word argument, cdecl) and kept in [0376]. Then the program number is
+ * sent the same way. Each call's argument is removed with ADD SP,2 (its flags are kept); the frame is
+ * closed with MOV SP,BP / POP BP and the routine returns with a plain RET.
+ * Callee: 03FA, a far routine with a RETF that takes one pushed word (replaced by a stub in the proof). */
+static int rsound_log_send_program_change_message(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define AND_FF() (c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1))     /* and ax,0FFh */
+#define DROP2() (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1))      /* add sp,2 */
+    enum { CHANNEL = 0x0492, STATUS_NEW = 0x0377, STATUS_SENT = 0x0376 };
+    if (!room(c, 15)) return 0;
+    XB(15, 0x0754);              /* push bp / mov bp,sp / sub sp,2 / the status build and compare / je */
+    frame_open(c, 2);
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], 0x00C0, 1);                   /* or ax,0C0h */
+    ds_put8(c, STATUS_NEW, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+    AND_FF();
+    bp_put(c, -2, c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, STATUS_SENT));
+    AND_FF();
+    c->r[R_CX] = bp_get(c, -2);
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1);                                /* cmp cx,ax */
+    if (!x86_cond(c, 4)) {                                                        /* the status changed: send it */
+        XB(3, 0x077D);           /* mov al,[377] / and ax,0FFh / push ax */
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        AND_FF();
+        x86_push_reg(c, R_AX);
+        SM4_NEED(1, 0x0784);
+        XRUN(guest_call_far(m, 0x0784, 0x0789));
+        XB(3, 0x0789);           /* add sp,2 / mov al,[377] / mov [376],al */
+        DROP2();
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        ds_put8(c, STATUS_SENT, get_r8(c, R_AL));
+    }
+    XB(3, 0x0792);               /* mov al,[bp+4] / and ax,0FFh / push ax */
+    set_r8(c, R_AL, bp_get8(c, 4));
+    AND_FF();
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0799);
+    XRUN(guest_call_far(m, 0x0799, 0x079E));
+    XB(4, 0x079E);               /* add sp,2 / mov sp,bp / pop bp / ret */
+    DROP2();
+    frame_close_ret(c);
+    return 1;
+#undef DROP2
+#undef AND_FF
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 0000:0860 (near; one word argument, only its low byte is used): send a Roland MIDI "control
+ * change" message for controller 0Ah (pan), status B0h, with running status. DS is the driver's data
+ * segment, [bp+4] the pan value.
+ * The status byte is the current channel [0492] (low byte) ORed with B0h and stored in [0377]; it is
+ * compared with the last status sent, [0376]. Only when they differ is the status sent (through the far
+ * byte-out routine 0000:03FA, one word argument, cdecl) and kept in [0376]. Then the controller number 0Ah
+ * and the value are sent the same way. Each call's argument is removed with ADD SP,2 (its flags are
+ * kept); the frame is closed with MOV SP,BP / POP BP and the routine returns with a plain RET.
+ * Callee: 03FA, a far routine with a RETF that takes one pushed word (replaced by a stub in the proof). */
+static int rsound_log_send_pan_message(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define AND_FF() (c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1))     /* and ax,0FFh */
+#define DROP2() (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0002, 1))      /* add sp,2 */
+    enum { CHANNEL = 0x0492, STATUS_NEW = 0x0377, STATUS_SENT = 0x0376 };
+    if (!room(c, 15)) return 0;
+    XB(15, 0x0860);              /* push bp / mov bp,sp / sub sp,2 / the status build and compare / je */
+    frame_open(c, 2);
+    set_r8(c, R_AL, ds_get8(c, CHANNEL));
+    AND_FF();
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], 0x00B0, 1);                   /* or ax,0B0h */
+    ds_put8(c, STATUS_NEW, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+    AND_FF();
+    bp_put(c, -2, c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, STATUS_SENT));
+    AND_FF();
+    c->r[R_CX] = bp_get(c, -2);
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1);                                /* cmp cx,ax */
+    if (!x86_cond(c, 4)) {                                                        /* the status changed: send it */
+        XB(3, 0x0889);           /* mov al,[377] / and ax,0FFh / push ax */
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        AND_FF();
+        x86_push_reg(c, R_AX);
+        SM4_NEED(1, 0x0890);
+        XRUN(guest_call_far(m, 0x0890, 0x0895));
+        XB(3, 0x0895);           /* add sp,2 / mov al,[377] / mov [376],al */
+        DROP2();
+        set_r8(c, R_AL, ds_get8(c, STATUS_NEW));
+        ds_put8(c, STATUS_SENT, get_r8(c, R_AL));
+    }
+    XB(2, 0x089E);               /* mov ax,0Ah / push ax: the controller number */
+    c->r[R_AX] = 0x000A;
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x08A2);
+    XRUN(guest_call_far(m, 0x08A2, 0x08A7));
+    XB(4, 0x08A7);               /* add sp,2 / mov al,[bp+4] / and ax,0FFh / push ax */
+    DROP2();
+    set_r8(c, R_AL, bp_get8(c, 4));
+    AND_FF();
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x08B1);
+    XRUN(guest_call_far(m, 0x08B1, 0x08B6));
+    XB(4, 0x08B6);               /* add sp,2 / mov sp,bp / pop bp / ret */
+    DROP2();
+    frame_close_ret(c);
+    return 1;
+#undef DROP2
+#undef AND_FF
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0860, rsound_log_send_pan_message, "Roland driver: send a MIDI control-change message for controller 0Ah, pan (status B0h with running status) through the far byte-out routine", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0754, rsound_log_send_program_change_message, "Roland driver: send a MIDI program-change message (status C0h with running status, program) through the far byte-out routine", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x06F4, rsound_log_send_note_on_message, "Roland driver: send a MIDI note-on message (status 90h with running status, key, velocity) through the far byte-out routine", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x063C, rsound_log_release_channel_notes, "Roland driver: send note-off (note-on with velocity 0) for each held note of the current channel and free its slot", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x1309, rsound_117_take_pending_request, "Roland overlay far entry: load the driver data segment (relocated word at 130Bh), run the tick 0BAD, return the request word [1520h] and clear it", 2 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x11F9, rsound_117_start_mpu_driver, "Roland overlay far entry: load the driver data segment (relocated word at 1200h), run the timing probe 0AFE, sequencer reset 0B42 and MPU reset 0D07; on success hook interrupt 0Ah (0A6B), send command 3Fh (0C43), run the channel set-up 0C2D and return 0, else return the reset error", 2 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x1119, rsound_117_start_voice_1_random_note, "Roland overlay: random step (0B9C), note = 3Ch + (random AND 4) stored at DS:[0088h], CX = record 0084h, then jump to the voice 1 start 0EDB (proved separately)", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x10CF, rsound_117_start_voice_5_with_default_time, "Roland overlay: CX = 006Ah (the time/pitch word) then jump to the voice 5 start entry 0EB3 (proved separately)", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0A6B, rsound_117_hook_interrupt_0a_once, "Roland overlay: once (flag CS:[0A64]), save the old interrupt 0Ah vector into CS:[0A5C]/[0A5E] and point it at the overlay handler 0D3Bh, stop immediately after STI", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0EB3, rsound_117_start_voice_5_prefix, "Roland overlay voice-start entry for voice 5: DX = 5, BX = record offset 2318h, then jump to the shared tail 0EE2 (proved with 0EDB)", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0E95, rsound_117_start_voice_9_prefix, "Roland overlay voice-start entry for channel 9: DX = 9, BX = record offset 237Eh, then jump to the shared tail 0EE2 (proved with 0EDB)", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x04E1, rsound_117_send_channel_pan, "Roland overlay: send a MIDI control change, status B0h OR the channel [23A0h] (resent only when it differs from the last status [130Ch]), controller 10 (pan) and the stacked argument as value, through the MPU byte writer 0C7C", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0490, rsound_117_send_channel_volume, "Roland overlay: send a MIDI control change, status B0h OR the channel [23A0h] (resent only when it differs from the last status [130Ch]), controller 7 (volume) and the stacked argument as value, through the MPU byte writer 0C7C", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x066C, isound_log_return_after_restore_sti, "near return after the PC-speaker driver's timer restore STI hand-back, including wrapped stack words", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0161, isound_log_reset_state_and_speaker_off, "PC-speaker driver: clear the playback state cells and switch the speaker off (port 61h)", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x006E, isound_log_bcd_byte_to_binary, "PC-speaker driver: convert the packed-BCD byte in AL to binary (tens * 10 + units)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0BF4, asound_117_bcd_to_binary_al, "AdLib overlay: convert the packed BCD byte in AL to binary (high digit times 10 plus low digit); BX returns the old AX", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08B0, asound_117_command_reset_record_1964_data_0f4a, "AdLib overlay command handler: load CX with the data offset 0F4Ah and jump to the voice record 1964h reset thunk at 05CE (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x075D, asound_117_store_cx_in_record_field_1a, "AdLib overlay: store CX in the word [BX+1Ah] of the voice record at BX", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0686, asound_117_command_reset_record_1946_data_0ee4, "AdLib overlay command handler: load CX with the data offset 0EE4h and jump to the voice record 1946h reset thunk at 05D5 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0647, asound_117_command_reset_record_190a_data_0eb4, "AdLib overlay command handler: load CX with the data offset 0EB4h and jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0634, asound_117_command_reset_record_19a0_data_0e9c, "AdLib overlay command handler: load CX with the data offset 0E9Ch and jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0424, asound_117_command_clear_flag_17f6_and_rate, "AdLib overlay command handler: clear the byte [17F6] and store 0FFFFh in the word [17E6]", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x041E, asound_117_command_set_flag_17f6_on, "AdLib overlay command handler: set the byte [17F6] to 0FFh", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x00AD, rsound_log_timer_install_return, "near return after the timer install STI hand-back, including wrapped stack words", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x005B, rsound_log_install_timers, "install Roland INT0A and preserve old INT8 once, call timer programmer, stop after STI", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x060E, isound_log_save_timer_vector, "save the old INT8 chain once in the PC-speaker driver, stop immediately after STI", 1 },

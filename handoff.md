@@ -7,9 +7,9 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 24 October 2026: batch bc is
-accepted and published; batch bd's proof agents are running and nothing of bd
-is integrated yet.
+more than once, what it costs). State as of 24 October 2026: batch bd is accepted and committed locally (not yet
+published); the three-presentation/fix re-release settings are WIP on branch `p3-settings`
+in `D:/f117-wt/p3-settings`, not yet merged.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -18,31 +18,50 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.41%, P3 76.34%, All 88.35%
+- **Scoreboard:** P1 100.00%, P2 81.83%, P3 76.34%, All 88.47%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because the re-release features (roadmap,
   weight 31) are not started; the presentation stages are complete.
 - **Phase 2 figures** (`docs/progress.json` after batch bc's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,359 addresses matched; batches a to bc are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,383 addresses matched; batches a to bd are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(148,948 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 92.48%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
-  - **12,328 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 10,538: ASOUND.117 4,662, RSOUND.117 1,778, RSOUND.LOG 1,491, ASOUND.LOG 1,178,
-    ISOUND.117 905, ISOUND.LOG 524. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
+  - Gameplay score (scores the matched item): **(149,812 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 93.01%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+  - **11,464 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
+    entry). Sound drivers 9,674: ASOUND.117 4,594, RSOUND.117 1,533, RSOUND.LOG 1,037, ASOUND.LOG 1,178,
+    ISOUND.117 905, ISOUND.LOG 427. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **175,324 / 205,967** creditable bytes; of the 30,643
+  - Naming item (the previous all-code measure): **176,188 / 205,967** creditable bytes; of the 29,779
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
   - Accounted-for checklist: 715 / 44,641 bytes; `docs/reference-reviewed.tsv` has 48 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Latest gate** (batch bc): 601 CTests, 63 routes as 62 fresh interpreter sessions, 5,723,136 instruction
-  states per timing profile, all 1,359 matched routines at three seeds; 1,741 s.
-- **Batch bd:** proof agents are running in `D:/f117-gate/p2-*-bd` (ASOUND.117, ISOUND.LOG, RSOUND.117 and
-  RSOUND.LOG routines). Nothing is integrated; optimization pass 2 is queued after its gate (batch workflow below).
+- **Latest gate** (batch bd): 625 CTests, 63 routes as 62 fresh interpreter sessions, all 1,383 matched
+  routines at three seeds; 1,822 s. The baseline-key fix below worked: the presentation check overlapped
+  the gate (it started once coverage settled, after a genuine coverage pass since the batch content changed).
+- **Batch bd accepted (24 Oct): 24 sound-driver routines.** ASOUND.117 `041E` `0424` `0634` `0647` `0686`
+  `075D` `08B0` `0BF4` (thunk family into the already-matched voice-reset body plus four leaves); ISOUND.LOG
+  `006E` `0161` `066C` (leaves; the PC-speaker reset and BCD-to-binary helper); RSOUND.117 `0490` `04E1`
+  (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`
+  (take pending request), `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860` (voice release,
+  note-on/program-change/pan messages). 864 named bytes. Evidence: `D:/f117-gate/p2-batch-bd-accept/`.
+  **Four routines dropped from this batch** (not a correctness defect in the bodies as far as known):
+  ISOUND.LOG `0603`, `060D`, `0635`, `0663` (the PC-speaker timer install/restore path, 19 bytes).
+  Registering them made `err_vgame_no_photo` differ between engines, although two of the four never ran
+  on that route: registering an override refuses its whole translated region (`src/recomp/recomp.c`), so
+  surrounding code runs through the recomp engine's interpreter fallback instead of its translated path,
+  and that fallback disagreed with the pure interpreter at these PIT-write wake boundaries. Full
+  investigation, the wrong "gate load contention" theory it corrected (bisection must use an argument
+  list, never a shell `eval` - `` keys silently vanish and both engines then "agree" on a run that
+  never started the mission), and the open item (find the first diverging instruction near a refused
+  region at a wake boundary): `D:/f117-gate/p2-batch-bd-accept/flaky-parity-investigation.md`. Their
+  proofs are kept privately (`p2-isound-log-0603-bd`, `-060d-bd`, `-0635-bd`, `-0663-bd`); bring them
+  back once the engine-side cause is found and fixed.
+- **The keyed-baseline fix (same session) is confirmed working across two batches** (bc's and bd's
+  acceptance both showed "Started presentation-n1" alongside the gate, no fallback message).
 - **Routes:** 63. Damaged-install routes (`--damage ACTION:FILE`, `tools/route_damage.py`: a private hard-linked
   copy; the install is never written) run the original's own error handlers: `err_player_assert`,
   `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `err_start_no_world`,
@@ -140,7 +159,7 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Match the sound drivers** (10,538 of the 12,328 unmatched executed bytes; batch bd is the current round).
+1. **Match the sound drivers** (9,674 of the 11,464 unmatched executed bytes; batch be is the next round).
    Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
    predates batches bb and bc, which matched many of its entries. Still open there: wrapper/dispatch entry points
    (relocated `mov ds`, indirect calls), the remaining installers that end `CLI ... STI; RET` (stop after the STI;
@@ -245,11 +264,11 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid.
   Expect the presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for
   "Started" lines and no fallback message.
-- **Queued (owner, 24 Oct): optimization pass 2, after batch bd's gate.** Read bd's `gate.log`, precheck logs and
-  stage timings for where wall time goes (precheck sharding, proof build/mutation loop, repeated
-  audit/finalize/verdict work, idle CPU in the gate); first confirm the baseline fix above made the presentation
-  overlap. Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure
-  on the gate's own logs, never run extra heavy jobs beside a gate.
+- **Optimization pass 2 still queued (owner, 24 Oct).** The baseline fix is now confirmed working across two
+  batches (bc and bd both overlapped). Read bd's `gate.log`, precheck logs and stage timings for where wall time
+  goes (precheck sharding, proof build/mutation loop, repeated audit/finalize/verdict work, idle CPU in the gate).
+  Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure on the
+  gate's own logs, never run extra heavy jobs beside a gate.
 - **`finish_all.py DIR:ROUTE` before `audit_private.py`:** the audit needs `ibm-boot-proof`; running `checkpoints`
   and `verdict` by hand is not enough.
 - **Run `audit_private.py` BEFORE the gate.** It reads only the proof directories and takes seconds; batch au's
