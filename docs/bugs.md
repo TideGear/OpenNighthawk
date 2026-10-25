@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-two: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16 and Q17, including the D1REAL timing and D1PROX balance choices
+twenty-three: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17 and Q18, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -69,7 +69,8 @@ Status values:
 | Q15 | Confirmed | ASOUND.117 | AdLib noise take-over on generator B reads generator A's count | `--fix Q15` |
 | Q16 | Confirmed | RSOUND.117 | MT-32 volume and pan modulation run past 7Fh into status bytes | `--fix Q16` |
 | Q17 | Confirmed | VGAME | Pitch-ladder label index runs outside its table past 90 degrees | `--fix Q17` |
-| Q18-Q20 | Confirmed | START | Three smaller defects (below) | planned |
+| Q18 | Confirmed | START | The campaign date loop reads past its month table, printing January 32 and later | `--fix Q18` |
+| Q19-Q20 | Confirmed | START | Two smaller defects (below) | planned |
 | Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
@@ -783,6 +784,28 @@ Status values:
   both engines with Q17 off and on for every index from -6 to 30 on both sides,
   and a hand-back at every instruction count (372 staged runs, 0 failures).
 
+### Q18. The campaign date runs past December
+
+- **What happens.** START's date routine (`0x025D9`) takes whole months off the
+  day count in a loop with no month bound, reading each month's length from
+  `8C2h + month`. Past month 12 it reads beyond the 12-entry table, where the
+  13th byte is 80 (the "P" of the text that follows), and the single wrap it
+  applies after the loop then prints that as January with the rest of up to 80
+  days: "Jan 32" to "Jan 59, 1990" on the written orders of Middle East career
+  missions 71-98. In the other theatres the first bad date falls after retirement
+  at mission 99. Macintosh and Amiga run the same loop with other bytes after
+  the table ("Mar N", "Feb N").
+- **Fix.** `--fix Q18` at the loop head (`0x02613`) takes 12 off a month past 12
+  and counts the year before the table is read; the original loop then runs, and
+  its after-loop wrap (`0x02621`) can no longer find a month past 12. The hook
+  declines otherwise. The containing matched routine at `0x025D9` declines while
+  Q18 is placed.
+- **Check.** `build/check_q18 path/to/START.EXE` runs the original loop from its
+  head in both engines with Q18 off and on, with the printing routine as a
+  recording stub and 80 in the table's 13th place, over dates that stay inside
+  the year, cross it, and run into February and March, plus a stop and resume at
+  every instruction (170 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -806,11 +829,10 @@ original](#not-defects-of-the-original).
 ### Defects to fix
 
 Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15, Q16 and Q17 are described above.
+tests of both states ([roadmap.md](roadmap.md)). Q7, Q11, Q12, Q14, Q15, Q16, Q17 and Q18 are described above.
 
 | ID | Was | Program | Defect | Effect | Where | Later versions |
 |---|---|---|---|---|---|---|
-| Q18 | D17 | START | Date roll: the month loop has no bound and reads past the 12-entry table (the 13th byte is 80, the 'P' of "Photograph") | Middle East careers, missions 71-98: "Jan 32" to "Jan 59, 1990" on the written orders; in the other theatres the first bad date falls after retirement at 99 | `0x0260D`-`0x0261F`, `0x02621` | Mac and Amiga run the same loop with other bytes after the table ("Mar N", "Feb N") |
 | Q19 | - | START | The Enemy Troops overlay stores each marker's pixel x and y into its own loop counters | One to four markers of the 4-17 troop cells (counted from the shipped worlds) | `0x01AF7`, `0x01B09` | Mac present (`CODE08:027CE`); Amiga present (`0x43BEA6`) |
 | Q20 | - | START | A click in the same poll that moves the cursor onto a site draws the popup; the hover hook, still on the old item, then draws and saves it again | The popup stays on the map until the next redraw | `0x011D1`, `0x0129D`, restore `0x03588` | Not located |
 

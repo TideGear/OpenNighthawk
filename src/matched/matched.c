@@ -6920,6 +6920,7 @@ static int st4_end_heap_free(machine_t *m) { return sm3_heap_free(m, 0x50EE, 0, 
 static int start_date_string(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x25D9, 0x2658)) return 0;
     if (!room(c, 19)) return 0;
     frame_open(c, 6);
     cpu_push16(c, c->r[R_SI]);

@@ -786,7 +786,27 @@ static int q17_label(machine_t *m, uint16_t next)
 static int fix_q17_left(machine_t *m) { return q17_label(m, 0x0903); }
 static int fix_q17_right(machine_t *m) { return q17_label(m, 0x0964); }
 
+/* Q18. START's date loop (0x02613) walks months with no bound: a month past
+ * 12 reads the day count at 8C2h + month beyond the 12-entry table, where the
+ * 13th byte is 80 (the "P" of the text that follows). A long campaign
+ * therefore stays in "month 13" and prints January 32..59. The wrap that
+ * the code applies once after the loop belongs before each table read: past
+ * month 12, take 12 off and count the year. The month is read unsigned, as
+ * the original's own test after the loop does. The original loop head then
+ * runs, and the test after it (0x02621) can no longer find a month past 12. */
+static int fix_q18_month_wrap(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t month = seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 4));
+    if (month <= 12) return 0;
+    seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 4), (uint16_t)(month - 12));
+    seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 2), (uint16_t)(seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 2)) + 1));
+    return 0;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q18", "START.EXE", START_47304, 0x0000, 0x2613, fix_q18_month_wrap, "campaign date wraps past December" },
     { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x08FB, fix_q17_left, "pitch-ladder label index stays inside the table" },
     { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x095C, fix_q17_right, "pitch-ladder label index stays inside the table" },
     { "Q15", "ASOUND.117", ASOUND_47304, 0x01B6, 0x0F8B, fix_q15_noise_b, "AdLib noise take-over reads generator B's own count" },
@@ -845,6 +865,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q18", "the campaign date wraps into the next year instead of printing January 32 and later" },
     { "Q17", "pitch-ladder labels past 90 degrees mirror inside the table instead of reading past it" },
     { "Q15", "AdLib noise take-over on generator B tests B's own count, not A's" },
     { "Q16", "MT-32 volume and pan modulation saturate at 0 and 7Fh instead of running into status bytes" },
