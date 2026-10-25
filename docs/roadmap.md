@@ -829,6 +829,15 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       need hardware or a person this project does not have; the testable parts
       stay in Stages 3 and 4 and are measured here (long flights, constrained
       cores as a labelled proxy, playback-clock tuning). Not scored.
+- [ ] **Maybe: Macintosh-version improvements in OpenNighthawk** (owner, 24 Oct 2026).
+      Anything the 1994 Mac port adds that is worth offering, read at run time from the player's own Mac
+      copy and never shipped: its 640x480 and 512x384 art (cockpit, maps, screens), its scrolled-tape HUD
+      as a HUD style, its digitised effects, music and word-by-word speech (beyond the planned sound-board
+      column), and its other presentation changes. The game's logic stays DOS's in every mode; Mac-only
+      behaviour is a switchable option at most. What is known: [other-versions.md](other-versions.md).
+      An oracle to verify Mac behaviour, if one is needed, would start from Snow (open source, MIT,
+      emulates the Mac II with its colour cards) with MAME as a second reference; it needs the owner's
+      Mac II ROM. Not scored.
 
 ## Housekeeping
 
