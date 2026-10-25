@@ -266,7 +266,12 @@ docs -> commit (title from `py tools/progress.py --title`) -> push -> CI. Script
   `build_recomp.interpreter_key`, and prints which; `overlap_accept.py` still validates it and falls back if invalid.
   Expect the presentation to overlap the gate again (about 200 s saved per gate); check the first gate's log for
   "Started" lines and no fallback message.
-- **Optimization pass 2 still queued (owner, 24 Oct).** The baseline fix works (bd overlapped; no saving measured yet). Read bd's `gate.log`, precheck logs and stage timings for where wall time
+- **Optimization pass 2 (owner, 24 Oct), first finding: the presentation overlap does not save time.** Comparable
+  gates, both with a full coverage pass: bc sequential (coverage 766 s, parity 343 s, N=1 420 s alone) accepted in
+  1,741 s; bd overlapped (coverage 635 s, parity 879 s, N=1 916 s beside parity) in 1,822 s. Parity and N=1 each
+  run ~16 workers on 24 threads, so overlapping roughly doubles both. One sample each; do not change the default
+  on this alone, but stop expecting the overlap to save time, and measure the next two gates the same way. Still
+  to examine: the 25-minute six-seed precheck (two rounds of three seeds x 8 shards fill the machine). Read bd's `gate.log`, precheck logs and stage timings for where wall time
   goes (precheck sharding, proof build/mutation loop, repeated audit/finalize/verdict work, idle CPU in the gate).
   Propose or apply only changes that leave every check's inputs, outputs and verdicts identical; measure on the
   gate's own logs, never run extra heavy jobs beside a gate.
