@@ -330,13 +330,19 @@ fallback instructions, not everything that ran.
   (one instruction) and the function around it stays translated. An override
   leaves CS:IP and the clock where the replaced code would have, or declines
   and the original instruction runs. Verification protects regions from
-  reused memory; overrides have their own check. Each instance keeps a copy
-  of the loaded file's bytes (the MZ image after its header, a .COM as is),
-  taken from the file because the module is announced before its bytes are
-  written, and an override runs only while the byte at its entry equals the
-  copy's: an opcode, which relocations and run-time patches never change
-  (they change operands). Otherwise the original instruction, whatever is
-  there now, runs. Without this check matched routines kept firing on foreign
+  reused memory; overrides have their own check: an override runs only while
+  the byte at its entry equals the module's expected byte there, an opcode,
+  which relocations and run-time patches never change (they change operands).
+  Otherwise the original instruction, whatever is there now, runs. The
+  expected byte comes from the module's unpacked image where the translator
+  holds one (`mod->image`, the same image `verify()` compares regions
+  against), because a packed program's file bytes are not what runs: START and
+  the other LZEXE programs unpack in place, and a check against the file would
+  decline every override in them, including the QUIZ fix (found by the
+  `quiz_right` and `quiz_wrong` routes). A module with no translation falls
+  back to a copy of the loaded file's bytes (the MZ image after its header, a
+  .COM as is), taken from the file because the module is announced before its
+  bytes are written. Without this check matched routines kept firing on foreign
   bytes once a module's memory was reused (found at ISOUND.LOG `060D`, run
   at 169B:060D). `stale_override` (`tests/test_stale_override.c`) tests it,
   and `code_overrides` writes module images into memory as the loader does.
