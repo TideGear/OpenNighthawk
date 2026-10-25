@@ -63,7 +63,8 @@ Status values:
 | D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q7, Q11, Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Ten smaller defects (below) | planned |
-| Q13a, Q21, Q22 | Confirmed | VGAME, START | Defects whose correct behaviour is the owner's decision (below) | - |
+| Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
+| Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -685,39 +686,53 @@ states; none is built yet ([roadmap.md](roadmap.md)).
 
 Q12's sibling at `0x0707B` passes three arguments where the routine's other
 six callers pass four, so a player weapon's map marker size comes from the
-saved SI (1 pixel only when it is 0). The intended size is unknown, so it is
-left as it is.
+saved SI (1 pixel only when it is 0). To be measured across the routes (owner,
+25 October 2026): if the value is almost always nonzero, the game effectively
+draws 2x2 markers, and the fix pins that size.
 
-### Defects whose correct behaviour is the owner's decision
+### Defects with a chosen correct behaviour
 
-| ID | Was | Program | Defect | Effect | Where | Later versions | Recommended |
+No version shows the intended behaviour, or the one a port shows is no better.
+Owner, 25 October 2026: fix all three as below, each on its own switch.
+
+| ID | Was | Program | Defect | Effect | Where | Later versions | Chosen fix |
 |---|---|---|---|---|---|---|---|
 | Q13a | Q13a | VGAME | A sensorless unit's range and bearing are never written (`0x05582` exits early for sensor 0 or -1) and are then read from the stack | When the player's visibility exceeds 100: usually a stale 0x1566 that fails every test (silent); a small stale value can announce "Visual ID" or launch (the Reimp caught a spurious "Visual ID") | exit `0x05594`; reads `0x06559`-`0x065FF` | Mac present (`CODE13:0327C`); Amiga zeroes both (`0x40E2EA`), so such a unit always announces and never launches | "Cannot detect": range far, the original's usual outcome |
 | Q21 | D75 | VGAME | The steering bracket's half-width is computed from `[bp-0x30]`/`[bp-0x2E]`, which this path never writes, when the roll is 45 degrees or more with weapon type 1Eh | `[0xDEBE]` from stale stack | skip `0x0AD81`; reads `0x0AEB5`, `0x0AEC4` | Mac and Amiga present | Keep the previous frame's width |
 | Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
 
+### Hardening
+
+Defects the shipped game's data never reaches, which a corrupt or modified
+file would. Owner, 25 October 2026: fix them as a group, each on its own
+switch and tested by staging the bad data.
+
+| ID | Program | Defect | When it shows | Where |
+|---|---|---|---|---|
+| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no zero test | A corrupt settings block with a zero span: a divide error ends the game | `0x112BC`, `0x112E7` |
+| Q13b | START | The written orders test the departure base's record, then read the landing base's name (Amiga tests the landing record) | A world whose landing-base record has a zero first word | `0x022E7`, `0x022F4` |
+| D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | A world with an unnamed airbase | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
+| Q23 | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once (Mac and Amiga the same) | A roster edited outside the game with a realism value above 1 | `0x06D1C` |
+
 ### Code quirks with no effect
 
-Wrong code whose result is right, or whose wrong case needs data the shipped
-game never has. Not fixed: a fix could not be shown to do anything, and one
-inside a matched routine would make that routine stand aside in normal play.
+Wrong code whose result is right, or that the game never reaches (owner,
+25 October 2026: a bug with no effect is not a bug). Not fixed: a fix could
+not be shown to do anything, and one inside a matched routine would make that
+routine stand aside in normal play.
 
 | ID | Program | What the code does | Why nothing changes | Where |
 |---|---|---|---|---|
 | Q2 | VGAME | Pitch-ladder label offsets: x is chosen by the label index (its sign), y by the vertex index | The two y tables (`DS:0x26CC`, `0x27CC`) are identical | `0x10E9F`, `0x10EBA` |
 | Q3 | VGAME | The override lookup returns in AL with AH stale, so from 257 records "not found" reads as found in the scene walk | D34, on in normal play, holds the table at 30 records; Mac and Amiga clear the register | `0x0FBD`; caller `0x06F6`/`0x06FF` |
-| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no zero test | Calibration writes a span before any divide; only a corrupt settings block reaches zero | `0x112BC`, `0x112E7` |
 | Q5 | VGAME | The depth-sort tree treats a negative child[0] as a leaf and a negative child[1] as a node | None of the 189 trees in the shipped models has a negative child | `0x12F6A`, `0x12F7A` |
 | Q8 | VGAME | The model visibility bound adds z twice (`2z + r`) | It only passes extra off-screen objects to later clipping; it never hides a visible one | `0x12352`-`0x12376` |
 | Q9 | VGAME | The padlock cameras store per-kind zooms | The player's zoom, saved first, is restored at `0x033A9` before any read; Mac identical | `0x032CF`, `0x03304`, `0x03341` |
 | Q10 | VGAME | The fixed (crash and ejection) camera never writes its heading | It keeps the previous view's heading, which reads as a held camera; Mac identical | `0x03522`-`0x0355E` |
-| Q13b | START | The written orders test the departure base's record, then read the landing base's name | No base record in the shipped worlds has a zero first word; Amiga tests the landing record | `0x022E7`, `0x022F4` |
-| D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | Every airbase record in the nine shipped worlds is named | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
 | - | ASOUND.117 | Generator B's expiry arm branches the opposite way from A's | Only in the load-time state where both share channel 0, and the noise envelopes decay anyway | image `0x208C`, A `0x2051` |
 | - | ASOUND.117 | A "level changed" local is read before it is written | One redundant write of the same level | `0x2EC0`, read `0x32B8` |
 | - | END | The six-in-seven tick skip lacks VGAME's `xor ax,ax`, so END runs four interrupts a tick | Ticks, music tempo and screen timing are unchanged | `0x4D59`-`0x4D6C` |
 | - | VGAME | The terrain lookup returns `level - 4` above level 4 | Every caller passes a level of 1 to 4 | `0x0969` |
-| - | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once | The game writes that field only as 0 or 1; only an edited roster shows it | `0x06D1C` |
 
 ### Not defects of the original
 
@@ -727,7 +742,7 @@ inside a matched routine would make that routine stand aside in normal play.
 | D97 | START | The name-typing loop draws a random number before testing for the end, n + 1 draws for n letters | Nothing visible changes; the generator is clock-seeded |
 | D98 | START | Box 14, once disabled, is never re-enabled | The clearance that disables it cannot change within one run of START |
 | D103 | START | The secondary objective's route word is never written | No program reads it; START clears it at every launch |
-| D101 | START | The Transfer page's tick erase can read an unwritten slot past its row table | Effect unproven: the one measured case drew off-screen. Measure before deciding |
+| D101 | START | The Transfer page's tick erase can read an unwritten slot past its row table | Effect unproven: the one measured case drew off-screen. To be staged and measured (owner, 25 October 2026), then fixed if it can draw on screen |
 
 Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
 protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail

@@ -173,18 +173,23 @@ governs day-to-day work.
      `0x039D`), Q17 pitch-ladder labels past 90 degrees (was D61; VGAME `1058:08FB`, `095C`), Q18 the campaign
      date past December (was D17; START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
      `0x01B09`), Q20 the stuck briefing popup (START `0x011D1`).
-   - **Owner decisions (asked 25 Oct, not yet answered; ask before building):** Q13a (sensorless units; the
+   - **Owner's plan (25 Oct): build 19 fixes in this order, each its own default-on switch with tests of both
+     states:** the ten above; then Q13a, Q21, Q22 as recommended below; then the hardening group Q4 (divide
+     guard), Q13b, D18, Q23 (the roster fix-up), each tested by staging the bad data; then measure D101 (stage
+     the unwritten slot; fix if it can draw on screen, else close with the evidence) and Q12's sibling at
+     `0x0707B` (histogram the stale SI across routes; pin 2x2 if it is almost always nonzero). The other 14 rows (10 quirks, 4 non-defects)
+     stay documented ([docs/bugs.md](docs/bugs.md#code-quirks-with-no-effect)). Rule: a fix must be observable
+     (testable on and off) and restore clear intent, not invent behaviour.
+   - **The three decided behaviours:** Q13a (sensorless units; the
      Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), Q21 (was D75:
      stale bracket width; no version shows the intended value), Q22 (the armoury shortage self-check; changes
-     RNG use, so mission generation). Recommended to the owner: fix all three, default on. Q13a as "a
+     RNG use, so mission generation). Owner: fix all three, default on. Q13a as "a
      sensorless unit cannot detect" (range far, so no announcement or launch on that path, the original's
      usual outcome), not the Amiga's zero; Q21 keeps the previous frame's width (`0x0AE9F` -> `0x0AEDE` in
      that case); Q22 adds the missing self-check at `0x00E71` (the RNG is clock-seeded, and replays record the
      fix set).
-   - **No fix, written in bugs.md:** 14 code quirks with no effect (owner, 25 Oct: a bug with no effect is not
-     a bug; Q13b, D18 and the roster fix-up bite only modified data, and the owner was offered them as an
-     optional hardening group) and five rows that are not defects of the original (D63, D97, D98, D103; D101
-     unproven, measure before deciding). Overlapping objects drawn in the wrong order (the hangars at takeoff)
+   - **No fix, written in bugs.md:** 10 code quirks with no effect (owner, 25 Oct: a bug with no effect is not
+     a bug) and four rows that are not defects of the original (D63, D97, D98, D103). Overlapping objects drawn in the wrong order (the hangars at takeoff)
      are Remastered work (owner), noted under bugs.md R1.
    - **To build** in the worktree `D:/f117-wt/bugfix` (branch `bugfix-q`, from `fe825bd`, built, no edits
      yet): each override in `src/fixes/fixes.c` (RSOUND.117 hash `0x14F2AE43AE88ED82`, base `0x023E`; ASOUND

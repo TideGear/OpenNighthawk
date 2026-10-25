@@ -158,9 +158,12 @@ not the recompilation:
       the AdLib noise take-over, MT-32 volume and pan held in range, pitch
       ladder labels past 90 degrees, the campaign date past December, the
       Enemy Troops overlay, the stuck briefing popup), three owner decisions
-      (Q13a, Q21, Q22), 14 code quirks with no effect and five rows that were
-      never the original's defects, all now in
-      [bugs.md](bugs.md#smaller-defects-q-series).
+      (Q13a, Q21, Q22), 10 code quirks with no effect, four rows that were
+      never the original's defects and D101 to measure, all in
+      [bugs.md](bugs.md#smaller-defects-q-series). Owner's plan (25 Oct): build
+      19 fixes (the ten, the three with chosen behaviours, and the hardening
+      group Q4, Q13b, D18, Q23), then measure D101 and Q12's marker-size
+      sibling; the 10 no-effect quirks and four non-defects stay documented.
       Not yet built: each fix needs a default-on switch, a guard in any
       matched routine containing its site, tests of both states, bugs.md
       corrections and a gate. Details: [../handoff.md](../handoff.md).
