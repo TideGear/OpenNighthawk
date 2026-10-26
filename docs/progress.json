@@ -369,19 +369,19 @@
       "fixture_only": 26370,
       "remaining": 10852,
       "original_awaiting_review": 20,
-      "reviewed_entries": 48,
+      "reviewed_entries": 58,
       "checklist": {
         "bytes": 44700,
-        "with_reviewed_entry": 715,
-        "without_reviewed_entry": 43985,
+        "with_reviewed_entry": 780,
+        "without_reviewed_entry": 43920,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 0,
             "without_reviewed_entry": 23524
           },
           "never_run": {
-            "with_reviewed_entry": 0,
-            "without_reviewed_entry": 4294
+            "with_reviewed_entry": 65,
+            "without_reviewed_entry": 4229
           },
           "slots": {
             "with_reviewed_entry": 0,
@@ -439,7 +439,7 @@
           "remaining": 68,
           "original_awaiting_review": 0,
           "not_in_denominator": 4710,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 5,
           "in_previous_scope": 3505
         },
         "END": {
@@ -450,7 +450,7 @@
           "remaining": 261,
           "original_awaiting_review": 0,
           "not_in_denominator": 7722,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 31,
           "in_previous_scope": 14755
         },
         "F117.COM": {
@@ -516,7 +516,7 @@
           "remaining": 270,
           "original_awaiting_review": 0,
           "not_in_denominator": 4799,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 4,
           "in_previous_scope": 6639
         },
         "NSOUND.117": {
@@ -538,7 +538,7 @@
           "remaining": 273,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 9,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {
@@ -582,7 +582,7 @@
           "remaining": 251,
           "original_awaiting_review": 20,
           "not_in_denominator": 5924,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 4,
           "in_previous_scope": 36488
         },
         "VGAME": {
@@ -593,7 +593,7 @@
           "remaining": 549,
           "original_awaiting_review": 0,
           "not_in_denominator": 12107,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 12,
           "in_previous_scope": 71936
         }
       }

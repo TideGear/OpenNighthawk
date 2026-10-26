@@ -36,8 +36,8 @@ entry. Consolidate it instead of appending to it.
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
   - Naming item (the previous all-code measure): **176,859 / 206,026** creditable bytes; of the 29,167
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
-  - Accounted-for checklist: 715 / 44,700 bytes; `docs/reference-reviewed.tsv` has 48 second-read entries
-    (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`). Every `stays-original` entry
+  - Accounted-for checklist: 780 / 44,700 bytes; `docs/reference-reviewed.tsv` has 58 second-read entries
+    (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
@@ -277,9 +277,16 @@ governs day-to-day work.
    merely because matching credit exists. The old annotations remain proposals, with uncertainty retained.
    `vgame_int86x_carry` is corrected to the generic interrupt carry helper's exact actions; a DOS-read-only
    prerequisite is not established. `trial-proposal.tsv` and 24 blind disassembly packets cover 247 candidate
-   bytes; no reader has accepted them. After bg passes, refresh against its accepted named cover, then give fresh
-   second readers only disassembly and proposed names, record accepts/rejections and adopt only supported legal
-   single-status rows. The packets contain private game bytes and stay outside the public repo. No second-read
+   bytes. **Trial run 26 Oct (four fresh readers, six packets each, ~72-78k tokens per reader, one to two minutes of wall time):
+   12 accept, 10 accept-with-changes, 2 needs-context, 0 reject.** Ten entries (65 bytes) are adopted (`machine-option-only`: packets
+   1 7 9 10 11 13 17 18 22 24; 715 -> 780 bytes, P2 82.14%). Held: packet 14 (`end_stackavail`, a whole library function: the readers judged
+   name and range, not whether `machine-option-only` is the right status) and 21 (stack-probe overflow arm: the reader could not verify
+   that exit path 1549 never returns). The ten accept-with-changes (2 3 4 5 8 15 16 19 20 23) share one failure: a name or range that
+   claimed a failure where the bytes are a retry, a stub or an entry shim. Correct each (reader's suggested name or range), then give it
+   to a DIFFERENT reader; the proposer must not credit its own revision. Packets 6 and 12 (`mov ax,2; jmp` after the entry's `ret`, probably
+   the C run time's R6002 floating-point stub reached from elsewhere; PLAYER `015BA` (packet 16) is the same shape) need their real callers
+   found first. The pass rate is for the easiest tiny arms: expect larger routines to cost more per byte. Per-reader cost to
+   scale from: about 12k tokens per packet. The packets contain private game bytes and stay outside the public repo. No second-read
    score may be raised by the author of an entry. See the private `notes.md` and `coverage-check.json`.
 4. **Static code no route runs.** Reviewed static code: the resumed review (`D:/f117-gate/static-route-plan-20261021/`,
    `static-route-verify-20261021/`) found no additional route and no new dead certificate for the 10,301 bytes it
