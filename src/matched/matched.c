@@ -91621,7 +91621,972 @@ static int rsound_log_install_timer_return(machine_t *m)
     return 1;
 }
 
+/* ISOUND.117 019C:0065 (near; AL = a packed-BCD byte): convert it to binary. The routine saves AX, shifts AL
+ * right four times (the tens digit; the last shift's carry and the flags of the earlier ones are left in
+ * the flags, as the original's SHRs leave them), multiplies it by 10 (BL = 0Ah, MUL BL: AX = tens * 10, with
+ * the MUL's carry/overflow flags), restores the original AX into BX, keeps its low nibble in BL (AND BL,0Fh)
+ * and adds it to AL (ADD AL,BL: the final flags). AX = tens * 10 + units (a nibble above 9 is converted as it
+ * stands, and AH is the product's high byte, which is always 0 here); BX = the original AX with BL masked to
+ * the units digit; the routine ends in a plain RET. It is the overlay's copy of the same routine in the
+ * ISOUND.LOG driver at 006E.
+ * No callee; no memory but the stack is touched, and the code is not read, so the load base does not matter. */
+static int isound_117_bcd_byte_to_binary(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    x86_push_reg(c, R_AX);                                                              /* 0065: push ax */
+    for (unsigned k = 0; k < 4; k++)                                                    /* 0066..006C: shr al,1 x4 */
+        set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));
+    set_r8(c, R_BL, 0x0A);                                                              /* 006E: mov bl,0Ah */
+    x86_mul8(c, get_r8(c, R_BL));                                                       /* 0070: mul bl */
+    c->r[R_BX] = cpu_pop16(c);                                                          /* 0072: pop bx */
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 4, get_r8(c, R_BL), 0x0F, 0));                   /* 0073: and bl,0Fh */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), get_r8(c, R_BL), 0));        /* 0076: add al,bl */
+    c->ip = cpu_pop16(c);                                                               /* 0078: ret */
+    c->icount += 11;
+    return 1;
+}
+
+/* ISOUND.117 019C:05B7 (near, no arguments): set the PC-speaker effect flag to its FFh state.
+ * DS is the driver's data segment. The byte [7C] is a switch and the word [78] its
+ * companion value (the neighbouring routine at 05A4 sets the same pair to 1): the
+ * routine compares [7C] with 0FFh (CMP sets the flags) and, when it is not 0FFh,
+ * stores 0FFh into [7C] and 0FFFFh into [78]; when it already is 0FFh it changes
+ * nothing. Both ways end in a plain RET (nothing popped). The flags the caller sees
+ * are the CMP's on both arms (the MOVs do not change them). No callees. The code is
+ * not read, so the load base does not matter. */
+static int isound_117_arm_effect_flag_ff(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    (void)alu_op(c, 7, ds_get8(c, 0x007C), 0xFF, 0);                               /* 05B7: cmp byte ptr [7Ch],0FFh */
+    c->icount += 2;                                                                /* 05BC: je 05C9 */
+    if (x86_cond(c, 4)) goto L5C9; goto L5BE;
+
+L5BE:
+    SM4_NEED(2, 0x05BE);
+    ds_put8(c, 0x007C, 0xFF);                                                      /* 05BE: mov byte ptr [7Ch],0FFh */
+    ds_put(c, 0x0078, 0xFFFF);                                                     /* 05C3: mov word ptr [78h],0FFFFh */
+    c->icount += 2;
+
+L5C9:
+    SM4_NEED(1, 0x05C9);
+    c->ip = cpu_pop16(c);                                                          /* 05C9: ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.117 01B6:1929 (near; DX = the port, AH = the byte): write a byte to a
+ * sound chip port once it is ready. The status read from DX is polled up to
+ * 500 (1F4h) times: while its bit 7 is set the chip is busy and the loop goes
+ * round again. As soon as bit 7 is clear the byte AH is written to the same
+ * port DX and CF is cleared (success). If all 500 reads were busy, CF is set
+ * and nothing is written (timeout). CX is saved and restored; AL ends as the
+ * last status read or, after a write, as AH; the flags are those of the last
+ * OR AL,AL (then CF set or cleared).
+ * The loop is a wait loop run in chunks: each round claims its own room and,
+ * when the run loop must look at events first, hands back at the poll (192D)
+ * with CX and the flags as the original has them there. Every port access is
+ * made at the clock the original makes it (the IN is the third instruction of
+ * a round); a write to a port that wakes the run loop (PIC, PIT counter 0)
+ * stops right after the OUT, at 193B (the room claim
+ * for the CLC fails there, the wake having set the limit to 0). No callee; no memory but the stack. */
+static int asound_117_dsp_write_when_ready(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    x86_push_reg(c, R_CX);                                        /* 1929 */
+    c->r[R_CX] = 0x01F4;                                          /* 192A */
+    c->icount += 2;
+    for (;;) {
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x192D; return 1; }
+        c->op_ip = 0x192D;
+        x86_in(c, c->r[R_DX], 0);                                 /* 192D in al,dx */
+        c->icount += 1;
+        set_r8(c, 0, (uint8_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0));   /* 192E or al,al */
+        c->icount += 1;
+        c->icount += 1;                                           /* 1930 jns 1938 */
+        if (x86_cond(c, 9)) break;
+        if (!room(c, 1)) { c->ip = 0x1932; return 1; }
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* 1932 loop 192D */
+        c->icount += 1;
+        if (c->r[R_CX] == 0) {
+            if (!room(c, 4)) { c->ip = 0x1934; return 1; }
+            set_flag(c, F_CF, 1);                                 /* 1934 stc */
+            c->icount += 2;                                       /* 1935 jmp 193C */
+            goto leave;
+        }
+    }
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x1938; return 1; }
+    set_r8(c, 0, get_r8(c, 4));                                   /* 1938 mov al,ah */
+    c->icount += 1;
+    c->op_ip = 0x193A;
+    x86_out(c, c->r[R_DX], 0);                                    /* 193A out dx,al */
+    c->icount += 1;
+    if (!room(c, 1)) { c->ip = 0x193B; return 1; }                /* (also where a write that woke the run loop stops: its limit is 0) */
+    set_flag(c, F_CF, 0);                                         /* 193B clc */
+    c->icount += 1;
+    if (!room(c, 2)) { c->ip = 0x193C; return 1; }
+leave:
+    c->r[R_CX] = cpu_pop16(c);                                    /* 193C pop cx */
+    c->icount += 1;
+    c->ip = cpu_pop16(c);                                         /* 193D ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.117 01B6:193E (near, no arguments; DS is the driver's data segment):
+ * read a byte from the sound card's DSP once one is ready. The word [58] holds
+ * the card's base port. DL is set to the low byte of base + 0Eh (the read
+ * status port; only DL changes, as ADD DL does) and that port is polled up to
+ * 512 (200h) times for bit 7 SET (data available). As soon as it is set, DL
+ * goes back down by 4 (base + 0Ah, the data port), the byte is read into AL
+ * and CF is cleared (success). If all 512 reads were not ready, CF is set and
+ * AL is the last status read (timeout). CX and DX are saved and restored; the
+ * flags are those of the last OR AL,AL (then CF set or cleared); a read
+ * leaves the flags as the SUB DL,4 and the OR left them besides CF.
+ * The loop is a wait loop run in chunks: each round claims its own room and,
+ * when the run loop must look at events first, hands back at the poll (194A)
+ * with CX as the original has it there. Every port access (the status reads
+ * and the data read) is made at the clock the original makes it. No callee;
+ * no memory is written but the stack. */
+static int asound_117_dsp_read_when_ready(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 5)) return 0;
+    x86_push_reg(c, R_CX);                                        /* 193E */
+    x86_push_reg(c, R_DX);                                        /* 193F */
+    c->r[R_DX] = (uint16_t)seg_read16(c, c->seg[S_DS], 0x0058);   /* 1940 mov dx,[58] */
+    set_r8(c, 2, (uint8_t)alu_op(c, 0, get_r8(c, 2), 0x0E, 0));   /* 1944 add dl,0Eh */
+    c->r[R_CX] = 0x0200;                                          /* 1947 */
+    c->icount += 5;
+    for (;;) {
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x194A; return 1; }
+        c->op_ip = 0x194A;
+        x86_in(c, c->r[R_DX], 0);                                 /* 194A in al,dx */
+        c->icount += 1;
+        set_r8(c, 0, (uint8_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0));   /* 194B or al,al */
+        c->icount += 1;
+        c->icount += 1;                                           /* 194D js 1955 */
+        if (x86_cond(c, 8)) break;
+        if (!room(c, 1)) { c->ip = 0x194F; return 1; }
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* 194F loop 194A */
+        c->icount += 1;
+        if (c->r[R_CX] == 0) {
+            if (!room(c, 5)) { c->ip = 0x1951; return 1; }
+            set_flag(c, F_CF, 1);                                 /* 1951 stc */
+            c->icount += 2;                                       /* 1952 jmp 195A */
+            goto leave;
+        }
+    }
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x1955; return 1; }
+    set_r8(c, 2, (uint8_t)alu_op(c, 5, get_r8(c, 2), 0x04, 0));   /* 1955 sub dl,4 */
+    c->icount += 1;
+    c->op_ip = 0x1958;
+    x86_in(c, c->r[R_DX], 0);                                     /* 1958 in al,dx */
+    c->icount += 1;
+    if (!room(c, 4)) { c->ip = 0x1959; return 1; }
+    set_flag(c, F_CF, 0);                                         /* 1959 clc */
+    c->icount += 1;
+leave:
+    c->r[R_DX] = cpu_pop16(c);                                    /* 195A pop dx */
+    c->r[R_CX] = cpu_pop16(c);                                    /* 195B pop cx */
+    c->icount += 2;
+    c->ip = cpu_pop16(c);                                         /* 195C ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.117 01B6:033A (near; DX = the AdLib register port, AL = the register
+ * number, BL = the data byte): write one AdLib register with the settling
+ * delays the chip needs. The entry jumps to the shared tail at 0348 (the other
+ * entry, 033E, computes DX from AH first and is not part of this routine).
+ * AX is saved. The port DX is read 30 times (1Eh) as a delay, AX is restored
+ * and the register number AL is written to DX, then DX is read 5 times as the
+ * second delay, the data byte BL goes to DX+1 (INC DX; the flags are INC's,
+ * CF kept) and AX is restored again. AL ends as it began; the reads only
+ * serve their delay (their values are dropped when AX is restored).
+ * The first delay is a counted loop run in chunks: each round claims its own
+ * room and hands back at its IN (034C) with CX as the original has it there.
+ * Every port access is made at the clock the original makes it; a write to a
+ * port that wakes the run loop (PIC, PIT counter 0) stops right after the OUT
+ * (the room claim for the next stretch fails: the wake has set the limit
+ * to 0). No callee; no memory but the stack. */
+static int asound_117_adlib_write_register_slow(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4)) return 0;
+    x86_push_reg(c, R_AX);                                        /* 033A push ax */
+    c->icount += 2;                                               /* 033B jmp 0348 */
+    x86_push_reg(c, R_AX);                                        /* 0348 push ax */
+    c->r[R_CX] = 0x001E;                                          /* 0349 mov cx,1Eh */
+    c->icount += 2;
+    for (;;) {
+        if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x034C; return 1; }
+        c->op_ip = 0x034C;
+        x86_in(c, c->r[R_DX], 0);                                 /* 034C in al,dx */
+        c->icount += 1;
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* 034D loop 034C */
+        c->icount += 1;
+        if (c->r[R_CX] == 0) break;
+    }
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x034F; return 1; }
+    c->r[R_AX] = cpu_pop16(c);                                    /* 034F pop ax */
+    c->icount += 1;
+    c->op_ip = 0x0350;
+    x86_out(c, c->r[R_DX], 0);                                    /* 0350 out dx,al: the register number */
+    c->icount += 1;
+    if (!room(c, 8 + IO_SLACK(6))) { c->ip = 0x0351; return 1; }
+    for (unsigned k = 0; k < 5; k++) {
+        c->op_ip = (uint16_t)(0x0351 + k);
+        x86_in(c, c->r[R_DX], 0);                                 /* 0351-0355 in al,dx */
+        c->icount += 1;
+    }
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 0356 mov al,bl */
+    c->icount += 1;
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* 0358 inc dx */
+    c->icount += 1;
+    c->op_ip = 0x0359;
+    x86_out(c, c->r[R_DX], 0);                                    /* 0359 out dx,al: the data byte */
+    c->icount += 1;
+    if (!room(c, 2)) { c->ip = 0x035A; return 1; }
+    c->r[R_AX] = cpu_pop16(c);                                    /* 035A pop ax */
+    c->icount += 1;
+    c->ip = cpu_pop16(c);                                         /* 035B ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0B57 (near; AL = the counter 2 byte, BL = the PIT control
+ * byte; DS is the driver's data segment): begin a sound on the PC speaker.
+ * The control byte BL goes to the PIT control port 43h, then the saved AL
+ * goes to the counter-2 port 42h (the speaker's tone). The speaker gate port
+ * 61h is read and kept in the byte [17E1]; the gate's data bit is cleared and
+ * the timer gate bit set, and the result written back to 61h. Interrupts are
+ * then switched off (CLI), the PIC mask 21h is read and kept in the byte
+ * [17E0], bit 0 (the timer IRQ) is set and the mask written back.
+ * The named region ends with that last OUT: a write to the PIC mask makes the
+ * machine look at interrupts at the next instruction, so the body stops
+ * there, at 0B74; the STI and the RET after it are the original's own entry.
+ * A write of BL to port 43h that selects counter 0 and a mode (not a latch)
+ * does the same at 0B5C, so the body stops there when it does (the room claim
+ * after it fails: the wake has set the limit to 0). Every port access is made
+ * at the clock the original makes it. No callee. */
+static int asound_117_speaker_timer_start_install(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3 + IO_SLACK(1))) return 0;
+    x86_push_reg(c, R_AX);                                        /* 0B57 */
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 0B58 mov al,bl */
+    c->icount += 2;
+    c->op_ip = 0x0B5A;
+    x86_out(c, 0x43, 0);                                          /* 0B5A out 43h,al */
+    c->icount += 1;
+    if (!room(c, 12 + IO_SLACK(5))) { c->ip = 0x0B5C; return 1; }
+    c->r[R_AX] = cpu_pop16(c);                                    /* 0B5C pop ax */
+    c->icount += 1;
+    c->op_ip = 0x0B5D;
+    x86_out(c, 0x42, 0);                                          /* 0B5D out 42h,al */
+    c->icount += 1;
+    c->op_ip = 0x0B5F;
+    x86_in(c, 0x61, 0);                                           /* 0B5F in al,61h */
+    c->icount += 1;
+    mem_write8(c, phys(c->seg[S_DS], 0x17E1), get_r8(c, R_AL));   /* 0B61 */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), 0x01, 0));   /* 0B64 or al,1 */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0xFD, 0));   /* 0B66 and al,0FDh */
+    c->icount += 3;
+    c->op_ip = 0x0B68;
+    x86_out(c, 0x61, 0);                                          /* 0B68 out 61h,al */
+    c->icount += 1;
+    x86_cli(c);                                                   /* 0B6A cli */
+    c->icount += 1;
+    c->op_ip = 0x0B6B;
+    x86_in(c, 0x21, 0);                                           /* 0B6B in al,21h */
+    c->icount += 1;
+    mem_write8(c, phys(c->seg[S_DS], 0x17E0), get_r8(c, R_AL));   /* 0B6D */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), 0x01, 0));   /* 0B70 or al,1 */
+    c->icount += 2;
+    c->op_ip = 0x0B72;
+    x86_out(c, 0x21, 0);                                          /* 0B72 out 21h,al: the mask write wakes the run loop */
+    c->icount += 1;
+    c->ip = 0x0B74;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0887: select the sound data offset 0F28h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * Hand back at the existing jump handler 088Bh.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 1 instruction(s), 4 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_0887_data_0f28(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0887);
+    c->r[R_CX] = 0x0F28;
+    c->ip = 0x088B;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:088E: select the sound data offset 0F34h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * Hand back at the existing jump handler 0892h.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 1 instruction(s), 4 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_088e_data_0f34(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x088E);
+    c->r[R_CX] = 0x0F34;
+    c->ip = 0x0892;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0895: select the sound data offset 0F94h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * Hand back at the existing jump handler 0899h.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 1 instruction(s), 4 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_0895_data_0f94(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0895);
+    c->r[R_CX] = 0x0F94;
+    c->ip = 0x0899;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08B7: select the sound data offset 0F52h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * Hand back at the existing jump handler 08BBh.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 1 instruction(s), 4 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_08b7_data_0f52(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x08B7);
+    c->r[R_CX] = 0x0F52;
+    c->ip = 0x08BB;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08D3: select the sound data offset 0F80h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * The following JMP hands back at the existing record thunk 05C0h.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 2 instruction(s), 7 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_08d3_data_0f80(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x08D3);
+    c->r[R_CX] = 0x0F80;
+    c->ip = 0x05C0;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08DA: select the sound data offset 0F8Ah in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * The following JMP hands back at the existing record thunk 05C0h.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 2 instruction(s), 7 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_08da_data_0f8a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x08DA);
+    c->r[R_CX] = 0x0F8A;
+    c->ip = 0x05C0;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08FC: select the sound data offset 0FB4h in CX.
+ * The LEA computes an offset without reading data or changing flags.
+ * The following JMP hands back at the existing record thunk 05CEh.
+ * The continuation selects a voice record and the shared reset ends in plain RET.
+ * Only these 2 instruction(s), 7 bytes, are credited here; existing bodies own
+ * the continuation. AX/BX/DX and FLAGS remain unchanged. No callee. */
+static int asound_117_command_08fc_data_0fb4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x08FC);
+    c->r[R_CX] = 0x0FB4;
+    c->ip = 0x05CE;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 0B74: enable interrupts after the speaker timer setup and hand back at the RET. No callees. */
+static int asound_117_speaker_timer_enable(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0B75;
+    return 1;
+}
+
+/* ASOUND.117 0B75: return from the speaker timer setup. No callees. */
+static int asound_117_speaker_timer_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    c->ip = cpu_pop16(c);
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.LOG 00DA: save CX, disable interrupts, latch and sample PIT counter zero twice around a 256 instruction delay, enable interrupts and hand back before subtracting. No callees. */
+static int asound_log_sample_pit_delta(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4 + IO_SLACK(1))) return 0;
+    x86_push_reg(c, R_CX);
+    x86_cli(c);
+    set_r8(c, R_AL, 0);
+    c->icount += 3;
+    c->op_ip = 0x00DE; x86_out(c, 0x43, 0); c->icount += 1;
+    SM4_NEED(5 + IO_SLACK(2), 0x00E0);
+    c->op_ip = 0x00E0; x86_in(c, 0x40, 0); c->icount += 1;
+    set_r8(c, R_BL, get_r8(c, R_AL)); c->icount += 1;
+    c->op_ip = 0x00E4; x86_in(c, 0x40, 0); c->icount += 1;
+    set_r8(c, R_BH, get_r8(c, R_AL));
+    c->r[R_CX] = 0x0100; c->icount += 2;
+    do {
+        SM4_NEED(1, 0x00EB);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;
+    } while (c->r[R_CX]);
+    SM4_NEED(6 + IO_SLACK(3), 0x00ED);
+    set_r8(c, R_AL, 0); c->icount += 1;
+    c->op_ip = 0x00EF; x86_out(c, 0x43, 0); c->icount += 1;
+    c->op_ip = 0x00F1; x86_in(c, 0x40, 0); c->icount += 1;
+    set_r8(c, R_DL, get_r8(c, R_AL)); c->icount += 1;
+    c->op_ip = 0x00F5; x86_in(c, 0x40, 0); c->icount += 1;
+    set_r8(c, R_DH, get_r8(c, R_AL)); c->icount += 1;
+    SM4_NEED(1, 0x00F9);
+    x86_sti(c); c->icount += 1;
+    c->ip = 0x00FA;
+    return 1;
+}
+
+/* ASOUND.LOG 00FA: subtract the two PIT readings in BX and DX, restore the saved CX and return. No callees. */
+static int asound_log_finish_pit_delta(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3)) return 0;
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_DX], 1);
+    c->r[R_CX] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* ASOUND.LOG 0423: load PIT counter zero with 4C90h using low then high byte writes and hand back after the wake. No callees. */
+static int asound_log_install_timer_reload(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4 + IO_SLACK(2))) return 0;
+    c->r[R_AX] = 0x4C90; c->icount += 1;
+    c->op_ip = 0x0426; x86_out(c, 0x40, 0); c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_AH)); c->icount += 1;
+    c->op_ip = 0x042A; x86_out(c, 0x40, 0); c->icount += 1;
+    c->ip = 0x042C;
+    return 1;
+}
+
+/* ASOUND.LOG 042C: restore saved AX and enable interrupts, handing back at the RET. No callees. */
+static int asound_log_install_timer_enable(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    c->r[R_AX] = cpu_pop16(c); c->icount += 1;
+    SM4_NEED(1, 0x042D);
+    x86_sti(c); c->icount += 1;
+    c->ip = 0x042E;
+    return 1;
+}
+
+/* RSOUND.117 0C43: send one command byte to the MPU-401 and wait for its
+ * acknowledge. BL holds the command. The routine reads nothing from memory
+ * and writes none.
+ *   1. DX = 331h (the status/command port). Read it up to 65535 times until
+ *      bit 6 (the "not ready for a command" bit) is clear. If it never clears,
+ *      AX = 0 and return (the flags are those of XOR AX,AX).
+ *   2. Write BL to port 331h.
+ *   3. DX = 330h (the data port). Read it up to 65535 times until it answers
+ *      FEh, the acknowledge. If it never does, AX = 0 and return.
+ *   4. AX = 1 (acknowledged) and return; the flags are those of CMP AL,0FEh.
+ * Every port access is made at the clock the original makes it, one pass of a
+ * wait loop at a time; with no room left for a whole pass the routine stops at
+ * the loop head with CX counting the passes left, and the original goes on. */
+static int rsound_117_mpu_send_command_wait_ack(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RB_PASS (8 + IO_SLACK(1))   /* the longest stretch from a loop head: in, jmp, test, jcc, loop, xor, je, ret */
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    c->r[R_DX] = 0x0331;                                          /* 0C43 mov dx,331h */
+    c->r[R_CX] = 0xFFFF;                                          /* 0C46 mov cx,0FFFFh */
+    c->icount += 2;
+    for (;;) {                                                    /* 0C49 in al,dx / jmp / and al,40h / je 0C56 / loop 0C49 */
+        if (!room(c, RB_PASS)) { c->ip = 0x0C49; return 1; }
+        c->op_ip = 0x0C49;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x40, 0));
+        c->icount += 2;                                           /* and, je */
+        if (c->flags & F_ZF) break;                               /* ready: bit 6 clear */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 0C52 xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) */
+        c->ip = cpu_pop16(c);                                     /* 0C71 ret */
+        c->icount += 1;
+        return 1;
+    }
+    if (!room(c, 5 + IO_SLACK(1))) { c->ip = 0x0C56; return 1; }
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 0C56 mov al,bl */
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* 0C58 out dx,al: the command */
+    c->icount += 2;                                               /* the OUT and the JMP that delays */
+    c->r[R_DX] = 0x0330;                                          /* 0C5B mov dx,330h */
+    c->r[R_CX] = 0xFFFF;                                          /* 0C5E mov cx,0FFFFh */
+    c->icount += 2;
+    for (;;) {                                                    /* 0C61 in al,dx / jmp / cmp al,0FEh / je 0C6E / loop 0C61 */
+        if (!room(c, RB_PASS)) { c->ip = 0x0C61; return 1; }
+        c->op_ip = 0x0C61;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        alu_op(c, 7, get_r8(c, R_AL), 0xFE, 0);
+        c->icount += 2;                                           /* cmp, je */
+        if (c->flags & F_ZF) break;                               /* acknowledged */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 0C6A xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) */
+        c->ip = cpu_pop16(c);                                     /* 0C71 ret */
+        c->icount += 1;
+        return 1;
+    }
+    c->r[R_AX] = 0x0001;                                          /* 0C6E mov ax,1 */
+    c->ip = cpu_pop16(c);                                         /* 0C71 ret */
+    c->icount += 2;
+    return 1;
+#undef RB_PASS
+}
+
+/* RSOUND.117 0C7C: send one data byte to the MPU-401, then wait until the
+ * card has a byte for us. BL holds the byte. The routine reads nothing from
+ * memory and writes only its one stack word.
+ *   1. DX = 331h (status). Read it up to 65535 times until bit 6 (the "not
+ *      ready to take a byte" bit) is clear. If it never clears, AX = 0 and the
+ *      routine goes straight to step 3 without sending anything.
+ *   2. Write BL to port 330h (the data port) and AX = 1.
+ *   3. Push AX (the result), DX = 331h, then read the status until bit 7 (the
+ *      "no data waiting" bit, active low) reads as set: each time it is not,
+ *      read and discard one byte of port 330h and try again. There is no
+ *      limit on this wait.
+ *   4. Pop AX and return; the flags are those of the last AND AL,80h.
+ * Every port access is made at the clock the original makes it, one pass of a
+ * wait loop at a time; with no room for a whole pass the routine stops at the
+ * loop head and the original goes on. */
+static int rsound_117_mpu_write_data_wait_ready(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RW_PASS_A (7 + IO_SLACK(1))   /* from the first loop head: in, jmp, and, je, loop, xor, je */
+#define RW_PASS_B (9 + IO_SLACK(2))   /* from the second loop head: a whole retry (4 + 5), or the last pass and pop, ret */
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    c->r[R_DX] = 0x0331;                                          /* 0C7C mov dx,331h */
+    c->r[R_CX] = 0xFFFF;                                          /* 0C7F mov cx,0FFFFh */
+    c->icount += 2;
+    for (;;) {                                                    /* 0C82 in al,dx / jmp / and al,40h / je 0C8F / loop 0C82 */
+        if (!room(c, RW_PASS_A)) { c->ip = 0x0C82; return 1; }
+        c->op_ip = 0x0C82;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x40, 0));
+        c->icount += 2;                                           /* and, je */
+        if (c->flags & F_ZF) {                                    /* ready: send the byte */
+            if (!room(c, 5 + IO_SLACK(1))) { c->ip = 0x0C8F; return 1; }
+            set_r8(c, R_AL, get_r8(c, R_BL));                     /* 0C8F mov al,bl */
+            c->r[R_DX] = 0x0330;                                  /* 0C91 mov dx,330h */
+            c->icount += 2;
+            x86_out(c, c->r[R_DX], 0);                            /* 0C94 out dx,al */
+            c->icount += 2;                                       /* the OUT and the JMP that delays */
+            c->r[R_AX] = 0x0001;                                  /* 0C97 mov ax,1 */
+            c->icount += 1;
+            break;
+        }
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 0C8B xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) to 0C9A */
+        break;
+    }
+    if (!room(c, 2)) { c->ip = 0x0C9A; return 1; }
+    cpu_push16(c, c->r[R_AX]);                                    /* 0C9A push ax */
+    c->r[R_DX] = 0x0331;                                          /* 0C9B mov dx,331h */
+    c->icount += 2;
+    for (;;) {                                                    /* 0C9E in al,dx / jmp / and al,80h / jne 0CAC / drain 330h */
+        if (!room(c, RW_PASS_B)) { c->ip = 0x0C9E; return 1; }
+        c->op_ip = 0x0C9E;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x80, 0));
+        c->icount += 2;                                           /* and, jne */
+        if (!(c->flags & F_ZF)) break;                            /* data waiting */
+        c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);         /* 0CA5 dec dx */
+        c->icount += 1;
+        x86_in(c, c->r[R_DX], 0);                                 /* 0CA6 in al,dx: discard a byte of 330h */
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);         /* 0CA9 inc dx */
+        c->icount += 2;                                           /* inc, jmp 0C9E */
+    }
+    c->r[R_AX] = cpu_pop16(c);                                    /* 0CAC pop ax */
+    c->ip = cpu_pop16(c);                                         /* 0CAD ret */
+    c->icount += 2;
+    return 1;
+#undef RW_PASS_A
+#undef RW_PASS_B
+}
+
+/* RSOUND.LOG 02D4: send one command byte to the MPU-401 and wait for its
+ * acknowledge. BL holds the command. The card's base port is the word at
+ * DS:[00FA] (330h on the usual card): the data port is the base, the
+ * status/command port is base + 1. The routine writes no memory.
+ *   1. DX = base + 1. Read it up to 65535 times until bit 6 (the "not ready
+ *      for a command" bit) is clear. If it never clears, AX = 0 and return
+ *      (the flags are those of XOR AX,AX).
+ *   2. Write BL to port base + 1.
+ *   3. DX = base (read again from DS:[00FA]). Read it up to 65535 times until
+ *      it answers FEh, the acknowledge. If it never does, AX = 0 and return.
+ *   4. AX = 1 (acknowledged) and return; the flags are those of CMP AL,0FEh.
+ * Every port access is made at the clock the original makes it, one pass of a
+ * wait loop at a time; with no room left for a whole pass the routine stops at
+ * the loop head with CX counting the passes left, and the original goes on.
+ * The command write can make the machine look at interrupts when the base is
+ * a PIC or PIT port: the routine then stops right after the OUT. */
+static int rsound_log_mpu_send_command_wait_ack(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RC_PASS (8 + IO_SLACK(1))   /* the longest stretch from a loop head: in, jmp, test, jcc, loop, xor, je, ret */
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3)) return 0;
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], 0x00FA);             /* 02D4 mov dx,[00FAh] */
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* 02D8 inc dx */
+    c->r[R_CX] = 0xFFFF;                                          /* 02D9 mov cx,0FFFFh */
+    c->icount += 3;
+    for (;;) {                                                    /* 02DC in al,dx / jmp / and al,40h / je 02E9 / loop 02DC */
+        if (!room(c, RC_PASS)) { c->ip = 0x02DC; return 1; }
+        c->op_ip = 0x02DC;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x40, 0));
+        c->icount += 2;                                           /* and, je */
+        if (c->flags & F_ZF) break;                               /* ready: bit 6 clear */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 02E5 xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) */
+        c->ip = cpu_pop16(c);                                     /* 0305 ret */
+        c->icount += 1;
+        return 1;
+    }
+    if (!room(c, 5 + IO_SLACK(1))) { c->ip = 0x02E9; return 1; }
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 02E9 mov al,bl */
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* 02EB out dx,al: the command */
+    c->icount += 1;
+    if (c->icount >= c->stop_at) { c->ip = 0x02EC; return 1; }    /* the write woke the machine: stop at the next instruction */
+    c->icount += 1;                                               /* 02EC jmp (the delay) */
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], 0x00FA);             /* 02EE mov dx,[00FAh] */
+    c->r[R_CX] = 0xFFFF;                                          /* 02F2 mov cx,0FFFFh */
+    c->icount += 2;
+    for (;;) {                                                    /* 02F5 in al,dx / jmp / cmp al,0FEh / je 0302 / loop 02F5 */
+        if (!room(c, RC_PASS)) { c->ip = 0x02F5; return 1; }
+        c->op_ip = 0x02F5;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        alu_op(c, 7, get_r8(c, R_AL), 0xFE, 0);
+        c->icount += 2;                                           /* cmp, je */
+        if (c->flags & F_ZF) break;                               /* acknowledged */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 02FE xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) */
+        c->ip = cpu_pop16(c);                                     /* 0305 ret */
+        c->icount += 1;
+        return 1;
+    }
+    c->r[R_AX] = 0x0001;                                          /* 0302 mov ax,1 */
+    c->ip = cpu_pop16(c);                                         /* 0305 ret */
+    c->icount += 2;
+    return 1;
+#undef RC_PASS
+}
+
+/* RSOUND.LOG 0310: send one data byte to the MPU-401, then wait until the
+ * card has a byte for us. BL holds the byte. The card's base port is the word
+ * at DS:[00FA] (330h on the usual card): the data port is the base, the
+ * status port is base + 1. The routine writes only its one stack word.
+ *   1. DX = base + 1. Read it up to 65535 times until bit 6 (the "not ready
+ *      to take a byte" bit) is clear. If it never clears, AX = 0 and the
+ *      routine goes straight to step 3 without sending anything.
+ *   2. DX = base (read again from DS:[00FA]); write BL to it and AX = 1.
+ *   3. Push AX (the result), DX = base + 1 (ADD DX,1: the flags), then read
+ *      the status until bit 7 (the "no data waiting" bit, active low) reads
+ *      as set: each time it is not, read and discard one byte of the base
+ *      port and try again. There is no limit on this wait.
+ *   4. Pop AX and return; the flags are those of the last AND AL,80h.
+ * Every port access is made at the clock the original makes it, one pass of a
+ * wait loop at a time; with no room for a whole pass the routine stops at the
+ * loop head and the original goes on. The byte write can make the machine
+ * look at interrupts when the base is a PIC or PIT port: the routine then
+ * stops right after the OUT. */
+static int rsound_log_mpu_write_data_wait_ready(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RD_PASS_A (7 + IO_SLACK(1))   /* from the first loop head: in, jmp, and, je, loop, xor, je */
+#define RD_PASS_B (9 + IO_SLACK(2))   /* from the second loop head: a whole retry (4 + 5), or the last pass and pop, ret */
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3)) return 0;
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], 0x00FA);             /* 0310 mov dx,[00FAh] */
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* 0314 inc dx */
+    c->r[R_CX] = 0xFFFF;                                          /* 0315 mov cx,0FFFFh */
+    c->icount += 3;
+    for (;;) {                                                    /* 0318 in al,dx / jmp / and al,40h / je 0325 / loop 0318 */
+        if (!room(c, RD_PASS_A)) { c->ip = 0x0318; return 1; }
+        c->op_ip = 0x0318;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x40, 0));
+        c->icount += 2;                                           /* and, je */
+        if (c->flags & F_ZF) {                                    /* ready: send the byte */
+            if (!room(c, 5 + IO_SLACK(1))) { c->ip = 0x0325; return 1; }
+            set_r8(c, R_AL, get_r8(c, R_BL));                     /* 0325 mov al,bl */
+            c->r[R_DX] = seg_read16(c, c->seg[S_DS], 0x00FA);     /* 0327 mov dx,[00FAh] */
+            c->icount += 2;
+            x86_out(c, c->r[R_DX], 0);                            /* 032B out dx,al */
+            c->icount += 1;
+            if (c->icount >= c->stop_at) { c->ip = 0x032C; return 1; }   /* the write woke the machine */
+            c->icount += 1;                                       /* 032C jmp (the delay) */
+            c->r[R_AX] = 0x0001;                                  /* 032E mov ax,1 */
+            c->icount += 1;
+            break;
+        }
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 1;                                           /* loop */
+        if (c->r[R_CX] != 0) continue;
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 0321 xor ax,ax */
+        c->icount += 2;                                           /* xor, je (always taken) to 0331 */
+        break;
+    }
+    if (!room(c, 3)) { c->ip = 0x0331; return 1; }
+    cpu_push16(c, c->r[R_AX]);                                    /* 0331 push ax */
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], 0x00FA);             /* 0332 mov dx,[00FAh] */
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], 1, 1);        /* 0336 add dx,1 */
+    c->icount += 3;
+    for (;;) {                                                    /* 0339 in al,dx / jmp / and al,80h / jne 0347 / drain the base port */
+        if (!room(c, RD_PASS_B)) { c->ip = 0x0339; return 1; }
+        c->op_ip = 0x0339;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x80, 0));
+        c->icount += 2;                                           /* and, jne */
+        if (!(c->flags & F_ZF)) break;                            /* data waiting */
+        c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);         /* 0340 dec dx */
+        c->icount += 1;
+        x86_in(c, c->r[R_DX], 0);                                 /* 0341 in al,dx: discard a byte of the base port */
+        c->icount += 2;                                           /* the IN and the JMP that delays */
+        c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);         /* 0344 inc dx */
+        c->icount += 2;                                           /* inc, jmp 0339 */
+    }
+    c->r[R_AX] = cpu_pop16(c);                                    /* 0347 pop ax */
+    c->ip = cpu_pop16(c);                                         /* 0348 ret */
+    c->icount += 2;
+    return 1;
+#undef RD_PASS_A
+#undef RD_PASS_B
+}
+
+/* ASOUND.LOG 0300: OPL2 (AdLib) register write used by every chip-register
+ * writer of the driver. AL = the register number, BL = the value.
+ *   - AH is cleared and the value is kept in the shadow table
+ *     DS:[0516h + register number] (DI is saved and restored around it).
+ *   - The register number goes to the index port 388h after a delay of
+ *     DS:[03D2h] LOOP passes; the value goes to the data port 389h after a
+ *     delay of DS:[03D4h] passes. Both counts were calibrated against the PIT
+ *     (CX = 0 means 65536 passes).
+ * Nothing else is touched: no flag changes; DX ends as 389h, CX as 0, AL as
+ * the value. Every port access is made at the clock the original makes it. A
+ * delay loop is run in as many passes as the run limit leaves room for, one
+ * clock a pass; the rest of it (CX counts it down) is left to the original,
+ * which is then stopped on the LOOP itself. */
+static int asound_log_opl_register_write(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define AD_DELAY(at_) do {                                                                              \
+        uint64_t left_ = c->r[R_CX] ? c->r[R_CX] : 0x10000u;      /* passes the LOOP makes (CX = 0 makes 65536) */ \
+        uint64_t room_ = c->stop_at > c->icount ? c->stop_at - c->icount : 0;                                  \
+        if (left_ > room_) { c->r[R_CX] = (uint16_t)(c->r[R_CX] - room_); c->icount += room_; c->ip = (at_); return 1; } \
+        c->r[R_CX] = 0; c->icount += left_;                                                                    \
+    } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->r[R_DI]);                                    /* 0300 push di */
+    set_r8(c, R_AH, 0);                                           /* 0301 mov ah,0 */
+    c->r[R_DI] = c->r[R_AX];                                      /* 0303 mov di,ax */
+    mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0x0516)), get_r8(c, R_BL));   /* 0305 mov [di+516h],bl */
+    c->r[R_DI] = cpu_pop16(c);                                    /* 0309 pop di */
+    c->icount += 5;
+    c->r[R_DX] = 0x0388;                                          /* 030A mov dx,388h */
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], 0x03D2);             /* 030D mov cx,[03D2h] */
+    c->icount += 2;
+    AD_DELAY(0x0311);                                             /* 0311 loop $: the delay before the register select */
+    if (!room(c, 4 + IO_SLACK(1))) { c->ip = 0x0313; return 1; }
+    x86_out(c, c->r[R_DX], 0);                                    /* 0313 out dx,al: the register number */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 0314 mov al,bl */
+    c->r[R_DX] = 0x0389;                                          /* 0316 mov dx,389h */
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], 0x03D4);             /* 0319 mov cx,[03D4h] */
+    c->icount += 3;
+    AD_DELAY(0x031D);                                             /* 031D loop $: the delay before the data write */
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x031F; return 1; }
+    x86_out(c, c->r[R_DX], 0);                                    /* 031F out dx,al: the value */
+    c->icount += 1;
+    c->ip = cpu_pop16(c);                                         /* 0320 ret */
+    c->icount += 1;
+    return 1;
+#undef AD_DELAY
+}
+
+/* ASOUND.LOG 02F6: the C-callable form of the OPL2 (AdLib) register write at
+ * 0300: write_register(reg, value) with both arguments on the stack (the
+ * register number as a word at [bp+4], the value as a byte at [bp+6]). It
+ * builds a frame, loads AX = reg and BL = value, drops the frame and goes on
+ * as 0300 does; the caller cleans the arguments (plain RET).
+ *   - AH is cleared and the value is kept in the shadow table
+ *     DS:[0516h + register number] (DI is saved and restored around it).
+ *   - The register number goes to the index port 388h after a delay of
+ *     DS:[03D2h] LOOP passes; the value goes to the data port 389h after a
+ *     delay of DS:[03D4h] passes (both calibrated against the PIT; CX = 0
+ *     means 65536 passes).
+ * No flag changes. Every port access is made at the clock the original makes
+ * it. A delay loop is run in as many passes as the run limit leaves room for,
+ * one clock a pass; the rest of it (CX counts it down) is left to the
+ * original, which is then stopped on the LOOP itself. */
+static int asound_log_opl_register_write_args(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define AD_DELAY(at_) do {                                                                              \
+        uint64_t left_ = c->r[R_CX] ? c->r[R_CX] : 0x10000u;      /* passes the LOOP makes (CX = 0 makes 65536) */ \
+        uint64_t room_ = c->stop_at > c->icount ? c->stop_at - c->icount : 0;                                  \
+        if (left_ > room_) { c->r[R_CX] = (uint16_t)(c->r[R_CX] - room_); c->icount += room_; c->ip = (at_); return 1; } \
+        c->r[R_CX] = 0; c->icount += left_;                                                                    \
+    } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, c->r[R_BP]);                                    /* 02F6 push bp */
+    c->r[R_BP] = c->r[R_SP];                                      /* 02F7 mov bp,sp */
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));                  /* 02F9 mov ax,[bp+4] */
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6))));         /* 02FC mov bl,[bp+6] */
+    c->r[R_BP] = cpu_pop16(c);                                    /* 02FF pop bp */
+    c->icount += 5;
+    if (!room(c, 7)) { c->ip = 0x0300; return 1; }
+    cpu_push16(c, c->r[R_DI]);                                    /* 0300 push di */
+    set_r8(c, R_AH, 0);                                           /* 0301 mov ah,0 */
+    c->r[R_DI] = c->r[R_AX];                                      /* 0303 mov di,ax */
+    mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] + 0x0516)), get_r8(c, R_BL));   /* 0305 mov [di+516h],bl */
+    c->r[R_DI] = cpu_pop16(c);                                    /* 0309 pop di */
+    c->icount += 5;
+    c->r[R_DX] = 0x0388;                                          /* 030A mov dx,388h */
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], 0x03D2);             /* 030D mov cx,[03D2h] */
+    c->icount += 2;
+    AD_DELAY(0x0311);                                             /* 0311 loop $: the delay before the register select */
+    if (!room(c, 4 + IO_SLACK(1))) { c->ip = 0x0313; return 1; }
+    x86_out(c, c->r[R_DX], 0);                                    /* 0313 out dx,al: the register number */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_BL));                             /* 0314 mov al,bl */
+    c->r[R_DX] = 0x0389;                                          /* 0316 mov dx,389h */
+    c->r[R_CX] = seg_read16(c, c->seg[S_DS], 0x03D4);             /* 0319 mov cx,[03D4h] */
+    c->icount += 3;
+    AD_DELAY(0x031D);                                             /* 031D loop $: the delay before the data write */
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x031F; return 1; }
+    x86_out(c, c->r[R_DX], 0);                                    /* 031F out dx,al: the value */
+    c->icount += 1;
+    c->ip = cpu_pop16(c);                                         /* 0320 ret */
+    c->icount += 1;
+    return 1;
+#undef AD_DELAY
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x02F6, asound_log_opl_register_write_args, "AdLib driver: OPL2 register write with stack arguments (word register at [bp+4], byte value at [bp+6]); loads AX, BL then does what 0300 does", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0300, asound_log_opl_register_write, "AdLib driver: OPL2 register write, AL = register, BL = value: shadow it at [0516h+reg], delay [03D2h] passes, out 388h, delay [03D4h] passes, out 389h", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0310, rsound_log_mpu_write_data_wait_ready, "Roland driver: MPU-401 byte write: wait status port (base DS:[00FA] + 1) bit 6 clear, send BL to the base port, then wait for status bit 7 (data ready) draining the base port; AX 1 sent, 0 timed out", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x02D4, rsound_log_mpu_send_command_wait_ack, "Roland driver: MPU-401 command write: wait status port (base DS:[00FA] + 1) bit 6 clear, send BL there, wait the data port to answer FEh; AX 1 acknowledged, 0 timed out", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0C7C, rsound_117_mpu_write_data_wait_ready, "MPU-401 byte write: wait 331h bit 6 clear, send BL to 330h, then wait for 331h bit 7 (data ready) draining 330h; AX 1 sent, 0 timed out", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0C43, rsound_117_mpu_send_command_wait_ack, "MPU-401 command write: wait 331h bit 6 clear, send BL to 331h, wait 330h to answer FEh; AX 1 acknowledged, 0 timed out", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x042C, asound_log_install_timer_enable, "restore saved AX and enable interrupts, handing back at the RET", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0423, asound_log_install_timer_reload, "load PIT counter zero with 4C90h using low then high byte writes and hand back after the wake", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00FA, asound_log_finish_pit_delta, "subtract the two PIT readings in BX and DX, restore the saved CX and return", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00DA, asound_log_sample_pit_delta, "save CX, disable interrupts, latch and sample PIT counter zero twice around a 256 instruction delay, enable interrupts and hand back before subtracting", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B75, asound_117_speaker_timer_return, "return from the speaker timer setup", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B74, asound_117_speaker_timer_enable, "enable interrupts after the speaker timer setup and hand back at the RET", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08FC, asound_117_command_08fc_data_0fb4, "AdLib command: load CX with data offset 0FB4h and hand back at 05CEh", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08DA, asound_117_command_08da_data_0f8a, "AdLib command: load CX with data offset 0F8Ah and hand back at 05C0h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08D3, asound_117_command_08d3_data_0f80, "AdLib command: load CX with data offset 0F80h and hand back at 05C0h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08B7, asound_117_command_08b7_data_0f52, "AdLib command: load CX with data offset 0F52h and hand back at 08BBh", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0895, asound_117_command_0895_data_0f94, "AdLib command: load CX with data offset 0F94h and hand back at 0899h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x088E, asound_117_command_088e_data_0f34, "AdLib command: load CX with data offset 0F34h and hand back at 0892h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0887, asound_117_command_0887_data_0f28, "AdLib command: load CX with data offset 0F28h and hand back at 088Bh", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B57, asound_117_speaker_timer_start_install, "PC-speaker driver start: PIT control byte BL to port 43h, AL to counter 2 (42h), save and set the speaker gate (61h), save and mask the timer IRQ (21h); stops after the PIC mask write", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x033A, asound_117_adlib_write_register_slow, "AdLib register write with the card's settling delays: register AL to port DX after 30 reads, data BL to DX+1 after 5 reads", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x193E, asound_117_dsp_read_when_ready, "DSP read: poll the status port [58]+0Eh up to 512 times for bit 7 set, then read the data port [58]+0Ah into AL; CF set on timeout", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x1929, asound_117_dsp_write_when_ready, "AdLib/DSP write: poll the status port DX up to 500 times for bit 7 clear, then write AH to DX; CF set on timeout", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x05B7, isound_117_arm_effect_flag_ff, "PC-speaker overlay: if the flag byte [7C] is not FFh, set it to FFh and the word [78] to FFFFh (marks the effect off/idle); either way return", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0065, isound_117_bcd_byte_to_binary, "PC-speaker overlay: convert the packed-BCD byte in AL to binary (tens * 10 + units)", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x028D, rsound_log_install_timer_return, "one-shot INT8 timer install: the final near RET", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0289, rsound_log_install_timer_restore_and_enable, "one-shot INT8 timer install: delay, POP AX, STI; stop after the STI", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x027C, rsound_log_install_timer_reload, "one-shot INT8 timer install: delay, load 4C90h, write the PIT0 reload low then high byte; stop after the second write", 1 },

@@ -189,18 +189,16 @@ not the recompilation:
       private lead list. How the scores are measured, and the full "P2 is done
       when" definition (owner, 23-24 Oct):
       [progress.md](progress.md#what-is-measured).
-      **Done:** 1,400 addresses matched in batches a to bf (table below). Every
+      **Done:** 1,425 addresses matched in batches a to bg (table below). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
       **Batch bf (25 Oct):** the whole RSOUND.LOG `0251` one-shot timer installer is matched as four
-      entries (`0251` guard to the PIT control write, `027C` reload bytes, `0289` POP AX/STI, `028D` RET); +61
-      named bytes, all route-executed. Evidence `D:/f117-gate/p2-batch-bf-accept/`.
-      **Private work stopped for handoff (26 Oct):** batch bg has 25 small candidates and five larger
-      preparations, with unfinished fixture repairs and real-route checks; none is accepted or credited.
-      The partial integration is archived outside the repository and accepted runtime code is restored.
-      A refreshed reference inventory and a 24-entry checklist trial are prepared, with no second-reader
-      approvals. Exact readiness, evidence and resume order: [../handoff.md](../handoff.md#next-steps).
+      entries; +61 named bytes. Evidence `D:/f117-gate/p2-batch-bf-accept/`.
+      **Batch bg (26 Oct):** 25 sound-driver entries accepted in one larger gate (the owner's 26 Oct plan: fewer, larger gates):
+      ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57`, seven wrappers `0887` `088E` `0895` `08B7` `08D3` `08DA` `08FC`,
+      the speaker-timer pair `0B74` `0B75`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`;
+      RSOUND.LOG `02D4` `0310`. +473 named bytes, all route-executed. Evidence `D:/f117-gate/p2-batch-bg-accept/`.
       **What is left:** the sound drivers hold most of the unmatched executed
       bytes; the rest are the declined routines of the seven programs (below).
       Beyond the routes: reviewed static code no route runs (no new route or dead
@@ -315,6 +313,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests, 63 routes / 62 fresh interpreter sessions, three matched seeds; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
 | be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests, 63 identical routes / 62 fresh interpreter sessions, three matched seeds, reach/event limits and presentation pass. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`; commit `a172459`, [CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238). |
 | bf | 25 Oct | 1,400 | 61 named bytes | RSOUND.LOG one-shot timer installer in four entries: `0251` (guard, vector, PIT0 control write; 15 instructions), `027C` (reload low/high bytes; stops after the second write), `0289` (POP AX, STI; stops after the STI), `028D` (RET). 25 fixture instructions, 46 mutations caught; 20 optimized seed checks. Two whole-table pre-check seeds (`0x4fc6ba6c9f0d`, `0x5EED0BF1`) pass. 644 CTests, 63 identical routes / 62 fresh interpreter sessions, 1,400 matched routines at three seeds, reach/event limits clean; acceptance 1,642 s. Evidence `D:/f117-gate/p2-batch-bf-accept/`. |
+| bg | 26 Oct | 1,425 | 473 named bytes | 25 sound-driver entries in one gate: ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57` `0B74` `0B75` and seven wrappers `0887`..`08FC`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`; RSOUND.LOG `02D4` `0310`. 255 fixture instructions, 427 mutations caught, 125 optimized seed checks; two whole-table pre-check seeds (`0xaebbf86cfffe`, `0x5EED0BF2`) zero mismatches. The six MPU/OPL wait-loop fixtures force timeout and success by state index. Gate 1,970 s. |
 
 Notes that still matter:
 

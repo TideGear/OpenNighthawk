@@ -1638,6 +1638,56 @@ if(F117R_BUILD_TESTS)
       --only RSOUND.LOG:289)
     add_test(NAME matched_rsound_log_install_timer_return COMMAND func_lockstep --states 5000
       --only RSOUND.LOG:28D)
+    add_test(NAME matched_isound_117_bcd_byte_to_binary COMMAND func_lockstep --states 5000
+      --only ISOUND.117:65)
+    add_test(NAME matched_isound_117_arm_effect_flag_ff COMMAND func_lockstep --states 5000
+      --only ISOUND.117:5B7)
+    add_test(NAME matched_asound_117_dsp_write_when_ready COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1929)
+    add_test(NAME matched_asound_117_dsp_read_when_ready COMMAND func_lockstep --states 5000
+      --only ASOUND.117:193E)
+    add_test(NAME matched_asound_117_adlib_write_register_slow COMMAND func_lockstep --states 5000
+      --only ASOUND.117:33A)
+    add_test(NAME matched_asound_117_speaker_timer_start_install COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B57)
+    add_test(NAME matched_asound_117_command_0887_data_0f28 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:887)
+    add_test(NAME matched_asound_117_command_088e_data_0f34 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:88E)
+    add_test(NAME matched_asound_117_command_0895_data_0f94 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:895)
+    add_test(NAME matched_asound_117_command_08b7_data_0f52 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8B7)
+    add_test(NAME matched_asound_117_command_08d3_data_0f80 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8D3)
+    add_test(NAME matched_asound_117_command_08da_data_0f8a COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8DA)
+    add_test(NAME matched_asound_117_command_08fc_data_0fb4 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8FC)
+    add_test(NAME matched_asound_117_speaker_timer_enable COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B74)
+    add_test(NAME matched_asound_117_speaker_timer_return COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B75)
+    add_test(NAME matched_asound_log_sample_pit_delta COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:DA)
+    add_test(NAME matched_asound_log_finish_pit_delta COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:FA)
+    add_test(NAME matched_asound_log_install_timer_reload COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:423)
+    add_test(NAME matched_asound_log_install_timer_enable COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:42C)
+    add_test(NAME matched_rsound_117_mpu_send_command_wait_ack COMMAND func_lockstep --states 5000
+      --only RSOUND.117:C43)
+    add_test(NAME matched_rsound_117_mpu_write_data_wait_ready COMMAND func_lockstep --states 5000
+      --only RSOUND.117:C7C)
+    add_test(NAME matched_rsound_log_mpu_send_command_wait_ack COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:2D4)
+    add_test(NAME matched_rsound_log_mpu_write_data_wait_ready COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:310)
+    add_test(NAME matched_asound_log_opl_register_write COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:300)
+    add_test(NAME matched_asound_log_opl_register_write_args COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:2F6)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
