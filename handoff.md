@@ -201,10 +201,10 @@ governs day-to-day work.
      exit code. After it passes: merge `bugfix-q` into `master`, push, check CI.
      **Result (25 Oct, 18:10): the combined gate PASSED** (`final-verdict.json` status passed: fifteen fix checks,
      defaults, both pre-check seeds, the full P2 gate, presentation checks and the fix checks again) and `bugfix-q`
-     was **merged into master** (`afc29c5`) and pushed. Still to do after the merge: check the GitHub CI run,
+     was **merged into master** (`95a5730`) and pushed. Still to do after the merge: check the GitHub CI run,
      rebuild the main tree (`build.cmd` from PowerShell; batch be's three files are stashed as `be-pending` and
      restored, check `git status`) and refresh `D:/f117-gate/kit-libs` from the main build (keep the old set as
-     `kit-libs-before-afc29c5`), update the roadmap (a row per fix, 32 normal-play fixes), and decide whether the
+     `kit-libs-before-95a5730`), update the roadmap (a row per fix, 32 normal-play fixes), and decide whether the
      fixes item moves from P3 to P2 in `docs/progress.json`. The worktree `D:/f117-wt/bugfix` can stay until the
      owner says to remove it.
    - **Then, in the owner's order:** measure D101 (stage the unwritten slot on the Transfer page; fix if the erase
