@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-thirty-one: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b and D18, including the D1REAL timing and D1PROX balance choices
+thirty-two: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b, D18 and Q23, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -78,7 +78,7 @@ Status values:
 | Q4 | Confirmed | VGAME | Hardening: joystick axis scaling divides by a calibrated span with no zero test | `--fix Q4` |
 | Q13b | Confirmed | START | Hardening: the written orders test the departure base's record before naming the landing base | `--fix Q13b` |
 | D18 | Confirmed | START | Hardening: an unnamed airbase passes NULL to `sprintf %s` and prints "(null)" | `--fix D18` |
-| Q23 | Confirmed | START | Hardening against data the shipped game never has (below) | planned |
+| Q23 | Confirmed | START | Hardening: the roster fix-up masks record 0's realism word ten times instead of each record's once | `--fix Q23` |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -955,6 +955,22 @@ Status values:
   in both engines with D18 off and on, for an unnamed and two named targets, one
   instruction at a time to the switch at `0x02840` (12 staged runs, 0 failures).
 
+### Q23. The roster fix-up masks one record ten times
+
+- **What happens.** The roster fix-up (`0x06D07`) walks the ten 50h-byte records from
+  `D892h` with the pointer `[bp-2]`, and each pass is meant to reduce that record's
+  realism word (`+42h`) to one bit before testing it (`0x06D1C`). The AND names the
+  first record's word (`D8D4h`) instead of `[bp-2]+42h`, so it masks record 0 ten
+  times and the others never. Only a roster edited outside the game, with a realism
+  value above 1 in a later record, shows it. Macintosh and Amiga are the same.
+- **Fix.** `--fix Q23` masks the record the pass is on (record 0 declines: the original
+  instruction is the same). The containing matched routine (`0x06D07`) declines while
+  Q23 is placed.
+- **Check.** `build/check_q23 path/to/START.EXE` runs the loop over ten records with
+  realism words above 1 in both engines and compares every realism and status word
+  with a model of the loop: seven of the ten records end differently with the fix
+  (4 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -996,11 +1012,8 @@ built and described above the Q-series (Q13a, Q21, Q22).
 
 Defects the shipped game's data never reaches, which a corrupt or modified
 file would. Owner, 25 October 2026: fix them as a group, each on its own
-switch and tested by staging the bad data.
-
-| ID | Program | Defect | When it shows | Where |
-|---|---|---|---|---|
-| Q23 | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once (Mac and Amiga the same) | A roster edited outside the game with a realism value above 1 | `0x06D1C` |
+switch and tested by staging the bad data. All four are built and described
+above the Q-series (Q4, Q13b, D18, Q23).
 
 ### Code quirks with no effect
 

@@ -56731,6 +56731,7 @@ load:
 static int start_roster_settle_and_save(machine_t *m)
 {
     cpu_t *c=&m->cpu;
+    if (fix_inside(c, 0x6D07, 0x6DB8)) return 0;
     enum { REC=-2, COUNT=-4 };
     enum { ROSTER=0xD892, FIRST_FLAG=0xD8D4, SLOT=0xB39C, CUR=0xCACA, CUR_SEG=0xCACC,
            LOAD_GATE=0xCBD8, DUTY=0xE096 };

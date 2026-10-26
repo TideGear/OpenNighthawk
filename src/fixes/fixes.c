@@ -957,7 +957,28 @@ static int fix_d18_empty_name(machine_t *m)
     return 1;
 }
 
+/* Q23. The roster fix-up (0x06D07) walks the ten 50h-byte records from D892h
+ * with the pointer [bp-2], and each pass is meant to reduce that record's
+ * realism word (+42h) to one bit before it tests it (0x06D1C). The AND names
+ * the first record's word (D8D4h) instead of [bp-2]+42h, so it masks record 0
+ * ten times and the others never. Only a roster edited outside the game, with
+ * a realism value above 1 in a later record, shows it. Mask the record the
+ * pass is on; for record 0 the original instruction is the same and runs. */
+static int fix_q23_mask_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t record = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    if (record == 0xD892) return 0;
+    const uint16_t at = (uint16_t)(record + 0x42);
+    seg_write16(c, c->seg[S_DS], at, (uint16_t)(seg_read16(c, c->seg[S_DS], at) & 1));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x6D21;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q23", "START.EXE", START_47304, 0x0000, 0x6D1C, fix_q23_mask_record, "roster fix-up masks each record's realism word" },
     { "D18", "START.EXE", START_47304, 0x0000, 0x267B, fix_d18_empty_name, "an unnamed airbase prints nothing instead of (null)" },
     { "Q13b", "START.EXE", START_47304, 0x0000, 0x22E7, fix_q13b_landing_record, "written orders test the landing base's record" },
     { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D3C, fix_q4_low, "joystick scaling survives a zero low span" },
@@ -1027,6 +1048,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q23", "the roster fix-up masks every record's realism word, not record 0's ten times" },
     { "D18", "an airbase with no name is printed as nothing in the objective sentences instead of (null)" },
     { "Q13b", "the written orders test the landing base's record instead of the departure base's before naming the landing base" },
     { "Q4", "joystick axis scaling reads a zero calibrated span as the centre instead of raising a divide error" },
