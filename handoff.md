@@ -7,13 +7,12 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 25 October 2026: batch bf (the whole RSOUND.LOG `0251` timer installer, four entries) is accepted on top of
-`a172459` (batch be, the EDC2 repair, D101/Q12b); the bf commit is the one after it in `git log`. CI for `a172459`: [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238); check the bf run after the push.
-There are 34 normal-play switches. The accepted main build's kit libraries
-are refreshed at `a172459` (`kit-libs/manifest.json`); refresh them again from the bf build before the next proofs
-(keep `kit-libs-before-a172459`). Sound matching continues with the large ISOUND.117 / ASOUND.LOG routines, the
-remaining installers and the hardware wait loops (Next steps). No gate, proof worker or verification process is
-running.
+more than once, what it costs). State as of 25 October 2026 (late): batch bf (the whole RSOUND.LOG `0251` timer
+installer, four entries) is accepted, committed and pushed at `10d5adb`; [CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40274739966).
+There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) are refreshed at `10d5adb`; the old set is
+`kit-libs-before-10d5adb`. **Batch bg is in progress: twelve private sound-driver proof directories, none integrated, none
+credited (Next steps 0).** No gate, proof worker or agent is running. This machine has no `gh`; poll CI with
+`curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -191,6 +190,33 @@ governs day-to-day work.
 
 ## Next steps
 
+0. **Finish and accept batch bg** (private proofs in `D:/f117-gate/`, all steps 1-7 from three agents on 25 Oct; no gate yet):
+   - **Verified private-ready by `finish_all.py` (verdict and real-route calls seen):** ISOUND.117 `05B7` (ibm_boot, 3,110 calls;
+     it shares its RET at `05C9` with matched `05A4`, so check the credit does not double-count) and `0065` (route
+     `err_boot_series_palette`, 3 calls; `ibm_boot` never runs it); ASOUND.117 `1929` `193e` `033A` `0B57` (full_cycle; `1929`'s
+     success arm and `193E`'s timeout arm are fixture-only; `0B57` stops after the PIC mask write at `0B74`, so `0B74`
+     STI+RET is a separate entry still to prove). Directories `p2-isound-117-bg-05B7`, `...-0065`, `p2-asound-117-bg-1929`,
+     `...-193e`, `...-033A`, `...-0B57`.
+   - **Finished steps 1-7, NOT yet run through `finish_all.py` (checkpoints, boot proof, verdict):** `p2-rsound-117-bg-0C43`,
+     `p2-rsound-117-bg-0C7C`, `p2-rsound-log-bg-02D4`, `p2-rsound-log-bg-0310` (all roland_boot), `p2-asound-log-bg-0300`
+     (full_cycle). **`p2-asound-log-bg-02F6` is written but never built, locked, seeded or mutated** (`bg_mut_asound.py 02F6`
+     generates its mutations). Blocked and not to retry: ISOUND.LOG `05A1` `066D` `0715` `071D` (an error route executed
+     zero-filled memory there; `BLOCKED.txt` in each `p2-isound-log-bg-*`).
+   - **Harness hunks not carried by `integrate_many.py`; apply by hand and merge (they overlap in `io_r`):** agent B's
+     (`g_io_force_n/bit7/after` forcing bit 7 of the first byte port reads, and `g_probe_tail` moving half the mid-run stops
+     into the last ten instructions; both flags default 0 and reset per state; sources `D:/f117-gate/bg-hunk2.py` and
+     `bg-tests-base.orig.1929.c` for diffing) and agent C's (`g_io_force[2]` per-port and/or masks, `g_cap_hint` overriding
+     `g_step_cap`; script `D:/f117-gate/bg_hunk.py`). Both are additive and gated by fixture-set flags; diff each proof's
+     `tests-base.c` against `tests/func_lockstep.c`, merge into one form, and re-run an older routine's lockstep to confirm
+     nothing else changed. 0B57 also needs its `span_from` row; `0065` needs `--route err_boot_series_palette` at checkpoints.
+   - Then: `integrate_many.py`, hand-apply hunks, build (`build.cmd` from PowerShell), CTests, two whole-table pre-check seeds,
+     `new_batch.py bg bf 10d5adb` (a baseline from bf is frozen, so omit `--no-baseline` unless `src/` outside `matched.c` or
+     a route changes), `audit_private.py`, gate, finalize, score refresh, docs, commit, push, CI. Lessons from bf: a one-instruction
+     RET or a straight-line body needs `NOBLOCKS` in `batch.json` and at least five mutants (equivalent mutants such as a `room()`
+     claim followed by `SM4_NEED` do not count); an interior entry whose stack holds a saved register needs a `LIVE_FRAMES`
+     row; a PIT reload tail stops after the second (high-byte) write, the first does not wake the machine.
+   - Fresh leads list: `D:/f117-gate/bg-next-leads/leads.py` (prints unmatched executed entries from the bf named cover;
+     it counts only addresses before the `|` in `.cov` lines).
 1. **Match the rest of the sound drivers** (9,476 of the 11,266 unmatched executed bytes after bf). The RSOUND.LOG timer
    installer is done. Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
    predates batches bb to bf. Still open there: wrapper/dispatch entry points (relocated `mov ds`, indirect calls), the
