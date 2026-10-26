@@ -175,38 +175,18 @@ governs day-to-day work.
    **fix specifications (sites, replacement semantics) are in `D:/f117-gate/qsweep/verdicts.md`** (raw reviews
    in `render/`, `gameplay/`, `start/`, `sound/` beside it; its D75 and armoury rows are bugs.md's Q21 and
    Q22). The main session re-read the deciding instructions of every fix. Summary:
-   - **Q7 and Q11 accepted:** evidence `D:/f117-gate/q7-20261025/` and
-     `D:/f117-gate/q11-20261025/`, worktree `D:/f117-wt/bugfix` (branch `bugfix-q`).
-     Q11's two JGE hooks at VGAME `BC0E`/`BC1E` reject full-width scaled coordinates
-     while preserving the original abs helper's registers and flags; equal decisions decline.
-     `vgame_draw_model_in_view` has its covering guard. All checks pass: 108 staged runs,
-     eight branch-preservation checks, 358 paired event limits, Q7 regression, defaults/replay,
-     both whole-table pre-checks (1,387 routines, zero mismatches; 543 s / 540 s), full gate
-     and presentation (current figures above). `final-verdict.json` pins the accepted source hashes.
-     Generated code and route outputs use `C:/Users/Tideg/f117-recomp-local/bugfix-work`.
-     Release/build/restore details are in the evidence directory's `completion.json`.
-     No verification session remains running. Next fix: **Q12**; do not rerun Q11's full gate.
-   - **Built (25 Oct, branch `bugfix-q`, one commit each, not yet gated together):** Q12, Q14, Q15, Q16, Q17,
-     Q18, Q19, Q20 (the ten defects with Q7 and Q11), then Q13a, Q21, Q22 (the chosen behaviours) and the
-     hardening group Q4, Q13b, D18, Q23. Each has a default-on switch in `src/fixes/fixes.c`, a `fix_inside` guard
-     in every matched routine that contains its site, a staged on/off test (`tests/check_*.c`, built by CMake;
-     drivers in `tests/check_drivers.c`), a section in [docs/bugs.md](docs/bugs.md) and a count update. Traps met:
-     a site's address is segment-relative (`1058:0D3C`, not its linear `0x112BC`); a test trap placed inside a
-     matched routine never fires in the recomp engine, so stop at a return address or step one instruction at a
-     time; a Q12-style stack argument is pushed under the call and dropped at a hook placed inside the CALL's own
-     operand (`0xA154`), which keeps the guest stack consistent at every stop.
-   - **Combined gate:** `D:/f117-gate/bugfixes-20261025/run_checks.py` (all fix checks, defaults, two whole-table
-     pre-check seeds, the unchanged full P2 gate with fresh interpreter verification, presentation checks, all
-     fix checks again) runs through `affinity_launch.py`; read `final-verdict.json` and the tally lines, not the
-     exit code. After it passes: merge `bugfix-q` into `master`, push, check CI.
-     **Result (25 Oct, 18:10): the combined gate PASSED** (`final-verdict.json` status passed: fifteen fix checks,
-     defaults, both pre-check seeds, the full P2 gate, presentation checks and the fix checks again) and `bugfix-q`
-     was **merged into master** (`95a5730`) and pushed. Still to do after the merge: check the GitHub CI run,
-     rebuild the main tree (`build.cmd` from PowerShell; batch be's three files are stashed as `be-pending` and
-     restored, check `git status`) and refresh `D:/f117-gate/kit-libs` from the main build (keep the old set as
-     `kit-libs-before-95a5730`), update the roadmap (a row per fix, 32 normal-play fixes), and decide whether the
-     fixes item moves from P3 to P2 in `docs/progress.json`. The worktree `D:/f117-wt/bugfix` can stay until the
-     owner says to remove it.
+   - **All 19 accepted and merged:** `95a5730`, with successful
+     [Windows CI](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423).
+     Combined evidence: `D:/f117-gate/bugfixes-20261025/final-verdict.json` (passed:
+     focused checks, defaults/replay, two whole-table seeds, full gate and presentation).
+     Main tree rebuilt using `build.cmd` from PowerShell; kit libraries refreshed from
+     that build, prior set retained as `D:/f117-gate/kit-libs-before-95a5730`.
+     Manifest: `D:/f117-gate/main-95a5730/completion.json`; accepted source agrees
+     with the merge (some test files differ only in line endings). The roadmap has
+     one row per normal-play fix (32). No matching/scoring credit added.
+     Batch be's three files are preserved in stash `be-pending-before-95a5730-main-rebuild`
+     while D101/Q12 measurements and the clean-master EDC2 reproduction are done.
+     The bugfix worktree stays until the owner authorizes removal.
    - **Then, in the owner's order:** measure D101 (stage the unwritten slot on the Transfer page; fix if the erase
      can draw on screen, else close with the evidence) and Q12's sibling at `0x0707B` (histogram the stale SI at
      that call across the routes with a call trap; pin the 2x2 size if it is almost always nonzero); then explain

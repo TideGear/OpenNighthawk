@@ -165,21 +165,13 @@ not the recompilation:
       and the hardening group Q4, Q13b, D18, Q23), then measure D101 and Q12's
       marker-size sibling and fix or close each with evidence. The 10 no-effect
       quirks and four non-defects stay documented.
-      **Q7 accepted, 25 Oct:** default-on zoomed-view range correction; 56 staged
-      runs and 149 event limits, defaults/replay checks, two whole-table seeds,
-      full gate (630 tests, 63 routes) and presentation checks pass. Evidence:
-      `D:/f117-gate/q7-20261025/` (1,914 s acceptance).
-      **Q11 accepted, 25 Oct:** full-width model-range branches, default-on switch
-      and covering matched guard; 108 staged runs, eight register/flag preservation
-      checks, 358 paired event limits, Q7 regression, defaults/replay, two whole-table
-      seeds, full gate (630 tests, 63 routes) and presentation checks pass. Evidence:
-      `D:/f117-gate/q11-20261025/` (1,971 s acceptance). No scoring credit added.
-      Next: Q12. Owner delegated gate frequency subject to unchanged P2 accuracy:
-      remaining fixes proceed in order as one batch, each with a default-on switch,
-      covering matched guards, on/off tests in both engines and bugs.md corrections.
-      The combined final source must pass both whole-table pre-check seeds, the unchanged
-      full P2 gate, defaults/replay and presentation before commit/merge/push.
-      Details: [../handoff.md](../handoff.md).
+      **Accepted and merged, 25 Oct:** all 19 fixes (Q7, Q11 and the remaining
+      17) are on master at `95a5730`; the combined gate passed every focused
+      fix check, defaults/replay, both whole-table seeds, the full P2 gate and
+      presentation checks. Evidence: `D:/f117-gate/bugfixes-20261025/`;
+      [Windows CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423).
+      Normal play enables 32 fixes; each has a row below. D101 and the Q12
+      marker sibling still need measurement. No matching credit added.
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
@@ -694,26 +686,51 @@ Each is fixed; the named regressions keep the failing seed or case.
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
       address, pinned to the shipped file by hash. Normal play enables all
-      seventeen; core/headless and ordinary parity keep them off. `--fix none`
+      thirty-two; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
-- [x] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch:
-      D1 (a frame limiter at VGAME 0x441D holds a fast machine to GOG's 11.6
-      frames a second; `tools/d1_check.py`, route `d1_fast_machine`), D2
-      (speech played from the machine's schedule instead of a busy-wait), D3
-      (keypad digits with NumLock off answer SETUP's sound question instead of
-      quitting to DOS), D4 (secret airstrips), D5 (supply drops earn credit;
-      `cargo_d5_fixed`), D6 (a detection cover of 0 reads as 4; optional, the
-      cells are not proven a defect), D8 (the laser-guided bomb's pitch clamp;
-      it also fixes D7), D11 (saves written to a temporary file and renamed),
-      D12 (END's signed rating), D34 (destroyed-object table), and the
-      high-speed combat fixes D1TTL, D1SLOT, D1PROX and D1ACCEL
-      (`tools/d1ttl_check.py`, `d1slot_check.py`, `d1physics_check.py`) and
-      the optional D1REAL (below). D10, D35 and D36 are closed as not
-      established for DOS or not reproduced
-      ([legacy-reports.md](legacy-reports.md)). No speculative fix is offered;
-      D96 is the Reimp's own UI wait, not a patch for this START. A session
-      recorded with fixes on names them in its log and replays with them.
+- [x] **Fixes for the original's bugs**: 32 normal-play switches, individually
+      selectable; recordings retain the selected set. Each linked entry gives
+      the implementation and its focused evidence. The 19 Q-series/hardening
+      fixes passed the combined gate at `95a5730`. D10, D35 and D36 remain
+      closed ([legacy-reports.md](legacy-reports.md)); `QUIZ` is a separate
+      opt-in option.
+
+| Fix | Verified behaviour |
+|---|---|
+| [D1](bugs.md#d1-the-frame-rate-controller-does-not-keep-world-time-at-real-time) | Frame cap on fast machines |
+| [D1REAL](bugs.md#d1real-real-time-simulation-cadence) | Real-time simulation cadence (owner choice) |
+| [D1TTL](bugs.md#d1ttl-long-lived-sa-5-missiles-cannot-cause-proximity-damage) | SA-5 proximity damage at high S |
+| [D1SLOT](bugs.md#d1slot-cancelled-incoming-missiles-keep-their-launchers-slot-occupied) | Release cancelled missile slots |
+| [D1PROX](bugs.md#d1prox-incoming-proximity-distance-shrinks-with-s) | Proximity distance across S (owner choice) |
+| [D1ACCEL](bugs.md#d1accel-incoming-missile-acceleration-depends-on-s) | Missile acceleration across S |
+| [D2](bugs.md#d2-adlib-digitised-speech-can-hang-the-game) | Scheduled AdLib speech |
+| [D3](bugs.md#d3-keypad-keys-on-the-sound-driver-screen-quit-to-dos) | Keypad sound-board selection |
+| [D4](bugs.md#d4-secret-airstrip-missions-are-disabled-outside-the-gulf) | Secret airstrips outside the Gulf |
+| [D5](bugs.md#d5-supply-drops-never-award-credit) | Supply-drop credit |
+| [D6](bugs.md#d6-stealth-mountains) | Zero detection cover (owner choice) |
+| [D8](bugs.md#d8-laser-guided-bomb-pitch-clamp) | Laser-guided bomb pitch clamp; includes D7 |
+| [D11](bugs.md#d11-fragile-saves) | Atomic save replacement |
+| [D12](bugs.md#d12-ends-hidden-rating-tally-mixes-signed-and-unsigned) | Signed rating tally |
+| [D34](bugs.md#d34-the-destroyed-object-table-has-no-end) | Bound destroyed-object table |
+| [Q7](bugs.md#q7-zoomed-view-distance-uses-the-view-limit) | Zoomed-view range |
+| [Q11](bugs.md#q11-far-model-positions-wrap-into-the-nearby-scene) | Full-width model-range cull |
+| [Q12](bugs.md#q12-the-cannons-ground-test-reads-a-stale-stack-word) | Pass the cannon ground-test unit |
+| [Q14](bugs.md#q14-an-overdue-objective-never-shows-time-expired) | Overdue objective text |
+| [Q15](bugs.md#q15-adlib-noise-take-over-reads-the-wrong-generators-count) | AdLib noise take-over count |
+| [Q16](bugs.md#q16-mt-32-volume-and-pan-modulation-overrun-the-data-range) | Clamp MT-32 volume and pan |
+| [Q17](bugs.md#q17-pitch-ladder-labels-read-outside-their-table) | Pitch-ladder labels past 90 degrees |
+| [Q18](bugs.md#q18-the-campaign-date-runs-past-december) | Campaign month/year rollover |
+| [Q19](bugs.md#q19-the-enemy-troops-overlay-loses-its-place) | Enemy Troops overlay iteration |
+| [Q20](bugs.md#q20-a-click-can-leave-the-briefing-popup-on-the-map) | Briefing popup ownership |
+| [Q13a](bugs.md#q13a-a-sensorless-unit-reports-a-stale-range) | Sensorless range/bearing (owner choice) |
+| [Q21](bugs.md#q21-the-steering-brackets-width-comes-from-stale-stack) | Retain steering-bracket width (owner choice) |
+| [Q22](bugs.md#q22-the-armoury-shortage-counts-a-repeated-draw) | Do not count repeated armoury refusals |
+| [Q4](bugs.md#q4-joystick-scaling-divides-by-an-unchecked-span) | Guard zero joystick spans (hardening) |
+| [Q13b](bugs.md#q13b-the-written-orders-test-the-wrong-bases-record) | Read the landing-base record (hardening) |
+| [D18](bugs.md#d18-an-unnamed-airbase-prints-null) | Empty unnamed-airbase name (hardening) |
+| [Q23](bugs.md#q23-the-roster-fix-up-masks-one-record-ten-times) | Mask each roster record (hardening) |
+
   - *Speed* ([speed-sweep.md](speed-sweep.md)): normal play now defaults to
     60 million instructions/s and D1REAL at 15 normal /30 compressed updates/s,
     approved after [broader validation](cadence15-validation.md). The historical
