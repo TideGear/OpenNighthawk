@@ -60,13 +60,17 @@ verification) is not an optimisation; it needs the owner's approval.
   the latest named coverage and batch-h route coverage. No gate is rerun for a
   scope-table-only change; the classifier, progress and dossier tests are
   enough. Findings: [static-code-review.md](static-code-review.md).
-- **Reference inventory refresh and checklist trial.** Rebuild from the current classifier, accepted named
-  coverage and reviewed scope; check every target byte for omissions, duplicates and stale matched entries.
-  Keep the full checklist separately, including matched fixture-only bytes. The 26 Oct preparation against
-  batch bf has 741 reference rows and 43,926 checklist bytes still needing second reads; 24 trial packets are
-  prepared but unreviewed. No game runs or score changes; wall time not measured. Refresh after the next accepted
-  batch, then obtain genuinely independent disassembly reviews before adopting rows. Evidence and scripts:
-  `D:/f117-gate/unmatched-reference-20261026/`; packets with game bytes remain private.
+- **Reference inventory and blind checklist reads.** Rebuild from the current classifier, accepted named coverage and
+  reviewed scope; check every target byte for omissions, duplicates and stale matched entries. Keep matched fixture-only
+  bytes in the checklist. Each corrected packet gets a fresh independent reader who sees only disassembly, the proposed
+  name and neutral measured facts; earlier purposes, statuses and verdicts stay hidden. Stage only supported ACCEPTs
+  whose judged status equals the proposal; original/dead design rules require separate evidence. Validate on a copy,
+  then independently check against CURRENT accepted coverage before appending rows and refreshing the score.
+  Round 2 (26 Oct): 588 packets / 79 groups, 367 units / 13,976 bytes adopted; checklist 34,684 / 44,714 (77.57%).
+  The resumed 21 groups used at most three fresh readers concurrently (current tool capacity); wall time not measured.
+  The snapshot covered 44,700 bytes; current bh scope adds 14 unreviewed bytes, explicitly retained for round 3.
+  All 80 focused tests pass; runtime unchanged, so no matched-code gate. Evidence, copy validators and staging:
+  `D:/f117-gate/checklist-full-20261026/round2/`. Packets containing game bytes remain private.
 - **Module scope refresh.** Decode and validate the existing route captures against all 17
   game code files, then refresh progress with the current named proofs. The 21 Oct measurement
   took 2.8 s; the complete score refresh took about 9 s. Scope-only tooling changes use the

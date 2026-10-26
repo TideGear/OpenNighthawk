@@ -204,7 +204,10 @@ not the recompilation:
       named bytes, all route-executed. Gate 1,723 s, 674 tests, 188 mutations, three whole-table pre-check seeds zero mismatches. Evidence
       `D:/f117-gate/p2-batch-bh-accept/`.
       **Accounted-for checklist (26 Oct):** a full blind second-read pass over the 43,920 unreviewed bytes (912 units, 156 independent readers) adopted
-      444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. The rest are being corrected and re-read (round 2).
+      444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. Round 2 re-cut the remainder into 588 packets / 79 independent reader groups: all read,
+      367 units / 13,976 bytes adopted in 523 rows. Checklist now 34,684 / 44,714 (77.57%), P2 90.40%.
+      The 221 unadopted units (10,016 bytes), plus 14 current-scope bytes absent from the older packet snapshot,
+      remain open for corrected round-3 packets. No matching credit or exclusions were added.
       Evidence `D:/f117-gate/checklist-full-20261026/`.
       **What is left:** the sound drivers hold most of the unmatched executed
       bytes; the rest are the declined routines of the seven programs (below).
