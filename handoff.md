@@ -7,10 +7,38 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). Updated 26 October 2026: batch bg (25 sound-driver entries, one larger gate) is accepted: `D:/f117-gate/p2-batch-bg-accept/final-gate-verdict.json`
-passed in 1,970 s. There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) are refreshed at bg; the old set is `kit-libs-before-bg`
-(and `kit-libs-before-10d5adb`). No gate, proof worker or agent runs once bg is committed. This machine has no `gh`; poll CI with
-`curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
+more than once, what it costs). **Stopped for handoff on 26 October 2026 (about 16:00) at commit `28b34b2`** (batch bh accepted, CI green;
+P2 87.27%). The working copy is now **`C:\Dev\F-117A Recomp`** (moved off Google Drive; the old `My Drive` copy is stale: do not use it). There are
+34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) are current at `28b34b2`; older sets `kit-libs-before-bh`, `-bg`, `-10d5adb`.
+This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
+
+### STATE AT THE STOP: read this first (nothing below was committed except `28b34b2` and its predecessors)
+
+1. **Checklist round 2 is partly read.** `D:/f117-gate/checklist-full-20261026/round2/` holds 588 corrected units (23,992 bytes), 588 packets, 79 reader
+   groups `R2001`..`R2079` (`round2/groups/R2###.txt`, `round2/AGENT-PROMPT.md`, `round2/READER-BRIEF.md`). Reader agents were launched for `R2001`..`R2058`
+   (**56 of 79 groups were complete at the stop, 419 verdict files**; `R2056` and `R2058` were in flight and may be cut off. **Find the groups to launch** with: for each
+   `round2/groups/R2###.txt`, a group is done only if every listed packet has `round2/reads/<packet>.read.md` (the filename is the packet name plus `.read.md`) containing a
+   `Verdict:` line; re-launch every group that is not done); **`R2059`..`R2079` were never launched**. Launch with the message
+   `Group R2### . Follow D:/f117-gate/checklist-full-20261026/round2/AGENT-PROMPT.md exactly (read it first, then round2/READER-BRIEF.md).` One fresh agent per group.
+   **A harness limit of 20 concurrent subagents applies** (extra launches are refused: top up as slots free, about 2 minutes per reader).
+   When all reads exist: `py round2/adopt_r2.py --validate` (tabulates, stages only ACCEPT units whose reader-judged status equals the proposal, validates on a
+   COPY of the repo TSV, never edits the repo). Then append `round2/staged-round2.tsv` to `docs/reference-reviewed.tsv`, run the score refresh
+   (`py tools/progress.py --census D:/f117-gate/census.tsv --named-cover D:/f117-gate/p2-batch-bh-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`),
+   fix the docs' figures, commit and push. `round2/needs-owner-or-manual.tsv` (41 rows) lists the judgement calls: 17 rows are stays-original/probable-dead
+   (adopt never stages these: a design rule or certificate is needed), 3 had no judged status, 19 were applied with judgement (verify at adoption; see
+   `round2/decisions.txt`). Round 1 (156 groups, 912 verdicts) is complete and committed (444 units, 19,928 bytes). After round 2, units still
+   not adopted get a round 3 the same way (fresh corrected packets, different readers). Checklist is 20,708 / 44,714 bytes (46.31%) at `28b34b2`.
+2. **Matching round 3 agents were running (private, unproved, nothing integrated)** on CPU masks `0x000F0000` (ASOUND.117), `0x00F00000` (RSOUND drivers),
+   `0x0F000000` (ASOUND.LOG/ISOUND) and `0xF0000000` (hard tail: SETUP `10B3`, MPS_LOGO thunks `00DA:0307/030E/0315`, PLAYER `0211`). Proof directories exist
+   (`p2-asound-117-bi-0E8A`, `p2-asound-log-bi-0D1A`, `p2-rsound-117-bi-0002`, `p2-setup-bi-10b3`, `p2-mpslogo-bi-0307/030E/0315`, `p2-player-bi-0211`) but **none had a
+   `private-verdict.json` at the stop: treat all as unfinished, check each directory's logs, never trust a half-run**. `D:/f117-gate/hard-tail-r3/` has the hard-tail
+   agent's scratch (a `feasibility.md` may exist). Resume by re-running the agents' kit steps per directory, or start fresh leads (item 1 below).
+3. **Uncommitted local state:** nothing in the repository (only the owner's two `.bat` files). All private work is under `D:/f117-gate/`.
+4. **Process changes agreed on 26 Oct, status:** done: new-tests-only CTests before the gate, three pre-check seeds beside the CTests, move off Drive. Not done:
+   `--overlap-jobs` timing, six proof slots (four were used), `career_promotion` engine profiling. The second PC is deferred (owner). Gate times: bg 1,970 s, bh 1,723 s.
+5. **Hazards found this session (all recorded further down too):** `XW8`'s hidden local `a_`; the kit `seeds` step only tests the substring `0 skipped`; `0BFC`'s guard
+   arms are untestable by the harness; the first build in `C:\Dev` needs `-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen` or it builds interpreter-only
+   (39 tests instead of 674).
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
