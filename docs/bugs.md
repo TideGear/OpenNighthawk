@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-thirty: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4 and Q13b, including the D1REAL timing and D1PROX balance choices
+thirty-one: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b and D18, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -77,7 +77,8 @@ Status values:
 | Q22 | Confirmed | START | The armoury shortage does not check the refused entry's own flag, so a repeated draw counts without refusing anything new | `--fix Q22` |
 | Q4 | Confirmed | VGAME | Hardening: joystick axis scaling divides by a calibrated span with no zero test | `--fix Q4` |
 | Q13b | Confirmed | START | Hardening: the written orders test the departure base's record before naming the landing base | `--fix Q13b` |
-| D18, Q23 | Confirmed | START | Hardening against data the shipped game never has (below) | planned |
+| D18 | Confirmed | START | Hardening: an unnamed airbase passes NULL to `sprintf %s` and prints "(null)" | `--fix D18` |
+| Q23 | Confirmed | START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -939,6 +940,21 @@ Status values:
   states differ exactly where the records disagree, and stop and resume at every
   instruction agree (90 staged runs, 0 failures).
 
+### D18. An unnamed airbase prints "(null)"
+
+- **What happens.** The objective sentences (`0x02651` onward) take the target's
+  name from the name table by the first word of its record; when the word is zero
+  (an airbase with no name) they keep a NULL pointer in `[bp-4]` (`0x0267B`) and
+  pass it to `sprintf %s` (`0x026B0`, `0x0279E`, `0x027CE`, `0x027E7`), which prints
+  "(null)". Every class-21 record of the shipped worlds is named, so it is not
+  reachable (hardening).
+- **Fix.** `--fix D18` points the name at an empty string instead (the run time's
+  eight zero bytes at the start of the data segment). The containing matched routine
+  (`0x02651`) declines while D18 is placed.
+- **Check.** `build/check_d18 path/to/START.EXE` runs the name lookup from `0x02657`
+  in both engines with D18 off and on, for an unnamed and two named targets, one
+  instruction at a time to the switch at `0x02840` (12 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -984,7 +1000,6 @@ switch and tested by staging the bad data.
 
 | ID | Program | Defect | When it shows | Where |
 |---|---|---|---|---|
-| D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | A world with an unnamed airbase | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
 | Q23 | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once (Mac and Amiga the same) | A roster edited outside the game with a realism value above 1 | `0x06D1C` |
 
 ### Code quirks with no effect

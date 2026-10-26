@@ -12,7 +12,7 @@ four held-back routines) is accepted and pushed (`fe825bd`); batch be is integra
 uncommitted and blocked on a pre-check mismatch in an older routine (Next steps 2); the re-release settings
 are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of
 matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted** (zoomed-view
-range and full-width model culling, default on; thirty normal-play fixes). **Q12 is next**
+range and full-width model culling, default on; thirty-one normal-play fixes). **Q12 is next**
 (Next steps 1). Owner requested this handoff, commit, push and stop; no Q12 work has begun.
 
 This file holds only the current state, standing practice, open decisions and
@@ -77,7 +77,7 @@ entry. Consolidate it instead of appending to it.
 - **Quiz option (owner, 20 Oct):** `--fix QUIZ` restores the aircraft-identification quiz GOG patched out (an
   override at START `001D` runs `0703`); off by default, `--fix all` and normal play never switch it on. Routes
   `quiz_right`/`quiz_wrong`; the quiz routines are matched (batch ah).
-- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all thirty fixes on (Q11 added 25 Oct). S15, 15 normal / 30
+- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all thirty-one fixes on (Q11 added 25 Oct). S15, 15 normal / 30
   compressed updates, recorded per-machine cadence; legacy recordings keep eight. Do not promote 15/40. The
   previous mode is `--sim-hz 8 --ips 20000000`. Validation: [docs/cadence15-validation.md](docs/cadence15-validation.md).
   Core, API and headless runs start with fixes off; parity commands prepend `--fix none`.
@@ -157,7 +157,7 @@ governs day-to-day work.
   label behaviours by evidence. Gameplay and logic parity outrank rendering.
 - **Keep all original graphics** (fonts, sprites, the map arrow); smooth and re-render existing geometry, no
   vector replacements.
-- **Bug fixes are on by default for normal play** (all thirty); parity gates keep the original reference.
+- **Bug fixes are on by default for normal play** (all thirty-one); parity gates keep the original reference.
 - **No screen takeover.** Ask before any visible or fullscreen test; emulators run headless, silent, hidden.
 - The owner's untracked `4k60.bat` and `original-fixed.bat` (settings live in `build/f117a.ini` and
   `build/f117a.4k60.ini`, outside the repository) stay untouched: never stage them.

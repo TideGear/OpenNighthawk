@@ -940,7 +940,25 @@ static int fix_q13b_landing_record(machine_t *m)
     return 1;
 }
 
+/* D18. The objective sentences (0x02651 onward) take the target's name from
+ * the name table by the first word of its record, and when that word is zero
+ * (an airbase with no name) keep a NULL pointer in [bp-4] (0x0267B). The
+ * sentence builders pass it to sprintf's %s (0x026B0, 0x0279E, 0x027CE,
+ * 0x027E7), which prints "(null)". Point it at an empty string instead: the
+ * eight bytes at the start of the data segment are zero (the run time's
+ * null-pointer check area). No shipped world reaches it. */
+static int fix_d18_empty_name(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), 0x0004);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x2680;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "D18", "START.EXE", START_47304, 0x0000, 0x267B, fix_d18_empty_name, "an unnamed airbase prints nothing instead of (null)" },
     { "Q13b", "START.EXE", START_47304, 0x0000, 0x22E7, fix_q13b_landing_record, "written orders test the landing base's record" },
     { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D3C, fix_q4_low, "joystick scaling survives a zero low span" },
     { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D67, fix_q4_high, "joystick scaling survives a zero high span" },
@@ -1009,6 +1027,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "D18", "an airbase with no name is printed as nothing in the objective sentences instead of (null)" },
     { "Q13b", "the written orders test the landing base's record instead of the departure base's before naming the landing base" },
     { "Q4", "joystick axis scaling reads a zero calibrated span as the centre instead of raising a divide error" },
     { "Q22", "the armoury shortage greys out as many weapons as it draws, instead of counting a repeated draw twice" },

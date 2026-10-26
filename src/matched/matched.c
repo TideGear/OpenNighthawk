@@ -24778,6 +24778,7 @@ static int st4_start_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_STA
 static int st4_start_objective_open(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x2651, 0x2696)) return 0;
     if (!room(c, 25)) return 0;
     frame_open(c, 0x5A);
     cpu_push16(c, c->r[R_SI]);
