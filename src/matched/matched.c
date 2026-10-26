@@ -553,15 +553,21 @@ static int vgame_read_vector(machine_t *m)
 }
 
 /* VGAME 0x0EDC2, strupr(s): a-z become A-Z in place, up to the zero byte;
- * returns s. Declines a string with no zero byte in its segment. */
+ * returns s. Declines a string with no zero byte in its segment, or one
+ * whose scan reaches the saved BP that the original pushes before reading
+ * the string: that write can introduce or remove its terminating zero. */
 static int vgame_strupr(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t s = arg(c, 0), ds = c->seg[S_DS];
+    const uint32_t own0 = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
+    const uint32_t own1 = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 1));
     unsigned n = 5 + 3 + 3;                                       /* frame + jmp; last test; xchg, pop, ret */
     uint32_t len = 0;
     for (; len < 0x10000; len++) {
-        const uint8_t ch = mem_read8(c, phys(ds, (uint16_t)(s + len)));
+        const uint32_t at = phys(ds, (uint16_t)(s + len));
+        if (at == own0 || at == own1) return 0;
+        const uint8_t ch = mem_read8(c, at);
         if (!ch) break;
         n += 3 + ((uint8_t)(ch - 0x61) < 0x1A ? 6 : 4);
     }
@@ -59804,6 +59810,7 @@ static int start_world_options(machine_t *m)
 #define WALDEC() set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0))
 #define WALSUB(n_) set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),(n_),0))
 #define WZERO() (c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1))
+    if (fix_inside(c, 0x5BF0, 0x5E70)) return 0;
     if(!room(c,8))return 0;
     WB(8,0x5BF0);frame_open(c,10);WP(c->r[R_SI]);WV(0x5A8A);WV(6);
     WC(0x5BFF,0x3641,0x5C02);
@@ -91298,7 +91305,229 @@ static int isound_log_reload_timer_zero(machine_t *m)
     return 1;
 }
 
+/* ASOUND.117 01B6:0899 (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05C0`, into the voice record 19A0h reset thunk at 05C0 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05C0, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_0899_reset_19a0(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0899);                                                /* jmp 05C0 */
+    c->ip = 0x05C0;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0892 (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05E3`, into the voice record 190Ah reset thunk at 05E3 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05E3, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_0892_reset_190a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0892);                                                /* jmp 05E3 */
+    c->ip = 0x05E3;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:090E (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05D5`, into the voice record 1946h reset thunk at 05D5 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05D5, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_090e_reset_1946(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x090E);                                                /* jmp 05D5 */
+    c->ip = 0x05D5;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08AD (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05CE`, into the voice record 1964h reset thunk at 05CE (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05CE, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_08ad_reset_1964(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x08AD);                                                /* jmp 05CE */
+    c->ip = 0x05CE;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08BB (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05CE`, into the voice record 1964h reset thunk at 05CE (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05CE, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_08bb_reset_1964(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x08BB);                                                /* jmp 05CE */
+    c->ip = 0x05CE;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:088B (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05C7`, into the voice record 1982h reset thunk at 05C7 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05C7, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_088b_reset_1982(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x088B);                                                /* jmp 05C7 */
+    c->ip = 0x05C7;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08D0 (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05E3`, into the voice record 190Ah reset thunk at 05E3 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05E3, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_08d0_reset_190a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x08D0);                                                /* jmp 05E3 */
+    c->ip = 0x05E3;
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:08C2 (near, no arguments, a sequencer command-table entry): a one-instruction thunk,
+ * `jmp 05C0`, into the voice record 19A0h reset thunk at 05C0 (already matched: it loads
+ * BX with that record's address and goes on into the shared record reset at 05E7, which ends in a plain RET
+ * back to whoever called the handler). This body claims only its own 1 instruction (3 bytes, 1 clock) and hands
+ * back at 05C0, credited by its own proof. No registers or flags are touched by this instruction. */
+static int asound_117_cmd_08c2_reset_19a0(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x08C2);                                                /* jmp 05C0 */
+    c->ip = 0x05C0;
+    return 1;
+#undef XB
+}
+
+/* RSOUND.LOG 00AE, near (no arguments, no result): the Roland driver's timer uninstaller,
+ * the counterpart of the installer at 005B. With interrupts disabled it saves AX/BX/CX/DS,
+ * points DS at segment 0 (the real interrupt vector table), copies the old INT0A vector
+ * from CS:004C/004E back into 0000:0028/002A and the old INT8 vector from CS:0048/004A
+ * back into 0000:0020/0022, reprograms PIT counter 0 to mode 3 (control byte 36h) with a
+ * 0 reload (two OUTs to port 40h: the low byte from AL after xor ax,ax, then the high byte
+ * from AH, also 0), records that high byte at CS:0051 and clears the installed flag at
+ * CS:0054, restores DS/CX/BX/AX, then STIs and returns.
+ * Each OUT (43h control word, then the two 40h reload bytes) is its own instruction, given
+ * its own room claim with I/O slack, exactly like START/END/SETUP's frontend_timer_restore:
+ * the original stops right after any one of them that wakes the run loop. The three trivial
+ * "jmp next" delay jumps after each OUT cost an instruction but have no other effect, so each
+ * is folded into the non-IO work that follows it up to the next OUT.
+ * Named region ends at the STI (POPF_STOPS: RSOUND.LOG 00AE -> 00FC); the RET at 00FC is
+ * outside this named region and remains original continuation code, as 005B's own STI hand-back does. */
+static int rsound_log_uninstall_timers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 16)) return 0;
+    XB(16, 0x00AE);
+    x86_cli(c);
+    x86_push_reg(c, R_AX);
+    x86_push_reg(c, R_BX);
+    x86_push_reg(c, R_CX);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x004C);
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], 0x004E);
+    ds_put(c, 0x0028, c->r[R_BX]);
+    ds_put(c, 0x002A, c->r[R_CX]);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x0048);
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], 0x004A);
+    ds_put(c, 0x0020, c->r[R_BX]);
+    ds_put(c, 0x0022, c->r[R_CX]);
+    set_r8(c, 0, 0x36);
+
+    /* 00DD out 43h,al: PIT counter 0, mode 3 control word. */
+    SM4_NEED(1 + IO_SLACK(1), 0x00DD);
+    c->op_ip = 0x00DD;
+    x86_out(c, 0x43, 0);
+    c->icount += 1;
+
+    /* 00DF jmp $+2 (delay); 00E1 xor ax,ax */
+    SM4_NEED(2, 0x00DF);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->icount += 2;
+
+    /* 00E3 out 40h,al: reload low byte (0). */
+    SM4_NEED(1 + IO_SLACK(1), 0x00E3);
+    c->op_ip = 0x00E3;
+    x86_out(c, 0x40, 0);
+    c->icount += 1;
+
+    /* 00E5 jmp $+2 (delay); 00E7 mov al,ah */
+    SM4_NEED(2, 0x00E5);
+    set_r8(c, 0, get_r8(c, 4));
+    c->icount += 2;
+
+    /* 00E9 out 40h,al: reload high byte (0, from AH). */
+    SM4_NEED(1 + IO_SLACK(1), 0x00E9);
+    c->op_ip = 0x00E9;
+    x86_out(c, 0x40, 0);
+    c->icount += 1;
+
+    /* 00EB jmp $+2 (delay), then the pops. */
+    XB(7, 0x00EB);
+    mem_write8(c, phys(c->seg[S_CS], 0x0051), get_r8(c, R_AL));
+    mem_write8(c, phys(c->seg[S_CS], 0x0054), 0x00);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = cpu_pop16(c);
+
+    /* 00FB sti: its own instruction, isolated so its own clock is checked on its own. */
+    SM4_NEED(1, 0x00FB);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x00FC;
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x00AE, rsound_log_uninstall_timers, "Roland driver: with interrupts disabled, restore the saved INT8 and INT0A vectors from CS:0048..004E into the real vector table, reprogram PIT counter 0 back to mode 3 with a 0 reload, clear the installed flags, and stop immediately after STI (POPF_STOPS); the RET at 00FC is outside this named region and remains original continuation code", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08C2, asound_117_cmd_08c2_reset_19a0, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08D0, asound_117_cmd_08d0_reset_190a, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x088B, asound_117_cmd_088b_reset_1982, "AdLib overlay command handler: a one-instruction jump to the voice record 1982h reset thunk at 05C7 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08BB, asound_117_cmd_08bb_reset_1964, "AdLib overlay command handler: a one-instruction jump to the voice record 1964h reset thunk at 05CE (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08AD, asound_117_cmd_08ad_reset_1964, "AdLib overlay command handler: a one-instruction jump to the voice record 1964h reset thunk at 05CE (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x090E, asound_117_cmd_090e_reset_1946, "AdLib overlay command handler: a one-instruction jump to the voice record 1946h reset thunk at 05D5 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0892, asound_117_cmd_0892_reset_190a, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0899, asound_117_cmd_0899_reset_19a0, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0663, isound_log_reload_timer_zero, "PC-speaker driver: send the counter-0 reload 0000 (low then high byte) to port 40h, stop at the STI", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0635, isound_log_restore_timer_vector, "put the old INT8 chain back once in the PC-speaker driver, stop immediately after the counter-0 control word", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x060D, isound_log_return_after_install_sti, "near return after the PC-speaker driver's timer install STI hand-back, including wrapped stack words", 1 },

@@ -308,7 +308,7 @@ fallback instructions, not everything that ran.
   generation and makes running code stop at the next boundary.
 - **Code overrides.** Hand-written C registered for one address of one
   module (by name and file hash). Fixes start off in the core and headless
-  runner; the application enables all thirty-two for normal play (`--fixes
+  runner; the application enables all thirty-four for normal play (`--fixes
   recommended`; `--fixes original` turns them all off). `--fix none`
   clears the set and `--fix ID` adds a selection. Ordinary parity routes
   explicitly start with none; fix-specific routes enable their tested fixes.
@@ -810,7 +810,7 @@ reads its stacked bound after the generator updates its seed: DS and SS can
 alias, so an early C local can change the divisor. The generic regression
 `matched_start_rnd_stack_alias` preserves the seed that exposed this case.
 
-1,383 addresses are matched across the game's 17 code files (the census
+1,396 addresses are matched across the game's 17 code files (the census
 totals are in [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
@@ -820,6 +820,16 @@ routines return far with the arguments a word higher. The shared routines
 read each call's kind from the code (`sm3_call`) and take a far flag.
 Candidates come from `tools/reimp_names.py`; the list is the table at the
 end of `matched.c`.
+
+The upper-case helper at VGAME `EDC2` must also respect a stack write before
+its first string read. Seed `0xfe825bd272ab`, state 911 aliases the string
+(`C49F:0001`) with `PUSH BP` at `B82F:C70A`: the saved BP inserts a zero
+nine bytes into the string. Scanning before that push ran 111 instructions
+instead of 74 and changed the return `6DC2` to `4DC2`. The body now declines
+when its scan reaches either pushed byte, as the other string helpers do;
+the original then executes the aliased case. The fixture and I/O comparison
+remain unchanged. `matched_strupr_stack_alias` pins the failing seed;
+private trace/control evidence: `D:/f117-gate/edc2-master-20261025/`.
 
 ## Audio
 

@@ -7,11 +7,12 @@ scoreboard is `py tools/progress.py` ([progress.md](progress.md)). Update this
 page with every piece of work, and keep it short: one entry per item, the
 evidence linked or in the commit, not narrated here.
 
-The order of the phases is the project's: **1:1 parity first** - the same
-player actions playing out as on the original's hardware - then understood
-(named) code, then fixes and enhancements - each switchable, never
-instead of parity - and last the checks only people and outside references can
-make (Phase 4).
+The project keeps **1:1 parity first**: the same player actions play out as
+on the original's hardware. The owner put original-game bug fixes first in
+the Phase 2 work queue on 25 October, before further matching. Fixes and
+enhancements remain switchable, with the original independently testable;
+the score's existing fixes item remains in Phase 3. Phase 4 holds the checks
+only people and outside references can make.
 
 ## Phase 1 - recompiled, 1:1 with the original
 
@@ -143,7 +144,7 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
-- [ ] **First: fix the original's remaining bugs** (owner, 25 Oct 2026: bug
+- [x] **First: fix the original's remaining bugs** (owner, 25 Oct 2026: bug
       fixes come before matching). The 31 rows of [bugs.md](bugs.md)'s
       "Smaller confirmed defects" table had no fix and no recorded reason. All
       31 were re-read against the DOS instructions and compared with Mac 2.3.2
@@ -159,19 +160,23 @@ not the recompilation:
       ladder labels past 90 degrees, the campaign date past December, the
       Enemy Troops overlay, the stuck briefing popup), three owner decisions
       (Q13a, Q21, Q22), 10 code quirks with no effect, four rows that were
-      never the original's defects and D101 to measure, all in
+      never the original's defects and D101 (subsequently measured below), all in
       [bugs.md](bugs.md#smaller-defects-q-series). Owner's plan (25 Oct): build
-      19 items: 17 specified fixes (the ten, the three with chosen behaviours,
+      17 specified fixes (the ten, the three with chosen behaviours,
       and the hardening group Q4, Q13b, D18, Q23), then measure D101 and Q12's
       marker-size sibling and fix or close each with evidence. The 10 no-effect
       quirks and four non-defects stay documented.
-      **Accepted and merged, 25 Oct:** all 19 fixes (Q7, Q11 and the remaining
-      17) are on master at `95a5730`; the combined gate passed every focused
+      **Accepted and merged, 25 Oct:** all 17 additions (Q7, Q11 and the remaining
+      15) are on master at `95a5730`; the combined gate passed every focused
       fix check, defaults/replay, both whole-table seeds, the full P2 gate and
       presentation checks. Evidence: `D:/f117-gate/bugfixes-20261025/`;
       [Windows CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423).
-      Normal play enables 32 fixes; each has a row below. D101 and the Q12
-      marker sibling still need measurement. No matching credit added.
+      The merged set has 32 fixes; each has a row below. D101 and the Q12
+      marker sibling are now measured and repaired below: 34 normal-play switches.
+      Both and the EDC2 body repair passed combined acceptance with batch be
+      (`combined-final-verdict.json`, 1,948 s including repeated focused checks).
+      The earlier "19" label counted two additions twice; 15 + 17 = 32 before
+      D101/Q12b. The fixes themselves add no matching credit.
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
@@ -183,7 +188,7 @@ not the recompilation:
       private lead list. How the scores are measured, and the full "P2 is done
       when" definition (owner, 23-24 Oct):
       [progress.md](progress.md#what-is-measured).
-      **Done:** 1,387 addresses matched in batches a to bd2 (table below). Every
+      **Done:** 1,396 addresses matched in batches a to be (table below). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
@@ -236,7 +241,7 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to bd (16-24 October 2026)
+### Batches e to be (16-25 October 2026)
 
 Every batch below passed the same proof (see above): five seeds per routine
 with every instruction reached, all mutations caught, exact boot (26
@@ -299,6 +304,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
 | bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
 | bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests, 63 routes / 62 fresh interpreter sessions, three matched seeds; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
+| be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests, 63 identical routes / 62 fresh interpreter sessions, three matched seeds, reach/event limits and presentation pass. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`. |
 
 Notes that still matter:
 
@@ -686,12 +692,12 @@ Each is fixed; the named regressions keep the failing seed or case.
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
       address, pinned to the shipped file by hash. Normal play enables all
-      thirty-two; core/headless and ordinary parity keep them off. `--fix none`
+      thirty-four; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
-- [x] **Fixes for the original's bugs**: 32 normal-play switches, individually
+- [x] **Fixes for the original's bugs**: 34 normal-play switches, individually
       selectable; recordings retain the selected set. Each linked entry gives
-      the implementation and its focused evidence. The 19 Q-series/hardening
+      the implementation and its focused evidence. The 17 Q-series/hardening
       fixes passed the combined gate at `95a5730`. D10, D35 and D36 remain
       closed ([legacy-reports.md](legacy-reports.md)); `QUIZ` is a separate
       opt-in option.
@@ -730,6 +736,8 @@ Each is fixed; the named regressions keep the failing seed or case.
 | [Q13b](bugs.md#q13b-the-written-orders-test-the-wrong-bases-record) | Read the landing-base record (hardening) |
 | [D18](bugs.md#d18-an-unnamed-airbase-prints-null) | Empty unnamed-airbase name (hardening) |
 | [Q23](bugs.md#q23-the-roster-fix-up-masks-one-record-ten-times) | Mask each roster record (hardening) |
+| [D101](bugs.md#d101-transfer-tick-erase-reads-an-unwritten-slot) | Initialize the Transfer page tick slot and skip invalid erases |
+| [Q12b](bugs.md#q12b-projectile-map-marker-size-comes-from-saved-si) | Explicit 2x2 projectile markers (99.956% nonzero in the route histogram) |
 
   - *Speed* ([speed-sweep.md](speed-sweep.md)): normal play now defaults to
     60 million instructions/s and D1REAL at 15 normal /30 compressed updates/s,

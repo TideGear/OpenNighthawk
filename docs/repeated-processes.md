@@ -28,6 +28,18 @@ verification) is not an optimisation; it needs the owner's approval.
   conditional on unchanged P2 accuracy: after Q11, test remaining fixes in order
   within one batch, then run both whole-table seeds and the unchanged full gate,
   defaults/replay and presentation on the final combined source before commit/merge/push. Evidence: `D:/f117-gate/q7-20261025/`, `q11-20261025/`.
+- **Stale-argument/slot measurements.** A private headless runner places a
+  declining call trap and records the argument in guest memory; compare the
+  complete final guest states against the accepted references to establish
+  that the probe did not change execution. Q12b's 63 routes (eight workers)
+  record 174,256 calls (2,588 s summed per-route host time, overlapping workers),
+  with 77 zero saved-SI words; all 63 final states are
+  unchanged. D101 additionally stages the unwritten local as slot 11 before the Transfer
+  handler prologue, clicks the already-selected tension and
+  observes both actual driver copies: 12 visible pixels change per pass off,
+  zero on, in both engines (four runs together took about ten seconds).
+  Focused native checks cover argument/stack semantics and every event
+  boundary. Evidence: `D:/f117-gate/d101-q12-measure-20261025/`.
 - **Progress scoring and census classification.** Run `tests/test_census_classify.py`,
   `tests/test_progress.py` and `tests/test_encoded_code.py` with the installed Python
   interpreter, then print the scoreboard and inspect the saved byte counts. The 80 focused
@@ -93,7 +105,10 @@ verification) is not an optimisation; it needs the owner's approval.
   18 in series, with identical tallies and per-routine lines. Two rounds of three took
   1,407.72 s for batch ax (`D:/f117-gate/ax-pre/`) and 1,530 s for the load-base
   infrastructure. One commit-keyed seed alone through `tools/func_lockstep_par.py --jobs 8`
-  took about 8 minutes (batch as). Every older per-routine report must equal the previous
+  took about 8 minutes (batch as). Batch be's two whole-table seeds (1,396 routines,
+  4,000 states, eight shards each, 16 workers together) passed in 494 s,
+  with 5,431,624 / 5,432,816 states compared; this includes the EDC2 stack-alias
+  guard and the two measured bug fixes. Every older per-routine report must equal the previous
   batch's at the common seeds, and any change must be explained (batch ax: 1,266 identical,
   two explained). New entries also pass six extra private seeds beyond the kit's five.
   Found this way: a latent clock undercount on VGAME `73C8`'s target-zero path (the
@@ -210,7 +225,7 @@ checks that every routes-only matched routine ran on a route (step 8) and that
 no matched routine ran past its event limit (step 9). What each check
 establishes is in [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
 
-**Fix selection.** Normal application play starts with all thirty-two fixes (D18, Q23, Q4, Q11, Q12, Q13a, Q13b, Q14-Q22
+**Fix selection.** Normal application play starts with all thirty-four fixes (D18, Q23, Q4, Q11, Q12, Q13a, Q13b, Q14-Q22
 added 25 October); the headless runner starts with none, and `build_recomp.py` and
 `run_route.py` prepend `--fix none`, so ordinary parity checks original
 behaviour and fix-specific route options or recorded headers add the fixes
@@ -233,11 +248,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (25 October 2026, Q11):** 630 CTests; 63 routes identical, run
-as 62 sessions, every interpreter session verified fresh; 5,723,136 instruction states under each
-timing profile; 1,387 matched routines at three seeds; reachability and event limits clean.
-Core gate 1,454 s including a full 766 s coverage pass; acceptance 1,971 s with presentation
-after the gate (N=1 516 s; boot N=4/9 89 s). Evidence: `D:/f117-gate/q11-20261025/`.
+**Current figures (25 October 2026, batch be):** 640 CTests; 63 routes identical,
+62 fresh interpreter sessions; 5,723,776 instruction states under each timing profile;
+1,396 matched routines at three seeds; reachability and event limits clean. Core gate
+1,338 s (translation/build 238 s, coverage 856 s, second build 12 s, parity 223 s);
+presentation N=1 429 s, boot N=4/9 78 s. Batch acceptance 1,802 s; combined acceptance
+with repeated focused fix/default checks 1,948 s. Evidence:
+`D:/f117-gate/p2-batch-be-accept/` (`combined-final-verdict.json`).
 For the overlap comparison, batch bd's core gate took 1,692 s including a full 635 s coverage pass;
 acceptance took 1,822 s with a valid keyed baseline. Batch bc, before the baseline fix: core gate 1,304 s, acceptance
 1,741 s with the presentation after the gate (no saving from the overlap, [above](#current-practice-by-kind-of-change)).

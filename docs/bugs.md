@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-thirty-two: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b, D18 and Q23, including the D1REAL timing and D1PROX balance choices
+thirty-four: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b, D18, Q23, D101 and Q12b, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -79,6 +79,8 @@ Status values:
 | Q13b | Confirmed | START | Hardening: the written orders test the departure base's record before naming the landing base | `--fix Q13b` |
 | D18 | Confirmed | START | Hardening: an unnamed airbase passes NULL to `sprintf %s` and prints "(null)" | `--fix D18` |
 | Q23 | Confirmed | START | Hardening: the roster fix-up masks record 0's realism word ten times instead of each record's once | `--fix Q23` |
+| D101 | Confirmed | START | Transfer tick erase reads an unwritten stack slot; staged slot 11 changes visible pixels | `--fix D101` |
+| Q12b | Confirmed | VGAME | Projectile map marker size comes from saved SI instead of a fourth argument | `--fix Q12b` |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -996,11 +998,56 @@ original](#not-defects-of-the-original).
 All ten are fixed, each on its own switch that normal play enables, with tests
 of both states (Q7, Q11, Q12 and Q14 to Q20, described above).
 
-Q12's sibling at `0x0707B` passes three arguments where the routine's other
-six callers pass four, so a player weapon's map marker size comes from the
-saved SI (1 pixel only when it is 0). To be measured across the routes (owner,
-25 October 2026): if the value is almost always nonzero, the game effectively
-draws 2x2 markers, and the fix pins that size.
+The marker sibling at `0x0707B` is fixed separately as Q12b below. D101 and
+Q12b passed combined acceptance with batch be: both whole-table seeds,
+640 CTests, 63 identical routes with 62 fresh interpreter sessions, three
+matched seeds, reachability/event limits, N=1 and boot N=4/9 presentation,
+and the focused/default checks repeated afterward. Evidence:
+`D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json`.
+
+### D101. Transfer tick erase reads an unwritten slot
+
+- **What happens.** START's Transfer handler (`0x05BF0`) reserves a previous
+  tick slot at `[bp-0Ah]` but first reads it at `0x05CAA` before any setting
+  change writes it. The seven x/y pairs at `DS:0DECh` / `0DFAh` are then
+  indexed with that stale word. A large y does not prove an off-screen draw:
+  graphics entry 42 reads arbitrary words past its row table. Staging slot
+  11 before the handler prologue, then clicking the already-selected tension
+  so it remains unwritten, gives x=167, y=29797 and changes 12 visible pixels
+  in both page copies, in both engines. The natural control
+  uses slots 2 and 6; this establishes the staged effect, not its frequency
+  in ordinary play. The earlier off-screen example cannot close the defect.
+- **Fix.** `--fix D101` initializes the slot to FFFFh at `0x05BF7`, then
+  executes the original MOV through the continuation at operand byte `0x05BF8`.
+  The guard at `0x05CAA` skips both erase copies until the remembered slot
+  is 0..6, resuming at `0x05CFC`. Later setting changes retain their original
+  stores and erases. The containing matched handler declines while enabled.
+- **Check.** `check_d101 START.EXE`: 118 staged runs covering both states and
+  engines, all seven valid slots, invalid slots, the sentinel, and each
+  stop/resume boundary. The real-driver staged unwritten-slot control changes
+  12 visible pixels with the fix off and zero with it on in both engines;
+  all 12 also change palette RGB, not just the stored index.
+  Evidence: `D:/f117-gate/d101-q12-measure-20261025/`.
+
+### Q12b. Projectile map marker size comes from saved SI
+
+- **What happens.** VGAME's call at `0x0707B` supplies x, y and colour to
+  `0x08625` but omits the fourth argument, the 2x2-size flag. That argument
+  reads the caller's saved SI on the stack (not the current SI register).
+  Across all 63 routes, 18 reach the call: 174,256 calls, only 77 zero words,
+  **99.956% nonzero**. The original thus almost always draws 2x2 markers.
+- **Fix.** `--fix Q12b` explicitly pushes 1 before the original three
+  arguments at `0x07071`; operand byte `0x07072` runs the original colour
+  push as a separate continuation. The cleanup at `0x0707E` drops eight
+  bytes. Coordinates, colour and saved SI are retained; the covering
+  projectile-body guard already spans all three hooks.
+- **Check.** `check_q12b VGAME.EXE`: 44 staged runs in both states and
+  engines, zero/nonzero saved SI, original coordinates and colour, balanced
+  stack, the original marker body drawing one versus four points, and a
+  stop/resume at each clock. The histogram uses a declining
+  call trap and the unchanged route inputs/milestones, with no guest writes. All 63 final guest states equal the merged-fix
+  acceptance references.
+  Evidence: `D:/f117-gate/d101-q12-measure-20261025/marker-histogram.json`.
 
 ### Defects with a chosen correct behaviour
 
@@ -1043,7 +1090,6 @@ routine stand aside in normal play.
 | D97 | START | The name-typing loop draws a random number before testing for the end, n + 1 draws for n letters | Nothing visible changes; the generator is clock-seeded |
 | D98 | START | Box 14, once disabled, is never re-enabled | The clearance that disables it cannot change within one run of START |
 | D103 | START | The secondary objective's route word is never written | No program reads it; START clears it at every launch |
-| D101 | START | The Transfer page's tick erase can read an unwritten slot past its row table | Effect unproven: the one measured case drew off-screen. To be staged and measured (owner, 25 October 2026), then fixed if it can draw on screen |
 
 Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
 protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail

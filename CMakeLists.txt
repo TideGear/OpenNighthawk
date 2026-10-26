@@ -407,6 +407,10 @@ if(F117R_BUILD_TESTS)
     target_link_libraries(check_q13b PRIVATE f117present f117recomp)
     add_executable(check_d18 tests/check_d18.c)
     target_link_libraries(check_d18 PRIVATE f117present f117recomp)
+    add_executable(check_d101 tests/check_d101.c)
+    target_link_libraries(check_d101 PRIVATE f117present f117recomp)
+    add_executable(check_q12b tests/check_q12b.c)
+    target_link_libraries(check_q12b PRIVATE f117present f117recomp)
     add_executable(check_q23 tests/check_q23.c)
     target_link_libraries(check_q23 PRIVATE f117present f117recomp)
     add_executable(check_q14 tests/check_q14.c)
@@ -434,6 +438,9 @@ if(F117R_BUILD_TESTS)
     # The random generator's seed aliases the caller's bound through DS and SS.
     add_test(NAME matched_start_rnd_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x4ebc42e1d00b --only START.EXE:76C0)
+    # PUSH BP inserts a zero in strupr's input through overlapping DS/SS.
+    add_test(NAME matched_strupr_stack_alias COMMAND func_lockstep --states 4000
+      --seed 0xfe825bd272ab --only VGAME.EXE:EDC2)
     # The scene origin reads each argument just before its store; DS and SS can overlap (seed of 7c on 20 Oct).
     add_test(NAME matched_scene_origin_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x8b9b2367ecdf --only VGAME.EXE:D9E7)
@@ -1605,6 +1612,24 @@ if(F117R_BUILD_TESTS)
       --only ISOUND.LOG:635)
     add_test(NAME matched_isound_log_reload_timer_zero COMMAND func_lockstep --states 5000
       --only ISOUND.LOG:663)
+    add_test(NAME matched_asound_117_cmd_0899_reset_19a0 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:899)
+    add_test(NAME matched_asound_117_cmd_0892_reset_190a COMMAND func_lockstep --states 5000
+      --only ASOUND.117:892)
+    add_test(NAME matched_asound_117_cmd_090e_reset_1946 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:90E)
+    add_test(NAME matched_asound_117_cmd_08ad_reset_1964 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8AD)
+    add_test(NAME matched_asound_117_cmd_08bb_reset_1964 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8BB)
+    add_test(NAME matched_asound_117_cmd_088b_reset_1982 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:88B)
+    add_test(NAME matched_asound_117_cmd_08d0_reset_190a COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8D0)
+    add_test(NAME matched_asound_117_cmd_08c2_reset_19a0 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:8C2)
+    add_test(NAME matched_rsound_log_uninstall_timers COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:AE)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

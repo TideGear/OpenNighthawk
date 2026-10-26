@@ -813,6 +813,15 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "RSOUND.LOG", 0x00AE, 0x00AE, 0x004F },
+    { "ASOUND.117", 0x08C2, 0x05C0, 0x0311 },
+    { "ASOUND.117", 0x08D0, 0x05C0, 0x0320 },
+    { "ASOUND.117", 0x088B, 0x05C0, 0x02D5 },
+    { "ASOUND.117", 0x08BB, 0x05C0, 0x030C },
+    { "ASOUND.117", 0x08AD, 0x05C0, 0x02FD },
+    { "ASOUND.117", 0x090E, 0x05C0, 0x035C },
+    { "ASOUND.117", 0x0892, 0x05C0, 0x02E4 },
+    { "ASOUND.117", 0x0899, 0x05C0, 0x02E9 },
     { "ISOUND.LOG", 0x0663, 0x0663, 0x000A },
     { "ISOUND.LOG", 0x0635, 0x0634, 0x0039 },
     { "ISOUND.LOG", 0x060D, 0x060D, 0x0001 },
@@ -2030,6 +2039,15 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ISOUND.LOG", 0x0000, 0x060D, 0x0001, 1, 1, "near return after the PC-speaker driver's timer install STI hand-back, including wrapped stack words" },
     { "ISOUND.LOG", 0x0000, 0x0635, 0x002E, 15, 15, "put the old INT8 chain back once in the PC-speaker driver, stop immediately after the counter-0 control word" },
     { "ISOUND.LOG", 0x0000, 0x0663, 0x0008, 4, 4, "PC-speaker driver: send the counter-0 reload 0000 (low then high byte) to port 40h, stop at the STI" },
+    { "ASOUND.117", 0x01B6, 0x0899, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 0x05C0, 1 },
+    { "ASOUND.117", 0x01B6, 0x0892, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 0x05E3, 1 },
+    { "ASOUND.117", 0x01B6, 0x090E, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 1946h reset thunk at 05D5 (handed back there)", 0x05D5, 1 },
+    { "ASOUND.117", 0x01B6, 0x08AD, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 1964h reset thunk at 05CE (handed back there)", 0x05CE, 1 },
+    { "ASOUND.117", 0x01B6, 0x08BB, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 1964h reset thunk at 05CE (handed back there)", 0x05CE, 1 },
+    { "ASOUND.117", 0x01B6, 0x088B, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 1982h reset thunk at 05C7 (handed back there)", 0x05C7, 1 },
+    { "ASOUND.117", 0x01B6, 0x08D0, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 0x05E3, 1 },
+    { "ASOUND.117", 0x01B6, 0x08C2, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 0x05C0, 1 },
+    { "RSOUND.LOG", 0x0000, 0x00AE, 0x004E, 31, 31, "Roland driver: with interrupts disabled, restore the saved INT8 and INT0A vectors from CS:0048..004E into the real vector table, reprogram PIT counter 0 back to mode 3 with a 0 reload, clear the installed flags, and stop immediately after STI (POPF_STOPS); the RET at 00FC is outside this named region and remains original continuation code" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2295,6 +2313,7 @@ static const struct { const char *module; uint16_t seg, ip, stop; } POPF_STOPS[]
     { "ASOUND.LOG", 0x0000, 0x005A, 0x0089 }, /* timer installer stops immediately after STI */
     { "ISOUND.LOG", 0x0000, 0x060E, 0x0634 }, /* save the timer chain, stop immediately after STI */
     { "RSOUND.LOG", 0x0000, 0x005B, 0x00AD }, /* both installer paths stop immediately after STI */
+    { "RSOUND.LOG", 0x0000, 0x00AE, 0x00FC }, /* timer uninstaller stops immediately after STI */
     { "RSOUND.117", 0x023E, 0x0A6B, 0x0A9E }, /* hook interrupt 0Ah once: the install path stops immediately after STI */
     { "SETUP.EXE", 0x0000, 0x111A, 0x11AE },   /* timer calibrate */
     { "PLAYER.EXE", 0x026B, 0x0272, 0x0306 },   /* timer calibrate */
@@ -44771,6 +44790,229 @@ int main(int argc, char **argv)
                 r[R_AX]=(uint16_t)(0x1111*(unsigned)(s%13)+s*7919u);
                 r[R_BX]=(uint16_t)(s*31u); r[R_CX]=(uint16_t)(s*17u+3);
                 if(s%3==0) flags=(uint16_t)(flags|F_CF|F_OF|F_SF|F_ZF); else if(s%3==1) flags=(uint16_t)(flags&~(F_CF|F_OF|F_SF|F_ZF));
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x0899) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x0892) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x090E) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x08AD) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x08BB) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x088B) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x08D0) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ASOUND.117") && o->seg==0x01B6 && o->ip==0x08C2) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t dseg=0x5000;
+                const unsigned dsel_=XRAND()%10;
+                const uint16_t dsx=(dsel_<7)?dseg:(dsel_<9)?0x4000:0x4400;
+                seg[S_DS]=dsx;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* SS = DS a third of the time (SP then low, clear of the records at 190Ah..19BEh); the original's reset body runs
+                 * after the hand-back, so the record area and the saved word [17ECh] hold random bytes. */
+                const unsigned same_=(XRAND()%3==0);
+                seg[S_SS]=same_?dsx:((XRAND()&1)?0x6000:0x5400);
+                r[R_SP]=same_?(uint16_t)(0x1000+2*(XRAND()%0x300)):(uint16_t)(0x2000+2*(XRAND()%0x3000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                for(unsigned j=0;j<0x240;j++)XW8(dsx,(uint16_t)(0x17C0+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x00AE) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                /* When SS=0 keep SP well clear of 0x0020-0x002B: this routine itself reads and
+                 * overwrites the real INT8/INT0A vector cells there, so a stack near them would
+                 * alias its own vector writes. */
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                /* Old INT0A/INT8 vectors preserved by the installer at CS:0048..004E. This
+                 * routine copies them verbatim into the real vector table and then STIs: a
+                 * pending tick taken right there would dispatch through whatever they hold, so
+                 * (unlike plain data) they must be safe to execute. Point each at its own
+                 * one-byte IRET stub placed in CS, at two distinct fixed offsets so an
+                 * offset/segment swap still shows in the final memory compare. */
+                XW8(cs,0xF2F0,0xCF);                 /* IRET for the restored INT0A vector */
+                XW8(cs,0xF2F2,0xCF);                 /* IRET for the restored INT8 vector */
+                XW16(cs,0x004C,0xF2F0);XW16(cs,0x004E,cs);
+                XW16(cs,0x0048,0xF2F2);XW16(cs,0x004A,cs);
+                /* Flag bytes the routine clears/overwrites; vary them so a missing write is visible. */
+                XW8(cs,0x0051,(uint8_t)XRAND());
+                XW8(cs,0x0054,(s&1)?(uint8_t)(1+(XRAND()%255)):0);
+                /* Current (about-to-be-replaced) real-vector-table cells for INT8/INT0A. */
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                XW16(0,0x0028,XRAND());XW16(0,0x002A,XRAND());
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

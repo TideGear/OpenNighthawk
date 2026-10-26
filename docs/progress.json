@@ -244,13 +244,13 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 40542,
-      "credited": 16249,
+      "credited": 16322,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5488,
-          "credited": 894,
+          "credited": 918,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -328,7 +328,7 @@
         },
         "RSOUND.LOG": {
           "bytes": 2130,
-          "credited": 1093,
+          "credited": 1142,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -363,11 +363,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 149876,
+      "matched_route_run": 149949,
       "stays_original_reviewed": 2631,
-      "score": 0.930448364011299,
+      "score": 0.9308937385224548,
       "fixture_only": 26311,
-      "remaining": 11400,
+      "remaining": 11327,
       "original_awaiting_review": 20,
       "reviewed_entries": 48,
       "checklist": {
@@ -411,10 +411,10 @@
       "by_module": {
         "ASOUND.117": {
           "denominator": 5373,
-          "matched_route_run": 779,
+          "matched_route_run": 803,
           "stays_original_reviewed": 0,
           "fixture_only": 115,
-          "remaining": 4594,
+          "remaining": 4570,
           "original_awaiting_review": 0,
           "not_in_denominator": 115,
           "not_in_denominator_reviewed": 0,
@@ -554,10 +554,10 @@
         },
         "RSOUND.LOG": {
           "denominator": 2128,
-          "matched_route_run": 1091,
+          "matched_route_run": 1140,
           "stays_original_reviewed": 0,
           "fixture_only": 2,
-          "remaining": 1037,
+          "remaining": 988,
           "original_awaiting_review": 0,
           "not_in_denominator": 2,
           "not_in_denominator_reviewed": 0,

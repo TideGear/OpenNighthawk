@@ -977,7 +977,74 @@ static int fix_q23_mask_record(machine_t *m)
     return 1;
 }
 
+/* D101. The Transfer page reads [bp-0Ah] before any setting change writes
+ * it. Initialize a no-previous-tick sentinel, then omit both erase copies
+ * until the slot is 0..6. A staged slot 11 really changes visible pixels:
+ * out-of-range y indexes arbitrary row-table words, not y*320.
+ * 5BF8 is inside MOV AX's operand; the continuation keeps the added store
+ * and the original MOV separate at every instruction/event boundary. */
+static int fix_d101_init(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 10), 0xFFFF);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x5BF8; c->icount++;
+    return 1;
+}
+static int fix_d101_init_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->r[R_AX] = 0x5A8A;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x5BFA; c->icount++;
+    return 1;
+}
+static int fix_d101_erase(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 10)) < 7) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x5CFC; c->icount++;
+    return 1;
+}
+
+/* Q12b. The projectile marker call at 707B supplies x/y/colour but omits
+ * the fourth (large) argument. The stack then exposes the saved SI. Add
+ * an explicit 1 before the original three pushes and drop all four words
+ * afterward. 7072 is the original PUSH immediate's operand, used only as
+ * a continuation so the two pushes can stop independently. */
+static int fix_q12b_size(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    cpu_push16(c, 1);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x7072; c->icount++;
+    return 1;
+}
+static int fix_q12b_colour(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    cpu_push16(c, 0x11);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x7073; c->icount++;
+    return 1;
+}
+static int fix_q12b_drop(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 8, 1);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x7081; c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q12b", "VGAME.EXE", VGAME_47304, 0x0000, 0x7071, fix_q12b_size, "projectile map marker has explicit 2x2 size" },
+    { "Q12b", "VGAME.EXE", VGAME_47304, 0x0000, 0x7072, fix_q12b_colour, "projectile marker colour continuation" },
+    { "Q12b", "VGAME.EXE", VGAME_47304, 0x0000, 0x707E, fix_q12b_drop, "projectile marker drops all four arguments" },
+    { "D101", "START.EXE", START_47304, 0x0000, 0x5BF7, fix_d101_init, "Transfer page initializes its previous tick slot" },
+    { "D101", "START.EXE", START_47304, 0x0000, 0x5BF8, fix_d101_init_return, "Transfer page initialization continuation" },
+    { "D101", "START.EXE", START_47304, 0x0000, 0x5CAA, fix_d101_erase, "Transfer page erases only a remembered tick" },
     { "Q23", "START.EXE", START_47304, 0x0000, 0x6D1C, fix_q23_mask_record, "roster fix-up masks each record's realism word" },
     { "D18", "START.EXE", START_47304, 0x0000, 0x267B, fix_d18_empty_name, "an unnamed airbase prints nothing instead of (null)" },
     { "Q13b", "START.EXE", START_47304, 0x0000, 0x22E7, fix_q13b_landing_record, "written orders test the landing base's record" },
@@ -1048,6 +1115,8 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q12b", "projectile map markers are always 2x2 instead of reading their size from saved SI" },
+    { "D101", "the Transfer page erases only a remembered tick, never an unwritten stack slot" },
     { "Q23", "the roster fix-up masks every record's realism word, not record 0's ten times" },
     { "D18", "an airbase with no name is printed as nothing in the objective sentences instead of (null)" },
     { "Q13b", "the written orders test the landing base's record instead of the departure base's before naming the landing base" },

@@ -43,7 +43,7 @@ game-preservation job, and this project treats it as one.
 **1:1 parity with the original is the first priority.** With fixes off, the
 game does exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed as switchable options.
-Fifteen catalogued fixes and balance options are enabled by default for normal
+Thirty-four catalogued fixes and balance options are enabled by default for normal
 play, including D1REAL and D1PROX. `--fix none` restores the original behavior.
 The headless reference runner and ordinary parity gates keep fixes off;
 recorded sessions restore their recorded fix set (older logs mean no fixes).
@@ -64,7 +64,7 @@ quiz. It is off by default and is enabled only when named explicitly;
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,383 routine addresses have explained C equivalents
+- **Named and matched:** 1,396 routine addresses have explained C equivalents
   checked against their original bodies. They run 149,812 of the 163,907
   instruction bytes the scripted routes execute, plus 2,631 bytes of reviewed code that stays original
   by design (93.01%, the gameplay score), and
@@ -214,8 +214,8 @@ set (and, for Munt, `mt32-roms`).
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp` or `rerun`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
-| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-two normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
-| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-two normal-play fixes, `none` clears the set. Normal play starts with all thirty-two enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
+| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-four normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
+| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-four normal-play fixes, `none` clears the set. Normal play starts with all thirty-four enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 
 Any option the app does not recognise (for example `--help`) prints a usage

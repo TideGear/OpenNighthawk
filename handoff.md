@@ -7,14 +7,12 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 25 October 2026: batch bd2 (an engine fix plus bd's
-four held-back routines) is accepted and pushed (`fe825bd`); batch be is integrated in the main tree but
-uncommitted and blocked on a pre-check mismatch in an older routine (Next steps 2); the re-release settings
-are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of
-matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted**, and the other
-seventeen fixes of the owner's plan are built and committed on branch `bugfix-q` in the worktree
-`D:/f117-wt/bugfix` (thirty-two normal-play fixes in all), each with its own on/off test; the combined
-gate passed and they are merged (Next steps 1).
+more than once, what it costs). State as of 25 October 2026: batch be is accepted,
+including the VGAME EDC2 body repair and the measured D101/Q12b fixes (34
+normal-play switches). Its combined final verdict passed; next is resumed
+sound-driver matching, starting with RSOUND.LOG `0251`'s saved proof. The
+previous merge `95a5730` has successful CI; main build and kit libraries were
+refreshed, with `kit-libs-before-95a5730` preserved.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -23,44 +21,64 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.86%, P3 76.34%, All 88.48%
+- **Scoreboard:** P1 100.00%, P2 81.90%, P3 76.34%, All 88.49%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
-- **Phase 2 figures** (`docs/progress.json` after batch bd2's refresh; `py tools/progress.py` prints them;
+- **Phase 2 figures** (`docs/progress.json` after batch be's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,387 addresses matched; batches a to bd2 are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,396 addresses matched; batches a to be are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(149,876 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 93.04%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
-  - **11,400 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 9,610: ASOUND.117 4,594, RSOUND.117 1,533, RSOUND.LOG 1,037, ASOUND.LOG 1,178,
+  - Gameplay score (scores the matched item): **(149,949 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 93.09%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+  - **11,327 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
+    entry). Sound drivers 9,537: ASOUND.117 4,570, RSOUND.117 1,533, RSOUND.LOG 988, ASOUND.LOG 1,178,
     ISOUND.117 905, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **176,252 / 205,967** creditable bytes; of the 29,715
+  - Naming item (the previous all-code measure): **176,325 / 205,967** creditable bytes; of the 29,642
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
   - Accounted-for checklist: 715 / 44,641 bytes; `docs/reference-reviewed.tsv` has 48 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Latest fix gate** (Q11, 25 Oct): `D:/f117-gate/q11-20261025/final-verdict.json`. 108 staged runs
-  (both states and engines), eight branch-preservation checks, 358 paired event limits, Q7 regression, default/replay checks,
-  two whole-table pre-check seeds; 630 CTests, 63 routes / 62 fresh interpreter sessions, 1,387 matched
-  routines at three seeds; N=1 260,613 exact frames / 260,527 pairs, boot N=4/9 736 frames / 732 pairs.
-  Core gate 1,454 s; full acceptance 1,971 s. No matching or scoring credit was added.
-- **Latest accepted matched batch** (bd2, 25 Oct): the stale-override engine fix plus ISOUND.LOG `0603` `060D`
-  `0635` `0663` (the PC-speaker timer install/restore path, held out of bd). A module's recomp instance stayed
-  live after its memory was reused without another module load overlapping it, so its overrides fired on
-  foreign bytes (first divergence `169B:060D` in `err_vgame_no_photo`, found by a `--trace` diff; an earlier
-  "region refusal at PIT wake boundaries" explanation was wrong). `src/recomp/recomp.c` now runs an override
-  only while its entry holds the module's opcode byte, read from the unpacked image (`mod->image`) where the
-  translator has one, else from the loaded file (the first gate attempt compared packed START bytes and
-  declined the QUIZ override; archived in `attempt1/`); regression `tests/test_stale_override.c`. 630 CTests,
-  63 routes / 62 fresh interpreter sessions, 1,387 matched routines at three seeds; acceptance 1,883 s.
-  Evidence `D:/f117-gate/p2-batch-bd2-accept/`, `p2-batch-bd-accept/flaky-parity-investigation.md` (its
-  "ROOT CAUSE" section supersedes its "Mechanism" section).
+- **Latest combined acceptance (batch be, 25 Oct):**
+  `D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json` passed.
+  Both whole-table pre-check seeds (4,000 states, eight shards each):
+  `0x03c761a5484c` 5,431,624 compared / `0x5EED0BE1` 5,432,816, zero mismatches,
+  494 s together. Full gate: 640 CTests, 63 identical routes / 62 fresh
+  interpreter sessions; 1,396 matched routines at three seeds; reachability
+  and event limits clean. N=1 260,613 exact frames / 260,527 pairs; boot N=4/9
+  736 frames / 732 pairs. Core 1,338 s; batch acceptance 1,802 s; combined
+  acceptance with all focused/default checks repeated afterward 1,948 s.
+- **Latest matched batch, be:** eight ASOUND.117 jump thunks (`0899` `08C2`
+  `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer
+  uninstall, including its hand-applied `POPF_STOPS` row to `00FC`. Audit before
+  gate: 39 instructions, 212 mutants; 45 optimized seed checks. +73 named bytes,
+  all route-executed (+24 ASOUND.117 / +49 RSOUND.LOG), no fixture-only increase.
+  `new_batch.py be bd2 03c761a --no-baseline` used fresh sequential references.
+- **Measured fixes:** D101's unwritten Transfer local staged as 11 before the
+  handler prologue, then an unchanged-tension click: 12 visible/RGB pixel
+  changes off, zero on in both engines. It initializes FFFFh and erases only
+  valid remembered slots. Q12b: 174,256 call traps at VGAME `707B` across 63
+  routes (18 reach it), 77 zero saved-SI words: 99.956% nonzero. All 63 final
+  guest states equal the prior accepted reference. It explicitly passes 1
+  (2x2). Focused checks: D101 118 runs, Q12b 44, including every event boundary.
+  Evidence: `D:/f117-gate/d101-q12-measure-20261025/`.
+- **EDC2 was its body, not fixture/harness.** Clean-master executable without
+  be reproduces seed `0xfe825bd272ab`, state 911. The string at C49F:0001
+  aliases PUSH BP at B82F:C70A: that push inserts a zero at physical C49FA.
+  The pre-scan ran 111 clocks instead of 74 and uppercased the return `6DC2`
+  to `4DC2`. The body now declines a scan reaching either pushed BP byte,
+  like the other string helpers; original execution handles the alias.
+  No comparison relaxed; six isolated seeds and `matched_strupr_stack_alias`
+  pass. Evidence: `D:/f117-gate/edc2-master-20261025/`, be's `prechecks/`.
+- **Prior engine repair, bd2** (`fe825bd`): matched overrides run only while
+  the entry still holds its module's unpacked opcode byte, preventing a stale
+  instance from firing on reused memory. Regression `tests/test_stale_override.c`;
+  evidence `D:/f117-gate/p2-batch-bd2-accept/`. Earlier PIT/region-refusal theories
+  were superseded by the first-instruction trace.
 - **Routes:** 63. Damaged-install routes (`--damage ACTION:FILE`, `tools/route_damage.py`: a private hard-linked
   copy; the install is never written) run the original's own error handlers: `err_player_assert`,
   `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`, `err_start_no_world`,
@@ -78,7 +96,7 @@ entry. Consolidate it instead of appending to it.
 - **Quiz option (owner, 20 Oct):** `--fix QUIZ` restores the aircraft-identification quiz GOG patched out (an
   override at START `001D` runs `0703`); off by default, `--fix all` and normal play never switch it on. Routes
   `quiz_right`/`quiz_wrong`; the quiz routines are matched (batch ah).
-- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all thirty-two fixes on (Q11 added 25 Oct). S15, 15 normal / 30
+- **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all thirty-four fixes on (D101 and Q12b accepted 25 Oct). S15, 15 normal / 30
   compressed updates, recorded per-machine cadence; legacy recordings keep eight. Do not promote 15/40. The
   previous mode is `--sim-hz 8 --ips 20000000`. Validation: [docs/cadence15-validation.md](docs/cadence15-validation.md).
   Core, API and headless runs start with fixes off; parity commands prepend `--fix none`.
@@ -158,7 +176,7 @@ governs day-to-day work.
   label behaviours by evidence. Gameplay and logic parity outrank rendering.
 - **Keep all original graphics** (fonts, sprites, the map arrow); smooth and re-render existing geometry, no
   vector replacements.
-- **Bug fixes are on by default for normal play** (all thirty-two); parity gates keep the original reference.
+- **Bug fixes are on by default for normal play** (all thirty-four); parity gates keep the original reference.
 - **No screen takeover.** Ask before any visible or fullscreen test; emulators run headless, silent, hidden.
 - The owner's untracked `4k60.bat` and `original-fixed.bat` (settings live in `build/f117a.ini` and
   `build/f117a.4k60.ini`, outside the repository) stay untouched: never stage them.
@@ -166,46 +184,15 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Bug fixes first (owner, 25 Oct).** The 31 rows of the old "Smaller confirmed defects" table (none
-   fixed, no reason recorded) were re-verified on 25 Oct against the DOS instructions and compared with Mac
-   2.3.2 and Amiga 3.01. The owner warned some may be Reimp-only, and ten are on the Reimp's "introduced by
-   this port" list (`catalogue.md:148`: D17, D18, D44, D61, D63, D75, D97, D98, D101, D103); bugs.md had
-   copied the original's side of each. **The result is now [docs/bugs.md](docs/bugs.md#smaller-defects-q-series)**
-   (defects to fix, owner decisions, code quirks with no effect, not defects of the original);
-   **fix specifications (sites, replacement semantics) are in `D:/f117-gate/qsweep/verdicts.md`** (raw reviews
-   in `render/`, `gameplay/`, `start/`, `sound/` beside it; its D75 and armoury rows are bugs.md's Q21 and
-   Q22). The main session re-read the deciding instructions of every fix. Summary:
-   - **All 19 accepted and merged:** `95a5730`, with successful
-     [Windows CI](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423).
-     Combined evidence: `D:/f117-gate/bugfixes-20261025/final-verdict.json` (passed:
-     focused checks, defaults/replay, two whole-table seeds, full gate and presentation).
-     Main tree rebuilt using `build.cmd` from PowerShell; kit libraries refreshed from
-     that build, prior set retained as `D:/f117-gate/kit-libs-before-95a5730`.
-     Manifest: `D:/f117-gate/main-95a5730/completion.json`; accepted source agrees
-     with the merge (some test files differ only in line endings). The roadmap has
-     one row per normal-play fix (32). No matching/scoring credit added.
-     Batch be's three files are preserved in stash `be-pending-before-95a5730-main-rebuild`
-     while D101/Q12 measurements and the clean-master EDC2 reproduction are done.
-     The bugfix worktree stays until the owner authorizes removal.
-   - **Then, in the owner's order:** measure D101 (stage the unwritten slot on the Transfer page; fix if the erase
-     can draw on screen, else close with the evidence) and Q12's sibling at `0x0707B` (histogram the stale SI at
-     that call across the routes with a call trap; pin the 2x2 size if it is almost always nonzero); then explain
-     and fix the VGAME `EDC2` pre-check mismatch (item 2), finish batch be, and resume matching (item 3).
-2. **Batch be (integrated in the main tree, uncommitted; pre-check failed in an older routine).** Eight
-   ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG
-   `00AE`: `finish_all.py` passed all nine on 25 Oct (`D:/f117-gate/be-finish.out`; routes strike, korea_strike,
-   korea_release_eject, roland_boot), `safe_integrate.py` put them in `matched.c`, `func_lockstep.c` and
-   `CMakeLists.txt` (uncommitted in the main tree), plus the hand-applied `POPF_STOPS` row
-   `{ "RSOUND.LOG", 0x0000, 0x00AE, 0x00FC }`; rebuild before resuming its checks. Pre-checks (`D:/f117-gate/be-pre/`): the
-   commit-keyed seed `0xfe825bd272ab` gives **1 mismatch, VGAME `EDC2` "upper-case a string"** (matched long
-   ago, not part of be): `unfinished continuation already changed I/O (state 911)`, reproduced alone with
-   `build/func_lockstep.exe --states 4000 --verbose --seed 0xfe825bd272ab --only VGAME.EXE:EDC2`. Next: reproduce
-   it on master without be (stash the three files, rebuild `func_lockstep`, or configure the worktree with
-   `-DF117R_GEN_DIR=...`: its build has no `func_lockstep` target), find whether the body, its fixture or the
-   harness is at fault (message at `tests/func_lockstep.c:45386`), fix it, then rerun both seeds, `new_batch.py
-   be ...`, `audit_private.py` and the gate. Second seed `0x5EED0BE1`: 1,396 routines, 0 mismatching.
-   RSOUND.LOG `0251` (`p2-rsound-log-0251-be`) is a resumable proof, not in be.
-3. **Match the rest of the sound drivers** (9,610 of the 11,400 unmatched executed bytes before be). The
+1. **Match the rest of the sound drivers** (9,537 of the 11,327 unmatched executed bytes after be).
+   First resume `D:/f117-gate/p2-rsound-log-0251-be/`: body/fixture/five seeds exist,
+   mutations and route/boot proofs remain. Rebase into a fresh directory against
+   the accepted current source and refreshed kit libraries; keep the old proof.
+   The prior `be-pending-before-95a5730-main-rebuild` stash remains as a backup.
+   All original selected fixes are done: the old "19" label double-counted two;
+   17 additions plus the old 15 made 32, now 34 with D101/Q12b.
+   `95a5730` CI: https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423.
+   The bugfix worktree stays until the owner authorizes removal. The
    remaining ISOUND.117 and ASOUND.LOG routines are all large (90-320 instructions).
    Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
    predates batches bb to be, which matched many of its entries. Still open there: wrapper/dispatch entry points
@@ -217,7 +204,7 @@ governs day-to-day work.
    agents per round on masks 0x000F0000, 0x00F00000, 0x0F000000. STI-first handlers stay original by design.
    `D:/f117-gate/modules-scope-20261021/plan.md` (the module-scope design; steps 0-5 and 2b are done) is a
    source of leads and traps only.
-4. **The hard tail: declined routines are Phase 2 work, not exclusions** (owner, 23 Oct). They are part of the
+2. **The hard tail: declined routines are Phase 2 work, not exclusions** (owner, 23 Oct). They are part of the
    unmatched executed bytes of the seven programs, and P2 cannot reach 100% without them. List (from
    `D:/f117-gate/kit/DECLINED.tsv`, the roadmap and the rejected reviewed entries); each needs the stated unit
    before it can be proved:
@@ -241,7 +228,7 @@ governs day-to-day work.
      do not integrate it as proved.
    Not on the list: DSWAP `3DF3` (2,791 zero bytes of data, already excluded) and the design-rule originals.
    Add these to a batch once the driver leads run low.
-5. **Reference entries for unmatchable code:** `D:/f117-gate/unmatched-reference-20261021/` (checked, NOT
+3. **Reference entries for unmatchable code:** `D:/f117-gate/unmatched-reference-20261021/` (checked, NOT
    published): `reference.tsv` has 793 rows / 43,362 bytes with a per-byte coverage proof against the old
    201,697 scope (`coverage-check.json`, `independent-check.json`). Before publishing it as a repository doc:
    regenerate it against the current scope, fix VGAME `ED10` `vgame_int86x_carry` (it says the DOS call never
@@ -250,7 +237,7 @@ governs day-to-day work.
    `pending-match-purpose-unreviewed` and 153 `unresolved-review`: those are inventory, not claims that the code
    cannot be matched. The public copy has one row per routine (name, purpose, status, why not matched,
    evidence) and no private paths or binary dumps.
-6. **Static code no route runs.** Reviewed static code: the resumed review (`D:/f117-gate/static-route-plan-20261021/`,
+4. **Static code no route runs.** Reviewed static code: the resumed review (`D:/f117-gate/static-route-plan-20261021/`,
    `static-route-verify-20261021/`) found no additional route and no new dead certificate for the 10,301 bytes it
    covered and retains all 27 requested ranges / 6,505 bytes; indirect/callback/vector and writer closure is
    incomplete, so any later exclusion needs exact per-range closure. VGAME `1377:0204..0356` includes the M pixel
@@ -263,7 +250,7 @@ governs day-to-day work.
    (`adoption-audit.md`); still to adopt with a strict validator: the 20 follow-up data rows
    (`followup-data-rows.tsv`) and the plain follow-up code rows (`followup-code-rows.tsv`,
    `followup-review-report.md`). About 1,800 executed bytes outside the census still need proofs.
-7. **Sort the matched code no route runs** (owner, 21 and 23 Oct): 26,311 fixture-only bytes (about 88 whole
+5. **Sort the matched code no route runs** (owner, 21 and 23 Oct): 26,311 fixture-only bytes (about 88 whole
    routines no route reaches, plus unrouted arms such as ASOUND.LOG `0344`'s voice sweeps and ISOUND.LOG
    `0253`'s stream readers). Lockstep proves them and the naming score credits them, but no real play confirms
    them and the gameplay score does not count them. Classify each group as player-reachable (write a route,
@@ -274,7 +261,7 @@ governs day-to-day work.
    arm stays `unreached-held`. Mostly read-only work plus route writing; run it between proof batches. The same
    sorting applies to the 13,809 reviewed static bytes: each ends matched (a fixture proof is enough for the
    naming score), routed, or certified dead or data.
-8. **Remaining P2 completion tasks** (definition in [docs/progress.md](docs/progress.md#phase-2-completion-requirements-owner-23-24-october-2026)):
+6. **Remaining P2 completion tasks** (definition in [docs/progress.md](docs/progress.md#phase-2-completion-requirements-owner-23-24-october-2026)):
    - **Packer stub:** the `packer stub` design-rule name is recognized but earns nothing yet. All seven packed
      programs have 16 raw-source-validated route records at their packed CS:000E..002A (rejected correctly
      against the unpacked image); do not add their addresses as original code in the unpacked image, which would
@@ -290,9 +277,10 @@ governs day-to-day work.
    - Before declaring P2 100%, run the closure review ("leave no stone unturned", owner, 23-24 Oct) of indirect
      calls, jump/dispatch tables, callbacks, interrupt vectors, overlay entry tables and self-modifying code.
      It cannot be scored; record what it covered as a closing step.
-9. **Phase 3 re-release features** (roadmap; Phase 2 comes first, but worktree work beside a gate is fine): the
+7. **Phase 3 re-release features** (roadmap; Phase 2 comes first, but worktree work beside a gate is fine): the
    built settings are the start of the first item. **Phase 4 stays unscored:** refresh rates above 60 Hz, the
    hardware-only parts, a person playing, Mac-version improvements.
+
 
 ## Phase 2 batch workflow and its traps
 
