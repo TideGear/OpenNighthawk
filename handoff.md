@@ -14,7 +14,7 @@ are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the t
 matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted**, and the other
 seventeen fixes of the owner's plan are built and committed on branch `bugfix-q` in the worktree
 `D:/f117-wt/bugfix` (thirty-two normal-play fixes in all), each with its own on/off test; the combined
-gate (Next steps 1) decides when they merge.
+gate passed and they are merged (Next steps 1).
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -199,48 +199,14 @@ governs day-to-day work.
      pre-check seeds, the unchanged full P2 gate with fresh interpreter verification, presentation checks, all
      fix checks again) runs through `affinity_launch.py`; read `final-verdict.json` and the tally lines, not the
      exit code. After it passes: merge `bugfix-q` into `master`, push, check CI.
-     **State at handoff (25 Oct, 17:50):** all fifteen fix checks, defaults and both whole-table pre-check seeds
-     (`precheck-head`, `precheck-second`) PASSED; the full P2 gate (`accept`) was running when this was written,
-     started about 17:30 and expected to take 25-35 minutes, then the repeated fix checks. Do not start a second
-     gate. Look at `D:/f117-gate/bugfixes-20261025/run.out` first: if it ends with `drivers-final passed` and
-     `final-verdict.json` exists, the batch passed; if it shows a Traceback, read the named log, fix, and rerun
-     only the failing stage (archive `runner/` first, see the batch workflow traps). If the process is gone with
-     neither (the session ended it), rerun `py D:/f117-gate/affinity_launch.py py run_checks.py` from that directory.
-     The merge is not done: `bugfix-q` is pushed as a branch only. The main tree still holds batch be uncommitted
-     and the owner's two `.bat` files: merge from a clean checkout of master or with `git merge` in the main tree
-     after `git stash` of be, then restore it (the Q11 release did this: `D:/f117-gate/q11-20261025/finish_release.py`).
-     After the merge: rebuild the main tree and `D:/f117-gate/kit-libs` (see traps), update the roadmap
-     (every fix row, the new count of thirty-two), `docs/progress.json` question (fixes item P2 or P3), and push.
-   - **Gate frequency delegated by owner, 25 Oct:** "whatever you recommend as long as p2
-     accuracy is unaffected". Recommendation adopted: finish Q11's already-passed release,
-     then implement the remaining fixes in order as one bug-fix batch, with focused on/off
-     tests in both engines per fix and all earlier regressions. Before committing/merging/pushing
-     the combined batch, run defaults/replay checks, both whole-table pre-check seeds, the
-     unchanged full P2 gate (fresh interpreter verification retained) and presentation checks.
-     This supersedes the earlier separate full gate and commit before investigating every fix;
-     no final accuracy check is removed or weakened. Stop here for the requested handoff.
-   - **The three decided behaviours:** Q13a (sensorless units; the
-     Amiga zeroes range and bearing, which makes them announce "Visual ID" at any distance), Q21 (was D75:
-     stale bracket width; no version shows the intended value), Q22 (the armoury shortage self-check; changes
-     RNG use, so mission generation). Owner: fix all three, default on. Q13a as "a
-     sensorless unit cannot detect" (range far, so no announcement or launch on that path, the original's
-     usual outcome), not the Amiga's zero; Q21 keeps the previous frame's width (`0x0AE9F` -> `0x0AEDE` in
-     that case); Q22 adds the missing self-check at `0x00E71` (the RNG is clock-seeded, and replays record the
-     fix set).
-   - **No fix, written in bugs.md:** 10 code quirks with no effect (owner, 25 Oct: a bug with no effect is not
-     a bug) and four rows that are not defects of the original (D63, D97, D98, D103). Overlapping objects drawn in the wrong order (the hangars at takeoff)
-     are Remastered work (owner), noted under bugs.md R1.
-   - **Build** in the worktree `D:/f117-wt/bugfix` (branch `bugfix-q`, updated to `8176440` before Q7):
-     each override in `src/fixes/fixes.c` (RSOUND.117 hash `0x14F2AE43AE88ED82`, base `0x023E`; ASOUND
-     base `0x01B6`), a FIXES entry and description, `if (fix_inside(c, from, to)) return 0;` in every matched
-     routine containing a site (vgame_display_pass `0x9EFA`, vgame_objectives_panel `0x9515`,
-     vgame_draw_model_in_view `0xBB0D`, vgame_hud_pass `1058:0016`); only enabled fixes are placed, so parity
-     with fixes off is untouched. Decline (return 0) where the fixed result equals the original's, as D6 and D3
-     do. Tests of both states for each (staged `tools/machine_api.py` runs like `tools/d34_check.py`, or a route
-     plus observer like `cargo_d5_fixed`), `tests/test_fix_defaults.py`, bugs.md (move each row to the main
-     table when built) and the current normal-play fix count everywhere (keep dated measurements' actual sets),
-     then the combined batch gate described above. Open: whether the fixes item should move from P3 to P2 in
-     `docs/progress.json` (the owner said "top of Phase 2"; scores unchanged so far).
+     **Result (25 Oct, 18:10): the combined gate PASSED** (`final-verdict.json` status passed: fifteen fix checks,
+     defaults, both pre-check seeds, the full P2 gate, presentation checks and the fix checks again) and `bugfix-q`
+     was **merged into master** (`afc29c5`) and pushed. Still to do after the merge: check the GitHub CI run,
+     rebuild the main tree (`build.cmd` from PowerShell; batch be's three files are stashed as `be-pending` and
+     restored, check `git status`) and refresh `D:/f117-gate/kit-libs` from the main build (keep the old set as
+     `kit-libs-before-afc29c5`), update the roadmap (a row per fix, 32 normal-play fixes), and decide whether the
+     fixes item moves from P3 to P2 in `docs/progress.json`. The worktree `D:/f117-wt/bugfix` can stay until the
+     owner says to remove it.
    - **Then, in the owner's order:** measure D101 (stage the unwritten slot on the Transfer page; fix if the erase
      can draw on screen, else close with the evidence) and Q12's sibling at `0x0707B` (histogram the stale SI at
      that call across the routes with a call trap; pin the 2x2 size if it is almost always nonzero); then explain

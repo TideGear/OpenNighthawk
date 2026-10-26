@@ -20,6 +20,7 @@
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
 #define ASOUND_47304 0x9CD012D9D4A2CF30ULL
+#define RSOUND_47304 0x14F2AE43AE88ED82ULL
 #define END_47304   0xFA7167EE4E377EC1ULL
 #define SETUP_47304 0xEDD5021CF28E7FC4ULL
 
@@ -679,7 +680,324 @@ static int q11_range_branch(machine_t *m, uint16_t local, uint16_t next)
 static int fix_q11_x(machine_t *m) { return q11_range_branch(m, 8, 0xBC10); }
 static int fix_q11_y(machine_t *m) { return q11_range_branch(m, 12, 0xBC20); }
 
+/* Q12. The display pass calls the ground-impact eligibility test (0x792E)
+ * with nothing pushed, so the callee reads whatever word is on top of the
+ * stack for the unit hit; its other caller pushes the unit. Push [bp-0Ah]
+ * (the unit hit) under the call and return to 0xA154, inside the CALL's own
+ * operand and so never an instruction start, where the second hook drops the
+ * argument and resumes at the original return address. The extra word lives
+ * in the guest stack, so a stop anywhere in the callee leaves a consistent
+ * machine. A unit equal to the stale word changes nothing and declines. */
+static int fix_q12_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t unit = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x0A));
+    if (unit == seg_read16(c, c->seg[S_SS], c->r[R_SP])) return 0;
+    cpu_push16(c, unit);
+    cpu_push16(c, 0xA154);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x792E;
+    c->icount++;                     /* the CALL; the pushed argument is free */
+    return 1;
+}
+static int fix_q12_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    c->ip = 0xA156;
+    c->icount++;                     /* the POP that drops the argument */
+    return 1;
+}
+
+/* Q14. The overdue branch copies "Time expired" into the shared buffer
+ * 0x98A6, but that buffer was already copied into the local line at
+ * [bp-18h] that the panel displays, so the text never shows. Copy it into
+ * the local line instead: the PUSH of the buffer's address at 0x969C
+ * becomes a push of BP-18h. */
+static int fix_q14_overdue(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    cpu_push16(c, (uint16_t)(c->r[R_BP] - 0x18));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x969F;
+    c->icount++;
+    return 1;
+}
+
+/* Q15. ASOUND.117's noise take-over for generator B (IP 0x0F8B, image
+ * 0x2AEB) tests generator A's count [19DCh] where the A arm at 0x0EF6 tests
+ * it and B's own is [19FCh]. Read B's count: AL = [19FCh], and the original
+ * AND/JE that follow decide on it. */
+static int fix_q15_noise_b(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x19FC)));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x0F8E;
+    c->icount++;
+    return 1;
+}
+
+/* Q16. RSOUND.117's volume (0x0348) and pan (0x039D) modulators add a signed
+ * step to a byte with no bound; past 7Fh the MT-32 reads the byte as a status
+ * byte. Each three-instruction run (load step, add to the field, reload the
+ * field) becomes one saturating update, clamped to 0..7Fh, never masked, and
+ * the original `sub ah, ah` that follows rebuilds the flags. */
+static int q16_modulate(machine_t *m, uint16_t step, uint16_t field, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t bx = c->r[R_BX];
+    const int v = (int)mem_read8(c, phys(ds, (uint16_t)(bx + field)))
+                + (int)(int8_t)mem_read8(c, phys(ds, (uint16_t)(bx + step)));
+    const uint8_t out = (uint8_t)(v < 0 ? 0 : v > 0x7F ? 0x7F : v);
+    mem_write8(c, phys(ds, (uint16_t)(bx + field)), out);
+    set_r8(c, R_AL, out);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount += 3;
+    return 1;
+}
+static int fix_q16_volume(machine_t *m) { return q16_modulate(m, 2, 0x0C, 0x0351); }
+static int fix_q16_pan(machine_t *m) { return q16_modulate(m, 3, 0x0E, 0x03A6); }
+
+/* Q17. The pitch ladder's label index [2C2Ch] has no bound: it runs from 2
+ * (pitch -90) to 20 (+90) in the 23-entry label table at 2C30h, and a steeper
+ * attitude reads index -1 (the index word itself, whose FFh becomes a label
+ * colour of 7Fh for the rest of the flight) or 23 (the output slot). Outside
+ * the table the fix mirrors about the vertical (4 - i below, 40 - i above), as
+ * the Amiga port does, clamped to 0..22, and loads DI as the original's mov
+ * and two shl do (0x08FB, left side; 0x095C, right side). */
+static int q17_label(machine_t *m, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    const int idx = (int16_t)seg_read16(c, c->seg[S_DS], 0x2C2C);
+    if (idx >= 0 && idx <= 22) return 0;
+    int mirrored = idx < 0 ? 4 - idx : 40 - idx;
+    if (mirrored < 0) mirrored = 0;
+    if (mirrored > 22) mirrored = 22;
+    c->r[R_DI] = (uint16_t)(mirrored * 4);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount += 3;
+    return 1;
+}
+static int fix_q17_left(machine_t *m) { return q17_label(m, 0x0903); }
+static int fix_q17_right(machine_t *m) { return q17_label(m, 0x0964); }
+
+/* Q18. START's date loop (0x02613) walks months with no bound: a month past
+ * 12 reads the day count at 8C2h + month beyond the 12-entry table, where the
+ * 13th byte is 80 (the "P" of the text that follows). A long campaign
+ * therefore stays in "month 13" and prints January 32..59. The wrap that
+ * the code applies once after the loop belongs before each table read: past
+ * month 12, take 12 off and count the year. The month is read unsigned, as
+ * the original's own test after the loop does. The original loop head then
+ * runs, and the test after it (0x02621) can no longer find a month past 12. */
+static int fix_q18_month_wrap(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t month = seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 4));
+    if (month <= 12) return 0;
+    seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 4), (uint16_t)(month - 12));
+    seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 2), (uint16_t)(seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 2)) + 1));
+    return 0;
+}
+
+/* Q19. START's Enemy Troops overlay (0x01AB6) scans a 16 by 16 grid with the
+ * loop counters [bp-6] (column) and [bp-4] (row), and after each troop cell
+ * stores the sprite's pixel x and y into those same counters (0x01AF7,
+ * 0x01B09), so the scan resumes from a screen coordinate: a theatre's 4-17
+ * troop cells show 1-4 markers. Each hook skips its store (the MOV is three
+ * bytes, one instruction); the pixel position was already pushed from AX. */
+static int fix_q19_skip(machine_t *m, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount++;
+    return 1;
+}
+static int fix_q19_column(machine_t *m) { return fix_q19_skip(m, 0x1AFA); }
+static int fix_q19_row(machine_t *m) { return fix_q19_skip(m, 0x1B0C); }
+
+/* Q20. In the briefing key loop a click on a map site redraws the page and
+ * then draws the site's popup itself (0x011D1, CALL 0x1C2F). The hover hook
+ * (0x011DB) remembers the item it last drew in [D096h]; when the cursor moved
+ * onto the site in the same poll that took the click, the hook still holds the
+ * old item, so it draws and saves the popup again on its next pass and the
+ * popup stays on the map until the next redraw. When the remembered item is
+ * not a site ([D096h] <= 8) the hook will draw the popup, so the click leaves
+ * the CALL out; its pushed argument stays where the original's CALL leaves it
+ * (nothing pops it on either path). */
+static int fix_q20_popup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (mem_read8(c, phys(c->seg[S_DS], 0xD096)) > 8) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x11D4;
+    c->icount++;                     /* the CALL */
+    return 1;
+}
+
+/* Q13a. The detection routine (0x5582) leaves at 0x5594 without writing its
+ * two outputs when the unit has no sensor (sensor word 0 or -1), so the
+ * caller's bearing and range locals hold stale stack: usually a value that
+ * fails every test, but a small one can announce "Visual ID" or launch. A
+ * sensorless unit cannot detect: report it as far away (range 7FFFh, bearing
+ * 0) before the original `sub ax, ax` returns strength 0, which makes the
+ * range tests refuse as they do in the common case. */
+static int fix_q13a_sensorless(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    const uint16_t bearing = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 0x0C));
+    const uint16_t range = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 0x0E));
+    seg_write16(c, ds, bearing, 0);
+    seg_write16(c, ds, range, 0x7FFF);
+    return 0;
+}
+
+/* Q21. The steering bracket's half-width [DEBE] is worked out at 0xAE9F from
+ * the bracket corner [bp-30h]/[bp-2Eh] when the weapon type [bp-12h] is 1Eh.
+ * The code that computes that corner (0xAD79-0xADDC) is skipped when the
+ * aircraft is banked 45 degrees or more (|[2DF2]| >= 2000h, tested at
+ * 0xAD81), so on that path the corner is stale stack and the width is
+ * garbage. Chosen behaviour (owner, 25 October 2026): keep the previous
+ * frame's width, that is, go on to 0xAEDE without storing. The roll test is
+ * the original's: the 16-bit absolute value, compared signed. */
+static int fix_q21_bracket_width(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    if (seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 0x12)) != 0x1E) return 0;
+    const int16_t roll = (int16_t)seg_read16(c, c->seg[S_DS], 0x2DF2);
+    const int16_t magnitude = (int16_t)(roll < 0 ? -roll : roll);
+    if (magnitude < 0x2000) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0xAEDE;
+    c->icount++;
+    return 1;
+}
+
+/* Q22. START's armoury shortage (0x00E23) draws random entries r of the
+ * 16-byte table at 01C4h until rnd(5) of them are marked; refusing entry r
+ * is meant to need its substitute weapon (the table's byte) still available.
+ * It tests the substitute's flag (0x00E6B) but never r's own flag, so a draw
+ * of an entry already refused counts again without refusing anything new: in
+ * 13.8% of sessions fewer weapons are greyed out than were drawn. Chosen
+ * behaviour (owner, 25 October 2026): add the missing self-check at 0x00E71,
+ * the store: an entry already marked is drawn again without counting. This
+ * changes how many random numbers a session draws, and so the missions
+ * generated after it. */
+static int fix_q22_self_check(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6));
+    if (!mem_read8(c, phys(c->seg[S_DS], (uint16_t)(entry + 0xD878)))) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x0E7C;
+    c->icount++;
+    return 1;
+}
+
+/* Q4. The joystick axis scaling (1058:0D09, linear 0x11289) divides by the calibrated span of
+ * the side the stick is on, [si+2CBAh] below the centre (1058:0D3C) and
+ * [si+2CC2h] above it (1058:0D67), with no test. The calibration never stores
+ * a zero span, so only a corrupt settings block reaches it, and the divide
+ * error then ends the game. A zero span carries no information: take the
+ * quotient as 0, which the code after the DIV turns into the centre
+ * position of its side (7Fh below, 80h above). */
+static int q4_span(machine_t *m, uint16_t span_at, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    if (seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + span_at)) != 0) return 0;
+    c->r[R_AX] = 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount++;
+    return 1;
+}
+static int fix_q4_low(machine_t *m) { return q4_span(m, 0x2CBA, 0x0D40); }
+static int fix_q4_high(machine_t *m) { return q4_span(m, 0x2CC2, 0x0D6B); }
+
+/* Q13b. The written orders choose the name printed for the landing base
+ * (0x022E7-0x02326): they test whether a base record's first word is zero,
+ * then read that word from the landing base's record ([E074h]) - but the
+ * test (0x022E7) looks at the departure base's record ([E062h]). A world
+ * whose landing record has a zero first word therefore prints name 0 where
+ * the byte at +0Eh was meant; one whose departure record is zero skips a
+ * name the landing record has. The test now loads the landing base, as the
+ * Amiga port does. */
+static int fix_q13b_landing_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0xE074);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x22EB;
+    c->icount++;
+    return 1;
+}
+
+/* D18. The objective sentences (0x02651 onward) take the target's name from
+ * the name table by the first word of its record, and when that word is zero
+ * (an airbase with no name) keep a NULL pointer in [bp-4] (0x0267B). The
+ * sentence builders pass it to sprintf's %s (0x026B0, 0x0279E, 0x027CE,
+ * 0x027E7), which prints "(null)". Point it at an empty string instead: the
+ * eight bytes at the start of the data segment are zero (the run time's
+ * null-pointer check area). No shipped world reaches it. */
+static int fix_d18_empty_name(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), 0x0004);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x2680;
+    c->icount++;
+    return 1;
+}
+
+/* Q23. The roster fix-up (0x06D07) walks the ten 50h-byte records from D892h
+ * with the pointer [bp-2], and each pass is meant to reduce that record's
+ * realism word (+42h) to one bit before it tests it (0x06D1C). The AND names
+ * the first record's word (D8D4h) instead of [bp-2]+42h, so it masks record 0
+ * ten times and the others never. Only a roster edited outside the game, with
+ * a realism value above 1 in a later record, shows it. Mask the record the
+ * pass is on; for record 0 the original instruction is the same and runs. */
+static int fix_q23_mask_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t record = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    if (record == 0xD892) return 0;
+    const uint16_t at = (uint16_t)(record + 0x42);
+    seg_write16(c, c->seg[S_DS], at, (uint16_t)(seg_read16(c, c->seg[S_DS], at) & 1));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x6D21;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q23", "START.EXE", START_47304, 0x0000, 0x6D1C, fix_q23_mask_record, "roster fix-up masks each record's realism word" },
+    { "D18", "START.EXE", START_47304, 0x0000, 0x267B, fix_d18_empty_name, "an unnamed airbase prints nothing instead of (null)" },
+    { "Q13b", "START.EXE", START_47304, 0x0000, 0x22E7, fix_q13b_landing_record, "written orders test the landing base's record" },
+    { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D3C, fix_q4_low, "joystick scaling survives a zero low span" },
+    { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D67, fix_q4_high, "joystick scaling survives a zero high span" },
+    { "Q22", "START.EXE", START_47304, 0x0000, 0x0E71, fix_q22_self_check, "armoury shortage does not count an entry twice" },
+    { "Q21", "VGAME.EXE", VGAME_47304, 0x0000, 0xAE9F, fix_q21_bracket_width, "steering bracket keeps its width when banked 45 degrees or more" },
+    { "Q13a", "VGAME.EXE", VGAME_47304, 0x0000, 0x5594, fix_q13a_sensorless, "a sensorless unit reports itself far away" },
+    { "Q20", "START.EXE", START_47304, 0x0000, 0x11D1, fix_q20_popup, "briefing popup is left to the hover hook" },
+    { "Q19", "START.EXE", START_47304, 0x0000, 0x1AF7, fix_q19_column, "troop overlay keeps its column counter" },
+    { "Q19", "START.EXE", START_47304, 0x0000, 0x1B09, fix_q19_row, "troop overlay keeps its row counter" },
+    { "Q18", "START.EXE", START_47304, 0x0000, 0x2613, fix_q18_month_wrap, "campaign date wraps past December" },
+    { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x08FB, fix_q17_left, "pitch-ladder label index stays inside the table" },
+    { "Q17", "VGAME.EXE", VGAME_47304, 0x1058, 0x095C, fix_q17_right, "pitch-ladder label index stays inside the table" },
+    { "Q15", "ASOUND.117", ASOUND_47304, 0x01B6, 0x0F8B, fix_q15_noise_b, "AdLib noise take-over reads generator B's own count" },
+    { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x0348, fix_q16_volume, "MT-32 volume modulator saturates at 0..7Fh" },
+    { "Q16", "RSOUND.117", RSOUND_47304, 0x023E, 0x039D, fix_q16_pan, "MT-32 pan modulator saturates at 0..7Fh" },
+    { "Q14", "VGAME.EXE", VGAME_47304, 0x0000, 0x969C, fix_q14_overdue, "overdue objective text goes to the displayed line" },
+    { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA153, fix_q12_call, "cannon ground test is given the unit hit" },
+    { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA154, fix_q12_return, "cannon ground test: drop the argument" },
     { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC0E, fix_q11_x, "full-width model x range" },
     { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC1E, fix_q11_y, "full-width model y range" },
     { "Q7", "VGAME.EXE", VGAME_47304, 0x0000, 0xE4AC, fix_q7_range, "zoomed-view range uses absolute camera coordinates" },
@@ -730,6 +1048,21 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q23", "the roster fix-up masks every record's realism word, not record 0's ten times" },
+    { "D18", "an airbase with no name is printed as nothing in the objective sentences instead of (null)" },
+    { "Q13b", "the written orders test the landing base's record instead of the departure base's before naming the landing base" },
+    { "Q4", "joystick axis scaling reads a zero calibrated span as the centre instead of raising a divide error" },
+    { "Q22", "the armoury shortage greys out as many weapons as it draws, instead of counting a repeated draw twice" },
+    { "Q21", "the steering bracket keeps the previous frame's width when banked 45 degrees or more, instead of computing it from stale stack" },
+    { "Q13a", "a unit with no sensor reports a far range instead of stale stack to the detection tests" },
+    { "Q20", "a briefing-map click no longer leaves its popup stuck on the map" },
+    { "Q19", "the Enemy Troops overlay draws every troop cell instead of resuming its scan from a pixel coordinate" },
+    { "Q18", "the campaign date wraps into the next year instead of printing January 32 and later" },
+    { "Q17", "pitch-ladder labels past 90 degrees mirror inside the table instead of reading past it" },
+    { "Q15", "AdLib noise take-over on generator B tests B's own count, not A's" },
+    { "Q16", "MT-32 volume and pan modulation saturate at 0 and 7Fh instead of running into status bytes" },
+    { "Q14", "an overdue objective shows \"Time expired\" instead of the stale deadline" },
+    { "Q12", "the cannon's ground test is given the unit it hit, not a stale stack word" },
     { "Q11", "model range checks use the full 32-bit coordinates, rejecting distant objects before they wrap nearby" },
     { "Q7", "zoomed views use object distance instead of the frustum limit for detail and far clipping" },
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },

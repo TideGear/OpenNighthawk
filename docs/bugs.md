@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-seventeen: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7 and Q11, including the D1REAL timing and D1PROX balance choices
+thirty-two: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b, D18 and Q23, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -64,9 +64,21 @@ Status values:
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
 | Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
-| Q12, Q14-Q20 | Confirmed | VGAME, START, ASOUND.117, RSOUND.117 | Eight smaller defects (below) | planned |
-| Q13a, Q21, Q22 | Confirmed | VGAME, START | Three smaller defects with a chosen correct behaviour (below) | planned |
-| Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
+| Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
+| Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
+| Q15 | Confirmed | ASOUND.117 | AdLib noise take-over on generator B reads generator A's count | `--fix Q15` |
+| Q16 | Confirmed | RSOUND.117 | MT-32 volume and pan modulation run past 7Fh into status bytes | `--fix Q16` |
+| Q17 | Confirmed | VGAME | Pitch-ladder label index runs outside its table past 90 degrees | `--fix Q17` |
+| Q18 | Confirmed | START | The campaign date loop reads past its month table, printing January 32 and later | `--fix Q18` |
+| Q19 | Confirmed | START | The Enemy Troops overlay stores pixel coordinates into its own loop counters | `--fix Q19` |
+| Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
+| Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
+| Q21 | Confirmed | VGAME | The steering bracket's half-width is computed from stale stack when banked 45 degrees or more with weapon 1Eh | `--fix Q21` |
+| Q22 | Confirmed | START | The armoury shortage does not check the refused entry's own flag, so a repeated draw counts without refusing anything new | `--fix Q22` |
+| Q4 | Confirmed | VGAME | Hardening: joystick axis scaling divides by a calibrated span with no zero test | `--fix Q4` |
+| Q13b | Confirmed | START | Hardening: the written orders test the departure base's record before naming the landing base | `--fix Q13b` |
+| D18 | Confirmed | START | Hardening: an unnamed airbase passes NULL to `sprintf %s` and prints "(null)" | `--fix D18` |
+| Q23 | Confirmed | START | Hardening: the roster fix-up masks record 0's realism word ten times instead of each record's once | `--fix Q23` |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -693,6 +705,272 @@ Status values:
   pre-check seeds, the full gate (630 tests, 63 routes) and presentation checks
   (`D:/f117-gate/q11-20261025/`). This proves the admission decision, not a flight screenshot.
 
+### Q12. The cannon's ground test reads a stale stack word
+
+- **What happens.** The display pass's call at `0x0A153` to the ground-impact
+  eligibility test (`0x0792E`) pushes no argument, so the callee reads the
+  word on top of the stack (the caller's saved register) as the unit hit; the
+  other caller `0x074BE` pushes its unit. The wreck test then follows the wrong
+  unit's class, so a hit on a wreck can be admitted (a second "destroyed by
+  gunfire") or refused. Macintosh passes the unit (`CODE10:00CAC`); Amiga is
+  undetermined.
+- **Fix.** `--fix Q12` pushes `[bp-0Ah]` (the unit hit) under the call
+  (`0x0A153`) and returns to `0x0A154`, inside the CALL's operand and so never
+  an instruction start, where a second hook drops the argument and resumes at
+  `0x0A156`. The extra word is in the guest stack, so a stop inside the callee
+  leaves a consistent machine. When the unit already equals the stale word the
+  hook declines. The clock is one instruction longer (the POP). The containing
+  matched routine at `0x09EFA` declines while Q12 is placed.
+- **Check.** `build/check_q12 path/to/VGAME.EXE` runs the original `0x0792E` and
+  `0x0B9F6` in both engines with Q12 off and on: opposite answers for
+  different classes, the model-record mark, the decline, the clock, and a stop
+  at every instruction count followed by a resume (182 staged runs, 0 failures).
+  This proves the decision, not a flight screenshot.
+
+### Q14. An overdue objective never shows "Time expired"
+
+- **What happens.** The objectives panel builds each timed objective's line
+  in a local buffer (`[bp-18h]`), then, past the deadline, copies "Time
+  expired" into the shared buffer `0x98A6` at `0x0969C`, after that buffer was
+  already copied into the line that is displayed. The panel keeps showing
+  "Before HH:MM". Macintosh has the same order; Amiga displays the right text.
+- **Fix.** `--fix Q14` replaces the push of the shared buffer's address at
+  `0x0969C` with BP-18h, so the original string copy writes the displayed line.
+  The instruction count is unchanged. The containing matched routine at
+  `0x09515` declines while Q14 is placed.
+- **Check.** `build/check_q14 path/to/VGAME.EXE` runs the original string
+  copy from `0x09699` in both engines with Q14 off and on and compares the
+  local line, the shared buffer, registers, memory and clock, then stops at
+  every instruction count and resumes (176 staged runs, 0 failures).
+
+### Q15. AdLib noise take-over reads the wrong generator's count
+
+- **What happens.** ASOUND.117's take-over for noise generator B (IP `0x0F8B`,
+  image `0x2AEB`) is generator A's arm (`0x0EF6`) with only the channel changed:
+  it tests A's count `[19DCh]` where B's own is `[19FCh]`. Repeated noise effects
+  on B's channel lose their re-attack, and with B idle a stray key-off can cut
+  another voice (not measured). Only the DOS driver has it.
+- **Fix.** `--fix Q15` reads `[19FCh]` into AL at `0x0F8B`; the original AND and
+  JE decide on it. The instruction count is unchanged.
+- **Check.** `build/check_drivers path/to/ASOUND.117 path/to/RSOUND.117` steps
+  the site with four count pairs, fix off and on, and compares AL, AH, the next
+  branch, the counts and the clock.
+
+### Q16. MT-32 volume and pan modulation overrun the data range
+
+- **What happens.** RSOUND.117's modulators add a signed step to the volume
+  (`[bx+0Ch]`, step `[bx+2]`, IP `0x0348`) and pan (`[bx+0Eh]`, step `[bx+3]`,
+  IP `0x039D`) bytes with no bound, and the senders pass the byte unmasked. The
+  title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of
+  80h and above per play, which an MT-32 reads as status bytes (lost updates,
+  possibly a stray program change, bend or notes on parts 3 and 7). Munt
+  behaves the same. Only the DOS driver has it.
+- **Fix.** `--fix Q16` replaces each three-instruction update (load step, add to
+  the field, reload the field) with one that saturates at 0 and 7Fh, never masks,
+  and leaves AL as the original does; the `sub ah, ah` after it rebuilds the
+  flags. It charges the same three instructions.
+- **Check.** The same `check_drivers` runs ten field/step cases for both
+  modulators, fix off and on: in range the two agree, out of range the original
+  wraps and the fix saturates.
+
+### Q17. Pitch-ladder labels read outside their table
+
+- **What happens.** The HUD pass picks each ladder label from a 23-entry table
+  (`2C30h`) by the index `[2C2Ch]`, which is 2 at pitch -90 degrees and 20 at +90.
+  A steeper attitude reads index -1 (the index word itself, whose FFh becomes
+  MGRAPHIC's colour 7Fh, so ladder labels draw in that colour for the rest of the
+  flight) or 23 (the output slot `2C8Ch`). The Amiga port clamps and mirrors;
+  Macintosh is undetermined.
+- **Fix.** `--fix Q17` at `1058:08FB` (left labels) and `1058:095C` (right) mirrors
+  an out-of-table index about the vertical (4 - i below, 40 - i above), clamps it
+  to 0..22 and loads DI as the original's three instructions do. In-range indices
+  decline. The containing matched HUD pass (`1058:0016`) declines while Q17 is
+  placed, after its presentation observer has run.
+- **Check.** `build/check_q17 path/to/VGAME.EXE` runs the original index load in
+  both engines with Q17 off and on for every index from -6 to 30 on both sides,
+  and a hand-back at every instruction count (372 staged runs, 0 failures).
+
+### Q18. The campaign date runs past December
+
+- **What happens.** START's date routine (`0x025D9`) takes whole months off the
+  day count in a loop with no month bound, reading each month's length from
+  `8C2h + month`. Past month 12 it reads beyond the 12-entry table, where the
+  13th byte is 80 (the "P" of the text that follows), and the single wrap it
+  applies after the loop then prints that as January with the rest of up to 80
+  days: "Jan 32" to "Jan 59, 1990" on the written orders of Middle East career
+  missions 71-98. In the other theatres the first bad date falls after retirement
+  at mission 99. Macintosh and Amiga run the same loop with other bytes after
+  the table ("Mar N", "Feb N").
+- **Fix.** `--fix Q18` at the loop head (`0x02613`) takes 12 off a month past 12
+  and counts the year before the table is read; the original loop then runs, and
+  its after-loop wrap (`0x02621`) can no longer find a month past 12. The hook
+  declines otherwise. The containing matched routine at `0x025D9` declines while
+  Q18 is placed.
+- **Check.** `build/check_q18 path/to/START.EXE` runs the original loop from its
+  head in both engines with Q18 off and on, with the printing routine as a
+  recording stub and 80 in the table's 13th place, over dates that stay inside
+  the year, cross it, and run into February and March, plus a stop and resume at
+  every instruction (170 staged runs, 0 failures).
+
+### Q19. The Enemy Troops overlay loses its place
+
+- **What happens.** `0x01AB6` scans a 16 by 16 grid with the counters `[bp-6]`
+  (column) and `[bp-4]` (row). After each troop cell it stores the sprite's pixel
+  x and y into those same counters (`0x01AF7`, `0x01B09`), so the scan resumes
+  from a screen coordinate and ends early: one to four markers of a theatre's 4-17
+  troop cells (counted from the shipped worlds). Macintosh (`CODE08:027CE`) and
+  Amiga (`0x43BEA6`) have the same stores.
+- **Fix.** `--fix Q19` skips each of the two stores (one instruction each); the
+  pixel position was already pushed. The containing matched routine declines
+  while Q19 is placed.
+- **Check.** `build/check_q19 path/to/START.EXE` runs the overlay in both
+  engines with Q19 off and on over six grids, with the sprite call and the
+  caption as recording stubs, and compares every marker position and the caption
+  kind with a model of the loop (the original draws the model's few markers, the
+  fixed overlay one per troop cell), then stops and resumes (5,810 staged runs,
+  0 failures).
+
+### Q20. A click can leave the briefing popup on the map
+
+- **What happens.** A click on a map site in the briefing key loop redraws the
+  page and draws the site's popup itself (`0x011D1`, CALL `0x1C2F`). The hover
+  hook (`0x011DB`) remembers the last item it drew in `[D096h]`. When the cursor
+  moved onto the site in the same poll that took the click, the hook still holds
+  the old item, draws and saves the popup again on its next pass, and the popup
+  stays on the map until the next redraw (restore `0x03588`). Not located in the
+  other versions.
+- **Fix.** `--fix Q20` leaves the click's CALL out when the remembered item is not
+  a site (`[D096h]` <= 8), since the hover hook will draw the popup; otherwise the
+  original call runs. The pushed argument stays where the original's CALL leaves
+  it. The containing matched routine at `0x00FA3` declines while Q20 is placed.
+- **Check.** `build/check_q20 path/to/START.EXE` runs the click from `0x011C8` in
+  both engines with Q20 off and on for every remembered item from 0 to 14, with
+  the popup routine as a recording stub (120 staged runs, 0 failures). It proves
+  the click's decision, not the hover hook's redraw on screen.
+
+### Q13a. A sensorless unit reports a stale range
+
+- **What happens.** The detection routine (`0x05582`) returns strength 0 at
+  `0x05594` for a unit whose sensor word is 0 or -1 without writing its bearing and
+  range outputs, so the caller's locals hold stale stack (`0x06559`-`0x065FF`).
+  While the player's visibility exceeds 100, usually the stale value fails every
+  test (silent), but a small one can announce "Visual ID" or launch (the Reimp
+  caught a spurious "Visual ID"). Macintosh has the same exit; the Amiga zeroes both,
+  which makes such a unit announce "Visual ID" at any distance and never launch.
+- **Chosen behaviour (owner, 25 October 2026).** A sensorless unit cannot detect:
+  the range is far, which is the original's usual outcome, so no announcement or launch.
+- **Fix.** `--fix Q13a` writes bearing 0 and range `7FFFh` through the routine's two
+  output pointers at `0x05594`, then lets the original `sub ax, ax` return strength 0.
+  The routine is already guarded in its matched body (`0x05583`-`0x056A8`).
+- **Check.** `build/check_q13a path/to/VGAME.EXE` calls the routine in both engines
+  with Q13a off and on for sensor words 0 and -1, comparing the outputs, strength,
+  registers, memory and clock, then stops and resumes at every instruction
+  (48 staged runs, 0 failures).
+
+### Q21. The steering bracket's width comes from stale stack
+
+- **What happens.** For a weapon of type 1Eh the steering bracket's half-width
+  `[DEBE]` is worked out at `0x0AE9F` from the corner `[bp-30h]`/`[bp-2Eh]`.
+  The code that writes that corner (`0x0AD79`-`0x0ADDC`) is skipped when the
+  aircraft is banked 45 degrees or more (`|[2DF2]| >= 2000h`, tested at `0x0AD81`),
+  so the width is computed from whatever the stack held. Macintosh and Amiga have
+  the same flaw, and no version shows the intended width.
+- **Chosen behaviour (owner, 25 October 2026).** Keep the previous frame's width.
+- **Fix.** `--fix Q21` at `0x0AE9F`: when the weapon is 1Eh and the original's
+  16-bit absolute-value roll test (compared signed) fails, go on to `0x0AEDE`
+  without storing; otherwise the hook declines. The containing display pass
+  (`0x09EFA`) already declines while any of its fixes is placed.
+- **Check.** `build/check_q21 path/to/VGAME.EXE` tries nine roll values (around
+  +-2000h, 7FFFh and 8000h) with weapons 1Eh, 1Dh and 1Fh in both engines: the hook
+  skips exactly when the weapon is 1Eh and the roll test fails, declines with
+  nothing changed otherwise, and the skipped run ends at `0x0AEDE` with `[DEBE]`
+  untouched and the same state in both engines (110 staged runs, 0 failures).
+
+### Q22. The armoury shortage counts a repeated draw
+
+- **What happens.** START's armoury shortage (`0x00E23`) draws random entries r of
+  the 16-byte table at `01C4h` until rnd(5) of them are marked. Refusing entry r is
+  meant to need its substitute weapon (the table's byte) still available. It tests
+  the substitute's flag (`0x00E6B`) but never r's own, so drawing an entry that is
+  already refused counts again without refusing anything new: computed from the
+  code, 13.8% of sessions grey out fewer weapons than were drawn. Macintosh and
+  Amiga are identical.
+- **Chosen behaviour (owner, 25 October 2026).** Add the missing self-check.
+- **Fix.** `--fix Q22` at the store (`0x00E71`): an entry whose own flag is already
+  set is drawn again without counting; otherwise the hook declines. This changes
+  how many random numbers a session draws, and so the missions generated after it
+  (the generator is clock-seeded, and replays record the fix set). The containing
+  matched routine at `0x00E23` declines while Q22 is placed.
+- **Check.** `build/check_q22 path/to/START.EXE` runs the routine in both engines
+  with Q22 off and on with a scripted random-number routine (four draw scripts, 0
+  to 8 weapons), comparing every flag and the number of draws with a model of the
+  loop, requires that some scripts end differently with the fix, then stops and
+  resumes (402 staged runs, 0 failures).
+
+### Q4. Joystick scaling divides by an unchecked span
+
+- **What happens.** The axis scaling (`1058:0D09`, linear `0x11289`) divides by the
+  calibrated span of the side the stick is on, `[si+2CBAh]` below the centre
+  (`0x112BC`) and `[si+2CC2h]` above it (`0x112E7`), with no zero test. The
+  calibration never stores a zero span, so only a corrupt settings block
+  reaches it; the divide error then ends the game. (Hardening: the shipped data
+  never reaches it.)
+- **Fix.** `--fix Q4` takes the quotient as 0 when the span is zero (the code after
+  the DIV turns that into the centre position of its side: 7Fh below, 80h above);
+  a real span declines. The routine is not matched, so no guard is needed.
+- **Check.** `build/check_q4 path/to/VGAME.EXE` stages the bad data: axes 0 and 3, on
+  each side of the centre, in both engines. With real spans fix off and on give the
+  same state; with a zero span the original's DIV does not return and Q4 ends at
+  the side's centre byte; stop and resume at every instruction (76 staged runs, 0
+  failures).
+
+### Q13b. The written orders test the wrong base's record
+
+- **What happens.** The written orders choose the name printed for the landing
+  base (`0x022E7`-`0x02326`): they test whether a base record's first word is zero,
+  then read that word from the landing base's record (`[E074h]`), but the test
+  (`0x022E7`) looks at the departure base's record (`[E062h]`). A world whose
+  landing record has a zero first word prints name 0 where the byte at +0Eh was
+  meant; one whose departure record is zero skips a name the landing record has.
+  No shipped world reaches it (hardening). The Amiga tests the landing record.
+- **Fix.** `--fix Q13b` loads the landing base at `0x022E7`. The containing matched
+  routine (`0x020D6`) declines while Q13b is placed.
+- **Check.** `build/check_q13b path/to/START.EXE` stages the four first-word
+  combinations in both engines with the text routine as a recording stub: the two
+  states differ exactly where the records disagree, and stop and resume at every
+  instruction agree (90 staged runs, 0 failures).
+
+### D18. An unnamed airbase prints "(null)"
+
+- **What happens.** The objective sentences (`0x02651` onward) take the target's
+  name from the name table by the first word of its record; when the word is zero
+  (an airbase with no name) they keep a NULL pointer in `[bp-4]` (`0x0267B`) and
+  pass it to `sprintf %s` (`0x026B0`, `0x0279E`, `0x027CE`, `0x027E7`), which prints
+  "(null)". Every class-21 record of the shipped worlds is named, so it is not
+  reachable (hardening).
+- **Fix.** `--fix D18` points the name at an empty string instead (the run time's
+  eight zero bytes at the start of the data segment). The containing matched routine
+  (`0x02651`) declines while D18 is placed.
+- **Check.** `build/check_d18 path/to/START.EXE` runs the name lookup from `0x02657`
+  in both engines with D18 off and on, for an unnamed and two named targets, one
+  instruction at a time to the switch at `0x02840` (12 staged runs, 0 failures).
+
+### Q23. The roster fix-up masks one record ten times
+
+- **What happens.** The roster fix-up (`0x06D07`) walks the ten 50h-byte records from
+  `D892h` with the pointer `[bp-2]`, and each pass is meant to reduce that record's
+  realism word (`+42h`) to one bit before testing it (`0x06D1C`). The AND names the
+  first record's word (`D8D4h`) instead of `[bp-2]+42h`, so it masks record 0 ten
+  times and the others never. Only a roster edited outside the game, with a realism
+  value above 1 in a later record, shows it. Macintosh and Amiga are the same.
+- **Fix.** `--fix Q23` masks the record the pass is on (record 0 declines: the original
+  instruction is the same). The containing matched routine (`0x06D07`) declines while
+  Q23 is placed.
+- **Check.** `build/check_q23 path/to/START.EXE` runs the loop over ten records with
+  realism words above 1 in both engines and compares every realism and status word
+  with a model of the loop: seven of the ten records end differently with the fix
+  (4 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -715,19 +993,8 @@ original](#not-defects-of-the-original).
 
 ### Defects to fix
 
-Each remaining defect is planned as a switch that normal play enables, with
-tests of both states ([roadmap.md](roadmap.md)). Q7 and Q11 are described above.
-
-| ID | Was | Program | Defect | Effect | Where | Later versions |
-|---|---|---|---|---|---|---|
-| Q12 | Q12 | VGAME | The cannon's ground-eligibility test is called with no argument: `0x0A153` pushes nothing, so `0x0792E` reads the display pass's saved SI; the intended unit is `[bp-0xA]`, the unit hit | The wreck test follows the wrong unit's class: a hit on a wreck can be admitted (a second "destroyed by gunfire") or refused | `0x0A153` -> `0x0792E`; the other caller `0x074BE` passes its unit | Mac fixed (`CODE10:00CAC` passes the unit hit); Amiga undetermined |
-| Q14 | - | VGAME | Overdue objective: "Time expired" is copied into the shared deadline buffer `0x98A6` after that buffer was already copied into the line that is displayed | After a timed objective's deadline the panel still shows "Before HH:MM" | `0x09699`-`0x0969F`, display `0x096A4` | Mac present (`CODE12:0198C`); Amiga fixed (`0x416E54`) |
-| Q15 | D44 | ASOUND.117 | Noise take-over: generator B's arm reads A's count `[0x19DC]` instead of its own `[0x19FC]` (the A arm with only the channel changed) | Repeated noise effects on B's channel lose their re-attack; with B idle a stray key-off can cut another voice (not measured) | image `0x2AEB` (IP `0x0F8B`); A arm `0x2A56` | DOS driver only |
-| Q16 | - | RSOUND.117 | The volume and pan modulators add a signed step with no bound, and the senders pass the byte unmasked | The title theme's part 3 ramps run on through an 80-tick rest: about 30 bytes of 80h and above per play (pan FF down to BF, volume 80-8C), which an MT-32 reads as status bytes: lost updates, possibly a stray program change, bend or notes on parts 3 and 7. Munt behaves the same. Planned fix: saturate at 0 and 7Fh, never mask | modulators IP `0x0348`, `0x039D`; senders `0x0490`, `0x04E1` | DOS driver only |
-| Q17 | D61 | VGAME, MGRAPHIC | The pitch-ladder label index has no bound: at pitch -90 degrees or below it reads index -1 (the index word itself, FF FF), past +90 index 23 (the output slot) | A top-bit byte becomes MGRAPHIC's colour, so ladder labels are drawn in colour 7Fh for the rest of the flight | `1058:08FB`, `1058:095C` (linear `0x10E7B`, `0x10EDC`); MGRAPHIC `047E:060A` | Amiga fixed (clamps and mirrors, `0x402554`, `0x4025FE`); Mac undetermined |
-| Q18 | D17 | START | Date roll: the month loop has no bound and reads past the 12-entry table (the 13th byte is 80, the 'P' of "Photograph") | Middle East careers, missions 71-98: "Jan 32" to "Jan 59, 1990" on the written orders; in the other theatres the first bad date falls after retirement at 99 | `0x0260D`-`0x0261F`, `0x02621` | Mac and Amiga run the same loop with other bytes after the table ("Mar N", "Feb N") |
-| Q19 | - | START | The Enemy Troops overlay stores each marker's pixel x and y into its own loop counters | One to four markers of the 4-17 troop cells (counted from the shipped worlds) | `0x01AF7`, `0x01B09` | Mac present (`CODE08:027CE`); Amiga present (`0x43BEA6`) |
-| Q20 | - | START | A click in the same poll that moves the cursor onto a site draws the popup; the hover hook, still on the old item, then draws and saves it again | The popup stays on the map until the next redraw | `0x011D1`, `0x0129D`, restore `0x03588` | Not located |
+All ten are fixed, each on its own switch that normal play enables, with tests
+of both states (Q7, Q11, Q12 and Q14 to Q20, described above).
 
 Q12's sibling at `0x0707B` passes three arguments where the routine's other
 six callers pass four, so a player weapon's map marker size comes from the
@@ -738,26 +1005,15 @@ draws 2x2 markers, and the fix pins that size.
 ### Defects with a chosen correct behaviour
 
 No version shows the intended behaviour, or the one a port shows is no better.
-Owner, 25 October 2026: fix all three as below, each on its own switch.
-
-| ID | Was | Program | Defect | Effect | Where | Later versions | Chosen fix |
-|---|---|---|---|---|---|---|---|
-| Q13a | Q13a | VGAME | A sensorless unit's range and bearing are never written (`0x05582` exits early for sensor 0 or -1) and are then read from the stack | When the player's visibility exceeds 100: usually a stale 0x1566 that fails every test (silent); a small stale value can announce "Visual ID" or launch (the Reimp caught a spurious "Visual ID") | exit `0x05594`; reads `0x06559`-`0x065FF` | Mac present (`CODE13:0327C`); Amiga zeroes both (`0x40E2EA`), so such a unit always announces and never launches | "Cannot detect": range far, the original's usual outcome |
-| Q21 | D75 | VGAME | The steering bracket's half-width is computed from `[bp-0x30]`/`[bp-0x2E]`, which this path never writes, when the roll is 45 degrees or more with weapon type 1Eh | `[0xDEBE]` from stale stack | skip `0x0AD81`; reads `0x0AEB5`, `0x0AEC4` | Mac and Amiga present | Keep the previous frame's width |
-| Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
+Owner, 25 October 2026: fix all three, each on its own switch. All three are
+built and described above the Q-series (Q13a, Q21, Q22).
 
 ### Hardening
 
 Defects the shipped game's data never reaches, which a corrupt or modified
 file would. Owner, 25 October 2026: fix them as a group, each on its own
-switch and tested by staging the bad data.
-
-| ID | Program | Defect | When it shows | Where |
-|---|---|---|---|---|
-| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no zero test | A corrupt settings block with a zero span: a divide error ends the game | `0x112BC`, `0x112E7` |
-| Q13b | START | The written orders test the departure base's record, then read the landing base's name (Amiga tests the landing record) | A world whose landing-base record has a zero first word | `0x022E7`, `0x022F4` |
-| D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | A world with an unnamed airbase | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
-| Q23 | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once (Mac and Amiga the same) | A roster edited outside the game with a realism value above 1 | `0x06D1C` |
+switch and tested by staging the bad data. All four are built and described
+above the Q-series (Q4, Q13b, D18, Q23).
 
 ### Code quirks with no effect
 

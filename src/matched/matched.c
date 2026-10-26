@@ -5635,6 +5635,7 @@ static int start_modal_hover(machine_t *m)
 static int start_weapon_shortage(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x0E23, 0x0E96)) return 0;
 #define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
     if (!room(c, 4 + 1)) return 0;
     frame_open(c, 6);
@@ -6920,6 +6921,7 @@ static int st4_end_heap_free(machine_t *m) { return sm3_heap_free(m, 0x50EE, 0, 
 static int start_date_string(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x25D9, 0x2658)) return 0;
     if (!room(c, 19)) return 0;
     frame_open(c, 6);
     cpu_push16(c, c->r[R_SI]);
@@ -19509,6 +19511,7 @@ static int start_open_modal(machine_t *m)
 static int start_draw_troops(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x1AB6, 0x1B37)) return 0;
     if (!room(c, 7 + 2 + 2 + 2 + 4)) return 0;
     frame_open(c, 6);                                             /* [bp-2] the caption, [bp-4] row, [bp-6] column */
     cpu_push16(c, c->r[R_SI]);
@@ -24775,6 +24778,7 @@ static int st4_start_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_STA
 static int st4_start_objective_open(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x2651, 0x2696)) return 0;
     if (!room(c, 25)) return 0;
     frame_open(c, 0x5A);
     cpu_push16(c, c->r[R_SI]);
@@ -32873,6 +32877,7 @@ static int vgame_timer_tick(machine_t *m)
 static int vgame_objectives_panel(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x9515, 0x9720)) return 0;
     if (!room(c, 8 + 1)) return 0;
     x86_enter(c, 0x22, 0);
     x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
@@ -34010,6 +34015,7 @@ static int vgame_hud_pass(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (g_f117_observer) observe_hud_pass(m);                   /* the state the pass starts from (the original path has no hook) */
+    if (fix_inside(c, 0x0016, 0x09D8)) return 0;
     if (!room(c, 1)) return 0;
     SM4_NEED(1, 0x0016); VG3_FAR(0x0016, 11);
     set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
@@ -45070,6 +45076,7 @@ done:
 static int start_brief_key_loop(machine_t *m)
 {
     cpu_t *c=&m->cpu;
+    if (fix_inside(c, 0x0FA3, 0x11DB)) return 0;
     enum { KEY=-4, CODE=-2, ROW=-8 };
 #define LB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
 #define LP(r_) cpu_push16(c,c->r[r_])
@@ -56724,6 +56731,7 @@ load:
 static int start_roster_settle_and_save(machine_t *m)
 {
     cpu_t *c=&m->cpu;
+    if (fix_inside(c, 0x6D07, 0x6DB8)) return 0;
     enum { REC=-2, COUNT=-4 };
     enum { ROSTER=0xD892, FIRST_FLAG=0xD8D4, SLOT=0xB39C, CUR=0xCACA, CUR_SEG=0xCACC,
            LOAD_GATE=0xCBD8, DUTY=0xE096 };
@@ -62985,6 +62993,7 @@ rate:
 static int start_orders_folder(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x20D6, 0x25D9)) return 0;
     enum { WINDOW = -2, BUF = -0x66, TITLE = -0x6A, PLACE = -0x6C };
 #define OB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
 #define OP(v_) cpu_push16(c, (uint16_t)(v_))
@@ -67783,6 +67792,7 @@ state1:
 static int vgame_display_pass(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x9EFA, 0xB0D0)) return 0;
     /* ------------------------------------------------------------------
      * Names.  Everything below is block-scoped to this routine.  "Reimp" is the
      * project's reimplementation (F-117A Reimp, src/core), which transcribes this
