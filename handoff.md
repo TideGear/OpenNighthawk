@@ -205,12 +205,11 @@ governs day-to-day work.
   first, and 450 of its rows (297 `pending-match-purpose-unreviewed`, 153 `unresolved-review`) are inventory, not claims.
   After the first big matching gate, run a **checklist trial**: a few dozen entries per commit, fresh agents as second readers
   who see only the disassembly and the proposed name; count how many pass before planning more (Next steps 3).
-- **Driver scope question (open, owner's call).** Drivers are 9,476 of the 11,266 unmatched executed bytes: the `.117` overlays
-  7,008 (headers read "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds, game code) and the `.LOG`
+- **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 9,476 of the 11,266 unmatched executed bytes:
+  the `.117` overlays 7,008 (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG`
   drivers 2,468 ("AdLib Logo 7-18-91", "RolandMT-32 3-25-91", "IBM Logo 7-12-91": earlier dates and logo names, plausibly a
-  reusable MicroProse sound driver; whether other games shipped them is unverified). They are in scope by the owner's 21 Oct
-  decision. Do not change that scope without the owner; an offered option is splitting `.117` from `.LOG` in the scoreboard.
-
+  reusable MicroProse driver; whether other games shipped them is unverified and does not matter for scope). They keep counting in
+  the P2 denominators, as decided on 21 Oct.
 0. **Finish and accept batch bg** (private proofs in `D:/f117-gate/`, all steps 1-7 from three agents on 25 Oct; no gate yet):
    - **Verified private-ready by `finish_all.py` (verdict and real-route calls seen):** ISOUND.117 `05B7` (ibm_boot, 3,110 calls;
      it shares its RET at `05C9` with matched `05A4`, so check the credit does not double-count) and `0065` (route
