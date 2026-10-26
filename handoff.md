@@ -190,6 +190,27 @@ governs day-to-day work.
 
 ## Next steps
 
+**Plan (owner agreed 26 Oct): fewer, larger gates, and a checklist push alongside.**
+- **Batch size.** A gate costs about 45-60 minutes (gate, two pre-check seeds, audit, score refresh, docs, CI) whether it holds
+  4 routines or 40, while proofs cost about one agent-hour per 4-5 small routines with only three slots. So run several proof
+  rounds back to back (three agents, masks 0x000F0000 / 0x00F00000 / 0x0F000000, `finish_all.py` on each round, no gate between),
+  then integrate and gate once at about 25-40 routines. Merge the agents' harness hunks into one form before integrating (they
+  overlap in `io_r`). A failed gate costs more with a big batch: keep the audit and both pre-check seeds before every gate.
+- **Expected value.** bf's 61 bytes moved the weighted P2 score by about 0.03; about 1,600 bytes (roughly 40 small routines) is
+  worth about 0.5-0.8 points per gate, which is decent with about 18 points left. **Matching alone tops out near 87% P2**
+  (all 11,266 unmatched executed bytes are worth about 5 points: about 3.7 matched-functions plus about 1.5 naming).
+- **The accounted-for checklist holds the other ~10 points** (715 of 44,641 bytes, 1.6%). Credit needs an independent second
+  reader per entry (`docs/reference-reviewed.tsv`; never self-review to raise the score). The drafted inventory
+  `D:/f117-gate/unmatched-reference-20261021/reference.tsv` (793 rows / 43,362 bytes) must be regenerated against the current scope
+  first, and 450 of its rows (297 `pending-match-purpose-unreviewed`, 153 `unresolved-review`) are inventory, not claims.
+  After the first big matching gate, run a **checklist trial**: a few dozen entries per commit, fresh agents as second readers
+  who see only the disassembly and the proposed name; count how many pass before planning more (Next steps 3).
+- **Driver scope question (open, owner's call).** Drivers are 9,476 of the 11,266 unmatched executed bytes: the `.117` overlays
+  7,008 (headers read "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds, game code) and the `.LOG`
+  drivers 2,468 ("AdLib Logo 7-18-91", "RolandMT-32 3-25-91", "IBM Logo 7-12-91": earlier dates and logo names, plausibly a
+  reusable MicroProse sound driver; whether other games shipped them is unverified). They are in scope by the owner's 21 Oct
+  decision. Do not change that scope without the owner; an offered option is splitting `.117` from `.LOG` in the scoreboard.
+
 0. **Finish and accept batch bg** (private proofs in `D:/f117-gate/`, all steps 1-7 from three agents on 25 Oct; no gate yet):
    - **Verified private-ready by `finish_all.py` (verdict and real-route calls seen):** ISOUND.117 `05B7` (ibm_boot, 3,110 calls;
      it shares its RET at `05C9` with matched `05A4`, so check the credit does not double-count) and `0065` (route
