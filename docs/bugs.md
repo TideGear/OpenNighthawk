@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-eight: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21 and Q22, including the D1REAL timing and D1PROX balance choices
+twenty-nine: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22 and Q4, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -75,7 +75,8 @@ Status values:
 | Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
 | Q21 | Confirmed | VGAME | The steering bracket's half-width is computed from stale stack when banked 45 degrees or more with weapon 1Eh | `--fix Q21` |
 | Q22 | Confirmed | START | The armoury shortage does not check the refused entry's own flag, so a repeated draw counts without refusing anything new | `--fix Q22` |
-| Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
+| Q4 | Confirmed | VGAME | Hardening: joystick axis scaling divides by a calibrated span with no zero test | `--fix Q4` |
+| Q13b, D18, Q23 | Confirmed | START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -904,6 +905,23 @@ Status values:
   loop, requires that some scripts end differently with the fix, then stops and
   resumes (402 staged runs, 0 failures).
 
+### Q4. Joystick scaling divides by an unchecked span
+
+- **What happens.** The axis scaling (`1058:0D09`, linear `0x11289`) divides by the
+  calibrated span of the side the stick is on, `[si+2CBAh]` below the centre
+  (`0x112BC`) and `[si+2CC2h]` above it (`0x112E7`), with no zero test. The
+  calibration never stores a zero span, so only a corrupt settings block
+  reaches it; the divide error then ends the game. (Hardening: the shipped data
+  never reaches it.)
+- **Fix.** `--fix Q4` takes the quotient as 0 when the span is zero (the code after
+  the DIV turns that into the centre position of its side: 7Fh below, 80h above);
+  a real span declines. The routine is not matched, so no guard is needed.
+- **Check.** `build/check_q4 path/to/VGAME.EXE` stages the bad data: axes 0 and 3, on
+  each side of the centre, in both engines. With real spans fix off and on give the
+  same state; with a zero span the original's DIV does not return and Q4 ends at
+  the side's centre byte; stop and resume at every instruction (76 staged runs, 0
+  failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -949,7 +967,6 @@ switch and tested by staging the bad data.
 
 | ID | Program | Defect | When it shows | Where |
 |---|---|---|---|---|
-| Q4 | VGAME | Stick axis scaling divides by the calibrated span with no zero test | A corrupt settings block with a zero span: a divide error ends the game | `0x112BC`, `0x112E7` |
 | Q13b | START | The written orders test the departure base's record, then read the landing base's name (Amiga tests the landing record) | A world whose landing-base record has a zero first word | `0x022E7`, `0x022F4` |
 | D18 | START | An airbase with no name passes NULL to `sprintf %s`, printing "(null)" | A world with an unnamed airbase | `0x0267B`; uses `0x0279E`, `0x027CE`, `0x027E7` |
 | Q23 | START | The roster fix-up masks record 0's `+0x42` ten times instead of each record once (Mac and Amiga the same) | A roster edited outside the game with a realism value above 1 | `0x06D1C` |

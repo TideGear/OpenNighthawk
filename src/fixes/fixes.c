@@ -902,7 +902,29 @@ static int fix_q22_self_check(machine_t *m)
     return 1;
 }
 
+/* Q4. The joystick axis scaling (1058:0D09, linear 0x11289) divides by the calibrated span of
+ * the side the stick is on, [si+2CBAh] below the centre (1058:0D3C) and
+ * [si+2CC2h] above it (1058:0D67), with no test. The calibration never stores
+ * a zero span, so only a corrupt settings block reaches it, and the divide
+ * error then ends the game. A zero span carries no information: take the
+ * quotient as 0, which the code after the DIV turns into the centre
+ * position of its side (7Fh below, 80h above). */
+static int q4_span(machine_t *m, uint16_t span_at, uint16_t next)
+{
+    cpu_t *c = &m->cpu;
+    if (seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + span_at)) != 0) return 0;
+    c->r[R_AX] = 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = next;
+    c->icount++;
+    return 1;
+}
+static int fix_q4_low(machine_t *m) { return q4_span(m, 0x2CBA, 0x0D40); }
+static int fix_q4_high(machine_t *m) { return q4_span(m, 0x2CC2, 0x0D6B); }
+
 static const recomp_override OVERRIDES[] = {
+    { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D3C, fix_q4_low, "joystick scaling survives a zero low span" },
+    { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D67, fix_q4_high, "joystick scaling survives a zero high span" },
     { "Q22", "START.EXE", START_47304, 0x0000, 0x0E71, fix_q22_self_check, "armoury shortage does not count an entry twice" },
     { "Q21", "VGAME.EXE", VGAME_47304, 0x0000, 0xAE9F, fix_q21_bracket_width, "steering bracket keeps its width when banked 45 degrees or more" },
     { "Q13a", "VGAME.EXE", VGAME_47304, 0x0000, 0x5594, fix_q13a_sensorless, "a sensorless unit reports itself far away" },
@@ -968,6 +990,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q4", "joystick axis scaling reads a zero calibrated span as the centre instead of raising a divide error" },
     { "Q22", "the armoury shortage greys out as many weapons as it draws, instead of counting a repeated draw twice" },
     { "Q21", "the steering bracket keeps the previous frame's width when banked 45 degrees or more, instead of computing it from stale stack" },
     { "Q13a", "a unit with no sensor reports a far range instead of stale stack to the detection tests" },

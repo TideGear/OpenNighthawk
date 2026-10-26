@@ -210,7 +210,7 @@ checks that every routes-only matched routine ran on a route (step 8) and that
 no matched routine ran past its event limit (step 9). What each check
 establishes is in [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
 
-**Fix selection.** Normal application play starts with all twenty-eight fixes (Q11, Q12, Q13a, Q14-Q22
+**Fix selection.** Normal application play starts with all twenty-nine fixes (Q4, Q11, Q12, Q13a, Q14-Q22
 added 25 October); the headless runner starts with none, and `build_recomp.py` and
 `run_route.py` prepend `--fix none`, so ordinary parity checks original
 behaviour and fix-specific route options or recorded headers add the fixes
