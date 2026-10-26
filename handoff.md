@@ -11,9 +11,10 @@ more than once, what it costs). State as of 25 October 2026: batch bd2 (an engin
 four held-back routines) is accepted and pushed (`fe825bd`); batch be is integrated in the main tree but
 uncommitted and blocked on a pre-check mismatch in an older routine (Next steps 2); the re-release settings
 are merged (`ab4256b`). Owner, 25 Oct: **fixing the original's bugs is now the top of Phase 2**, ahead of
-matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted** (zoomed-view
-range and full-width model culling, default on; thirty-two normal-play fixes). **Q12 is next**
-(Next steps 1). Owner requested this handoff, commit, push and stop; no Q12 work has begun.
+matching; the 31 rows are re-verified and the fixes specified. **Q7 and Q11 are accepted**, and the other
+seventeen fixes of the owner's plan are built and committed on branch `bugfix-q` in the worktree
+`D:/f117-wt/bugfix` (thirty-two normal-play fixes in all), each with its own on/off test; the combined
+gate (Next steps 1) decides when they merge.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -185,22 +186,31 @@ governs day-to-day work.
      Generated code and route outputs use `C:/Users/Tideg/f117-recomp-local/bugfix-work`.
      Release/build/restore details are in the evidence directory's `completion.json`.
      No verification session remains running. Next fix: **Q12**; do not rerun Q11's full gate.
-   - **Remaining confirmed fixes, default on (8):** Q12 the cannon test's missing argument
-     (`0x0A153`), Q14 the overdue objective text (`0x0969C`), Q15 AdLib noise take-over
-     (was D44; ASOUND IP `0x0F8B`), Q16 MT-32 volume/pan saturated, never masked
-     (RSOUND `0x0348`, `0x039D`), Q17 pitch-ladder labels past 90 degrees (was D61;
-     VGAME `1058:08FB`, `095C`), Q18 the campaign date past December (was D17;
-     START `0x02613`), Q19 the Enemy Troops overlay's markers (START `0x01AF7`,
-     `0x01B09`), Q20 the stuck briefing popup (START `0x011D1`).
-   - **Owner's plan (25 Oct): 19 items in this order:** 17 specified fixes, each with its own
-     default-on switch and tests of both states, then two measure-and-fix-or-close cases.
-     Q7 and Q11 are done; next the eight above, then Q13a, Q21, Q22 as recommended below;
-     then hardening Q4 (divide guard), Q13b, D18, Q23 (roster fix-up), each tested by staging
-     bad data; then measure D101 (stage the unwritten slot; fix if it can draw on screen,
-     else close with evidence) and Q12's sibling at `0x0707B` (histogram stale SI across
-     routes; pin 2x2 if almost always nonzero). The other 14 rows (10 quirks, 4 non-defects)
-     stay documented ([docs/bugs.md](docs/bugs.md#code-quirks-with-no-effect)). A fix must
-     be observable (testable on and off) and restore clear intent, not invent behaviour.
+   - **Built (25 Oct, branch `bugfix-q`, one commit each, not yet gated together):** Q12, Q14, Q15, Q16, Q17,
+     Q18, Q19, Q20 (the ten defects with Q7 and Q11), then Q13a, Q21, Q22 (the chosen behaviours) and the
+     hardening group Q4, Q13b, D18, Q23. Each has a default-on switch in `src/fixes/fixes.c`, a `fix_inside` guard
+     in every matched routine that contains its site, a staged on/off test (`tests/check_*.c`, built by CMake;
+     drivers in `tests/check_drivers.c`), a section in [docs/bugs.md](docs/bugs.md) and a count update. Traps met:
+     a site's address is segment-relative (`1058:0D3C`, not its linear `0x112BC`); a test trap placed inside a
+     matched routine never fires in the recomp engine, so stop at a return address or step one instruction at a
+     time; a Q12-style stack argument is pushed under the call and dropped at a hook placed inside the CALL's own
+     operand (`0xA154`), which keeps the guest stack consistent at every stop.
+   - **Combined gate:** `D:/f117-gate/bugfixes-20261025/run_checks.py` (all fix checks, defaults, two whole-table
+     pre-check seeds, the unchanged full P2 gate with fresh interpreter verification, presentation checks, all
+     fix checks again) runs through `affinity_launch.py`; read `final-verdict.json` and the tally lines, not the
+     exit code. After it passes: merge `bugfix-q` into `master`, push, check CI.
+     **State at handoff (25 Oct, 17:50):** all fifteen fix checks, defaults and both whole-table pre-check seeds
+     (`precheck-head`, `precheck-second`) PASSED; the full P2 gate (`accept`) was running when this was written,
+     started about 17:30 and expected to take 25-35 minutes, then the repeated fix checks. Do not start a second
+     gate. Look at `D:/f117-gate/bugfixes-20261025/run.out` first: if it ends with `drivers-final passed` and
+     `final-verdict.json` exists, the batch passed; if it shows a Traceback, read the named log, fix, and rerun
+     only the failing stage (archive `runner/` first, see the batch workflow traps). If the process is gone with
+     neither (the session ended it), rerun `py D:/f117-gate/affinity_launch.py py run_checks.py` from that directory.
+     The merge is not done: `bugfix-q` is pushed as a branch only. The main tree still holds batch be uncommitted
+     and the owner's two `.bat` files: merge from a clean checkout of master or with `git merge` in the main tree
+     after `git stash` of be, then restore it (the Q11 release did this: `D:/f117-gate/q11-20261025/finish_release.py`).
+     After the merge: rebuild the main tree and `D:/f117-gate/kit-libs` (see traps), update the roadmap
+     (every fix row, the new count of thirty-two), `docs/progress.json` question (fixes item P2 or P3), and push.
    - **Gate frequency delegated by owner, 25 Oct:** "whatever you recommend as long as p2
      accuracy is unaffected". Recommendation adopted: finish Q11's already-passed release,
      then implement the remaining fixes in order as one bug-fix batch, with focused on/off
@@ -231,6 +241,10 @@ governs day-to-day work.
      table when built) and the current normal-play fix count everywhere (keep dated measurements' actual sets),
      then the combined batch gate described above. Open: whether the fixes item should move from P3 to P2 in
      `docs/progress.json` (the owner said "top of Phase 2"; scores unchanged so far).
+   - **Then, in the owner's order:** measure D101 (stage the unwritten slot on the Transfer page; fix if the erase
+     can draw on screen, else close with the evidence) and Q12's sibling at `0x0707B` (histogram the stale SI at
+     that call across the routes with a call trap; pin the 2x2 size if it is almost always nonzero); then explain
+     and fix the VGAME `EDC2` pre-check mismatch (item 2), finish batch be, and resume matching (item 3).
 2. **Batch be (integrated in the main tree, uncommitted; pre-check failed in an older routine).** Eight
    ASOUND.117 one-instruction thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG
    `00AE`: `finish_all.py` passed all nine on 25 Oct (`D:/f117-gate/be-finish.out`; routes strike, korea_strike,
