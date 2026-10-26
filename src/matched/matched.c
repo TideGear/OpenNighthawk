@@ -62991,6 +62991,7 @@ rate:
 static int start_orders_folder(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x20D6, 0x25D9)) return 0;
     enum { WINDOW = -2, BUF = -0x66, TITLE = -0x6A, PLACE = -0x6C };
 #define OB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
 #define OP(v_) cpu_push16(c, (uint16_t)(v_))

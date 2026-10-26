@@ -922,7 +922,26 @@ static int q4_span(machine_t *m, uint16_t span_at, uint16_t next)
 static int fix_q4_low(machine_t *m) { return q4_span(m, 0x2CBA, 0x0D40); }
 static int fix_q4_high(machine_t *m) { return q4_span(m, 0x2CC2, 0x0D6B); }
 
+/* Q13b. The written orders choose the name printed for the landing base
+ * (0x022E7-0x02326): they test whether a base record's first word is zero,
+ * then read that word from the landing base's record ([E074h]) - but the
+ * test (0x022E7) looks at the departure base's record ([E062h]). A world
+ * whose landing record has a zero first word therefore prints name 0 where
+ * the byte at +0Eh was meant; one whose departure record is zero skips a
+ * name the landing record has. The test now loads the landing base, as the
+ * Amiga port does. */
+static int fix_q13b_landing_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->r[R_BX] = seg_read16(c, c->seg[S_DS], 0xE074);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x22EB;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q13b", "START.EXE", START_47304, 0x0000, 0x22E7, fix_q13b_landing_record, "written orders test the landing base's record" },
     { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D3C, fix_q4_low, "joystick scaling survives a zero low span" },
     { "Q4", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D67, fix_q4_high, "joystick scaling survives a zero high span" },
     { "Q22", "START.EXE", START_47304, 0x0000, 0x0E71, fix_q22_self_check, "armoury shortage does not count an entry twice" },
@@ -990,6 +1009,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q13b", "the written orders test the landing base's record instead of the departure base's before naming the landing base" },
     { "Q4", "joystick axis scaling reads a zero calibrated span as the centre instead of raising a divide error" },
     { "Q22", "the armoury shortage greys out as many weapons as it draws, instead of counting a repeated draw twice" },
     { "Q21", "the steering bracket keeps the previous frame's width when banked 45 degrees or more, instead of computing it from stale stack" },
