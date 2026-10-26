@@ -16,7 +16,7 @@ This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/Ti
 
 1. **Checklist round 2 is partly read.** `D:/f117-gate/checklist-full-20261026/round2/` holds 588 corrected units (23,992 bytes), 588 packets, 79 reader
    groups `R2001`..`R2079` (`round2/groups/R2###.txt`, `round2/AGENT-PROMPT.md`, `round2/READER-BRIEF.md`). Reader agents were launched for `R2001`..`R2058`
-   (**56 of 79 groups were complete at the stop, 419 verdict files**; `R2056` and `R2058` were in flight and may be cut off. **Find the groups to launch** with: for each
+   (**`R2001`..`R2058` are complete, 58 of 79 groups, about 435 verdict files**; the last in-flight readers finished before the end. **Find the groups to launch** with: for each
    `round2/groups/R2###.txt`, a group is done only if every listed packet has `round2/reads/<packet>.read.md` (the filename is the packet name plus `.read.md`) containing a
    `Verdict:` line; re-launch every group that is not done); **`R2059`..`R2079` were never launched**. Launch with the message
    `Group R2### . Follow D:/f117-gate/checklist-full-20261026/round2/AGENT-PROMPT.md exactly (read it first, then round2/READER-BRIEF.md).` One fresh agent per group.
