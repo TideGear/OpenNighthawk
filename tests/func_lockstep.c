@@ -368,6 +368,8 @@ static const interrupt_frame_fixture *interrupt_frame(const recomp_override *o)
  * bytes below it (saved BP, locals, saved registers), which the fixture fills, so its own pushes
  * do not overwrite locals it reads later. Its RET still comes with SP back at the return address. */
 static const struct { const char *module; uint16_t seg, ip, frame; } LIVE_FRAMES[] = {
+    { "RSOUND.LOG", 0x0000, 0x027C, 0x0002 },   /* timer installer's tail: the AX saved at 0266 sits under the return address */
+    { "RSOUND.LOG", 0x0000, 0x0289, 0x0002 },   /* timer installer's tail: the AX saved at 0266 sits under the return address */
     { "END.EXE", 0x0000, 0x34EA, 0x0012 },   /* debrief score step: saved BP, 0Eh bytes of locals, SI */
     { "END.EXE", 0x0000, 0x099D, 0x000E },   /* icon placement in 0880's frame: 8 bytes of locals, DI, SI */
     { "VGAME.EXE", 0x0000, 0x4657, 0x0008 }, /* countermeasure release in 462E's frame (ENTER 6,0) */
@@ -813,6 +815,10 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "RSOUND.LOG", 0x028D, 0x028D, 0x0001 },
+    { "RSOUND.LOG", 0x0289, 0x0289, 0x0005 },
+    { "RSOUND.LOG", 0x027C, 0x027C, 0x0012 },
+    { "RSOUND.LOG", 0x0251, 0x0251, 0x003D },
     { "RSOUND.LOG", 0x00AE, 0x00AE, 0x004F },
     { "ASOUND.117", 0x08C2, 0x05C0, 0x0311 },
     { "ASOUND.117", 0x08D0, 0x05C0, 0x0320 },
@@ -2048,6 +2054,10 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ASOUND.117", 0x01B6, 0x08D0, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 0x05E3, 1 },
     { "ASOUND.117", 0x01B6, 0x08C2, 0x0003, 1, 1, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 0x05C0, 1 },
     { "RSOUND.LOG", 0x0000, 0x00AE, 0x004E, 31, 31, "Roland driver: with interrupts disabled, restore the saved INT8 and INT0A vectors from CS:0048..004E into the real vector table, reprogram PIT counter 0 back to mode 3 with a 0 reload, clear the installed flags, and stop immediately after STI (POPF_STOPS); the RET at 00FC is outside this named region and remains original continuation code" },
+    { "RSOUND.LOG", 0x0000, 0x0251, 0x002B, 15, 15, "one-shot INT8 timer install prefix: guard, flags, vector and PIT0 mode-3 control; hand back at the port wake, leaving reload/STI continuations original" },
+    { "RSOUND.LOG", 0x0000, 0x027C, 0x000D, 6, 6, "one-shot INT8 timer install: delay, load 4C90h, write the PIT0 reload low then high byte; stop after the second write" },
+    { "RSOUND.LOG", 0x0000, 0x0289, 0x0004, 3, 3, "one-shot INT8 timer install: delay, POP AX, STI; stop after the STI" },
+    { "RSOUND.LOG", 0x0000, 0x028D, 0x0001, 1, 1, "one-shot INT8 timer install: the final near RET" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2313,6 +2323,7 @@ static const struct { const char *module; uint16_t seg, ip, stop; } POPF_STOPS[]
     { "ASOUND.LOG", 0x0000, 0x005A, 0x0089 }, /* timer installer stops immediately after STI */
     { "ISOUND.LOG", 0x0000, 0x060E, 0x0634 }, /* save the timer chain, stop immediately after STI */
     { "RSOUND.LOG", 0x0000, 0x005B, 0x00AD }, /* both installer paths stop immediately after STI */
+    { "RSOUND.LOG", 0x0000, 0x0289, 0x028D }, /* timer installer tail stops immediately after STI */
     { "RSOUND.LOG", 0x0000, 0x00AE, 0x00FC }, /* timer uninstaller stops immediately after STI */
     { "RSOUND.117", 0x023E, 0x0A6B, 0x0A9E }, /* hook interrupt 0Ah once: the install path stops immediately after STI */
     { "SETUP.EXE", 0x0000, 0x111A, 0x11AE },   /* timer calibrate */
@@ -45007,6 +45018,100 @@ int main(int argc, char **argv)
                 /* Current (about-to-be-replaced) real-vector-table cells for INT8/INT0A. */
                 XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
                 XW16(0,0x0028,XRAND());XW16(0,0x002A,XRAND());
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x0251) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                /* When SS=0 keep SP well clear of 0x0020/0x0022: the install path writes the
+                 * real INT8 vector there, so a low stack would alias its own vector write. */
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                /* The one-shot guard: 1 takes the short already-installed path straight to the
+                 * shared RET; any other byte takes the full install path through to STI. */
+                XW8(cs,0x0051,(s&1)?0x01:(uint8_t)(XRAND()%255));
+                XW8(cs,0x0053,(uint8_t)XRAND());
+                /* Current (about-to-be-replaced) real INT8 vector cell. */
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x027C) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                /* When SS=0 keep SP well clear of 0x0020/0x0022: the install path writes the
+                 * real INT8 vector there, so a low stack would alias its own vector write. */
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x0289) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                /* When SS=0 keep SP well clear of 0x0020/0x0022: the install path writes the
+                 * real INT8 vector there, so a low stack would alias its own vector write. */
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"RSOUND.LOG") && o->seg==0 && o->ip==0x028D) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=(uint16_t)(0x4000+(XRAND()&0x1FF));
+                seg[S_SS]=(s&4)?0:((s&8)?seg[S_DS]:0x6000);
+                /* When SS=0 keep SP well clear of 0x0020/0x0022: the install path writes the
+                 * real INT8 vector there, so a low stack would alias its own vector write. */
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*(XRAND()%5)):(uint16_t)(0x3000+2*(XRAND()%0x1000));
+                flags=(uint16_t)((flags & ~F_DF) | ((s&2)?F_IF:0));
+                if (!(s&2)) flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();
+                r[R_BX]=(uint16_t)XRAND();
+                r[R_CX]=(uint16_t)XRAND();
                 for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
                 for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
                 for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();

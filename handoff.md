@@ -7,16 +7,13 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 25 October 2026: batch be, the VGAME EDC2
-body repair and the measured D101/Q12b fixes are committed and pushed at
-`a172459`; [Windows/Munt CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238).
+more than once, what it costs). State as of 25 October 2026: batch bf (the whole RSOUND.LOG `0251` timer installer, four entries) is accepted on top of
+`a172459` (batch be, the EDC2 repair, D101/Q12b); the bf commit is the one after it in `git log`. CI for `a172459`: [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238); check the bf run after the push.
 There are 34 normal-play switches. The accepted main build's kit libraries
-are refreshed (`kit-libs/manifest.json`); both `kit-libs-before-95a5730` and
-`kit-libs-before-a172459` are preserved. Sound matching resumed in
-`D:/f117-gate/p2-rsound-log-0251-bf/`: five seeds and all 20 mutations pass
-for its 15-instruction/43-byte prefix. Route/boot proofs and integration
-remain. The owner requested handoff and stop: no gate, proof worker or
-verification process remains running.
+are refreshed at `a172459` (`kit-libs/manifest.json`); refresh them again from the bf build before the next proofs
+(keep `kit-libs-before-a172459`). Sound matching continues with the large ISOUND.117 / ASOUND.LOG routines, the
+remaining installers and the hardware wait loops (Next steps). No gate, proof worker or verification process is
+running.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -25,29 +22,35 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 81.90%, P3 76.34%, All 88.49%
+- **Scoreboard:** P1 100.00%, P2 81.92%, P3 76.34%, All 88.50%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
 - **Phase 2 figures** (`docs/progress.json` after batch be's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,396 addresses matched; batches a to be are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,400 addresses matched; batches a to bf are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(149,949 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 93.09%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
-  - **11,327 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 9,537: ASOUND.117 4,570, RSOUND.117 1,533, RSOUND.LOG 988, ASOUND.LOG 1,178,
+  - Gameplay score (scores the matched item): **(150,010 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 93.13%**. 26,311 matched bytes run only in fixtures and earn no gameplay credit.
+  - **11,266 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
+    entry). Sound drivers 9,476: ASOUND.117 4,570, RSOUND.117 1,533, RSOUND.LOG 927, ASOUND.LOG 1,178,
     ISOUND.117 905, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **176,325 / 205,967** creditable bytes; of the 29,642
+  - Naming item (the previous all-code measure): **176,386 / 205,967** creditable bytes; of the 29,642
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
   - Accounted-for checklist: 715 / 44,641 bytes; `docs/reference-reviewed.tsv` has 48 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Latest combined acceptance (batch be, 25 Oct):**
+- **Batch bf acceptance (25 Oct):** `D:/f117-gate/p2-batch-bf-accept/final-gate-verdict.json` passed in 1,642 s: 644 CTests,
+  63 routes / 62 fresh interpreter sessions, 1,400 matched routines at three seeds, +61 named bytes (all route-executed),
+  46 mutations, 20 optimized seeds; two whole-table pre-check seeds (`0x4fc6ba6c9f0d`, `0x5EED0BF1`) zero mismatches; presentation overlap
+  passed; it froze a new keyed baseline (`--no-baseline`). The 0251 prefix stops at 027C after the PIT control write; 027C stops after the
+  reload high byte (the wake) at 0289; 0289 stops after STI at 028D (POPF_STOPS); 028D is the RET. 027C and 0289 are LIVE_FRAMES
+  entries (the saved AX sits under the return address). `new_batch.py` took `NOBLOCKS` for bodies without XB.
+- **Previous combined acceptance (batch be, 25 Oct):**
   `D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json` passed.
   Both whole-table pre-check seeds (4,000 states, eight shards each):
   `0x03c761a5484c` 5,431,624 compared / `0x5EED0BE1` 5,432,816, zero mismatches,
@@ -188,46 +191,17 @@ governs day-to-day work.
 
 ## Next steps
 
-1. **Match the rest of the sound drivers** (9,537 of the 11,327 unmatched executed bytes after be).
-   **Resume `D:/f117-gate/p2-rsound-log-0251-bf/`**, initialized from accepted
-   `a172459` and fresh kit libraries; the old `p2-rsound-log-0251-be` is retained.
-   `resumption-state.json` pins the inputs. The current candidate honestly names
-   only the 15-instruction / 43-byte one-shot INT8 timer-install prefix, ending
-   after the PIT0 control OUT at `027A` and handing back at `027C`; it also handles
-   the already-installed branch to the shared RET at `028D`. Five 5,000-state
-   fixture seeds pass with all 15 instructions covered, zero skips/mismatches;
-   all 20 mutations are caught (`mutation-results.json`). It is **not integrated,
-   not credited, and not yet private-ready**: real-route/boot proofs and verdict remain.
-   Next command, with no gate running:
-   `py D:/f117-gate/accept-kit/finish_all.py p2-rsound-log-0251-bf:roland_boot`.
-   Read its route/boot verdicts and positive Roland call count before accepting it.
-   Then prove the reload-low/high and final POP AX/STI continuations (`027C`,
-   `0283`, `0289`, and shared RET `028D`) as their own resumable entries, rather
-   than giving native credit to original continuation code; collect the family
-   into the next sound batch before integration, both pre-checks, audit and gate.
-   **Two rejected controls are archived:** `attempt1-unreached-tail/` changed
-   a clock after the unconditional PIT wake, so that C tail never ran; the
-   candidate was trimmed from the saved 24-instruction draft to the executed
-   prefix. `attempt2-if-off-control/` omitted CLI, which is equivalent under
-   `setup_side`'s sound-driver IF-off entry contract. The final 20th mutation
-   restores saved DS into ES and is caught; the other 19 controls were retained.
-   No harness comparison changed, and this proof does not claim IF-on coverage.
-   The prior `be-pending-before-95a5730-main-rebuild` stash remains as a backup.
-   All original selected fixes are done: the merged set added 17 switches to
-   the old 15 (32); D101/Q12b bring the additions to 19 and the total to 34.
-   `95a5730` CI: https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423.
-   The bugfix worktree stays until the owner authorizes removal. The
-   remaining ISOUND.117 and ASOUND.LOG routines are all large (90-320 instructions).
-   Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
-   predates batches bb to be, which matched many of its entries. Still open there: wrapper/dispatch entry points
-   (relocated `mov ds`, indirect calls), the remaining installers that end `CLI ... STI; RET` (stop after the STI;
-   bc matched four), the hardware wait loops above, and the large routines. ISOUND.LOG `0581` needs separately
-   verified bounded-handler/resume support for its EOI-before-IRET arm. `p2-asoundlog-008a` is an initialized
-   lead, not a proof: its first PIT control OUT wakes the machine, so cover its following continuations
-   explicitly rather than claiming unreachable fixture instructions. Plan: two proof rounds per gate, three
-   agents per round on masks 0x000F0000, 0x00F00000, 0x0F000000. STI-first handlers stay original by design.
-   `D:/f117-gate/modules-scope-20261021/plan.md` (the module-scope design; steps 0-5 and 2b are done) is a
-   source of leads and traps only.
+1. **Match the rest of the sound drivers** (9,476 of the 11,266 unmatched executed bytes after bf). The RSOUND.LOG timer
+   installer is done. Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
+   predates batches bb to bf. Still open there: wrapper/dispatch entry points (relocated `mov ds`, indirect calls), the
+   remaining installers that end `CLI ... STI; RET` (stop after the STI; bc and bf matched five), the hardware wait loops above,
+   and the large routines (ISOUND.117 and ASOUND.LOG, 90-320 instructions each). ISOUND.LOG `0581` needs separately verified
+   bounded-handler/resume support for its EOI-before-IRET arm. `p2-asoundlog-008a` is an initialized lead, not a proof: its first PIT
+   control OUT wakes the machine, so cover its following continuations explicitly. Plan: two proof rounds per gate, three agents
+   per round on masks 0x000F0000, 0x00F00000, 0x0F000000. STI-first handlers stay original by design. Precedent for a PIT
+   installer tail: only the counter-0 reload's second write wakes the machine (ISOUND.LOG `0603`, RSOUND.LOG `027C`).
+   All original selected fixes are done (34 normal-play switches). The bugfix worktree stays until the owner authorizes removal.
+   `D:/f117-gate/modules-scope-20261021/plan.md` is a source of leads and traps only.
 2. **The hard tail: declined routines are Phase 2 work, not exclusions** (owner, 23 Oct). They are part of the
    unmatched executed bytes of the seven programs, and P2 cannot reach 100% without them. List (from
    `D:/f117-gate/kit/DECLINED.tsv`, the roadmap and the rejected reviewed entries); each needs the stated unit

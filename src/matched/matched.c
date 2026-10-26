@@ -91518,7 +91518,114 @@ static int rsound_log_uninstall_timers(machine_t *m)
 #undef XB
 }
 
+/* RSOUND.LOG 0251: first part of the one-shot INT8 timer installer.
+ * If CS:0051 is 1, hand back at its shared RET (028D). Otherwise mark it
+ * installed, set CS:0053 to 3, save AX/DS, disable interrupts, install
+ * CS:028E as the real INT8 vector, restore DS, and issue the PIT0 mode-3
+ * control byte. That OUT wakes the machine: hand back at 027C with AX still
+ * saved. Reload-low, reload-high and the final POP AX/STI remain original
+ * continuations and earn no credit from this body. */
+static int rsound_log_install_int8_timer_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    SM4_NEED(2, 0x0251);
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_CS], 0x0051)), 0x01, 0);
+    c->icount += 2;
+    if (x86_cond(c, 4)) { c->ip = 0x028D; return 1; }   /* already installed: fall through to the shared RET */
+
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    XB(12, 0x0259);
+    x86_cli(c);
+    mem_write8(c, phys(c->seg[S_CS], 0x0051), 0x01);
+    mem_write8(c, phys(c->seg[S_CS], 0x0053), 0x03);
+    x86_push_reg(c, R_AX);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = 0x028E;
+    seg_write16(c, c->seg[S_DS], 0x0020, c->r[R_AX]);
+    seg_write16(c, c->seg[S_DS], 0x0022, c->seg[S_CS]);
+    c->seg[S_DS] = cpu_pop16(c);
+    set_r8(c, 0, 0x36);
+
+    /* 027A out 43h,al: PIT counter 0, mode 3 control word. */
+    SM4_NEED(1 + IO_SLACK(1), 0x027A);
+    c->op_ip = 0x027A;
+    x86_out(c, 0x43, 0);
+    c->icount += 1;
+
+    c->ip = 0x027C;
+    return 1;
+#undef XB
+}
+
+/* RSOUND.LOG 027C: second part of the one-shot INT8 timer installer, entered
+ * after the PIT0 mode-3 control byte was written. A delay jump, then AX =
+ * 4C90h (the counter 0 reload, about 60 Hz) and its low byte AL goes to PIT
+ * port 40h; another delay jump, AL = AH and the high byte goes to port 40h.
+ * The second write loads counter 0, which makes the machine look at
+ * interrupts at the next instruction, so stop right after that OUT, at 0289;
+ * the POP AX/STI and the RET after it are separate entries. Every port access
+ * is made at the clock the original makes it. No memory is touched. */
+static int rsound_log_install_timer_reload(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 6 + IO_SLACK(2))) return 0;
+    c->r[R_AX] = 0x4C90;                                          /* 027C jmp $+2 (delay); 027E mov ax,4C90h */
+    c->icount += 2;
+    c->op_ip = 0x0281;
+    x86_out(c, 0x40, 0);                                          /* 0281 out 40h,al: the low byte */
+    c->icount += 1;
+    set_r8(c, 0, get_r8(c, 4));                                   /* 0283 jmp $+2 (delay); 0285 mov al,ah */
+    c->icount += 2;
+    c->op_ip = 0x0287;
+    x86_out(c, 0x40, 0);                                          /* 0287 out 40h,al: the high byte, loads counter 0 */
+    c->icount += 1;
+    c->ip = 0x0289;
+    return 1;
+}
+
+/* RSOUND.LOG 0289: last part of the one-shot INT8 timer installer. A delay
+ * jump, POP AX (the value saved at 0266), then STI. The machine must look at
+ * interrupts at the next instruction, so stop right after the STI and hand
+ * back at the RET (028D), which is a separate entry. */
+static int rsound_log_install_timer_restore_and_enable(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    SM4_NEED(2, 0x0289);                                          /* jmp $+2 (delay); pop ax */
+    c->r[R_AX] = cpu_pop16(c);
+    c->icount += 2;
+
+    SM4_NEED(1, 0x028C);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x028D;
+    return 1;
+}
+
+/* RSOUND.LOG 028D: the near RET that ends the one-shot INT8 timer installer
+ * (reached after its STI, or straight from the already-installed guard). A
+ * separate entry keeps the machine's required boundary after STI while still
+ * replacing the original return instruction. */
+static int rsound_log_install_timer_return(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x028D, rsound_log_install_timer_return, "one-shot INT8 timer install: the final near RET", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0289, rsound_log_install_timer_restore_and_enable, "one-shot INT8 timer install: delay, POP AX, STI; stop after the STI", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x027C, rsound_log_install_timer_reload, "one-shot INT8 timer install: delay, load 4C90h, write the PIT0 reload low then high byte; stop after the second write", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0251, rsound_log_install_int8_timer_prefix, "one-shot INT8 timer install prefix: guard, flags, vector and PIT0 mode-3 control; hand back at the port wake, leaving reload/STI continuations original", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x00AE, rsound_log_uninstall_timers, "Roland driver: with interrupts disabled, restore the saved INT8 and INT0A vectors from CS:0048..004E into the real vector table, reprogram PIT counter 0 back to mode 3 with a 0 reload, clear the installed flags, and stop immediately after STI (POPF_STOPS); the RET at 00FC is outside this named region and remains original continuation code", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08C2, asound_117_cmd_08c2_reset_19a0, "AdLib overlay command handler: a one-instruction jump to the voice record 19A0h reset thunk at 05C0 (handed back there)", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08D0, asound_117_cmd_08d0_reset_190a, "AdLib overlay command handler: a one-instruction jump to the voice record 190Ah reset thunk at 05E3 (handed back there)", 1 },

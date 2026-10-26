@@ -1630,6 +1630,14 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:8C2)
     add_test(NAME matched_rsound_log_uninstall_timers COMMAND func_lockstep --states 5000
       --only RSOUND.LOG:AE)
+    add_test(NAME matched_rsound_log_install_int8_timer_prefix COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:251)
+    add_test(NAME matched_rsound_log_install_timer_reload COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:27C)
+    add_test(NAME matched_rsound_log_install_timer_restore_and_enable COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:289)
+    add_test(NAME matched_rsound_log_install_timer_return COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:28D)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
