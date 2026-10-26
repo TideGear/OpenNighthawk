@@ -195,6 +195,15 @@ governs day-to-day work.
 ## Next steps
 
 **Plan (owner agreed 26 Oct): fewer, larger gates, and a checklist push alongside.**
+- **Process changes agreed 26 Oct (all keep every check, input and verdict identical; do these next batch).** Before the gate run only the new
+  CTests, not the full suite (the gate repeats it; bg's full run cost 21 min, 1,252 s of it one `func_lockstep` test). Keep the standing pre-check
+  (this commit's seed, so the gate cannot fail on it, plus at least one other whole-table seed) and start the seeds beside the CTests once the
+  build finishes; add a third seed the gate does not use when the machine is free. Time `--overlap-jobs` (interpreter re-run beside coverage) on one gate and keep it only if the gate log shows it faster; never
+  drop `--verify-interp-cache`. Between gates use six proof slots on disjoint masks with at most three `cl.exe`; none while a gate runs.
+  Profile `career_promotion` (805 s, the gate's floor) and adopt only speedups that leave every route hash identical. Start the checklist
+  second-read trial with many parallel fresh reader agents. The second PC is deferred (owner, 26 Oct). Combined proof route runs were
+  rejected: they drop the per-routine proof before the gate. `D:` is a spinning disk (`D:/f117-gate`, worktrees); moving proof builds to the
+  NVMe is an unmeasured idea (C: had 50 GB free).
 - **Batch size.** A gate costs about 45-60 minutes (gate, two pre-check seeds, audit, score refresh, docs, CI) whether it holds
   4 routines or 40, while proofs cost about one agent-hour per 4-5 small routines with only three slots. So run several proof
   rounds back to back (three agents, masks 0x000F0000 / 0x00F00000 / 0x0F000000, `finish_all.py` on each round, no gate between),
@@ -542,6 +551,10 @@ Presentation:
 
 ## Where things are
 
+- **Working copy: `C:\Dev\F-117A Recomp` (moved off Google Drive on 26 Oct, owner-approved).** The old copy under `My Drive` is untouched and
+  stale. The first build here is a full rebuild into a per-checkout `f117-recomp-local\build-<hash>` junction. The kit scripts, the `p2-next`
+  template and the memory notes point at the new path; the interpreter key was identical before and after. The synced-folder retry logic
+  (`safe_integrate.py`, `build.cmd`'s lock retries) is now unneeded but harmless.
 - Game install: `D:/GOG/F-117A` (never mounted or written directly; copy per run
   that needs its own state; verify the install after emulator runs).
 - Shared generated code: `C:/Users/Tideg/f117-recomp-local/gen` (never committed);

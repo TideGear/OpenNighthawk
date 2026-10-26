@@ -218,7 +218,7 @@ verification) is not an optimisation; it needs the owner's approval.
   as an argument list, never through a shell `eval`: one turned the `\r` keys
   of a route into `r`, both engines then agreed on a run that never reached
   the mission, and the divergence looked as if it did not reproduce.
-- The synced working folder can lock a file mid-write. Integrating many
+- The working folder (a synced Google Drive folder until 26 Oct 2026) could lock a file mid-write. Integrating many
   proofs at once therefore restores and retries each routine on its own when a
   write fails, rather than abandoning or half-applying the batch.
 
