@@ -60,6 +60,13 @@ verification) is not an optimisation; it needs the owner's approval.
   the latest named coverage and batch-h route coverage. No gate is rerun for a
   scope-table-only change; the classifier, progress and dossier tests are
   enough. Findings: [static-code-review.md](static-code-review.md).
+- **Reference inventory refresh and checklist trial.** Rebuild from the current classifier, accepted named
+  coverage and reviewed scope; check every target byte for omissions, duplicates and stale matched entries.
+  Keep the full checklist separately, including matched fixture-only bytes. The 26 Oct preparation against
+  batch bf has 741 reference rows and 43,926 checklist bytes still needing second reads; 24 trial packets are
+  prepared but unreviewed. No game runs or score changes; wall time not measured. Refresh after the next accepted
+  batch, then obtain genuinely independent disassembly reviews before adopting rows. Evidence and scripts:
+  `D:/f117-gate/unmatched-reference-20261026/`; packets with game bytes remain private.
 - **Module scope refresh.** Decode and validate the existing route captures against all 17
   game code files, then refresh progress with the current named proofs. The 21 Oct measurement
   took 2.8 s; the complete score refresh took about 9 s. Scope-only tooling changes use the
@@ -122,6 +129,10 @@ verification) is not an optimisation; it needs the owner's approval.
   six production seeds at full coverage, its real route), then rerun the six whole-table
   seeds and require every unaffected per-routine report to equal the failed attempt's.
   Evidence: `D:/f117-gate/p2-isound-log-0253-coverage-repair/` and its sibling audit.
+  Optional port masks, cap hints and stop-probe controls must reset before each state; force important branch
+  outcomes in fixed state-index shares. Batch bg's private audit caught per-routine resets leaking forced
+  answers into later states. Changed inputs invalidate the old seeds, mutations and route verdicts; finish the
+  entire reproof before integration. Current incomplete repairs: the handoff and `D:/f117-gate/bg-stop-status-c.json`.
 - **Harness load-base changes.** A change to how the matched harness places images needs a
   whole-table zero-base control (4,000 states, eight shards) beside sweeps of the affected
   entries at 0400h and 0800h (73 entries; about 610 s together), then the six pre-check

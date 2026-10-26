@@ -196,6 +196,11 @@ not the recompilation:
       **Batch bf (25 Oct):** the whole RSOUND.LOG `0251` one-shot timer installer is matched as four
       entries (`0251` guard to the PIT control write, `027C` reload bytes, `0289` POP AX/STI, `028D` RET); +61
       named bytes, all route-executed. Evidence `D:/f117-gate/p2-batch-bf-accept/`.
+      **Private work stopped for handoff (26 Oct):** batch bg has 25 small candidates and five larger
+      preparations, with unfinished fixture repairs and real-route checks; none is accepted or credited.
+      The partial integration is archived outside the repository and accepted runtime code is restored.
+      A refreshed reference inventory and a 24-entry checklist trial are prepared, with no second-reader
+      approvals. Exact readiness, evidence and resume order: [../handoff.md](../handoff.md#next-steps).
       **What is left:** the sound drivers hold most of the unmatched executed
       bytes; the rest are the declined routines of the seven programs (below).
       Beyond the routes: reviewed static code no route runs (no new route or dead
