@@ -175,8 +175,9 @@ not the recompilation:
       marker sibling are now measured and repaired below: 34 normal-play switches.
       Both and the EDC2 body repair passed combined acceptance with batch be
       (`combined-final-verdict.json`, 1,948 s including repeated focused checks).
-      The earlier "19" label counted two additions twice; 15 + 17 = 32 before
-      D101/Q12b. The fixes themselves add no matching credit.
+      The switch table confirms 17 additions at the merge (15 + 17 = 32);
+      D101/Q12b bring the additions to 19 and the total to 34. The fixes
+      themselves add no matching credit.
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
@@ -192,6 +193,11 @@ not the recompilation:
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
+      **Sound matching resumed after be:** RSOUND.LOG `0251`'s timer-install
+      prefix has a fresh private candidate (15 instructions / 43 bytes), five
+      passing seeds and 20 caught mutations. Route/boot proofs, the private
+      verdict, continuation entries and batch acceptance remain; no credit
+      added. Evidence: `D:/f117-gate/p2-rsound-log-0251-bf/resumption-state.json`.
       **What is left:** the sound drivers hold most of the unmatched executed
       bytes; the rest are the declined routines of the seven programs (below).
       Beyond the routes: reviewed static code no route runs (no new route or dead
@@ -304,7 +310,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
 | bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
 | bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests, 63 routes / 62 fresh interpreter sessions, three matched seeds; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
-| be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests, 63 identical routes / 62 fresh interpreter sessions, three matched seeds, reach/event limits and presentation pass. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`. |
+| be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests, 63 identical routes / 62 fresh interpreter sessions, three matched seeds, reach/event limits and presentation pass. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`; commit `a172459`, [CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238). |
 
 Notes that still matter:
 

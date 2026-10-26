@@ -7,12 +7,16 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 25 October 2026: batch be is accepted,
-including the VGAME EDC2 body repair and the measured D101/Q12b fixes (34
-normal-play switches). Its combined final verdict passed; next is resumed
-sound-driver matching, starting with RSOUND.LOG `0251`'s saved proof. The
-previous merge `95a5730` has successful CI; main build and kit libraries were
-refreshed, with `kit-libs-before-95a5730` preserved.
+more than once, what it costs). State as of 25 October 2026: batch be, the VGAME EDC2
+body repair and the measured D101/Q12b fixes are committed and pushed at
+`a172459`; [Windows/Munt CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238).
+There are 34 normal-play switches. The accepted main build's kit libraries
+are refreshed (`kit-libs/manifest.json`); both `kit-libs-before-95a5730` and
+`kit-libs-before-a172459` are preserved. Sound matching resumed in
+`D:/f117-gate/p2-rsound-log-0251-bf/`: five seeds and all 20 mutations pass
+for its 15-instruction/43-byte prefix. Route/boot proofs and integration
+remain. The owner requested handoff and stop: no gate, proof worker or
+verification process remains running.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -185,12 +189,32 @@ governs day-to-day work.
 ## Next steps
 
 1. **Match the rest of the sound drivers** (9,537 of the 11,327 unmatched executed bytes after be).
-   First resume `D:/f117-gate/p2-rsound-log-0251-be/`: body/fixture/five seeds exist,
-   mutations and route/boot proofs remain. Rebase into a fresh directory against
-   the accepted current source and refreshed kit libraries; keep the old proof.
+   **Resume `D:/f117-gate/p2-rsound-log-0251-bf/`**, initialized from accepted
+   `a172459` and fresh kit libraries; the old `p2-rsound-log-0251-be` is retained.
+   `resumption-state.json` pins the inputs. The current candidate honestly names
+   only the 15-instruction / 43-byte one-shot INT8 timer-install prefix, ending
+   after the PIT0 control OUT at `027A` and handing back at `027C`; it also handles
+   the already-installed branch to the shared RET at `028D`. Five 5,000-state
+   fixture seeds pass with all 15 instructions covered, zero skips/mismatches;
+   all 20 mutations are caught (`mutation-results.json`). It is **not integrated,
+   not credited, and not yet private-ready**: real-route/boot proofs and verdict remain.
+   Next command, with no gate running:
+   `py D:/f117-gate/accept-kit/finish_all.py p2-rsound-log-0251-bf:roland_boot`.
+   Read its route/boot verdicts and positive Roland call count before accepting it.
+   Then prove the reload-low/high and final POP AX/STI continuations (`027C`,
+   `0283`, `0289`, and shared RET `028D`) as their own resumable entries, rather
+   than giving native credit to original continuation code; collect the family
+   into the next sound batch before integration, both pre-checks, audit and gate.
+   **Two rejected controls are archived:** `attempt1-unreached-tail/` changed
+   a clock after the unconditional PIT wake, so that C tail never ran; the
+   candidate was trimmed from the saved 24-instruction draft to the executed
+   prefix. `attempt2-if-off-control/` omitted CLI, which is equivalent under
+   `setup_side`'s sound-driver IF-off entry contract. The final 20th mutation
+   restores saved DS into ES and is caught; the other 19 controls were retained.
+   No harness comparison changed, and this proof does not claim IF-on coverage.
    The prior `be-pending-before-95a5730-main-rebuild` stash remains as a backup.
-   All original selected fixes are done: the old "19" label double-counted two;
-   17 additions plus the old 15 made 32, now 34 with D101/Q12b.
+   All original selected fixes are done: the merged set added 17 switches to
+   the old 15 (32); D101/Q12b bring the additions to 19 and the total to 34.
    `95a5730` CI: https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423.
    The bugfix worktree stays until the owner authorizes removal. The
    remaining ISOUND.117 and ASOUND.LOG routines are all large (90-320 instructions).
