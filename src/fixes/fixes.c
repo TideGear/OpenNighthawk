@@ -881,7 +881,29 @@ static int fix_q21_bracket_width(machine_t *m)
     return 1;
 }
 
+/* Q22. START's armoury shortage (0x00E23) draws random entries r of the
+ * 16-byte table at 01C4h until rnd(5) of them are marked; refusing entry r
+ * is meant to need its substitute weapon (the table's byte) still available.
+ * It tests the substitute's flag (0x00E6B) but never r's own flag, so a draw
+ * of an entry already refused counts again without refusing anything new: in
+ * 13.8% of sessions fewer weapons are greyed out than were drawn. Chosen
+ * behaviour (owner, 25 October 2026): add the missing self-check at 0x00E71,
+ * the store: an entry already marked is drawn again without counting. This
+ * changes how many random numbers a session draws, and so the missions
+ * generated after it. */
+static int fix_q22_self_check(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6));
+    if (!mem_read8(c, phys(c->seg[S_DS], (uint16_t)(entry + 0xD878)))) return 0;
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x0E7C;
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
+    { "Q22", "START.EXE", START_47304, 0x0000, 0x0E71, fix_q22_self_check, "armoury shortage does not count an entry twice" },
     { "Q21", "VGAME.EXE", VGAME_47304, 0x0000, 0xAE9F, fix_q21_bracket_width, "steering bracket keeps its width when banked 45 degrees or more" },
     { "Q13a", "VGAME.EXE", VGAME_47304, 0x0000, 0x5594, fix_q13a_sensorless, "a sensorless unit reports itself far away" },
     { "Q20", "START.EXE", START_47304, 0x0000, 0x11D1, fix_q20_popup, "briefing popup is left to the hover hook" },
@@ -946,6 +968,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "Q22", "the armoury shortage greys out as many weapons as it draws, instead of counting a repeated draw twice" },
     { "Q21", "the steering bracket keeps the previous frame's width when banked 45 degrees or more, instead of computing it from stale stack" },
     { "Q13a", "a unit with no sensor reports a far range instead of stale stack to the detection tests" },
     { "Q20", "a briefing-map click no longer leaves its popup stuck on the map" },

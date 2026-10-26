@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-twenty-seven: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a and Q21, including the D1REAL timing and D1PROX balance choices
+twenty-eight: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
+D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21 and Q22, including the D1REAL timing and D1PROX balance choices
 (owner's decision, 17 October 2026). `--fix none` restores the original;
 follow it with `--fix ID` to select a subset. The headless runner starts with
 fixes off, ordinary parity routes explicitly clear them, and fix-specific
@@ -74,7 +74,7 @@ Status values:
 | Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
 | Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
 | Q21 | Confirmed | VGAME | The steering bracket's half-width is computed from stale stack when banked 45 degrees or more with weapon 1Eh | `--fix Q21` |
-| Q22 | Confirmed | START | One smaller defect with a chosen correct behaviour (below) | planned |
+| Q22 | Confirmed | START | The armoury shortage does not check the refused entry's own flag, so a repeated draw counts without refusing anything new | `--fix Q22` |
 | Q4, Q13b, D18, Q23 | Confirmed | VGAME, START | Hardening against data the shipped game never has (below) | planned |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
@@ -883,6 +883,27 @@ Status values:
   nothing changed otherwise, and the skipped run ends at `0x0AEDE` with `[DEBE]`
   untouched and the same state in both engines (110 staged runs, 0 failures).
 
+### Q22. The armoury shortage counts a repeated draw
+
+- **What happens.** START's armoury shortage (`0x00E23`) draws random entries r of
+  the 16-byte table at `01C4h` until rnd(5) of them are marked. Refusing entry r is
+  meant to need its substitute weapon (the table's byte) still available. It tests
+  the substitute's flag (`0x00E6B`) but never r's own, so drawing an entry that is
+  already refused counts again without refusing anything new: computed from the
+  code, 13.8% of sessions grey out fewer weapons than were drawn. Macintosh and
+  Amiga are identical.
+- **Chosen behaviour (owner, 25 October 2026).** Add the missing self-check.
+- **Fix.** `--fix Q22` at the store (`0x00E71`): an entry whose own flag is already
+  set is drawn again without counting; otherwise the hook declines. This changes
+  how many random numbers a session draws, and so the missions generated after it
+  (the generator is clock-seeded, and replays record the fix set). The containing
+  matched routine at `0x00E23` declines while Q22 is placed.
+- **Check.** `build/check_q22 path/to/START.EXE` runs the routine in both engines
+  with Q22 off and on with a scripted random-number routine (four draw scripts, 0
+  to 8 weapons), comparing every flag and the number of draws with a model of the
+  loop, requires that some scripts end differently with the fix, then stops and
+  resumes (402 staged runs, 0 failures).
+
 ## Smaller defects (Q-series)
 
 Re-verified on 25 October 2026 against the DOS instructions, and compared with
@@ -917,12 +938,8 @@ draws 2x2 markers, and the fix pins that size.
 ### Defects with a chosen correct behaviour
 
 No version shows the intended behaviour, or the one a port shows is no better.
-Owner, 25 October 2026: fix all three as below, each on its own switch
-(Q13a and Q21 are built and described above the Q-series).
-
-| ID | Was | Program | Defect | Effect | Where | Later versions | Chosen fix |
-|---|---|---|---|---|---|---|---|
-| Q22 | - | START | Armoury shortage: refusing weapon r tests its substitute's flag (the pairs at `DS:0x1C4` look intended) but never r's own, so a repeated draw counts without a refusal | 13.8% of sessions grey out fewer weapons than were drawn (computed from the code) | `0x00E6B`, `0x00E74` | Mac and Amiga identical | Add the self-check (it changes how many random numbers are drawn) |
+Owner, 25 October 2026: fix all three, each on its own switch. All three are
+built and described above the Q-series (Q13a, Q21, Q22).
 
 ### Hardening
 

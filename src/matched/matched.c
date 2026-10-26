@@ -5635,6 +5635,7 @@ static int start_modal_hover(machine_t *m)
 static int start_weapon_shortage(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x0E23, 0x0E96)) return 0;
 #define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
     if (!room(c, 4 + 1)) return 0;
     frame_open(c, 6);
