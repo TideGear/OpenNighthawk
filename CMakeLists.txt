@@ -1688,6 +1688,16 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.LOG:300)
     add_test(NAME matched_asound_log_opl_register_write_args COMMAND func_lockstep --states 5000
       --only ASOUND.LOG:2F6)
+    add_test(NAME matched_isound_117_select_effect_record_025d COMMAND func_lockstep --states 5000
+      --only ISOUND.117:62E)
+    add_test(NAME matched_isound_117_decode_word_effect_record COMMAND func_lockstep --states 5000
+      --only ISOUND.117:443)
+    add_test(NAME matched_asound_log_load_instrument_operators COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:BFC)
+    add_test(NAME matched_asound_117_emit_operator_registers COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1048)
+    add_test(NAME matched_asound_117_load_instrument_pair COMMAND func_lockstep --states 5000
+      --only ASOUND.117:123E)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

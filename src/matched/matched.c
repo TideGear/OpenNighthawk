@@ -92561,7 +92561,624 @@ static int asound_log_opl_register_write_args(machine_t *m)
 #undef AD_DELAY
 }
 
+/* ISOUND.117 019C:062E, near: select effect record 025D and enter the
+ * shared speaker decoder. Decode priority/duration/divisor words, including
+ * the 6Eh word-record escape and the CS pitch table, commit the sequencer
+ * cursor, arm effect notification through 05A4, and program speaker counter 2.
+ * Preserve every original read/store and stack operation: DS may alias SS.
+ * Counter-2 and gate I/O do not wake IRQ0, but each has its own clock boundary.
+ * The shared 0442 early RET is retained for exact original control flow. */
+static int isound_117_select_effect_record_025d(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    if (!room(c,1)) return 0;
+#define DO(at_,code_) do { SM4_NEED(1,(at_)); code_; c->icount++; } while(0)
+#define IO(at_,code_) do { SM4_NEED(1+IO_SLACK(1),(at_)); code_; c->icount++; } while(0)
+#define AL get_r8(c,R_AL)
+#define SETAL(v_) set_r8(c,R_AL,(uint8_t)(v_))
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define W(a_) ds_get(c,(uint16_t)(a_))
+#define PUT(a_,v_) ds_put(c,(uint16_t)(a_),(uint16_t)(v_))
+#define PUTB(a_,v_) ds_put8(c,(uint16_t)(a_),(uint8_t)(v_))
+#define INC_BX(at_) DO((at_),BX=(uint16_t)alu_inc(c,BX,1))
+#define RUN(expr_) do { const uint64_t old_=m->run_until; if(c->stop_at<m->run_until)m->run_until=c->stop_at; const int ok_=(expr_); m->run_until=old_; if(!ok_)return 1; } while(0)
+    DO(0x062E,BX=0x025D);
+    DO(0x0632,(void)0);
+    goto byte_record;
+
+speaker_off:
+    IO(0x01B4,x86_in(c,0x61,0));
+    DO(0x01B6,SETAL(alu_op(c,4,AL,0xFC,0)));
+    IO(0x01B8,x86_out(c,0x61,0));
+    DO(0x01BA,(void)0);
+    DO(0x01BC,c->ip=cpu_pop16(c));
+    return 1;
+word_reject:
+    DO(0x0442,c->ip=cpu_pop16(c));
+    return 1;
+word_record:
+    DO(0x0443,AX=(uint16_t)alu_op(c,6,AX,AX,1));
+    DO(0x0445,x86_push_reg(c,R_AX));
+    DO(0x0446,AX=W(0x33));
+    DO(0x0449,(void)alu_op(c,7,AX,W(BX),1));
+    DO(0x044B,AX=cpu_pop16(c));
+    DO(0x044C,(void)0);
+    if(x86_cond(c,7))goto word_reject;
+    DO(0x044E,PUT(0x73,0));
+    DO(0x0454,PUT(0x41,0));
+    DO(0x045A,PUT(0x3B,0));
+    DO(0x0460,PUT(0x35,AX));
+    DO(0x0463,AX=0x0EAA);
+    DO(0x0467,PUT(0x3D,AX));
+    DO(0x046A,PUT(0x37,BX));
+    DO(0x046E,PUT(0x7D,0));
+    DO(0x0474,AX=W(BX));
+    DO(0x0476,(void)alu_op(c,7,W(0x68),0xFFFF,1));
+    DO(0x047B,(void)0);
+    if(x86_cond(c,4))goto word_priority;
+    DO(0x047D,PUT(0x64,BX));
+word_priority:
+    DO(0x0481,PUT(0x33,AX));
+    INC_BX(0x0484); INC_BX(0x0485);
+    DO(0x0486,AX=W(BX));
+    DO(0x0488,PUT(0x43,AX));
+    INC_BX(0x048B); INC_BX(0x048C);
+    DO(0x048D,AX=W(BX));
+    DO(0x048F,PUT(0x49,AX));
+    INC_BX(0x0492); INC_BX(0x0493);
+    DO(0x0494,(void)alu_op(c,7,AX,0,1));
+    DO(0x0497,(void)0);
+    if(x86_cond(c,5))goto word_tone;
+    DO(0x0499,PUT(0x39,BX));
+    DO(0x049D,(void)0);goto speaker_off;
+word_tone:
+    DO(0x04A0,AX=W(BX));
+    DO(0x04A2,PUT(0x47,AX));
+    INC_BX(0x04A5); INC_BX(0x04A6);
+    DO(0x04A7,AX=W(BX));
+    DO(0x04A9,PUT(0x4B,AX));
+    DO(0x04AC,PUTB(0x4D,0));
+    INC_BX(0x04B1); INC_BX(0x04B2);
+    DO(0x04B3,PUT(0x39,BX));
+    SM4_NEED(1,0x04B7);RUN(guest_call_pop(m,0x05A4,0x04BA,0));
+    DO(0x04BA,SETAL(0xB6));
+    IO(0x04BC,x86_out(c,0x43,0));
+    DO(0x04BE,(void)0);DO(0x04C0,(void)0);
+    IO(0x04C2,x86_in(c,0x61,0));
+    DO(0x04C4,SETAL(alu_op(c,1,AL,3,0)));
+    IO(0x04C6,x86_out(c,0x61,0));
+    DO(0x04C8,(void)0);
+byte_return:
+    DO(0x04CA,c->ip=cpu_pop16(c));return 1;
+byte_record:
+    DO(0x04DD,AX=(uint16_t)alu_op(c,6,AX,AX,1));
+    DO(0x04DF,PUTB(0x6C,1));
+    DO(0x04E4,x86_push_reg(c,R_AX));
+    DO(0x04E5,AX=W(0x33));
+    DO(0x04E8,(void)alu_op(c,7,AL,ds_get8(c,BX),0));
+    DO(0x04EA,AX=cpu_pop16(c));
+    DO(0x04EB,(void)0);if(x86_cond(c,3))goto byte_return;
+    DO(0x04ED,PUT(0x73,0));
+    DO(0x04F3,PUT(0x41,0));
+    DO(0x04F9,PUT(0x3B,0));
+    DO(0x04FF,PUT(0x35,AX));
+    DO(0x0502,AX=0x0EAA);
+    DO(0x0506,PUT(0x3D,AX));
+    DO(0x0509,PUT(0x37,BX));
+    DO(0x050D,PUT(0x7D,0));
+    DO(0x0513,set_r8(c,R_AH,0));
+    DO(0x0515,SETAL(ds_get8(c,BX)));
+    DO(0x0517,(void)alu_op(c,7,W(0x68),0xFFFF,1));
+    DO(0x051C,(void)0);if(x86_cond(c,4))goto byte_priority;
+    DO(0x051E,PUT(0x64,BX));
+byte_priority:
+    DO(0x0522,PUT(0x33,AX));
+    INC_BX(0x0525);
+    DO(0x0526,set_r8(c,R_AH,0));
+    DO(0x0528,SETAL(ds_get8(c,BX)));
+    DO(0x052A,PUT(0x43,AX));
+    DO(0x052D,PUT(0x49,1));
+    INC_BX(0x0533);
+    DO(0x0534,(void)alu_op(c,7,W(BX),0,1));
+    DO(0x0537,(void)0);if(x86_cond(c,5))goto byte_tone;
+    INC_BX(0x0539);INC_BX(0x053A);
+    DO(0x053B,PUT(0x39,BX));
+    DO(0x053F,(void)0);goto speaker_off;
+byte_tone:
+    DO(0x0542,AX=W(BX));
+    DO(0x0544,PUT(0x47,AX));
+    DO(0x0547,x86_push_reg(c,R_BX));
+    DO(0x0548,AX=0);
+    DO(0x054B,BX=W(0x33));
+    DO(0x054F,(void)alu_op(c,7,BX,0x6E,1));
+    DO(0x0552,(void)0);if(x86_cond(c,5))goto pitch_table;
+    DO(0x0554,BX=cpu_pop16(c));
+    DO(0x0555,PUT(0x33,0));
+    DO(0x055B,PUT(0x68,1));
+    DO(0x0561,PUT(0x66,0));
+    DO(0x0567,BX=0x84);
+    DO(0x056B,(void)0);goto word_record;
+pitch_table:
+    DO(0x056E,(void)alu_op(c,7,BX,0x65,1));
+    DO(0x0571,(void)0);if(x86_cond(c,2))goto pitch_ready;
+    DO(0x0573,BX=(uint16_t)alu_op(c,5,BX,0x65,1));
+    DO(0x0576,BX=(uint16_t)x86_shift(c,4,BX,1,1));
+    DO(0x0578,AX=seg_read16(c,c->seg[S_CS],(uint16_t)(BX+0x04CB)));
+pitch_ready:
+    DO(0x057D,BX=cpu_pop16(c));
+    DO(0x057E,PUT(0x4B,AX));
+    DO(0x0581,PUTB(0x4D,0));
+    INC_BX(0x0586);INC_BX(0x0587);
+    DO(0x0588,PUT(0x39,BX));
+    SM4_NEED(1,0x058C);RUN(guest_call_pop(m,0x05A4,0x058F,0));
+    DO(0x058F,SETAL(0xB6));
+    IO(0x0591,x86_out(c,0x43,0));
+    DO(0x0593,(void)0);DO(0x0595,(void)0);
+    IO(0x0597,x86_in(c,0x61,0));
+    DO(0x0599,SETAL(alu_op(c,1,AL,3,0)));
+    IO(0x059B,x86_out(c,0x61,0));
+    DO(0x059D,(void)0);
+    DO(0x059F,c->ip=cpu_pop16(c));return 1;
+#undef RUN
+#undef INC_BX
+#undef PUTB
+#undef PUT
+#undef W
+#undef BX
+#undef AX
+#undef SETAL
+#undef AL
+#undef IO
+#undef DO
+}
+
+/* ISOUND.117019C:0443, near: decode the word-format effect at DS:BX.
+ * Reject lower-priority records, decode sequencer cells, update the cursor,
+ * then turn the speaker off or notify05A4 and enable counter2.
+ * Stack operations, aliases, flags and individual port clocks stay original. */
+static int isound_117_decode_word_effect_record(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    if (!room(c,1)) return 0;
+#define DO(at_,code_) do { SM4_NEED(1,(at_)); code_; c->icount++; } while(0)
+#define IO(at_,code_) do { SM4_NEED(1+IO_SLACK(1),(at_)); code_; c->icount++; } while(0)
+#define AL get_r8(c,R_AL)
+#define SETAL(v_) set_r8(c,R_AL,(uint8_t)(v_))
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define W(a_) ds_get(c,(uint16_t)(a_))
+#define PUT(a_,v_) ds_put(c,(uint16_t)(a_),(uint16_t)(v_))
+#define PUTB(a_,v_) ds_put8(c,(uint16_t)(a_),(uint8_t)(v_))
+#define INC_BX(at_) DO((at_),BX=(uint16_t)alu_inc(c,BX,1))
+#define RUN(expr_) do { const uint64_t old_=m->run_until; if(c->stop_at<m->run_until)m->run_until=c->stop_at; const int ok_=(expr_); m->run_until=old_; if(!ok_)return 1; } while(0)
+    goto word_record;
+
+speaker_off:
+    IO(0x01B4,x86_in(c,0x61,0));
+    DO(0x01B6,SETAL(alu_op(c,4,AL,0xFC,0)));
+    IO(0x01B8,x86_out(c,0x61,0));
+    DO(0x01BA,(void)0);
+    DO(0x01BC,c->ip=cpu_pop16(c));
+    return 1;
+word_reject:
+    DO(0x0442,c->ip=cpu_pop16(c));
+    return 1;
+word_record:
+    DO(0x0443,AX=(uint16_t)alu_op(c,6,AX,AX,1));
+    DO(0x0445,x86_push_reg(c,R_AX));
+    DO(0x0446,AX=W(0x33));
+    DO(0x0449,(void)alu_op(c,7,AX,W(BX),1));
+    DO(0x044B,AX=cpu_pop16(c));
+    DO(0x044C,(void)0);
+    if(x86_cond(c,7))goto word_reject;
+    DO(0x044E,PUT(0x73,0));
+    DO(0x0454,PUT(0x41,0));
+    DO(0x045A,PUT(0x3B,0));
+    DO(0x0460,PUT(0x35,AX));
+    DO(0x0463,AX=0x0EAA);
+    DO(0x0467,PUT(0x3D,AX));
+    DO(0x046A,PUT(0x37,BX));
+    DO(0x046E,PUT(0x7D,0));
+    DO(0x0474,AX=W(BX));
+    DO(0x0476,(void)alu_op(c,7,W(0x68),0xFFFF,1));
+    DO(0x047B,(void)0);
+    if(x86_cond(c,4))goto word_priority;
+    DO(0x047D,PUT(0x64,BX));
+word_priority:
+    DO(0x0481,PUT(0x33,AX));
+    INC_BX(0x0484); INC_BX(0x0485);
+    DO(0x0486,AX=W(BX));
+    DO(0x0488,PUT(0x43,AX));
+    INC_BX(0x048B); INC_BX(0x048C);
+    DO(0x048D,AX=W(BX));
+    DO(0x048F,PUT(0x49,AX));
+    INC_BX(0x0492); INC_BX(0x0493);
+    DO(0x0494,(void)alu_op(c,7,AX,0,1));
+    DO(0x0497,(void)0);
+    if(x86_cond(c,5))goto word_tone;
+    DO(0x0499,PUT(0x39,BX));
+    DO(0x049D,(void)0);goto speaker_off;
+word_tone:
+    DO(0x04A0,AX=W(BX));
+    DO(0x04A2,PUT(0x47,AX));
+    INC_BX(0x04A5); INC_BX(0x04A6);
+    DO(0x04A7,AX=W(BX));
+    DO(0x04A9,PUT(0x4B,AX));
+    DO(0x04AC,PUTB(0x4D,0));
+    INC_BX(0x04B1); INC_BX(0x04B2);
+    DO(0x04B3,PUT(0x39,BX));
+    SM4_NEED(1,0x04B7);RUN(guest_call_pop(m,0x05A4,0x04BA,0));
+    DO(0x04BA,SETAL(0xB6));
+    IO(0x04BC,x86_out(c,0x43,0));
+    DO(0x04BE,(void)0);DO(0x04C0,(void)0);
+    IO(0x04C2,x86_in(c,0x61,0));
+    DO(0x04C4,SETAL(alu_op(c,1,AL,3,0)));
+    IO(0x04C6,x86_out(c,0x61,0));
+    DO(0x04C8,(void)0);
+    DO(0x04CA,c->ip=cpu_pop16(c));return 1;
+#undef RUN
+#undef INC_BX
+#undef PUTB
+#undef PUT
+#undef W
+#undef BX
+#undef AX
+#undef SETAL
+#undef AL
+#undef IO
+#undef DO
+}
+
+/* ASOUND.LOG 0BFC, near (argument: instrument number in the low byte of the
+ * caller's first word). Load both operators of the current voice [0512].
+ * First key the voice off through the register shadow, then choose its first
+ * 22-byte operator description in the 44-byte instrument at 0050 + 44*n.
+ * The two signed byte maps at 0404 and 0416 choose the operator register
+ * index. 0BE2 writes the operator's eight register groups using the current
+ * description pointer [0674] and operator index [0670]. Between its two
+ * calls, copy the instrument's byte at 0Eh and words at 10h,12h,14h to the
+ * voice's eight-byte cache [0616 + 8*voice]. The second operator description
+ * starts 16h bytes after the first and uses the second byte of the voice map.
+ * Scratch cells and the current voice are deliberately reread in original
+ * order: high voice indices can alias the scratch cells through the cache.
+ * Callees: 02F6(reg,value), plain RET with caller cleanup; 0BE2(), plain RET.
+ * SI, DI and BP are saved/restored. No own branches, loops or port accesses.
+ * Code-alias guard: the driver's DS is its own code segment, so the voice
+ * index [0512] (a byte) reaches cache cells 0616+8*voice at up to 0E0E,
+ * beyond the data at 0616..0675 into this routine's own instructions, and a
+ * stack in the code segment would be written too. The body keeps no code
+ * bytes of its own, so it never executes a stale copy of changed code: it
+ * declines before changing anything when the stack frame or the fixed cells
+ * would overlap its own 286 code bytes; it hands the machine back to the
+ * original at the next instruction boundary (0C1F, 0C5B, 0D14) when a callee
+ * has changed those bytes, and at 0C5B when the cache stores would. */
+static int asound_log_load_instrument_operators(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XBYTE() set_r8(c, R_AL, ds_get8(c, 0x0512))
+#define XZERO() (c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00FF, 1))
+#define XCBW() (c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL))
+#define XSHL(reg_) (c->r[(reg_)] = (uint16_t)x86_shift(c, 4, c->r[(reg_)], 1, 1))
+    uint8_t code_[0x011E];
+    const uint32_t code_lo_ = phys(c->seg[S_CS], 0x0BFC);
+    for (unsigned i_ = 0; i_ < sizeof code_; i_++) code_[i_] = mem_read8(c, code_lo_ + i_);
+    int hit_ = 0, same_ = 1;
+#define XHIT(seg_, off_, n_) do { hit_ = 0; for (unsigned k_ = 0; k_ < (unsigned)(n_); k_++)     if (phys((seg_), (uint16_t)((off_) + k_)) - code_lo_ < sizeof code_) { hit_ = 1; break; } } while (0)
+#define XSAME() do { same_ = 1; for (unsigned k_ = 0; k_ < sizeof code_; k_++)     if (mem_read8(c, code_lo_ + k_) != code_[k_]) { same_ = 0; break; } } while (0)
+    if (!room(c, 14)) return 0;
+    XHIT(c->seg[S_SS], c->r[R_SP] - 24, 24);                      /* the frame, pushes and the return address */
+    if (hit_) return 0;
+    XHIT(c->seg[S_DS], 0x066E, 4);                                /* [066E] and [0670] */
+    if (hit_) return 0;
+    XHIT(c->seg[S_DS], 0x0674, 2);                                /* [0674] */
+    if (hit_) return 0;
+    XB(14, 0x0BFC);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 2, 1);
+    x86_push_reg(c, R_SI); x86_push_reg(c, R_DI);
+    XBYTE(); XZERO();
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x00B0, 1);
+    ds_put(c, 0x066E, c->r[R_AX]); c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0516)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x00DF, 1);
+    x86_push_reg(c, R_AX); x86_push_reg(c, R_BX);
+    SM4_NEED(1, 0x0C1C); XRUN(guest_call_pop(m, 0x02F6, 0x0C1F, 0));
+    XSAME();
+    if (!same_) { c->ip = 0x0C1F; return 1; }                     /* the callee changed this code: the original goes on */
+
+    XB(21, 0x0C1F);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 4, 1);
+    XBYTE(); XZERO(); ds_put(c, 0x066E, c->r[R_AX]);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4))));
+    XZERO(); c->r[R_CX] = 0x002C; x86_imul16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x0050;
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);
+    ds_put(c, 0x0674, c->r[R_CX]);
+    XBYTE(); XZERO(); c->r[R_BX] = c->r[R_AX]; XSHL(R_BX);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0404))); XCBW();
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0416))); XCBW();
+    ds_put(c, 0x0670, c->r[R_AX]);
+    SM4_NEED(1, 0x0C58); XRUN(guest_call_pop(m, 0x0BE2, 0x0C5B, 0));
+    XSAME();
+    if (!same_) { c->ip = 0x0C5B; return 1; }
+    /* The cache stores of the next block run from the live voice [0512]; hand
+     * back first if they would land on this routine's own instructions. */
+    XHIT(c->seg[S_DS], 0x0616 + 8u * ds_get8(c, 0x0512), 8);
+    if (hit_) { c->ip = 0x0C5B; return 1; }
+
+    XB(67, 0x0C5B);
+    c->r[R_BX] = ds_get(c, 0x0674);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000E)));
+    bp_put(c, -2, c->r[R_AX]);
+    XBYTE(); XZERO(); c->r[R_BX] = c->r[R_AX];
+    XSHL(R_BX); XSHL(R_BX); XSHL(R_BX);
+    c->r[R_AX] = bp_get(c, -2);
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0616), get_r8(c, R_AL));
+    /* Three identical straight instruction sequences in the original. The
+     * host loop introduces no guest jump or clock and retains each reread. */
+    for (unsigned field_ = 0; field_ < 3; field_++) {
+        c->r[R_BX] = ds_get(c, 0x0674);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0010 + 2 * field_));
+        bp_put(c, -2, c->r[R_AX]);
+        XBYTE(); XZERO(); XSHL(R_AX); XSHL(R_AX); XSHL(R_AX);
+        c->r[R_BX] = 0x0616;
+        c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+        c->r[R_AX] = bp_get(c, -2);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 2 + 2 * field_), c->r[R_AX]);
+    }
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4))));
+    XZERO(); c->r[R_CX] = 0x002C; x86_imul16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x0050;
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);
+    c->r[R_AX] = 0x0016;
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);
+    ds_put(c, 0x0674, c->r[R_CX]);
+    XBYTE(); XZERO(); XSHL(R_AX); c->r[R_BX] = 0x0404;
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 1))); XCBW();
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0416))); XCBW();
+    ds_put(c, 0x0670, c->r[R_AX]);
+    SM4_NEED(1, 0x0D11); XRUN(guest_call_pop(m, 0x0BE2, 0x0D14, 0));
+    XSAME();
+    if (!same_) { c->ip = 0x0D14; return 1; }
+
+    XB(5, 0x0D14);
+    c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    return 1;
+#undef XSAME
+#undef XHIT
+#undef XSHL
+#undef XCBW
+#undef XZERO
+#undef XBYTE
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:1048, near: emit the nine OPL writes for an operator.
+ * The operator record is addressed by [1B64], its register offset by [1B60],
+ * and the channel offset by [1B5E]. First silence the operator's level, then
+ * write BD depth flags and register 08, channel feedback/connection, the
+ * attack/decay and sustain/release pairs, the four characteristic flags plus
+ * multiplier, waveform, and finally level/key scaling. The two global depth
+ * flags are [1892/1893], register-08's switch is [1894], and the BD low bits
+ * come from [1AC3]. Each output calls 035C(8, register, value), plain RET,
+ * then removes its three words. There are no own port accesses.
+ * Reads and pushes retain their original order: callbacks or an overlapping
+ * stack can change the pointer/index cells between reads. SI/DI/BP are saved;
+ * AX/BX/CX and FLAGS are the results left by the final write and its cleanup. */
+static int asound_117_emit_operator_registers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,0x035C,(ret_),0)); } while(0)
+#define XA(v_) (c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],(v_),1))
+#define XM(v_) (c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],(v_),1))
+#define XZ() (c->r[R_AX]=(uint16_t)alu_op(c,6,c->r[R_AX],c->r[R_AX],1))
+#define XL(a_) set_r8(c,R_AL,ds_get8(c,(a_)))
+#define RB(a_) do { c->r[R_BX]=ds_get(c,0x1B64); XL((uint16_t)(c->r[R_BX]+(a_))); } while(0)
+#define IDX(a_) do { c->r[R_AX]=ds_get(c,0x1B60); XA(a_); c->r[R_DI]=c->r[R_AX]; } while(0)
+#define OS() (c->r[R_SI]=(uint16_t)alu_op(c,1,c->r[R_SI],c->r[R_AX],1))
+#define AS() (c->r[R_SI]=(uint16_t)alu_op(c,0,c->r[R_SI],c->r[R_AX],1))
+#define SH() (c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1))
+#define CLEAN() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1))
+#define ARGS() do { x86_push_reg(c,R_AX);x86_push_reg(c,R_DI);c->r[R_AX]=8;x86_push_reg(c,R_AX); } while(0)
+    if (!room(c, 13)) return 0;
+    XB(13,0x1048);                         /* frame, saved indices, initial mute */
+    x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    x86_push_reg(c,R_SI);x86_push_reg(c,R_DI);
+    IDX(0x40);c->r[R_AX]=0x3F;ARGS();
+    XCALL(0x1062,0x1065);
+    XB(7,0x1065);CLEAN();XL(0x1AC3);XM(0x3F);c->r[R_SI]=c->r[R_AX];
+    XL(0x1892);XM(0xFF);if(x86_cond(c,4))goto depth_zero;
+    XB(2,0x1078);c->r[R_AX]=0x80;goto depth_join;
+depth_zero:
+    XB(1,0x107E);XZ();
+depth_join:
+    XB(4,0x1080);OS();XL(0x1893);XM(0xFF);if(x86_cond(c,4))goto vibrato_zero;
+    XB(2,0x108A);c->r[R_AX]=0x40;goto vibrato_join;
+vibrato_zero:
+    XB(1,0x1090);XZ();
+vibrato_join:
+    XB(7,0x1092);OS();c->r[R_AX]=c->r[R_SI];x86_push_reg(c,R_AX);
+    c->r[R_AX]=0xBD;x86_push_reg(c,R_AX);c->r[R_AX]=8;x86_push_reg(c,R_AX);
+    XCALL(0x109F,0x10A2);
+    XB(4,0x10A2);CLEAN();XL(0x1894);XM(0xFF);if(x86_cond(c,4))goto note_select_zero;
+    XB(2,0x10AD);c->r[R_AX]=0x40;goto note_select_join;
+note_select_zero:
+    XB(1,0x10B2);XZ();
+note_select_join:
+    XB(5,0x10B4);x86_push_reg(c,R_AX);c->r[R_AX]=8;x86_push_reg(c,R_AX);
+    c->r[R_AX]=8;x86_push_reg(c,R_AX);
+    XCALL(0x10BD,0x10C0);
+    XB(13,0x10C0);CLEAN();c->r[R_AX]=ds_get(c,0x1B5E);XA(0xC0);c->r[R_DI]=c->r[R_AX];
+    RB(0x0A);XM(0xFF);SH();c->r[R_SI]=c->r[R_AX];
+    RB(0x0D);XM(0xFF);if(x86_cond(c,4))goto connection_one;
+    XB(2,0x10E5);XZ();goto connection_join;
+connection_one:
+    XB(1,0x10EA);c->r[R_AX]=1;
+connection_join:
+    XB(6,0x10ED);OS();c->r[R_AX]=c->r[R_SI];ARGS();
+    XCALL(0x10F7,0x10FA);
+    /* Attack/decay. Both source bytes are read through the pointer cell. */
+    XB(21,0x10FA);CLEAN();IDX(0x60);RB(0);XM(0xFF);
+    SH();SH();SH();SH();c->r[R_SI]=c->r[R_AX];
+    RB(1);XM(0x0F);OS();c->r[R_AX]=c->r[R_SI];ARGS();
+    XCALL(0x112C,0x112F);
+    /* Sustain/release. These are four separate SHLs, retaining their flags. */
+    XB(21,0x112F);CLEAN();IDX(0x80);RB(2);XM(0xFF);
+    SH();SH();SH();SH();c->r[R_SI]=c->r[R_AX];
+    RB(3);XM(0x0F);OS();c->r[R_AX]=c->r[R_SI];ARGS();
+    XCALL(0x1162,0x1165);
+    XB(8,0x1165);CLEAN();IDX(0x20);RB(0x0B);XM(0xFF);if(x86_cond(c,4))goto tremolo_zero;
+    XB(2,0x117C);c->r[R_AX]=0x80;goto tremolo_join;
+tremolo_zero:
+    XB(1,0x1182);XZ();
+tremolo_join:
+    XB(5,0x1184);c->r[R_SI]=c->r[R_AX];RB(0x0C);XM(0xFF);if(x86_cond(c,4))goto vibrate_zero;
+    XB(2,0x1192);c->r[R_AX]=0x40;goto vibrate_join;
+vibrate_zero:
+    XB(1,0x1198);XZ();
+vibrate_join:
+    XB(5,0x119A);AS();RB(4);XM(0xFF);if(x86_cond(c,4))goto sustain_zero;
+    XB(2,0x11A8);c->r[R_AX]=0x20;goto sustain_join;
+sustain_zero:
+    XB(1,0x11AE);XZ();
+sustain_join:
+    XB(5,0x11B0);AS();RB(5);XM(0xFF);if(x86_cond(c,4))goto scale_zero;
+    XB(2,0x11BE);c->r[R_AX]=0x10;goto scale_join;
+scale_zero:
+    XB(1,0x11C4);XZ();
+scale_join:
+    XB(10,0x11C6);AS();RB(9);XM(0x0F);AS();c->r[R_AX]=c->r[R_SI];ARGS();
+    XCALL(0x11DC,0x11DF);
+    XB(11,0x11DF);CLEAN();IDX(0xE0);RB(8);XM(3);ARGS();
+    XCALL(0x11FA,0x11FD);
+    XB(21,0x11FD);CLEAN();IDX(0x40);RB(6);XM(0x3F);c->r[R_CX]=0x3F;
+    c->r[R_CX]=(uint16_t)alu_op(c,5,c->r[R_CX],c->r[R_AX],1);c->r[R_SI]=c->r[R_CX];
+    RB(7);XM(0xFF);c->r[R_CX]=6;
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],get_r8(c,R_CL),1);
+    OS();c->r[R_AX]=c->r[R_SI];ARGS();
+    XCALL(0x1232,0x1235);
+    XB(6,0x1235);CLEAN();c->r[R_DI]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);c->ip=cpu_pop16(c);
+    return 1;
+#undef ARGS
+#undef CLEAN
+#undef SH
+#undef AS
+#undef OS
+#undef IDX
+#undef RB
+#undef XL
+#undef XZ
+#undef XM
+#undef XA
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:123E, near, one stack argument: load a two-operator AdLib instrument.
+ * The argument's low byte (the high byte is ignored) is the instrument number. The routine
+ * first sends one register write, 035C(8, [1A02]+0B0, byte [[1A02]+0B0+1A06] & 0DF), then
+ * addresses the first 22-byte operator record at 002E + 44*number through [1B64], and the
+ * channel offset [1B5E] from [1A02]. Two signed-byte lookups ([1A02]*2+1896, then +18A8)
+ * give the register offset [1B60]. Calling 1048 emits the operator registers; afterwards
+ * the first record's bytes/words at +0E, +10, +12, +14 (re-read through [1B64], which the
+ * emitter's callee may change) are cached into the voice table at 1B06 + 8*[1A02] (a byte,
+ * then three words at +2, +4, +6). Finally the second operator record (+22 bytes) is
+ * addressed, its lookup uses the second table byte (+1), and 1048 is called again.
+ * 035C and 1048 are plain RET with no stack arguments left to pop; 035C's three words are
+ * removed with ADD SP,6. The local at BP-2 carries each cached value from read to write.
+ * SI and DI are saved; AX, BX, CX, DX and FLAGS are what the last instructions leave
+ * (IMUL leaves DX). There are no own port accesses. */
+static int asound_117_load_instrument_pair(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+#define XL(a_) set_r8(c,R_AL,ds_get8(c,(uint16_t)(a_)))
+#define XLB(a_) set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+(a_))))
+#define XAND(v_) (c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],(v_),1))
+#define XADDA(v_) (c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],(v_),1))
+#define XCBW() (c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL))
+#define XSHL(r_) (c->r[r_]=(uint16_t)x86_shift(c,4,c->r[r_],1,1))
+#define XADDR(d_,s_) (c->r[d_]=(uint16_t)alu_op(c,0,c->r[d_],c->r[s_],1))
+#define XCLEAN() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1))
+    if (!room(c, 16)) return 0;
+    XB(16,0x123E);                         /* frame, first register write */
+    x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],2,1);
+    x86_push_reg(c,R_SI);x86_push_reg(c,R_DI);
+    XL(0x1A02);XAND(0xFF);XADDA(0xB0);ds_put(c,0x1B5E,c->r[R_AX]);
+    c->r[R_BX]=c->r[R_AX];XLB(0x1A06);XAND(0xDF);
+    x86_push_reg(c,R_AX);x86_push_reg(c,R_BX);c->r[R_AX]=8;x86_push_reg(c,R_AX);
+    XCALL(0x035C,0x1262,0x1265);
+    XB(21,0x1265);XCLEAN();               /* channel offset, first record, register offset */
+    XL(0x1A02);XAND(0xFF);ds_put(c,0x1B5E,c->r[R_AX]);
+    set_r8(c,R_AL,bp_get8(c,4));XAND(0xFF);
+    c->r[R_CX]=0x2C;x86_imul16(c,c->r[R_CX]);
+    c->r[R_CX]=0x2E;XADDR(R_CX,R_AX);ds_put(c,0x1B64,c->r[R_CX]);
+    XL(0x1A02);XAND(0xFF);c->r[R_BX]=c->r[R_AX];XSHL(R_BX);
+    XLB(0x1896);XCBW();c->r[R_BX]=c->r[R_AX];XLB(0x18A8);XCBW();ds_put(c,0x1B60,c->r[R_AX]);
+    XCALL(0x1048,0x129E,0x12A1);
+    XB(67,0x12A1);                        /* cache the first record's four fields per voice */
+    c->r[R_BX]=ds_get(c,0x1B64);XLB(0x0E);bp_put(c,-2,c->r[R_AX]);
+    XL(0x1A02);XAND(0xFF);c->r[R_BX]=c->r[R_AX];XSHL(R_BX);XSHL(R_BX);XSHL(R_BX);
+    c->r[R_AX]=bp_get(c,-2);ds_put8(c,(uint16_t)(c->r[R_BX]+0x1B06),get_r8(c,R_AL));
+    c->r[R_BX]=ds_get(c,0x1B64);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x10));bp_put(c,-2,c->r[R_AX]);
+    XL(0x1A02);XAND(0xFF);XSHL(R_AX);XSHL(R_AX);XSHL(R_AX);
+    c->r[R_BX]=0x1B06;XADDR(R_BX,R_AX);c->r[R_AX]=bp_get(c,-2);ds_put(c,(uint16_t)(c->r[R_BX]+2),c->r[R_AX]);
+    c->r[R_BX]=ds_get(c,0x1B64);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x12));bp_put(c,-2,c->r[R_AX]);
+    XL(0x1A02);XAND(0xFF);XSHL(R_AX);XSHL(R_AX);XSHL(R_AX);
+    c->r[R_BX]=0x1B06;XADDR(R_BX,R_AX);c->r[R_AX]=bp_get(c,-2);ds_put(c,(uint16_t)(c->r[R_BX]+4),c->r[R_AX]);
+    c->r[R_BX]=ds_get(c,0x1B64);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x14));bp_put(c,-2,c->r[R_AX]);
+    XL(0x1A02);XAND(0xFF);XSHL(R_AX);XSHL(R_AX);XSHL(R_AX);
+    c->r[R_BX]=0x1B06;XADDR(R_BX,R_AX);c->r[R_AX]=bp_get(c,-2);ds_put(c,(uint16_t)(c->r[R_BX]+6),c->r[R_AX]);
+    /* second operator record: 002E + 44*number + 16h */
+    set_r8(c,R_AL,bp_get8(c,4));XAND(0xFF);
+    c->r[R_CX]=0x2C;x86_imul16(c,c->r[R_CX]);
+    c->r[R_CX]=0x2E;XADDR(R_CX,R_AX);c->r[R_AX]=0x16;XADDR(R_CX,R_AX);ds_put(c,0x1B64,c->r[R_CX]);
+    XL(0x1A02);XAND(0xFF);XSHL(R_AX);
+    c->r[R_BX]=0x1896;XADDR(R_BX,R_AX);XLB(1);XCBW();c->r[R_BX]=c->r[R_AX];XLB(0x18A8);XCBW();
+    ds_put(c,0x1B60,c->r[R_AX]);
+    XCALL(0x1048,0x1357,0x135A);
+    XB(5,0x135A);
+    c->r[R_DI]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);c->ip=cpu_pop16(c);
+    return 1;
+#undef XCLEAN
+#undef XADDR
+#undef XSHL
+#undef XCBW
+#undef XADDA
+#undef XAND
+#undef XLB
+#undef XL
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x123E, asound_117_load_instrument_pair, "AdLib instrument load: register write, operator records 2E+44n and +16h, two emitter calls, voice cache copy", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x1048, asound_117_emit_operator_registers, "AdLib operator setup: emit nine register writes from the current operator record, channel/slot indices and depth flags", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0BFC, asound_log_load_instrument_operators, "key the current AdLib voice off, load both instrument operator records through signed maps, write their registers, and cache the four per-voice instrument fields", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0443, isound_117_decode_word_effect_record, "PC-speaker overlay: accept a word effect record only above the current priority, decode the sequencer words, and switch the speaker off or arm its tone", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x062E, isound_117_select_effect_record_025d, "PC-speaker overlay: select effect record 025D and decode its priority, duration and tone, including the 6E word-record escape, then arm the speaker", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x02F6, asound_log_opl_register_write_args, "AdLib driver: OPL2 register write with stack arguments (word register at [bp+4], byte value at [bp+6]); loads AX, BL then does what 0300 does", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0300, asound_log_opl_register_write, "AdLib driver: OPL2 register write, AL = register, BL = value: shadow it at [0516h+reg], delay [03D2h] passes, out 388h, delay [03D4h] passes, out 389h", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0310, rsound_log_mpu_write_data_wait_ready, "Roland driver: MPU-401 byte write: wait status port (base DS:[00FA] + 1) bit 6 clear, send BL to the base port, then wait for status bit 7 (data ready) draining the base port; AX 1 sent, 0 timed out", 1 },

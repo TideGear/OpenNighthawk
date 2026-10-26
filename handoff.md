@@ -19,29 +19,37 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 82.13%, P3 76.34%, All 88.57%
+- **Scoreboard:** P1 100.00%, P2 87.27%, P3 76.34%, All 90.14%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
 - **Phase 2 figures** (`docs/progress.json` after batch be's refresh; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,425 addresses matched; batches a to bg are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,430 addresses matched; batches a to bh are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(150,424 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 93.38%**. 26,370 matched bytes run only in fixtures and earn no gameplay credit.
-  - **10,852 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 9,062: ASOUND.117 4,438, RSOUND.117 1,461, RSOUND.LOG 845, ASOUND.LOG 1,088,
-    ISOUND.117 867, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
+  - Gameplay score (scores the matched item): **(151,820 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 94.23%**. 26,384 matched bytes run only in fixtures and earn no gameplay credit.
+  - **9,456 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
+    entry). Sound drivers 7,666: ASOUND.117 3,659, RSOUND.117 1,461, RSOUND.LOG 845, ASOUND.LOG 802,
+    ISOUND.117 536, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
     START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **176,859 / 206,026** creditable bytes; of the 29,167
+  - Naming item (the previous all-code measure): **178,269 / 206,040** creditable bytes; of the 27,771
     uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
-  - Accounted-for checklist: 780 / 44,700 bytes; `docs/reference-reviewed.tsv` has 58 second-read entries
-    (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`). Every `stays-original` entry
+  - Accounted-for checklist: **20,708 / 44,714 bytes (46.31%)**; `docs/reference-reviewed.tsv` has 850 second-read entries
+    (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`;
+    the 792 round-1 rows from the full blind pass: `D:/f117-gate/checklist-full-20261026/` (reads/, staged-round1.tsv, reconcile-result.json)). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
-- **Batch bg acceptance (26 Oct):** `final-gate-verdict.json`: 669 tests, 63 routes / 62 fresh interpreter sessions, 1,425 matched routines,
+- **Batch bh acceptance (26 Oct):** `D:/f117-gate/p2-batch-bh-accept/final-gate-verdict.json` passed in 1,723 s: 674 tests, 63 routes / 62 fresh interpreter sessions,
+  1,430 matched routines, 188 private mutations, 25 optimized seeds, +1,410 named bytes (all route-executed), 614 new fully covered instructions. The five
+  bg4 routines: ASOUND.117 `1048` `123E`, ASOUND.LOG `0BFC`, ISOUND.117 `062E` `0443`. Three pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`,
+  `0x20261027`; about 5.59 M states each, zero mismatches; `D:/f117-gate/p2-batch-bh-prechecks/`). Harness: `g_cov_ip` lines for `062E`/`0443`. `0BFC` has
+  guard arms (decline/hand back if its own code is overwritten) that the harness cannot test: lockstep skips self-writing states. **Fixture hazard found:**
+  `XW8` declares its own local `a_`; passing a caller's `a_` captured it (value derived from the address, not random). Fixed in 123E (its own bug) and in the
+  accepted VGAME `4973` and ASOUND.117 `0C2E` fixtures (renamed; both re-proved, no body defect). No other `XW8`/`XW16` call in the repository passes `a_`.
+- **Previous acceptance (batch bg, 26 Oct):** `final-gate-verdict.json`: 669 tests, 63 routes / 62 fresh interpreter sessions, 1,425 matched routines,
   427 private mutations, 125 optimized seeds, +473 named bytes (all route-executed), 255 new fully covered instructions. Two whole-table
   pre-check seeds (`0xaebbf86cfffe`, `0x5EED0BF2`; 5.57 M states each, zero mismatches; logs `D:/f117-gate/p2-batch-bg-prechecks/`). Audit: every entry
   is `:partial` and `NOBLOCKS`/`XB` per body (the stock audit rejects hand-back and hand-claimed blocks). Merged harness hunks: probe-tail and
@@ -209,31 +217,30 @@ governs day-to-day work.
   rounds back to back (three agents, masks 0x000F0000 / 0x00F00000 / 0x0F000000, `finish_all.py` on each round, no gate between),
   then integrate and gate once at about 25-40 routines. Merge the agents' harness hunks into one form before integrating (they
   overlap in `io_r`). A failed gate costs more with a big batch: keep the audit and both pre-check seeds before every gate.
-- **Expected value.** bf's 61 bytes moved the weighted P2 score by about 0.03; about 1,600 bytes (roughly 40 small routines) is
-  worth about 0.5-0.8 points per gate, which is decent with about 18 points left. **Matching alone tops out near 87% P2**
-  (all 10,852 unmatched executed bytes are worth about 5 points: about 3.7 matched-functions plus about 1.5 naming).
-- **The accounted-for checklist holds the other ~10 points** (715 of 44,641 bytes, 1.6%). Credit needs an independent second
-  reader per entry (`docs/reference-reviewed.tsv`; never self-review to raise the score). The refreshed private inventory
-  `D:/f117-gate/unmatched-reference-20261026/` reconciles the current scope against accepted bf; refresh again after bg.
-  Its unresolved names/statuses are inventory, not claims that matching is impossible (Next steps 3).
-  After the first big matching gate, run a **checklist trial**: a few dozen entries per commit, fresh agents as second readers
-  who see only the disassembly and the proposed name; count how many pass before planning more (Next steps 3).
-- **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 9,062 of the 10,852 unmatched executed bytes:
-  the `.117` overlays 7,008 (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG`
-  drivers 2,468 ("AdLib Logo 7-18-91", "RolandMT-32 3-25-91", "IBM Logo 7-12-91": earlier dates and logo names, plausibly a
-  reusable MicroProse driver; whether other games shipped them is unverified and does not matter for scope). They keep counting in
-  the P2 denominators, as decided on 21 Oct.
-0. **Batch bg is accepted; the bg4 preparations stay private and unproved.** Archived in `D:/f117-gate/bg-handoff-20261026/`. Open:
-   ASOUND.117 `1048` (authored body/fixture/35 mutants, build passes, no lock/seeds/mutants) and `123E` (placeholder body); ASOUND.LOG `0BFC`
-   (unbuilt, open code-alias/self-write guard question); ISOUND.117 `062E` and `0443` (authored, unbuilt; their `HANDOFF.md` files describe
-   below-entry spans and coverage-origin hunks; RET `0442` cannot run from `062E`'s special path, so `0443` must exercise it). Status:
-   `bg4-stop-status.json`, `bg-stop-status-c.json`; plan `unmatched-reference-20261026/next-family-plan.md` (four units, about 1,396 executed
-   bytes projected, no credit yet). Blocked ISOUND.LOG `05A1` `066D` `0715` `071D` remain false leads.
+- **Expected value (updated 26 Oct, after batch bh and the full checklist pass).** What is left in P2: about 3.1 points in matched functions
+  (9,456 unmatched executed bytes), about 4.2 in naming, about 5.4 in the accounted-for checklist: roughly 12.7 points. Round two (five larger
+  routines, 1,410 named bytes) moved P2 by about 0.2; the full blind checklist pass moved it by about 5.
+- **The accounted-for checklist is now the largest lever (owner decision 26 Oct: do the whole checklist, every entry blind-read by an independent
+  reader, cost is no object, optimise wall time only).** `D:/f117-gate/checklist-full-20261026/` holds 912 units that partition exactly the 43,920
+  then-unreviewed bytes (`reconcile.py`: 0 missing, 0 extra, 0 overlaps), `READER-BRIEF.md`, `AGENT-PROMPT.md`, per-group manifests (`groups/R###.txt`) and
+  `adopt.py` (tabulates `reads/`, stages only ACCEPT units whose reader-judged status equals the proposal, never stays-original/dead/probable-dead, and
+  validates on a COPY of the repository TSV). **Round 1 (156 fresh readers, 912 verdicts): 444 units / 19,928 bytes adopted** (`staged-round1.tsv`, applied in
+  the batch bh commit: 780 -> 20,708 of 44,714 bytes, 46.31%, P2 82.14% -> 87.27%); 368 accept-with-changes, 21 needs-context, 13 reject and 66 status
+  mismatches are NOT adopted. Reader names and ranges were corrected where they over-claimed (a retry named a failure, an arm named a whole function, a
+  range cutting a function mid-instruction). **Round 2** (`round2/`, built by an agent: corrected claims, fresh packets, different readers, `adopt_r2.py`)
+  re-reads those 468 units (about 24,000 bytes); then repeat until nothing is left but units that need an owner decision. A harness limit: at most 20
+  concurrent subagents, so launch readers as slots free (about 15-20 minutes for 156 groups).
+- **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 7,666 of the 9,456 unmatched executed bytes (after bh): the
+  `.117` overlays (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG` drivers ("AdLib Logo 7-18-91",
+  "RolandMT-32 3-25-91", "IBM Logo 7-12-91": earlier dates and logo names, plausibly a reusable MicroProse driver; whether other games shipped them is
+  unverified and does not matter for scope). They keep counting in the P2 denominators, as decided on 21 Oct.
+0. **Batch bh accepted (the bg4 five). What is left of the private bg work:** nothing proved. Archive `D:/f117-gate/bg-handoff-20261026/`; blocked
+   ISOUND.LOG `05A1` `066D` `0715` `071D` remain false leads. Next matching leads: see item 1.
    - **Integration traps that still apply:** integrate with `safe_integrate.py`, diff each proof's `tests-base.c` against HEAD (`diff --strip-trailing-cr`:
      the bg3 copies had CRLF), merge every `io_r` control and reset each per state, keep the default-disabled RNG stream, run `audit_private.py` from the
      newest accepted batch (stock is identical), and put `NOBLOCKS` on bodies with no `XB` macro. Extra seeds use `extra-*.log`: the kit requires exactly five
      standard logs. `new_batch.py` takes `name::partial` (two colons) for a partial entry with an auto-detected prefix.
-1. **Match the rest of the sound drivers** (9,062 of the 10,852 unmatched executed bytes after bg). The RSOUND.LOG timer
+1. **Match the rest of the sound drivers** (7,666 of the 9,456 unmatched executed bytes after bh). The RSOUND.LOG timer
    installer is done. Check the registry and current named coverage before selecting any lead: `D:/f117-gate/ay-next-leads/leads.md`
    predates batches bb to bf. Still open there: wrapper/dispatch entry points (relocated `mov ds`, indirect calls), the
    remaining installers that end `CLI ... STI; RET` (stop after the STI; bc and bf matched five), the hardware wait loops above,
@@ -268,7 +275,7 @@ governs day-to-day work.
      do not integrate it as proved.
    Not on the list: DSWAP `3DF3` (2,791 zero bytes of data, already excluded) and the design-rule originals.
    Add these to a batch once the driver leads run low.
-3. **Reference/checklist trial prepared, no second reads or credit yet:**
+3. **Reference/checklist: trial and the full round 1 are done and credited (see 'The accounted-for checklist is now the largest lever' above); round 2 is in preparation.** Background kept for reference:
    `D:/f117-gate/unmatched-reference-20261026/` replaces the stale 21 Oct inventory for planning. Its current
    classifier-based refresh against accepted bf has 741 rows / 37,032 distinct unmatched reference bytes
    (29,576 distinct naming-workload bytes plus 7,456 labeled original/dead exclusions); no duplicate, omitted
