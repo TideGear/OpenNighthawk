@@ -24,10 +24,12 @@ This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/Ti
    not just the review snapshot: every staged byte was a new checklist byte, no overlap, gameplay and naming unchanged.
    Current checklist: **34,684 / 44,714 bytes (77.57%)**, 10,030 still unreviewed. The older packet snapshot had 44,700:
    **14 current-scope bytes were absent**; exact addresses are in `round2/unreviewed-outside-round2.tsv` and must enter round 3.
-2. **Checklist round 3 is complete and adopted:** 228 packets / 46 groups read by fresh blind readers; 101 units / 185 rows / 4,476 bytes adopted
-   (`fcc5cfb`); checklist **39,160 / 44,714 (87.58%)**, 5,554 bytes without an entry (the ACCEPT-WITH-CHANGES, NEEDS-CONTEXT, REJECT and refused units of
-   rounds 2 and 3). Next is a round 4 over those: corrected names/ranges, more context, fresh readers. Work is under
-   `D:/f117-gate/checklist-full-20261026/` (`round3/` has the scripts; copy them for round 4).
+2. **Checklist rounds 2, 3 and 3b are adopted:** round 3 read 228 packets / 46 groups with fresh blind readers; 101 units / 4,476 bytes adopted (`fcc5cfb`);
+   round 3b re-checked the 38 ACCEPT units the stager refused for range wording with an exact leading-range match: 19 units / 1,344 bytes adopted.
+   Checklist **40,504 / 44,889 (90.23%)**; 4,385 bytes still without an entry. The denominator grew by 175 bytes (ASOUND.LOG, RSOUND.117) when batches bi and bj
+   matched routines whose extra bytes entered the scope: `D:/f117-gate/checklist-full-20261026/round3b/unreviewed-outside-round3b.tsv`. Next is round 4 over: 10 + 43 ACCEPT
+   units refused for status differences, 9 with differing ranges, 27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT (round 3), the round 2 leftovers, and the 175 new bytes.
+   Work is under `D:/f117-gate/checklist-full-20261026/` (`round3/` and `round3b/` have the scripts).
 3. **Batches bi and bj are accepted (CI green for bi; bj pending):** bj = ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`; evidence `D:/f117-gate/p2-batch-bj-accept/`.
    **ASOUND.LOG `00FE` is withdrawn** (private proof `p2-asound-log-bj-00FE` is green in lockstep but diverges on the real `setup_calibration` route: IRQ boundary after the nested `call 00DA`);
    re-prove it against the real sampler or keep it original. Debug recipe: recomp vs `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect, `--dump 0:10` at budgets. The kit scripts now carry the two audit widenings (see roadmap bi);

@@ -369,35 +369,35 @@
       "fixture_only": 26559,
       "remaining": 7955,
       "original_awaiting_review": 20,
-      "reviewed_entries": 1558,
+      "reviewed_entries": 1599,
       "checklist": {
         "bytes": 44889,
-        "with_reviewed_entry": 39160,
-        "without_reviewed_entry": 5729,
+        "with_reviewed_entry": 40504,
+        "without_reviewed_entry": 4385,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 20350,
-            "without_reviewed_entry": 3174
+            "with_reviewed_entry": 21337,
+            "without_reviewed_entry": 2187
           },
           "never_run": {
-            "with_reviewed_entry": 3652,
-            "without_reviewed_entry": 642
+            "with_reviewed_entry": 3705,
+            "without_reviewed_entry": 589
           },
           "slots": {
             "with_reviewed_entry": 5,
             "without_reviewed_entry": 0
           },
           "supp-credited": {
-            "with_reviewed_entry": 2234,
-            "without_reviewed_entry": 801
+            "with_reviewed_entry": 2266,
+            "without_reviewed_entry": 769
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 12810,
-            "without_reviewed_entry": 999
+            "with_reviewed_entry": 13048,
+            "without_reviewed_entry": 761
           },
           "unreached": {
-            "with_reviewed_entry": 109,
-            "without_reviewed_entry": 113
+            "with_reviewed_entry": 143,
+            "without_reviewed_entry": 79
           }
         }
       },
@@ -538,7 +538,7 @@
           "remaining": 273,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 3028,
+          "not_in_denominator_reviewed": 3226,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {
@@ -571,7 +571,7 @@
           "remaining": 118,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
-          "not_in_denominator_reviewed": 4276,
+          "not_in_denominator_reviewed": 4582,
           "in_previous_scope": 3436
         },
         "START": {
@@ -582,7 +582,7 @@
           "remaining": 251,
           "original_awaiting_review": 20,
           "not_in_denominator": 5924,
-          "not_in_denominator_reviewed": 5518,
+          "not_in_denominator_reviewed": 5558,
           "in_previous_scope": 36488
         },
         "VGAME": {
@@ -593,7 +593,7 @@
           "remaining": 549,
           "original_awaiting_review": 0,
           "not_in_denominator": 12107,
-          "not_in_denominator_reviewed": 9017,
+          "not_in_denominator_reviewed": 9817,
           "in_previous_scope": 71936
         }
       }
