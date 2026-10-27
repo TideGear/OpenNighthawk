@@ -218,14 +218,23 @@ not the recompilation:
       reads the return stack through SS, and recognizes its tail-called writer's outer RET. Three whole-table pre-check seeds passed;
       all 53 reached routes agreed with matched routines disabled. Acceptance 1,659 s, 688 tests, 63 identical routes / 62 fresh interpreter sessions.
       Evidence `D:/f117-gate/p2-batch-bk-accept/`; independent private-proof verification `root-private-verification.json`.
+      **Batch bl (27 Oct):** the largest batch so far, 33 routines proved by three proof agents working beside each other, with every check kept: Roland chains RSOUND.LOG `0390` `0306` `03FA` and RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`;
+      ISOUND.117 `0079` `0045`; ASOUND.117 `0BD4` `0C08` `0B76` `197B` `018F` `0210` and the song/voice-start wrappers `064D` `0670` `0876` `08E8` `089C` `085F` `0903`
+      `0640` `0662` `0669` `068D` `06BE` `06E8` `0704` `08BE` `08CC` `08E1`. +892 named bytes, 334 fixture instructions, 900 mutations caught, 165 optimized seed checks.
+      `0306` and `0C72` are 10-byte hand-backs into the already matched MPS writers; `089C` needed a `g_cov_ip` row for its lone RET below the entry; `0E70` needed the
+      `0E4C` outer-RET recognition extended; `0045` and `0BD4` needed the native INT 1A function 2 answer. ASOUND.117 `025A` was **blocked**: it ends in a loop that polls six
+      voice bytes only the timer interrupt clears, so no lockstep state reaches its RET. Pre-checks: two whole-table seeds (`0xa1bc7fe770f2`, `0x5EED0B12`; 5.83 M states each,
+      zero mismatches) and all 49 reached routes agree with matched routines disabled (`route_precheck.py` on all 33 entries). Acceptance 2,078 s, 721 tests,
+      63 identical routes / 62 fresh interpreter sessions. P2 92.59% -> 93.01%; unmatched executed bytes 7,537 -> 6,659. Evidence `D:/f117-gate/p2-batch-bl-accept/`,
+      pre-checks `D:/f117-gate/bl-prechecks/`.
       **Accounted-for checklist (26 Oct):** a full blind second-read pass over the 43,920 unreviewed bytes (912 units, 156 independent readers) adopted
       444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. Round 2 re-cut the remainder into 588 packets / 79 independent reader groups: all read,
       367 units / 13,976 bytes adopted in 523 rows. Round 2 finished at 34,684 / 44,714 (77.57%), P2 90.40%.
       The 221 unadopted units (10,016 bytes), plus 14 current-scope bytes absent from the older packet snapshot,
       went into corrected round-3 packets. Round 3 read 228 packets / 46 groups and adopted 101 units / 4,476 bytes;
       round 3b adopted another 19 units / 1,344 bytes after an exact leading-range check. Current checklist:
-      **40,504 / 44,889 bytes (90.23%)**, with 4,385 bytes still without an entry. The denominator includes 175 newly scoped
-      bytes from batches bi and bj. Round 4 must retain those bytes and every refused or unresolved earlier unit.
+      **40,504 / 44,906 bytes (90.20%)**, with 4,402 bytes still without an entry. The denominator includes 192 newly scoped
+      bytes from batches bi, bj and bl. Round 4 must retain those bytes and every refused or unresolved earlier unit.
       No matching credit or exclusions were added by these reviews.
       Evidence `D:/f117-gate/checklist-full-20261026/`.
       **What is left:** the sound drivers hold most of the unmatched executed
@@ -277,7 +286,7 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to bk (16-27 October 2026)
+### Batches e to bl (16-27 October 2026)
 
 Every batch below passed the same proof (see above): five seeds per routine
 with every instruction reached, all mutations caught, exact boot (26
@@ -347,6 +356,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bi | 26 Oct | 1,432 | 1,393 named bytes | ASOUND.117 `0E8A`, RSOUND.117 `0002`. 542 fixture instructions, 122 mutations caught. Gate 1,714 s. |
 | bj | 26 Oct | 1,436 | 283 named bytes | ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`. 107 fixture instructions, 124 mutations caught. Gate 1,694 s. ASOUND.LOG `00FE` withdrawn after a real-route divergence. |
 | bk | 27 Oct | 1,444 | 418 named bytes | ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`, RSOUND.117 `0E4C` `0CAE`. 140 fixture instructions, 228 mutations caught, 40 optimized seed checks. Three whole-table pre-check seeds and all 53 reached routes pass. 688 CTests, 63 identical routes / 62 fresh interpreter sessions; acceptance 1,659 s. Evidence `D:/f117-gate/p2-batch-bk-accept/`. |
+| bl | 27 Oct | 1,477 | 892 named bytes | 33 routines: eight Roland (RSOUND.LOG `0390` `0306` `03FA`, RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`), two ISOUND.117 (`0079` `0045`), six ASOUND.117 helpers (`0BD4` `0C08` `0B76` `197B` `018F` `0210`) and 17 ASOUND.117 song/voice-start wrappers. 334 fixture instructions, 900 mutations caught, 165 optimized seed checks. Two whole-table pre-check seeds and all 49 reached routes pass. 721 CTests, 63 identical routes / 62 fresh interpreter sessions; acceptance 2,078 s. Evidence `D:/f117-gate/p2-batch-bl-accept/`. |
 
 Notes that still matter:
 

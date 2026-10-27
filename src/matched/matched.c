@@ -95203,7 +95203,1196 @@ static int asound_117_noise_step_far_entry(machine_t *m)
 #undef XB
 }
 
+/* RSOUND.LOG 0390: send a list of Roland messages. DS:[031Eh] holds a list of message lists: each message list is a
+ * run of bytes ended by FFh, the whole table ends with one more FFh (a list that would start with FFh is the end).
+ * No arguments, no result; the routine reads only through DS and neither sets DS nor SS.
+ *  - AX = 031Eh and CALL 0349 sends the first message (0349 sends the header, the bytes of the list at AX, the
+ *    checksum, F7h and a delay). 0349 leaves SI on the FFh that ended the list it was given.
+ *  - INC SI steps past that FFh, AX = SI, BL = the byte at DS:SI. When BL is not FFh the next list starts there
+ *    and the routine calls 0349 again with AX = SI. When it is FFh the table is finished and the routine returns
+ *    with a near RET (flags from the CMP, AX = SI, BL = FFh, SI past the last FFh).
+ * Callee: 0349 (near, plain RET: the caller has no arguments to remove; it uses AX as the list and returns SI
+ * on the list's terminator). It sends through the MPU-401 and waits, so a call that does not return in the clock
+ * left is left to the original, which carries on from where the machine is. */
+static int rsound_log_send_message_list(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { TABLE = 0x031E, SEND_MESSAGE = 0x0349 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    c->icount += 1;                                               /* 0390 lea ax,[031Eh] */
+    c->r[R_AX] = TABLE;
+    for (;;) {
+        SM4_NEED(1, 0x0394);
+        XRUN(guest_call_pop(m, SEND_MESSAGE, 0x0397, 0));         /* call 0349: send the list at AX */
+        XB(5, 0x0397);                                            /* inc si / mov ax,si / mov bl,[si] / cmp bl,FFh / jne 0394 */
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        c->r[R_AX] = c->r[R_SI];
+        set_r8(c, R_BL, ds_get8(c, c->r[R_SI]));
+        alu_op(c, 7, get_r8(c, R_BL), 0xFF, 0);
+        if (!x86_cond(c, 5)) break;
+    }
+    XB(1, 0x03A1);                                                /* ret */
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 0CF5: send a list of Roland messages. DS:[153Ah] holds a list of message lists: each message list is a
+ * run of bytes ended by FFh, the whole table ends with one more FFh (a list that would start with FFh is the end).
+ * No arguments, no result; the routine reads only through DS and neither sets DS nor SS.
+ *  - AX = 153Ah and CALL 0CAE sends the first message (0CAE sends the header, the bytes of the list at AX, the
+ *    checksum, F7h and a delay). 0CAE leaves SI on the FFh that ended the list it was given.
+ *  - INC SI steps past that FFh, AX = SI, BL = the byte at DS:SI. When BL is not FFh the next list starts there
+ *    and the routine calls 0CAE again with AX = SI. When it is FFh the table is finished and the routine returns
+ *    with a near RET (flags from the CMP, AX = SI, BL = FFh, SI past the last FFh).
+ * Callee: 0CAE (near, plain RET: the caller has no arguments to remove; it uses AX as the list and returns SI
+ * on the list's terminator). It sends through the MPU-401 and waits, so a call that does not return in the clock
+ * left is left to the original, which carries on from where the machine is. */
+static int rsound_117_send_message_list(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { TABLE = 0x153A, SEND_MESSAGE = 0x0CAE };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    c->icount += 1;                                               /* 0CF5 lea ax,[153Ah] */
+    c->r[R_AX] = TABLE;
+    for (;;) {
+        SM4_NEED(1, 0x0CF9);
+        XRUN(guest_call_pop(m, SEND_MESSAGE, 0x0CFC, 0));         /* call 0CAE: send the list at AX */
+        XB(5, 0x0CFC);                                            /* inc si / mov ax,si / mov bl,[si] / cmp bl,FFh / jne 0CF9 */
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        c->r[R_AX] = c->r[R_SI];
+        set_r8(c, R_BL, ds_get8(c, c->r[R_SI]));
+        alu_op(c, 7, get_r8(c, R_BL), 0xFF, 0);
+        if (!x86_cond(c, 5)) break;
+    }
+    XB(1, 0x0D06);                                                /* ret */
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 0306 (near): the checksumming entry of the Roland driver's MPU-401 byte writer. BL holds the byte to send
+ * and DS the driver's data segment (the routine neither reads nor sets it). It keeps a running 8-bit sum of the
+ * bytes sent: PUSH BX, BL = BL + DS:[02FFh] (ADD: the flags are the ADD's), DS:[02FFh] = BL, POP BX (so BX, and BL,
+ * come back unchanged; only the memory cell and the flags change). The routine then falls straight into the byte
+ * writer at 0310 (the instruction after the POP), which is claimed once by its own proof (rsound_log_mpu_write_data_wait_ready);
+ * this body claims only the four instructions at 0306..030F (10 bytes, 4 clocks) and hands back at 0310. */
+static int rsound_log_add_to_checksum(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CHECKSUM = 0x02FF, BYTE_WRITER = 0x0310 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x0306);                                                /* push bx / add bl,[02FFh] / mov [02FFh],bl / pop bx */
+    x86_push_reg(c, R_BX);
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 0, get_r8(c, R_BL), ds_get8(c, CHECKSUM), 0));
+    ds_put8(c, CHECKSUM, get_r8(c, R_BL));
+    c->r[R_BX] = cpu_pop16(c);
+    c->ip = BYTE_WRITER;                                          /* the byte writer, original or matched */
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 0C72 (near): the checksumming entry of the Roland overlay's MPU-401 byte writer. BL holds the byte to send
+ * and DS the driver's data segment (the routine neither reads nor sets it). It keeps a running 8-bit sum of the
+ * bytes sent: PUSH BX, BL = BL + DS:[151Fh] (ADD: the flags are the ADD's), DS:[151Fh] = BL, POP BX (so BX, and BL,
+ * come back unchanged; only the memory cell and the flags change). The routine then falls straight into the byte
+ * writer at 0C7C (the instruction after the POP), which is claimed once by its own proof (rsound_117_mpu_write_data_wait_ready);
+ * this body claims only the four instructions at 0C72..0C7B (10 bytes, 4 clocks) and hands back at 0C7C. */
+static int rsound_117_add_to_checksum(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CHECKSUM = 0x151F, BYTE_WRITER = 0x0C7C };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x0C72);                                                /* push bx / add bl,[151Fh] / mov [151Fh],bl / pop bx */
+    x86_push_reg(c, R_BX);
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 0, get_r8(c, R_BL), ds_get8(c, CHECKSUM), 0));
+    ds_put8(c, CHECKSUM, get_r8(c, R_BL));
+    c->r[R_BX] = cpu_pop16(c);
+    c->ip = BYTE_WRITER;                                          /* the byte writer, original or matched */
+    return 1;
+#undef XB
+}
+
+/* RSOUND.117 0E70: the Roland overlay's "channel volume to 100" message sender: a MIDI control change (status B0h OR
+ * the channel in DX) for controller 07h (channel volume) with the value 64h (100). It is the sibling of the pitch-bend
+ * sender 0E4C (same running-status logic; its own constants and one flag-free MOV in place of SUB BX,BX). The channel
+ * arrives in DX (the caller is the voice-start tail 0EE2, which passes the voice number); DS is the driver's data
+ * segment, whatever the caller left; the routine neither reads nor sets it. Plain RET, no arguments on the stack.
+ *  - DX = DX OR B0h (flags as that OR leaves them); BX = DX, so BL is the status. BL is compared (CMP [130Ch],BL)
+ *    with the last status written, [130Ch].
+ *  - Running status: if they are equal the status is not sent again. If they differ, [130Ch] = [130Dh] = BL and
+ *    the status goes out through 0C7C (the MPU-401 byte writer: BL = the byte; polls port 331h, writes port 330h;
+ *    plain RET; here original code or a fixture stub), then AL = [130Dh].
+ *  - BX = 7 (MOV: no flags), call 0C7C (controller number 07h); BL = 64h; and the last byte goes out by JMP 0C7C:
+ *    the writer's own RET then returns to the caller, so this routine has no RET of its own. AX, BX, CX, DX and the
+ *    flags are what the writer left. When a call has not returned (the clock's limit came first) the original
+ *    carries on from where the machine is. */
+static int rsound_117_send_channel_volume_100(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { STATUS_NOW = 0x130D, STATUS_SENT = 0x130C, WRITER = 0x0C7C };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x0E70);                                       /* or dx,B0h .. je 0E8A */
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], 0x00B0, 1);
+    c->r[R_BX] = c->r[R_DX];
+    (void)alu_op(c, 7, ds_get8(c, STATUS_SENT), get_r8(c, R_BL), 0);
+    if (!x86_cond(c, 4)) {
+        XB(2, 0x0E7C);                                   /* mov [130Ch],bl / mov [130Dh],bl */
+        ds_put8(c, STATUS_SENT, get_r8(c, R_BL));
+        ds_put8(c, STATUS_NOW, get_r8(c, R_BL));
+        SM4_NEED(1, 0x0E84);
+        XRUN(guest_call_pop(m, WRITER, 0x0E87, 0));      /* call 0C7C */
+        XB(1, 0x0E87);                                   /* mov al,[130Dh] */
+        set_r8(c, R_AL, ds_get8(c, STATUS_NOW));
+    }
+    XB(1, 0x0E8A);                                       /* mov bx,7 */
+    c->r[R_BX] = 0x0007;
+    SM4_NEED(1, 0x0E8D);
+    XRUN(guest_call_pop(m, WRITER, 0x0E90, 0));          /* call 0C7C */
+    XB(2, 0x0E90);                                       /* mov bl,64h / jmp 0C7C */
+    set_r8(c, R_BL, 0x64);
+    {   /* the tail jump: run 0C7C until its RET takes the caller's return address, which is on the stack now */
+        const uint8_t on_ = m->trap_on;
+        const uint16_t tcs_ = m->trap_cs, tip_ = m->trap_ip, tsp_ = m->trap_sp;
+        const uint64_t until_ = m->run_until;
+        c->ip = WRITER;
+        m->trap_on = 1;
+        m->trap_cs = c->seg[S_CS];
+        m->trap_ip = seg_read16(c, c->seg[S_SS], c->r[R_SP]);
+        m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int rc_ = matched_runner(m);
+        m->run_until = until_;
+        m->trap_on = on_; m->trap_cs = tcs_; m->trap_ip = tip_; m->trap_sp = tsp_;
+        c->io_cross = 0;
+        (void)rc_;
+    }
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* RSOUND.117 112F: the Roland overlay's "silence everything and set the channels up" routine. No arguments, no result.
+ * DS is the driver's data segment, whatever the caller left; the routine neither reads nor sets it. Plain RET.
+ *  - Calls 0B42 (the sequencer reset; plain RET, a setter on the voice records) and loads CX = 9 (the channel counter).
+ *  - Nine passes (CX = 9 down to 1, the LOOP at 116B), each pushing CX first and popping it after the sends, because the
+ *    MPU byte writer 0C7C clobbers CX. A pass: BL = (CX OR B0h), a MIDI control-change status for channel CX, is stored
+ *    in DS:[130Ch] (the last status sent, as the running-status senders 0E4C/0E70 read it) and sent by call 0C7C; then
+ *    eight more calls to 0C7C, each after loading BL with one byte: 7Bh, 00h (controller 123, all notes off), 79h, 00h
+ *    (controller 121, reset all controllers), 07h, 64h (controller 7, channel volume 100), 0Ah, 40h (controller 10,
+ *    pan centre).
+ *  - After the loop AX = 153Ah and it calls 0CAE (the checksummed message sender; plain RET) to send the list there.
+ *  - Finally it stores 64h in the eight voice volume cells DS:[229Ch], [22BEh], [22E0h], [2302h], [2324h], [2346h],
+ *    [2368h] and [238Ah] (22h bytes apart) and returns. AX, BX, CX, DX, SI and the flags are what the callees and the
+ *    last MOV (flag-free) leave. When a call has not returned (the clock's limit came first) the original carries on
+ *    from where the machine is. */
+static int rsound_117_all_notes_off_and_reset_channels(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { STATUS_SENT = 0x130C, WRITER = 0x0C7C, RESET_RECORDS = 0x0B42, SEND_MESSAGE = 0x0CAE, MESSAGE_LIST = 0x153A };
+    static const uint8_t data_bytes[8] = { 0x7B, 0x00, 0x79, 0x00, 0x07, 0x64, 0x0A, 0x40 };
+    static const uint16_t volume_cells[8] = { 0x229C, 0x22BE, 0x22E0, 0x2302, 0x2324, 0x2346, 0x2368, 0x238A };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    XRUN(guest_call_pop(m, RESET_RECORDS, 0x1132, 0));            /* call 0B42 */
+    XB(1, 0x1132);                                                /* mov cx,9 */
+    c->r[R_CX] = 0x0009;
+    for (;;) {
+        XB(4, 0x1135);                                            /* push cx / mov bl,cl / or bl,B0h / mov [130Ch],bl */
+        x86_push_reg(c, R_CX);
+        set_r8(c, R_BL, get_r8(c, R_CL));
+        set_r8(c, R_BL, (uint8_t)alu_op(c, 1, get_r8(c, R_BL), 0xB0, 0));
+        ds_put8(c, STATUS_SENT, get_r8(c, R_BL));
+        SM4_NEED(1, 0x113F);
+        XRUN(guest_call_pop(m, WRITER, 0x1142, 0));               /* call 0C7C: the status byte */
+        for (unsigned k = 0; k < 8; k++) {
+            XB(1, (uint16_t)(0x1142 + 5 * k));                    /* mov bl,data byte */
+            set_r8(c, R_BL, data_bytes[k]);
+            SM4_NEED(1, (uint16_t)(0x1144 + 5 * k));
+            XRUN(guest_call_pop(m, WRITER, (uint16_t)(0x1147 + 5 * k), 0));   /* call 0C7C: the data byte */
+        }
+        XB(2, 0x116A);                                            /* pop cx / loop 1135 */
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0) break;
+    }
+    XB(1, 0x116D);                                                /* lea ax,[153Ah] */
+    c->r[R_AX] = MESSAGE_LIST;
+    SM4_NEED(1, 0x1171);
+    XRUN(guest_call_pop(m, SEND_MESSAGE, 0x1174, 0));             /* call 0CAE */
+    XB(9, 0x1174);                                                /* eight mov byte [volume cell],64h / ret */
+    for (unsigned k = 0; k < 8; k++) ds_put8(c, volume_cells[k], 0x64);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 0C2D: the Roland overlay's one-shot channel set-up guard. No arguments, no result. DS is the driver's data
+ * segment, whatever the caller left; the routine neither reads nor sets it. Plain RET.
+ *  - CMP byte DS:[151Eh],0: when the flag is not zero the set-up was done already and the routine just returns
+ *    (flags as that CMP leaves them; the JMP to the RET changes nothing).
+ *  - When the flag is zero: call 112F (silence every channel and set up the volumes), call 0CF5 (send the message
+ *    list), set the flag DS:[151Eh] = FFh (MOV: no flags) and return. Both callees are plain RET, no arguments.
+ * When a call has not returned (the clock's limit came first) the original carries on from where the machine is. */
+static int rsound_117_init_channels_once(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DONE_FLAG = 0x151E, ALL_NOTES_OFF = 0x112F, SEND_MESSAGE_LIST = 0x0CF5 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0C2D);                                                /* cmp byte [151Eh],0 / je 0C37 */
+    (void)alu_op(c, 7, ds_get8(c, DONE_FLAG), 0x00, 0);
+    if (x86_cond(c, 4)) {
+        SM4_NEED(1, 0x0C37);
+        XRUN(guest_call_pop(m, ALL_NOTES_OFF, 0x0C3A, 0));        /* call 112F */
+        SM4_NEED(1, 0x0C3A);
+        XRUN(guest_call_pop(m, SEND_MESSAGE_LIST, 0x0C3D, 0));    /* call 0CF5 */
+        XB(1, 0x0C3D);                                            /* mov byte [151Eh],FFh */
+        ds_put8(c, DONE_FLAG, 0xFF);
+    } else {
+        XB(1, 0x0C34);                                            /* jmp 0C42 */
+    }
+    XB(1, 0x0C42);                                                /* ret */
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 03FA, far: the Roland driver's "send one byte to the MPU-401" entry for the caller outside the driver.
+ * One word argument at [BP+6] (the first word above the far return address); only its low byte is used by the writer.
+ * Saves BP and DS, points DS at the driver's own data segment (the relocated immediate of the `mov ax,imm` at 03FEh,
+ * read from the loaded code at 03FFh: the written 00FFh is only the file's value), loads BX with the argument and
+ * calls 0310 (near, plain RET, no pops: the MPU-401 byte writer, BL = the byte; it polls port 331h and writes port
+ * 330h and returns AX and the flags as it leaves them). Exit: POP DS / POP BP / RETF; AX, CX, DX and the flags are
+ * what the writer left, BX is the argument. When the call has not returned (the clock's limit came first) the
+ * original carries on from where the machine is. */
+static int rsound_log_send_byte_far_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WRITER = 0x0310, DATA_SEGMENT_IMM = 0x03FF };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x03FA);                                                /* push bp / mov bp,sp / push ds / mov ax,imm / mov ds,ax / mov bx,[bp+6] */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], DATA_SEGMENT_IMM);   /* the relocated data segment */
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_BX] = bp_get(c, 6);
+    SM4_NEED(1, 0x0406);
+    XRUN(guest_call_pop(m, WRITER, 0x0409, 0));                   /* call 0310: send BL */
+    XB(3, 0x0409);                                                /* pop ds / pop bp / retf */
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ISOUND.117 019C:0079 (far, no arguments): the PC-speaker overlay's shut-down entry.
+ * It saves the caller's DS, loads DS with the overlay's own data segment (the immediate of the MOV AX,imm at 007Ah
+ * is a relocated segment word, so it is read from the loaded code at 007Bh, never baked in) and calls 0163 (near,
+ * plain RET: it clears the playback cells and switches the speaker off). It then copies the byte [77] (the port 61h
+ * value saved when the song started) back to port 61h (OUT 61h,AL: the PC speaker gate; the port is written at the
+ * clock the original makes it, and it wakes neither the PIC nor the PIT handling), passes a JMP to the next
+ * instruction (an I/O delay) and calls 0045 (near, plain RET: it reads the BIOS clock and sets the DOS time from
+ * it through INT 1Ah and INT 21h). The caller's DS is restored and the routine returns FAR (RETF, nothing popped).
+ * Both calls go through the registry (guest_call_pop), so each callee runs as its matched body when one is
+ * installed and as the original's instructions when not. */
+static int isound_117_shutdown_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    cpu_push16(c, c->seg[S_DS]);                                                  /* 0079: push ds */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x007B);                             /* 007A: mov ax,imm (relocated segment) */
+    c->seg[S_DS] = c->r[R_AX];                                                    /* 007D: mov ds,ax */
+    c->icount += 3;
+    SM4_NEED(1, 0x007F);
+    RUN(guest_call_pop(m, 0x0163, 0x0082, 0));                                    /* 007F: call 0163 */
+    SM4_NEED(3 + IO_SLACK(1), 0x0082);
+    set_r8(c, R_AL, ds_get8(c, 0x0077)); c->icount += 1;                          /* 0082: mov al,[77] */
+    x86_out(c, 0x61, 0); c->icount += 1;                                          /* 0085: out 61h,al */
+    c->icount += 1;                                                               /* 0087: jmp 0089 */
+    SM4_NEED(1, 0x0089);
+    RUN(guest_call_pop(m, 0x0045, 0x008C, 0));                                    /* 0089: call 0045 */
+    SM4_NEED(2, 0x008C);
+    c->seg[S_DS] = cpu_pop16(c);                                                  /* 008C: pop ds */
+    far_ret(c);                                                                   /* 008D: retf */
+    c->icount += 2;
+#undef RUN
+    return 1;
+}
+
+/* ISOUND.117 019C:0045 (near, no arguments): set the DOS time from the BIOS real-time clock.
+ * INT 1Ah with AH = 2 answers the time in packed BCD: CH hours, CL minutes, DH seconds. Each of the three bytes goes
+ * through 0065 (near, plain RET, the BCD-to-binary converter: AL in, AL out) and is put back in its register. Then DL
+ * (the hundredths) is cleared and INT 21h with AH = 2Dh sets the DOS clock from CH:CL:DH.DL. The routine returns
+ * with AX, flags and the registers as the last INT left them. Both interrupts are made as translated code makes
+ * them (IP past the INT, the machine's service or the vector takes it, one instruction): when the machine is
+ * elsewhere afterwards the routine returns at once and the original carries on. The three calls of 0065 go through
+ * the registry (guest_call_pop), so each runs as its matched body when one is installed. The load base does not
+ * matter: no relocated word is read. */
+static int isound_117_set_dos_time_from_bios_clock(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_ = c->seg[S_CS]; const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    c->op_cs = cs_; c->op_ip = (at_); c->ip = (next_); \
+    cpu_interrupt(c, (vec_)); c->icount++; m->run_until = until_; \
+    if (c->seg[S_CS] != cs_ || c->ip != (next_) || c->halted) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    set_r8(c, R_AH, 0x02); c->icount += 1;                                        /* 0045: mov ah,2 */
+    XI(0x0047, 0x0049, 0x1A);                                                     /* 0047: int 1Ah (read the RTC time) */
+    XB(1, 0x0049);
+    set_r8(c, R_AL, get_r8(c, R_CH));                                             /* 0049: mov al,ch */
+    SM4_NEED(1, 0x004B);
+    RUN(guest_call_pop(m, 0x0065, 0x004E, 0));                                    /* 004B: call 0065 (hours) */
+    XB(2, 0x004E);
+    set_r8(c, R_CH, get_r8(c, R_AL));                                             /* 004E: mov ch,al */
+    set_r8(c, R_AL, get_r8(c, R_CL));                                             /* 0050: mov al,cl */
+    SM4_NEED(1, 0x0052);
+    RUN(guest_call_pop(m, 0x0065, 0x0055, 0));                                    /* 0052: call 0065 (minutes) */
+    XB(2, 0x0055);
+    set_r8(c, R_CL, get_r8(c, R_AL));                                             /* 0055: mov cl,al */
+    set_r8(c, R_AL, get_r8(c, R_DH));                                             /* 0057: mov al,dh */
+    SM4_NEED(1, 0x0059);
+    RUN(guest_call_pop(m, 0x0065, 0x005C, 0));                                    /* 0059: call 0065 (seconds) */
+    XB(3, 0x005C);
+    set_r8(c, R_DH, get_r8(c, R_AL));                                             /* 005C: mov dh,al */
+    set_r8(c, R_DL, 0x00);                                                        /* 005E: mov dl,0 */
+    set_r8(c, R_AH, 0x2D);                                                        /* 0060: mov ah,2Dh */
+    XI(0x0062, 0x0064, 0x21);                                                     /* 0062: int 21h (set the DOS time) */
+    XB(1, 0x0064);
+    near_ret(c);                                                                  /* 0064: ret */
+#undef XI
+#undef XB
+#undef RUN
+    return 1;
+}
+
+/* ASOUND.117 01B6:0BD4 (near, no arguments): set the DOS time from the BIOS real-time clock.
+ * INT 1Ah with AH = 2 answers the time in packed BCD: CH hours, CL minutes, DH seconds. Each of the three bytes goes
+ * through 0BF4 (near, plain RET, the BCD-to-binary converter: AL in, AL out) and is put back in its register. Then DL
+ * (the hundredths) is cleared and INT 21h with AH = 2Dh sets the DOS clock from CH:CL:DH.DL. The routine returns
+ * with AX, flags and the registers as the last INT left them. Both interrupts are made as translated code makes
+ * them (IP past the INT, the machine's service or the vector takes it, one instruction): when the machine is
+ * elsewhere afterwards the routine returns at once and the original carries on. The three calls of 0BF4 go through
+ * the registry (guest_call_pop), so each runs as its matched body when one is installed. The load base does not
+ * matter: no relocated word is read. */
+static int asound_117_set_dos_time_from_bios_clock(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XI(at_, next_, vec_) do { SM4_NEED(1, (at_)); \
+    const uint16_t cs_ = c->seg[S_CS]; const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    c->op_cs = cs_; c->op_ip = (at_); c->ip = (next_); \
+    cpu_interrupt(c, (vec_)); c->icount++; m->run_until = until_; \
+    if (c->seg[S_CS] != cs_ || c->ip != (next_) || c->halted) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    set_r8(c, R_AH, 0x02); c->icount += 1;                                        /* 0BD4: mov ah,2 */
+    XI(0x0BD6, 0x0BD8, 0x1A);                                                     /* 0BD6: int 1Ah (read the RTC time) */
+    XB(1, 0x0BD8);
+    set_r8(c, R_AL, get_r8(c, R_CH));                                             /* 0BD8: mov al,ch */
+    SM4_NEED(1, 0x0BDA);
+    RUN(guest_call_pop(m, 0x0BF4, 0x0BDD, 0));                                    /* 0BDA: call 0BF4 (hours) */
+    XB(2, 0x0BDD);
+    set_r8(c, R_CH, get_r8(c, R_AL));                                             /* 0BDD: mov ch,al */
+    set_r8(c, R_AL, get_r8(c, R_CL));                                             /* 0BDF: mov al,cl */
+    SM4_NEED(1, 0x0BE1);
+    RUN(guest_call_pop(m, 0x0BF4, 0x0BE4, 0));                                    /* 0BE1: call 0BF4 (minutes) */
+    XB(2, 0x0BE4);
+    set_r8(c, R_CL, get_r8(c, R_AL));                                             /* 0BE4: mov cl,al */
+    set_r8(c, R_AL, get_r8(c, R_DH));                                             /* 0BE6: mov al,dh */
+    SM4_NEED(1, 0x0BE8);
+    RUN(guest_call_pop(m, 0x0BF4, 0x0BEB, 0));                                    /* 0BE8: call 0BF4 (seconds) */
+    XB(3, 0x0BEB);
+    set_r8(c, R_DH, get_r8(c, R_AL));                                             /* 0BEB: mov dh,al */
+    set_r8(c, R_DL, 0x00);                                                        /* 0BED: mov dl,0 */
+    set_r8(c, R_AH, 0x2D);                                                        /* 0BEF: mov ah,2Dh */
+    XI(0x0BF1, 0x0BF3, 0x21);                                                     /* 0BF1: int 21h (set the DOS time) */
+    XB(1, 0x0BF3);
+    near_ret(c);                                                                  /* 0BF3: ret */
+#undef XI
+#undef XB
+#undef RUN
+    return 1;
+}
+
+/* ASOUND.117 01B6:0C08 (far, no arguments): ask the driver routine at 0430 for its answer word.
+ * The caller's DS is saved and DS is loaded with the driver's data segment (the immediate of the MOV AX,imm at 0C09h
+ * is a relocated segment word, so it is read from the loaded code at 0C0Ah, never baked in). The word [17DC] is
+ * cleared, the near routine at 0430 (plain RET, no arguments; it fills [17DC]) is called, and [17DC] is returned
+ * in AX. DS is restored and the routine returns FAR (RETF, nothing popped). The call goes through the registry
+ * (guest_call_pop), so 0430 runs as its matched body when one is installed and as the original's instructions
+ * when not. */
+static int asound_117_noise_voice_status_far_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x0C08);
+    cpu_push16(c, c->seg[S_DS]);                                                  /* 0C08: push ds */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0C0A);                             /* 0C09: mov ax,imm (relocated segment) */
+    c->seg[S_DS] = c->r[R_AX];                                                    /* 0C0C: mov ds,ax */
+    ds_put(c, 0x17DC, 0x0000);                                                    /* 0C0E: mov word [17DC],0 */
+    SM4_NEED(1, 0x0C14);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_pop(m, 0x0430, 0x0C17, 0);               /* 0C14: call 0430 */
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    XB(3, 0x0C17);
+    c->r[R_AX] = ds_get(c, 0x17DC);                                               /* 0C17: mov ax,[17DC] */
+    c->seg[S_DS] = cpu_pop16(c);                                                  /* 0C1A: pop ds */
+    far_ret(c);                                                                   /* 0C1B: retf */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:0B76 (far, one word argument): store a driver mode word and run the routine at 005E.
+ * The routine builds a BP frame (the argument is at [BP+6], above the far return address), saves SI, DI and the
+ * caller's DS, and loads DS with the driver's data segment (the immediate of the MOV AX,imm at 0B7Fh is a relocated
+ * segment word, so it is read from the loaded code at 0B80h, never baked in). The argument, taken into BX before the
+ * pushes, is stored in the word [17E2], and the near routine at 005E (plain RET at its end, no stack arguments) is called.
+ * Afterwards DS, DI, SI and BP are popped and the routine returns FAR (RETF, nothing popped); the caller removes the
+ * argument. The call goes through the registry (guest_call_pop), so 005E runs as its matched body when one is installed
+ * and as the original's instructions when not. */
+static int asound_117_set_voice_mode_far_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0B76);
+    cpu_push16(c, c->r[R_BP]);                                                    /* 0B76: push bp */
+    c->r[R_BP] = c->r[R_SP];                                                      /* 0B77: mov bp,sp */
+    c->r[R_BX] = bp_get(c, 6);                                                    /* 0B79: mov bx,[bp+6] */
+    cpu_push16(c, c->r[R_SI]);                                                    /* 0B7C: push si */
+    cpu_push16(c, c->r[R_DI]);                                                    /* 0B7D: push di */
+    cpu_push16(c, c->seg[S_DS]);                                                  /* 0B7E: push ds */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0B80);                             /* 0B7F: mov ax,imm (relocated segment) */
+    c->seg[S_DS] = c->r[R_AX];                                                    /* 0B82: mov ds,ax */
+    ds_put(c, 0x17E2, c->r[R_BX]);                                                /* 0B84: mov [17E2],bx */
+    SM4_NEED(1, 0x0B88);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_pop(m, 0x005E, 0x0B8B, 0);               /* 0B88: call 005E */
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    XB(5, 0x0B8B);
+    c->seg[S_DS] = cpu_pop16(c);                                                  /* 0B8B: pop ds */
+    c->r[R_DI] = cpu_pop16(c);                                                    /* 0B8C: pop di */
+    c->r[R_SI] = cpu_pop16(c);                                                    /* 0B8D: pop si */
+    c->r[R_BP] = cpu_pop16(c);                                                    /* 0B8E: pop bp */
+    far_ret(c);                                                                   /* 0B8F: retf */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:197B (near, no arguments; DS is the driver's data segment): reset the Sound Blaster DSP.
+ * The word [5B] holds the card type: only 1 or 2 start a reset, any other value answers success (AX = 0) at once.
+ * For a card, DX = the base port [58] with DL raised by 6 (only DL changes, as ADD DL does, so the carry never reaches
+ * DH): the reset port. The reset is the card's sequence: write 1, four reads of the port (the delay the card needs),
+ * write 0. Then the DSP's answer is awaited: up to 64 (40h) times the routine at 193E (near, plain RET: it waits for a
+ * byte at base+0Eh/0Ah and returns it in AL) is called and AL is compared with AAh (the DSP's ready byte); at the
+ * first AAh the answer is AX = 0 (XOR AX,AX), and after 64 misses it is AX = 2 with CF set by STC. Either way the
+ * routine ends with OR AX,AX (flags: SF, ZF, PF from AX, CF and OF cleared) and returns.
+ * Every port access is made at the clock the original makes it (the OUTs may wake the machine, e.g. when the base
+ * port puts the access at an interrupt controller or timer port: the routine then stops at the next instruction
+ * boundary and the original carries on). The call goes through the registry (guest_call_pop), so 193E runs as its
+ * matched body when one is installed and as the original's instructions when not. */
+static int asound_117_sound_blaster_dsp_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    alu_op(c, 7, ds_get(c, 0x005B), 0x0001, 1);                                   /* 197B: cmp word [5B],1 */
+    c->icount += 1;
+    c->icount += 1;                                                               /* 1980: je 1989 */
+    if (!x86_cond(c, 4)) {
+        SM4_NEED(2, 0x1982);
+        alu_op(c, 7, ds_get(c, 0x005B), 0x0002, 1);                               /* 1982: cmp word [5B],2 */
+        c->icount += 1;
+        c->icount += 1;                                                           /* 1987: jne 19AE */
+        if (x86_cond(c, 5)) goto answer_ok;
+    }
+    SM4_NEED(4 + IO_SLACK(1), 0x1989);
+    c->r[R_DX] = ds_get(c, 0x0058); c->icount += 1;                               /* 1989: mov dx,[58] */
+    set_r8(c, R_DL, (uint8_t)alu_op(c, 0, get_r8(c, R_DL), 0x06, 0)); c->icount += 1;   /* 198D: add dl,6 */
+    set_r8(c, R_AL, 0x01); c->icount += 1;                                        /* 1990: mov al,1 */
+    x86_out(c, c->r[R_DX], 0); c->icount += 1;                                    /* 1992: out dx,al (reset on) */
+    SM4_NEED(6 + IO_SLACK(5), 0x1993);
+    for (int k = 0; k < 4; k++) { x86_in(c, c->r[R_DX], 0); c->icount += 1; }     /* 1993-1996: in al,dx x4 (the delay) */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 5, get_r8(c, R_AL), get_r8(c, R_AL), 0)); c->icount += 1;   /* 1997: sub al,al */
+    x86_out(c, c->r[R_DX], 0); c->icount += 1;                                    /* 1999: out dx,al (reset off) */
+    XB(1, 0x199A);
+    set_r8(c, R_BL, 0x40);                                                        /* 199A: mov bl,40h (the tries) */
+    for (;;) {
+        SM4_NEED(1, 0x199C);
+        {
+            const uint64_t until_ = m->run_until;
+            if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+            const int returned_ = guest_call_pop(m, 0x193E, 0x199F, 0);           /* 199C: call 193E */
+            m->run_until = until_;
+            if (!returned_) return 1;
+        }
+        SM4_NEED(2, 0x199F);
+        alu_op(c, 7, get_r8(c, R_AL), 0xAA, 0); c->icount += 1;                   /* 199F: cmp al,0AAh */
+        c->icount += 1;                                                           /* 19A1: je 19AE */
+        if (x86_cond(c, 4)) goto answer_ok;
+        SM4_NEED(2, 0x19A3);
+        set_r8(c, R_BL, (uint8_t)alu_dec(c, get_r8(c, R_BL), 0)); c->icount += 1; /* 19A3: dec bl */
+        c->icount += 1;                                                           /* 19A5: jne 199C */
+        if (!x86_cond(c, 5)) break;
+    }
+    SM4_NEED(3, 0x19A7);
+    c->r[R_AX] = 0x0002;                                                          /* 19A7: mov ax,2 */
+    set_flag(c, F_CF, 1);                                                         /* 19AA: stc */
+    c->icount += 3;                                                               /* 19A7, 19AA, 19AB: jmp 19B0 */
+    goto answer_done;
+answer_ok:
+    SM4_NEED(1, 0x19AE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);               /* 19AE: xor ax,ax */
+    c->icount += 1;
+answer_done:
+    SM4_NEED(2, 0x19B0);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);               /* 19B0: or ax,ax */
+    near_ret(c);                                                                  /* 19B2: ret */
+    c->icount += 2;
+#undef XB
+    return 1;
+}
+
+/* ASOUND.117 01B6:018F (near, no arguments; DS is the driver's data segment): reset the voice records.
+ * The word [17EC] (the flag the timer tick looks at; FFFFh means "busy, leave the records alone") is saved on the stack
+ * and set to FFFFh. AX is cleared and stored to the first four bytes of each of the seven records that start at 190Ah,
+ * 1928h, 1946h, 1964h, 1982h, 19A0h and 19BEh (the records are 1Eh bytes apart), then to the single bytes [19DC] and
+ * [19FC] and to the six words [19FE], [1A00], [1902], [1904], [1906], [1908]. The near routine at 0210 (plain RET, no
+ * arguments: it clears the chip's registers) is called, and the saved [17EC] is put back. The routine returns with the
+ * flags 0210 left. The call goes through the registry (guest_call_pop), so 0210 runs as its matched body when one is
+ * installed and as the original's instructions when not. */
+static int asound_117_reset_voice_records(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static const uint16_t bytes_[30] = {
+        0x190A, 0x190B, 0x190C, 0x190D, 0x1928, 0x1929, 0x192A, 0x192B, 0x1946, 0x1947,
+        0x1948, 0x1949, 0x1964, 0x1965, 0x1966, 0x1967, 0x1982, 0x1983, 0x1984, 0x1985,
+        0x19A0, 0x19A1, 0x19A2, 0x19A3, 0x19BE, 0x19BF, 0x19C0, 0x19C1, 0x19DC, 0x19FC };
+    static const uint16_t words_[6] = { 0x19FE, 0x1A00, 0x1902, 0x1904, 0x1906, 0x1908 };
+    if (!room(c, 39)) return 0;
+    cpu_push16(c, ds_get(c, 0x17EC));                                             /* 018F: push word [17EC] */
+    ds_put(c, 0x17EC, 0xFFFF);                                                    /* 0193: mov word [17EC],FFFFh */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);               /* 0199: xor ax,ax */
+    for (unsigned k = 0; k < 30; k++) ds_put8(c, bytes_[k], get_r8(c, R_AL));     /* 019B-01F2: mov [..],al */
+    for (unsigned k = 0; k < 6; k++) ds_put(c, words_[k], c->r[R_AX]);            /* 01F5-0208: mov [..],ax */
+    c->icount += 39;
+    SM4_NEED(1, 0x0207);
+    {
+        const uint64_t until_ = m->run_until;
+        if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+        const int returned_ = guest_call_pop(m, 0x0210, 0x020A, 0);               /* 0207: call 0210 */
+        m->run_until = until_;
+        if (!returned_) return 1;
+    }
+    SM4_NEED(2, 0x020A);
+    ds_put(c, 0x17EC, cpu_pop16(c));                                              /* 020A: pop word [17EC] */
+    near_ret(c);                                                                  /* 020E: ret */
+    c->icount += 2;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0210 (near, no arguments; DS is the driver's data segment): put the OPL chip into a known state.
+ * 036B (near, plain RET, the OPL register write: AH = 8 selects the write, AL the value, BL the register offset) is called
+ * from four places. Loop 1: BX = 3Fh, AX counts from 5Fh down while it stays at or above 40h (32 writes, each with AH = 8 and
+ * the counter pushed around the call). Loop 2: BX = 0, AX counts from FFh down while at or above 60h (160 writes).
+ * Loop 3: AX counts from 3Fh down to 1 (63 writes; the loop ends when DEC AX reaches zero). Then one more write with
+ * AH = 8, AL = 1, BL = 20h. When the word [17F2] is not zero, BX = 8 and the near routine 18C8 (plain RET: the voice
+ * dispatch) is called. The routine returns with the flags the last instruction left. Every call goes through the
+ * registry (guest_call_pop), so each callee runs as its matched body when one is installed and as the original's
+ * instructions when not. */
+static int asound_117_silence_opl_chip(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 2)) return 0;
+    c->r[R_BX] = 0x003F;                                                          /* 0210: mov bx,3Fh */
+    c->r[R_AX] = 0x005F;                                                          /* 0213: mov ax,5Fh */
+    c->icount += 2;
+    for (;;) {                                                                    /* loop 1 */
+        XB(2, 0x0216);
+        cpu_push16(c, c->r[R_AX]);                                                /* 0216: push ax */
+        set_r8(c, R_AH, 0x08);                                                    /* 0217: mov ah,8 */
+        SM4_NEED(1, 0x0219);
+        RUN(guest_call_pop(m, 0x036B, 0x021C, 0));                                /* 0219: call 036B */
+        XB(4, 0x021C);
+        c->r[R_AX] = cpu_pop16(c);                                                /* 021C: pop ax */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                         /* 021D: dec ax */
+        alu_op(c, 7, c->r[R_AX], 0x0040, 1);                                      /* 021E: cmp ax,40h */
+        if (!x86_cond(c, 3)) break;                                               /* 0221: jae 0216 */
+    }
+    XB(2, 0x0223);
+    c->r[R_BX] = 0x0000;                                                          /* 0223: mov bx,0 */
+    c->r[R_AX] = 0x00FF;                                                          /* 0226: mov ax,FFh */
+    for (;;) {                                                                    /* loop 2 */
+        XB(2, 0x0229);
+        cpu_push16(c, c->r[R_AX]);                                                /* 0229: push ax */
+        set_r8(c, R_AH, 0x08);                                                    /* 022A: mov ah,8 */
+        SM4_NEED(1, 0x022C);
+        RUN(guest_call_pop(m, 0x036B, 0x022F, 0));                                /* 022C: call 036B */
+        XB(4, 0x022F);
+        c->r[R_AX] = cpu_pop16(c);                                                /* 022F: pop ax */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                         /* 0230: dec ax */
+        alu_op(c, 7, c->r[R_AX], 0x0060, 1);                                      /* 0231: cmp ax,60h */
+        if (!x86_cond(c, 3)) break;                                               /* 0234: jae 0229 */
+    }
+    XB(1, 0x0236);
+    c->r[R_AX] = 0x003F;                                                          /* 0236: mov ax,3Fh */
+    for (;;) {                                                                    /* loop 3 */
+        XB(2, 0x0239);
+        cpu_push16(c, c->r[R_AX]);                                                /* 0239: push ax */
+        set_r8(c, R_AH, 0x08);                                                    /* 023A: mov ah,8 */
+        SM4_NEED(1, 0x023C);
+        RUN(guest_call_pop(m, 0x036B, 0x023F, 0));                                /* 023C: call 036B */
+        XB(3, 0x023F);
+        c->r[R_AX] = cpu_pop16(c);                                                /* 023F: pop ax */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                         /* 0240: dec ax */
+        if (!x86_cond(c, 5)) break;                                               /* 0241: jne 0239 */
+    }
+    XB(3, 0x0243);
+    set_r8(c, R_AH, 0x08);                                                        /* 0243: mov ah,8 */
+    set_r8(c, R_AL, 0x01);                                                        /* 0245: mov al,1 */
+    set_r8(c, R_BL, 0x20);                                                        /* 0247: mov bl,20h */
+    SM4_NEED(1, 0x0249);
+    RUN(guest_call_pop(m, 0x036B, 0x024C, 0));                                    /* 0249: call 036B */
+    XB(2, 0x024C);
+    alu_op(c, 7, ds_get(c, 0x17F2), 0x0001, 1);                                   /* 024C: cmp word [17F2],1 */
+    if (!x86_cond(c, 2)) {                                                        /* 0251: jb 0259 */
+        XB(1, 0x0253);
+        c->r[R_BX] = 0x0008;                                                      /* 0253: mov bx,8 */
+        SM4_NEED(1, 0x0256);
+        RUN(guest_call_pop(m, 0x18C8, 0x0259, 0));                                /* 0256: call 18C8 */
+    }
+    XB(1, 0x0259);
+    near_ret(c);                                                                  /* 0259: ret */
+#undef RUN
+#undef XB
+    return 1;
+}
+
+/* ASOUND.117 01B6:064D, near, no arguments: start the song at data offset 0EC0h with a random first value.
+ * Calls the driver's noise step (far 01B6:03C4, the segment taken from the loaded far-call operand so it is the
+ * relocated one: AX = random word, DS:[17E4h] updated, flags those of its last rotate), keeps its low two bits
+ * (AND AX,3, which sets the flags), adds 21h to AL (the first value of the group; ADD sets the flags again), stores AL
+ * in the byte at DS:[0EC0h+6] of the song header, copies that header offset to CX (MOV CX,BX; LEA and MOV do not
+ * touch the flags) and jumps to the voice record thunk at 05E3, which resets the record and ends in a plain RET back to
+ * this routine's caller. This body claims its own 7 instructions (21 bytes) and hands back at 05E3; the far call
+ * runs the noise step as original code and returns here. */
+static int asound_117_start_song_0ec0_random_variant(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XRUN(guest_call_far(m, 0x064D, 0x0652));                        /* lcall 01B6:03C4 */
+    XB(6,0x0652);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0003, 1);                       /* and ax,3 */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x21, 0));                /* add al,21h */
+    c->r[R_BX] = 0x0EC0;                                                           /* lea bx,[0EC0h] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 6), get_r8(c, R_AL));                          /* mov [bx+6],al */
+    c->r[R_CX] = c->r[R_BX];                                                          /* mov cx,bx */
+    c->ip = 0x05E3;                                                                /* jmp 05E3 */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0670, near, no arguments: start the song at data offset 0EDAh with a random first value.
+ * Calls the driver's noise step (far 01B6:03C4, the segment taken from the loaded far-call operand so it is the
+ * relocated one: AX = random word, DS:[17E4h] updated, flags those of its last rotate), keeps its low two bits
+ * (AND AX,3, which sets the flags), adds 01h to AL (the first value of the group; ADD sets the flags again), stores AL
+ * in the byte at DS:[0EDAh+6] of the song header, copies that header offset to CX (MOV CX,BX; LEA and MOV do not
+ * touch the flags) and jumps to the voice record thunk at 05E3, which resets the record and ends in a plain RET back to
+ * this routine's caller. This body claims its own 7 instructions (22 bytes) and hands back at 05E3; the far call
+ * runs the noise step as original code and returns here. */
+static int asound_117_start_song_0eda_random_variant(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XRUN(guest_call_far(m, 0x0670, 0x0675));                        /* lcall 01B6:03C4 */
+    XB(6,0x0675);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0003, 1);                       /* and ax,3 */
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x01, 0));                /* add al,01h */
+    c->r[R_BX] = 0x0EDA;                                                           /* lea bx,[0EDAh] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 6), get_r8(c, R_AL));                          /* mov [bx+6],al */
+    c->r[R_CX] = c->r[R_BX];                                                          /* mov cx,bx */
+    c->ip = 0x05E3;                                                                /* jmp 05E3 */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0876, near; BX is the argument: select the song data offset by bits 3..4 of BX.
+ * BX is shifted right 3 times (SHR BX,1 each, CF/OF from the last shift), masked with 6 (AND BX,6: the flags the
+ * caller sees are the AND's) to a word index 0, 2, 4 or 6, and CX = the word at CS:[BX+086Eh], a table of four song data
+ * offsets in the code segment (read from the loaded code, never copied). Then it jumps to the voice record thunk at
+ * 05DC (hand-back: the thunk resets the record from BX and CX and ends in a plain RET back to this routine's
+ * caller). This body claims its own 6 instructions (17 bytes). */
+static int asound_117_command_0876_data_by_bx_bits_3_4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 6)) return 0;
+    XB(6,0x0876);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);                    /* 0876: shr bx,1 (1) */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);                    /* 0878: shr bx,1 (2) */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);                    /* 087A: shr bx,1 (3) */
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x0006, 1);                        /* 087C: and bx,6 */
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x086E));         /* mov cx,cs:[bx+086Eh] */
+    c->ip = 0x05DC;                                                                /* jmp 05DC */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:08E8, near, no arguments: when the rate word DS:[17F4h] is zero (CMP [17F4h],0 / JNE), set a rate of 1
+ * (MOV BX,1; CALL 03D8: the clamped-rate setter stores it in [17F4h] and the derived 0885h in [17E8h]; plain RET, no
+ * stack arguments). In either case it then loads CX with the data offset 0FA2h (LEA, no flags) and jumps to the 1964h
+ * record thunk at 05CE (handed back there; the thunk resets the record using CX and ends in a plain RET to this
+ * routine's caller). The flags the caller sees are the compare's when the rate was already set, else the setter's.
+ * This body claims its own 6 instructions (20 bytes). */
+static int asound_117_set_rate_one_if_zero_then_data_0fa2_08e8(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x08E8);                                                   /* cmp word ptr [17F4h],0 / jne 08F5 */
+    alu_op(c, 7, ds_get(c, 0x17F4), 0x0000, 1);
+    if (x86_cond(c, 5)) goto l08f5;                                 /* jne: the rate is set */
+    XB(1,0x08EF); c->r[R_BX] = 0x0001;                              /* mov bx,1 */
+    XCALL(0x03D8,0x08F2,0x08F5);                                    /* the clamped-rate setter */
+l08f5:
+    XB(2,0x08F5); c->r[R_CX] = 0x0FA2;                              /* lea cx,[0FA2h] / jmp 05CE */
+    c->ip = 0x05CE;                                                 /* the 1964h record thunk */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:089C, near, no arguments: start the song at data offset 0F3Ch on the 1964h voice record, unless it is
+ * already playing it. CX = 0F3Ch (LEA, no flags); if the record's data word DS:[1972h] differs from CX (CMP [1972h],CX /
+ * JNE) the command goes on at 08AD (`jmp 05CE`, claimed once by its own proof, so this body hands back there). If it is
+ * equal and the record's first byte DS:[1964h] (the active flag) is zero (CMP byte [1964h],0 / JNE) it goes on at 08AD
+ * as well; otherwise (the same song already running) it returns at once through the lone RET at 0838 (a plain RET
+ * below this routine's entry). Flags: those of the last compare. This body claims its own 6 instructions (18 bytes: the 17
+ * from 089C to 08AD and the RET at 0838). The routine's window starts at the RET (config length covers 0838..08AD;
+ * g_cov_ip 0838 in the private harness). */
+static int asound_117_command_089c_data_0f3c_unless_playing_1964(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 3)) return 0;
+    XB(3,0x089C); c->r[R_CX] = 0x0F3C;                              /* lea cx,[0F3Ch] / cmp [1972h],cx / jne 08AD */
+    alu_op(c, 7, ds_get(c, 0x1972), c->r[R_CX], 1);
+    if (x86_cond(c, 5)) goto l08ad;                                 /* jne: another song is on the record */
+    XB(2,0x08A6);                                                   /* cmp byte [1964h],0 / jne 0838 */
+    alu_op(c, 7, ds_get8(c, 0x1964), 0x00, 0);
+    if (x86_cond(c, 5)) {                                           /* jne: the same song is running */
+        XB(1,0x0838);                                               /* ret */
+        near_ret(c);
+        return 1;
+    }
+l08ad:
+    c->ip = 0x08AD;                                                 /* the handler claimed by its own proof */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:085F, near; BX is the argument: select the song data offset by bits 2..3 of BX.
+ * BX is shifted right 2 times (SHR BX,1 each, CF/OF from the last shift), masked with 6 (AND BX,6: the flags the
+ * caller sees are the AND's) to a word index 0, 2, 4 or 6, and CX = the word at CS:[BX+0857h], a table of four song data
+ * offsets in the code segment (read from the loaded code, never copied). Then it jumps to the voice record thunk at
+ * 05E3 (hand-back: the thunk resets the record from BX and CX and ends in a plain RET back to this routine's
+ * caller). This body claims its own 5 instructions (15 bytes). */
+static int asound_117_command_085f_data_by_bx_bits_2_3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 5)) return 0;
+    XB(5,0x085F);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);                    /* 085F: shr bx,1 (1) */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);                    /* 0861: shr bx,1 (2) */
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x0006, 1);                        /* 0863: and bx,6 */
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0857));         /* mov cx,cs:[bx+0857h] */
+    c->ip = 0x05E3;                                                                /* jmp 05E3 */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0903, near, no arguments: reset the voice record 1964h with the data offset 0FC8h, then select
+ * the data offset 0FD4h for the next handler. The first LEA/CALL runs the 1964h record thunk (05CE: loads BX with the
+ * record and resets it using CX as the data offset; plain RET back here); the second LEA falls into the command
+ * handler at 090E (`jmp 05D5`), which is claimed once by its own proof, so this body hands back at 090E.
+ * It claims its own 3 instructions (11 bytes). AX, BX, DX and the flags are whatever the thunk leaves. */
+static int asound_117_reset_voice_records_two_with_data_offsets_0903(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x0903); c->r[R_CX] = 0x0FC8;                              /* lea cx,[0FC8h] */
+    XCALL(0x05CE,0x0907,0x090A);
+    XB(1,0x090A); c->r[R_CX] = 0x0FD4;                              /* lea cx,[0FD4h] */
+    c->ip = 0x090E;                                                 /* falls into the handler at 090E */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0640, near, no arguments: select the sound data offset 0EA4h in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The next instruction is a JMP to the thunk, so the hand-back is the jump itself.
+ * This body claims only its own 2 instruction(s) (7 bytes, 2 clock(s)) and hands back at 05C0, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_0640_data_0ea4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x0640);                                                /* lea cx,[0EA4h] / jmp 05C0 */
+    c->r[R_CX] = 0x0EA4;
+    c->ip = 0x05C0;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0662, near, no arguments: select the sound data offset 0ED2h in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The next instruction is a JMP to the thunk, so the hand-back is the jump itself.
+ * This body claims only its own 2 instruction(s) (7 bytes, 2 clock(s)) and hands back at 05E3, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_0662_data_0ed2(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x0662);                                                /* lea cx,[0ED2h] / jmp 05E3 */
+    c->r[R_CX] = 0x0ED2;
+    c->ip = 0x05E3;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0669, near, no arguments: select the sound data offset 0ECAh in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The next instruction is a JMP to the thunk, so the hand-back is the jump itself.
+ * This body claims only its own 2 instruction(s) (7 bytes, 2 clock(s)) and hands back at 05E3, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_0669_data_0eca(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x0669);                                                /* lea cx,[0ECAh] / jmp 05E3 */
+    c->r[R_CX] = 0x0ECA;
+    c->ip = 0x05E3;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:068D, near, no arguments: select the sound data offset 0EECh in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The next instruction is a JMP to the thunk, so the hand-back is the jump itself.
+ * This body claims only its own 2 instruction(s) (7 bytes, 2 clock(s)) and hands back at 05D5, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_068d_data_0eec(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x068D);                                                /* lea cx,[0EECh] / jmp 05D5 */
+    c->r[R_CX] = 0x0EEC;
+    c->ip = 0x05D5;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:06BE, near, no arguments: initialise the six AdLib voice records (the twin of 0694 with other data offsets).
+ * It loads CX with 0766h, 07B4h, 07CEh, 07EEh, 0830h and calls the record thunks 05E3, 05DC, 05D5, 05CE, 05C7 in turn (each thunk loads BX with its voice record and resets it using CX as the data offset), then loads CX
+ * with 085Ch and jumps to 05C0.
+ * This body claims its own 12 instructions (42 bytes) and hands back at 05C0, which is claimed once by its own proof.
+ * Each call returns with a plain RET and takes no stack arguments; AX, BX, DX and the flags are whatever the thunks
+ * leave (LEA does not touch the flags). */
+static int asound_117_reset_voice_records_with_data_offsets_06be(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x06BE); c->r[R_CX] = 0x0766;
+    XCALL(0x05E3,0x06C2,0x06C5);
+    XB(1,0x06C5); c->r[R_CX] = 0x07B4;
+    XCALL(0x05DC,0x06C9,0x06CC);
+    XB(1,0x06CC); c->r[R_CX] = 0x07CE;
+    XCALL(0x05D5,0x06D0,0x06D3);
+    XB(1,0x06D3); c->r[R_CX] = 0x07EE;
+    XCALL(0x05CE,0x06D7,0x06DA);
+    XB(1,0x06DA); c->r[R_CX] = 0x0830;
+    XCALL(0x05C7,0x06DE,0x06E1);
+    XB(2,0x06E1); c->r[R_CX] = 0x085C;               /* lea cx / jmp */
+    c->ip = 0x05C0;                                  /* 05C0 */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:06E8, near, no arguments: initialise four AdLib voice records.
+ * It loads CX with 0876h, 0992h, 0A9Ah and calls the record thunks 05E3, 05DC, 05D5 in turn (each thunk loads BX with its voice record and resets it using CX as the data offset), then loads CX
+ * with 0B2Eh and jumps to 05CE.
+ * This body claims its own 8 instructions (28 bytes) and hands back at 05CE, which is claimed once by its own proof.
+ * Each call returns with a plain RET and takes no stack arguments; AX, BX, DX and the flags are whatever the thunks
+ * leave (LEA does not touch the flags). */
+static int asound_117_reset_voice_records_four_with_data_offsets_06e8(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x06E8); c->r[R_CX] = 0x0876;
+    XCALL(0x05E3,0x06EC,0x06EF);
+    XB(1,0x06EF); c->r[R_CX] = 0x0992;
+    XCALL(0x05DC,0x06F3,0x06F6);
+    XB(1,0x06F6); c->r[R_CX] = 0x0A9A;
+    XCALL(0x05D5,0x06FA,0x06FD);
+    XB(2,0x06FD); c->r[R_CX] = 0x0B2E;               /* lea cx / jmp */
+    c->ip = 0x05CE;                                  /* 05CE */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0704, near, no arguments: initialise four AdLib voice records (the twin of 06E8 with other data offsets).
+ * It loads CX with 0C76h, 0D10h, 0DB2h and calls the record thunks 05E3, 05DC, 05D5 in turn (each thunk loads BX with its voice record and resets it using CX as the data offset), then loads CX
+ * with 0E24h and jumps to 05CE.
+ * This body claims its own 8 instructions (28 bytes) and hands back at 05CE, which is claimed once by its own proof.
+ * Each call returns with a plain RET and takes no stack arguments; AX, BX, DX and the flags are whatever the thunks
+ * leave (LEA does not touch the flags). */
+static int asound_117_reset_voice_records_four_with_data_offsets_0704(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x0704); c->r[R_CX] = 0x0C76;
+    XCALL(0x05E3,0x0708,0x070B);
+    XB(1,0x070B); c->r[R_CX] = 0x0D10;
+    XCALL(0x05DC,0x070F,0x0712);
+    XB(1,0x0712); c->r[R_CX] = 0x0DB2;
+    XCALL(0x05D5,0x0716,0x0719);
+    XB(2,0x0719); c->r[R_CX] = 0x0E24;               /* lea cx / jmp */
+    c->ip = 0x05CE;                                  /* 05CE */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:08BE, near, no arguments: select the sound data offset 0F5Ah in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The routine falls into the next command handler instead of jumping.
+ * This body claims only its own 1 instruction(s) (4 bytes, 1 clock(s)) and hands back at 08C2, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_08be_data_0f5a(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x08BE);                                                /* lea cx,[0F5Ah] */
+    c->r[R_CX] = 0x0F5A;
+    c->ip = 0x08C2;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:08CC, near, no arguments: select the sound data offset 0F70h in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The routine falls into the next command handler instead of jumping.
+ * This body claims only its own 1 instruction(s) (4 bytes, 1 clock(s)) and hands back at 08D0, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_08cc_data_0f70(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 1)) return 0;
+    XB(1,0x08CC);                                                /* lea cx,[0F70h] */
+    c->r[R_CX] = 0x0F70;
+    c->ip = 0x08D0;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:08E1, near, no arguments: select the sound data offset 0F78h in CX.
+ * The LEA computes a plain offset into the driver's data segment (not a relocated word) and touches no flags.
+ * The next instruction is a JMP to the thunk, so the hand-back is the jump itself.
+ * This body claims only its own 2 instruction(s) (7 bytes, 2 clock(s)) and hands back at 05E3, which is claimed
+ * once by its own proof; the original code there selects the voice record, resets it and ends in a plain RET back to
+ * whoever called this routine. AX, BX, DX and the flags are untouched here. No callee. */
+static int asound_117_command_08e1_data_0f78(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while(0)
+#define XCALL(to_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2,0x08E1);                                                /* lea cx,[0F78h] / jmp 05E3 */
+    c->r[R_CX] = 0x0F78;
+    c->ip = 0x05E3;
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08E1, asound_117_command_08e1_data_0f78, "AdLib command: load CX with data offset 0F78h and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08CC, asound_117_command_08cc_data_0f70, "AdLib command: load CX with data offset 0F70h and fall into the command handler at 08D0h (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08BE, asound_117_command_08be_data_0f5a, "AdLib command: load CX with data offset 0F5Ah and fall into the command handler at 08C2h (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0704, asound_117_reset_voice_records_four_with_data_offsets_0704, "AdLib overlay: reset the voice records 190A, 1928 and 1946 through their thunks with data offsets 0C76, 0D10 and 0DB2 in CX, then load CX with 0E24 and jump to the 1964 record thunk at 05CE (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x06E8, asound_117_reset_voice_records_four_with_data_offsets_06e8, "AdLib overlay: reset the voice records 190A, 1928 and 1946 through their thunks with data offsets 0876, 0992 and 0A9A in CX, then load CX with 0B2E and jump to the 1964 record thunk at 05CE (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x06BE, asound_117_reset_voice_records_with_data_offsets_06be, "AdLib overlay: reset the voice records 190A, 1928, 1946, 1964 and 1982 through their thunks with data offsets 0766, 07B4, 07CE, 07EE and 0830 in CX, then load CX with 085C and jump to the 19A0 record thunk at 05C0 (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x068D, asound_117_command_068d_data_0eec, "AdLib command: load CX with data offset 0EECh and hand back at the 1946h record thunk 05D5h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0669, asound_117_command_0669_data_0eca, "AdLib command: load CX with data offset 0ECAh and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0662, asound_117_command_0662_data_0ed2, "AdLib command: load CX with data offset 0ED2h and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0640, asound_117_command_0640_data_0ea4, "AdLib command: load CX with data offset 0EA4h and hand back at the 19A0h record thunk 05C0h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0903, asound_117_reset_voice_records_two_with_data_offsets_0903, "AdLib overlay: reset the voice record 1964 through its thunk 05CE with data offset 0FC8 in CX, then load CX with 0FD4 and fall into the command handler at 090E (handed back there)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x085F, asound_117_command_085f_data_by_bx_bits_2_3, "AdLib command: pick the data offset from the 4-word table at CS:0857h by BX bits 2 and 3 and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x089C, asound_117_command_089c_data_0f3c_unless_playing_1964, "AdLib command: with CX = 0F3C, return at once when the record 1964 word [1972] equals it and the record is active ([1964] nonzero); otherwise hand back at the command handler 08AD (data offset in CX for the 1964 record thunk)", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x08E8, asound_117_set_rate_one_if_zero_then_data_0fa2_08e8, "AdLib overlay: when the rate word [17F4] is zero set it through 03D8 with BX = 1, then load CX with 0FA2 and hand back at the 1964 record thunk 05CE", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0876, asound_117_command_0876_data_by_bx_bits_3_4, "AdLib command: pick the data offset from the 4-word table at CS:086Eh by BX bits 3 and 4 and hand back at the 1928h record thunk 05DCh", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0670, asound_117_start_song_0eda_random_variant, "AdLib command: pick a random variant 1..4 for the song header at 0EDAh, load it into CX and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x064D, asound_117_start_song_0ec0_random_variant, "AdLib command: pick a random variant 21h..24h for the song header at 0EC0h, load it into CX and hand back at the 190Ah record thunk 05E3h", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0210, asound_117_silence_opl_chip, "Sound driver: write the OPL chip's registers through 036B in three loops (registers 5Fh down to 40h, FFh down to 60h, 3Fh down to 1) and register 1, then, when the word [17F2] is not zero, run the voice call 18C8 with BX = 8", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x018F, asound_117_reset_voice_records, "Sound driver: with the update flag [17EC] held at FFFFh, clear the six voice records' state bytes and the song words, run the chip reset 0210, then restore [17EC]", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x197B, asound_117_sound_blaster_dsp_reset, "Sound Blaster driver: when the card type [5B] is 1 or 2, reset the DSP (write 1, wait four reads, write 0 to base+6) and poll the data port through 193E up to 64 times for the ready byte AAh; answer AX 0 with ZF set, or AX 2 with the flags of OR AX,AX after a timeout", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B76, asound_117_set_voice_mode_far_entry, "Far entry with one word argument: save BP, SI, DI and DS, load the relocated driver data segment, store the argument in [17E2], run the routine at 005E and return far with everything restored", 2 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0C08, asound_117_noise_voice_status_far_entry, "Far entry: save DS, load the relocated driver data segment, clear the word [17DC], run the routine at 0430 (which leaves its answer in [17DC]), return that word in AX and restore DS", 2 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0BD4, asound_117_set_dos_time_from_bios_clock, "Sound driver: read the BIOS real-time clock (INT 1Ah function 2), convert hours, minutes and seconds from packed BCD to binary (0BF4) and set the DOS time (INT 21h function 2Dh, hundredths 0)", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0045, isound_117_set_dos_time_from_bios_clock, "PC-speaker overlay: read the BIOS real-time clock (INT 1Ah function 2), convert hours, minutes and seconds from packed BCD to binary (0065) and set the DOS time (INT 21h function 2Dh, hundredths 0)", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x0079, isound_117_shutdown_entry, "PC-speaker overlay far entry: with the driver data segment loaded, reset the playback state and speaker (0163), write [77] to port 61h, and set the DOS time from the BIOS clock (0045), then return far", 2 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x03FA, rsound_log_send_byte_far_entry, "Roland driver far entry: with the driver data segment loaded, send the word argument's low byte through the MPU byte writer 0310 and return far", 2 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0C2D, rsound_117_init_channels_once, "Roland overlay: once-only set-up guarded by the flag DS:[151Eh]: when it is zero run 112F and 0CF5 and set the flag to FFh", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x112F, rsound_117_all_notes_off_and_reset_channels, "Roland overlay: reset the sequencer records (0B42), send on each of the nine MIDI channels all-notes-off, reset-controllers, volume 100 and pan centre through 0C7C, send the message list at DS:[153Ah] (0CAE) and set the eight voice volume cells to 64h", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0E70, rsound_117_send_channel_volume_100, "Roland overlay: send a MIDI control change, status B0h OR DX (resent only when it differs from the last status [130Ch]), controller 07h and value 64h, through the MPU byte writer 0C7C; the last write is a tail jump into 0C7C", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0C72, rsound_117_add_to_checksum, "Roland overlay: add BL into the checksum cell DS:[151Fh] (BX kept) and hand back at the MPU byte writer 0C7C", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0306, rsound_log_add_to_checksum, "Roland driver: add BL into the checksum cell DS:[02FFh] (BX kept) and hand back at the MPU byte writer 0310", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0CF5, rsound_117_send_message_list, "Roland overlay: send every message of the FFh-ended list of lists at DS:[153Ah] through 0CAE, until a list starts with FFh", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x0390, rsound_log_send_message_list, "Roland driver: send every message of the FFh-ended list of lists at DS:[031Eh] through 0349, until a list starts with FFh", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0C1C, asound_117_noise_step_far_entry, "Far noise-step entry: save DS, load the relocated driver data segment, call 0562, restore DS, clear AX and return far", 2 },
     { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0CAE, rsound_117_send_message_with_checksum, "Send the FFh-ended header at DS:[1534], then the AX list via 0C72 summing into [151F], the seven-bit negated checksum and F7h, then delay [1524] passes", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x116E, asound_log_run_voice_records_116e, "Clear the voice index [0512], then run command interpreter 0D1A for each of seven 26-byte records, storing each pointer in [0672]", 1 },
