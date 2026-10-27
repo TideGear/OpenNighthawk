@@ -96,6 +96,12 @@ verification) is not an optimisation; it needs the owner's approval.
   against the previous batch's own registration table and every new byte against the
   dossiers. A batch's new optimized CTests take two to three seconds (batches at to ax:
   1.82-2.80 s); the census refresh afterwards takes seconds.
+  Before a gate, `route_precheck.py MODULE:OFFSET...` (accept kit, 26 October) runs the matched build against
+  `F117R_NO_MATCHED=1` on every route whose coverage reaches the new entries and compares budget, stop reason, program, exit
+  and final hash: about 25 minutes for the 48 routes reaching four sound-driver entries at `--jobs 3`, against 28 minutes for
+  the whole gate. It exists because a routine proved with a stubbed PIT/STI/port callee (ASOUND.LOG `00FE`) passed lockstep
+  and failed one real route; it adds an early check and replaces nothing. A batch of five routines cost 28 minutes of gate,
+  and the proofs ahead of it about one agent-hour per routine on three slots.
 - **The presentation overlaps the gate only with a keyed baseline.** With a frozen
   per-route baseline whose interpreter key matches, the N=1 presentation runs beside the
   gate's interpreter tail (batch al: acceptance 1,549 s, N=1 718 s started 793 s into the
