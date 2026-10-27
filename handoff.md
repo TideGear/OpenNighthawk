@@ -7,8 +7,8 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 26 October 2026: checklist rounds 2 and 3 adopted (39,160 / 44,714 bytes); batch bi (ASOUND.117 `0E8A`, RSOUND.117 `0002`) gated and
-accepted pending CI; P2 91.96%.** The accepted runtime was batch bh (`28b34b2`); bi adds 1,393 named bytes. The working copy is **`C:\Dev\F-117A Recomp`**;
+more than once, what it costs). **Current state, 26 October 2026: checklist rounds 2 and 3 adopted (39,160 / 44,714 bytes); batches bi and bj gated and
+accepted; P2 92.09%.** The accepted runtime was batch bh (`28b34b2`); bi adds 1,393 and bj 283 named bytes. The working copy is **`C:\Dev\F-117A Recomp`**;
 the old `My Drive` copy is stale: do not use it. There are 34 normal-play switches. Kit libraries
 (`D:/f117-gate/kit-libs`, manifest) are current at `28b34b2`; older sets `kit-libs-before-bh`, `-bg`, `-10d5adb`.
 This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
@@ -28,10 +28,11 @@ This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/Ti
    (`fcc5cfb`); checklist **39,160 / 44,714 (87.58%)**, 5,554 bytes without an entry (the ACCEPT-WITH-CHANGES, NEEDS-CONTEXT, REJECT and refused units of
    rounds 2 and 3). Next is a round 4 over those: corrected names/ranges, more context, fresh readers. Work is under
    `D:/f117-gate/checklist-full-20261026/` (`round3/` has the scripts; copy them for round 4).
-3. **Batch bi accepted pending CI:** ASOUND.117 `0E8A` and RSOUND.117 `0002` (gate 1,714 s, 676 tests, 122 mutations); evidence
-   `D:/f117-gate/p2-batch-bi-accept/`. Two batch-local audit widenings (see roadmap) should be folded into the kit scripts. RSOUND `0002` needed a
-   `fix_inside(c, 0x0002, 0x03B9)` guard (Q16 hooks `0348`). Still private and unfinished: ASOUND.LOG `0D1A`, SETUP `10B3`, MPS_LOGO `00DA:0307/030E/0315`
-   (0307 has 12 mutations caught, no verdict), PLAYER `0211`/`0540`, VGAME `137CE`. Inspect logs, hashes and live processes; never infer completion from a partial build.
+3. **Batches bi and bj are accepted (CI green for bi; bj pending):** bj = ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`; evidence `D:/f117-gate/p2-batch-bj-accept/`.
+   **ASOUND.LOG `00FE` is withdrawn** (private proof `p2-asound-log-bj-00FE` is green in lockstep but diverges on the real `setup_calibration` route: IRQ boundary after the nested `call 00DA`);
+   re-prove it against the real sampler or keep it original. Debug recipe: recomp vs `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect, `--dump 0:10` at budgets. The kit scripts now carry the two audit widenings (see roadmap bi);
+   a batch also needed `:partial` for hand-claimed blocks and `:XB` for a macro written `XB(n, at)`. Still private and unfinished: ASOUND.LOG `0D1A`, SETUP `10B3`, MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211`/`0540`, VGAME `137CE`;
+   ranked next units are in `D:/f117-gate/bi-next-leads/leads.md` (RSOUND.LOG `0349`, ASOUND.117 `1882`, ISOUND.LOG `00A2`, ASOUND.117 `0562`, `0E4C`/`0E70`, `018F`...). Inspect logs and live processes; never infer completion from a partial build.
 4. **Repository changes for checklist round 2 are reference data, saved progress and docs only.** Runtime, harness,
    CMake and accepted coverage are unchanged. All 80 focused classifier/progress/encoded-code tests pass. A code gate
    is not needed for reference-only adoption. The owner's untracked two `.bat` launchers stay untouched.

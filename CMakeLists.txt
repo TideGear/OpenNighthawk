@@ -1702,6 +1702,14 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:E8A)
     add_test(NAME matched_rsound_117_voice_step COMMAND func_lockstep --states 5000
       --only RSOUND.117:2)
+    add_test(NAME matched_asound_117_reset_voice_records_with_data_offsets COMMAND func_lockstep --states 5000
+      --only ASOUND.117:720)
+    add_test(NAME matched_asound_log_detect_adlib_and_init COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:140)
+    add_test(NAME matched_rsound_117_step_eight_voices COMMAND func_lockstep --states 5000
+      --only RSOUND.117:50A)
+    add_test(NAME matched_asound_117_reset_voice_records_with_data_offsets_0694 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:694)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
