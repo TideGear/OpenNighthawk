@@ -7,42 +7,56 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 27 October 2026: batch bk gated and accepted; P2 92.59%; checklist rounds 2, 3 and 3b adopted: 40,504 / 44,889 bytes (90.23%).**
+more than once, what it costs). **Current state, 27 October 2026 (evening): batch bl gated, accepted and pushed (`9e06249`, 33 routines); P2 93.01%; checklist rounds 2, 3 and 3b adopted: 40,504 / 44,906 bytes (90.20%). Twelve proof agents were launched for batch bm and may still be running or finished when you read this (resume state 2).**
 The working copy is **`C:\Dev\F-117A Recomp`**; the old `My Drive` copy is stale: do not use it.
-The accepted runtime is batch bk (`D:/f117-gate/p2-batch-bk-accept/`); batch bj was `cfa50b9`.
+The accepted runtime is batch bl (`D:/f117-gate/p2-batch-bl-accept/`, commit `9e06249`); batch bk was `a1bc7fe`.
 There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) were built at `28b34b2`;
 the only `src/` changes since are matched bodies, which each private proof replaces itself, so the libraries remain valid.
 This machine has no `gh`; check the pushed commit's CI through the GitHub Actions API.
 
 ### Resume state
 
-1. **Batch bk accepted:** ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`,
-   RSOUND.117 `0E4C` `0CAE`. Eight entries, +418 named bytes, 140 fixture instructions, 228 mutations caught;
-   688 CTests, 63 identical routes / 62 fresh interpreter sessions, reach/event limits and presentation passed.
-   Three whole-table pre-check seeds (`0x4a847c5cdb85`, `0x5EED0B11`, `0xB1172026`) and all 53 reached routes passed.
-   Evidence `D:/f117-gate/p2-batch-bk-accept/`; root independently verified all proof hashes, logs, mutations, boot results and bases
-   (`root-private-verification.json`). The sole extra harness hunk is 0E4C's module/segment/entry-specific outer-RET recognition.
-   The AdLib `0562` fixture's jump operand was corrected from `1361` to `030C` before proof; its final fixture logs AL/BX and the RNG state.
-   `0E4C` saves FLAGS before logging and reads the return address through SS. Its tail writer's 27 instructions are outside the 36-byte named window.
-2. **Checklist round 4 remains next:** current checklist 40,504 / 44,889 bytes (90.23%), 4,385 bytes without entries.
-   Round 2 adopted 367 units / 13,976 bytes; round 3 read 228 packets / 46 fresh reader groups and adopted 101 units / 4,476 bytes;
-   round 3b adopted 19 units / 1,344 bytes after an exact leading-range check. Retain the 10 + 43 status-mismatched ACCEPTs, 9 differing ranges,
-   27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT from round 3, round-2 leftovers, and every byte outside the old packets.
-   The bi/bj additions include 175 bytes listed in `D:/f117-gate/checklist-full-20261026/round3b/unreviewed-outside-round3b.tsv`.
-   Work and adoption validators are under `D:/f117-gate/checklist-full-20261026/`. Each packet needs a fresh independent blind reader.
-3. **ASOUND.LOG `00FE` is still withdrawn.** Its private lockstep proof stubs the PIT sampler `00DA`, but the real `setup_calibration` route
-   takes an IRQ at a different boundary after the nested call. Re-prove against the real sampler or keep it original.
+1. **Batch bl accepted and pushed (`9e06249`).** 33 routines, +892 named bytes, 334 fixture instructions, 900 mutations caught, 165 optimized seeds; gate 2,078 s, 721 tests,
+   63 identical routes / 62 fresh interpreter sessions. Pre-checks: whole-table seeds `0xa1bc7fe770f2` (the gate's) and `0x5EED0B12` (5.83 M states each, zero mismatches) and
+   `route_precheck.py` on all 33 entries (49 reached routes, all identical with matched routines disabled, about 10 minutes at `--jobs 6`). Evidence `D:/f117-gate/p2-batch-bl-accept/`,
+   `D:/f117-gate/bl-prechecks/`. CI for `9e06249`: green (Windows build and ROM-free tests). Contents: Roland chains, ISOUND.117 `0079` `0045`, ASOUND.117 `0BD4` `0C08` `0B76` `197B` `018F` `0210` and 17 song/voice-start wrappers.
+   **Blocked: ASOUND.117 `025A`** (its RET is behind a loop polling six voice bytes that only the timer interrupt clears, so no lockstep state reaches it: prove the prefix `025A..02C9`
+   with a boundary at `02CA`, or declare it; `D:/f117-gate/p2-asound-117-bl-025A/BLOCKED.txt`). Audit flags used: six bodies full (`0390 0CF5 0C2D 03FA 0C08 0B76`), 27 `:partial`
+   (the static audit cannot read per-port clock charging, calls without `SM4_NEED`, or a first claim written as an expression; same precedent as batch bk), `0E70` prefix `XB`, `0079` and `018F` `NOBLOCKS`.
+   Harness hunks applied by hand because `integrate_many.py` carries only FATAL_JUMPS/SHARED_ENDINGS rows: 0E70's outer-RET recognition (the `0E4C` line widened), the INT 1A function 2 answer plus
+   `g_native_int1a` rows for ISOUND.117 `0045` and ASOUND.117 `0BD4`, and a `g_cov_ip = 0x0838` row for ASOUND.117 `089C`. They are in `tests/func_lockstep.c` now.
+2. **Twelve proof agents were launched on 27 Oct (about 13:30-13:50) for the next batch (bm); they write into `D:/f117-gate/p2-*-bl-*` (the `bl` in the directory names is the agents' label).**
+   Look at what each left before launching anything: `ls D:/f117-gate | grep -- '-bl-'`, then each directory's `REPORT.md` or `BLOCKED.txt` (the agents were told to write one). No report is verified until root has done it.
+   - **Done, verified at log level only:** RSOUND.LOG `08BE` (`p2-rsound-log-bl-08BE`): the whole 625-instruction channel tick as one routine (arms `0A90`/`0B0A`/`0CDA` are table arms of the dispatch at `0DB3`);
+     five seed logs 625 of 625 with 0 skipped, 37 of 37 mutations caught. Not yet checkpointed (route `roland_boot`, which runs 168 of 626 instructions) and not integrated. Decide before integrating:
+     one instruction (`0DAC`) is dead by construction, so the COVERED row is 625/625; the XENTRY/XCHORD/XGUARD guard conditions cannot be tested by lockstep (the harness skips states where the original
+     writes its own code); the twin ASOUND.LOG `0D1A` body has an after-callee snapshot (`XAFTER`) that this body deliberately lacks (weaker).
+   - **Blocked (the agent's claim, unverified):** SETUP `10B3`: its retrace wait loop executes STI on every pass, so no lockstep state completes `10D3..10E3` (`p2-setup-bl-10B3/BLOCKED.txt`).
+     Untried idea from the agent: a deliberate prefix with boundary `10D3` plus a separate interior-entry proof of `10D3..10E3`.
+   - **Running or finished by the time you read this (ask each directory):** ASOUND.117 `1360` dispatch group (`p2-asound-117-bl-1360`); ASOUND.LOG `0D1A` group, `0804` and `116E` (`p2-asound-log-bl-0D1A`);
+     small leftovers: RSOUND.117 `0BAD`, dispatchers ISOUND.LOG `00B8` / ASOUND.117 `0B98` / RSOUND.117 `1225`, ISOUND.LOG `0675`/`0468`, ISOUND.117 `0023`/`07CF`/`07E9`, ASOUND.117 `1BCC` `1BAF` `0430`;
+     MPS_LOGO `00DA:0307/030E/0315`; PLAYER `0211` `0540`; VGAME `137CE` (observer: needs a hand-applied `deliberate` row); START `8427` and END `4393`; MPS_LOGO `1ADC` `1C82` and START `11DB`; END `57B0`;
+     RSOUND.117 `0F98` (unblocked by `0E4C`/`0E70`); ASOUND.LOG `00FE` re-proof, PLAYER `02853` `028C1`, START `08F94`; DSWAP/SETUP/F117.COM leftovers (leads in `D:/f117-gate/p2-leftovers-bl-LEADS.md`).
+   - **Recipe per finished proof (what batch bl followed):** read `seeds.json`, `mutation-results.json` and the seed-log tallies yourself (0 skipped, 0 mismatching, every mutant caught, `body.c` and `fixture.inc` older than the mutation results),
+     then `py D:/f117-gate/accept-kit/finish_all.py DIR:ROUTE ...` (three directories per invocation; it uses CPUs 20-31), read each `finish.log` for `calls_of_this_routine` above 0, `integrate_many.py DIR ...`, apply the harness
+     hunks by hand (diff each `tests-base.c` against `git show HEAD:tests/func_lockstep.c`), rebuild with `.\build.cmd OFF` from PowerShell (`cmd` cannot find a bare `build.cmd`; redirect inside `cmd /c`, since PowerShell's
+     `*>` writes UTF-16), run only the new CTests, `route_precheck.py` on every new entry plus two whole-table seeds (HEAD's `rotating_seed()` first), `new_batch.py bm bl 9e06249 DIR ...`, copy `audit_private.py` and `finalize.py`
+     forward from `p2-batch-bl-accept`, run `audit_private.py` and set `partial`/`prefix` in `batch.json` per item 1, then `affinity_launch.py py p2-batch-bm-accept/accept.py`, the `tools/progress.py` refresh
+     (`--census D:/f117-gate/census.tsv --named-cover D:/f117-gate/p2-batch-bm-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`), docs (README, roadmap table, this file), a commit titled by `py tools/progress.py --title`, push, CI.
+3. **Run wide: how to use many agents (owner, 27 Oct: there is no agent limit to speak of).** Measured on 27 Oct: a proof is about 10-15 minutes of compute inside about two hours of agent time (seeds 2-6 s, 40-60 mutants 2-3 min), so wall time follows the number of agents
+   working, not CPU. Agent thinking runs on Anthropic's side; only their commands use this PC, and one `cl.exe` holds about 6 GB of the 31 GB RAM (0.4 GB was free with three compiles plus a gate). **`D:/f117-gate/kit/kit.py` now
+   throttles builds to 3 machine-wide** with file locks (`BUILD_SLOTS`, `kit/buildslots/`, backup `kit.py.bak-20261027`, tested: a fourth caller waits); with it, 12 agents ran together. Keep every slot full: when an agent reports, give it the next unit
+   (or `SendMessage` it). During a gate agents use the 8 spare threads (mask `0xFF000000`) and keep drafting; the gate's own verdicts are unaffected. Start the long critical-path units first (`1360`, `0D1A`, `08BE` groups, then the declined
+   routines of the seven programs); one big routine is one chain that more agents cannot shorten. Verification stays with root and is the part that does not scale: use sub-agents for mechanical reads, never for the decision.
+   Batches of about 30-50 routines are best (a gate costs about the same at any size); prove batch N+1 while batch N is in its gate. Never weaken a check to go faster.
+4. **Checklist round 4 remains next and parallelises almost perfectly:** 40,504 / 44,906 bytes (90.20%), 4,402 bytes without entries (the denominator grew by 17 bytes with bl). It needs no gate and almost no CPU: re-cut the refused units into packets
+   (10 + 43 status-mismatched ACCEPTs, 9 differing ranges, 27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT from round 3, round-2 leftovers, the 192 new bytes) and launch one fresh blind reader per packet group, as many at once as the work allows
+   (round 1 ran up to 20 at a time: 156 groups in 15-20 minutes). Work and validators: `D:/f117-gate/checklist-full-20261026/` (`round3/` and `round3b/` have the scripts). Each packet needs a fresh independent blind reader.
+5. **ASOUND.LOG `00FE` is still withdrawn** (its lockstep stubs the PIT sampler `00DA`; the real `setup_calibration` route takes an IRQ at a different boundary after the nested call). One of the batch-bm agents has the re-proof; otherwise keep it original.
    Debug with recomp versus `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect and `--dump 0:10` at budgets; `--trace` forces the interpreter.
-   `accept-kit/route_precheck.py MODULE:OFFSET ...` must run after rebuilding and before a gate; it replaces no check.
-4. **Next matching leads:** `D:/f117-gate/bi-next-leads/leads.md` (filter out accepted bi/bj/bk entries). RSOUND.117 `0E70` is the pitch-bend sibling;
-   `0F98` was blocked on a boundary affected by `0E4C`/`0E70`. Older unfinished work remains: ASOUND.LOG `0D1A`, SETUP `10B3`,
-   MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211`/`0540`, VGAME `137CE`, and the ASOUND.LOG `00FE` re-proof.
-   The eight bk private directories are finished and integrated; none of their old draft blockers remains.
-5. **Process notes:** run only new CTests before the full gate; keep the commit-derived seed and at least one independent whole-table seed,
-   plus a third when CPUs are free. Bk used eight route-precheck workers alongside the third seed; costs are in `docs/repeated-processes.md`.
-   Pending: `--overlap-jobs` timing and `career_promotion` profiling; second PC deferred. Do no unrelated heavy work beside the gate.
-   Check whitespace before starting proofs: even formatting changes invalidate the kit's source hashes and require fresh evidence.
-   The owner's untracked `4k60.bat` and `original-fixed.bat` remain untouched.
+6. **Process notes:** run only new CTests before the full gate; keep the commit-derived seed and one independent whole-table seed; `route_precheck.py` on every new entry (not only the stubbed ones: about 10 minutes for 33 entries).
+   Pending: `--overlap-jobs` timing, `career_promotion` profiling (805 s, the gate's floor); second PC deferred. Check whitespace before starting proofs: formatting changes invalidate the kit's source hashes.
+   The owner's untracked `4k60.bat` and `original-fixed.bat` stay untouched (never stage them; stage files by name).
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -51,29 +65,32 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 92.59%, P3 76.34%, All 91.76%
+- **Scoreboard:** P1 100.00%, P2 93.01%, P3 76.34%, All 91.89%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
-- **Phase 2 figures** (`docs/progress.json` after batch bk, with checklist round 3b; `py tools/progress.py` prints them;
+- **Phase 2 figures** (`docs/progress.json` after batch bl, with checklist round 3b; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,444 addresses matched; batches a to bk are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,477 addresses matched; batches a to bl are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(153,739 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 95.40%**. 26,559 matched bytes run only in fixtures and earn no gameplay credit.
-  - **7,537 executed bytes are unmatched** (20 design-rule original bytes awaiting a reviewed entry).
-    Sound drivers 5,747: ASOUND.117 2,964, RSOUND.117 483, RSOUND.LOG 774, ASOUND.LOG 649, ISOUND.117 536, ISOUND.LOG 341.
+  - Gameplay score (scores the matched item): **(154,617 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 95.94%**. 26,576 matched bytes run only in fixtures and earn no gameplay credit.
+  - **6,659 executed bytes are unmatched** (20 design-rule original bytes awaiting a reviewed entry).
+    Sound drivers 4,869: ASOUND.117 2,379, RSOUND.117 289, RSOUND.LOG 728, ASOUND.LOG 649, ISOUND.117 483, ISOUND.LOG 341.
     Seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261, START 251, SETUP 118, DSWAP 68.
     F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (previous all-code measure): **180,363 / 206,215** creditable bytes; 25,852 uncredited,
+  - Naming item (previous all-code measure): **181,258 / 206,232** creditable bytes; 24,974 uncredited,
     including 13,809 reviewed static code bytes no route runs.
-  - Accounted-for checklist: **40,504 / 44,889 bytes (90.23%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
+  - Accounted-for checklist: **40,504 / 44,906 bytes (90.20%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`;
     the 523 round-2 rows: `D:/f117-gate/checklist-full-20261026/round2/`; the round 3 and 3b rows: `round3/`, `round3b/`; the 792 round-1 rows from the full blind pass: `D:/f117-gate/checklist-full-20261026/` (reads/, staged-round1.tsv, reconcile-result.json)). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
+- **Batch bl acceptance (27 Oct):** `D:/f117-gate/p2-batch-bl-accept/final-gate-verdict.json` passed in 2,078 s: 721 tests, 63 routes / 62 fresh interpreter sessions,
+  1,477 routines, 900 private mutations, 165 optimized seeds, +892 named bytes, 334 new fully covered instructions, 0 claimed-but-uncredited bytes. Two whole-table pre-check seeds
+  and 49 paired real-route pre-checks passed (resume state 1).
 - **Batch bk acceptance (27 Oct):** `D:/f117-gate/p2-batch-bk-accept/final-gate-verdict.json` passed in 1,659 s:
   688 tests, 63 routes / 62 fresh interpreter sessions, 1,444 routines, 228 private mutations,
   40 optimized seed checks, +418 named bytes. Three whole-table pre-check seeds and 53 paired real-route pre-checks passed.
@@ -247,7 +264,7 @@ governs day-to-day work.
   second-read trial with many parallel fresh reader agents. The second PC is deferred (owner, 26 Oct). Combined proof route runs were
   rejected: they drop the per-routine proof before the gate. `D:` is a spinning disk (`D:/f117-gate`, worktrees); moving proof builds to the
   NVMe is an unmeasured idea (C: had 50 GB free).
-- **Batch size.** A gate costs about 45-60 minutes (gate, two pre-check seeds, audit, score refresh, docs, CI) whether it holds
+- **Batch size** (the three-slot and three-agent figures below are superseded on 27 Oct: see resume state 3; batch bl had 33 routines and was fine). A gate costs about 45-60 minutes (gate, two pre-check seeds, audit, score refresh, docs, CI) whether it holds
   4 routines or 40, while proofs cost about one agent-hour per 4-5 small routines with only three slots. So run several proof
   rounds back to back (three agents, masks 0x000F0000 / 0x00F00000 / 0x0F000000, `finish_all.py` on each round, no gate between),
   then integrate and gate once at about 25-40 routines. Merge the agents' harness hunks into one form before integrating (they
@@ -263,7 +280,7 @@ governs day-to-day work.
   the batch bh commit: 780 -> 20,708 of 44,714 bytes, 46.31%, P2 82.14% -> 87.27%); 368 accept-with-changes, 21 needs-context, 13 reject and 66 status
   mismatches are NOT adopted. Reader names and ranges were corrected where they over-claimed (a retry named a failure, an arm named a whole function, a
   range cutting a function mid-instruction). **Round 2** (`round2/`) re-cut those 468 units into 588 packets / 79 groups: all read, 367 units / 13,976 bytes adopted.
-  The checklist is now 40,504 / 44,889 (90.23%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
+  The checklist is now 40,504 / 44,906 (90.20%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
   with corrected blind reads and no unsupported exclusions. Use the actual available reader slots; this session has at most three concurrent subagents.
 - **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 7,666 of the 9,456 unmatched executed bytes (after bh): the
   `.117` overlays (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG` drivers ("AdLib Logo 7-18-91",
@@ -281,8 +298,7 @@ governs day-to-day work.
    remaining installers that end `CLI ... STI; RET` (stop after the STI; bc and bf matched five), the hardware wait loops above,
    and the large routines (ISOUND.117 and ASOUND.LOG, 90-320 instructions each). ISOUND.LOG `0581` needs separately verified
    bounded-handler/resume support for its EOI-before-IRET arm. `p2-asoundlog-008a` is an initialized lead, not a proof: its first PIT
-   control OUT wakes the machine, so cover its following continuations explicitly. Plan: two proof rounds per gate, three agents
-   per round on masks 0x000F0000, 0x00F00000, 0x0F000000. STI-first handlers stay original by design. Precedent for a PIT
+   control OUT wakes the machine, so cover its following continuations explicitly. Plan: see resume state 3 (many agents, build throttle in the kit, spare-thread masks during a gate). STI-first handlers stay original by design. Precedent for a PIT
    installer tail: only the counter-0 reload's second write wakes the machine (ISOUND.LOG `0603`, RSOUND.LOG `027C`).
    All original selected fixes are done (34 normal-play switches). The bugfix worktree stays until the owner authorizes removal.
    `D:/f117-gate/modules-scope-20261021/plan.md` is a source of leads and traps only.
