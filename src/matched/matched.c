@@ -93173,7 +93173,1369 @@ static int asound_117_load_instrument_pair(machine_t *m)
 #undef XB
 }
 
+/* ASOUND.117 01B6:0E8A, near: AdLib voice change, "switch the voice slot".
+ * [1A02] is the voice (instrument) number just chosen and 1B06 + 8 * voice is
+ * its 8-byte record. Two slots, A and B, hold the voice last played on each of
+ * two OPL channels: their voice numbers are [1A04] and [1A05], their "slot is
+ * in use" flags [19DC] and [19FC], and [1A03] says which slot is next (0 = A,
+ * 1 = B; it is set to 0 when the voice is already in slot A and to 1 when it
+ * is already in slot B, B winning when both match).
+ * First 0C2E (volume write for the current voice) runs. Then:
+ *  - record byte 0 is zero: 0D1C runs and the channel's key-on register
+ *    (0B0h + voice, from the shadow table at 1A06) is rewritten with bit 20h
+ *    set through 035C(8, register, value);
+ *  - otherwise the slot comes from [1A03]. If that slot is in use, its old
+ *    voice's key-on register (0B0h + the slot's voice number) is written back
+ *    with bit 20h cleared (key off). The new voice then moves into the slot:
+ *    its number, the record's byte 0 as the new in-use flag, and three record
+ *    words (offsets 2, 4, 6) into the slot's words (A: 19FE, 1902, 1906;
+ *    B: 1A00, 1904, 1908). 05A5 then runs (it sets the pending flags).
+ * Every read happens at the moment the original reads it, in the original's
+ * order: the callees, and an SS that overlaps DS, can change the cells. The
+ * three callees are plain RET (035C's three arguments are removed by the
+ * caller with ADD SP,6). SI/DI/BP are saved and restored. The routine owns
+ * a fix site at 0F8B (Q15, generator B's count), so it declines while that
+ * fix is switched on. */
+static int asound_117_switch_voice_slot(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x0E8A, 0x1047)) return 0;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t u_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; const int r_=(call_);m->run_until=u_;if(!r_)return 1; } while (0)
+#define XCALL(target_,at_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while (0)
+#define XL(a_) set_r8(c,R_AL,ds_get8(c,(uint16_t)(a_)))
+#define XM(v_) (c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],(v_),1))
+#define XA(v_) (c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],(v_),1))
+#define BSHL() (c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1))
+#define ASHL() (c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],1,1))
+#define CLEAN6() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1))
+#define KEYARGS() do { x86_push_reg(c,R_AX);x86_push_reg(c,R_BX);c->r[R_AX]=8;x86_push_reg(c,R_AX); } while (0)
+    /* One record word, reached through BX = 1B06 + 8 * voice. */
+#define RECWORD(k_,dst_) do { \
+        XL(0x1A02);XM(0xFF);ASHL();ASHL();ASHL(); \
+        c->r[R_BX]=0x1B06;c->r[R_BX]=(uint16_t)alu_op(c,0,c->r[R_BX],c->r[R_AX],1); \
+        c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+(k_)));ds_put(c,(dst_),c->r[R_AX]); } while (0)
+    /* The new voice moves into a slot: its number, flag byte, three words. */
+#define SLOTLOAD(numcell_,flagcell_,w2_,w4_,w6_) do { \
+        XL(0x1A02);ds_put8(c,(numcell_),get_r8(c,R_AL)); \
+        XL(0x1A02);XM(0xFF);c->r[R_BX]=c->r[R_AX];BSHL();BSHL();BSHL(); \
+        XL(c->r[R_BX]+0x1B06);ds_put8(c,(flagcell_),get_r8(c,R_AL)); \
+        RECWORD(2,(w2_));RECWORD(4,(w4_));RECWORD(6,(w6_)); } while (0)
+    if (!room(c, 5)) return 0;
+    XB(5,0x0E8A);                          /* frame, saved SI/DI */
+    x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],6,1);
+    x86_push_reg(c,R_SI);x86_push_reg(c,R_DI);
+    XCALL(0x0C2E,0x0E93,0x0E96);
+    XB(9,0x0E96);                          /* record byte 0 of the voice */
+    XL(0x1A02);XM(0xFF);c->r[R_BX]=c->r[R_AX];BSHL();BSHL();BSHL();
+    XL(c->r[R_BX]+0x1B06);XM(0xFF);
+    if (!x86_cond(c,5)) {
+        XB(1,0x0EAD);                      /* byte 0 zero: setup and key on */
+        goto percussion;
+    }
+    XB(8,0x0EB0);                          /* is the voice already in slot A? */
+    XL(0x1A02);XM(0xFF);bp_put(c,-6,c->r[R_AX]);
+    XL(0x1A04);XM(0xFF);c->r[R_CX]=bp_get(c,-6);
+    alu_op(c,7,c->r[R_CX],c->r[R_AX],1);
+    if (!x86_cond(c,5)) {
+        XB(1,0x0EC6);ds_put8(c,0x1A03,0);
+    }
+    XB(8,0x0ECB);                          /* ... or already in slot B? */
+    XL(0x1A02);XM(0xFF);bp_put(c,-6,c->r[R_AX]);
+    XL(0x1A05);XM(0xFF);c->r[R_CX]=bp_get(c,-6);
+    alu_op(c,7,c->r[R_CX],c->r[R_AX],1);
+    if (!x86_cond(c,5)) {
+        XB(1,0x0EE1);ds_put8(c,0x1A03,1);
+    }
+    XB(3,0x0EE6);                          /* which slot is next */
+    XL(0x1A03);XM(0xFF);
+    if (!x86_cond(c,4)) {
+        XB(1,0x0EEE);
+        goto slot_b;
+    }
+    XB(4,0x0EF1);                          /* slot A */
+    ds_put8(c,0x1A03,1);
+    XL(0x19DC);XM(0xFF);
+    if (x86_cond(c,4)) goto slot_a_load;
+    XB(11,0x0EFE);                         /* key off slot A's old voice */
+    XL(0x1A04);XM(0xFF);XA(0xB0);bp_put(c,-2,c->r[R_AX]);c->r[R_BX]=c->r[R_AX];
+    XL(c->r[R_BX]+0x1A06);XM(0xDF);KEYARGS();
+    XCALL(0x035C,0x0F19,0x0F1C);
+    XB(1,0x0F1C);CLEAN6();
+slot_a_load:
+    XB(37,0x0F1F);
+    SLOTLOAD(0x1A04,0x19DC,0x19FE,0x1902,0x1906);
+    XCALL(0x05A5,0x0F7F,0x0F82);
+    XB(1,0x0F82);                          /* jmp 1017 */
+    goto join_1017;
+slot_b:
+    XB(4,0x0F86);                          /* slot B */
+    ds_put8(c,0x1A03,0);
+    XL(0x19DC);XM(0xFF);
+    if (x86_cond(c,4)) goto slot_b_load;
+    XB(11,0x0F93);                         /* key off slot B's old voice */
+    XL(0x1A05);XM(0xFF);XA(0xB0);bp_put(c,-2,c->r[R_AX]);c->r[R_BX]=c->r[R_AX];
+    XL(c->r[R_BX]+0x1A06);XM(0xDF);KEYARGS();
+    XCALL(0x035C,0x0FAE,0x0FB1);
+    XB(1,0x0FB1);CLEAN6();
+slot_b_load:
+    XB(37,0x0FB4);
+    SLOTLOAD(0x1A05,0x19FC,0x1A00,0x1904,0x1908);
+    XCALL(0x05A5,0x1014,0x1017);
+join_1017:
+    XB(1,0x1017);                          /* jmp 1041 */
+    goto epilogue;
+percussion:
+    XCALL(0x0D1C,0x101A,0x101D);
+    XB(12,0x101D);                         /* key on: register 0B0h + voice */
+    XL(0x1A02);XM(0xFF);XA(0xB0);bp_put(c,-2,c->r[R_AX]);c->r[R_BX]=c->r[R_AX];
+    XL(c->r[R_BX]+0x1A06);XM(0xFF);
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],0x20,1);
+    KEYARGS();
+    XCALL(0x035C,0x103B,0x103E);
+    XB(1,0x103E);CLEAN6();
+epilogue:
+    XB(5,0x1041);
+    c->r[R_DI]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);c->ip=cpu_pop16(c);
+    return 1;
+#undef SLOTLOAD
+#undef RECWORD
+#undef KEYARGS
+#undef CLEAN6
+#undef ASHL
+#undef BSHL
+#undef XA
+#undef XM
+#undef XL
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 0002: the Roland overlay's per-voice sequencer step, called once per tick for each of the eight voice
+ * records (50Ah calls it for the records at 2290h, 22B2h, ... 237Eh, 22h bytes apart, setting the channel number
+ * DS:[23A0h] before the first and before the last). One stacked argument, [BP+4]: the record pointer, read through BP
+ * every time the original reads it. DS is the driver's data segment, whatever the caller left. The caller removes the
+ * argument (plain RET). Frame: PUSH BP / MOV BP,SP / SUB SP,0Eh / PUSH DI / PUSH SI, CLD.
+ * The record (offsets from the pointer):
+ *   +0 ticks left in the current event (0: the voice is off)   +1 / +2 / +3 steps of three slides (B, A, C)
+ *   +4 note, +5 program, +6 velocity byte, +7 gate shortening   +8 gate countdown (a note ends early when it runs out)
+ *   +9 +0Ah +0Bh slide countdowns, +0Fh +10h +11h their reloads, +0Ch +0Dh +0Eh the slid values, +12h slide B's length
+ *   +14h start of the voice's event stream, +16h its read pointer, +18h and +1Ah loop return points, +1Ch and +1Eh loop
+ *   counters, +20h the restart pointer.
+ * One step:
+ *  1. A record whose +0 is 0 only clears its three slide steps (0325h) and goes on to the slides at 0334h.
+ *  2. Otherwise: if the gate countdown +8 is not 0 it ticks down and when it reaches 0 the pending notes are flushed
+ *     (03D6h). Then +0 ticks down (SUB 1: JBE on carry or zero); when it is still above 0 the step goes to the slides.
+ *  3. When +0 runs out the next event is read at the pointer [+16h]. A byte below 80h is a note: unless the cell
+ *     DS:[130Eh] is nonzero (then it is cleared and the step goes to the slides) the pair (note, duration) is taken
+ *     (LODSW: +4 = note, +0 = duration, pointer + 2); a zero note or duration flushes the pending notes (03D6h) and goes
+ *     to the slides; otherwise the note is started (02CCh): +8 = duration - gate shortening +7, and unless a negative
+ *     shortening finds the note already queued for the channel (DS:[23A2h + 4 * channel] equals the note), the pending
+ *     notes are flushed and the note and velocity +6 are sent through 0444h; the note is queued as the channel's first entry.
+ *  4. A byte of 80h or more is a command. The signed byte plus 14 (0F2h..0FFh give 0..13) indexes the jump table at
+ *     cs:[3B9h] (an index above 13 skips the byte through 02BCh): FFh/FEh: loop with counter +1Ch/+1Eh (a zero count
+ *     records the return point, a count repeats until it has run out); FDh: restart from +20h; FCh: program change
+ *     (046D); FBh: +7 = byte; FAh: start slide B (reload +10h, step +1, length +12h); F9h: +6 = byte; F8h: start slide A
+ *     (reload +0Fh, countdown +9, step +2); F7h/F6h/F4h: set a slide value and send it (04B9h/0490h/04E1h);
+ *     F5h: send a list of notes to several channels (019Ah); F3h: start slide C; F2h: pick a random byte with 0B9Ch.
+ *     Every command ends at 02BCh: it reads the next event again unless a note is waiting in DS:[130Eh].
+ *  5. The slides (0334h): each of the three slides with a nonzero step counts its countdown down; at zero it reloads,
+ *     adds the step to the value and sends the value (A: 0490h volume, B: 04B9h with its length counted down and the
+ *     step cleared when it runs out, C: 04E1h). Finally the channel number DS:[23A0h] is incremented; POP SI / POP DI /
+ *     MOV SP,BP / POP BP / RET.
+ * The callees (03D6h, 0444h, 046Dh, 0490h, 04B9h, 04E1h) all return with a plain RET and the caller removes their
+ * arguments; 0B9Ch is a far routine. When a call has not returned (the clock's limit came first) the original carries on
+ * from where the machine is. An arm in the table that points anywhere else than the fourteen known entries is handed back
+ * to the original at its target. */
+static int rsound_117_voice_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (fix_inside(c, 0x0002, 0x03B9)) return 0;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    /* 0002  55             push bp */
+    L_0002:;
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0002);
+    x86_push_reg(c, R_BP);
+    /* 0003  8bec           mov bp, sp */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BP] = (uint16_t)(c->r[R_SP]); }
+    /* 0005  83ec0e         sub sp, 0xe */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x0E, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 0008  57             push di */
+    x86_push_reg(c, R_DI);
+    /* 0009  56             push si */
+    x86_push_reg(c, R_SI);
+    /* 000A  fc             cld */
+    set_flag(c, F_DF, 0);
+    /* 000B  8b5e04         mov bx, word ptr [bp + 4] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 000E  803f00         cmp byte ptr [bx], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 0011  7503           jne 0x16 */
+    if (x86_cond(c, 5)) goto L_0016;
+    /* 0013  e90f03         jmp 0x325 */
+    L_0013:;
+    XB(1, 0x0013);
+    goto L_0325;
+    /* 0016  807f0800       cmp byte ptr [bx + 8], 0 */
+    L_0016:;
+    XB(2, 0x0016);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0008);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 001A  7408           je 0x24 */
+    if (x86_cond(c, 4)) goto L_0024;
+    /* 001C  fe4f08         dec byte ptr [bx + 8] */
+    L_001C:;
+    XB(2, 0x001C);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0008); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 001F  7503           jne 0x24 */
+    if (x86_cond(c, 5)) goto L_0024;
+    /* 0021  e8b203         call 0x3d6 */
+    L_0021:;
+    SM4_NEED(1, 0x0021);
+    XRUN(guest_call_pop(m, 0x03D6, 0x0024, 0));
+    /* 0024  8b5e04         mov bx, word ptr [bp + 4] */
+    L_0024:;
+    XB(3, 0x0024);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0027  802f01         sub byte ptr [bx], 1 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]);
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, mem_read8(c, phys(s_, o_)), 0x01, 0);
+      mem_write8(c, phys(s_, o_), (uint8_t)(r_));
+    }
+    /* 002A  7603           jbe 0x2f */
+    if (x86_cond(c, 6)) goto L_002F;
+    /* 002C  e90503         jmp 0x334 */
+    L_002C:;
+    XB(1, 0x002C);
+    goto L_0334;
+    /* 002F  8b7716         mov si, word ptr [bx + 0x16] */
+    L_002F:;
+    XB(3, 0x002F);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_SI] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0032  803c80         cmp byte ptr [si], 0x80 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x80, 0);
+      (void)r_;
+    }
+    /* 0035  7328           jae 0x5f */
+    if (x86_cond(c, 3)) goto L_005F;
+    /* 0037  803e0e1300     cmp byte ptr [0x130e], 0 */
+    L_0037:;
+    XB(2, 0x0037);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x130E);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 003C  7403           je 0x41 */
+    if (x86_cond(c, 4)) goto L_0041;
+    /* 003E  e9dd02         jmp 0x31e */
+    L_003E:;
+    XB(1, 0x003E);
+    goto L_031E;
+    /* 0041  8b7716         mov si, word ptr [bx + 0x16] */
+    L_0041:;
+    XB(7, 0x0041);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_SI] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0044  ad             lodsw ax, word ptr [si] */
+    x86_lods(c, 1, c->seg[S_DS]);
+    /* 0045  884704         mov byte ptr [bx + 4], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0004); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0048  8827           mov byte ptr [bx], ah */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 4))); }
+    /* 004A  83471602       add word ptr [bx + 0x16], 2 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 004E  0ac0           or al, al */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0);
+      set_r8(c, 0, (uint8_t)(r_));
+    }
+    /* 0050  7407           je 0x59 */
+    if (x86_cond(c, 4)) goto L_0059;
+    /* 0052  0ae4           or ah, ah */
+    L_0052:;
+    XB(2, 0x0052);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 1, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 0054  7403           je 0x59 */
+    if (x86_cond(c, 4)) goto L_0059;
+    /* 0056  e97302         jmp 0x2cc */
+    L_0056:;
+    XB(1, 0x0056);
+    goto L_02CC;
+    /* 0059  e87a03         call 0x3d6 */
+    L_0059:;
+    SM4_NEED(1, 0x0059);
+    XRUN(guest_call_pop(m, 0x03D6, 0x005C, 0));
+    /* 005C  e9d502         jmp 0x334 */
+    XB(1, 0x005C);
+    goto L_0334;
+    /* 005F  8a04           mov al, byte ptr [si] */
+    L_005F:;
+    XB(5, 0x005F);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0061  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0062  2df2ff         sub ax, 0xfff2 */
+    { const uint16_t r_ = (uint16_t)alu_op(c, 5, c->r[R_AX], 0xFFF2, 1);
+      c->r[R_AX] = r_;
+    }
+    /* 0065  3d0d00         cmp ax, 0xd */
+    { const uint16_t r_ = (uint16_t)alu_op(c, 7, c->r[R_AX], 0x000D, 1);
+      (void)r_;
+    }
+    /* 0068  7603           jbe 0x6d */
+    if (x86_cond(c, 6)) goto L_006D;
+    /* 006A  e94f02         jmp 0x2bc */
+    L_006A:;
+    XB(1, 0x006A);
+    goto L_02BC;
+    /* 006D  03c0           add ax, ax */
+    L_006D:;
+    XB(4, 0x006D);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_AX], 1);
+      c->r[R_AX] = (uint16_t)(r_);
+    }
+    /* 006F  8b5e04         mov bx, word ptr [bp + 4] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0072  8bf8           mov di, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_DI] = (uint16_t)(c->r[R_AX]); }
+    /* 0074  2effa5b903     jmp word ptr cs:[di + 0x3b9] */
+    { const uint16_t t_ = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_DI] + 0x03B9));
+      switch (t_) {
+      case 0x027F: goto L_027F;
+      case 0x026E: goto L_026E;
+      case 0x025F: goto L_025F;
+      case 0x019A: goto L_019A;
+      case 0x0189: goto L_0189;
+      case 0x0179: goto L_0179;
+      case 0x0165: goto L_0165;
+      case 0x015D: goto L_015D;
+      case 0x0144: goto L_0144;
+      case 0x0134: goto L_0134;
+      case 0x011F: goto L_011F;
+      case 0x0102: goto L_0102;
+      case 0x00B4: goto L_00B4;
+      case 0x0079: goto L_0079;
+      default: c->ip = t_; return 1; } }
+    /* 0079  837f1c00       cmp word ptr [bx + 0x1c], 0 */
+    L_0079:;
+    XB(2, 0x0079);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001C);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x00, 1);
+      (void)r_;
+    }
+    /* 007D  7527           jne 0xa6 */
+    if (x86_cond(c, 5)) goto L_00A6;
+    /* 007F  46             inc si */
+    L_007F:;
+    XB(3, 0x007F);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0080  803c00         cmp byte ptr [si], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 0083  7512           jne 0x97 */
+    if (x86_cond(c, 5)) goto L_0097;
+    /* 0085  83471602       add word ptr [bx + 0x16], 2 */
+    L_0085:;
+    XB(5, 0x0085);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0089  8b4716         mov ax, word ptr [bx + 0x16] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 008C  894718         mov word ptr [bx + 0x18], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 008F  c7471c0000     mov word ptr [bx + 0x1c], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001C); seg_write16(c, s_, o_, (uint16_t)(0x0000)); }
+    /* 0094  e92502         jmp 0x2bc */
+    goto L_02BC;
+    /* 0097  8a04           mov al, byte ptr [si] */
+    L_0097:;
+    XB(3, 0x0097);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0099  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 009A  89471c         mov word ptr [bx + 0x1c], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001C); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 009D  8b4718         mov ax, word ptr [bx + 0x18] */
+    L_009D:;
+    XB(1, 0x009D);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 00A0  894716         mov word ptr [bx + 0x16], ax */
+    L_00A0:;
+    XB(2, 0x00A0);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00A3  e91602         jmp 0x2bc */
+    goto L_02BC;
+    /* 00A6  ff4f1c         dec word ptr [bx + 0x1c] */
+    L_00A6:;
+    XB(2, 0x00A6);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001C);
+      const uint16_t v_ = seg_read16(c, s_, o_); seg_write16(c, s_, o_, (uint16_t)(alu_dec(c, v_, 1))); }
+    /* 00A9  75f2           jne 0x9d */
+    if (x86_cond(c, 5)) goto L_009D;
+    /* 00AB  83471602       add word ptr [bx + 0x16], 2 */
+    L_00AB:;
+    XB(3, 0x00AB);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 00AF  8b4716         mov ax, word ptr [bx + 0x16] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 00B2  eb43           jmp 0xf7 */
+    goto L_00F7;
+    /* 00B4  837f1e00       cmp word ptr [bx + 0x1e], 0 */
+    L_00B4:;
+    XB(2, 0x00B4);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001E);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x00, 1);
+      (void)r_;
+    }
+    /* 00B8  752e           jne 0xe8 */
+    if (x86_cond(c, 5)) goto L_00E8;
+    /* 00BA  46             inc si */
+    L_00BA:;
+    XB(3, 0x00BA);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 00BB  803c00         cmp byte ptr [si], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 00BE  751a           jne 0xda */
+    if (x86_cond(c, 5)) goto L_00DA;
+    /* 00C0  83471602       add word ptr [bx + 0x16], 2 */
+    L_00C0:;
+    XB(7, 0x00C0);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 00C4  8b4716         mov ax, word ptr [bx + 0x16] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 00C7  89471a         mov word ptr [bx + 0x1a], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001A); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00CA  894718         mov word ptr [bx + 0x18], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00CD  c7471c0000     mov word ptr [bx + 0x1c], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001C); seg_write16(c, s_, o_, (uint16_t)(0x0000)); }
+    /* 00D2  c7471e0000     mov word ptr [bx + 0x1e], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001E); seg_write16(c, s_, o_, (uint16_t)(0x0000)); }
+    /* 00D7  e9e201         jmp 0x2bc */
+    goto L_02BC;
+    /* 00DA  8a04           mov al, byte ptr [si] */
+    L_00DA:;
+    XB(3, 0x00DA);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 00DC  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 00DD  89471e         mov word ptr [bx + 0x1e], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001E); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00E0  8b471a         mov ax, word ptr [bx + 0x1a] */
+    L_00E0:;
+    XB(3, 0x00E0);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001A); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 00E3  894718         mov word ptr [bx + 0x18], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00E6  ebb8           jmp 0xa0 */
+    goto L_00A0;
+    /* 00E8  ff4f1e         dec word ptr [bx + 0x1e] */
+    L_00E8:;
+    XB(2, 0x00E8);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001E);
+      const uint16_t v_ = seg_read16(c, s_, o_); seg_write16(c, s_, o_, (uint16_t)(alu_dec(c, v_, 1))); }
+    /* 00EB  7510           jne 0xfd */
+    if (x86_cond(c, 5)) goto L_00FD;
+    /* 00ED  83471602       add word ptr [bx + 0x16], 2 */
+    L_00ED:;
+    XB(3, 0x00ED);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 00F1  8b4716         mov ax, word ptr [bx + 0x16] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 00F4  89471a         mov word ptr [bx + 0x1a], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001A); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00F7  894718         mov word ptr [bx + 0x18], ax */
+    L_00F7:;
+    XB(2, 0x00F7);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 00FA  e9bf01         jmp 0x2bc */
+    goto L_02BC;
+    /* 00FD  8b5e04         mov bx, word ptr [bp + 4] */
+    L_00FD:;
+    XB(2, 0x00FD);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0100  ebde           jmp 0xe0 */
+    goto L_00E0;
+    /* 0102  837f2000       cmp word ptr [bx + 0x20], 0 */
+    L_0102:;
+    XB(2, 0x0102);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0020);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x00, 1);
+      (void)r_;
+    }
+    /* 0106  7505           jne 0x10d */
+    if (x86_cond(c, 5)) goto L_010D;
+    /* 0108  8b4714         mov ax, word ptr [bx + 0x14] */
+    L_0108:;
+    XB(2, 0x0108);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0014); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 010B  eb93           jmp 0xa0 */
+    goto L_00A0;
+    /* 010D  8b4720         mov ax, word ptr [bx + 0x20] */
+    L_010D:;
+    XB(6, 0x010D);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0020); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0110  894714         mov word ptr [bx + 0x14], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0014); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 0113  894716         mov word ptr [bx + 0x16], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 0116  894718         mov word ptr [bx + 0x18], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 0119  89471a         mov word ptr [bx + 0x1a], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x001A); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 011C  e99d01         jmp 0x2bc */
+    goto L_02BC;
+    /* 011F  46             inc si */
+    L_011F:;
+    XB(6, 0x011F);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0120  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0122  884705         mov byte ptr [bx + 5], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0005); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0125  83471602       add word ptr [bx + 0x16], 2 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0129  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 012A  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 012B  e83f03         call 0x46d */
+    SM4_NEED(1, 0x012B);
+    XRUN(guest_call_pop(m, 0x046D, 0x012E, 0));
+    /* 012E  83c402         add sp, 2 */
+    L_012E:;
+    XB(2, 0x012E);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x02, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 0131  e98801         jmp 0x2bc */
+    goto L_02BC;
+    /* 0134  46             inc si */
+    L_0134:;
+    XB(3, 0x0134);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0135  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0137  884707         mov byte ptr [bx + 7], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0007); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 013A  8b5e04         mov bx, word ptr [bp + 4] */
+    L_013A:;
+    XB(3, 0x013A);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 013D  83471602       add word ptr [bx + 0x16], 2 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0141  e97801         jmp 0x2bc */
+    goto L_02BC;
+    /* 0144  46             inc si */
+    L_0144:;
+    XB(10, 0x0144);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0145  ac             lodsb al, byte ptr [si] */
+    x86_lods(c, 0, c->seg[S_DS]);
+    /* 0146  884710         mov byte ptr [bx + 0x10], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0010); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0149  ac             lodsb al, byte ptr [si] */
+    x86_lods(c, 0, c->seg[S_DS]);
+    /* 014A  884701         mov byte ptr [bx + 1], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0001); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 014D  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 014F  884712         mov byte ptr [bx + 0x12], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0012); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0152  c6470a01       mov byte ptr [bx + 0xa], 1 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000A); mem_write8(c, phys(s_, o_), (uint8_t)(0x01)); }
+    /* 0156  83471604       add word ptr [bx + 0x16], 4 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x04, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 015A  e95f01         jmp 0x2bc */
+    goto L_02BC;
+    /* 015D  46             inc si */
+    L_015D:;
+    XB(4, 0x015D);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 015E  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0160  884706         mov byte ptr [bx + 6], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0006); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0163  ebd5           jmp 0x13a */
+    goto L_013A;
+    /* 0165  46             inc si */
+    L_0165:;
+    XB(6, 0x0165);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0166  ac             lodsb al, byte ptr [si] */
+    x86_lods(c, 0, c->seg[S_DS]);
+    /* 0167  88470f         mov byte ptr [bx + 0xf], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000F); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 016A  884709         mov byte ptr [bx + 9], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0009); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 016D  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 016F  884702         mov byte ptr [bx + 2], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0002); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0172  83471603       add word ptr [bx + 0x16], 3 */
+    L_0172:;
+    XB(2, 0x0172);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x03, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0176  e94301         jmp 0x2bc */
+    goto L_02BC;
+    /* 0179  46             inc si */
+    L_0179:;
+    XB(5, 0x0179);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 017A  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 017C  88470d         mov byte ptr [bx + 0xd], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000D); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 017F  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0180  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 0181  e83503         call 0x4b9 */
+    SM4_NEED(1, 0x0181);
+    XRUN(guest_call_pop(m, 0x04B9, 0x0184, 0));
+    /* 0184  83c402         add sp, 2 */
+    L_0184:;
+    XB(2, 0x0184);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x02, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 0187  ebb1           jmp 0x13a */
+    goto L_013A;
+    /* 0189  46             inc si */
+    L_0189:;
+    XB(6, 0x0189);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 018A  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 018C  88470c         mov byte ptr [bx + 0xc], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000C); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 018F  83471602       add word ptr [bx + 0x16], 2 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), (uint16_t)(int16_t)(int8_t)0x02, 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0193  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0194  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 0195  e8f802         call 0x490 */
+    SM4_NEED(1, 0x0195);
+    XRUN(guest_call_pop(m, 0x0490, 0x0198, 0));
+    /* 0198  eb94           jmp 0x12e */
+    XB(1, 0x0198);
+    goto L_012E;
+    /* 019A  46             inc si */
+    L_019A:;
+    XB(6, 0x019A);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 019B  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 019D  8846f8         mov byte ptr [bp - 8], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 01A0  c646fa00       mov byte ptr [bp - 6], 0 */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 01A4  0ac0           or al, al */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 1, get_r8(c, 0), get_r8(c, 0), 0);
+      set_r8(c, 0, (uint8_t)(r_));
+    }
+    /* 01A6  7e56           jle 0x1fe */
+    if (x86_cond(c, 14)) goto L_01FE;
+    /* 01A8  8b5e04         mov bx, word ptr [bp + 4] */
+    L_01A8:;
+    XB(4, 0x01A8);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 01AB  8a4706         mov al, byte ptr [bx + 6] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0006); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01AE  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 01B0  8bf8           mov di, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_DI] = (uint16_t)(c->r[R_AX]); }
+    /* 01B2  46             inc si */
+    L_01B2:;
+    XB(14, 0x01B2);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 01B3  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01B5  8846fe         mov byte ptr [bp - 2], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFE); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 01B8  8a46fa         mov al, byte ptr [bp - 6] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01BB  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 01BC  8bd8           mov bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BX] = (uint16_t)(c->r[R_AX]); }
+    /* 01BE  a0a023         mov al, byte ptr [0x23a0] */
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x23A0)));
+    /* 01C1  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 01C3  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 01C5  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 01C7  03d8           add bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+      c->r[R_BX] = (uint16_t)(r_);
+    }
+    /* 01C9  8a46fe         mov al, byte ptr [bp - 2] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFE); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01CC  3887a223       cmp byte ptr [bx + 0x23a2], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x23A2);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      (void)r_;
+    }
+    /* 01D0  7421           je 0x1f3 */
+    if (x86_cond(c, 4)) goto L_01F3;
+    /* 01D2  57             push di */
+    L_01D2:;
+    XB(3, 0x01D2);
+    x86_push_reg(c, R_DI);
+    /* 01D3  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 01D4  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 01D5  e86c02         call 0x444 */
+    SM4_NEED(1, 0x01D5);
+    XRUN(guest_call_pop(m, 0x0444, 0x01D8, 0));
+    /* 01D8  83c404         add sp, 4 */
+    XB(11, 0x01D8);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x04, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 01DB  8a46fa         mov al, byte ptr [bp - 6] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01DE  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 01DF  8bd8           mov bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BX] = (uint16_t)(c->r[R_AX]); }
+    /* 01E1  a0a023         mov al, byte ptr [0x23a0] */
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x23A0)));
+    /* 01E4  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 01E6  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 01E8  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 01EA  03d8           add bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+      c->r[R_BX] = (uint16_t)(r_);
+    }
+    /* 01EC  8a46fe         mov al, byte ptr [bp - 2] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFE); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01EF  8887a223       mov byte ptr [bx + 0x23a2], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x23A2); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 01F3  fe46fa         inc byte ptr [bp - 6] */
+    L_01F3:;
+    XB(4, 0x01F3);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_inc(c, v_, 0))); }
+    /* 01F6  8a46f8         mov al, byte ptr [bp - 8] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 01F9  3846fa         cmp byte ptr [bp - 6], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      (void)r_;
+    }
+    /* 01FC  7cb4           jl 0x1b2 */
+    if (x86_cond(c, 12)) goto L_01B2;
+    /* 01FE  8a46f8         mov al, byte ptr [bp - 8] */
+    L_01FE:;
+    XB(4, 0x01FE);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0201  8846fa         mov byte ptr [bp - 6], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0204  3c04           cmp al, 4 */
+    { const uint16_t r_ = (uint16_t)alu_op(c, 7, get_r8(c, R_AL), 0x04, 0);
+      (void)r_;
+    }
+    /* 0206  7d35           jge 0x23d */
+    if (x86_cond(c, 13)) goto L_023D;
+    /* 0208  a0a023         mov al, byte ptr [0x23a0] */
+    L_0208:;
+    XB(18, 0x0208);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x23A0)));
+    /* 020B  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 020D  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 020F  d1e0           shl ax, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1));
+    }
+    /* 0211  8946f6         mov word ptr [bp - 0xa], ax */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF6); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 0214  8a46f8         mov al, byte ptr [bp - 8] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0217  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0218  8946f2         mov word ptr [bp - 0xe], ax */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF2); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 021B  b80400         mov ax, 4 */
+    c->r[R_AX] = 0x0004;
+    /* 021E  2b46f2         sub ax, word ptr [bp - 0xe] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF2);
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, c->r[R_AX], seg_read16(c, s_, o_), 1);
+      c->r[R_AX] = (uint16_t)(r_);
+    }
+    /* 0221  8946f4         mov word ptr [bp - 0xc], ax */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF4); seg_write16(c, s_, o_, (uint16_t)(c->r[R_AX])); }
+    /* 0224  8b7ef2         mov di, word ptr [bp - 0xe] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF2); c->r[R_DI] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0227  8b5ef6         mov bx, word ptr [bp - 0xa] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF6); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 022A  b0ff           mov al, 0xff */
+    set_r8(c, 0, 0xFF);
+    /* 022C  8b4ef4         mov cx, word ptr [bp - 0xc] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF4); c->r[R_CX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 022F  8db9a223       lea di, [bx + di + 0x23a2] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + c->r[R_DI] + 0x23A2); c->r[R_DI] = o_; }
+    /* 0233  1e             push ds */
+    cpu_push16(c, c->seg[S_DS]);
+    /* 0234  07             pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    /* 0235  f3aa           rep stosb byte ptr es:[di], al */
+    L_0235:;
+    if (c->r[R_CX] == 0) { XB(1, 0x0235); goto L_0237; }
+    do { SM4_NEED(1, 0x0235); c->icount += 1; x86_stos(c, 0); c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1); } while (c->r[R_CX] != 0);
+    goto L_0237;
+    /* 0237  8a46f4         mov al, byte ptr [bp - 0xc] */
+    L_0237:;
+    XB(2, 0x0237);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF4); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 023A  0046fa         add byte ptr [bp - 6], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      mem_write8(c, phys(s_, o_), (uint8_t)(r_));
+    }
+    /* 023D  8b5e04         mov bx, word ptr [bp + 4] */
+    L_023D:;
+    XB(13, 0x023D);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0240  46             inc si */
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0241  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0243  8807           mov byte ptr [bx], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0245  8a07           mov al, byte ptr [bx] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0247  2a4707         sub al, byte ptr [bx + 7] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0007);
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 0), mem_read8(c, phys(s_, o_)), 0);
+      set_r8(c, 0, (uint8_t)(r_));
+    }
+    /* 024A  884708         mov byte ptr [bx + 8], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0008); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 024D  8a46f8         mov al, byte ptr [bp - 8] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0250  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0251  050300         add ax, 3 */
+    { const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x0003, 1);
+      c->r[R_AX] = r_;
+    }
+    /* 0254  014716         add word ptr [bx + 0x16], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), c->r[R_AX], 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 0257  c6060e1301     mov byte ptr [0x130e], 1 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x130E); mem_write8(c, phys(s_, o_), (uint8_t)(0x01)); }
+    /* 025C  eb5e           jmp 0x2bc */
+    goto L_02BC;
+    /* 025F  46             inc si */
+    L_025F:;
+    XB(5, 0x025F);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0260  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0262  88470e         mov byte ptr [bx + 0xe], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000E); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0265  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 0267  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 0268  e87602         call 0x4e1 */
+    SM4_NEED(1, 0x0268);
+    XRUN(guest_call_pop(m, 0x04E1, 0x026B, 0));
+    /* 026B  e916ff         jmp 0x184 */
+    XB(1, 0x026B);
+    goto L_0184;
+    /* 026E  46             inc si */
+    L_026E:;
+    XB(7, 0x026E);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 026F  ac             lodsb al, byte ptr [si] */
+    x86_lods(c, 0, c->seg[S_DS]);
+    /* 0270  884711         mov byte ptr [bx + 0x11], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0011); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0273  8a04           mov al, byte ptr [si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0275  884703         mov byte ptr [bx + 3], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0003); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0278  c6470b01       mov byte ptr [bx + 0xb], 1 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000B); mem_write8(c, phys(s_, o_), (uint8_t)(0x01)); }
+    /* 027C  e9f3fe         jmp 0x172 */
+    goto L_0172;
+    /* 027F  46             inc si */
+    L_027F:;
+    XB(3, 0x027F);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    /* 0280  ac             lodsb al, byte ptr [si] */
+    x86_lods(c, 0, c->seg[S_DS]);
+    /* 0281  8846f8         mov byte ptr [bp - 8], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0284  9a9c0b3e02     lcall 0x23e, 0xb9c */
+    SM4_NEED(1, 0x0284);
+    XRUN(guest_call_far(m, 0x0284, 0x0289));
+    /* 0289  8a46f8         mov al, byte ptr [bp - 8] */
+    XB(22, 0x0289);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 028C  fec8           dec al */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; const uint16_t v_ = get_r8(c, 0); set_r8(c, 0, (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 028E  22063115       and al, byte ptr [0x1531] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x1531);
+      const uint16_t r_ = (uint16_t)alu_op(c, 4, get_r8(c, 0), mem_read8(c, phys(s_, o_)), 0);
+      set_r8(c, 0, (uint8_t)(r_));
+    }
+    /* 0292  8846fa         mov byte ptr [bp - 6], al */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0295  8a46f8         mov al, byte ptr [bp - 8] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFF8); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0298  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 0299  8bf8           mov di, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_DI] = (uint16_t)(c->r[R_AX]); }
+    /* 029B  8a46fa         mov al, byte ptr [bp - 6] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0xFFFA); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 029E  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 029F  8bd8           mov bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BX] = (uint16_t)(c->r[R_AX]); }
+    /* 02A1  8a00           mov al, byte ptr [bx + si] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + c->r[R_SI]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02A3  8bdf           mov bx, di */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BX] = (uint16_t)(c->r[R_DI]); }
+    /* 02A5  03de           add bx, si */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_SI], 1);
+      c->r[R_BX] = (uint16_t)(r_);
+    }
+    /* 02A7  8bc8           mov cx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_CX] = (uint16_t)(c->r[R_AX]); }
+    /* 02A9  8a07           mov al, byte ptr [bx] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02AB  98             cwde */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /* 02AC  8bd8           mov bx, ax */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_BX] = (uint16_t)(c->r[R_AX]); }
+    /* 02AE  03df           add bx, di */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_DI], 1);
+      c->r[R_BX] = (uint16_t)(r_);
+    }
+    /* 02B0  884801         mov byte ptr [bx + si + 1], cl */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x0001); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 1))); }
+    /* 02B3  8b5e04         mov bx, word ptr [bp + 4] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 02B6  8d4503         lea ax, [di + 3] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_DI] + 0x0003); c->r[R_AX] = o_; }
+    /* 02B9  014716         add word ptr [bx + 0x16], ax */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0016);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), c->r[R_AX], 1);
+      seg_write16(c, s_, o_, (uint16_t)(r_));
+    }
+    /* 02BC  8b5e04         mov bx, word ptr [bp + 4] */
+    L_02BC:;
+    XB(3, 0x02BC);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 02BF  803e0e1300     cmp byte ptr [0x130e], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x130E);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 02C4  7503           jne 0x2c9 */
+    if (x86_cond(c, 5)) goto L_02C9;
+    /* 02C6  e966fd         jmp 0x2f */
+    L_02C6:;
+    XB(1, 0x02C6);
+    goto L_002F;
+    /* 02C9  e96bfd         jmp 0x37 */
+    L_02C9:;
+    XB(1, 0x02C9);
+    goto L_0037;
+    /* 02CC  8b5e04         mov bx, word ptr [bp + 4] */
+    L_02CC:;
+    XB(6, 0x02CC);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 02CF  8a07           mov al, byte ptr [bx] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02D1  2a4707         sub al, byte ptr [bx + 7] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0007);
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 0), mem_read8(c, phys(s_, o_)), 0);
+      set_r8(c, 0, (uint8_t)(r_));
+    }
+    /* 02D4  884708         mov byte ptr [bx + 8], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0008); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 02D7  807f0700       cmp byte ptr [bx + 7], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0007);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 02DB  7d15           jge 0x2f2 */
+    if (x86_cond(c, 13)) goto L_02F2;
+    /* 02DD  8bfb           mov di, bx */
+    L_02DD:;
+    XB(8, 0x02DD);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_DI] = (uint16_t)(c->r[R_BX]); }
+    /* 02DF  8a1ea023       mov bl, byte ptr [0x23a0] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x23A0); set_r8(c, 3, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02E3  2aff           sub bh, bh */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 7), get_r8(c, 7), 0);
+      set_r8(c, 7, (uint8_t)(r_));
+    }
+    /* 02E5  d1e3           shl bx, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1));
+    }
+    /* 02E7  d1e3           shl bx, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1));
+    }
+    /* 02E9  8a4504         mov al, byte ptr [di + 4] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_DI] + 0x0004); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02EC  3887a223       cmp byte ptr [bx + 0x23a2], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x23A2);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      (void)r_;
+    }
+    /* 02F0  7416           je 0x308 */
+    if (x86_cond(c, 4)) goto L_0308;
+    /* 02F2  e8e100         call 0x3d6 */
+    L_02F2:;
+    SM4_NEED(1, 0x02F2);
+    XRUN(guest_call_pop(m, 0x03D6, 0x02F5, 0));
+    /* 02F5  8b5e04         mov bx, word ptr [bp + 4] */
+    XB(6, 0x02F5);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 02F8  8a4706         mov al, byte ptr [bx + 6] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0006); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 02FB  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 02FD  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 02FE  8a4704         mov al, byte ptr [bx + 4] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0004); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0301  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 0302  e83f01         call 0x444 */
+    SM4_NEED(1, 0x0302);
+    XRUN(guest_call_pop(m, 0x0444, 0x0305, 0));
+    /* 0305  83c404         add sp, 4 */
+    XB(1, 0x0305);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x04, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 0308  8a1ea023       mov bl, byte ptr [0x23a0] */
+    L_0308:;
+    XB(8, 0x0308);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x23A0); set_r8(c, 3, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 030C  2aff           sub bh, bh */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 7), get_r8(c, 7), 0);
+      set_r8(c, 7, (uint8_t)(r_));
+    }
+    /* 030E  d1e3           shl bx, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1));
+    }
+    /* 0310  d1e3           shl bx, 1 */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1));
+    }
+    /* 0312  8b7e04         mov di, word ptr [bp + 4] */
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_DI] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0315  8a4504         mov al, byte ptr [di + 4] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_DI] + 0x0004); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0318  8887a223       mov byte ptr [bx + 0x23a2], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x23A2); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 031C  eb16           jmp 0x334 */
+    goto L_0334;
+    /* 031E  c6060e1300     mov byte ptr [0x130e], 0 */
+    L_031E:;
+    XB(2, 0x031E);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x130E); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 0323  eb0f           jmp 0x334 */
+    goto L_0334;
+    /* 0325  8b5e04         mov bx, word ptr [bp + 4] */
+    L_0325:;
+    XB(4, 0x0325);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0328  c6470200       mov byte ptr [bx + 2], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0002); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 032C  c6470100       mov byte ptr [bx + 1], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0001); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 0330  c6470300       mov byte ptr [bx + 3], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0003); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 0334  8b5e04         mov bx, word ptr [bp + 4] */
+    L_0334:;
+    XB(3, 0x0334);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0337  807f0200       cmp byte ptr [bx + 2], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0002);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 033B  741d           je 0x35a */
+    if (x86_cond(c, 4)) goto L_035A;
+    /* 033D  fe4f09         dec byte ptr [bx + 9] */
+    L_033D:;
+    XB(2, 0x033D);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0009); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 0340  7518           jne 0x35a */
+    if (x86_cond(c, 5)) goto L_035A;
+    /* 0342  8a470f         mov al, byte ptr [bx + 0xf] */
+    L_0342:;
+    XB(7, 0x0342);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000F); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0345  884709         mov byte ptr [bx + 9], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0009); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 0348  8a4702         mov al, byte ptr [bx + 2] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0002); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 034B  00470c         add byte ptr [bx + 0xc], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000C);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      mem_write8(c, phys(s_, o_), (uint8_t)(r_));
+    }
+    /* 034E  8a470c         mov al, byte ptr [bx + 0xc] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000C); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0351  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 0353  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 0354  e83901         call 0x490 */
+    SM4_NEED(1, 0x0354);
+    XRUN(guest_call_pop(m, 0x0490, 0x0357, 0));
+    /* 0357  83c402         add sp, 2 */
+    XB(1, 0x0357);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x02, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 035A  8b5e04         mov bx, word ptr [bp + 4] */
+    L_035A:;
+    XB(3, 0x035A);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 035D  807f0100       cmp byte ptr [bx + 1], 0 */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0001);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 0361  7429           je 0x38c */
+    if (x86_cond(c, 4)) goto L_038C;
+    /* 0363  fe4f0a         dec byte ptr [bx + 0xa] */
+    L_0363:;
+    XB(2, 0x0363);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000A); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 0366  7518           jne 0x380 */
+    if (x86_cond(c, 5)) goto L_0380;
+    /* 0368  8a4710         mov al, byte ptr [bx + 0x10] */
+    L_0368:;
+    XB(7, 0x0368);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0010); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 036B  88470a         mov byte ptr [bx + 0xa], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000A); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 036E  8a4701         mov al, byte ptr [bx + 1] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0001); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0371  00470d         add byte ptr [bx + 0xd], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000D);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      mem_write8(c, phys(s_, o_), (uint8_t)(r_));
+    }
+    /* 0374  8a470d         mov al, byte ptr [bx + 0xd] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000D); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 0377  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 0379  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 037A  e83c01         call 0x4b9 */
+    SM4_NEED(1, 0x037A);
+    XRUN(guest_call_pop(m, 0x04B9, 0x037D, 0));
+    /* 037D  83c402         add sp, 2 */
+    XB(1, 0x037D);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x02, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 0380  8b5e04         mov bx, word ptr [bp + 4] */
+    L_0380:;
+    XB(3, 0x0380);
+    { const uint16_t s_ = c->seg[S_SS]; const uint16_t o_ = (uint16_t)(c->r[R_BP] + 0x0004); c->r[R_BX] = (uint16_t)(seg_read16(c, s_, o_)); }
+    /* 0383  fe4f12         dec byte ptr [bx + 0x12] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0012); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 0386  7504           jne 0x38c */
+    if (x86_cond(c, 5)) goto L_038C;
+    /* 0388  c6470100       mov byte ptr [bx + 1], 0 */
+    L_0388:;
+    XB(1, 0x0388);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0001); mem_write8(c, phys(s_, o_), (uint8_t)(0x00)); }
+    /* 038C  807f0300       cmp byte ptr [bx + 3], 0 */
+    L_038C:;
+    XB(2, 0x038C);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0003);
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, mem_read8(c, phys(s_, o_)), 0x00, 0);
+      (void)r_;
+    }
+    /* 0390  741d           je 0x3af */
+    if (x86_cond(c, 4)) goto L_03AF;
+    /* 0392  fe4f0b         dec byte ptr [bx + 0xb] */
+    L_0392:;
+    XB(2, 0x0392);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000B); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_dec(c, v_, 0))); }
+    /* 0395  7518           jne 0x3af */
+    if (x86_cond(c, 5)) goto L_03AF;
+    /* 0397  8a4711         mov al, byte ptr [bx + 0x11] */
+    L_0397:;
+    XB(7, 0x0397);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0011); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 039A  88470b         mov byte ptr [bx + 0xb], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000B); mem_write8(c, phys(s_, o_), (uint8_t)(get_r8(c, 0))); }
+    /* 039D  8a4703         mov al, byte ptr [bx + 3] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0003); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 03A0  00470e         add byte ptr [bx + 0xe], al */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000E);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, mem_read8(c, phys(s_, o_)), get_r8(c, 0), 0);
+      mem_write8(c, phys(s_, o_), (uint8_t)(r_));
+    }
+    /* 03A3  8a470e         mov al, byte ptr [bx + 0xe] */
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x000E); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+    /* 03A6  2ae4           sub ah, ah */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0);
+      set_r8(c, 4, (uint8_t)(r_));
+    }
+    /* 03A8  50             push ax */
+    x86_push_reg(c, R_AX);
+    /* 03A9  e83501         call 0x4e1 */
+    SM4_NEED(1, 0x03A9);
+    XRUN(guest_call_pop(m, 0x04E1, 0x03AC, 0));
+    /* 03AC  83c402         add sp, 2 */
+    XB(1, 0x03AC);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_SP], (uint16_t)(int16_t)(int8_t)0x02, 1);
+      c->r[R_SP] = (uint16_t)(r_);
+    }
+    /* 03AF  fe06a023       inc byte ptr [0x23a0] */
+    L_03AF:;
+    XB(6, 0x03AF);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x23A0); const uint16_t v_ = mem_read8(c, phys(s_, o_)); mem_write8(c, phys(s_, o_), (uint8_t)(alu_inc(c, v_, 0))); }
+    /* 03B3  5e             pop si */
+    c->r[R_SI] = cpu_pop16(c);
+    /* 03B4  5f             pop di */
+    c->r[R_DI] = cpu_pop16(c);
+    /* 03B5  8be5           mov sp, bp */
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_SP] = (uint16_t)(c->r[R_BP]); }
+    /* 03B7  5d             pop bp */
+    c->r[R_BP] = cpu_pop16(c);
+    /* 03B8  c3             ret */
+    near_ret(c);
+    return 1;
+
+#undef XB
+#undef XRUN
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0002, rsound_117_voice_step, "Roland overlay: one tick of one voice record: gate and event countdowns, the event stream (notes and the fourteen commands of the jump table at 03B9) and the three volume/pan/modulation slides", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0E8A, asound_117_switch_voice_slot, "AdLib voice change: key off the slot's previous voice and load the new voice's fields into slot A or B, or run the percussion setup and key the voice on", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x123E, asound_117_load_instrument_pair, "AdLib instrument load: register write, operator records 2E+44n and +16h, two emitter calls, voice cache copy", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x1048, asound_117_emit_operator_registers, "AdLib operator setup: emit nine register writes from the current operator record, channel/slot indices and depth flags", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0BFC, asound_log_load_instrument_operators, "key the current AdLib voice off, load both instrument operator records through signed maps, write their registers, and cache the four per-voice instrument fields", 1 },

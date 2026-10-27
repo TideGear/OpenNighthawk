@@ -7,8 +7,8 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 26 October 2026: checklist round 2 is fully read and 367 units / 13,976 bytes adopted;
-P2 90.40%.** The accepted runtime remains batch bh (`28b34b2`, CI green). The working copy is **`C:\Dev\F-117A Recomp`**;
+more than once, what it costs). **Current state, 26 October 2026: checklist rounds 2 and 3 adopted (39,160 / 44,714 bytes); batch bi (ASOUND.117 `0E8A`, RSOUND.117 `0002`) gated and
+accepted pending CI; P2 91.96%.** The accepted runtime was batch bh (`28b34b2`); bi adds 1,393 named bytes. The working copy is **`C:\Dev\F-117A Recomp`**;
 the old `My Drive` copy is stale: do not use it. There are 34 normal-play switches. Kit libraries
 (`D:/f117-gate/kit-libs`, manifest) are current at `28b34b2`; older sets `kit-libs-before-bh`, `-bg`, `-10d5adb`.
 This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
@@ -24,26 +24,14 @@ This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/Ti
    not just the review snapshot: every staged byte was a new checklist byte, no overlap, gameplay and naming unchanged.
    Current checklist: **34,684 / 44,714 bytes (77.57%)**, 10,030 still unreviewed. The older packet snapshot had 44,700:
    **14 current-scope bytes were absent**; exact addresses are in `round2/unreviewed-outside-round2.tsv` and must enter round 3.
-2. **Round 3 packets are frozen; fresh reads are underway, no credit yet:** `checklist-full-20261026/round3/` holds
-   228 packets / 46 groups, exactly 10,030 current still-unreviewed bytes including the extra 14. Root's independent
-   `root_reconcile.py` verified all original claim bytes and 96,733 displayed instructions, with zero missing, extra,
-   duplicate or reviewed-overlap bytes. All SETUP context explicitly declares its hash-validated XOR runtime view;
-   raw source claims remain separate. `freeze_inputs.py` checks 280 frozen input hashes. Never regenerate packets
-   during reads, reuse earlier readers or disclose old verdicts. `audit_completion.py` normalizes filenames and
-   records complete/pending groups; `stage_reads.py` stages conservative ACCEPT rows privately and
-   `validate_current.py` independently checks them against current bh scope. Nothing is applied yet.
-   The revised brief must use the exact scorer design rules: polling alone, bounded waits and already fixture-completed
-   code are not hardware-wait exemptions. Machine-option-only is a prerequisite classification, not a matching exemption;
-   fixtures are still required. DSWAP's no-floppy policy is separate from scored design rules; packer review needs its own
-   source representation. No automatic stays-original/probable-dead/dead-certified adoption.
-3. **Matching round 3 remains private and unaccepted.** Proof workers are diagnosing ASOUND.117 `0E8A` and RSOUND.117 `0002`
-   (masks `0x000F0000` / `0x00F00000`). Other unfinished preparations: ASOUND.LOG `0D1A`, SETUP `10B3`,
-   MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211` (`p2-*-bi-*`; `hard-tail-r3/`). Inspect current logs/hashes and live
-   processes; never infer completion from an old cover file or partial build. ASOUND's strengthened callee fixture has two
-   long-run skips (states 486/487); diagnostic harness edits must be removed before final proof. RSOUND's F5 generator
-   overwrote its own command with a terminal pair for negative sizes; repaired fixture retains the full size distribution
-   and adds valid F9-to-F5 interactions. A replacement pipeline is running; inspect `pipeline-status.json` and strict
-   per-routine skip counts before proceeding. Nothing from this round is integrated or credited.
+2. **Checklist round 3 is complete and adopted:** 228 packets / 46 groups read by fresh blind readers; 101 units / 185 rows / 4,476 bytes adopted
+   (`fcc5cfb`); checklist **39,160 / 44,714 (87.58%)**, 5,554 bytes without an entry (the ACCEPT-WITH-CHANGES, NEEDS-CONTEXT, REJECT and refused units of
+   rounds 2 and 3). Next is a round 4 over those: corrected names/ranges, more context, fresh readers. Work is under
+   `D:/f117-gate/checklist-full-20261026/` (`round3/` has the scripts; copy them for round 4).
+3. **Batch bi accepted pending CI:** ASOUND.117 `0E8A` and RSOUND.117 `0002` (gate 1,714 s, 676 tests, 122 mutations); evidence
+   `D:/f117-gate/p2-batch-bi-accept/`. Two batch-local audit widenings (see roadmap) should be folded into the kit scripts. RSOUND `0002` needed a
+   `fix_inside(c, 0x0002, 0x03B9)` guard (Q16 hooks `0348`). Still private and unfinished: ASOUND.LOG `0D1A`, SETUP `10B3`, MPS_LOGO `00DA:0307/030E/0315`
+   (0307 has 12 mutations caught, no verdict), PLAYER `0211`/`0540`, VGAME `137CE`. Inspect logs, hashes and live processes; never infer completion from a partial build.
 4. **Repository changes for checklist round 2 are reference data, saved progress and docs only.** Runtime, harness,
    CMake and accepted coverage are unchanged. All 80 focused classifier/progress/encoded-code tests pass. A code gate
    is not needed for reference-only adoption. The owner's untracked two `.bat` launchers stay untouched.

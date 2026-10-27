@@ -189,7 +189,7 @@ not the recompilation:
       private lead list. How the scores are measured, and the full "P2 is done
       when" definition (owner, 23-24 Oct):
       [progress.md](progress.md#what-is-measured).
-      **Done:** 1,430 addresses matched in batches a to bh (table below). Every
+      **Done:** 1,432 addresses matched in batches a to bi (table below). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
       original by design; in the census alone, named code runs 160,003 of
       165,425 creditable bytes (1,122 rows wholly, 291 in part).
@@ -203,6 +203,10 @@ not the recompilation:
       ASOUND.LOG `0BFC` (operator loader, 110 instructions), ISOUND.117 `062E` (effect-record selector, 128 instructions) and `0443` (word effect decoder). +1,410
       named bytes, all route-executed. Gate 1,723 s, 674 tests, 188 mutations, three whole-table pre-check seeds zero mismatches. Evidence
       `D:/f117-gate/p2-batch-bh-accept/`.
+      **Batch bi (26 Oct):** ASOUND.117 `0E8A` (AdLib voice change, 170 instructions) and RSOUND.117 `0002` (Roland per-voice sequencer step, 372 instructions,
+      jump-table arms). RSOUND `0002` declines while the Q16 fix at `0348` is installed (`fix_inside`), as the audit demands. +1,393 named bytes. Gate 1,714 s, 676 tests,
+      122 mutations. The audit needed two batch-local widenings (an `XCALL(target,ip,ret)` claim form; the declared SPANS row for overlay routines, whose
+      indirect arms the static dossier does not list). Evidence `D:/f117-gate/p2-batch-bi-accept/`.
       **Accounted-for checklist (26 Oct):** a full blind second-read pass over the 43,920 unreviewed bytes (912 units, 156 independent readers) adopted
       444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. Round 2 re-cut the remainder into 588 packets / 79 independent reader groups: all read,
       367 units / 13,976 bytes adopted in 523 rows. Checklist now 34,684 / 44,714 (77.57%), P2 90.40%.
@@ -325,6 +329,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bf | 25 Oct | 1,400 | 61 named bytes | RSOUND.LOG one-shot timer installer in four entries: `0251` (guard, vector, PIT0 control write; 15 instructions), `027C` (reload low/high bytes; stops after the second write), `0289` (POP AX, STI; stops after the STI), `028D` (RET). 25 fixture instructions, 46 mutations caught; 20 optimized seed checks. Two whole-table pre-check seeds (`0x4fc6ba6c9f0d`, `0x5EED0BF1`) pass. 644 CTests, 63 identical routes / 62 fresh interpreter sessions, 1,400 matched routines at three seeds, reach/event limits clean; acceptance 1,642 s. Evidence `D:/f117-gate/p2-batch-bf-accept/`. |
 | bg | 26 Oct | 1,425 | 473 named bytes | 25 sound-driver entries in one gate: ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57` `0B74` `0B75` and seven wrappers `0887`..`08FC`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`; RSOUND.LOG `02D4` `0310`. 255 fixture instructions, 427 mutations caught, 125 optimized seed checks; two whole-table pre-check seeds (`0xaebbf86cfffe`, `0x5EED0BF2`) zero mismatches. The six MPU/OPL wait-loop fixtures force timeout and success by state index. Gate 1,970 s. |
 | bh | 26 Oct | 1,430 | 1,410 named bytes | The five larger bg4 routines: ASOUND.117 `1048` `123E`, ASOUND.LOG `0BFC`, ISOUND.117 `062E` `0443`. 614 fixture instructions, 188 mutations caught, 25 optimized seed checks; three whole-table pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`, `0x20261027`) zero mismatches. The fixtures of the accepted VGAME `4973` and ASOUND.117 `0C2E` were corrected (a macro-local name clash had made their written values address-derived) and re-proved. Gate 1,723 s. |
+| bi | 26 Oct | 1,432 | 1,393 named bytes | ASOUND.117 `0E8A`, RSOUND.117 `0002`. 542 fixture instructions, 122 mutations caught. Gate 1,714 s. |
 
 Notes that still matter:
 

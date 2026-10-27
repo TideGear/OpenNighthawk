@@ -1698,6 +1698,10 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:1048)
     add_test(NAME matched_asound_117_load_instrument_pair COMMAND func_lockstep --states 5000
       --only ASOUND.117:123E)
+    add_test(NAME matched_asound_117_switch_voice_slot COMMAND func_lockstep --states 5000
+      --only ASOUND.117:E8A)
+    add_test(NAME matched_rsound_117_voice_step COMMAND func_lockstep --states 5000
+      --only RSOUND.117:2)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
