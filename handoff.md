@@ -7,54 +7,42 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 26 October 2026: checklist rounds 2, 3 and 3b adopted (40,504 / 44,889 bytes, 90.23%); batches bi and bj gated,
-accepted and CI green; P2 92.39%.** The accepted runtime is batch bj (`cfa50b9`; bh was `28b34b2`); bi adds 1,393 and bj 283 named bytes. The working copy is **`C:\Dev\F-117A Recomp`**;
-the old `My Drive` copy is stale: do not use it. There are 34 normal-play switches. Kit libraries
-(`D:/f117-gate/kit-libs`, manifest) were built at `28b34b2`; the only `src/` changes since are `matched.c` rows (batches bi, bj), which each proof build replaces itself, so they are still valid; older sets `kit-libs-before-bh`, `-bg`, `-10d5adb`.
-This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=1"`.
+more than once, what it costs). **Current state, 27 October 2026: batch bk gated and accepted; P2 92.59%; checklist rounds 2, 3 and 3b adopted: 40,504 / 44,889 bytes (90.23%).**
+The working copy is **`C:\Dev\F-117A Recomp`**; the old `My Drive` copy is stale: do not use it.
+The accepted runtime is batch bk (`D:/f117-gate/p2-batch-bk-accept/`); batch bj was `cfa50b9`.
+There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) were built at `28b34b2`;
+the only `src/` changes since are matched bodies, which each private proof replaces itself, so the libraries remain valid.
+This machine has no `gh`; check the pushed commit's CI through the GitHub Actions API.
 
 ### Resume state
 
-1. **Checklist round 2 complete:** all 588 packets / 79 groups have verdicts under
-   `D:/f117-gate/checklist-full-20261026/round2/reads/`. The last 21 groups used fresh blind readers, one per group.
-   `adopt_r2.py --validate --date "26 Oct 2026"` staged 367 units / 523 rows / 13,976 bytes; they are now in
-   `docs/reference-reviewed.tsv`. No malformed or unread packets. Not adopted: 120 ACCEPT-WITH-CHANGES, 30 NEEDS-CONTEXT,
-   2 REJECT and 69 refused ACCEPT units (status mismatch, correction or missing design-rule/certificate evidence).
-   These 221 units retain 10,016 bytes of work. `current-validation.json` independently checks the CURRENT bh coverage,
-   not just the review snapshot: every staged byte was a new checklist byte, no overlap, gameplay and naming unchanged.
-   Current checklist: **34,684 / 44,714 bytes (77.57%)**, 10,030 still unreviewed. The older packet snapshot had 44,700:
-   **14 current-scope bytes were absent**; exact addresses are in `round2/unreviewed-outside-round2.tsv` and must enter round 3.
-2. **Checklist rounds 2, 3 and 3b are adopted:** round 3 read 228 packets / 46 groups with fresh blind readers; 101 units / 4,476 bytes adopted (`fcc5cfb`);
-   round 3b re-checked the 38 ACCEPT units the stager refused for range wording with an exact leading-range match: 19 units / 1,344 bytes adopted.
-   Checklist **40,504 / 44,889 (90.23%)**; 4,385 bytes still without an entry. The denominator grew by 175 bytes (ASOUND.LOG, RSOUND.117) when batches bi and bj
-   matched routines whose extra bytes entered the scope: `D:/f117-gate/checklist-full-20261026/round3b/unreviewed-outside-round3b.tsv`. Next is round 4 over: 10 + 43 ACCEPT
-   units refused for status differences, 9 with differing ranges, 27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT (round 3), the round 2 leftovers, and the 175 new bytes.
-   Work is under `D:/f117-gate/checklist-full-20261026/` (`round3/` and `round3b/` have the scripts).
-3. **Batches bi and bj are accepted (CI green for both):** bj = ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`; evidence `D:/f117-gate/p2-batch-bj-accept/`.
-   **ASOUND.LOG `00FE` is withdrawn** (private proof `p2-asound-log-bj-00FE` is green in lockstep but diverges on the real `setup_calibration` route: IRQ boundary after the nested `call 00DA`);
-   re-prove it against the real sampler or keep it original. Debug recipe: recomp vs `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect, `--dump 0:10` at budgets (not `--trace`: it forces the interpreter).
-   Batch recipe changes: kit scripts carry the two audit widenings (roadmap, batch bi); `new_batch.py` takes `DIR::partial` for hand-claimed blocks and `DIR:XB` for a macro written `XB(n, at)`;
-   a body needs `fix_inside(c, from, to)` when a fix hook lies in its span (RSOUND `0002` and Q16 at `0348`).
-   **New: `D:/f117-gate/accept-kit/route_precheck.py MODULE:OFFSET ...`** runs, on every route whose coverage reaches the entries, the matched build against `F117R_NO_MATCHED=1` and compares
-   budget, stop reason, program, exit and final hash. 48 routes take about 25 minutes at `--jobs 3`; run it on the new entries after the rebuild and before a gate (it replaces nothing).
-   Its self-test on the four bj entries: all 48 routes identical.
-4. **Stopped here (26 Oct, 22:40), nothing running.** Private proofs, verified by root where noted (all in `D:/f117-gate/`):
-   - **Ready, verified, not integrated:** `p2-asound-117-bk-1882` (ASOUND.117 `1882`, 69 B; callee `1360` stubbed, so run the route pre-check) and `p2-isound-log-bk-00A2`
-     (ISOUND.LOG `00A2`, 22 B; callee `0082` does INT 1A/21 and is stubbed, so run the route pre-check). Both passed seeds, mutations, checkpoints and boot proof (`finish_all.py`).
-   - **Unfinished, agents stopped:** `p2-rsound-log-bk-0349` (RSOUND.LOG `0349`: seeds clean, 30 of 31 mutations caught, one edit still missed: replace it with a non-equivalent edit and rerun
-     seeds and mutations last), `p2-asound-117-bk-0562` (ASOUND.117 `0562`, callee `030B` OPL write unmatched) and `p2-rsound-117-bk-0E4C` (RSOUND.117 `0E4C`, twin `0E70`) have drafts only: no verdict.
-   - Older private work, unfinished: ASOUND.LOG `0D1A`, SETUP `10B3`, MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211`/`0540`, VGAME `137CE`, the `p2-asound-log-bj-00FE` re-proof.
-   - Ranked next units: `D:/f117-gate/bi-next-leads/leads.md`. Next batch: integrate the verified ones (`safe_integrate.py`), rebuild, run the new CTests, `route_precheck.py`, `new_batch.py bk bj cfa50b9 ...`,
-     `audit_private.py`, then one gate at 8-12 routines. Hard rule from this session: every agent report is verified by root (logs, mutation results, base files equal HEAD, `finish_all.py`).
-   - Checklist round 4 (resume state item 2) needs fresh readers; the three subagent slots are the limit.
-4. **Repository changes for checklist round 2 are reference data, saved progress and docs only.** Runtime, harness,
-   CMake and accepted coverage are unchanged. All 80 focused classifier/progress/encoded-code tests pass. A code gate
-   is not needed for reference-only adoption. The owner's untracked two `.bat` launchers stay untouched.
-5. **Process notes:** new-tests-only CTests before the gate, three pre-check seeds beside them, and moving off Drive are done.
-   Pending: `--overlap-jobs` timing, six proof slots (at most three compilers), `career_promotion` profiling; second PC deferred.
-   Gate costs: bg 1,970 s, bh 1,723 s. This session exposes only three subagent slots; keep one fresh reader per group while
-   respecting the actual tool limit. The first C:\Dev build needs `-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`.
-   Watch `XW8`'s hidden `a_`, the kit seeds step's weak `0 skipped` substring check, and 0BFC's untestable self-write guards.
+1. **Batch bk accepted:** ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`,
+   RSOUND.117 `0E4C` `0CAE`. Eight entries, +418 named bytes, 140 fixture instructions, 228 mutations caught;
+   688 CTests, 63 identical routes / 62 fresh interpreter sessions, reach/event limits and presentation passed.
+   Three whole-table pre-check seeds (`0x4a847c5cdb85`, `0x5EED0B11`, `0xB1172026`) and all 53 reached routes passed.
+   Evidence `D:/f117-gate/p2-batch-bk-accept/`; root independently verified all proof hashes, logs, mutations, boot results and bases
+   (`root-private-verification.json`). The sole extra harness hunk is 0E4C's module/segment/entry-specific outer-RET recognition.
+   The AdLib `0562` fixture's jump operand was corrected from `1361` to `030C` before proof; its final fixture logs AL/BX and the RNG state.
+   `0E4C` saves FLAGS before logging and reads the return address through SS. Its tail writer's 27 instructions are outside the 36-byte named window.
+2. **Checklist round 4 remains next:** current checklist 40,504 / 44,889 bytes (90.23%), 4,385 bytes without entries.
+   Round 2 adopted 367 units / 13,976 bytes; round 3 read 228 packets / 46 fresh reader groups and adopted 101 units / 4,476 bytes;
+   round 3b adopted 19 units / 1,344 bytes after an exact leading-range check. Retain the 10 + 43 status-mismatched ACCEPTs, 9 differing ranges,
+   27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT from round 3, round-2 leftovers, and every byte outside the old packets.
+   The bi/bj additions include 175 bytes listed in `D:/f117-gate/checklist-full-20261026/round3b/unreviewed-outside-round3b.tsv`.
+   Work and adoption validators are under `D:/f117-gate/checklist-full-20261026/`. Each packet needs a fresh independent blind reader.
+3. **ASOUND.LOG `00FE` is still withdrawn.** Its private lockstep proof stubs the PIT sampler `00DA`, but the real `setup_calibration` route
+   takes an IRQ at a different boundary after the nested call. Re-prove against the real sampler or keep it original.
+   Debug with recomp versus `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect and `--dump 0:10` at budgets; `--trace` forces the interpreter.
+   `accept-kit/route_precheck.py MODULE:OFFSET ...` must run after rebuilding and before a gate; it replaces no check.
+4. **Next matching leads:** `D:/f117-gate/bi-next-leads/leads.md` (filter out accepted bi/bj/bk entries). RSOUND.117 `0E70` is the pitch-bend sibling;
+   `0F98` was blocked on a boundary affected by `0E4C`/`0E70`. Older unfinished work remains: ASOUND.LOG `0D1A`, SETUP `10B3`,
+   MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211`/`0540`, VGAME `137CE`, and the ASOUND.LOG `00FE` re-proof.
+   The eight bk private directories are finished and integrated; none of their old draft blockers remains.
+5. **Process notes:** run only new CTests before the full gate; keep the commit-derived seed and at least one independent whole-table seed,
+   plus a third when CPUs are free. Bk used eight route-precheck workers alongside the third seed; costs are in `docs/repeated-processes.md`.
+   Pending: `--overlap-jobs` timing and `career_promotion` profiling; second PC deferred. Do no unrelated heavy work beside the gate.
+   Check whitespace before starting proofs: even formatting changes invalidate the kit's source hashes and require fresh evidence.
+   The owner's untracked `4k60.bat` and `original-fixed.bat` remain untouched.
 
 This file holds only the current state, standing practice, open decisions and
 traps, not a session log: earlier detail is in `git log -p handoff.md`, and
@@ -63,29 +51,32 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 92.39%, P3 76.34%, All 91.70%
+- **Scoreboard:** P1 100.00%, P2 92.59%, P3 76.34%, All 91.76%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
-- **Phase 2 figures** (`docs/progress.json` after checklist round 3b, using accepted bj coverage; `py tools/progress.py` prints them;
+- **Phase 2 figures** (`docs/progress.json` after batch bk, with checklist round 3b; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,436 addresses matched; batches a to bj are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,444 addresses matched; batches a to bk are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
-  - Gameplay score (scores the matched item): **(153,321 matched + 2,631 reviewed design-rule original) /
-    163,907 route-executed bytes = 95.15%**. 26,384 matched bytes run only in fixtures and earn no gameplay credit.
-  - **7,955 executed bytes are unmatched** (20 of them START design-rule original code awaiting a reviewed
-    entry). Sound drivers 6,165: ASOUND.117 3,113, RSOUND.117 590, RSOUND.LOG 845, ASOUND.LOG 718,
-    ISOUND.117 536, ISOUND.LOG 363. The seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261,
-    START 251, SETUP 118, DSWAP 68. F117.COM, MGRAPHIC and MISC: none.
-  - Naming item (the previous all-code measure): **178,269 / 206,040** creditable bytes; of the 27,771
-    uncredited, 13,809 are reviewed static code no route runs (`docs/census-code.tsv` plus the two encoded rows).
+  - Gameplay score (scores the matched item): **(153,739 matched + 2,631 reviewed design-rule original) /
+    163,907 route-executed bytes = 95.40%**. 26,559 matched bytes run only in fixtures and earn no gameplay credit.
+  - **7,537 executed bytes are unmatched** (20 design-rule original bytes awaiting a reviewed entry).
+    Sound drivers 5,747: ASOUND.117 2,964, RSOUND.117 483, RSOUND.LOG 774, ASOUND.LOG 649, ISOUND.117 536, ISOUND.LOG 341.
+    Seven programs 1,790: VGAME 549, PLAYER 273, MPS_LOGO 270, END 261, START 251, SETUP 118, DSWAP 68.
+    F117.COM, MGRAPHIC and MISC: none.
+  - Naming item (previous all-code measure): **180,363 / 206,215** creditable bytes; 25,852 uncredited,
+    including 13,809 reviewed static code bytes no route runs.
   - Accounted-for checklist: **40,504 / 44,889 bytes (90.23%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`;
     the 523 round-2 rows: `D:/f117-gate/checklist-full-20261026/round2/`; the round 3 and 3b rows: `round3/`, `round3b/`; the 792 round-1 rows from the full blind pass: `D:/f117-gate/checklist-full-20261026/` (reads/, staged-round1.tsv, reconcile-result.json)). Every `stays-original` entry
     must name its design rule.
   - Still in the denominators: about 2,500 machine-option-only error-path bytes and 831 probable-dead bytes.
     Outside every score: about 495 held static-discovery bytes and the floating LZEXE decompressor.
+- **Batch bk acceptance (27 Oct):** `D:/f117-gate/p2-batch-bk-accept/final-gate-verdict.json` passed in 1,659 s:
+  688 tests, 63 routes / 62 fresh interpreter sessions, 1,444 routines, 228 private mutations,
+  40 optimized seed checks, +418 named bytes. Three whole-table pre-check seeds and 53 paired real-route pre-checks passed.
 - **Batch bh acceptance (26 Oct):** `D:/f117-gate/p2-batch-bh-accept/final-gate-verdict.json` passed in 1,723 s: 674 tests, 63 routes / 62 fresh interpreter sessions,
   1,430 matched routines, 188 private mutations, 25 optimized seeds, +1,410 named bytes (all route-executed), 614 new fully covered instructions. The five
   bg4 routines: ASOUND.117 `1048` `123E`, ASOUND.LOG `0BFC`, ISOUND.117 `062E` `0443`. Three pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`,
@@ -114,7 +105,7 @@ entry. Consolidate it instead of appending to it.
   and event limits clean. N=1 260,613 exact frames / 260,527 pairs; boot N=4/9
   736 frames / 732 pairs. Core 1,338 s; batch acceptance 1,802 s; combined
   acceptance with all focused/default checks repeated afterward 1,948 s.
-- **Latest matched batch, be:** eight ASOUND.117 jump thunks (`0899` `08C2`
+- **Earlier matched batch, be:** eight ASOUND.117 jump thunks (`0899` `08C2`
   `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer
   uninstall, including its hand-applied `POPF_STOPS` row to `00FC`. Audit before
   gate: 39 instructions, 212 mutants; 45 optimized seed checks. +73 named bytes,
@@ -273,8 +264,7 @@ governs day-to-day work.
   mismatches are NOT adopted. Reader names and ranges were corrected where they over-claimed (a retry named a failure, an arm named a whole function, a
   range cutting a function mid-instruction). **Round 2** (`round2/`) re-cut those 468 units into 588 packets / 79 groups: all read, 367 units / 13,976 bytes adopted.
   The checklist is now 40,504 / 44,889 (90.23%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
-  with corrected blind reads and no unsupported exclusions. A harness limit: at most 20
-  concurrent subagents, so launch readers as slots free (about 15-20 minutes for 156 groups).
+  with corrected blind reads and no unsupported exclusions. Use the actual available reader slots; this session has at most three concurrent subagents.
 - **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 7,666 of the 9,456 unmatched executed bytes (after bh): the
   `.117` overlays (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG` drivers ("AdLib Logo 7-18-91",
   "RolandMT-32 3-25-91", "IBM Logo 7-12-91": earlier dates and logo names, plausibly a reusable MicroProse driver; whether other games shipped them is

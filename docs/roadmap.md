@@ -18,14 +18,14 @@ only people and outside references can make.
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,433
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,443
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). Changed code and declined override
   entries fall back to the interpreter.
 - **Engine parity.** 63 scripted routes (62 sessions) are identical between
   the interpreter and the recompiled code at every 50-million-clock checkpoint
   and at the end; every translated instruction is held to the interpreter from
-  random states (5,723,136 comparisons under each of the two timing profiles,
+  random states (5,723,776 comparisons under each of the two timing profiles,
   0 differences); the interpreter and the translator are held to 8088 and
   80286 silicon vectors; 144 of 144 planted defects are caught; seeded random
   flights are identical. How:
@@ -212,11 +212,21 @@ not the recompilation:
       (delay-loop calibration, proven privately) was **withdrawn**: its lockstep stubbed the PIT sampler `00DA`, and on the real `setup_calibration` route the matched body took the timer IRQ
       at a different boundary after its nested `call 00DA` (hash `0edb...` against the interpreter's `4a39...`). Keep it original until it is proved against the real sampler.
       Evidence `D:/f117-gate/p2-batch-bj-accept/`; the failed 00FE gate is `p2-batch-bj-failed-00FE-20261026/`.
+      **Batch bk (27 Oct):** eight sound-driver entries: ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`,
+      RSOUND.LOG `0349` and RSOUND.117 `0E4C` `0CAE`. +418 named bytes, all route-executed; 140 fixture instructions, 228 mutations caught.
+      The incomplete AdLib noise fixture patched the wrong jump operand; corrected before proving it. The pitch-bend fixture saves FLAGS before logging,
+      reads the return stack through SS, and recognizes its tail-called writer's outer RET. Three whole-table pre-check seeds passed;
+      all 53 reached routes agreed with matched routines disabled. Acceptance 1,659 s, 688 tests, 63 identical routes / 62 fresh interpreter sessions.
+      Evidence `D:/f117-gate/p2-batch-bk-accept/`; independent private-proof verification `root-private-verification.json`.
       **Accounted-for checklist (26 Oct):** a full blind second-read pass over the 43,920 unreviewed bytes (912 units, 156 independent readers) adopted
       444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. Round 2 re-cut the remainder into 588 packets / 79 independent reader groups: all read,
-      367 units / 13,976 bytes adopted in 523 rows. Checklist now 34,684 / 44,714 (77.57%), P2 90.40%.
+      367 units / 13,976 bytes adopted in 523 rows. Round 2 finished at 34,684 / 44,714 (77.57%), P2 90.40%.
       The 221 unadopted units (10,016 bytes), plus 14 current-scope bytes absent from the older packet snapshot,
-      remain open for corrected round-3 packets. No matching credit or exclusions were added.
+      went into corrected round-3 packets. Round 3 read 228 packets / 46 groups and adopted 101 units / 4,476 bytes;
+      round 3b adopted another 19 units / 1,344 bytes after an exact leading-range check. Current checklist:
+      **40,504 / 44,889 bytes (90.23%)**, with 4,385 bytes still without an entry. The denominator includes 175 newly scoped
+      bytes from batches bi and bj. Round 4 must retain those bytes and every refused or unresolved earlier unit.
+      No matching credit or exclusions were added by these reviews.
       Evidence `D:/f117-gate/checklist-full-20261026/`.
       **What is left:** the sound drivers hold most of the unmatched executed
       bytes; the rest are the declined routines of the seven programs (below).
@@ -267,7 +277,7 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to be (16-25 October 2026)
+### Batches e to bk (16-27 October 2026)
 
 Every batch below passed the same proof (see above): five seeds per routine
 with every instruction reached, all mutations caught, exact boot (26
@@ -336,6 +346,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bh | 26 Oct | 1,430 | 1,410 named bytes | The five larger bg4 routines: ASOUND.117 `1048` `123E`, ASOUND.LOG `0BFC`, ISOUND.117 `062E` `0443`. 614 fixture instructions, 188 mutations caught, 25 optimized seed checks; three whole-table pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`, `0x20261027`) zero mismatches. The fixtures of the accepted VGAME `4973` and ASOUND.117 `0C2E` were corrected (a macro-local name clash had made their written values address-derived) and re-proved. Gate 1,723 s. |
 | bi | 26 Oct | 1,432 | 1,393 named bytes | ASOUND.117 `0E8A`, RSOUND.117 `0002`. 542 fixture instructions, 122 mutations caught. Gate 1,714 s. |
 | bj | 26 Oct | 1,436 | 283 named bytes | ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`. 107 fixture instructions, 124 mutations caught. Gate 1,694 s. ASOUND.LOG `00FE` withdrawn after a real-route divergence. |
+| bk | 27 Oct | 1,444 | 418 named bytes | ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`, RSOUND.117 `0E4C` `0CAE`. 140 fixture instructions, 228 mutations caught, 40 optimized seed checks. Three whole-table pre-check seeds and all 53 reached routes pass. 688 CTests, 63 identical routes / 62 fresh interpreter sessions; acceptance 1,659 s. Evidence `D:/f117-gate/p2-batch-bk-accept/`. |
 
 Notes that still matter:
 

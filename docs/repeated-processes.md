@@ -100,7 +100,9 @@ verification) is not an optimisation; it needs the owner's approval.
   `F117R_NO_MATCHED=1` on every route whose coverage reaches the new entries and compares budget, stop reason, program, exit
   and final hash: about 25 minutes for the 48 routes reaching four sound-driver entries at `--jobs 3`, against 28 minutes for
   the whole gate. It exists because a routine proved with a stubbed PIT/STI/port callee (ASOUND.LOG `00FE`) passed lockstep
-  and failed one real route; it adds an early check and replaces nothing. A batch of five routines cost 28 minutes of gate,
+  and failed one real route; it adds an early check and replaces nothing. Bk (27 Oct): all 53 reached routes passed
+  at `--jobs 8` in 949.5 s, sharing the machine with a third eight-shard whole-table seed; this is a shared-load
+  measurement. Bk's complete acceptance took 1,659 s. The earlier five-routine batch cost 28 minutes of gate,
   and the proofs ahead of it about one agent-hour per routine on three slots.
 - **The presentation overlaps the gate only with a keyed baseline.** With a frozen
   per-route baseline whose interpreter key matches, the N=1 presentation runs beside the
@@ -808,7 +810,7 @@ Windows CI runs them.
 | Process | Trigger | Measured cost | Redundancy and status |
 |---|---|---|---|
 | Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | 8 shards about 3 min 11 s for 653 routines (9 Oct; a single process took 21 min), the same report line for line; about 8 min a seed for the whole table by batch as; Q11 (1,387 routines, verbose, eight shards) measured 543 s and 540 s for its two pre-check seeds | **sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does and a routine's states no longer move when others are added. Seeds 0x5EED0F117A, 0xC0FFEE and one from the gated commit's hash. Left: tracking writes instead of copying 1 MB a state |
-| Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | runs beside coverage and parity, no wait tail; 5,723,136 states per profile | the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
+| Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | runs beside coverage and parity, no wait tail; 5,723,776 states per profile | the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
 | 386 flight engine parity (`stick_response.py --machine machine386 --engine interp/recomp`) | after a profile or translated timing change | 80 s interpreter, 60 s recomp, beside the gate (8 Oct) | all 574 memory/register/output/scanout checkpoints and stick responses identical; separate processes because the runtime is global |
 | Worktree build and generated code | per worktree | 8 min first, then incremental | give each tree its own TEMP; never share a generated directory between concurrent builds |
 | Route recording (adaptive pilots) | after a timing change moves a flight | 10-20 min per flight; try several parameters in parallel | recorded inputs replace them in the gate; a timing change invalidates all of them at once (see `airair_type5-8`, `strike`, `cargo`, `recon`) |

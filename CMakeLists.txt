@@ -1710,6 +1710,22 @@ if(F117R_BUILD_TESTS)
       --only RSOUND.117:50A)
     add_test(NAME matched_asound_117_reset_voice_records_with_data_offsets_0694 COMMAND func_lockstep --states 5000
       --only ASOUND.117:694)
+    add_test(NAME matched_asound_117_run_voice_records_1882 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1882)
+    add_test(NAME matched_isound_log_shutdown_entry COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:A2)
+    add_test(NAME matched_rsound_log_send_message_with_checksum COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:349)
+    add_test(NAME matched_asound_117_opl_noise_step_0562 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:562)
+    add_test(NAME matched_rsound_117_send_pitch_bend_center COMMAND func_lockstep --states 5000
+      --only RSOUND.117:E4C)
+    add_test(NAME matched_asound_log_run_voice_records_116e COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:116E)
+    add_test(NAME matched_rsound_117_send_message_with_checksum COMMAND func_lockstep --states 5000
+      --only RSOUND.117:CAE)
+    add_test(NAME matched_asound_117_noise_step_far_entry COMMAND func_lockstep --states 5000
+      --only ASOUND.117:C1C)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -59,21 +59,19 @@ quiz. It is off by default and is enabled only when named explicitly;
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; exact rendered Roland parity is still open).
-- **Translated:** all 17 code files and the LZEXE decompressor, 89,433
+- **Translated:** all 17 code files and the LZEXE decompressor, 89,443
   instruction starts, 96% of the bytes of the code areas; the rest is
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,430 routine addresses have explained C equivalents
-  checked against their original bodies. They run 151,820 of the 163,907
+- **Named and matched:** 1,444 routine addresses have explained C equivalents
+  checked against their original bodies. They run 153,739 of the 163,907
   instruction bytes the scripted routes execute, plus 2,631 bytes of reviewed code that stays original
-  by design (94.23%, the gameplay score), and
-  cover 178,269 of 206,040 creditable bytes across all 17 game code files. The historical census has 1,122
-  rows wholly covered and 291 in part; executed code outside its rows now
-  counts too, along with reviewed static code. Static discoveries not yet
-  reviewed remain outside the score. These two figures are parts of Phase 2's
-  score, not the score itself: with the tooling and the review of code no
-  route runs (1.6% done), they make up P2's 81.83%
+  by design (95.40%, the gameplay score), and cover 180,363 of 206,215
+  creditable bytes across all 17 game code files. The historical census has 1,122
+  rows wholly covered and 291 in part; executed code outside its rows and reviewed static code count too.
+  The checklist accounts for 40,504 / 44,889 bytes (90.23%) outside the routes.
+  Together with the tooling, these measures make up P2's 92.59%
   ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -
