@@ -24,18 +24,26 @@ This machine has no `gh`; poll CI with `curl -s "https://api.github.com/repos/Ti
    not just the review snapshot: every staged byte was a new checklist byte, no overlap, gameplay and naming unchanged.
    Current checklist: **34,684 / 44,714 bytes (77.57%)**, 10,030 still unreviewed. The older packet snapshot had 44,700:
    **14 current-scope bytes were absent**; exact addresses are in `round2/unreviewed-outside-round2.tsv` and must enter round 3.
-2. **Round 3 packet preparation is underway, no reads or credit yet:** `checklist-full-20261026/round3/` is private WIP.
-   Re-cut or rename the remaining units, supply requested caller/callee/table context, use current bh coverage and
-   include the extra 14 bytes. The target is exactly 10,030 still-unreviewed bytes, with no overlap with adopted rows.
-   Independently reconcile packets before launching fresh readers. Never reuse earlier readers or disclose old verdicts.
+2. **Round 3 packets are frozen; fresh reads are underway, no credit yet:** `checklist-full-20261026/round3/` holds
+   228 packets / 46 groups, exactly 10,030 current still-unreviewed bytes including the extra 14. Root's independent
+   `root_reconcile.py` verified all original claim bytes and 96,733 displayed instructions, with zero missing, extra,
+   duplicate or reviewed-overlap bytes. All SETUP context explicitly declares its hash-validated XOR runtime view;
+   raw source claims remain separate. `freeze_inputs.py` checks 280 frozen input hashes. Never regenerate packets
+   during reads, reuse earlier readers or disclose old verdicts. `audit_completion.py` normalizes filenames and
+   records complete/pending groups; `stage_reads.py` stages conservative ACCEPT rows privately and
+   `validate_current.py` independently checks them against current bh scope. Nothing is applied yet.
    The revised brief must use the exact scorer design rules: polling alone, bounded waits and already fixture-completed
    code are not hardware-wait exemptions. Machine-option-only is a prerequisite classification, not a matching exemption;
    fixtures are still required. DSWAP's no-floppy policy is separate from scored design rules; packer review needs its own
    source representation. No automatic stays-original/probable-dead/dead-certified adoption.
-3. **Matching round 3 remains private and unaccepted.** Proof workers are resuming ASOUND.117 `0E8A` and RSOUND.117 `0002`
+3. **Matching round 3 remains private and unaccepted.** Proof workers are diagnosing ASOUND.117 `0E8A` and RSOUND.117 `0002`
    (masks `0x000F0000` / `0x00F00000`). Other unfinished preparations: ASOUND.LOG `0D1A`, SETUP `10B3`,
    MPS_LOGO `00DA:0307/030E/0315`, PLAYER `0211` (`p2-*-bi-*`; `hard-tail-r3/`). Inspect current logs/hashes and live
-   processes; never infer completion from an old cover file or partial build. Nothing from this round is integrated or credited.
+   processes; never infer completion from an old cover file or partial build. ASOUND's strengthened callee fixture has two
+   long-run skips (states 486/487); diagnostic harness edits must be removed before final proof. RSOUND's F5 generator
+   overwrote its own command with a terminal pair for negative sizes; repaired fixture retains the full size distribution
+   and adds valid F9-to-F5 interactions. A replacement pipeline is running; inspect `pipeline-status.json` and strict
+   per-routine skip counts before proceeding. Nothing from this round is integrated or credited.
 4. **Repository changes for checklist round 2 are reference data, saved progress and docs only.** Runtime, harness,
    CMake and accepted coverage are unchanged. All 80 focused classifier/progress/encoded-code tests pass. A code gate
    is not needed for reference-only adoption. The owner's untracked two `.bat` launchers stay untouched.
@@ -309,7 +317,7 @@ governs day-to-day work.
      do not integrate it as proved.
    Not on the list: DSWAP `3DF3` (2,791 zero bytes of data, already excluded) and the design-rule originals.
    Add these to a batch once the driver leads run low.
-3. **Reference/checklist: trial, round 1 and round 2 are done and credited; round 3 packet preparation is underway (resume state above).** Background kept for reference:
+3. **Reference/checklist: trial, round 1 and round 2 are done and credited; round 3 is frozen and fresh reads are underway (resume state above).** Background kept for reference:
    `D:/f117-gate/unmatched-reference-20261026/` replaces the stale 21 Oct inventory for planning. Its current
    classifier-based refresh against accepted bf has 741 rows / 37,032 distinct unmatched reference bytes
    (29,576 distinct naming-workload bytes plus 7,456 labeled original/dead exclusions); no duplicate, omitted
