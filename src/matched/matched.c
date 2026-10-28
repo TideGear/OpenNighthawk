@@ -7882,7 +7882,7 @@ static int start_route_leg(machine_t *m)
     cpu_push16(c, c->r[R_AX]);
     c->icount += 5;
     if (!guest_call(m, 0x96AE, 0x2F6A)) return 1;
-    NEED(33, 0x2F6A);
+    NEED(35, 0x2F6A);
     c->r[R_BX] = cpu_pop16(c);
     bp_put(c, -4, c->r[R_AX]);                                    /* |dy| */
     alu_sub(c, bp_get(c, -2), 0, 1, 0);
@@ -76445,6 +76445,7 @@ static int start_install_clock_hook(machine_t *m)
     HB(2, 0x8CC3);
     set_r8(c, R_AH, GET_VECTOR);
     set_r8(c, R_AL, TIMER_VECTOR);
+    SM4_NEED(1, 0x8CC7);
     HINT(0x8CC7);
     HB(6, 0x8CC9);
     seg_write16(c, c->seg[S_CS], OLD_VECTOR_OFFSET, c->r[R_BX]);
@@ -76454,6 +76455,7 @@ static int start_install_clock_hook(machine_t *m)
     set_r8(c, R_AL, TIMER_VECTOR);
     c->r[R_DX] = seg_read16(c, c->seg[S_CS], HOOK_OFFSET);
     c->seg[S_DS] = seg_read16(c, c->seg[S_CS], HOOK_SEGMENT);
+    SM4_NEED(1, 0x8CDD);
     HINT(0x8CDD);
     HB(3, 0x8CDF);
     c->seg[S_DS] = cpu_pop16(c);

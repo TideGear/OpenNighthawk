@@ -2869,6 +2869,15 @@ static int g_ncalls;           /* guest calls made by the routine under test */
 static int g_lost;              /* a call into original code never came back */
 static int g_stopped;           /* a call into original code was stopped by the event limit, as a run loop would */
 static int g_callover;          /* a call into original code was started with the clock already past the limit */
+static uint64_t g_callend;      /* clock when the most recent original-code call handed control back */
+/* An original instruction/service can cross the limit atomically. That
+ * permits the callee's returned clock, but never more C instructions after
+ * it. Merely having made a call cannot exempt the rest of the body. */
+static int body_overrun(const cpu_t *c)
+{
+    return g_callover || (c->stop_at && c->icount > c->stop_at &&
+                         (!g_ncalls || c->icount != g_callend));
+}
 /* The routine's own return: the caller's address with the stack back above
  * it. A call into original code can end the routine itself (_write's flush
  * leaves through _write's ending on a failed write); the run stops there, as
@@ -2893,6 +2902,7 @@ static int step_runner(machine_t *mm)       /* (the depth tells a body's own por
 {
     g_runner_depth++;
     const int rc = step_runner_run(mm);
+    g_callend = mm->cpu.icount;
     g_runner_depth--;
     return rc;
 }
@@ -3158,6 +3168,55 @@ static int body_e_flags(machine_t *m) { return body_e(m, 3); }
 static int body_e_memory(machine_t *m) { return body_e(m, 4); }
 static int body_e_io(machine_t *m) { return body_e(m, 5); }
 
+/* Routine F calls a plain RET, then has two NOPs and its own RET. A
+ * too-small tail claim finishes in the right state but crosses the limit. */
+static int body_f(machine_t *m, unsigned tail_room)
+{
+    cpu_t *c = &m->cpu;
+    if (!io_room(c, 1)) return 0;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    cpu_push16(c, 0x0603); c->ip = 0x0620; c->icount++;
+    m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x0603;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    const int rc = step_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    if (rc != RUN_TRAP || !io_room(c, tail_room)) return 1;
+    c->icount += 3; c->ip = cpu_pop16(c);
+    return 1;
+}
+static int body_f_exact(machine_t *m) { return body_f(m, 3); }
+static int body_f_underclaim(machine_t *m) { return body_f(m, 2); }
+
+/* Only the atomic-service self-tests install this hook. Model host work
+ * charged inside a native interrupt, before cpu_step hands control back. */
+static int io_atomic_int_h(cpu_t *c, uint8_t vec)
+{
+    const int handled = int_h(c, vec);
+    if (handled && vec == 0x16) c->icount += 8;
+    return handled;
+}
+
+/* Routine G calls INT 16h / NOP / RET. The service crosses the limit,
+ * leaving the runner at the callee's NOP. Only immediate handback is legal. */
+static int body_g(machine_t *m, int runon)
+{
+    cpu_t *c = &m->cpu;
+    if (!io_room(c, 1)) return 0;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    cpu_push16(c, 0x0703); c->ip = 0x0720; c->icount++;
+    m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x0703;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    const int rc = step_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    if (rc != RUN_SLICE || c->ip != 0x0722 || c->icount <= c->stop_at) return 0;
+    if (runon) { c->ip++; c->icount++; }   /* execute the callee's NOP in C */
+    return 1;
+}
+static int body_g_exact(machine_t *m) { return body_g(m, 0); }
+static int body_g_runon(machine_t *m) { return body_g(m, 1); }
+
 /* One state of a synthetic routine through the comparison the table's routines get: the original
  * to its RET, the body (armed for wakes, `limit` instructions of room when not 0), the original
  * finishing what the body handed back, then compare(). Returns the wake verdict in *woke and the
@@ -3183,9 +3242,9 @@ static int io_rules_state(uint16_t ip, int (*body)(machine_t *), unsigned limit,
     if (run_to_ret(&g_cpu[0], entry_sp, 1, &steps, cs, ip) != 1 || g_cpu[0].ip != back) return -1;
     if (limit) g_m.cpu.stop_at = g_m.cpu.icount + limit;
     wake_arm();
-    g_lost = 0; g_ncalls = 0;
+    g_lost = 0; g_ncalls = 0; g_callover = 0;
     const int ran = body(&g_m);
-    *woke = wake_overrun(&o, ip, ran, " (self-test)");
+    *woke = wake_overrun(&o, ip, ran, " (self-test)") || (ran && body_overrun(&g_m.cpu));
     *credit = ran && !*woke && wake_stop_reached(&g_m.cpu, cs);
     if (!ran) return -1;
     if (g_m.cpu.ip != back) {
@@ -3247,6 +3306,9 @@ static int check_io_rules(void)
     static const uint8_t D[] = { 0xB9, 0x41, 0x00, 0x32, 0xE4, 0xCD, 0x16, 0xE2, 0xFA, 0xC3 };
     static const uint8_t E[] = { 0xE8, 0x1D, 0x00, 0xC3 };
     static const uint8_t E_CALLEE[] = { 0x58, 0xC2, 0x02, 0x00 };
+    static const uint8_t F[] = { 0xE8, 0x1D, 0x00, 0x90, 0x90, 0xC3 };
+    static const uint8_t G[] = { 0xE8, 0x1D, 0x00, 0xC3 };
+    static const uint8_t G_CALLEE[] = { 0xCD, 0x16, 0x90, 0xC3 };
     static const uint8_t caller[] = { 0xE6, 0x90, 0xEB, 0xFC };
     static const uint8_t spin[] = { 0xEB, 0xFE };
     memcpy(g_pristine + 0x40100, A, sizeof A);
@@ -3255,12 +3317,16 @@ static int check_io_rules(void)
     memcpy(g_pristine + 0x40400, D, sizeof D);
     memcpy(g_pristine + 0x40500, E, sizeof E);
     memcpy(g_pristine + 0x40520, E_CALLEE, sizeof E_CALLEE);
+    memcpy(g_pristine + 0x40600, F, sizeof F);
+    g_pristine[0x40620] = 0xC3;
+    memcpy(g_pristine + 0x40700, G, sizeof G);
+    memcpy(g_pristine + 0x40720, G_CALLEE, sizeof G_CALLEE);
     memcpy(g_pristine + 0x40F00, caller, sizeof caller);
     memcpy(g_pristine + 0x50200, spin, sizeof spin);
     g_pristine[0x68] = 0x00; g_pristine[0x69] = 0x02;
     g_pristine[0x6A] = 0x00; g_pristine[0x6B] = 0x50;   /* INT 1Ah -> the loop */
     /* `credit`: whether the stop completes the named region (wake_stop_reached). */
-    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); unsigned limit; int differs, woke, credit; const char *why; int callee_finished; } CASES[] = {
+    static const struct { const char *what; uint16_t ip; int (*body)(machine_t *); unsigned limit; int differs, woke, credit; const char *why; int callee_finished, atomic_service; } CASES[] = {
         { "exact OUT clock", 0x0100, body_a_exact, 0, 0, 0, 0, "" },
         { "clock charged in one lump around the OUT", 0x0100, body_a_lump, 0, 1, 0, 0, "ports or interrupts" },
         { "exact stop after the EOI", 0x0200, body_b_exact, 0, 0, 0, 1, "" },
@@ -3280,10 +3346,18 @@ static int check_io_rules(void)
         { "extra-pop return with wrong flags", 0x0500, body_e_flags, 0, 1, 0, 0, "contradictory I/O" },
         { "exact extra-pop CPU, wrong memory", 0x0500, body_e_memory, 0, 1, 0, 0, "memory", 1 },
         { "exact extra-pop CPU, extra I/O", 0x0500, body_e_io, 0, 1, 0, 0, "ports or interrupts", 1 },
+        { "returning call with room for its tail", 0x0600, body_f_exact, 5, 0, 0, 0, "" },
+        { "returning call hands back before its tail", 0x0600, body_f_exact, 4, 0, 0, 0, "" },
+        { "tail overrun after a returning call", 0x0600, body_f_underclaim, 4, 0, 1, 0, "" },
+        { "atomic callee service crosses the limit", 0x0700, body_g_exact, 3, 0, 0, 0, "", 0, 1 },
+        { "C instruction after atomic callee service", 0x0700, body_g_runon, 3, 0, 1, 0, "", 0, 1 },
     };
     for (unsigned k = 0; k < sizeof CASES / sizeof CASES[0]; k++) {
         int woke = 0, credit = 0;
+        const int_hook_fn original_hook = g_cpu[0].int_hook, body_hook = g_m.cpu.int_hook;
+        if (CASES[k].atomic_service) g_cpu[0].int_hook = g_m.cpu.int_hook = io_atomic_int_h;
         const int differs = io_rules_state(CASES[k].ip, CASES[k].body, CASES[k].limit, &woke, &credit);
+        g_cpu[0].int_hook = original_hook; g_m.cpu.int_hook = body_hook;
         /* the faulty bodies end where the original ends: registers, clock, memory all agree, so
          * the clock-free port record and the run-limit check this harness had saw nothing */
         const int ok = differs == CASES[k].differs && woke == CASES[k].woke && credit == CASES[k].credit &&
@@ -49831,8 +49905,8 @@ static const uint8_t stub2_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
              * clock past a checkpoint or a frame boundary - nothing in the
              * comparison below can see that, as it gives every routine room.
              * (A routine that calls original code legitimately returns partway,
-             * having run the callee to the limit; only a run with no such call
-             * is an overrun.) */
+             * having run the callee to the limit; only that exact returned
+             * clock is exempt, never subsequent C instructions.) */
             g_lost = 0; g_ncalls = 0; g_callover = 0;
             g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)steps - 1;
             wake_arm();
@@ -49843,7 +49917,7 @@ static const uint8_t stub2_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                 restore();
                 break;
             }
-            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.stop_at && g_m.cpu.icount > g_m.cpu.stop_at))) {   /* (a limit of 0 is STI or POPF asking the run loop to look at interrupts: the routine stopped there) */
+            if (probe_ran && body_overrun(&g_m.cpu)) {   /* a zero limit asks the run loop to look at interrupts */
                 printf("  OVERRUN %s+%05X: ran to %llu with the limit at %llu (the original takes %d)\n", o->module,
                        ((uint32_t)o->seg << 4) + ip, (unsigned long long)g_m.cpu.icount - 1000,
                        (unsigned long long)g_m.cpu.stop_at - 1000, steps);
@@ -49975,7 +50049,7 @@ static const uint8_t stub2_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                 wake_arm();
                 const int pr = o->fn(&g_m);
                 if (wake_overrun(o, ip, pr, " (mid-run stop)")) { mb++; goto probe_done; }
-                if (pr && (g_callover || (!g_ncalls && g_m.cpu.stop_at && g_m.cpu.icount > g_m.cpu.stop_at))) {
+                if (pr && body_overrun(&g_m.cpu)) {
                     printf("  OVERRUN %s %04X:%04X: ran to +%llu with the limit at +%llu\n", o->module, o->seg, ip,
                            (unsigned long long)(g_m.cpu.icount - start), (unsigned long long)k);
                     g_overrun++; mb++;
