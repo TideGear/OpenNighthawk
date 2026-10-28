@@ -1852,6 +1852,36 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:25A)
     add_test(NAME matched_player_exit_entry COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:1255)
+    add_test(NAME matched_mps_logo_sound_overlay_entry_100_jump COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:307)
+    add_test(NAME matched_asound_117_dispatch_sequencer_command COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B98)
+    add_test(NAME matched_player_set_video_mode COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:540)
+    add_test(NAME matched_rsound_117_tick_on_private_stack COMMAND func_lockstep --states 5000
+      --only RSOUND.117:BAD)
+    add_test(NAME matched_rsound_117_sample_pit_interval COMMAND func_lockstep --states 5000
+      --only RSOUND.117:ACE)
+    add_test(NAME matched_rsound_log_init_four_voice_records COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:48E)
+    add_test(NAME matched_rsound_log_read_pit_interval COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:FD)
+    add_test(NAME matched_isound_log_set_dos_time_from_bios_clock COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:82)
+    add_test(NAME matched_asound_117_shutdown_far_entry COMMAND func_lockstep --states 5000
+      --only ASOUND.117:BB5)
+    add_test(NAME matched_isound_117_effect_duration_step COMMAND func_lockstep --states 5000
+      --only ISOUND.117:200)
+    add_test(NAME matched_asound_117_opl_key_on_frequency_030b COMMAND func_lockstep --states 5000
+      --only ASOUND.117:30B)
+    add_test(NAME matched_rsound_117_measure_delay_passes COMMAND func_lockstep --states 5000
+      --only RSOUND.117:AFE)
+    add_test(NAME matched_asound_117_write_levels_50_53 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:3FB)
+    add_test(NAME matched_rsound_log_calibrate_message_delay COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:12D)
+    add_test(NAME matched_asound_117_opl_write_register COMMAND func_lockstep --states 5000
+      --only ASOUND.117:36B)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 95.07%, P3 76.34%, All 92.52%**. Every commit
+Progress: **P1 100.00%, P2 95.33%, P3 76.34%, All 92.60%**. Every commit
 title starts with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.

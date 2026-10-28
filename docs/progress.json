@@ -227,12 +227,12 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed and reviewed static instruction bytes outside those rows in all 17 game code files; added to numerator and denominator for scoring. Strictly validated SETUP XOR code is included by physical byte union; floating LZEXE decompressor and unreviewed static discoveries remain outside. gameplay (21 Oct 2026): the gameplay score's figures over the executed bytes only (denominator: every validated route-executed instruction byte; matched_route_run; stays_original_reviewed; fixture_only; remaining; checklist of previous-scope bytes outside the denominator with and without a docs/reference-reviewed.tsv entry). Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 1133,
-    "matched_bytes": 160431,
+    "matched_functions": 1134,
+    "matched_bytes": 160463,
     "partial_functions": 293,
     "classes": {
-      "credited": 160431,
-      "ran": 591,
+      "credited": 160463,
+      "ran": 559,
       "never_run": 4299,
       "unreached": 222,
       "slots": 5,
@@ -243,14 +243,14 @@
     "creditable_bytes": 165548,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 43231,
-      "credited": 26410,
+      "bytes": 43375,
+      "credited": 27107,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
         "ASOUND.117": {
-          "bytes": 5654,
-          "credited": 4876,
+          "bytes": 5705,
+          "credited": 5079,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -279,14 +279,14 @@
           "original_reviewed_bytes": 688
         },
         "ISOUND.117": {
-          "bytes": 1263,
-          "credited": 831,
+          "bytes": 1312,
+          "credited": 911,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
         "ISOUND.LOG": {
           "bytes": 1517,
-          "credited": 1260,
+          "credited": 1292,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -304,7 +304,7 @@
         },
         "MPS_LOGO": {
           "bytes": 1671,
-          "credited": 110,
+          "credited": 115,
           "reviewed_static_bytes": 1448,
           "original_reviewed_bytes": 0
         },
@@ -321,14 +321,14 @@
           "original_reviewed_bytes": 0
         },
         "RSOUND.117": {
-          "bytes": 2410,
-          "credited": 2189,
+          "bytes": 2451,
+          "credited": 2407,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
         "RSOUND.LOG": {
-          "bytes": 3422,
-          "credited": 3141,
+          "bytes": 3425,
+          "credited": 3300,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -363,17 +363,17 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 157673,
+      "matched_route_run": 158258,
       "stays_original_reviewed": 2631,
-      "score": 0.97801802241515,
-      "fixture_only": 29103,
-      "remaining": 3603,
+      "score": 0.9815871195250966,
+      "fixture_only": 29247,
+      "remaining": 3018,
       "original_awaiting_review": 0,
       "reviewed_entries": 1815,
       "checklist": {
-        "bytes": 47433,
+        "bytes": 47577,
         "with_reviewed_entry": 45390,
-        "without_reviewed_entry": 2043,
+        "without_reviewed_entry": 2187,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 23166,
@@ -389,7 +389,7 @@
           },
           "supp-credited": {
             "with_reviewed_entry": 4175,
-            "without_reviewed_entry": 1301
+            "without_reviewed_entry": 1445
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 13802,
@@ -402,21 +402,21 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 208709,
+        "previous_scope_distinct": 208853,
         "denominator_in_previous_scope": 161276,
         "denominator_outside_previous_scope": 2631,
-        "previous_scope_occurrences": 208779,
+        "previous_scope_occurrences": 208923,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
         "ASOUND.117": {
           "denominator": 5373,
-          "matched_route_run": 4595,
+          "matched_route_run": 4747,
           "stays_original_reviewed": 0,
-          "fixture_only": 281,
-          "remaining": 778,
+          "fixture_only": 332,
+          "remaining": 626,
           "original_awaiting_review": 0,
-          "not_in_denominator": 281,
+          "not_in_denominator": 332,
           "not_in_denominator_reviewed": 281,
           "in_previous_scope": 5373
         },
@@ -466,21 +466,21 @@
         },
         "ISOUND.117": {
           "denominator": 1200,
-          "matched_route_run": 768,
+          "matched_route_run": 799,
           "stays_original_reviewed": 0,
-          "fixture_only": 63,
-          "remaining": 432,
+          "fixture_only": 112,
+          "remaining": 401,
           "original_awaiting_review": 0,
-          "not_in_denominator": 63,
+          "not_in_denominator": 112,
           "not_in_denominator_reviewed": 63,
           "in_previous_scope": 1200
         },
         "ISOUND.LOG": {
           "denominator": 1167,
-          "matched_route_run": 910,
+          "matched_route_run": 942,
           "stays_original_reviewed": 0,
           "fixture_only": 350,
-          "remaining": 257,
+          "remaining": 225,
           "original_awaiting_review": 0,
           "not_in_denominator": 350,
           "not_in_denominator_reviewed": 350,
@@ -510,10 +510,10 @@
         },
         "MPS_LOGO": {
           "denominator": 6808,
-          "matched_route_run": 6512,
+          "matched_route_run": 6517,
           "stays_original_reviewed": 169,
           "fixture_only": 2568,
-          "remaining": 127,
+          "remaining": 122,
           "original_awaiting_review": 0,
           "not_in_denominator": 4846,
           "not_in_denominator_reviewed": 4586,
@@ -532,10 +532,10 @@
         },
         "PLAYER": {
           "denominator": 6506,
-          "matched_route_run": 6140,
+          "matched_route_run": 6172,
           "stays_original_reviewed": 156,
           "fixture_only": 1654,
-          "remaining": 210,
+          "remaining": 178,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
           "not_in_denominator_reviewed": 3262,
@@ -543,23 +543,23 @@
         },
         "RSOUND.117": {
           "denominator": 2213,
-          "matched_route_run": 1992,
+          "matched_route_run": 2169,
           "stays_original_reviewed": 0,
-          "fixture_only": 197,
-          "remaining": 221,
+          "fixture_only": 238,
+          "remaining": 44,
           "original_awaiting_review": 0,
-          "not_in_denominator": 197,
+          "not_in_denominator": 238,
           "not_in_denominator_reviewed": 197,
           "in_previous_scope": 2213
         },
         "RSOUND.LOG": {
           "denominator": 2128,
-          "matched_route_run": 1847,
+          "matched_route_run": 2003,
           "stays_original_reviewed": 0,
-          "fixture_only": 1294,
-          "remaining": 281,
+          "fixture_only": 1297,
+          "remaining": 125,
           "original_awaiting_review": 0,
-          "not_in_denominator": 1294,
+          "not_in_denominator": 1297,
           "not_in_denominator_reviewed": 27,
           "in_previous_scope": 2128
         },

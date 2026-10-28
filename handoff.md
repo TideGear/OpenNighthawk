@@ -12,53 +12,73 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (28 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.07%, P3 76.34%, All 92.52% (`py tools/progress.py --title`).
+- **Scoreboard:** P1 100.00%, P2 95.33%, P3 76.34%, All 92.60% (`py tools/progress.py --title`).
   The full figures: `py tools/progress.py --census D:/f117-gate/census.tsv --named-cover
-  D:/f117-gate/p2-batch-bo-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
-  (gameplay 97.80%, naming 89.5%, checklist 45,390 / 47,433 = 95.69%, 3,603 executed bytes unmatched).
-- **Accepted runtime:** gate `bo`, passed: 1,957 s, 751 tests, 63 routes, 1,507 matched routines, 280 private mutations,
-  whole table at two seeds 0 mismatching. Evidence `D:/f117-gate/p2-batch-bo-accept/`. Gate `bn` before it added nine
-  routines and adopted checklist round 5.
+  D:/f117-gate/p2-batch-bp-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
+  (gameplay 98.16%, naming 89.8%, checklist 45,390 / 47,577 = 95.40%, 3,018 executed bytes unmatched: ASOUND.117 626,
+  VGAME 519, ISOUND.117 401, END 209, START 223, ISOUND.LOG 225, PLAYER 178, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 122,
+  SETUP 115, DSWAP 62, RSOUND.117 44).
+- **Accepted runtime:** gate `bp`, passed: 1,955 s, 766 tests, 63 routes, 1,522 matched routines, 562 private mutations,
+  whole table at two seeds 0 mismatching. Evidence `D:/f117-gate/p2-batch-bp-accept/`. Earlier today: gate `bn` (nine routines,
+  checklist round 5) and gate `bo` (eleven routines).
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
 - CI is checked through the GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
 
 ## Resume here
 
-1. **Next batch (bp): proofs finished, not yet integrated** (all under `D:/f117-gate/`; root verifies every result
-   file, never trust an agent's tally; `finish.log` holds two JSON records, read the FIRST for `calls_of_this_routine`):
-   - MPS_LOGO `0307` (`p2-mpslogo-bo-0307`): 26/26 mutants and five seeds clean after a probe-only decline/overrun check
-     (its harness hunks are in its `tests-base.c`); run `finish_all.py` on it. Entries `030E` and `0315` are not proved.
-   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27 mutants): its only route `err_vgame_no_photo` fails the replay check
+Goal in force when this was written: land Phase 2 bumps safely; a bump is committed only after a full gate passes.
+
+1. **Proved or partly proved, not integrated** (all under `D:/f117-gate/`; the root verifies every result file itself,
+   never trusts an agent's tally; `finish.log` holds two JSON records: read the FIRST for `calls_of_this_routine`):
+   - ISOUND.117 `026C` (`p2-isound-117-bp-026C`, 111 instructions, 334 bytes, 276 executed): 73 of 74 mutants caught.
+     `call_clamp` (the `m->run_until = c->stop_at` clamp inside the call macro XRUN) is unobservable in lockstep because the
+     harness's `step_runner_run` runs a callee to its return without consulting `run_until`. Do not accept the miss. Either make
+     nested runs honour `stop_at` (a shared harness change that needs a whole-table seed and a gate), or decide with the
+     owner how a macro-level mutant that only the real run loop can see is to be treated. Needs `g_cov_ip = 0x01B4`
+     (like `0443`/`062E`/`0200`) and `checkpoints --route ibm_boot`.
+   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27): its only route `err_vgame_no_photo` fails the replay check
      (`lb.3dg` / `lb.3DX` not opened by VGAME). Run the same checkpoint with matched routines off before concluding.
    - DSWAP thunks (`p2-dswap-bo-thunks`, one generic body for all 12 entries, 29/29): proved with a private multi-entry
      `kitm.py` and five hand-carried harness hunks; confirm the route and the observer/fix-site check, then use the same
-     approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2.
-   - ASOUND.117 `0B98` (`p2-asound-117-bl-0B98`, steps 1-7 done), PLAYER `0540` (`p2-player-bm-0540-budget`, needs
-     checkpoints `err_driver_overlay`), RSOUND.LOG `0BAD` (`p2-rsound-117-bl-0BAD`, root-verified through finish).
-   - Rule learned this round: a missed mutant is never replaced by an "equivalent" one when its path is merely never
-     exercised. Under-claims (a room claim smaller than the longest path) are real defects; add a probe state
-     (`g_decline_floor`, `g_probe_steps`, the VGAME `D569` return-code probe and the MPS_LOGO `0307` probe are examples).
-   - The batch audit (`p2-batch-bo-accept/audit_private.py`) was extended for macro-claimed calls, block macros with
-     literal arguments, one room claim charged in pieces, and rep-string claims; copy it forward, trim each dossier
-     to the credited window (keep `dossier/full-walk.json`), and set `partial` only for bodies that hand back.
-2. **Checklist round 6** (`D:/f117-gate/checklist-full-20261026/round6/`, packets were being built when the session limit
-   hit; resume agent `a77677c8419658767` or rebuild with `round5/build_r5.py` as the model): 15 units where round-5's status
-   differed from earlier readers, 3 accept-with-changes, 2 needs-context. The 6 protected units (stays-original,
-   probable-dead) need the owner's design-rule and dead-code review, not a reader. Reader rule: the Read tool silently
-   truncates files near 800 lines; require each reader to read every packet to its last line and state the line ranges.
-3. **Leads not built** (read each directory's notes first): MPS_LOGO `0307`/`030E`/`0315` generic body, SETUP `10B3` and PLAYER
-   `0211` (STI in a loop), SETUP `0094` (interrupt-shadow entry), START `8427` and END `4393` (wait handling), the 127
-   run-time-patched far-jump thunks, and `D:/f117-gate/kit/DECLINED.tsv`, which is out of date (reconcile it before
-   handing out declined routines; the owner ruled 23 Oct that declined routines are work, not exclusions).
-4. **Owner decisions to carry out:** probable-dead rows are proved with lockstep inputs, not declared dead on weak
-   evidence (recount `PROBABLE` rows of `D:/f117-gate/phase2-final/dead-cert/certificates.tsv` not yet matched);
-   machine-option error paths are proved with test inputs (no test-only machine options).
-5. **Remaining Phase 2 work beyond these** (definition: [docs/progress.md](docs/progress.md)): the packer stub's
-   representation-aware review, the encoded SETUP code, sorting the 27,782 fixture-only matched bytes into routed or
-   reviewed, and the closure review of indirect calls, tables, callbacks, vectors and self-modifying code before
-   declaring 100%. Details in [docs/roadmap.md](docs/roadmap.md).
-6. **Phase 3** re-release features are worktree work beside a gate; Phase 4 stays unscored.
+     approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2 (635 bytes). MPS_LOGO `030E` and `0315` are the same
+     shape as `0307` (integrated in gate bp): one body per entry or a generic body.
+   - Rule learned: a missed mutant is never replaced by an "equivalent" one when its path is merely never exercised.
+     Under-claims (a room claim smaller than the longest path) are real defects; build a probe state. Shared probes now
+     in `tests/func_lockstep.c`: `g_decline_floor`, `g_probe_steps`, `g_probe_tail`, `g_probe_sweep`, `g_probe_sweep_all`,
+     `g_room_n`/`g_room_at`/`g_room_need`, `g_room_probe_n`, a return-code probe gated to VGAME `D569`, and the probe-only
+     check for MPS_LOGO `0307` (`F117_ROOM_PROBE`).
+2. **Faster mutation kit, proved and not installed:** `D:/f117-gate/kit-fast/kit.py` (diff in `kit-fast/kit.diff`) gives
+   byte-identical mutation results and mutant logs on three proofs, and halves (first run) to quarters (rerun) the compile
+   time by reusing the proof's built `project/` and keeping mutant worker directories. Install it only between waves (no agent
+   running), after adding a guard so `lock`, `seeds` and `checkpoints` refuse to run while `project/.mutations-restore` exists.
+   The slot limit stays at 3 (a cl.exe peaked at 15 GB; RAM is the limit).
+3. **Remaining unmatched executed bytes (3,018) and where the points are:** ranked lead list
+   `D:/f117-gate/p2-leads-bp/LEADS.tsv` and `SUMMARY.md` (recompute with `tools/census_classify`; 1,737 bytes were new leads
+   before this wave). The largest single routines left: ISOUND.117 `026C`, four ASOUND.117 PIT wait-loop routines (`0A5B`, `0B01`,
+   `0A17`, `025A` tail: 308 bytes, need a timer-interrupt answer the harness does not give), VGAME `0010` main (declined,
+   195 bytes), the far-jump thunk families (635 bytes). ISOUND.LOG `0581` (150 bytes) is data executed by accident, not a
+   routine. The naming bar (weight 31.5, 89.8%) is the biggest pool of points left: it counts reviewed static code and error
+   paths no route runs, and bodies for those (printf arms need their enclosing function) are worth about three times the points
+   per byte of route-executed code.
+4. **Checklist** (`D:/f117-gate/checklist-full-20261026/`): round 5 adopted 88 units (3,641 bytes). Round 6 packets were being
+   built when the session limit hit (agent id lost; rebuild with `round5/build_r5.py` as the model): 15 units where round 5's
+   status differed from earlier readers, 3 accept-with-changes, 2 needs-context. The 6 protected units (stays-original,
+   probable-dead) need the owner's design-rule and dead-code review, not a reader. Rule: the Read tool silently truncates
+   near 800 lines, so every reader must read each packet to its last line and state the ranges. Then the closure review of
+   indirect calls, tables, callbacks, vectors and self-modifying code before declaring 100%.
+5. **Other leads not built** (read each directory's notes first): SETUP `10B3` and PLAYER `0211` (STI in a loop), SETUP `0094`
+   (interrupt-shadow entry), START `8427` and END `4393` (wait handling), and `D:/f117-gate/kit/DECLINED.tsv` is out of date
+   (the owner ruled 23 Oct that declined routines are work, not exclusions).
+6. **Batch workflow lessons (28 Oct):** the batch audit (`p2-batch-bp-accept/audit_private.py`, copy it forward) was extended for
+   macro-claimed calls, block macros with literal arguments, enum constants, constant-bound `for` loops, one claim charged in
+   pieces (room or `SM4_NEED` with `IO_SLACK`), a hand-back claim form, divide helpers and rep-string claims; each accepts a
+   block only when the clock charges sum exactly to its instruction count. Trim each dossier to the credited window (keep
+   `dossier/full-walk.json`) and set `partial` only for bodies that hand back. Integrate with `integrate_many.py`, then carry
+   by hand every harness hunk and table row a proof's `tests-base.c` has that HEAD lacks (diff the rows by text, not by line).
+   Never write patch scripts through a Bash heredoc if they contain backslashes: use the Write tool. A script that checks
+   brace balance before building saves a 5-minute failed build.
+7. **Phase 3** re-release features are worktree work beside a gate; Phase 4 stays unscored.
 
 ## Owner decisions in force
 
