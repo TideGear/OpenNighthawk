@@ -29,7 +29,8 @@ MS-DOS 5.00, the reference for the 386 timing profile
 6. In an MSYS2 UCRT64 shell: `cmake -S src -B build -G Ninja
    -DCMAKE_BUILD_TYPE=Release -DVNC=ON -DQT=ON -DUSE_QT6=ON -DDEV_BRANCH=OFF
    -DNEW_DYNAREC=OFF -DDYNAREC=ON` then `ninja -C build`. Output:
-   `build/src/86Box.exe`. An incremental rebuild takes about 23 s.
+   `D:\86box-src\build\src\86Box.exe`, where the tools look for it. An
+   incremental rebuild takes about 23 s.
 
 ## Traced runs: emulated time, scripted input (`86box-trace.patch`)
 
@@ -63,10 +64,10 @@ emulation thread as each frame is posted (`b86_frame_hook` in `video.c`, set
 by `vnc.c`) and hashes the emulated frame buffer. Two fast-forward music runs
 give byte-identical AdLib logs (30,937 writes, times included), two intro
 captures byte-identical `frames.csv` (13,020 frames), and two closed-loop
-flights byte-identical `flight.csv`. (When the hook ran on the blit thread,
-each input landed a host-dependent moment later and closed-loop flights
-parted from the first input.) Fast-forward: music 49 s instead of 178 s,
-save 95 s instead of 277 s.
+flights byte-identical `flight.csv`. The hook must stay on the emulation
+thread: on the blit thread each input lands a host-dependent moment later
+and closed-loop flights part from the first input. Fast-forward: music 49 s
+instead of 178 s, save 95 s instead of 277 s.
 
 The traced build's users: `probe86.py` (the machine-behaviour probe; answers
 are read back out of the disk image), `sound86.py` with `compare_opl86.py`
@@ -109,8 +110,9 @@ mission bytes then match the Machine's.
 31324` and the Machine's recorded front end); `--pilot recon --debrief` a
 career sortie as in [build_dosbox_x.md](build_dosbox_x.md) (`--seed-tick
 31233`). SETUP is answered with the front route's own two keys. The front
-end's events go on displayed frames: START.EXE first appears at frame 10,775
-on the default profile (`--frame-start-exec`), later events follow at 70.086
+end's events go on displayed frames: START.EXE is taken to appear at frame
+10,775 (`--frame-start-exec`; measured on the FreeDOS VM, and the MS-DOS 5.00
+VM falls within that measurement's margin), later events follow at 70.086
 frames per emulated second; over that span 86Box's clock agrees with
 DOSBox-X's to 2%. For the career sortie END's keys go through the loop's
 replies from VGAME's end plus 1 s, and the run stops 90 s after the last key,
@@ -149,7 +151,8 @@ CMOS made by driving the BIOS setup with injected keys ("auto configuration
 with BIOS defaults", F10, Y) and keeping the NVR 86Box saves on exit. The
 drive uses 86Box's `1989_3500rpm` preset (`hdd_01_speed`, set by hand in
 `vmt386` and `vmt386dos500`; no script writes it, and a VM built from
-`vmt386` inherits it).
+`vmt386` inherits it). The other MS-DOS VMs (`vmt386dos401`,
+`vmt386dos500h`, `vmt386dos622`) still use `ramdisk`.
 
 It was chosen over the 286 profiles by scene timing against this machine's
 DOSBox model (`compare_timing86.py`): the intro drifted 8.35 s on the 6 MHz
@@ -221,7 +224,7 @@ hash and the reason, in `expected_misses86.txt`, or `pc_parity.py` fails. Two
 runs give the same pictures at the same times; about 48 s.
 
 `--vnc` keeps the older real-time capture over VNC on the 286 profile
-`D:\86box\vmf` (below). Its first result (6 Oct 2026): 105 distinct
+`D:\86box\vmf` (below). Its result (6 Oct 2026): 105 distinct
 pictures, 104 within 3 levels per channel of ours in order, none exact,
 because a 1 Hz sample on a 6 MHz 286 lands on a different frame of the same
 scene.
@@ -230,7 +233,7 @@ scene.
 
 `86box.cfg.vnc` here is its configuration: `ami286`, 640 KB,
 `hdc_1 = xtide_at`, VGA, AdLib, `vid_renderer = vnc`, `sound_muted = 1`, no
-floppy (if a floppy is configured the BIOS boots it first). The disk image
+floppy image (if one is configured the BIOS boots it first). The disk image
 comes from `build_hdd.py` then `patch_hd_boot.py` (FreeDOS plus the GOG files
 in `C:\F117A`); `nvr/ami286.nvr` from `cmos_ami286.py`; `roms` is a junction
 to the release's ROM folder.

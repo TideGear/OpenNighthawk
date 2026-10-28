@@ -1,9 +1,8 @@
 # Parity audit, 4 October 2026
 
-*A dated snapshot, kept for its findings and reasoning. Its counts (routes,
-lockstep states, video pictures, coverage) are those of 4 October 2026 and
-have since been superseded; current figures, including the DOSBox-X and
-86Box checks, are in [roadmap.md](roadmap.md).*
+*A dated record of the reference-machine comparisons, kept for its findings,
+methods and the differences it found. Current parity figures, including the
+DOSBox-X and 86Box checks, are in [roadmap.md](roadmap.md).*
 
 The interpreter and recompiler share the CPU semantics and PC model. Equal
 machine hashes establish agreement between those engines; the DOSBox checks
@@ -14,9 +13,6 @@ not evidence that every mission outcome or physical device works.
 
 | Check | Result |
 |---|---|
-| All sixteen existing routes | Identical checkpoints and final states; route milestones pass |
-| Instruction lockstep | 89,276 starts, 5,713,152 states, 512 declined, zero mismatching starts |
-| Machine against GOG DOSBox | 1,210 comparable answers agree, zero differences |
 | Four new random-flight seeds, 71–74 | All 548 checkpoints and final states agree; 19.5 simulated minutes in flight, two flights end early after uncontrolled inputs |
 | Overlapping input and device boundaries | 543 applied inputs, including 143 stress events; 144 checkpoints/final agree; 51 checkpoints in VGAME |
 | Roster editing against GOG DOSBox | All three 802-byte saves match exactly: DOSBox, interpreter, recompiler |
@@ -57,9 +53,8 @@ were reviewed.
 | `secret_airstrip_return` | Adds a ground turn, taxi, takeoff and return: home 58 at (2880,11786), ground 0, speed/throttle 0, fuel 3000, gear/brakes, countdown complete, parent 0/3, VGAME exits 129. The strip is intact at delivery and damaged later with the player 8655 units away and no releases; the observer reports that separately | 372, `c7b303ee1aa60173`, 18,635,798,708 |
 | `cargo` | Reproduces D5 ([bugs.md](bugs.md)) in a Persian Gulf type-3 mission: crate (class 26h/weapon 18, player slot 11) crosses ground at (10500,3951), height -5, octagonal distance 113 from target 24 (below 256), mission time 588 before deadline 1094; impact globals match the slot, TTL 985 -> 0, primary flag/event absent for another 1.2 s; fuel 7075, aircraft recovers to height 444. Five acceptance regressions reject expiry, hovering at height one, unmatched impact globals, wrong slots/weapons, late/outside-area impacts, loss and unexpected credit | 149, `20b78dd06d275670`, 7,498,892,689 |
 
-Interpreter coverage of the route union reached 139,381 / 230,052 bytes
-(60.6%) across 25 public routes. The public `career_serge` /
-`career_promotion` fixtures contain only ordinary keyboard/mouse inputs.
+The public `career_serge` / `career_promotion` fixtures contain only
+ordinary keyboard/mouse inputs.
 
 **Earned sorties 7-13** were paired with the same tool: each agrees at 380
 checkpoints, final state, input/CSV/result files and all 802 saved bytes.
@@ -94,12 +89,6 @@ matching event. Inputs follow wall time from each program's start, so the
 generated primary and trajectory differ from the recompiled fixture: this is
 original-game completion under the same acceptance criteria, not exact
 dynamic-state equivalence.
-
-**Video.** Current-build replay against the saved GOG video matches 1,319
-exact RGB pictures in order. Seven reference pictures and 28 of ours remain
-unmatched, all for a single sample; the end transition is about 571 ms later
-here. Neither difference is dismissed as a pass. (Since resolved: no end
-drift remains; see [roadmap.md](roadmap.md).)
 
 **Sound.** `audio_render` uses the application's actual audio
 implementation. `tools/audio_compare.py` extracts PCM from the DOSBox AVI and
@@ -180,18 +169,12 @@ and pywin32.
 
 ## Left open by the audit
 
-Items marked *closed* have been settled since (see [roadmap.md](roadmap.md)).
+Items the audit left open and that are settled are in [roadmap.md](roadmap.md)
+(earned retirement, the supply-drop return, the speech reference, air-to-air
+objectives). Still open:
 
-- Earned retirement (*closed*: a rank-3 career is paired through retirement
-  at sortie 99) and further awards.
-- Air-combat hits and AI countermeasures; harder landing settings; in-flight
-  video.
-- The supply-drop home return (*closed*: route `cargo_return`). The original
-  supply-drop credit bug must be preserved in parity mode; the drop itself
-  has since been reproduced on DOSBox-X and 86Box ([bugs.md](bugs.md), D5).
-- An audio reference for the digitised speech (*closed*: captured from 86Box
-  on 9 October). The speaker's port-level stream and the intro's speaker
-  audio are held to DOSBox-X by `tools/speaker_parity.py`.
+- AI countermeasures; harder landing settings; in-flight video against a
+  reference.
 - Physical controls: no WinMM joystick is attached on this machine, so
   calibration, deadzones and control feel need hardware and a player.
 - MT-32 PCM needs a reference comparison with the supplied ROMs; the Roland

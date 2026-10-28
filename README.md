@@ -31,27 +31,31 @@ past the first playable build.
 
 **Why it matters.** The original DOS release is buggy and has not aged well.
 It needs an emulator to run at all today. Its frame-rate controller
-changes world speed with machine speed, and long-lived SA-5 missiles can
-lose proximity damage at high frame estimates; its
-digitised speech can hang the game; supply drops never earn credit;
-secret-airstrip missions are disabled outside the Persian Gulf; and long
-missions can overrun an unbounded table and corrupt the game's state. The
-catalogue in [docs/bugs.md](docs/bugs.md) has the evidence for each.
-Keeping the game playable, faithfully, on today's machines is a
-game-preservation job, and this project treats it as one.
+changes world speed with machine speed, and on a fast PC long-lived SA-5
+missiles cannot cause proximity damage; its digitised speech can hang the
+game; supply drops never earn credit; secret-airstrip missions are disabled
+outside the Persian Gulf; and long missions can overrun an unbounded table
+and corrupt the game's state. The catalogue in [docs/bugs.md](docs/bugs.md)
+has the evidence for each. Keeping the game playable, faithfully, on today's
+machines is a game-preservation job, and this project treats it as one.
 
 **1:1 parity with the original is the first priority.** With fixes off, the
-game does exactly what the DOS original does, including its bugs, which are tracked in
-[docs/bugs.md](docs/bugs.md) so they can be fixed as switchable options.
-Thirty-four catalogued fixes and balance options are enabled by default for normal
-play, including D1REAL and D1PROX. `--fix none` restores the original behavior.
-The headless reference runner and ordinary parity gates keep fixes off;
-recorded sessions restore their recorded fix set (older logs mean no fixes).
-The separate `--fix QUIZ` option restores the original aircraft-identification
-quiz. It is off by default and is enabled only when named explicitly;
-`--fix all` does not enable it.
+game does exactly what the DOS original does, including its bugs, which are
+tracked in [docs/bugs.md](docs/bugs.md) so they can be fixed as switchable
+options. Thirty-four catalogued fixes and balance options are enabled by
+default for normal play, including D1REAL and D1PROX. `--fix none` restores
+the original behavior. The headless reference runner and ordinary parity
+gates keep fixes off; recorded sessions restore their recorded fix set
+(older logs mean no fixes). The separate `--fix QUIZ` option restores the
+original aircraft-identification quiz. It is off by default and is enabled
+only when named explicitly; `--fix all` does not enable it.
 
 ## Status
+
+Progress: **P1 100.00%, P2 93.94%, P3 76.34%, All 92.17%**. Every commit
+title starts with the current figures (`py tools/progress.py --title`);
+[docs/progress.md](docs/progress.md) says what they measure and
+[docs/roadmap.md](docs/roadmap.md) what is done and what is left.
 
 - **The whole game loop runs**: SETUP, the MicroProse logo, the intro, the
   front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
@@ -64,25 +68,22 @@ quiz. It is off by default and is enabled only when named explicitly;
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,487 routine addresses have explained C equivalents
-  checked against their original bodies. They run 156,432 of the 163,907
-  instruction bytes the scripted routes execute, plus 2,631 bytes of reviewed code that stays original
-  by design (97.04%, the gameplay score), and cover 184,279 of 207,438
-  creditable bytes across all 17 game code files. The historical census has 1,122
-  rows wholly covered and 291 in part; executed code outside its rows and reviewed static code count too.
-  The checklist accounts for 41,749 / 46,112 bytes (90.54%) outside the routes.
-  Together with the tooling, these measures make up P2's 93.94%
-  ([how progress is measured](docs/progress.md)).
+- **Named and matched:** 1,487 routines have named, explained C equivalents
+  proved against the original's instructions. They run 156,432 of the
+  163,907 instruction bytes the scripted routes execute; with 2,631 bytes of
+  reviewed code that stays original by design, that is the gameplay score,
+  97.04%. Across all 17 code files, named code covers 184,279 of 207,438
+  creditable bytes (88.84%), and reviewed reference entries account for
+  41,749 of the 46,112 bytes outside the routes (90.54%).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the
   palette, MIDI and the disk - checked every 50 million clocks along the
-  way. They cover boot to flight, a full sortie through the debriefing and
-  back, the speaker and Roland drivers, all nine theatres and all four
-  mission categories, pilot creation, editing, erasure and saving, every
-  primary objective type, supply drops, secret airstrips, air-to-air kills,
-  landing at the home base, and the career awards and retirement. Every
-  translated instruction, reached or not, is also compared from random
+  way. They cover boot to flight, full sorties through the debriefing, all
+  three sound drivers, all nine theatres, every primary objective type, the
+  pilot roster and the career to retirement
+  ([every route](tools/routes/README.md)).
+  Every translated instruction, reached or not, is also compared from random
   machine states (0 differences), the translator is checked against 8088 and
   80286 silicon test vectors, and planted defects in the generated code are
   caught.
@@ -95,30 +96,27 @@ quiz. It is off by default and is enabled only when named explicitly;
 - **Optional sharper and smoother pictures:** finer polygon geometry and HUD
   strokes up to 4K, with the original bitmap text and artwork kept; see
   [Presentation](#presentation).
-- **Not yet done:** the remaining named C routines; refresh rates above 60 Hz
-  and broader hardware checks; play by a person at the
-  keyboard; rendered Roland output against an independent reference, and
-  listening checks.
-- **Re-release features** (mostly planned; [roadmap](docs/roadmap.md)):
-  two choices instead of preset modes. *Presentation:* Original (320x200,
-  sharp 4:3), Enhanced (finer 4:3 at 60+ fps) or Remastered (widescreen with
-  a wider field of view, a longer draw distance, objects drawn in correct
-  depth order and no road or coastline jitter). *Fixes:* Original (none),
-  Recommended (every fix, including credited fan-community patches) or
-  Custom. Built so far: `--presentation original|enhanced`,
-  `--fixes original|recommended` and saves that remember their fix set
-  (below); Remastered and the fan-community patches are not built yet.
-  Also planned: an in-game settings menu, controller and HOTAS support with
-  remapping, the sound device chosen in the menu (including a hybrid of
-  MT-32 music with AdLib sound effects), an optional CRT filter,
-  flight replays, and subtitles and other accessibility options. The game's
-  logic is the same under every presentation.
+- **What is left:** matching the remaining 4,844 route-executed bytes (most
+  of them in the sound drivers) and the code no route runs, reviewed entries
+  for the 4,363 bytes outside the routes that have none, and a closing review
+  of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));
+  the re-release features below. Not scored: play by a person at the
+  keyboard, rendered Roland output against an independent reference and
+  listening checks, refresh rates above 60 Hz and other hardware
+  ([Phase 4](docs/roadmap.md#phase-4---checked-by-people-and-independent-references)).
+- **Re-release features** (mostly planned;
+  [roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)):
+  two settings, *Presentation* (Original, Enhanced, or a widescreen
+  Remastered without the original's jitter) and *Fixes* (Original,
+  Recommended with credited fan-community patches, or Custom); an in-game
+  settings menu, controllers and HOTAS, a hybrid of MT-32 music with AdLib
+  effects, flight replays and accessibility options. Built so far:
+  `--presentation original|enhanced`, `--fixes original|recommended` and
+  saves that remember their fix set (below). The game's logic is the same
+  under every presentation.
 
-The figures and evidence for each check are in
-[docs/roadmap.md](docs/roadmap.md) (what is done and left) and
-[docs/architecture.md](docs/architecture.md) (how the parity claim is
-built and checked); [docs/parity-audit.md](docs/parity-audit.md) is an
-earlier, dated audit of the reference-machine comparisons. The
+How the parity claim is built and checked:
+[docs/architecture.md](docs/architecture.md). The
 [Windows build check](https://github.com/TideGear/OpenNighthawk/actions/workflows/windows.yml)
 builds the full interpreter application and runs ROM-free CPU, machine and
 comparator tests on pushes and pull requests. Game-dependent parity checks
@@ -157,20 +155,20 @@ From a new PowerShell terminal, in the directory where you keep source:
 ```powershell
 git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
 Set-Location OpenNighthawk
-py -m pip install capstone Pillow
+py -m pip install capstone Pillow numpy
 py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
 ```
 
-Replace the data path with your installed game. `capstone` is needed by the
-translator; Pillow enables the picture comparator tests. Generated C,
-coverage and saves go in the work directory (default
-`%USERPROFILE%\f117-recomp-local`). On first build, `build.cmd` creates a
-`build` junction to a local directory under `%USERPROFILE%\f117-recomp-local`,
-with a separate CMake cache for each checkout. No generated files or game
-assets belong in the source tree. This sequence has been verified from a
-fresh public clone. Translation counts depend on accumulated coverage, so a
-first build can translate slightly fewer instruction starts (that run
-produced 89,276) than the figures above.
+Replace the data path with your installed game. `capstone` writes the
+disassembly comments in the generated C; Pillow and NumPy are needed by the
+picture and sound comparators (`tools/pc_parity.py`). Generated C, coverage
+and saves go in the work directory (default `%USERPROFILE%\f117-recomp-local`).
+On first build, `build.cmd` creates a `build` junction to a local directory
+under `%USERPROFILE%\f117-recomp-local`, with a separate CMake cache for each
+checkout. No generated files or game assets belong in the source tree. This
+sequence was last verified from a fresh public clone on 4 October 2026.
+Translation counts depend on accumulated coverage, so a first build can
+translate slightly fewer instruction starts than the figures above.
 
 That one command translates the game, builds it, plays the scripted routes
 in `tools/routes/` to gather coverage, translates and builds again, and
@@ -222,10 +220,10 @@ summary, which also lists diagnostic options not shown here.
 The default D1REAL fix replaces the original adaptive simulation cadence with
 fifteen simulation steps per real second, thirty during 2x time compression;
 it is validated at the default 60,000,000 ips
-([validation and 4K60 results](docs/cadence15-validation.md); 40,000,000 ips
-cannot keep up in compressed flight). `--present interp` interpolates the
-picture between steps. See [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
-The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` fixes repair incoming
+([validation and 4K60 results](docs/speed-sweep.md#fifteen-step-play-mode-validation); 40,000,000 ips
+cannot keep up in compressed flight). See
+[the timing option](docs/bugs.md#d1real-real-time-simulation-cadence). The
+separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` fixes repair incoming
 missile lifetime, slot reuse, proximity sampling and acceleration.
 
 Host keys (chosen so as not to collide with the game's):
@@ -259,21 +257,16 @@ itself:
 - `--present replay --present-scale N` redraws the same picture from the
   original's own draw records, N times finer: the 3-D scene's polygons from
   their vertices and the HUD's lines on the output grid, with the original
-  text, sprites and cockpit artwork kept. It runs at the game's own frame
-  rate with no in-between frames, and is the verified, sharp mode. Scale 9
-  fills a 4K screen's 2160 lines at 4:3.
-- `--present interp` adds in-between frames at the display's own rate, one
-  logic step behind, by matching shapes between two frames and moving each
-  part of the way. Anything without a match (objects entering or leaving,
-  shapes crossing the screen edge, explosions, text, numbers, sprites and
-  target boxes) holds and then switches halfway: 1.5-14% of the polygons in
-  measured flights, more in the night take-off. Superseded by `rerun`; kept
-  as an experiment.
-- `--present rerun` draws intermediate poses with the original's own,
-  unmodified drawing code on a disposable machine copy, then refines them
-  at the chosen scale. Its smoothed playback clock reduces uneven motion;
-  `F117_PRESENT_CLOCK=raw` selects the older clock. It remains experimental:
-  higher refresh rates and motion on further hardware need review.
+  text, sprites and cockpit artwork kept. It shows a new picture only when
+  the game draws one, and is the verified, sharp mode. Scale 9 fills a 4K
+  screen's 2160 lines at 4:3.
+- `--present rerun` adds in-between pictures, one logic step behind, drawn
+  by the original's own unmodified drawing code on a disposable copy of the
+  machine, then refined at the chosen scale. `--presentation enhanced`
+  selects it.
+- `--present interp` adds in-between pictures by moving matched shapes
+  between two frames; anything without a match holds and then switches
+  halfway. Superseded by `rerun`; kept as an experiment.
 
 **Higher resolution (`--present-scale` above 1) and higher frame rates
 (`interp`, `rerun`) are experimental.** Both redraw what the original draws,
@@ -281,27 +274,21 @@ so they keep the original renderer's quirks: roads, coastlines and other
 edges jitter as they do in the original; objects can appear in front of or
 behind others in the wrong order, as the original's drawing order puts them;
 lines and dots keep the same thickness at any distance; and there may be
-others.
-
-**Frame rate.** `interp` and `rerun` are the modes that raise it. The window
-presents one picture per display refresh (vsync), so the frame rate follows
-the refresh rate Windows has set for that display: 60 fps at 60 Hz, 144 fps
-at 144 Hz, if the PC keeps up. The game's own logic still runs at its own
-rate (fifteen steps a second under the default D1REAL, about 15-17 with
-fixes off); the extra pictures are drawn between its steps, one step behind.
-`scan` and `replay` also present at the display's refresh but only show a
-new picture when the game draws one.
+others. The window presents one picture per display refresh (vsync), so
+`interp` and `rerun` run at the refresh rate Windows has set for the display
+(60 fps at 60 Hz, 144 fps at 144 Hz) if the PC keeps up; the game's own
+logic still steps at its own rate (fifteen a second under the default
+D1REAL), and the extra pictures fall between its steps. Design, status and
+measurements: [docs/presentation.md](docs/presentation.md).
 
 The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
 selects fullscreen, `present = rerun` and scale 9:
 `build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`. Select
-3840x2160 at 60 Hz in Windows' display settings first. The build copies the
-repository's `f117a.4k.ini` into `build\` whenever it changes, replacing the
-copy there: edit the repository's file and rebuild, or keep your own file
-and pass it with `--config`. For the sharp mode
-without in-between frames, use `--present replay --present-scale 9`
-instead. Design, status and measurements:
-[docs/presentation.md](docs/presentation.md).
+3840x2160 at 60 Hz in Windows' display settings first. The build replaces
+the copy in `build\` whenever the repository's file changes: edit the
+repository's file and rebuild, or keep your own file and pass it with
+`--config`. For the sharp mode without in-between frames, use
+`--present replay --present-scale 9` instead.
 
 ### Roland and Munt
 
@@ -360,7 +347,8 @@ Each ROM must be a single whole file; the split halves some dumps come as
 Every claim above can be re-run on your own copy:
 
 ```bat
-rem The CPU core against the 8088 and 80286 silicon vectors (cached locally):
+rem The CPU core against the 8088 and 80286 silicon vectors (cached locally;
+rem each script's --fetch downloads them first):
 py tests\sstest.py
 py tests\sst286.py
 rem The recompiler's generated code against the same vectors:
@@ -375,7 +363,8 @@ The machine model itself is checked against other PCs with
 `py tools\pc_parity.py --data "C:\GOG Games\F-117A"`, which plays the intro on
 GOG's DOSBox (a saved capture), DOSBox-X and 86Box, headless, and compares
 the pictures, the music and a saved roster; `tools\fidelity_all.py` does the
-same for the machine-behaviour probe. DOSBox-X and 86Box are built from source for it; the steps are in
+same for the machine-behaviour probe. DOSBox-X and 86Box are built from
+source for it; the steps are in
 [tools/ref86box/build_dosbox_x.md](tools/ref86box/build_dosbox_x.md) and
 [tools/ref86box/build_86box.md](tools/ref86box/build_86box.md). The
 386DX/33 profile can be run headless with
@@ -390,22 +379,17 @@ must end in the same state. A session played with fixes on names them in its
 log (`# f117r-fixes D5`), and replaying it switches the same fixes on.
 
 Some routes also have a stronger observer that checks what a route's own
-milestones cannot: a real landing (ground contact inside the home approach
-box, a stop at idle, gear and brakes, the original countdown and the
-successful-return result), a credited reconnaissance photograph, or a secret
-airstrip's delivery. For example:
+milestones cannot: a real landing, a credited reconnaissance photograph, or
+a secret airstrip's delivery. For example:
 
 ```powershell
 py tools/landing_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
-py tools/recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
-py tools/recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --complete --replay tools/routes/recon_return.input --out C:/recon-return-check
-py tools/airstrip_check.py --data "C:\GOG Games\F-117A" --replay tools/routes/secret_airstrip.input --steps 8373782617 --out PRIVATE_DIR
 ```
 
-Every route and its observer:
-[docs/architecture.md](docs/architecture.md#observing-flights-through-normal-controls)
-and [tools/routes/README.md](tools/routes/README.md). Career routes chain
-actual earned saves; no saved game is distributed. The dated
+Every route, its observer and the observer's command:
+[tools/routes/README.md](tools/routes/README.md) and
+[docs/architecture.md](docs/architecture.md#observing-flights-through-normal-controls).
+Career routes chain actual earned saves; no saved game is distributed. The dated
 [parity audit](docs/parity-audit.md) records the DOSBox save, flight, input
 stress, host pacing and rendered audio comparisons, with their differences.
 Every process the project repeats, and what it costs, is listed in
@@ -423,15 +407,16 @@ Every process the project repeats, and what it costs, is listed in
 | `src/host/` | the SDL3 window, audio and input; the headless runner |
 | `src/present/` | the optional sharper and smoother pictures (`replay`, `interp`, `rerun`) |
 | `recompiler/` | the translator (Python) |
+| `third_party/` | DOSBox DBOPL and Nuked OPL3, the two OPL synthesizers |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |
 | `tests/` | silicon-vector harnesses for the interpreter and for generated code; lockstep and unit tests |
-| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md), [other versions](docs/other-versions.md) (Macintosh, Amiga) |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [progress scoring](docs/progress.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md), [other versions](docs/other-versions.md) (Macintosh, Amiga) |
 
 ## Licence
 
 GPL-3.0 (see [LICENSE](LICENSE)). It covers this repository's code only and
 grants nothing over the game, its data, or anything derived from them.
-DOSBox DBOPL is GPL-2-or-later and Nuked OPL3 is LGPL-2.1; see
+DOSBox DBOPL is GPL-2-or-later and Nuked OPL3 is LGPL-2.1-or-later; see
 [docs/provenance.md](docs/provenance.md).
 
 **This project takes no money.** There is no donation link, no sponsorship,
@@ -476,7 +461,8 @@ closed. Buy it; it is inexpensive and still available.
 - **SDL** (Sam Lantinga and the SDL contributors), for the window, input and
   audio.
 - **SingleStepTests**, for the 8088 and 80286 hardware vectors.
-- **Capstone**, for the disassembly in the matched-routine drafts.
+- **Capstone**, for the disassembly comments in the generated C and in the
+  matched-routine drafts.
 - **debugcom**, for the mission-generator and secret-airstrip analysis the
   bug tracker cites.
 - **GOG** and **Steam**, for keeping the game on sale.

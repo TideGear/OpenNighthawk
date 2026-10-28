@@ -5,12 +5,24 @@ on:
     branches: [master]
     # Prose only: nothing builds or tests from these, and a doc commit that
     # started a run would cancel the code commit's run before it finished.
+    # docs/bugs.md is NOT listed: tests/test_progress.py reads it (tools/progress.py
+    # counts its D sections for the fixes score).
     paths-ignore:
-      - 'docs/presentation.md'
-      - 'docs/roadmap.md'
       - 'docs/architecture.md'
-      - 'docs/provenance.md'
+      - 'docs/other-versions.md'
       - 'docs/parity-audit.md'
+      - 'docs/presentation.md'
+      - 'docs/progress.md'
+      - 'docs/provenance.md'
+      - 'docs/repeated-processes.md'
+      - 'docs/roadmap.md'
+      - 'docs/setup-autoanswer.md'
+      - 'docs/sound-board.md'
+      - 'docs/speed-sweep.md'
+      - 'docs/static-code-review.md'
+      - 'tools/ref86box/*.md'
+      - 'tools/routes/README.md'
+      - 'third_party/dosbox-dbopl/README.md'
       - 'handoff.md'
       - 'README.md'
   pull_request:

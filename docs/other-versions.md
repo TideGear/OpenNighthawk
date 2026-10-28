@@ -19,8 +19,7 @@ Amiga). They are used from that project's folder, not vendored here. The Mac cod
 and the bug comparison) are this project's, from capstone disassemblies of two builds the owner
 holds: **2.1.0** (the program in the `F117a Stealth Fighter 2.1` folder of the 2.3.2 archive, whose
 version resource says "Version 2.1.0, 1994") and **2.3.2** (inside `F117A Version 2.32 Update.image`,
-code 248,520 bytes against 252,860). An earlier version of this page read 2.1.0 and called it 2.3.2;
-addresses below are 2.3.2 unless marked 2.1.0.
+code 248,520 bytes against 252,860). Addresses below are 2.3.2 unless marked 2.1.0.
 
 ## Macintosh (2.1.0 and 2.3.2, 1994)
 
@@ -53,8 +52,8 @@ addresses below are 2.3.2 unless marked 2.1.0.
   (`CODE13:0589A`, `01360`). Menu handler `CODE02:040AC`; the 2.3.0 notes warn that Warp makes AI
   aircraft "crash a little too often" and missiles less accurate, which matches the S-dependent
   per-frame steps below. The pinned values 1-3 are below DOS's floor of 4.
-- **Bug catalogue against 2.3.2** (full sweep, 24 Oct 2026, the Q-series re-checked 25 Oct with the new
-  IDs of [bugs.md](bugs.md#smaller-defects-q-series); all read from code, none measured):
+- **Bug catalogue against 2.3.2** (full sweep, with the Q-series IDs of
+  [bugs.md](bugs.md#smaller-defects-q-series); all read from code, none measured):
   - *Present, same mechanism:* D1 (Realistic setting only), D1TTL (`03FB2`-`03FC0`, signed `4*S`
     guard; launch `0314C`-`031E4`), D1SLOT (`04268` cancel, `03CB8` decrement; call order traced so
     no path skips it), D1PROX (`03F8C`-`03F9E`, `(speed << 3) / S`), D1ACCEL (`0383A`-`03858`), D4
@@ -109,10 +108,10 @@ addresses below are 2.3.2 unless marked 2.1.0.
   frames per second, and a 6-tick floor (`0x40005C`) matches the cap of 10. The elapsed-time scale
   `[43B6A2]` (tick count x 2048, `0x400022`-`0x400038`) is real but feeds only 17 sites:
   chase-camera and view smoothers, audio slew limits and animation ramps - none of the flight model,
-  AI or weapons. The earlier project's note that the Amiga replaced S with elapsed time was wrong
-  (verified 24 Oct 2026 by reading the loop). Like the Mac, the Amiga kept frame counting and picked
+  AI or weapons. The earlier project's note that the Amiga replaced S with elapsed time is wrong
+  (read from the loop). Like the Mac, the Amiga kept frame counting and picked
   a cap to suit its machines.
-- **Bug catalogue against v3.01** (24 Oct 2026, the Q-series re-checked 25 Oct with the new IDs of
+- **Bug catalogue against v3.01** (with the Q-series IDs of
   [bugs.md](bugs.md#smaller-defects-q-series); read from code, none measured; addresses are
   `f117f` unless marked `f117:` for the front end):
   - *Present:* D1ACCEL (`0x40E638`-`0x40E656`, +1 on odd frames), D1PROX (`0x40EEBC`-`0x40EECC`,

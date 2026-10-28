@@ -11,6 +11,7 @@ Tab, `\b` Backspace, `\U` `\D` `\L` `\R` the arrows, `\1`-`\9` F1-F9, `\0`
 F10, `\aX` Alt+X, `\cX` Ctrl+X, `\\` a backslash. Run a route with
 `tools/run_route.py`, never through a shell: a shell changes these escapes
 and so the inputs.
+
 `tools/build_recomp.py` discovers every `.args` file here and compares the
 interpreter and the recompiled code at 50-million-clock checkpoints and the
 final state. Routes with identical options play one session per engine
@@ -19,25 +20,19 @@ milestones on it: 63 routes, 62 sessions. Every replay starts from a fresh
 `save-*` directory holding the install's roster, so coverage runs or an
 earlier pipeline's edited pilot cannot change its starting state.
 
-## The quiz option
-
-`--fix QUIZ` restores START's aircraft-identification quiz, the copy
-protection GOG's build patches out; it is off unless named
-([bugs.md](../../docs/bugs.md)).
-
-| Route | What it plays |
-|---|---|
-| `quiz_right`, `quiz_wrong` | PC-speaker boot, the quiz screen at START's start (silhouette and 18 names, `planes2.pic`), a click on the right name (the A-10 shown) or a wrong one, the verdict, the roster screen; together they run both verdict arms (START `073A` and `074B`) |
-
 ## Damaged installs
 
-A route may damage a private copy of the install, as a broken install would be: pairs of lines `--damage` and
-`ACTION:FILE`, ACTION one of `remove`, `empty`, `trunc=N`, `poke=OFFSET:HEXBYTES`, `rename=NEW` (FILE is a name in the
-install's top directory, case ignored). `tools/route_damage.py` (called from `route_args`) builds the copy once, from hard
-links of the install, and the route runs with `--data` pointing at it. The install is never written and no state or
-executable is poked. These routes make the original programs run their own error handling: PLAYER's `assert`/abort and
-divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure, DSWAP's missing-START screen, and the
-file-open and file-format error arms of DSWAP, START, VGAME and END.
+A route may damage a private copy of the install, as a broken install would
+be: pairs of lines `--damage` and `ACTION:FILE`, ACTION one of `remove`,
+`empty`, `trunc=N`, `poke=OFFSET:HEXBYTES`, `rename=NEW` (FILE is a name in
+the install's top directory, case ignored). `tools/route_damage.py` (called
+from `route_args`) builds the copy once, from hard links of the install, and
+the route runs with `--data` pointing at it. The install is never written
+and no state or executable is poked. These routes make the original
+programs run their own error handling: PLAYER's `assert`/abort and
+divide-fault paths, MPS_LOGO's "bad series load", the overlay-load failure,
+DSWAP's missing-START screen, and the file-open and file-format error arms
+of DSWAP, START, VGAME and END.
 
 | Route | Damage and what it plays |
 |---|---|
@@ -90,6 +85,14 @@ separately when a flight route is added.
 |---|---|
 | `roster_edit` | creates pilot CHECK with Backspace and Return, edits one character, cancels another edit with Escape, deletes a KIA pilot with an empty name and returns to the office to save; `--move WHEN:X,Y` hovers over a row without selecting it. Saved-byte milestones check the name, the erased row and the cleared career counters of the 802-byte roster |
 | `frontend_dialogs` | opens and dismisses the KIA and retired-pilot dialogs (each has its own OK position; Enter with the pointer outside the button does not dismiss them), uses the MAINT door before and after the briefing, assigns AIM-9 to station 1 and AMRAAM to station 3 (the first arming page has empty stations; the generated assignment fills the second); checks two arming-page and four office-page loads |
+
+**The quiz option.** `--fix QUIZ` restores START's aircraft-identification
+quiz, the copy protection GOG's build patches out; it is off unless named
+([bugs.md](../../docs/bugs.md#not-defects-of-the-original)).
+
+| Route | What it plays |
+|---|---|
+| `quiz_right`, `quiz_wrong` | PC-speaker boot, the quiz screen at START's start (silhouette and 18 names, `planes2.pic`), a click on the right name (the A-10 shown) or a wrong one, the verdict, the roster screen; together they run both verdict arms (START `073A` and `074B`) |
 
 **Theatre transfers.** Each selects the existing cleared pilot, requests a
 theatre, tension and mission category, takes the briefing, arming and hangar,
@@ -209,8 +212,8 @@ agree.
 - Korea starts on a carrier and releases its brakes first; the other
   transfers start on runways with the brakes already off, where toggling
   them prevents takeoff and causes an early crash.
-- The air-to-air recordings (6 Oct, under the current VGA timing) replay
-  byte-identically under both engines and match their adaptive runs. Type 5
+- The air-to-air recordings replay byte-identically under both engines and
+  match the adaptive runs that recorded them. Type 5
   uses `vietnam_airair.front` and the default `--time-us 700000000000000`;
   type 6 `central_europe_airair.front`; type 7 `vietnam_airair_type7.front`
   with `--time-us 700000003000000`; type 8 `vietnam_airair_type8.front` with

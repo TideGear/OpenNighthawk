@@ -17,9 +17,10 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
 
 - **Frame rate.** The app presents one picture per display refresh (vsync on), so the rate is whatever refresh the
   display is set to: 60 Hz gives 60 pictures a second, 144 Hz gives 144, if the PC keeps up. The game itself still
-  steps fifteen times a second normally and thirty during 2x compression with the default D1REAL fix (18 October);
-  `interp` and `rerun` fill the gaps. With `--fix none`, the original controller gives about 17 steps a second at
-  the historical 20 MIPS setting, fewer in slow scenes. The presentation modes do not require D1REAL.
+  steps fifteen times a second normally and thirty during 2x compression with the default D1REAL fix
+  ([bugs.md](bugs.md)); `interp` and `rerun` fill the gaps. With `--fix none`, the original controller gives about
+  17 steps a second at the historical 20 MIPS setting, fewer in slow scenes. The presentation modes do not require
+  D1REAL.
 - **The price of in-between pictures** is age: they show the game one logic step late (about 60 ms at 17 steps a
   second, or about 67 ms at the default fifteen), plus one display frame for the threaded drawing,
   plus about a third of a step for `rerun`'s smoothed clock.
@@ -83,10 +84,10 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   their original pixels as N x N blocks. No vector or replacement graphics.
 - **Stop improving primitive pairing (owner, 15 October 2026).** Interpolating two captured draw lists switches
   shapes without a partner and deforms shapes paired across different visible-vertex sets; identity pairing stays
-  off ([below](#identity-pairing-and-the-step-clock-15-october-2026)). In-between pictures come from `rerun`.
+  off ([below](#identity-pairing-and-the-step-clock)). In-between pictures come from `rerun`.
 - **The jitter is the original's; no smoothing (owner, 15 October 2026).** Road and coastline jitter shows in the GOG
-  DOSBox release and in the sharp mode without in-between pictures. On 15 October (21:23) the owner cancelled the
-  plan to smooth it, at N > 1 too: the finer modes keep the original renderer's quirks. So smoothing it, coastline
+  DOSBox release and in the sharp mode without in-between pictures. The owner cancelled the plan to smooth it, at
+  N > 1 too: the finer modes keep the original renderer's quirks. So smoothing it, coastline
   topology transitions and refining clipped or off-screen outlines (6.1% of outline strokes in the owner's sharp
   session, drawn from scaled whole-pixel endpoints) are not planned for this renderer; a jitter-free picture is
   Remastered's (next item).
@@ -95,32 +96,28 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
 - **Three presentation settings (owner, 24 October 2026).** *Original* is the validated default picture (320x200 at
   the original rate, nearest-neighbour 4:3); *Enhanced* is the finer 4:3 redraw with in-between pictures at 60+ fps
   (the modes on this page), which keeps the original's jitter and whole-object sort; both are built
-  (`--presentation`, [above](#in-short)). *Remastered*, not started, is a new renderer: widescreen with a widened field of view, a longer draw distance, depth-correct
-  drawing instead of the original's whole-object sort, and no road or coastline jitter. Presentation never feeds the
-  simulation. Details and the other re-release features: [roadmap.md](roadmap.md), "Re-release features".
+  (`--presentation`, [above](#in-short)). *Remastered*, not started, is a new renderer: widescreen with a widened
+  field of view, a longer draw distance, depth-correct drawing instead of the original's whole-object sort, and no
+  road or coastline jitter. Presentation never feeds the simulation. Details and the other re-release features:
+  [roadmap.md](roadmap.md), "Re-release features".
 - **Timing and visible tests (owner).** Checks run in the background; no visible or fullscreen test without asking
   first. Configuration defaults change only on the owner's call.
 
-## The current plan for 60+ fps (15 October 2026, owner)
+## The method for 60+ fps (owner, 15 October 2026)
 
 - **Safe sharp mode:** `--present replay --present-scale N`, the original's own frames refined N times at the game's
   own rate, no in-between pictures. Verified.
-- **The method:** re-run the original's own, unmodified 3-D draw on a throwaway copy of the machine at each in-between
-  moment, with only its inputs nudged: the aircraft's position and attitude (from which the view composition
-  `vgame_frame_compose`, VGAME 2F9D, derives the camera) and moving objects by their table slots (aircraft traffic,
-  VGAME 5852; weapons in flight, VGAME 683E). The existing refinement draws those pictures at any `--present-scale`,
-  and a smoothed playback clock times them. It must work at any scale and refresh rate.
+- **In-between pictures:** re-run the original's own, unmodified 3-D draw on a throwaway copy of the machine at each
+  in-between moment, with only its inputs nudged: the aircraft's position and attitude (from which the view
+  composition `vgame_frame_compose`, VGAME 2F9D, derives the camera) and moving objects by their table slots
+  (aircraft traffic, VGAME 5852; weapons in flight, VGAME 683E). The existing refinement draws those pictures at any
+  `--present-scale`, and a smoothed playback clock times them. It must work at any scale and refresh rate. Built as
+  `--present rerun`; `interp` remains, as a mode and as its fallback.
 - **Safety proof required:** guest checkpoints and final hash unchanged on every route, plus a check that the real
   machine's memory is byte-identical before and after each extra draw; nothing in the copy may reach files, sound or
   devices. Met: [the rerun mode](#the-rerun-mode-in-between-pictures-drawn-by-the-original).
-- **Status:** integrated as `--present rerun` and gated (15 October). Defaults are unchanged; `interp` remains.
-- **Next:** Stage 3's clock work is closed (19 October; the owner accepted the A/B). Making the observer,
-  recompiled-code runtime and fix state per machine for parallel copies, higher refresh rates and further
-  hardware checks remain Phase 4 possibilities; visible tests still require the owner's approval.
-- **In reserve:** camera reprojection of one step's own draw list. This project's own scene renderer (the
-  unconnected `src/present/scene_mesh.c` draft;
-  [world geometry](#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)) is no longer the
-  main path.
+- **In reserve:** camera reprojection of one step's own draw list. This project's own scene renderer is not the main
+  path ([world geometry](#world-geometry-and-the-scene-input-capture)).
 
 ## Settings and switches
 
@@ -161,7 +158,7 @@ Each stage is judged by a check, as in the rest of the project.
 | Stage | What | Check | Status |
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
-| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
+| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: every route (63 in the latest N=1 check, [verification](#verification)) and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | done and live (`--present-scale N`): polygons from camera-space geometry, near-plane crossings verified against the original's; one stroke pen; original text/artwork as pixel blocks; HUD, panel items, map marker and sky/ground bands from game state; incompatible geometry scaled |
 | 3 | Draw intermediate poses at the host display rate | logic frames exact; extra draws leave live state unchanged; an unnudged copy reproduces its frame | `interp` live, exact at both ends of every pair, pairing frozen; `rerun` integrated with full route and isolation checks |
 | 4 | Pacing, vsync, picture age, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | built: vsync pacing, age setting, threaded presentation (isolated 4K/60 timing passed for `interp`), smoothed clock for `rerun`, `--present scan` as the switch; `rerun` fullscreen 4K/60 timing passes ([fullscreen](#fullscreen-4k60-timing-and-the-threaded-presentation)). Open: physical-display checks |
@@ -306,7 +303,7 @@ camera-space coordinate by a rounding unit, which a finer grid shows. At N = 9 t
   including DEC DX's sign test, then keeps x/128 and y/128 before the original discards precision. Each crossing must
   reproduce the original's retained coarse crossing exactly; a mismatch or unsupported shape keeps the scaled
   picture. 5,014 crossings across strike, landing and air-to-air match the original. Near-clipped polygons are drawn
-  from their geometry like any other (the earlier footprint clamp and seam repair were removed on 14 October).
+  from their geometry like any other.
 - **Orthographic maps.** Map objects legitimately have Z=0, so `G` appends the byte at `[7D8E]` as field 18: zero for
   perspective, otherwise the orthographic shift. C and Python reproduce the original high-word shift and rounding and
   require both coarse coordinates to match the capture before using fine positions. Shifts 16-31 keep full
@@ -363,9 +360,9 @@ The hole counts (`diag_holes`, `headless.c`) are in fine pixels: *unwritten* is 
 earlier frame shows through); *stray* is a pixel a scene path wrote whose colour is none of the nine coarse cells
 around it (a gap, or geometry drawn where the original drew another colour). `BASE.holes` marks them.
 
-The diagnostic found the two sources of visible blocks on 14 October: near-clipped polygons clamped to the original
-footprint, and large polygons refused by an exact 3 px footprint test and drawn whole as the scaled copy (in 6 to 8%
-of sampled frames, up to 83% of the view). The next section is the fix. Evidence: `D:/f117-gate/present-v2/fix3d`.
+The diagnostic found the two sources of visible blocks: near-clipped polygons clamped to the original footprint, and
+large polygons refused by an exact 3 px footprint test and drawn whole as the scaled copy (in 6 to 8% of sampled
+frames, up to 83% of the view). The rules in the next section remove both. Evidence: `D:/f117-gate/present-v2/fix3d`.
 
 ### Footprints the original's clipper gets wrong
 
@@ -434,13 +431,12 @@ world outlines, dots and thin span strips (a strip as thick as its footprint, on
 per cell). Widths by drawing role (ground markings against object outlines) are not assigned. Text, sprites and
 artwork never change with the width.
 
-**Map-edge specks (fixed 18 October 2026).** A rotated square cap extends just beyond its stroke's end cells, and at
-the moving map's edge it left fine specks outside the restored map. Normal-width captured integer strokes are now
-clipped to their endpoint cells; explicitly wider pens keep their extra coverage, and the original coarse line rule
-is unchanged. The regression covers all octants and translated page origins at N=4/9. Before/after captures keep all
-953 exact logic frames / 951 endpoint pairs and the interpreter checkpoint hash; the lower-border remnants fall from
-22/32/38 pixels to zero. The presentation-only check passed all 243 tests, all 45 N=1 routes and N=4/9 boot, with
-unchanged runner hashes. Evidence: `D:/f117-gate/map-specks-20261018/`.
+**Stroke ends at the map's edge.** A rotated square cap extends just beyond its stroke's end cells, and at the moving
+map's edge it left fine specks outside the restored map. So normal-width captured integer strokes are clipped to
+their endpoint cells; explicitly wider pens keep their extra coverage, and the original coarse line rule is
+unchanged. A regression covers all octants and translated page origins at N=4/9; with the clip, the lower-border
+remnants fell from 22/32/38 pixels to zero and all 953 logic frames / 951 endpoint pairs and the interpreter
+checkpoint hash stayed exact. Evidence: `D:/f117-gate/map-specks-20261018/`.
 
 **Checks.** `test_world_lines` (coarse equality at N=1/4/9, signed-coordinate and depth-boundary continuity,
 stale-slot and vertex-identity rejection, equal-width horizontal/diagonal strokes); `presentation_hud_lines` (coarse
@@ -653,28 +649,25 @@ memory and devices and rejected DOS calls under both timing profiles.
 memory and the fixes' state are compared; at t = 0 the unnudged copy must draw its step's own picture, coarse and
 fine. `tools/presentation_check.py --mode rerun` runs this over every route against the scan baselines.
 
-**Status (15 October 2026, commit `fe20913`).** The full gate passes (116 CTests, 45 routes identical, both instruction
-profiles, three matched seeds, reachability/event checks). The rerun N=1 check (45 routes at the time) keeps 259,240 frames / 259,166
-pairs and every guest hash exact, with 1,638,579 copies, 1,378,030 in-between pictures drawn by the original, 0
-changes to the real machine and 0 blocked DOS calls; 259,787 unchanged-copy frames are exact, 0 unequal. Boot N=4/9
-is exact. A hidden threaded owner-flight smoke run keeps 1,610 of 1,610 logic frames exact with 4,933 original
+**Acceptance baseline** (the all-route `--mode rerun` check: 15 October, commit `fe20913`, with the 45 routes of the
+time; the 18 October repair gate gave the same figures). The 45 N=1 routes keep 259,240 logic frames / 259,166 pairs
+and every guest hash exact; with boot N=4/9 (exact) added, 1,638,579 copies, 1,378,030 in-between pictures drawn by
+the original, 0 changes to the real machine and 0 blocked DOS calls, and 259,787 unchanged-copy frames exact, 0
+unequal. A hidden threaded owner-flight smoke run keeps 1,610 of 1,610 logic frames exact with 4,933 original
 in-between pictures and 3 fallbacks. Evidence: `D:/f117-gate/present-v2/rerun-accept/final-gate-verdict.json`,
-`app-verdict.json`.
+`app-verdict.json`; `D:/f117-gate/4k60-fix-20261018/gate/presentation-n1`.
 
-**Feasibility measurements** (15 October, research harness on branch `draw-rerun-probe`, `F117_RERUN_PROBE=FILE`;
-not on master). On the owner's flight (1,609 logic frames) every re-run returned and reproduced the real draw
-records exactly apart from the observer's own lazy line records; the real machine and final hash never changed.
-Nudging halfway put 97.2% of vertices within tolerance of the two real frames' midpoint (98.0% of those matched to an
-object in both frames). Nudging aircraft slots raised air-to-air scene-walk objects at the midpoint from 97.7% to
-98.9%. A small deferred-object group (`DF03`, upstream `C2C8`, about 1,700 vertices: the air-target camera's inset,
-drawn by the generic deferred-object draw in its nested terrain view) fell from 98.6% to 96.6%; the fall was one
-target in a vertical dive, and with the attitude nudged as one orientation (above) the same flight's group is 100%
-within tolerance (`D:/f117-gate/df03-research/`). Cost per extra draw: 1.08M
-instructions (max 1.63M), **6.2 ms (max 8.8 ms) on one core**; at a 57 ms step, 60 Hz needs about 2.5 extra draws a
-step (~27% of a core) and 144 Hz about 7.5 (~80%), so high refresh rates need parallel copies. `F117_RERUN_PICS` on
-that branch dumped the copy's own 320x200 pictures beside the two real frames
-(`D:/f117-gate/present-v2/rerun-probe/pics`). An earlier design spliced only the composition's records into frame
-k's list; it was replaced by replaying the copy's whole frame.
+**Accuracy and cost of a copy** (15 October; research harness `F117_RERUN_PROBE=FILE` on branch `draw-rerun-probe`,
+not on master). On the owner's flight (1,609 logic frames) every re-run returned and reproduced the real draw records
+exactly apart from the observer's own lazy line records; the real machine and final hash never changed. Nudging
+halfway put 97.2% of vertices within tolerance of the two real frames' midpoint (98.0% of those matched to an object
+in both frames). Nudging aircraft slots raised air-to-air scene-walk objects at the midpoint from 97.7% to 98.9%. A
+small deferred-object group (`DF03`, upstream `C2C8`, about 1,700 vertices: the air-target camera's inset, drawn by
+the generic deferred-object draw in its nested terrain view) fell from 98.6% to 96.6% when each angle was nudged on
+its own: one target in a vertical dive. With the attitude nudged as one orientation (above) the same flight's group
+is 100% within tolerance (`D:/f117-gate/df03-research/`). Cost per extra draw: 1.08M instructions (max 1.63M),
+**6.2 ms (max 8.8 ms) on one core**; at a 57 ms step, 60 Hz needs about 2.5 extra draws a step (~27% of a core) and
+144 Hz about 7.5 (~80%), so high refresh rates need parallel copies.
 
 ## The live path: feed, replay, pacing and picture age
 
@@ -693,7 +686,7 @@ k's list; it was replaced by replaying the copy's whole frame.
 - **In-between pictures.** `drawlive` keeps the last published steps, each with the replay as it stood at its start,
   and pairs each with the one before. `interp` draws at t = (now - close of the newer) / (close of the newer - close
   of the older) on the machine's clock, so the picture is a step behind the replay. `rerun` uses the smoothed clock
-  ([step clock](#identity-pairing-and-the-step-clock-15-october-2026)).
+  ([step clock](#identity-pairing-and-the-step-clock)).
 - **Pacing and frame rate.** The app runs vsync on and presents once per pass of its main loop, so it shows one
   picture per display refresh; with `interp` and `rerun` each is a new picture at the machine's clock at that moment.
   The machine's clock is kept level with the wall clock, so t follows emulated time at the display's own rate. The
@@ -734,11 +727,11 @@ is 5.2 million pixels through the palette and up to the GPU each frame, which is
 
 ## Fullscreen 4K/60 timing and the threaded presentation
 
-**Where the time went (13 October 2026).** A single-threaded N=9 strike run (fullscreen Direct3D 11, 3840x2160, 59.99 Hz, vsync) kept
-every logic frame exact but had p99 24.30 ms (the checker rejects p99 above 20.833 ms): every frame in which a logic
-step closed took 21-25 ms, because that frame's replay at N=9 (6.4 ms) and its copies ran in one host frame, and the
-rest of the work had a median of 14.8 ms of the 16.67 ms budget (in-between picture 7.6 ms, palette conversion and
-upload about 3 ms, replay 2.3 ms, machine 1.7 ms).
+**Where the time went (13 October 2026).** A single-threaded N=9 strike run (fullscreen Direct3D 11, 3840x2160,
+59.99 Hz, vsync) kept every logic frame exact but had p99 24.30 ms (the checker rejects p99 above 20.833 ms): every
+frame in which a logic step closed took 21-25 ms, because that frame's replay at N=9 (6.4 ms) and its copies ran in
+one host frame, and the rest of the work had a median of 14.8 ms of the 16.67 ms budget (in-between picture 7.6 ms,
+palette conversion and upload about 3 ms, replay 2.3 ms, machine 1.7 ms).
 
 **The threaded presentation** (`--present interp` and `rerun`; `src/present/drawfeed.c`, `src/host/main.c`). The
 machine, the observer's feed, the replay and (for `rerun`) the machine copies stay on the main thread; the picture is
@@ -757,8 +750,8 @@ drawn one host frame ahead on a worker.
 - Cost: the picture shown was planned a frame earlier, for the machine clock then, so in-between pictures are one
   host frame (16.7 ms at 60 Hz) older. `F117_PRESENT_THREADS_OFF` runs everything on the main thread.
 
-**Results** for the `interp` build (13 October; `tools/presentation_timing.py`, isolated, one run at a time, fresh save, dummy
-audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
+**Results** for the `interp` build (13 October; `tools/presentation_timing.py`, isolated, one run at a time, fresh
+save, dummy audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
 
 | scene | flight pictures | interval median / p99 / max (ms) | over 25 ms | logic frames exact | final guest hash |
 |---|---|---|---|---|---|
@@ -766,46 +759,52 @@ audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
 | air-to-air type 6 to 5.9B | 19,000 | 16.6675 / 16.7091 / 21.3108 | 0 | 3,679 of 3,679 | `b050542466c9a616` |
 | landing to 10.0B | 50,440 | 16.6677 / 16.7090 / 17.2537 | 0 | 13,408 of 13,408 | `efe080faa364f8f4` |
 
-All pass the checker (median within 10% of the refresh period, p99 within 125%, at most 1% of intervals above 150%, guest clock
-within 100 ms of the host). In-between pictures are 96% of those shown; each final hash equals a headless run of the
-same input. An isolated N=9 strike run after the state-driven bands (15 October) passes too (p99 16.7314 ms, worst
-17.0385, same hash), and the strike flight passes pinned to four logical CPUs (p99 16.71 ms), so the thread design has
-headroom on core count.
+All pass the checker ([its limits](repeated-processes.md#4k-refresh-timing)). In-between pictures are 96% of those
+shown; each final hash equals a headless run of the same input. An isolated N=9 strike run after the state-driven
+bands (15 October) passes too (p99 16.7314 ms, worst 17.0385, same hash), and the strike flight passes pinned to four
+logical CPUs (p99 16.71 ms), so the thread design has headroom on core count.
 
-**Fullscreen pacing of `rerun`, and how the 4K60 failures were repaired (17-18 October 2026, the owner's 4K 60 Hz
-screen).** Settings: the owner's `4k-rerun.bat` (`--present rerun --present-age interp`, scale 9, fullscreen,
-Direct3D 11, 3840x2160 at 59.99 Hz, vsync on, sound off), flown by recorded inputs; `tools/presentation_timing.py`
-checks the logged display settings (a log that changes display mid-run is rejected), intervals, interpolation and
-guest drift. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
+**Fullscreen pacing of `rerun`** (17-18 October 2026, the owner's 4K 60 Hz screen: `--present rerun --present-age
+interp`, scale 9, fullscreen, Direct3D 11, 3840x2160 at 59.99 Hz, vsync on, sound off, flown by recorded inputs).
+`tools/presentation_timing.py` checks the logged display settings (a log that changes display mid-run is rejected),
+intervals, interpolation and guest drift; it cannot judge tearing or the look of motion, which stays the owner's eye.
 
-| date | scene | result | cause / change |
-|---|---|---|---|
-| 17 Oct | strike, landing (3.3B instructions) | pass (p99 16.95 / 17.38 ms, 0.09% / 0.08% over 25 ms) | |
-| 17 Oct | air-to-air type 6, short and then 5.9B | fail: p99 22.15 ms; long run p99 28.70 ms, 3.70% over 25 ms, sustained 150-270 s into the flight | CPU, not GPU: hidden profile shows main work rising from median 11.8 to 18.0 ms, copied-machine redraw 7.0 to 12.3 ms, 46% of samples in `recomp_override_step` (two linear scans of the override table) |
-| 18 Oct | 15 Hz/60 MIPS type-5 pursuit, 6 minutes | fail: p99 32.93 ms, 12.95% over 25 ms, one startup rewind | same cost plus a startup playback-clock reversal |
-| 18 Oct | same, after dispatch lookup + clock fix | p99 21.58 ms, 0.033% over 25 ms, no rewind: fails p99 only | override placements are now sorted with a binary lookup (1,000,000-call benchmark 501 to 27 ms); the playback clock keeps the first usable pair |
-| 18 Oct | same, after observer row copies | **pass**: 21,330 pictures, p99 16.94 ms, max 21.05 ms, zero over 25 ms, drift 15.94 ms | observer snapshots/line-flush scans were 906 of 4,645 app samples; bulk row copies split at both address wraps, delta scans skip unchanged 64-byte blocks (benchmark 79 to 4 ms), span-record buffer fixed at 220 rows |
-| 18 Oct | compression excerpt (230 compressed seconds) from the broader validation | **pass**: 21,565 pictures, p99 16.92 ms, max 17.85 ms, zero over 25 ms, drift 21.84 ms | constant 4K/59.99-Hz target (an attempt that switched to 1080p/50 during setup is retained as invalid) |
+| scene | result |
+|---|---|
+| strike, landing (3.3B instructions; measured before the repairs below) | pass: p99 16.95 / 17.38 ms, 0.09% / 0.08% over 25 ms |
+| 15 Hz / 60 MIPS type-5 air-to-air pursuit, 6 minutes | pass: 21,330 pictures, p99 16.94 ms, max 21.05 ms, zero over 25 ms, drift 15.94 ms |
+| compression excerpt (230 compressed seconds) from the broader validation | pass: 21,565 pictures, p99 16.92 ms, max 17.85 ms, zero over 25 ms, drift 21.84 ms (an attempt that switched to 1080p/50 during setup is retained as invalid) |
 
-Every row keeps all logic frames exact and the final guest hash equal to a headless replay. Each repair also passed
+**What air-to-air costs.** Before three repairs, air-to-air failed: type 6, p99 22.15 ms, and over a 5.9B run p99
+28.70 ms with 3.70% of intervals over 25 ms, sustained 150-270 s into the flight; the type-5 pursuit p99 32.93 ms,
+12.95% over 25 ms, with one startup rewind of the playback clock. The cause was CPU, not GPU: main work rose from a
+median of 11.8 to 18.0 ms and the copied-machine redraw from 7.0 to 12.3 ms, with 46% of samples in
+`recomp_override_step` (two linear scans of the override table). The repairs: override placements are sorted with a
+binary lookup (1,000,000-call benchmark 501 to 27 ms); the playback clock keeps the first usable pair; observer
+snapshots and line-flush scans (906 of 4,645 app samples) use bulk row copies split at both address wraps, delta
+scans skip unchanged 64-byte blocks (benchmark 79 to 4 ms) and the span-record buffer is fixed at 220 rows. With the
+first two the pursuit still failed p99 (21.58 ms, 0.033% over 25 ms); with all three it passes.
+
+Every run keeps all logic frames exact and the final guest hash equal to a headless replay. Each repair also passed
 the full gate, the every-route rerun check, boot N=4/9 and the same-record copy-isolation checks; evidence is under
-`D:/f117-gate/present-v2/stage4-fullscreen-20261017`, `stage4-airair-long-20261017`, `cadence15-production-20261018/`,
-`4k60-fix-20261018/` and `airair-profile-20261017/` (instrumented sources, executable and matching PDB; offline symbol
-resolution needs the preferred base 0x140000000 and `SymSetOptions(0)`). Window capture timed out on every fresh
-selection, so visible motion is unverified; one encounter does not establish all-scene pacing. The eight-step cadence
-was never measured on the type-5 workload. Earlier hidden throughput: 3840x2160 D3D11 runs at 119-150 fps uncapped with
-occasional ~100 ms upload stalls (`D:/f117-gate/present-v2/hud2`). Not established: the picture on a physical panel
-(tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
+`D:/f117-gate/present-v2/` (`stage4-fullscreen-20261017`, `stage4-airair-long-20261017`, and
+`airair-profile-20261017` with the instrumented sources, executable and matching PDB; offline symbol resolution needs
+the preferred base 0x140000000 and `SymSetOptions(0)`) and `D:/f117-gate/` (`cadence15-production-20261018/`,
+`4k60-fix-20261018/`). Window capture
+timed out on every fresh selection, so visible motion is unverified; one encounter does not establish all-scene
+pacing. The eight-step cadence was never measured on the type-5 workload. Earlier hidden throughput: 3840x2160
+D3D11 runs at 119-150 fps uncapped with occasional ~100 ms upload stalls (`D:/f117-gate/present-v2/hud2`).
 
 **Capacity on long flights and on fewer cores (19 October 2026, hidden).** Timing only: the visual judgement stays
 with the owner. A frozen private build of the app's main loop with phase timers (the 18 Oct profile harness; hidden
 3840x2160 Direct3D 11 window, vsync off, a 60 Hz sleep cap, dummy audio, `--present rerun --present-age interp
---present-scale 9`, BelowNormal priority, machine load 1.1-1.4% beyond the harness) ran four whole flights once each and
-one-minute windows were cut from them (about 330,000 pictures). Every full run ended on the original's guest hash. The
-legacy recordings (`cargo_return`, `career_promotion`) are keyed to 9 MIPS / 8 Hz and cannot be replayed at the app
-default, so the two long flights recorded at 15 Hz / 60 MIPS with all fifteen fixes (adaptive-pilot landing and strike
-from `cadence15-broad-20261018/pilots`) were added; no cargo or career flight exists at the default. *Main work* is the
-main thread's wall time per picture; the checker's limits are p99 20.83 ms and nothing over 25 ms.
+--present-scale 9`, BelowNormal priority, machine load 1.1-1.4% beyond the harness) ran four whole flights once each
+and one-minute windows were cut from them (about 330,000 pictures). Every full run ended on the original's guest
+hash. The legacy recordings (`cargo_return`, `career_promotion`) are keyed to 9 MIPS / 8 Hz and cannot be replayed at
+the app default, so the two long flights recorded at 15 Hz / 60 MIPS with the fifteen fixes normal play then enabled
+(adaptive-pilot landing and strike from `D:/f117-gate/cadence15-broad-20261018/pilots`) were added; no cargo or
+career flight exists at the default. *Main work* is the main thread's wall time per picture; the checker's limits are
+p99 20.83 ms and nothing over 25 ms.
 
 | flight | length | per-minute median main work | worst one-minute p99 | outliers |
 |---|---|---|---|---|
@@ -818,15 +817,15 @@ Medians are flat from takeoff to landing and the emulated clock never falls behi
 (strike combat) has median 10.2 ms and p99 18.4 ms unpinned: about 3% of pictures over 16.67 ms, 0.1-0.2% over
 20.83 ms, none over 25 ms. **Fewer cores, same window (a proxy for a slower machine, not the same as one):** 4 CPUs
 median 8.75 / p99 15.6 ms; 2 CPUs 9.29 / 16.0 ms (4 pictures over 16.67 ms); 1 CPU 13.6 / 20.87 ms (954 over 16.67 ms
-and 37 over 20.83 ms, 1.2%). The landing approach on one CPU is p99 18.4 ms. **Software renderer (a proxy for having no
-GPU acceleration):** fails, median 30 ms and p99 43 ms, because the present call costs 17.4 ms against 0.08 ms with
+and 37 over 20.83 ms, 1.2%). The landing approach on one CPU is p99 18.4 ms. **Software renderer (a proxy for having
+no GPU acceleration):** fails, median 30 ms and p99 43 ms, because the present call costs 17.4 ms against 0.08 ms with
 Direct3D 11; the emulated clock keeps pace and only the picture rate collapses. Unpinned runs were slower than runs
-pinned to a few cores (p99 18.4-18.9 against 15.6-16.1 ms); the cause is untested (frequency ramp or thread migration are
-suspects), and the unpinned figure is the realistic one on this CPU. If every phase scaled with core speed, the combat
-window on four cores would reach p99 16.67 ms with a core about 7% slower and 20.83 ms with one about 33% slower
-(an estimate, not a measurement). Not shown: tearing, the look of motion, the real fullscreen swapchain path, other
-combat densities, flights over 30 minutes, Roland, per-core speed of an older CPU and a weaker GPU's fill rate. Evidence,
-commands and raw logs: `D:/f117-gate/stage4-capacity/` (`results.md`).
+pinned to a few cores (p99 18.4-18.9 against 15.6-16.1 ms); the cause is untested (frequency ramp or thread migration
+are suspects), and the unpinned figure is the realistic one on this CPU. If every phase scaled with core speed, the
+combat window on four cores would reach p99 16.67 ms with a core about 7% slower and 20.83 ms with one about 33%
+slower (an estimate, not a measurement). Not shown: tearing, the look of motion, the real fullscreen swapchain path,
+other combat densities, flights over 30 minutes, Roland, per-core speed of an older CPU and a weaker GPU's fill rate.
+Evidence, commands and raw logs: `D:/f117-gate/stage4-capacity/` (`results.md`).
 
 **A long flight and a loaded machine (20 October 2026, hidden, Phase 4 coverage notes, unscored).** The
 `cargo_return` route (17.09 G clocks, a supply drop and the return, 9 MIPS as recorded) played through the real app
@@ -853,16 +852,17 @@ interpolation advances; all 16,088 logic frames equal to the display at their cl
 timing: the look of the motion on the panel stays the owner's judgement. Evidence
 `D:/f117-gate/stage4-capacity/display-long-landing/` (`display_long.py`, `summary.json`).
 
-**The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
-with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so
-the first palette the threaded path captured was carried forward for as long as pictures kept coming. Every palette
-change was frozen in threaded `interp` and `rerun` at N>1: the graphics driver (MGRAPHIC, `0889:129C`) cycles entry
-13, the pen of the player's gun rounds, yellow / light red / dark red / light red once a VGA frame, and the owner saw
-solid dark red; fades and flashes froze the same way. The next plan now takes the machine's own capture. Headless
-runs and the single-threaded path were never affected, which is why no route check saw it: 26 app frames over the
-owner's gun burst showed only dark red before the fix and all three colours after (`F117_PRESENT_SHOTS`).
+**The palette the threaded path presents.** The main loop shows the worker's last picture with that picture's
+palette, and each new plan takes the machine's own palette capture. An earlier version handed the worker the frame
+it had just shown, palette included, so the first palette captured was carried forward and every palette change froze
+in threaded `interp` and `rerun` at N>1: the graphics driver (MGRAPHIC, `0889:129C`) cycles entry 13, the pen of the
+player's gun rounds, yellow / light red / dark red / light red once a VGA frame, and the owner saw solid dark red;
+fades and flashes froze the same way. Headless runs and the single-threaded path never had the fault, so no route
+check could see it (26 app frames over the owner's gun burst, taken with `F117_PRESENT_SHOTS`, showed only dark red
+before the fix and all three colours after); the light check's app-session replay now catches it
+([repeated-processes.md](repeated-processes.md)).
 
-## Identity pairing and the step clock (15 October 2026)
+## Identity pairing and the step clock
 
 The owner's recorded flight (`session-20261015-103956`, frozen privately with its draw capture in
 `D:/f117-gate/present-v2/owner-roads-20261015`) showed road edges that pop and building patches that jump.
@@ -896,11 +896,10 @@ at the same position. This avoids changing clocks and then rewinding as smoothin
 the plain clock plans. In simulation it gives 2 freezes, 0 skips and 1.6% (p99 41% against 429%), for about 0.3 step
 (17 ms) more picture age. `F117_PRESENT_CLOCK=raw` switches it off.
 
-**Live results** (hidden owner-flight runs; run lengths differ between sets, so compare within one): on `c7b4d77`, two
-scale-2 runs, the plain clock gave 274 freezes, 12 skips and 18.4% >20% speed changes, the smoothed clock 17-21, 23-34
-and 3.3-5.0% (`rerun-mode/app7`). On the gated build, one run each: defaults 6 freezes and 2.5%; alpha 0.4 / pull
-0.025, 3 and 1.3%; alpha 0.4 / pull 0.05, 4 and 1.3%; picture age not measured (`clock-tune`). A private simulation
-sweep (`rerun-accept/clock_sweep.py`) also suggests 0.4 / 0.025 at 30, 60 and 144 Hz.
+**Live, plain against smoothed** (hidden owner-flight runs on build `c7b4d77`, two at scale 2): the plain clock gave
+274 freezes, 12 skips and 18.4% >20% speed changes, the smoothed clock 17-21, 23-34 and 3.3-5.0%
+(`D:/f117-gate/present-v2/rerun-mode/app7`). A private simulation sweep
+(`D:/f117-gate/present-v2/rerun-accept/clock_sweep.py`) suggests 0.4 / 0.025 at 30, 60 and 144 Hz.
 
 **Defaults 0.4 / 0.025 (19 October 2026; the owner delegated the decision).** Hidden app replays of the two owner
 flights, two runs per setting (`D:/f117-gate/present-v2/clock-live`; frames whose speed is under 0.1 of the median
@@ -925,14 +924,13 @@ high-resolution pictures start, because a high-resolution picture needs a comple
 switching mode (no exit or reload); a hold or fade over those frames is possible but not wanted. Captured with
 `F117_PRESENT_SHOTS`.
 
-## Consolidate world geometry before more clipping exceptions (15 October 2026)
+## World geometry and the scene-input capture
 
-*Superseded as the main path the same day by [the current plan](#the-current-plan-for-60-fps-15-october-2026-owner).
-The findings and the scene-input capture stay valid, and are background for the planned Remastered renderer
-([roadmap.md](roadmap.md), "Re-release features"); this project's own scene renderer (`src/present/scene_mesh.c`,
-with a synthetic CTest) is an unconnected draft, not a finished fix.*
+Background for the planned Remastered renderer ([roadmap.md](roadmap.md), "Re-release features"), not the path the
+current modes take ([the method](#the-method-for-60-fps-owner-15-october-2026)). This project's own scene renderer
+(`src/present/scene_mesh.c`, with a synthetic CTest) is an unconnected draft.
 
-**The rule that stands (owner):** no one-off clipping exceptions, for coastlines or anything else. A clip-only
+**The rule (owner, 15 October 2026):** no one-off clipping exceptions, for coastlines or anything else. A clip-only
 prototype was set aside because it cannot supply faces the original never submitted or stable model identity
 (`D:/f117-gate/present-v2/coast-finish`).
 
@@ -965,9 +963,10 @@ the latest full-gate tally: the handoff):
   file is not presentation-only, and `drawfeed.c/.h` and `rerun.c/.h` (which snapshot and run machines) never are.
 - **`tools/presentation_check.py`** compares complete presentation routes with the full gate's saved interpreter scan
   baselines: every guest hash, route milestone, closed logic frame and interpolation endpoint; it rejects
-  dropped/unseeded frames and requires positive pairs on flight routes. All 45 N=1 routes: 259,240 closed logic frames
-  and 259,166 pairs exact. `--mode rerun` adds the copy checks and requires positive original in-between draws;
-  changes to `drawfeed`/`rerun` need it on every route.
+  dropped/unseeded frames and requires positive pairs on flight routes. All 63 N=1 routes: 260,613 closed logic frames
+  and 260,527 pairs exact (the same from batch al through bm2). `--mode rerun` adds the copy checks and requires
+  positive original in-between draws; changes to `drawfeed`/`rerun` need it on every route (its baseline:
+  [the rerun mode](#the-rerun-mode-in-between-pictures-drawn-by-the-original)).
 - **Live boot sentinels** (`boot_to_flight` at N=4 and N=9): 368 exact logic frames and 366 exact endpoint pairs each,
   54 checkpoints and final hash `48a10e901505e2a9`, equal to the run without presentation.
 - **Retained windows:** 96 replay/fine/interpolation checks over sixteen windows (the eight `logs41` windows, the map
@@ -984,7 +983,8 @@ These are correctness checks; they do not establish physical refresh or the look
 ## Open questions and risks
 
 - **`rerun` motion.** The smoothed clock still skips a little; its defaults are set (19 October) and further tuning
-  against picture age is optional. The owner's verdict on a physical display remains open. Parallel copies for refresh
+  against picture age is optional. The owner accepted the motion on the 4K screen "at least for now" (15 October); a
+  final verdict remains open. Parallel copies for refresh
   rates above 60 Hz (per-machine observer, runtime and fix state) moved to the unscored Phase 4 on 17 October 2026:
   the owner has no convenient way to test above 60 Hz.
 - **`interp`.** Batch pairing covers 86-99% of painted polygons in six of the seven study windows (30% in the night

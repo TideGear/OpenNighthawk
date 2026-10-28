@@ -1,23 +1,23 @@
 # Bugs in the original game
 
-This is the tracker for defects in the original DOS release of *F-117A
-Nighthawk Stealth Fighter 2.0*, as GOG ships it (with MicroProse's final
-473.04 update applied). It is for anyone deciding which bugs to fix and how.
+The defects of the original DOS release of *F-117A Nighthawk Stealth Fighter
+2.0*, as GOG ships it (with MicroProse's final 473.04 update applied), and
+this project's fixes. It is for anyone deciding which bugs to fix and how.
 
 **Confirmed defects in the shipped DOS code are preserved deliberately.** The
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-thirty-four: D1, D1TTL, D1SLOT, D1PROX, D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8,
-D11, D12, D34, Q7, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q13a, Q21, Q22, Q4, Q13b, D18, Q23, D101 and Q12b, including the D1REAL timing and D1PROX balance choices
-(owner's decision, 17 October 2026). `--fix none` restores the original;
-follow it with `--fix ID` to select a subset. The headless runner starts with
-fixes off, ordinary parity routes explicitly clear them, and fix-specific
-checks enable only theirs, so the original's behaviour stays independently
-testable. Replays restore the recorded set; old logs without a fix header
-mean the original. `--list-fixes` prints each fix and whether it is on. The
-separate `QUIZ` option ([below](#smaller-defects-q-series))
+34 fixes in the summary's Fix column, including the D1REAL timing and D1PROX
+balance choices (owner's decision, 17 October 2026). In the app,
+`--fixes original` turns them all off and `--fixes recommended` restores the
+set; `--fix none` clears it and a following `--fix ID` selects a subset;
+`--list-fixes` prints each fix and whether it is on. The headless runner
+starts with fixes off, ordinary parity routes explicitly clear them, and
+fix-specific checks enable only theirs, so the original's behaviour stays
+independently testable. Replays restore the recorded set; a log without a
+fix header means the original. The [`QUIZ` option](#the-copy-protection-quiz-option)
 is never part of the normal-play set.
 
 Most entries were first established by the Reimp, the author's earlier
@@ -27,6 +27,8 @@ catalogue* with line numbers as of Reimp commit `cfb8cec9` unless another
 commit is named. Addresses are **always given with their program**: START,
 VGAME and END all load at the same segment, so a bare address is ambiguous.
 They are image offsets of the unpacked load module unless marked otherwise.
+ASOUND.117 entries may also give the code-segment IP (segment `0x01B6`, IP =
+image - `0x1B60`); RSOUND.117 entries give the IP (segment `0x023E`).
 
 Status values:
 
@@ -65,6 +67,7 @@ Status values:
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
 | Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
 | Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
+| Q12b | Confirmed | VGAME | Projectile map marker size comes from saved SI instead of a fourth argument | `--fix Q12b` |
 | Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
 | Q15 | Confirmed | ASOUND.117 | AdLib noise take-over on generator B reads generator A's count | `--fix Q15` |
 | Q16 | Confirmed | RSOUND.117 | MT-32 volume and pan modulation run past 7Fh into status bytes | `--fix Q16` |
@@ -72,6 +75,7 @@ Status values:
 | Q18 | Confirmed | START | The campaign date loop reads past its month table, printing January 32 and later | `--fix Q18` |
 | Q19 | Confirmed | START | The Enemy Troops overlay stores pixel coordinates into its own loop counters | `--fix Q19` |
 | Q20 | Confirmed | START | A briefing-map click can leave its popup stuck on the map | `--fix Q20` |
+| D101 | Confirmed | START | Transfer tick erase reads an unwritten stack slot; staged slot 11 changes visible pixels | `--fix D101` |
 | Q13a | Confirmed | VGAME | A unit with no sensor leaves the detection routine's range and bearing unwritten | `--fix Q13a` |
 | Q21 | Confirmed | VGAME | The steering bracket's half-width is computed from stale stack when banked 45 degrees or more with weapon 1Eh | `--fix Q21` |
 | Q22 | Confirmed | START | The armoury shortage does not check the refused entry's own flag, so a repeated draw counts without refusing anything new | `--fix Q22` |
@@ -79,8 +83,6 @@ Status values:
 | Q13b | Confirmed | START | Hardening: the written orders test the departure base's record before naming the landing base | `--fix Q13b` |
 | D18 | Confirmed | START | Hardening: an unnamed airbase passes NULL to `sprintf %s` and prints "(null)" | `--fix D18` |
 | Q23 | Confirmed | START | Hardening: the roster fix-up masks record 0's realism word ten times instead of each record's once | `--fix Q23` |
-| D101 | Confirmed | START | Transfer tick erase reads an unwritten stack slot; staged slot 11 changes visible pixels | `--fix D101` |
-| Q12b | Confirmed | VGAME | Projectile map marker size comes from saved SI instead of a fourth argument | `--fix Q12b` |
 | quirks | Confirmed | several | Wrong code with no observable effect, and rows that were never the original's (below) | none |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -93,10 +95,10 @@ Status values:
   controller's frame-rate estimate. S is clamped to [4 - time_scale, 15] and
   can differ from the actual frame rate, so world time depends on machine
   speed, and no tested speed keeps the mission clock at real time. The
-  earlier claim that S swings between 15 and 3 above about 16-18 fps came
-  from a model that left out the original's frame wait (Reimp
-  `src/core/compose.h:166`); it was not reproduced in 199 flights at 3-40
-  MIPS and on the 386 profile.
+  reported swing of S between 15 and 3 above about 16-18 fps came from a
+  Reimp model that left out the original's frame wait (Reimp
+  `src/core/compose.h:166`); 199 flights at 3-40 MIPS and on the 386
+  profile did not reproduce it.
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide
@@ -149,14 +151,16 @@ Status values:
   settles at 9 as GOG's does on the parked jet. At 9 MIPS and below the fix
   never waits and the run is the original's, hash for hash. It holds the
   parked-jet pacing, not GOG's pacing in every scene, and does not make the
-  world run at real time: above 9 MIPS fixed flights draw about 11.6 fps
-  with S 9 and a mission clock of 1.2882
+  world run at real time: above 9 MIPS fixed flights hold S 9 with a mission
+  clock of 1.2882
   ([90-flight sweep](speed-sweep.md#d1-follow-up-9-october-2026)). Pinning S
   instead, without pacing, ran the mission clock three times too fast at 40
-  MIPS. `tools/d1_check.py` flies both machines at 40 MIPS and requires the
-  fixed one to match GOG's settled S, its mission clock to within 2 and its
-  frames a second to within 0.2; the gate plays route `d1_fast_machine` (the
-  same flight with the fix) under both engines.
+  MIPS. In normal play the limiter stands aside for
+  [D1REAL](#d1real-real-time-simulation-cadence)'s fifteen steps.
+  `tools/d1_check.py` flies both machines at 40 MIPS and requires the fixed
+  one to match GOG's settled S, its mission clock to within 2 and its frames
+  a second to within 0.2; the gate plays route `d1_fast_machine` (the same
+  flight with the fix) under both engines.
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
 
 ### D1REAL. Real-time simulation cadence
@@ -171,18 +175,19 @@ Status values:
   resets at program changes. The rate is recorded in input logs; a log
   without it means eight. The app enables D1REAL for normal play; the
   headless runner and the machine API need `--fix D1REAL`.
-- **Fifteen steps (the default, `--sim-hz 15`).** S 15 with 15 updates a
-  second, 30 during 2x time compression, with phase-correct transitions: the
-  remaining deadline or overdue work is rescaled when compression changes,
-  and the older D1 limiter yields to D1REAL. The 60-MIPS app default passes
-  the [broader timing and mission checks](cadence15-validation.md): 960
+- **Fifteen steps (the app's default, `--sim-hz 15`).** S 15 with 15
+  updates a second, 30 during 2x time compression, with phase-correct
+  transitions: the remaining deadline or overdue work is rescaled when
+  compression changes. The 60-MIPS app default passes the
+  [broader timing and mission checks](speed-sweep.md#fifteen-step-play-mode-validation): 960
   airborne windows, including 35 min 40 s actually compressed, paired
   clock/transition cases and a successful landing. At 40 MIPS an undamaged
   compressed flight cannot keep up, and 20 MIPS could not sustain the
   prototype's compressed rate. Fifteen is a tested project cadence within the
   original S limit, not a recovered developer target.
-- **Eight steps (legacy, `--sim-hz 8`).** S 8 and eight frames a machine
-  second; under 2x compression S becomes 4 at the same frame cadence. It
+- **Eight steps (legacy, `--sim-hz 8`; the headless runner's default).** S 8
+  and eight frames a machine second; under 2x compression S becomes 4 at the
+  same frame cadence. It
   keeps its original limiter behaviour for replay compatibility. Eight was
   chosen for this project, below the slowest 9 MIPS cohort's average orbit
   frame rate (8.663 fps); it is not a recovered developer target, and a CPU
@@ -199,9 +204,9 @@ Status values:
   pause 0/0 over 3 seconds, then resume 24/3; quit-dialog waiting and
   cancellation also 0/0 and 24/3. A separate pacer test covers fractional
   time, event-boundary waits, lossless catch-up, program and speed changes
-  and the dialog reset. On 17 October the same seven normal-input cases also
-  passed at 20 MIPS with all fifteen fixes enabled together, with identical
-  case hashes in both engines (69.17 s). Evidence:
+  and the dialog reset. The same seven normal-input cases also passed at 20
+  MIPS with the fifteen D-series fixes (the D1 family, D2-D6, D8, D11, D12,
+  D34) enabled together, with identical case hashes in both engines:
   `D:/f117-gate/default-fixes-20261017/all-fixes-clock/verdict.json`.
 - **Natural flights.** With all five D1-family options, a 24-flight cohort
   holds S 8 and an in-flight mission clock of 1.000 at 9 and 20 MIPS. With
@@ -246,10 +251,9 @@ Status values:
   and aircraft launch `0x65C3` need their `(unit_index & 7)` slot at zero
   life, so the abandoned missile can block that launcher. This happens at
   low S too, and remains in the Reimp.
-- **Later versions.** Mac 2.3.2 has it too: the seeker zeroes the lifetime
-  (`CODE13:04268`) and no branch in the movement routine skips the
-  unconditional decrement (`03CB8`), so zero becomes FFFF; both launchers wait
-  for a lifetime of zero ([other-versions.md](other-versions.md)).
+- **Later versions.** Mac 2.3.2 has it too: the seeker zeroes the lifetime,
+  no path skips the movement routine's unconditional decrement, and both
+  launchers wait for a lifetime of zero ([other-versions.md](other-versions.md)).
 - **Fix available: `--fix D1SLOT`.** Keeps a cancelled incoming lifetime at
   zero when the countdown reaches it, with DEC's flags and instruction count;
   positive lifetimes and player-weapon slots run the original DEC. It
@@ -282,9 +286,8 @@ Status values:
   movement includes the player's previous and current positions while the same live missile persists across
   consecutive frames; fresh launches and program changes reset it. Guidance,
   movement, frame pacing, player weapons and the lifetime and damage guards
-  keep their original code. This is the second version; the first, a floor
-  at the S=9 reach, still admitted a wider band below S 9 and could miss
-  between samples, and is withdrawn.
+  keep their original code. A floor at the S=9 reach was rejected: it still
+  admitted a wider band below S 9 and could miss between samples.
 - **Check.** `tests/test_weapon_sweep.c` compares 20,000 paths against
   independent half-space clipping and checks strict boundaries, reversal,
   subdivision and wrapped deltas. `tools/d1physics_check.py` flies complete
@@ -455,9 +458,8 @@ Status values:
   player's sector), `0x55EB`, `0x5654`.
 - **In this recompilation.** Reproduced exactly: it is the game's own
   arithmetic on the shipped world data.
-- **Fix available: `--fix D6`** (in the normal-play set, although whether
-  the cells are a defect is not proven; `--fix none` restores the original).
-  An override at `0x55EB`
+- **Fix available: `--fix D6`** (in the normal-play set, although the cells
+  are not proven a defect). An override at `0x55EB`
   replaces the load and the AND: a sector whose cover bits are 0 reads as 4,
   the lowest nonzero cover; every other sector runs the original's two
   instructions. `tools/d6_check.py` finds Central Europe's 12 cover-0
@@ -488,8 +490,9 @@ Status values:
   arithmetic). A player who releases at the range other strike weapons use,
   or loses the designation before that point, sees a bomb that never hits
   and a mission that does not complete, which fits the report. Reproduce:
-  `strike_pilot.py --front-route routes/central_america_strike_training.front
-  --time-us 700000005000000 --release-range 120`.
+  `tools/strike_pilot.py --data GAME_DIR --out OUT_DIR --front-route
+  tools/routes/central_america_strike_training.front --time-us
+  700000005000000 --release-range 120`.
 - **Detail.** Reimp catalogue:724-727.
 
 ### D8. Laser-guided bomb pitch clamp
@@ -516,8 +519,9 @@ Status values:
   release notes for version 2.3.0 (22 July 1994), recovered from
   `F117a_Update_2.3.1.sit`, say: "An error in an assembler routine that
   checks mountains for collisions and distance could corrupt the stack."
-  They establish a Macintosh defect. The earlier assertion that DOS shared it
-  was an inference, and is withdrawn.
+  They establish a Macintosh defect, located in the Mac code
+  ([other-versions.md](other-versions.md)); no DOS equivalent has been
+  found.
 - **Searched for DOS.** The DOS contact test is in the model renderer: model
   draws set the ground-contact flag `[0xC6B2]` at `0x1223F`
   (`model_fill_stream`, `120A:00CF`, hand-written assembly), which ends the
@@ -533,7 +537,7 @@ Status values:
 - **Reopen when:** a reproducible DOS collision corrupts the stack, or a
   specific DOS instruction path demonstrates an invalid stack write.
 - **Detail.** Reimp catalogue:830-841. Evidence and commands:
-  [legacy-reports.md](legacy-reports.md).
+  [Closed historical reports](#closed-historical-reports).
 
 ### D11. Fragile saves
 
@@ -628,7 +632,7 @@ Status values:
   calibration. A reference-hardware reproduction may expose a machine-model
   gap even if our engines agree.
 - **Detail.** Reimp catalogue:1408-1426. Evidence and commands:
-  [legacy-reports.md](legacy-reports.md).
+  [Closed historical reports](#closed-historical-reports).
 
 ### D36. Later MT-32s play no engine sound (reported)
 
@@ -652,7 +656,7 @@ Status values:
   1.05 and 1.07, and unsteadily at 750-970 RMS on 2.04 and 2.07: about 3.4 dB
   quieter, not silent. A staged replay holding the first engine note for 20
   seconds produces sound on all seven available control versions (levels in
-  [legacy-reports.md](legacy-reports.md)). Munt models the firmware's tables,
+  [Closed historical reports](#closed-historical-reports)). Munt models the firmware's tables,
   not all of its code, so a real 2.0x unit can still differ; no fix or
   speculative timbre replacement is offered.
 - **Reopen when:** a flying recording on an identified physical MT-32/MT-100
@@ -660,9 +664,38 @@ Status values:
   and MIDI stream, or an incompatible mapping is demonstrated on an untested
   model.
 - **Detail.** Reimp catalogue:1430-1439. Evidence and commands:
-  [legacy-reports.md](legacy-reports.md).
+  [Closed historical reports](#closed-historical-reports).
 
-### Q7. Zoomed-view distance uses the view limit
+## Smaller defects (Q-series)
+
+Re-verified on 25 October 2026 against the DOS instructions, and compared with
+Macintosh 2.3.2 and Amiga 3.01 ([other-versions.md](other-versions.md)). Every
+verdict is read from code unless a measurement is named; each fix's deciding
+instructions were re-read by a second reader. Evidence:
+`D:/f117-gate/qsweep/` (`verdicts.md` and the four reviews).
+
+The Reimp catalogue files its D17, D18, D44, D61, D63, D75, D97, D98, D101
+and D103 under defects "introduced by this port" (its `catalogue.md:148`):
+each records where its own port departed from the original, so the
+original's side of each was checked separately. Here D17 is Q18, D44's
+take-over arm is Q15 (its expiry arms are a
+[quirk](#code-quirks-with-no-effect)), D61 is Q17 and D75 is Q21; D18 and
+D101 keep their numbers; D63, D97, D98 and D103 are [not defects of the
+original](#not-defects-of-the-original).
+
+Every fix below has its own switch and tests of both states. The seventeen
+fixes from the re-verification (the ten defects, the three chosen behaviours
+and the four hardening fixes) passed a combined gate:
+`D:/f117-gate/bugfixes-20261025/`. Q12b and D101, measured afterwards,
+passed combined acceptance with batch be:
+`D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json`.
+
+### Defects to fix
+
+The ten real defects of the re-verification (Q7, Q11, Q12, Q14 to Q20),
+Q12's marker sibling Q12b, and D101.
+
+#### Q7. Zoomed-view distance uses the view limit
 
 - **What happens.** The weapon-seeker frustum (`[0x438E]` set) leaves its
   vertical limit in SI and signed z in DI. The shared range tail at VGAME
@@ -680,10 +713,10 @@ Status values:
   computes 1015 and keeps it. Negative coordinates, negative z, cockpit
   mode, early rejection and event limits are also checked. This is staged
   evidence of the range and culling decisions, not a measured flight image.
-  Accepted 25 October 2026: full gate (630 tests, 63 routes), two pre-check
-  seeds and presentation checks; evidence `D:/f117-gate/q7-20261025/`.
+  Acceptance (full gate, two pre-check seeds, presentation checks):
+  `D:/f117-gate/q7-20261025/`.
 
-### Q11. Far model positions wrap into the nearby scene
+#### Q11. Far model positions wrap into the nearby scene
 
 - **What happens.** VGAME's model-placement routine keeps scaled x/y offsets
   as 32-bit values but calls the 16-bit absolute-value helper at `0x0EE0C`.
@@ -702,12 +735,13 @@ Status values:
   stubs; reaching the model draw is observed. The staged cases cover both
   axes, threshold boundaries, negative offsets, INT32_MIN, wrapped far
   coordinates and scaling. Branch preservation and event limits are checked
-  separately. All 108 staged runs, eight branch-preservation checks and 358 paired
-  event limits pass, along with Q7 regression, defaults/replay, both whole-table
-  pre-check seeds, the full gate (630 tests, 63 routes) and presentation checks
-  (`D:/f117-gate/q11-20261025/`). This proves the admission decision, not a flight screenshot.
+  separately. All 108 staged runs, eight branch-preservation checks and 358
+  paired event limits pass. This proves the admission decision, not a flight
+  screenshot. Acceptance (with Q7 regression, defaults/replay, both
+  whole-table pre-check seeds, the full gate and presentation checks):
+  `D:/f117-gate/q11-20261025/`.
 
-### Q12. The cannon's ground test reads a stale stack word
+#### Q12. The cannon's ground test reads a stale stack word
 
 - **What happens.** The display pass's call at `0x0A153` to the ground-impact
   eligibility test (`0x0792E`) pushes no argument, so the callee reads the
@@ -729,7 +763,28 @@ Status values:
   at every instruction count followed by a resume (182 staged runs, 0 failures).
   This proves the decision, not a flight screenshot.
 
-### Q14. An overdue objective never shows "Time expired"
+#### Q12b. Projectile map marker size comes from saved SI
+
+- **What happens.** VGAME's call at `0x0707B` supplies x, y and colour to
+  `0x08625` but omits the fourth argument, the 2x2-size flag. That argument
+  reads the caller's saved SI on the stack (not the current SI register).
+  Across all 63 routes, 18 reach the call: 174,256 calls, only 77 zero words,
+  **99.956% nonzero**. The original thus almost always draws 2x2 markers. The
+  histogram uses a declining call trap on the unchanged route inputs and
+  milestones, with no guest writes; all 63 final guest states equal the
+  merged-fix acceptance references
+  (`D:/f117-gate/d101-q12-measure-20261025/marker-histogram.json`).
+- **Fix.** `--fix Q12b` explicitly pushes 1 before the original three
+  arguments at `0x07071`; operand byte `0x07072` runs the original colour
+  push as a separate continuation. The cleanup at `0x0707E` drops eight
+  bytes. Coordinates, colour and saved SI are retained; the covering
+  projectile-body guard already spans all three hooks.
+- **Check.** `build/check_q12b path/to/VGAME.EXE`: 44 staged runs in both
+  states and engines, zero/nonzero saved SI, original coordinates and colour,
+  balanced stack, the original marker body drawing one versus four points,
+  and a stop/resume at each clock.
+
+#### Q14. An overdue objective never shows "Time expired"
 
 - **What happens.** The objectives panel builds each timed objective's line
   in a local buffer (`[bp-18h]`), then, past the deadline, copies "Time
@@ -745,7 +800,7 @@ Status values:
   local line, the shared buffer, registers, memory and clock, then stops at
   every instruction count and resumes (176 staged runs, 0 failures).
 
-### Q15. AdLib noise take-over reads the wrong generator's count
+#### Q15. AdLib noise take-over reads the wrong generator's count
 
 - **What happens.** ASOUND.117's take-over for noise generator B (IP `0x0F8B`,
   image `0x2AEB`) is generator A's arm (`0x0EF6`) with only the channel changed:
@@ -758,7 +813,7 @@ Status values:
   the site with four count pairs, fix off and on, and compares AL, AH, the next
   branch, the counts and the clock.
 
-### Q16. MT-32 volume and pan modulation overrun the data range
+#### Q16. MT-32 volume and pan modulation overrun the data range
 
 - **What happens.** RSOUND.117's modulators add a signed step to the volume
   (`[bx+0Ch]`, step `[bx+2]`, IP `0x0348`) and pan (`[bx+0Eh]`, step `[bx+3]`,
@@ -775,7 +830,7 @@ Status values:
   modulators, fix off and on: in range the two agree, out of range the original
   wraps and the fix saturates.
 
-### Q17. Pitch-ladder labels read outside their table
+#### Q17. Pitch-ladder labels read outside their table
 
 - **What happens.** The HUD pass picks each ladder label from a 23-entry table
   (`2C30h`) by the index `[2C2Ch]`, which is 2 at pitch -90 degrees and 20 at +90.
@@ -792,7 +847,7 @@ Status values:
   both engines with Q17 off and on for every index from -6 to 30 on both sides,
   and a hand-back at every instruction count (372 staged runs, 0 failures).
 
-### Q18. The campaign date runs past December
+#### Q18. The campaign date runs past December
 
 - **What happens.** START's date routine (`0x025D9`) takes whole months off the
   day count in a loop with no month bound, reading each month's length from
@@ -814,7 +869,7 @@ Status values:
   the year, cross it, and run into February and March, plus a stop and resume at
   every instruction (170 staged runs, 0 failures).
 
-### Q19. The Enemy Troops overlay loses its place
+#### Q19. The Enemy Troops overlay loses its place
 
 - **What happens.** `0x01AB6` scans a 16 by 16 grid with the counters `[bp-6]`
   (column) and `[bp-4]` (row). After each troop cell it stores the sprite's pixel
@@ -832,7 +887,7 @@ Status values:
   fixed overlay one per troop cell), then stops and resumes (5,810 staged runs,
   0 failures).
 
-### Q20. A click can leave the briefing popup on the map
+#### Q20. A click can leave the briefing popup on the map
 
 - **What happens.** A click on a map site in the briefing key loop redraws the
   page and draws the site's popup itself (`0x011D1`, CALL `0x1C2F`). The hover
@@ -850,7 +905,37 @@ Status values:
   the popup routine as a recording stub (120 staged runs, 0 failures). It proves
   the click's decision, not the hover hook's redraw on screen.
 
-### Q13a. A sensorless unit reports a stale range
+#### D101. Transfer tick erase reads an unwritten slot
+
+- **What happens.** START's Transfer handler (`0x05BF0`) reserves a previous
+  tick slot at `[bp-0Ah]` but first reads it at `0x05CAA` before any setting
+  change writes it. The seven x/y pairs at `DS:0DECh` / `0DFAh` are then
+  indexed with that stale word. A large y does not prove an off-screen draw
+  (graphics entry 42 reads arbitrary words past its row table), so an
+  off-screen-looking case cannot close the defect. Staging slot 11 before the
+  handler prologue, then clicking the already-selected tension so it remains
+  unwritten, gives x=167, y=29797 and changes 12 visible pixels in both page
+  copies, in both engines. The natural control uses slots 2 and 6; this
+  establishes the staged effect, not its frequency in ordinary play.
+- **Fix.** `--fix D101` initializes the slot to FFFFh at `0x05BF7`, then
+  executes the original MOV through the continuation at operand byte `0x05BF8`.
+  The guard at `0x05CAA` skips both erase copies until the remembered slot
+  is 0..6, resuming at `0x05CFC`. Later setting changes retain their original
+  stores and erases. The containing matched handler declines while enabled.
+- **Check.** `build/check_d101 path/to/START.EXE`: 118 staged runs covering
+  both states and engines, all seven valid slots, invalid slots, the
+  sentinel, and each stop/resume boundary. The real-driver staged unwritten-slot control changes
+  12 visible pixels with the fix off and zero with it on in both engines;
+  all 12 also change palette RGB, not just the stored index.
+  Evidence: `D:/f117-gate/d101-q12-measure-20261025/`.
+
+### Defects with a chosen correct behaviour
+
+No version shows the intended behaviour, or the one a port shows is no better.
+Owner, 25 October 2026: fix all three, each on its own switch, with the
+behaviour chosen in each entry.
+
+#### Q13a. A sensorless unit reports a stale range
 
 - **What happens.** The detection routine (`0x05582`) returns strength 0 at
   `0x05594` for a unit whose sensor word is 0 or -1 without writing its bearing and
@@ -869,7 +954,7 @@ Status values:
   registers, memory and clock, then stops and resumes at every instruction
   (48 staged runs, 0 failures).
 
-### Q21. The steering bracket's width comes from stale stack
+#### Q21. The steering bracket's width comes from stale stack
 
 - **What happens.** For a weapon of type 1Eh the steering bracket's half-width
   `[DEBE]` is worked out at `0x0AE9F` from the corner `[bp-30h]`/`[bp-2Eh]`.
@@ -888,7 +973,7 @@ Status values:
   nothing changed otherwise, and the skipped run ends at `0x0AEDE` with `[DEBE]`
   untouched and the same state in both engines (110 staged runs, 0 failures).
 
-### Q22. The armoury shortage counts a repeated draw
+#### Q22. The armoury shortage counts a repeated draw
 
 - **What happens.** START's armoury shortage (`0x00E23`) draws random entries r of
   the 16-byte table at `01C4h` until rnd(5) of them are marked. Refusing entry r is
@@ -909,14 +994,19 @@ Status values:
   loop, requires that some scripts end differently with the fix, then stops and
   resumes (402 staged runs, 0 failures).
 
-### Q4. Joystick scaling divides by an unchecked span
+### Hardening
+
+Defects the shipped game's data never reaches, which a corrupt or modified
+file would. Owner, 25 October 2026: fix them as a group, each on its own
+switch and tested by staging the bad data.
+
+#### Q4. Joystick scaling divides by an unchecked span
 
 - **What happens.** The axis scaling (`1058:0D09`, linear `0x11289`) divides by the
   calibrated span of the side the stick is on, `[si+2CBAh]` below the centre
   (`0x112BC`) and `[si+2CC2h]` above it (`0x112E7`), with no zero test. The
   calibration never stores a zero span, so only a corrupt settings block
-  reaches it; the divide error then ends the game. (Hardening: the shipped data
-  never reaches it.)
+  reaches it; the divide error then ends the game.
 - **Fix.** `--fix Q4` takes the quotient as 0 when the span is zero (the code after
   the DIV turns that into the centre position of its side: 7Fh below, 80h above);
   a real span declines. The routine is not matched, so no guard is needed.
@@ -926,7 +1016,7 @@ Status values:
   the side's centre byte; stop and resume at every instruction (76 staged runs, 0
   failures).
 
-### Q13b. The written orders test the wrong base's record
+#### Q13b. The written orders test the wrong base's record
 
 - **What happens.** The written orders choose the name printed for the landing
   base (`0x022E7`-`0x02326`): they test whether a base record's first word is zero,
@@ -934,7 +1024,7 @@ Status values:
   (`0x022E7`) looks at the departure base's record (`[E062h]`). A world whose
   landing record has a zero first word prints name 0 where the byte at +0Eh was
   meant; one whose departure record is zero skips a name the landing record has.
-  No shipped world reaches it (hardening). The Amiga tests the landing record.
+  No shipped world reaches it. The Amiga tests the landing record.
 - **Fix.** `--fix Q13b` loads the landing base at `0x022E7`. The containing matched
   routine (`0x020D6`) declines while Q13b is placed.
 - **Check.** `build/check_q13b path/to/START.EXE` stages the four first-word
@@ -942,14 +1032,14 @@ Status values:
   states differ exactly where the records disagree, and stop and resume at every
   instruction agree (90 staged runs, 0 failures).
 
-### D18. An unnamed airbase prints "(null)"
+#### D18. An unnamed airbase prints "(null)"
 
 - **What happens.** The objective sentences (`0x02651` onward) take the target's
   name from the name table by the first word of its record; when the word is zero
   (an airbase with no name) they keep a NULL pointer in `[bp-4]` (`0x0267B`) and
   pass it to `sprintf %s` (`0x026B0`, `0x0279E`, `0x027CE`, `0x027E7`), which prints
   "(null)". Every class-21 record of the shipped worlds is named, so it is not
-  reachable (hardening).
+  reachable.
 - **Fix.** `--fix D18` points the name at an empty string instead (the run time's
   eight zero bytes at the start of the data segment). The containing matched routine
   (`0x02651`) declines while D18 is placed.
@@ -957,7 +1047,7 @@ Status values:
   in both engines with D18 off and on, for an unnamed and two named targets, one
   instruction at a time to the switch at `0x02840` (12 staged runs, 0 failures).
 
-### Q23. The roster fix-up masks one record ten times
+#### Q23. The roster fix-up masks one record ten times
 
 - **What happens.** The roster fix-up (`0x06D07`) walks the ten 50h-byte records from
   `D892h` with the pointer `[bp-2]`, and each pass is meant to reduce that record's
@@ -972,95 +1062,6 @@ Status values:
   realism words above 1 in both engines and compares every realism and status word
   with a model of the loop: seven of the ten records end differently with the fix
   (4 staged runs, 0 failures).
-
-## Smaller defects (Q-series)
-
-Re-verified on 25 October 2026 against the DOS instructions, and compared with
-Macintosh 2.3.2 and Amiga 3.01 ([other-versions.md](other-versions.md)). Every
-verdict is read from code unless a measurement is named; each fix's deciding
-instructions were re-read by a second reader. Evidence:
-`D:/f117-gate/qsweep/` (`verdicts.md` and the four reviews). Addresses are
-linear image offsets unless marked: ASOUND.117 rows give the image offset and
-the code-segment IP (segment `0x01B6`, IP = image - `0x1B60`), RSOUND.117 rows
-the IP (segment `0x023E`).
-
-Ten rows of the earlier table carried the Reimp's D-numbers (D17, D18, D44,
-D61, D63, D75, D97, D98, D101, D103). The Reimp files those under defects
-"introduced by this port" (its `catalogue.md:148`): each records where its own
-port departed from the original, and the earlier table copied the original's
-side of each as a defect of the game. Four of them are real defects of the
-original (D17, D44's take-over arm, D61, D75); the rows below give them new
-IDs. The others are listed under [not defects of the
-original](#not-defects-of-the-original).
-
-### Defects to fix
-
-All ten are fixed, each on its own switch that normal play enables, with tests
-of both states (Q7, Q11, Q12 and Q14 to Q20, described above).
-
-The marker sibling at `0x0707B` is fixed separately as Q12b below. D101 and
-Q12b passed combined acceptance with batch be: both whole-table seeds,
-640 CTests, 63 identical routes with 62 fresh interpreter sessions, three
-matched seeds, reachability/event limits, N=1 and boot N=4/9 presentation,
-and the focused/default checks repeated afterward. Evidence:
-`D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json`.
-
-### D101. Transfer tick erase reads an unwritten slot
-
-- **What happens.** START's Transfer handler (`0x05BF0`) reserves a previous
-  tick slot at `[bp-0Ah]` but first reads it at `0x05CAA` before any setting
-  change writes it. The seven x/y pairs at `DS:0DECh` / `0DFAh` are then
-  indexed with that stale word. A large y does not prove an off-screen draw:
-  graphics entry 42 reads arbitrary words past its row table. Staging slot
-  11 before the handler prologue, then clicking the already-selected tension
-  so it remains unwritten, gives x=167, y=29797 and changes 12 visible pixels
-  in both page copies, in both engines. The natural control
-  uses slots 2 and 6; this establishes the staged effect, not its frequency
-  in ordinary play. The earlier off-screen example cannot close the defect.
-- **Fix.** `--fix D101` initializes the slot to FFFFh at `0x05BF7`, then
-  executes the original MOV through the continuation at operand byte `0x05BF8`.
-  The guard at `0x05CAA` skips both erase copies until the remembered slot
-  is 0..6, resuming at `0x05CFC`. Later setting changes retain their original
-  stores and erases. The containing matched handler declines while enabled.
-- **Check.** `check_d101 START.EXE`: 118 staged runs covering both states and
-  engines, all seven valid slots, invalid slots, the sentinel, and each
-  stop/resume boundary. The real-driver staged unwritten-slot control changes
-  12 visible pixels with the fix off and zero with it on in both engines;
-  all 12 also change palette RGB, not just the stored index.
-  Evidence: `D:/f117-gate/d101-q12-measure-20261025/`.
-
-### Q12b. Projectile map marker size comes from saved SI
-
-- **What happens.** VGAME's call at `0x0707B` supplies x, y and colour to
-  `0x08625` but omits the fourth argument, the 2x2-size flag. That argument
-  reads the caller's saved SI on the stack (not the current SI register).
-  Across all 63 routes, 18 reach the call: 174,256 calls, only 77 zero words,
-  **99.956% nonzero**. The original thus almost always draws 2x2 markers.
-- **Fix.** `--fix Q12b` explicitly pushes 1 before the original three
-  arguments at `0x07071`; operand byte `0x07072` runs the original colour
-  push as a separate continuation. The cleanup at `0x0707E` drops eight
-  bytes. Coordinates, colour and saved SI are retained; the covering
-  projectile-body guard already spans all three hooks.
-- **Check.** `check_q12b VGAME.EXE`: 44 staged runs in both states and
-  engines, zero/nonzero saved SI, original coordinates and colour, balanced
-  stack, the original marker body drawing one versus four points, and a
-  stop/resume at each clock. The histogram uses a declining
-  call trap and the unchanged route inputs/milestones, with no guest writes. All 63 final guest states equal the merged-fix
-  acceptance references.
-  Evidence: `D:/f117-gate/d101-q12-measure-20261025/marker-histogram.json`.
-
-### Defects with a chosen correct behaviour
-
-No version shows the intended behaviour, or the one a port shows is no better.
-Owner, 25 October 2026: fix all three, each on its own switch. All three are
-built and described above the Q-series (Q13a, Q21, Q22).
-
-### Hardening
-
-Defects the shipped game's data never reaches, which a corrupt or modified
-file would. Owner, 25 October 2026: fix them as a group, each on its own
-switch and tested by staging the bad data. All four are built and described
-above the Q-series (Q4, Q13b, D18, Q23).
 
 ### Code quirks with no effect
 
@@ -1091,17 +1092,87 @@ routine stand aside in normal play.
 | D98 | START | Box 14, once disabled, is never re-enabled | The clearance that disables it cannot change within one run of START |
 | D103 | START | The secondary objective's route word is never written | No program reads it; START clears it at every launch |
 
-Also present: GOG's START.EXE has the aircraft-identification quiz (the copy
-protection) disabled: bytes `0x0001D`-`0x0001F` are `90 90 90` where retail
-has `E8 E3 06` (call `0x0703`). This recompilation translates whichever
+## The copy-protection quiz option
+
+GOG's START.EXE has the aircraft-identification quiz (the copy protection)
+disabled: the three bytes at `0x0001D` are NOPs where the retail copy has
+a near call to `0x0703`. This recompilation translates whichever
 START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
 The option **`--fix QUIZ`** restores it on GOG's copy (an override at START
 `0x001D` pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail
-`call` does). It is an option, not a repair: **off unless named, and neither
-`--fix all` nor normal play switches it on**; `--fix none` clears it. The
-routes `quiz_right` and `quiz_wrong` run it, so the quiz code counts in the
-Phase 2 denominator ([progress.md](progress.md)), not in
-`docs/census-dead.tsv`.
+`call` does). It is an option, not a repair (owner, 20 October 2026:
+functional but off by default): **off unless named, and neither `--fix all`
+nor normal play switches it on**; `--fix none` clears it. The routes
+`quiz_right` and `quiz_wrong` run it, so the quiz code counts in the Phase 2
+denominator ([progress.md](progress.md)), not in `docs/census-dead.tsv`.
+
+## Closed historical reports
+
+Three historical reports were reviewed (12-13 October 2026) and closed as
+not reproduced or not established for DOS. They are not counted as fixed
+bugs, and closing them does not claim that every historical machine was
+unaffected. Their reopening criteria are in their entries above (D10, D35, D36). No
+speculative game patch was added.
+
+| Report | Original source | Result and limit |
+|---|---|---|
+| D10, mountain collision | MicroProse Macintosh 2.3.0 release notes, 22 July 1994, in the 2.3.1 update archive | The notes establish a Mac defect; no DOS equivalent is established. The static stack walk flags only five known C-runtime paths among 490 VGAME census entries; it cannot exclude stray writes. |
+| D35, fast-PC startup | [DOS Days troubleshooting](https://www.dosdays.co.uk/topics/Games/game_f117.php) | All 18 fresh probes reach START: three speeds, two engines, three sound choices. Intros are skipped with normal Enter inputs, so full movie playback on a real fast PC is not reproduced. |
+| D36, missing Roland engine | [DOS Days troubleshooting](https://www.dosdays.co.uk/topics/Games/game_f117.php) | All available MT-32 control ROMs produce engine audio in Munt, and their 128 PCM-table entries agree. Physical units and MT-100/CM-32L PCM ROMs remain untested. |
+
+### Startup and stack checks
+
+Run each startup case in a fresh process, after building the machine API:
+
+```powershell
+py tools/startup_probe.py --data GAME_DIR --ips 1000000000 --sound 2 --engine interp --skip-intro
+py tools/stack_balance.py --gen GENERATED_DIR --census CENSUS_TSV
+```
+
+The startup matrix is 200,000,000, 1,000,000,000 and 5,000,000,000
+instructions a second; `interp` and `recomp`; sound 1 (speaker), 2 (AdLib)
+and 3 (Roland). Each case records the program transitions, clock and final
+hash, and must arrive at START. It applies normal inputs only and leaves the
+installed game files untouched.
+
+The stack walk's five reports are VGAME `E6BE`, `E876`, `F338`, `F7AE` and
+`F8F0`: start-up and exit paths, the stack probe, and a file-write error
+path, all of which move SP by design. The walk stops tracking at a frame
+restore and does not follow indirect jumps, so it is evidence against a
+simple push/pop imbalance, not proof against all memory corruption.
+
+### Roland check
+
+A normal landing flight's MIDI capture shows the game uploading "Jet
+Engine", selecting program 7 on channel 8 and starting note 23 once the jet
+moves. The staged check keeps that captured initialisation and first engine
+note, caps long idle gaps at one second, then holds the note for 20 seconds.
+It uses the application's offline renderer with the same PCM ROM and seed
+117 for every control ROM, and measures the last ten seconds:
+
+| Control ROMs | RMS, signed 16-bit stereo | Peak | Silent |
+|---|---:|---:|---|
+| 1.04, 1.05, 1.06, 1.07 | 342.49 | 1,848 | No |
+| 2.04, 2.06, 2.07 | 292.40 | 1,516 | No |
+
+```powershell
+build/audio_render.exe ENGINE_START_MIDI OUT_WAV 9000000 END_CLOCK --mt32 CONTROL_ROM PCM_ROM --seed 117
+```
+
+These fixed-note levels are not comparable with the 3.4 dB difference
+measured on the moving landing flight (D36 above). All 128
+four-byte PCM table entries match the 1.07 table in all seven ROMs (table at
+3000h for 1.0x, 8100h for 2.0x, as Munt reads them). Munt synthesises from
+the firmware's tables and does not run all of the original firmware, so a
+physical-unit recording or an untested model's incompatible mapping can
+reopen D36.
+
+### Evidence retention
+
+The private evidence bundle keeps the original archive and note hashes,
+startup logs and results, the staged MIDI stream, ROM identities, the
+wave-table comparison and the audio measurements. Original game files, ROMs,
+recordings and raw logs stay outside git.
 
 ## R1. Open questions from this project
 
@@ -1112,11 +1183,6 @@ Phase 2 denominator ([progress.md](progress.md)), not in
   on the same inputs, so this is the original's behaviour and very likely
   intended ("quit") rather than a defect. Flying into the ground instead
   exits with 129 and runs END. Not yet confirmed on GOG DOSBox.
-- **Data inside code regions.** F117.COM keeps variables after code that
-  discovery walks into; VGAME's thunk table in DGROUP is patched at start;
-  MGRAPHIC uses part of MISC.EXE's image as a buffer. Not defects in the
-  game: they cost the recompilation speed, never correctness, and are
-  tracked in [architecture.md](architecture.md).
 - **Overlapping objects drawn in the wrong order.** Taking off, one hangar's
   corner can be painted over another that is nearer; facing them, the order
   is right. The game sorts whole objects back to front, which large
@@ -1128,19 +1194,22 @@ Phase 2 denominator ([progress.md](progress.md)), not in
 
 The recompilation keeps the original's behaviour as the reference, and every
 fix is optional, so a player can always choose 1:1. All three mechanisms are
-implemented in `src/fixes/fixes.c`:
+implemented in `src/fixes/fixes.c`; the run-time side is in
+[architecture.md](architecture.md#the-run-time).
 
 1. **Data patches** (D4's world half): bytes corrected as the file is read,
    through the machine's `file_data` hook, each pinned by file name, size
    and the byte it replaces. The code is untouched.
 2. **Host-side fixes** (D11): the emulated PC's file layer, invisible to the
    program.
-3. **Code overrides** (the D1 family, D2, D3, D4's table half, D5, D6, D8,
-   D12, D34): a hand-written C function registered for a module address
-   replaces that address's code under either engine (mechanism in
-   `src/recomp/recomp.c`). Each is pinned by hash to the shipped file it was
-   written for and switched at run time. The recompiler reads the override
-   table (`recompiler/recomp.py`) and gives each overridden address a region
-   of its own, so nothing else is interpreted because of it.
+3. **Code overrides** (every other fix, including D4's table half): a
+   hand-written C function registered for a module address replaces that
+   address's code under either engine (mechanism in `src/recomp/recomp.c`).
+   Each is pinned by hash to the shipped file it was written for and
+   switched at run time. The recompiler reads the override table
+   (`recompiler/recomp.py`) and gives each overridden address a region of
+   its own, so nothing else is interpreted because of it. A matched routine
+   with an enabled fix's site inside it declines (`fix_inside` in
+   `src/matched/matched.c`), so the translated original runs around the fix.
 
 With a fix off, its override declines and the original code runs.

@@ -8,11 +8,9 @@ page with every piece of work, and keep it short: one entry per item, the
 evidence linked or in the commit, not narrated here.
 
 The project keeps **1:1 parity first**: the same player actions play out as
-on the original's hardware. The owner put original-game bug fixes first in
-the Phase 2 work queue on 25 October, before further matching. Fixes and
-enhancements remain switchable, with the original independently testable;
-the score's existing fixes item remains in Phase 3. Phase 4 holds the checks
-only people and outside references can make.
+on the original's hardware. Fixes and enhancements are switchable, with the
+original independently testable (Phase 3). Phase 4 holds the checks only
+people and outside references can make.
 
 ## Phase 1 - recompiled, 1:1 with the original
 
@@ -57,7 +55,8 @@ only people and outside references can make.
 - **Other machines as references** (`tools/pc_parity.py`): DOSBox-X matches
   1,237 exact pictures in order (drift up to 0.2 s); 86Box (a 386DX/33 with
   MS-DOS 5.00 and MOUSE.COM 6.26) matches 85 of 86 graphics pictures in 6-bit
-  DAC values (the other is START's roster screen sampled mid-draw). The same
+  DAC values (the other, p037, is a single sample of the title screen's fade-in,
+  listed in `tools/ref86box/expected_misses86.txt`). The same
   run checks the intro music (GOG envelope 0.963, spectral 0.992; 86Box's first
   2,000 AdLib writes identical) and a scripted START session's saved roster
   (byte-identical on DOSBox-X and 86Box); `tools/fidelity_all.py` holds the
@@ -70,12 +69,12 @@ only people and outside references can make.
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (630 at Q11),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests,
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
-  routes-only and event-limit checks. About 26-30 minutes with every
-  interpreter route verified fresh (batch al: 1,579 s); costs and what was
-  optimised: [repeated-processes.md](repeated-processes.md).
+  routes-only and event-limit checks, with every interpreter route verified
+  fresh. Each batch's gate time is in the [batch table](#batch-table); costs
+  and what was optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
   0.95). Against a silent capture of 86Box's mixer (MS-DOS 5.00, MOUSE.COM
@@ -95,8 +94,8 @@ only people and outside references can make.
   must match under both.
   - *CPU and services:* the interpreter matches 86Box to the cycle on all 77
     blocks of `probe386.py`; natively answered BIOS, DOS and mouse services
-    are charged their measured cost (all 93 probe blocks exact against MS-DOS
-    5.00 with MOUSE.COM 6.26; 5.00 and 6.22 cost the same on the game's calls,
+    are charged their measured cost (92 of 93 probe blocks exact against MS-DOS
+    5.00 with MOUSE.COM 6.26, the other INT 21h AH=2Ch by a run-to-run 4 cycles; 5.00 and 6.22 cost the same on the game's calls,
     `build_msdos_vm.py`).
   - *Disk:* DOS file services fitted to the reference's period drive; PLAYER,
     DSWAP and START loads charged at their measured disk positions. The intro
@@ -146,131 +145,104 @@ not the recompilation:
 
 - [x] **First: fix the original's remaining bugs** (owner, 25 Oct 2026: bug
       fixes come before matching). The 31 rows of [bugs.md](bugs.md)'s
-      "Smaller confirmed defects" table had no fix and no recorded reason. All
-      31 were re-read against the DOS instructions and compared with Mac 2.3.2
-      and Amiga 3.01. The Reimp catalogue lists ten of them (D17, D18, D44,
-      D61, D63, D75, D97, D98, D101, D103) as deviations of its own port, and
-      bugs.md had copied the original's side of each as a defect. Four of
-      those are real defects of the original (D17, D44's take-over arm, D61,
-      D75). The others are not defects, or have no effect anyone can reach.
-      Verdicts:
-      ten fixes (new IDs Q7, Q11, Q12, Q14-Q20: zoomed-view range, 32-bit
-      range cull, the cannon's missing argument, the overdue objective text,
-      the AdLib noise take-over, MT-32 volume and pan held in range, pitch
-      ladder labels past 90 degrees, the campaign date past December, the
-      Enemy Troops overlay, the stuck briefing popup), three owner decisions
-      (Q13a, Q21, Q22), 10 code quirks with no effect, four rows that were
-      never the original's defects and D101 (subsequently measured below), all in
-      [bugs.md](bugs.md#smaller-defects-q-series). Owner's plan (25 Oct): build
-      17 specified fixes (the ten, the three with chosen behaviours,
-      and the hardening group Q4, Q13b, D18, Q23), then measure D101 and Q12's
-      marker-size sibling and fix or close each with evidence. The 10 no-effect
-      quirks and four non-defects stay documented.
-      **Accepted and merged, 25 Oct:** all 17 additions (Q7, Q11 and the remaining
-      15) are on master at `95a5730`; the combined gate passed every focused
-      fix check, defaults/replay, both whole-table seeds, the full P2 gate and
-      presentation checks. Evidence: `D:/f117-gate/bugfixes-20261025/`;
-      [Windows CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423).
-      The merged set has 32 fixes; each has a row below. D101 and the Q12
-      marker sibling are now measured and repaired below: 34 normal-play switches.
-      Both and the EDC2 body repair passed combined acceptance with batch be
-      (`combined-final-verdict.json`, 1,948 s including repeated focused checks).
-      The switch table confirms 17 additions at the merge (15 + 17 = 32);
-      D101/Q12b bring the additions to 19 and the total to 34. The fixes
-      themselves add no matching credit.
+      smaller-defects table that had no fix and no recorded reason were re-read
+      against the DOS instructions and compared with Mac 2.3.2 and Amiga 3.01
+      (verdicts: [bugs.md](bugs.md#smaller-defects-q-series)). Fixed: ten
+      defects (Q7, Q11, Q12, Q14-Q20), three with an owner-chosen behaviour
+      (Q13a, Q21, Q22) and the hardening group (Q4, Q13b, D18, Q23), merged at
+      `95a5730` after a combined gate (`D:/f117-gate/bugfixes-20261025/`;
+      [Windows CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423));
+      then D101 and Q12's marker-size sibling Q12b were measured and fixed,
+      passing combined acceptance with batch be
+      (`D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json`). That
+      makes 34 normal-play switches (the Phase 3 table). Ten code quirks with
+      no effect and four rows that were never the original's defects stay
+      documented in bugs.md. The fixes add no matching credit.
 - [ ] **Name the translated routines and data**, with explanations, drawing on
       the Reimp's mapping; matched functions replace translations one at a
       time, each held to the same parity checks. Method:
       [architecture.md](architecture.md#matched-routines-phase-2); the table is
-      at the end of `src/matched/matched.c`; how routines are proved now (the
-      private kit and parallel agents), the current figures and the next
-      candidates: [../handoff.md](../handoff.md). `tools/reimp_names.py` joins
-      the Reimp's census (1,535 functions) with this project's regions as a
-      private lead list. How the scores are measured, and the full "P2 is done
-      when" definition (owner, 23-24 Oct):
-      [progress.md](progress.md#what-is-measured).
-      **Done:** 1,436 addresses matched in batches a to bj (table below). Every
-      route-executed byte of F117.COM, MGRAPHIC and MISC is matched or reviewed
-      original by design; in the census alone, named code runs 160,003 of
-      165,425 creditable bytes (1,122 rows wholly, 291 in part).
-      **Batch bf (25 Oct):** the whole RSOUND.LOG `0251` one-shot timer installer is matched as four
-      entries; +61 named bytes. Evidence `D:/f117-gate/p2-batch-bf-accept/`.
-      **Batch bg (26 Oct):** 25 sound-driver entries accepted in one larger gate (the owner's 26 Oct plan: fewer, larger gates):
-      ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57`, seven wrappers `0887` `088E` `0895` `08B7` `08D3` `08DA` `08FC`,
-      the speaker-timer pair `0B74` `0B75`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`;
-      RSOUND.LOG `02D4` `0310`. +473 named bytes, all route-executed. Evidence `D:/f117-gate/p2-batch-bg-accept/`.
-      **Batch bh (26 Oct):** the five larger bg4 routines: ASOUND.117 `1048` (operator register emit, 205 instructions) and `123E` (instrument pair load),
-      ASOUND.LOG `0BFC` (operator loader, 110 instructions), ISOUND.117 `062E` (effect-record selector, 128 instructions) and `0443` (word effect decoder). +1,410
-      named bytes, all route-executed. Gate 1,723 s, 674 tests, 188 mutations, three whole-table pre-check seeds zero mismatches. Evidence
-      `D:/f117-gate/p2-batch-bh-accept/`.
-      **Batch bi (26 Oct):** ASOUND.117 `0E8A` (AdLib voice change, 170 instructions) and RSOUND.117 `0002` (Roland per-voice sequencer step, 372 instructions,
-      jump-table arms). RSOUND `0002` declines while the Q16 fix at `0348` is installed (`fix_inside`), as the audit demands. +1,393 named bytes. Gate 1,714 s, 676 tests,
-      122 mutations. The audit needed two batch-local widenings (an `XCALL(target,ip,ret)` claim form; the declared SPANS row for overlay routines, whose
-      indirect arms the static dossier does not list). Evidence `D:/f117-gate/p2-batch-bi-accept/`.
-      **Batch bj (26 Oct):** ASOUND.117 `0720` and `0694` (voice-record reset wrappers; `0694` hands back at the `05C0` thunk), ASOUND.LOG `0140` (AdLib detect and init, 90 bytes)
-      and RSOUND.117 `050A` (steps the eight voices through `0002`). +283 named bytes. Gate 1,694 s, 680 tests, 124 mutations, 63 routes identical. ASOUND.LOG `00FE`
-      (delay-loop calibration, proven privately) was **withdrawn**: its lockstep stubbed the PIT sampler `00DA`, and on the real `setup_calibration` route the matched body took the timer IRQ
-      at a different boundary after its nested `call 00DA` (hash `0edb...` against the interpreter's `4a39...`). Keep it original until it is proved against the real sampler.
-      Evidence `D:/f117-gate/p2-batch-bj-accept/`; the failed 00FE gate is `p2-batch-bj-failed-00FE-20261026/`.
-      **Batch bk (27 Oct):** eight sound-driver entries: ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`,
-      RSOUND.LOG `0349` and RSOUND.117 `0E4C` `0CAE`. +418 named bytes, all route-executed; 140 fixture instructions, 228 mutations caught.
-      The incomplete AdLib noise fixture patched the wrong jump operand; corrected before proving it. The pitch-bend fixture saves FLAGS before logging,
-      reads the return stack through SS, and recognizes its tail-called writer's outer RET. Three whole-table pre-check seeds passed;
-      all 53 reached routes agreed with matched routines disabled. Acceptance 1,659 s, 688 tests, 63 identical routes / 62 fresh interpreter sessions.
-      Evidence `D:/f117-gate/p2-batch-bk-accept/`; independent private-proof verification `root-private-verification.json`.
-      **Batch bl (27 Oct):** the largest batch so far, 33 routines proved by three proof agents working beside each other, with every check kept: Roland chains RSOUND.LOG `0390` `0306` `03FA` and RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`;
-      ISOUND.117 `0079` `0045`; ASOUND.117 `0BD4` `0C08` `0B76` `197B` `018F` `0210` and the song/voice-start wrappers `064D` `0670` `0876` `08E8` `089C` `085F` `0903`
-      `0640` `0662` `0669` `068D` `06BE` `06E8` `0704` `08BE` `08CC` `08E1`. +892 named bytes, 334 fixture instructions, 900 mutations caught, 165 optimized seed checks.
-      `0306` and `0C72` are 10-byte hand-backs into the already matched MPS writers; `089C` needed a `g_cov_ip` row for its lone RET below the entry; `0E70` needed the
-      `0E4C` outer-RET recognition extended; `0045` and `0BD4` needed the native INT 1A function 2 answer. ASOUND.117 `025A` was **blocked**: it ends in a loop that polls six
-      voice bytes only the timer interrupt clears, so no lockstep state reaches its RET. Pre-checks: two whole-table seeds (`0xa1bc7fe770f2`, `0x5EED0B12`; 5.83 M states each,
-      zero mismatches) and all 49 reached routes agree with matched routines disabled (`route_precheck.py` on all 33 entries). Acceptance 2,078 s, 721 tests,
-      63 identical routes / 62 fresh interpreter sessions. P2 92.59% -> 93.01%; unmatched executed bytes 7,537 -> 6,659. Evidence `D:/f117-gate/p2-batch-bl-accept/`,
-      pre-checks `D:/f117-gate/bl-prechecks/`.
-      **Accounted-for checklist (26 Oct):** a full blind second-read pass over the 43,920 unreviewed bytes (912 units, 156 independent readers) adopted
-      444 units / 19,928 bytes: 780 -> 20,708 of 44,714 bytes (46.31%), P2 87.27%. Round 2 re-cut the remainder into 588 packets / 79 independent reader groups: all read,
-      367 units / 13,976 bytes adopted in 523 rows. Round 2 finished at 34,684 / 44,714 (77.57%), P2 90.40%.
-      The 221 unadopted units (10,016 bytes), plus 14 current-scope bytes absent from the older packet snapshot,
-      went into corrected round-3 packets. Round 3 read 228 packets / 46 groups and adopted 101 units / 4,476 bytes;
-      round 3b adopted another 19 units / 1,344 bytes after an exact leading-range check. Round 4 (27 Oct) re-cut the remaining
-      5,608 bytes into 143 packets / 29 groups, all read by fresh blind readers: 99 ACCEPT, 33 ACCEPT-WITH-CHANGES, 11 NEEDS-CONTEXT.
-      Only ACCEPT units whose reader-judged status equals the proposal and whose range matches exactly were adopted: 32 units / 1,245 bytes
-      in 37 rows. Current checklist: **41,749 / 46,112 bytes (90.54%)**, with 4,363 bytes still without an entry.
-      The denominator includes the bytes newly scoped by batches bi, bj, bl and bm. The unadopted units (36 status differs, 25 range wording,
-      6 missing fields, 33 with changes, 11 needs context) go to round 5 with corrected names or added context.
-      No matching credit or exclusions were added by these reviews.
-      Evidence `D:/f117-gate/checklist-full-20261026/`.
-      **What is left:** the sound drivers hold most of the unmatched executed
-      bytes; the rest are the declined routines of the seven programs (below).
-      Beyond the routes: reviewed static code no route runs (no new route or dead
-      certificate yet: indirect/callback/vector and writer closure is incomplete,
-      [static-code-review.md](static-code-review.md)), matched code only fixtures
-      reach, the machine-option-only error paths (owner, 20 Oct: they stay in the
-      denominator), the probable-dead bytes, a second-read reference entry for
-      every byte outside the routes (the accounted-for checklist, weight 10 since
-      24 Oct), the packer stub's separate review, and the closing review of
-      indirect entries. Owner, 21 Oct: no meaningful game code may be missed.
+      at the end of `src/matched/matched.c`; how routines are proved (the
+      private kit and parallel agents) and the next candidates:
+      [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
+      census (1,535 functions) with this project's regions as a private lead
+      list. What the scores measure, and the full "P2 is done when" definition
+      (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
+
+      **Done:** 1,487 matched routines registered in batches a to bm (the
+      [batch table](#batch-table); bm2 was a fix-only gate). Gameplay score
+      97.04%: 156,432 matched bytes a route runs plus 2,631 reviewed
+      design-rule original bytes, of 163,907 executed bytes. Every
+      route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
+      by design. In the census, named code runs 160,095 of 165,479 creditable
+      bytes (1,123 of 1,535 functions wholly, 291 in part).
+
+      **Accounted-for checklist:** 41,749 of 46,112 bytes (90.54%) outside the
+      routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
+      1,636 entries); 4,363 bytes have none. Four rounds of blind second reads
+      by independent readers (26-27 Oct) adopted, from 780 reviewed bytes:
+      round 1, 444 units / 19,928 bytes; round 2, 367 / 13,976; round 3, 101 /
+      4,476; round 3b (exact leading-range check), 19 / 1,344; round 4, 32 /
+      1,245. Round 4 adopted only ACCEPT units whose reader-judged status equals
+      the proposal and whose range matches exactly. The reviews add no matching
+      credit or exclusions. Evidence `D:/f117-gate/checklist-full-20261026/`.
+
+      **What is left** (owner, 21 Oct: no meaningful game code may be missed):
+
+      - 4,844 executed bytes are unmatched (20 of them design-rule original
+        awaiting a reviewed entry), most in the sound drivers; by module:
+        `py tools/progress.py`. They include the declined routines (owner,
+        23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
+        START `8427` and END `4393` (wait loops routes cannot finish) and
+        MPS_LOGO `1ADC` and `1C82` (unequal); ASOUND.LOG `00FE` (withdrawn in
+        batch bj) and ASOUND.117 `025A` (blocked in batch bl). Leads:
+        [../handoff.md](../handoff.md); the private list is
+        `D:/f117-gate/kit/DECLINED.tsv`.
+      - 27,782 matched bytes that only fixtures reach, to be sorted into
+        routed or reviewed.
+      - The checklist's remaining 4,363 bytes: round 4 left 111 units
+        unadopted (36 status differs, 25 range wording, 6 missing fields, 33
+        with changes, 11 needs context), which go to round 5 with corrected
+        names or added context.
+      - Beyond the routes: reviewed static code no route runs (no new route or
+        dead certificate yet: indirect/callback/vector and writer closure is
+        incomplete, [static-code-review.md](static-code-review.md)); the
+        machine-option-only error paths, the probable-dead bytes and START
+        `8F94` (the run time's divide-error entry, to be split out of the
+        start-up row), each as the owner decided
+        ([progress.md](progress.md#phase-2-completion-requirements-owner-23-24-and-27-october-2026));
+        the encoded SETUP code; the packer stub's separate review; and the
+        closing review of indirect entries.
+
       **Dead code** leaves the denominator only when certain (owner, 19 Oct), with a
       certificate per row (`docs/census-dead.tsv`, `docs/census-dead-ranges.tsv`).
       The START quiz is an option (`--fix QUIZ`), not dead code, and its routines
       are matched.
-      **Stays original code:** the timer interrupts (VGAME `1C9B`, START `8D0B`, END
-      `4BEF`) open with STI, after which the run loop admits one more instruction
-      before it looks at events, so a matched body could do nothing the original does
-      not. The C start-up (START `8EDC` and its copies VGAME `E6BE`, DSWAP `0C7E`, SETUP
-      `1516`, END `4DD2`, PLAYER `1096`, MPS_LOGO `0146:0016`) stops after its own STI and
-      never returns, so no lockstep state can complete it. The palette loaders with STI
-      inside their colour loop (VGAME `14C2:0000`, START `8378`, END `42E4`). The line
-      clipper's divide-error handler (`0FB2:04DD`) is fixture-proven but no input reaches
-      it (146,153 real clip divisions across 14 routes stay far under its threshold).
-      SETUP's static timer handler `104D` opens with STI too (second-read entry,
-      24 Oct). The program launcher, F117.COM `0100`..`03CA`, only runs the other
-      programs and tests their exit codes (owner, 23 Oct; its overlay loader `03CB`
-      is matched).
-      Declined, and still Phase 2 work (owner, 23 Oct): VGAME `0010` (`main`), START
-      `8427` and END `4393` (wait loops routes cannot finish), END `57B0` (an interior
-      arm of printf), MPS_LOGO `1ADC` and `1C82` (unequal); the list is
-      `D:/f117-gate/kit/DECLINED.tsv`, the plan for each is in the handoff.
+
+      **Stays original code** (census rows in `docs/census-original.tsv`; each
+      range also needs a second-read `stays-original` entry in
+      `docs/reference-reviewed.tsv`):
+
+      - STI-first interrupt handlers: the timer interrupts VGAME `1C9B`, START
+        `8D0B` and END `4BEF`, VGAME's keyboard interrupt `1132:006C` and
+        SETUP's static timer handler `104D` (second-read entry, 24 Oct). After
+        STI the run loop admits one more instruction before it looks at events,
+        so a matched body could do nothing the original does not.
+      - The C start-up (START `8EDC` and its copies VGAME `E6BE`, DSWAP `0C7E`,
+        SETUP `1516`, END `4DD2`, PLAYER `1096`, MPS_LOGO `0146:0016`): it stops
+        after its own STI and never returns, so no lockstep state can complete
+        it.
+      - The palette loaders with STI inside their colour loop (VGAME
+        `14C2:0000`, START `8378`, END `42E4`).
+      - The line clipper's divide-error handler (`0FB2:04DD`): fixture-proven,
+        but no input reaches it (146,153 real clip divisions across 14 routes
+        stay far under its threshold).
+      - The program launcher, F117.COM `0100`..`03CA`: it only runs the other
+        programs and tests their exit codes (owner, 23 Oct; its overlay loader
+        `03CB` is matched).
+      - Also by design rule: hardware wait loops only when no lockstep state
+        can complete them (none qualifies so far), the packer stub and DSWAP's
+        floppy path (no emulated floppy drive).
 
 ### How an entry is proved
 
@@ -289,12 +261,17 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Batches e to bl (16-27 October 2026)
+### Batch table
 
-Every batch below passed the same proof (see above): five seeds per routine
-with every instruction reached, all mutations caught, exact boot (26
-checkpoints) and real-route proofs, optimized seed runs, then a fresh full gate
-(about 22-32 minutes), the N=1 presentation check over every route (45 routes then, 63 now) and boot N=4/9.
+Batches e to bm2 (16-27 October 2026); the routines of earlier batches are
+listed by area in the sections after the table. Every batch passed the same
+proof (see above): five private seeds per routine with every instruction
+reached (more where a row says so), all mutations caught, exact boot (26
+checkpoints) and real-route proofs, optimized seed runs, then a fresh full
+gate (both engines identical on every route, 63 routes / 62 fresh interpreter
+sessions since batch ai; both timing profiles; the matched-routine lockstep,
+at three seeds in the current gate; event limits), the N=1 presentation check over every route (45 routes
+at batch e) and boot N=4/9. A row's test count is the gate's CTests.
 Per-batch evidence is in `D:/f117-gate/p2-batch-<letter>-accept/` (usually
 `final-gate-verdict.json`); the commit title carries the scoreboard. Counts are
 census bytes by byte credit unless noted; "addresses" is the registered total.
@@ -315,59 +292,59 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | p | 18 Oct | 1,008 | 154 | START `0F4E` briefing page setup; START `35FC` load picture for page |
 | q | 18 Oct | 1,010 | 154 | END `1708` and START `31AD` wait-ticks-with-callback helpers; they keep the original unsigned deadline comparison and wrap, so they add names, not a timing fix |
 | r | 18 Oct | 1,012 | 142 | VGAME `1A98` driver call with scaled arguments (33 instructions; no route runs its `[0348] != 0` branch, the fixture does; proved on `cargo_pilot`, 127 checkpoints); VGAME `114A:02FF` two far driver calls (23 instructions; `full_cycle`). VGAME `137C:000E` (`1377:005E`) is declined: an observer sits at the same address |
-| t | 18 Oct | 1,015 | 962 | VGAME `0FB2:0012` low-detail sky horizon line (164 instructions; the census's `0000:FB32` is the same address, and only `0FB2:0012` is ever entered); VGAME `CE65` key-arm selection (the jump table and key chain of the flight key dispatcher; it hands back to the original arm, so only the chain counts) and `CD7E` panel-state cycle (proved on `strike_training`). The 58 `FATAL_JUMPS` hand-back rows and a `SHARED_ENDINGS` row are in `tests/func_lockstep.c`. Batch s (`0FB2:0012` alone) failed step 7c at a rotating seed (see the handoff's open harness issue) and was folded into t |
+| t | 18 Oct | 1,015 | 962 | VGAME `0FB2:0012` low-detail sky horizon line (164 instructions; the census's `0000:FB32` is the same address, and only `0FB2:0012` is ever entered); VGAME `CE65` key-arm selection (the jump table and key chain of the flight key dispatcher; it hands back to the original arm, so only the chain counts) and `CD7E` panel-state cycle (proved on `strike_training`). The 58 `FATAL_JUMPS` hand-back rows and a `SHARED_ENDINGS` row are in `tests/func_lockstep.c`. Batch s (`0FB2:0012` alone) failed step 7c at a rotating seed and was folded into t |
 | u | 19 Oct | 1,016 | 4,552 | VGAME `9EFA` `vgame_display_pass`, the flight display pass (1,628 instructions): weapon markers, gun tracers and their hit tests, the impact blast, the weapon locks, the target and reconnaissance cameras, bomb symbology and the supply-drop radio beacons. Written as named sections (a first mechanical transcript was rejected). Also in this batch: the `display_tour` route (46 routes now), and a harness fix for returns reached through misaligned fuzzed code (CTest `matched_projectile_misaligned_return`) |
 | v | 19 Oct | 1,018 | 873 | VGAME `8F71` the navigation display (legs, times and clock bar; 258 instructions) and VGAME `93E9` the armament panel refresh (75): both reached only by the new `display_tour` route (51 checkpoints; 15 and 1 calls). `8F71` misses two instructions there (damage bit 5 of `[3664]`), covered by the fixture |
 | w | 19 Oct | 1,019 | 784 | START `1C2F` `start_site_popup_text`: the info popup text of a briefing-map airbase or radar site (303 instructions; two-slot loop; proved on `display_tour`, 51 checkpoints / 40 calls; the route misses 23 instructions that need flagged sites in a theatre briefing, covered by the fixture) |
 | x | 19 Oct | 1,020 | 301 | START `11DB` `start_map_hover_light`: the briefing-map hover handler (127 instructions, 301 bytes: relights the palette entry of the item under the pointer, the help line and the site popup; the census rows `11DB`, `1285` and `12DB` are parts of it). Proved on `display_tour` (1,301 calls) |
+| z | 19 Oct | 1,020 | 0 (routes and presentation only) | Three routes added (`key_tour`, `quit_dialogs`, `ejection_tass`; 46 to 49 routes, commit `e400c68`) and the rerun copy's orientation change (`d0b7d90`). Gate passed 1,884 s, 257 tests, 49 routes / 48 sessions; `finalize.py`'s credit audit could not run on a batch with no routines (no credit at stake). The first attempt, y, stopped before its gate because the interpreter inputs changed. Batch aa re-gated all 49 routes with its audit passing. Evidence `D:/f117-gate/p2-batch-z-accept/`. |
 | aa | 19 Oct | 1,083 | 2,215 | 63 routines on the new routes: the flight key dispatcher's arms (VGAME `C8CA`..`D3F8`: 55 arms, each a hand-back routine named by its key: zoom, countermeasures, gear, flaps, HUD options, the camera and view keys, the height hold, the sensitivity, detail, sound and frame-rate steps, the training switch, the waypoint reset, the display selectors F3-F10, Enter/Backspace buttons and more), the eject arm `CD04`, START's Alt+Q panel `7611` and int86 `9520`, END's Alt+Q panel `3E61`, TASS page `3BBF`, int86 `519E` and the whole icon-frame switch `0977`. On `key_tour`, `quit_dialogs`, `ejection_tass`, `display_tour`, `navigation_grid`, `recon`, `airair_type5`, `korea_strike` and `camera_gradients`. Mutation counts: 1,709 in all, all caught; 13 arms of two or three instructions have fewer than 20 (5 to 18) because no more distinct edits exist |
 | ab | 19 Oct | 1,120 | 2,040 | 37 small routines on existing routes, found by four module-group proof agents: SETUP (cursor, shut-down, tick wait, timer-hook install), VGAME (display-page registration, background span fill, picture close/read, frame loop), END (file reads, allocate-or-quit, debrief picture, DOS open, exit), START (hangar scene, the six objective-sentence arms, file loads, buffer allocation, clock hook, long-to-text, malloc), MPS_LOGO and PLAYER (palette write/read, allocators, break-vector hook, timer install, clock-hook step). Also the playback-clock default 0.4 / 0.025. Dropped: END `4160` (diverged on a real route), `23D6` and `3682` (they replace existing fragment rows), VGAME `0010`, `12A11`, END `03D9`, `57B0`, MPS_LOGO `067C`. 1,029 mutations, all caught |
 | ac | 20 Oct | 1,125 | 290 | 5 routines: END `4160` (DOS block read: its first proof hard-coded END's data segment, which the loader relocates, and failed on `landing`; fixed by reading the immediate from the code), END `2430` and `36D6` (the tails of the ribbon and death-message routines, registered beside their existing fragment rows), MPS_LOGO `0030` (`fread` of bytes into a far buffer) and PLAYER `01F6` (`player_finish`). 127 mutations, all caught. Also: `/Os` on `matched.c` (`/O2` took 90+ minutes to compile it from batch ab on), and 3,299 bytes certified dead left the denominator (`docs/census-dead.tsv`) |
 | ad | 20 Oct | 1,125 | 0 (routes) | seven new routes, no new routine: five damaged-install routes (`err_player_assert`, `err_player_divide`, `err_boot_series_palette`, `err_driver_overlay`, `err_dswap_nostart`: the original programs' own error handlers run against a private copy of the install with one file removed or damaged, `tools/route_damage.py`) and two compressed-boot flights (`libya_tour_eject`, `korea_release_eject`). 56 routes / 55 sessions identical between the engines. They run about 3,250 more census bytes (128 rows) that no routine covers yet. Gate 2,184 s (the compile took 5 minutes with `/Os`) |
-| ae | 20 Oct | 1,125 | 0 (option) | the START quiz as an option: `--fix QUIZ` (an override at START `001D` that pushes `0020` and runs the quiz routine `0703`, the call GOG patched to `90 90 90`; off by default, `all` and normal play never switch it on) and the routes `quiz_right` / `quiz_wrong` (both verdict arms, `planes2.pic` milestone). The 633 quiz bytes left `docs/census-dead.tsv` and are back in the denominator, so P2 dipped from 88.38% to 88.09%. 58 routes / 57 sessions identical; gate 2,305 s |
+| ae | 20 Oct | 1,125 | 0 (option) | the START quiz as an option: `--fix QUIZ` (an override at START `001D` that pushes `0020` and runs the quiz routine `0703`, the call GOG replaced with three NOPs; off by default, `all` and normal play never switch it on) and the routes `quiz_right` / `quiz_wrong` (both verdict arms, `planes2.pic` milestone). The 633 quiz bytes left `docs/census-dead.tsv` and are back in the denominator, so P2 dipped from 88.38% to 88.09%. 58 routes / 57 sessions identical; gate 2,305 s |
 | af | 20 Oct | 1,148 | 697 census credits | 23 routines: DSWAP `0647`, `0668`, `06EA`, `08F4`, `10F4` (close/read, picture block/rows, BIOS disk); END `00C7`, `00C8`, `22EA`, `47FE`, `2BCB`, `42BE`, `451B` (empty hooks, free-or-quit, palette, mouse); PLAYER `1C12`, `1D8D`, `1F54` (string/integer formatting and abort); SETUP `1509` (DOS string); START `057B`, `057C`, `885E` and VGAME `11D8:0155`, `02C2`, `02C3` (empty hooks); VGAME `1BC2` (flight-loop wrapper). 363 fully covered instructions, 550 caught mutations, 115 optimized seed checks; 385 CTests and all 58 routes pass. Gate 1,555 s; acceptance 1,689 s with presentation overlap. Serial/parallel translation is byte-identical; coverage loading 51.23 to 5.20 s. The harness span alias and the ROM-free scheduling test's install dependency are repaired. |
-| ag | 20 Oct | 1,162 | 645 named bytes | 14 routines from the rows that routes run but no routine covered: MPS_LOGO `0045:003A` (string position), `0045:0102` (DOS block free), `0146:0FE4` (formatter scan), `0146:15FA` (`_write`, with its shared tails), `0146:17B0` (checked allocation), `0146:1A64` (far jump to the allocator); PLAYER `1FD0` (the C run-time's stack check), `22AF` (raise()'s exit(3) tail); END `5948` (`%d` arm), `3692` (debrief message arm); DSWAP `0599` (DOS open or report), `0848` (colour registers); VGAME `104E:0082` (far sine entry), `1058:000E` (far HUD colour setup). 313 fully covered instructions, 341 caught mutations, 70 optimized seed checks; 399 CTests, 58 identical routes / 57 fresh interpreter sessions, both timing profiles, three full matched seeds and event limits pass. Gate 1,604 s, acceptance 1,731 s with presentation overlap. Five more proofs are not integrated: MPS_LOGO `27C2` and `163A` (their real-route proof found no call on the routes tried), VGAME `14C2:00B7`, `1058:000A` and `1058:0012` (the lockstep span table is keyed by IP, so the new rows would alias same-IP routines in other segments: they need a segment key first). Blocked as not routines or already matched: PLAYER `1BBA`, `1D50`, `1C3D`, `1D02` (entries inside the printf dispatcher `1BB6`, whose own proof has no verdict), `222D` (a switch table), `1FCF` (padding), END `4FA4` (run inline by `end_exit`), VGAME `11322`, `11372`, `11ED5` (already matched under other entries), MPS_LOGO `039A` (already matched). Hand-back routines `2444`, `2c10` and the formatter and runtime bodies whose block macros the private audit cannot enumerate are marked partial for that audit only; credit is by byte coverage. |
-| ah | 20 Oct | 1,168 | 787 named bytes | 6 routines: the START quiz (`057E` draws the screen, `0703` takes the pick and judges it, `0786` highlights the hovered button; the census rows `0583`, `06E0`, `072E` and `0788` are mid-instruction pieces of these three, credited by byte; proved on `quiz_right` with `--fix QUIZ`), PLAYER `1BB6` (printf's conversion dispatch, 471 bytes, 65 instructions; seeds now compare 6,124-6,146 states each, the earlier proof's seeds had skipped nearly all; it also credits the census rows `1BBA` and `1D50`, whose first bytes are mid-instruction), VGAME `1058:000A` and `1058:0012` (far entries of the HUD pass and layout switch). 328 fully covered instructions, 275 caught mutations, 30 optimized seed checks; 405 CTests, 58 identical routes / 57 fresh interpreter sessions, both timing profiles, three full matched seeds and event limits pass. Gate 1,783 s, acceptance 1,729 s. The lockstep span table gained a segment-keyed companion (`SPANS_SEG`) because `1058:000A` and `1058:0012` share addresses with routines in other segments. VGAME `14C2:00B7` was proved too but is the same code as the existing `1452:07B7` (linear 14CD7), so it was dropped; a first gate run caught the duplicate through its routine tally. Three claimed-but-uncredited bytes come from `1BB6`'s shared tail at `1D52`, entered from two arms. |
+| ag | 20 Oct | 1,162 | 645 named bytes | 14 routines from the rows that routes run but no routine covered: MPS_LOGO `0045:003A` (string position), `0045:0102` (DOS block free), `0146:0FE4` (formatter scan), `0146:15FA` (`_write`, with its shared tails), `0146:17B0` (checked allocation), `0146:1A64` (far jump to the allocator); PLAYER `1FD0` (the C run-time's stack check), `22AF` (raise()'s exit(3) tail); END `5948` (`%d` arm), `3692` (debrief message arm); DSWAP `0599` (DOS open or report), `0848` (colour registers); VGAME `104E:0082` (far sine entry), `1058:000E` (far HUD colour setup). 313 fully covered instructions, 341 caught mutations, 70 optimized seed checks; 399 CTests, 58 identical routes / 57 fresh interpreter sessions. Gate 1,604 s, acceptance 1,731 s with presentation overlap. Five more proofs were held back: MPS_LOGO `27C2` and `163A` (their real-route proof found no call on the routes tried), VGAME `14C2:00B7`, `1058:000A` and `1058:0012` (the lockstep span table was keyed by IP, so the new rows would have aliased same-IP routines in other segments; batch ah added the segment key). Blocked as not routines or already matched: PLAYER `1BBA`, `1D50`, `1C3D`, `1D02` (entries inside the printf dispatcher `1BB6`, whose own proof has no verdict), `222D` (a switch table), `1FCF` (padding), END `4FA4` (run inline by `end_exit`), VGAME `11322`, `11372`, `11ED5` (already matched under other entries), MPS_LOGO `039A` (already matched). Hand-back routines `2444`, `2c10` and the formatter and runtime bodies whose block macros the private audit cannot enumerate are marked partial for that audit only; credit is by byte coverage. |
+| ah | 20 Oct | 1,168 | 787 named bytes | 6 routines: the START quiz (`057E` draws the screen, `0703` takes the pick and judges it, `0786` highlights the hovered button; the census rows `0583`, `06E0`, `072E` and `0788` are mid-instruction pieces of these three, credited by byte; proved on `quiz_right` with `--fix QUIZ`), PLAYER `1BB6` (printf's conversion dispatch, 471 bytes, 65 instructions; seeds now compare 6,124-6,146 states each, the earlier proof's seeds had skipped nearly all; it also credits the census rows `1BBA` and `1D50`, whose first bytes are mid-instruction), VGAME `1058:000A` and `1058:0012` (far entries of the HUD pass and layout switch). 328 fully covered instructions, 275 caught mutations, 30 optimized seed checks; 405 CTests, 58 identical routes / 57 fresh interpreter sessions. Gate 1,783 s, acceptance 1,729 s. The lockstep span table gained a segment-keyed companion (`SPANS_SEG`) because `1058:000A` and `1058:0012` share addresses with routines in other segments. VGAME `14C2:00B7` was proved too but is the same code as the existing `1452:07B7` (linear 14CD7), so it was dropped; a first gate run caught the duplicate through its routine tally. Three claimed-but-uncredited bytes come from `1BB6`'s shared tail at `1D52`, entered from two arms. |
 | ai | 20 Oct | 1,168 | 41 census bytes (routes) | five new damaged-install routes, no new routine: `err_start_no_world` (LB.WLD removed: START's run-time error banner), `err_start_terrain_files` (LB.3DG removed, LB.3DT magic zeroed), `err_vgame_no_photo` (PHOTO.3DX removed: VGAME's file-error arm, a key already pressed so the matched `getch` never waits), `err_dswap_no_swap_palette` (LABSLOGO.SS, START.EXE and SWAP.PAL removed: MPS_LOGO's not-found arm and DSWAP's fatal-text printer) and `err_end_no_tass` (TASS.PIC removed after the ejection flow); 63 routes / 62 sessions identical between the engines; together they run 581 never-run census code bytes that no routine covers yet. Also: VGAME `D9E7` (set the scene origin) read its three arguments before its stores, but the original reads each just before its store: the commit-keyed seed of step 7c found it when DS and SS overlap (CTest `matched_scene_origin_stack_alias`); the dead-list row VGAME `0EBEA` (9 bytes) was removed because a route reaches it; `tools/presentation_check.py` names the two routes that start VGAME but end at a file error as `NO_FLIGHT_ROUTES`. Four gate attempts: one 7c mismatch (`D9E7`), one event-limit overrun (an open `getch` wait: a key typed after 1.4M clocks waits, before 1.0M does not), one presentation pairing requirement, then pass. Gate and acceptance 1,658 s, 406 CTests. |
-| aj | 20 Oct | 1,172 | 277 named bytes | 4 routines on the new damaged-install routes: DSWAP `0754` (the fatal-error text tail: clear the screen, print the file name and message, end the program), MPS_LOGO `0146:1364` (the formatter's field output: sign, padding and text; the census row `27C2`/`1362` is two bytes of jump in front of it that no route takes), VGAME `0CDD` (show a message line and wait for a key) and END `41CA` (the fatal-error screen; the census row `419A` is a mid-instruction piece beside it). 116 fully covered instructions, 122 caught mutations, 20 optimized seed checks; 410 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,770 s, acceptance 1,753 s with presentation overlap (a keyed baseline for 63 routes now exists). First attempt failed at the commit-keyed seed: the START quiz judge's fixture matched the pick to the answer only by chance, so one seed never ran the right-answer arm; it now forces both verdicts in every fourth state each. Of about 25 rows given to proof agents from the new routes, 21 were already matched under other names or are not routines (START `09800` `09848` `09873` `07D71` `07E88` `0963E`, MPS_LOGO `007E2` `02CF4` `021D2` `0171A`, VGAME `0F5F2` `0895E` `009A0` `0E586` `0F1E0`, END `0400F`, and shared DOS tails). |
-| ak | 21 Oct | 1,181 | 875 named bytes | 9 routines in rows that routes run but no routine covered: DSWAP `023E` (draw the disk-swap screen), `03A7` (open a picture file, decode it onto a page, close it), `0AD5` (the picture decoder's start) and `0BCF` (its code and table step: it leaves by `JMP BP`, handled by a `run_to_ret` rule and the pop-distance exemption); MPS_LOGO `0006:0044` (clear the text screen), `0006:000C` (`fatal_error`) and `0146:01D3` (the whole `exit()` entry through the shared tail; `01DA`/`01E2` are entered by no route, so the earlier `_exit` proof stays private); END `3B9A` (put up the report picture) and `03D9` (debriefing menu, rating and tally: D12 has two fix sites inside, so the body declines while D12 is on, like five other bodies). 379 fully covered instructions, 283 caught mutations, 45 optimized seed checks; 419 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,719 s, acceptance 1,606 s with presentation overlap. Fixtures force each branch outcome in a fixed share of states and were run at six extra seeds. The private audit needed two allowances: bodies without block macros take the placeholder prefix, and a hook inside the routine is accepted when a covering `fix_inside` guard declines it. |
-| al | 21 Oct | 1,189 | 495 named bytes | 8 PLAYER routines in rows that routes run but no routine covered: `1A7E` (printf's format scan, with the stack check inlined), `18C4` (`fprintf`), `1476` (assert failure), `1839` (write a message to the console), `15BA` (start-up check failed), `223A` (`raise`: it hands its tail to the already matched `22AF`, so no double credit), `026B:0244` (program the timer chip; a segment-keyed span and a `POPF_STOPS` row because `0000:0244` is another routine) and `0010` (`main`; the dossier span was one byte short of its RET, which had skipped every state). 228 fully covered instructions, 255 caught mutations, 40 optimized seed checks; 427 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,579 s, acceptance 1,549 s with overlap. Four claimed-but-uncredited bytes (inlined stack check). The batch copy of the private audit accepts a call inside a block for a `partial` body (the lockstep compares the clocks). |
-| am | 21 Oct | 1,193 | 114 named bytes | the pilot outside the seven programs, four routines in the overlay modules: MISC `0007:0000` (DOS console input with echo), `000A` (BIOS key-waiting test, INT 16h) and `0018` (clear the BIOS shift flags), and MGRAPHIC `019C:023A` (a character's width in a font; it reads its relocated data-segment word from the loaded code, and the proof fixture patches that word to four values so a hard-coded 0 is caught). The module tokens for the launcher, graphics library and sound drivers are defined in `matched.c`. 55 fully covered instructions, 124 caught mutations, 20 optimized seed checks; 432 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,586 s, acceptance 1,572 s. The commit-keyed seed also exposed a thin fixture in the batch t sky routine `0FB2:0012` (162 of 164 instructions at one seed): its fixture now forces the missed arm in one state in four (22 seeds checked; its 69 mutations were re-run against the new fixture and all 69 are still caught, `D:/f117-gate/p2-vgame-fb32-recheck/`). The two INT-wrapper fixtures answer INT 16h/21h per state through a new harness switch (`g_kbd_force`). |
-| an | 21 Oct | 1,207 | 416 named bytes | 14 routines outside the seven programs: MISC `0029` (game-port joystick button test, proved on `setup_calibration`), F117.COM `03CB` (the launcher's overlay loader: the first launcher routine; it proves `.COM` addressing and CS-relative loads on a real load; a `PROGRAM_ENDS` row for its error arms and a narrowed code-written window, because its variables follow its code), MGRAPHIC far thunks `0203` `020E` `0219` `0224` `022F` and the frame thunk `019A`, and MGRAPHIC's drawing-surface getters and setters `07C3` `07C8` `07CD` `07E4` `080F` and table read `12BA`. 178 fully covered instructions, 424 caught mutations, 70 optimized seed checks; 446 CTests, 63 routes / 62 sessions identical, three full matched seeds clean. Gate 1,728 s. |
+| aj | 20 Oct | 1,172 | 277 named bytes | 4 routines on the new damaged-install routes: DSWAP `0754` (the fatal-error text tail: clear the screen, print the file name and message, end the program), MPS_LOGO `0146:1364` (the formatter's field output: sign, padding and text; the census row `27C2`/`1362` is two bytes of jump in front of it that no route takes), VGAME `0CDD` (show a message line and wait for a key) and END `41CA` (the fatal-error screen; the census row `419A` is a mid-instruction piece beside it). 116 fully covered instructions, 122 caught mutations, 20 optimized seed checks; 410 CTests. Gate 1,770 s, acceptance 1,753 s with presentation overlap (a keyed baseline for 63 routes now exists). First attempt failed at the commit-keyed seed: the START quiz judge's fixture matched the pick to the answer only by chance, so one seed never ran the right-answer arm; it now forces both verdicts in every fourth state each. Of about 25 rows given to proof agents from the new routes, 21 were already matched under other names or are not routines (START `09800` `09848` `09873` `07D71` `07E88` `0963E`, MPS_LOGO `007E2` `02CF4` `021D2` `0171A`, VGAME `0F5F2` `0895E` `009A0` `0E586` `0F1E0`, END `0400F`, and shared DOS tails). |
+| ak | 21 Oct | 1,181 | 875 named bytes | 9 routines in rows that routes run but no routine covered: DSWAP `023E` (draw the disk-swap screen), `03A7` (open a picture file, decode it onto a page, close it), `0AD5` (the picture decoder's start) and `0BCF` (its code and table step: it leaves by `JMP BP`, handled by a `run_to_ret` rule and the pop-distance exemption); MPS_LOGO `0006:0044` (clear the text screen), `0006:000C` (`fatal_error`) and `0146:01D3` (the whole `exit()` entry through the shared tail; `01DA`/`01E2` are entered by no route, so the earlier `_exit` proof stays private); END `3B9A` (put up the report picture) and `03D9` (debriefing menu, rating and tally: D12 has two fix sites inside, so the body declines while D12 is on, like five other bodies). 379 fully covered instructions, 283 caught mutations, 45 optimized seed checks; 419 CTests. Gate 1,719 s, acceptance 1,606 s with presentation overlap. Fixtures force each branch outcome in a fixed share of states and were run at six extra seeds. The private audit needed two allowances: bodies without block macros take the placeholder prefix, and a hook inside the routine is accepted when a covering `fix_inside` guard declines it. |
+| al | 21 Oct | 1,189 | 495 named bytes | 8 PLAYER routines in rows that routes run but no routine covered: `1A7E` (printf's format scan, with the stack check inlined), `18C4` (`fprintf`), `1476` (assert failure), `1839` (write a message to the console), `15BA` (start-up check failed), `223A` (`raise`: it hands its tail to the already matched `22AF`, so no double credit), `026B:0244` (program the timer chip; a segment-keyed span and a `POPF_STOPS` row because `0000:0244` is another routine) and `0010` (`main`; the dossier span was one byte short of its RET, which had skipped every state). 228 fully covered instructions, 255 caught mutations, 40 optimized seed checks; 427 CTests. Gate 1,579 s, acceptance 1,549 s with overlap. Four claimed-but-uncredited bytes (inlined stack check). The batch copy of the private audit accepts a call inside a block for a `partial` body (the lockstep compares the clocks). |
+| am | 21 Oct | 1,193 | 114 named bytes | the pilot outside the seven programs, four routines in the overlay modules: MISC `0007:0000` (DOS console input with echo), `000A` (BIOS key-waiting test, INT 16h) and `0018` (clear the BIOS shift flags), and MGRAPHIC `019C:023A` (a character's width in a font; it reads its relocated data-segment word from the loaded code, and the proof fixture patches that word to four values so a hard-coded 0 is caught). The module tokens for the launcher, graphics library and sound drivers are defined in `matched.c`. 55 fully covered instructions, 124 caught mutations, 20 optimized seed checks; 432 CTests. Gate 1,586 s, acceptance 1,572 s. The commit-keyed seed also exposed a thin fixture in the batch t sky routine `0FB2:0012` (162 of 164 instructions at one seed): its fixture now forces the missed arm in one state in four (22 seeds checked; its 69 mutations were re-run against the new fixture and all 69 are still caught, `D:/f117-gate/p2-vgame-fb32-recheck/`). The two INT-wrapper fixtures answer INT 16h/21h per state through a new harness switch (`g_kbd_force`). |
+| an | 21 Oct | 1,207 | 416 named bytes | 14 routines outside the seven programs: MISC `0029` (game-port joystick button test, proved on `setup_calibration`), F117.COM `03CB` (the launcher's overlay loader: the first launcher routine; it proves `.COM` addressing and CS-relative loads on a real load; a `PROGRAM_ENDS` row for its error arms and a narrowed code-written window, because its variables follow its code), MGRAPHIC far thunks `0203` `020E` `0219` `0224` `022F` and the frame thunk `019A`, and MGRAPHIC's drawing-surface getters and setters `07C3` `07C8` `07CD` `07E4` `080F` and table read `12BA`. 178 fully covered instructions, 424 caught mutations, 70 optimized seed checks; 446 CTests. Gate 1,728 s. |
 | ao | 21 Oct | 1,221 | 445 named bytes | 14 MGRAPHIC routines (`0581`, `0C5D`, `11F1`, `0EE6`, `0ED5`, `1131`, `07AC`, `055B`, `07FE`, `07D5`, `0791`, `0814`, `1251`, `12E0`), with the stricter harness: the clock folded into every port-access check and bodies required to stop at a timer/PIC wake write; 348 mutations, 1,854 s |
 | ap | 22 Oct | 1,227 | 178 named bytes | 6 MGRAPHIC routines: `07A3` (copy a CS word), `12D5` (ES from a CS segment table), `12DD` and `12DF` (bare far returns), `0E30` (clip-and-blit entry stub) and `0E41` (clip a blit rectangle against two bounds per axis, then far-call `0EE6`); 110 mutations, 1,719 s. The gate's step 7c at the commit seed found a harness gap, not a routine fault: the nested run of original code a body calls followed a fault vector to the clock limit while the oracle stops at the first fault (VGAME `5852`, fixed in `e6464c9`) |
 | aq | 22 Oct | 1,236 | 244 named bytes | 9 MGRAPHIC routines: `04A4` (the largest free DOS block), `04B6` (enter mode 13h and check it took), `04CA` and `04E4` (screen off and on, each after a vertical retrace), `04FE` (allocate the picture arena or return a page segment), `057A` (the pixel plot's tail, entered from outside: routes never enter `056E`), `0826` (return the constant 3; only `key_tour` runs it), `09A8` (take the largest free block for the arena) and `1118` (clear a 64,000-byte page). `0561`, `07B2`, `07DB` and `0804` are inner entries of matched bodies, credited once there. 278 mutations, 1,623 s. The harness gained an I/O answer salt, a settable INT 10h mode answer and a return frame for `057A` |
 | ar | 22 Oct | 1,245 | 1,500 named bytes | 9 larger MGRAPHIC routines: `0599` (a Bresenham line; it runs the pixel plot's tail `057A` and `0581` inline), `071A` (dashed rows), `09D4` (release the arena `09A8` took), `0B0C` (compile a bitmap into rows through `0A02`, `0A6A`, `0A4D`), `0B70` (clip a sprite and draw it), `0C95` (a scaled, mirrored, clipped run-length sprite; it reads the two bytes it patches into its own code), `0F3D` (horizontal span fills in four modes; routes cover under half of it), `1188` (recolour in a rectangle) and `125C` (palette flash and screen jolt). 491 mutations, 1,665 s. A 13-seed sweep before the gate found two older defects, fixed in the same commit: VGAME `1377:0874` and its three entries ran on past a graphics-controller OUT that wakes the run loop, and VGAME `120A:0815` had a self-write window that missed its escape code below the entry |
-| as | 22 Oct | 1,248 | 263 named bytes | MGRAPHIC `0A02` (open the bitmap buffer and write its dimensions), `0A4D` (close it and advance the arena by its rounded paragraph count) and `0A6A` (encode a row, trimming leading and trailing zeros). All 94 instructions covered, eleven private seeds per routine, all 79 mutations caught; exact 66-checkpoint game and 26-checkpoint boot proofs. Three whole-table pre-gate seeds and the full gate passed: 489 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation on every route and boot N=4/9; acceptance 1,621 s. |
-| at | 22 Oct | 1,251 | 429 named bytes | MGRAPHIC `0BC0` (clip sprite bounds), `061A` (draw a font string: colour controls, variable widths, clipping, opaque/transparent glyphs) and `0F3B` (the one-instruction mode-zero prefix to `0F3D`, with its continuation left to the existing code). All 161 implemented instructions covered, eleven private seeds per entry, 108 mutations caught, exact game and boot proofs. The bounded prefix earns only its two bytes, and its wrong-flag mutants are caught. All 1,248 existing routine reports remained identical at seed `0x27182818`. Three pre-gate whole-table seeds, 492 CTests, 63 routes / 62 fresh interpreter sessions, all-route N=1 presentation and boot N=4/9 passed; acceptance 1,595 s. |
-| au | 22 Oct | 1,256 | 330 named bytes | MGRAPHIC text-string cluster: `02B9` and `037F` (clip helpers), `03D1` (the shared far-return tail), `03E8` (shared set-up, leaves by JMP SI) and `03C9` (a front end). All 130 implemented instructions covered, five private seeds per entry, 212 mutations caught, exact game and boot proofs on routes that run every branch (`central_america_ground_training` for `02B9` and `03D1`, `cargo_pilot` for `03E8`, `ibm_boot` for `03C9`, `full_cycle` for `037F`; `full_cycle` misses the rare arms of the others). `02B9`, `037F`, `03E8` and `03C9` are audited as partial: a rejected string leaves through the shared `03D1` tail (run inline or handed back to), `03E8` leaves a dead restore arm unwritten, `03C9` calls the original `03E8`. All 1,251 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. 497 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,920 s. |
-| av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, five private seeds per entry, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,727 s. |
-| aw | 22 Oct | 1,268 | 945 named bytes | START selection change `5E6F`, theatre page `5A8A`, message panel `6045` and panel rectangles `5FFA`; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query. All 458 instructions covered, five private seeds per routine, all 372 mutations caught, exact boot and real-route proofs. The private route proofs are thin for `5A8A`/`5FFA` (once each), `6045` (three times) and `1D69` (twice); the full gate runs each in 27 or more sessions. The theatre page has 35 fixture-only instructions. Six whole-table pre-gate seeds clean; all 1,261 old reports unchanged at `0x27182818`. 509 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,671 s. |
-| ax | 23 Oct | 1,287 | 271 named bytes | 19 leaf routines: START cel steps, BIOS ticks, mouse position, flush count and free-or-exit; END ticks; MISC BIOS key read; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode, exit checksum and formatter word/pointer readers; PLAYER picture close/end flag and interrupt-vector get/set. All 141 instructions covered, 344 caught mutations, 95 optimized seed checks. Six whole-table prechecks pass: 1,266 old reports identical, two changes explained by exact callee-return recovery and the existing mid-run probe's random draw. The harness now rejects contradictory unfinished I/O, checks all INT clocks and recognizes exact original returns with extra stack pops without granting completion credit; 19 synthetic cases pass. 528 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, event limits, N=1 presentation and boot N=4/9 pass. Added gameplay credit 230 bytes, fixture-only credit 41; core gate 1,584 s, acceptance 1,795 s. |
-| loadbase | 23 Oct | 1,287 | 0 (infrastructure) | Relocation proof infrastructure, no new routine: the harness loads the launcher, overlays and sound drivers at 0800h (CLI controls permit zero or 0400h..0800h), applies generated relocation metadata at both image reloads and compares named coverage against relocated bytes; the seven ordinary programs keep their historical zero base. All 1,287 zero-base reports identical; all 73 affected entries pass at 0400h and 0800h without skips; a planted DS=0 mutant invisible at zero is caught at both nonzero bases. A graphics fixture's empty renderer page table was repaired after a nonzero-base trace showed code being overwritten (a fixture repair, not a game bug). The new CMake loader target changed the interpreter key, so the closing audit now checks the fresh references the fallback actually used. 529 CTests, six whole-table precheck seeds, 63 routes / 62 fresh interpreter sessions, both timing profiles, N=1 presentation and boot N=4/9; core gate 1,369 s. Evidence also in `D:/f117-gate/modules-loadbase-20261022/` |
-| ay | 23 Oct | 1,290 | 1,114 named bytes | First sound-driver overlay routines: RSOUND.LOG `021B` (private-stack wrapper around two tick callees, `roland_boot`), ASOUND.LOG `0344` (AdLib timer tick service, `full_cycle`) and ISOUND.LOG `0253` (PC-speaker sequencer tick, `ibm_boot`). 420 instructions covered, five private seeds per routine, all 199 mutations caught, exact boot and real-route proofs. `0344` and `0253` are audited as partial: each stops at the counter-0 control write (a run-loop wake) and the original finishes the reload, STI and RET. Real routes run only part of `0344` and `0253` (no route reaches the sweep arms or the stream readers); lockstep holds the rest. Two harness hunks: a coverage-origin line for each of the two, and a self-write exemption for ISOUND.LOG's call counter at `cs:0251`. Gameplay credit +698 bytes, fixture-only +416 (named code no route runs joins the all-code scope). Whole-table pre-check at `0xadb6a420a86f`: 1,290 routines, 0 mismatching. 532 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,896 s. |
-| az | 23 Oct | 1,303 | 849 named bytes | First sound-driver leaf families, 13 routines in one gate: ASOUND.LOG `0515` (voice-record reset), `058F` (resets six records; hands back at its tail jump into `0515`, which runs as its own matched callee), `0A1C` and `0B30` (OPL operator-register writers, stubbed `02F6`) and `0333` (noise step, far return); ASOUND.117 `03C4` (its overlay twin); ISOUND.117 `0163` (sequencer and speaker-gate reset) and `0140` (song-state setup, calls the original `0168`); RSOUND.LOG `0171` (sequencer state, 63-iteration loop handed back at the loop head), `040C` and `020A`; RSOUND.117 `0B42` and `0B9C`. 272 instructions covered, five private seeds per routine, all 366 mutations caught, exact boot and real-route proofs (21,535 real calls for `03C4`, 8,155 for `0B9C`). Audit marks `058F`, `0140`, `0163` and `0171` partial. **Defect fixed:** the commit-keyed pre-check seed exposed START `28CE` (batch ax): the body read all four stack arguments up front, but the original reads `count` after it has stored `x`, so a stack overlapping the data segment gave a different AX (`28CE` now reads each argument through BP in the original's order; 14 seeds of 20,000 states and two whole-table seeds clean). 545 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,897 s. |
-| ba | 23 Oct | 1,322 | 1,048 named bytes | 19 sound-driver routines in one gate: ASOUND.LOG `019A` (chip init, 255 OPL register writes through stubbed `0300`) and the OPL register-writer family `07DC` `09B6` `0A00` `0A62` `0AAA` `0AEC` `0BB8` (stubbed `02F6`); ASOUND.117 `0839` and `05A5`; ISOUND.117 `0008`, `05A4`, `0626` and `0102` (speaker noise/vibrato tick with a forced vibrato arm); ISOUND.LOG `010B`; RSOUND.LOG `02BE`, `0580` and `0FA2` (six voice records, `08BE` stubbed); RSOUND.117 `0E2A`. 397 instructions covered, five private seeds per routine, all 595 mutations caught, exact boot and real-route proofs (23,898 real calls for `0102`, 53,520 for `0839`; `02BE`, `0008` and `010B`'s sibling arms are reached once or by lockstep only). Eight bodies are audited as partial (calls into original or already-matched code, claims the audit cannot count). **Defect fixed:** the commit-keyed seed exposed END `100D` (batch ad era): its block was checked with `room(c, 8)` but a CALL followed, and `guest_call` charges the CALL itself, so a stop limit landing exactly there ran the CALL one instruction late; the three call sites now reserve `+ 1`. A scan found 39 further bodies with the same shape (many false positives: bodies that claim the call in a separate `SM4_NEED`); all reserve `+ 1` now, which can only make a body decline sooner. 564 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 1,991 s. |
-| bb | 24 Oct | 1,355 | 1,623 named bytes | 33 more sound-driver routines in one gate: ASOUND.LOG `0640` `06AA` `0BE2` (eight calls to the matched OPL writers) `05DA` `0618` `05F7` (open/close/dispatch entries, relocated segment words, `05F7`'s indirect table call proved whole); ASOUND.117 `0E5E` family (`0DCE` `0D1C` `0C2E`), `03D8`/`03D5` (one body, claimed once), `0B90`, and the voice-reset group `05E7` with six thunk prefixes (`05E3` `05DC` `05D5` `05CE` `05C7` `05C0`, registered at the jump-only entry `05E7`); RSOUND.117 voice-start family (`0EDB` owns the shared tail, `0EBD` `0EC7` `0ED1` as bounded prefixes), `0444` `046D` `03D6` (stub `0C7C`); RSOUND.LOG `05F6` `05CC` `0611`; ISOUND.LOG `0051`; ISOUND.117 `008E` `00B5`. 641 instructions covered, five private seeds per routine, all 877 mutations caught. **Two audit catches, both fixed before the gate:** `05F7`'s two exit paths both claimed the shared tail at `0616`, which the disjointness check rejects — restructured to a single shared label; `05F6`'s fixture let two of its table's real targets (`0458`, `048E`) run as original code half the time, which would have credited their bytes to `05F6` without a proof — the fixture now always stubs them. Also added the sixth design rule "hardware wait loop" (unused: a first read found all 8 candidate loops can be completed by a fixture, so they were matched instead of exempted) and F117.COM's launcher as a reviewed "program launcher" original entry. 597 CTests, 63 routes / 62 fresh interpreter sessions, N=1 presentation and boot passed; acceptance 2,032 s. |
-| bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught, exact boot and real-route proofs. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#validated-capture-and-reference-corrections-24-october-2026)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests, 63 routes / 62 fresh interpreter sessions, both timing profiles, three matched seeds; gate 1,741 s. Commit `51a70f1` |
-| bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,822 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
-| bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests, 63 routes / 62 fresh interpreter sessions, three matched seeds; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
-| be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests, 63 identical routes / 62 fresh interpreter sessions, three matched seeds, reach/event limits and presentation pass. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`; commit `a172459`, [CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238). |
-| bf | 25 Oct | 1,400 | 61 named bytes | RSOUND.LOG one-shot timer installer in four entries: `0251` (guard, vector, PIT0 control write; 15 instructions), `027C` (reload low/high bytes; stops after the second write), `0289` (POP AX, STI; stops after the STI), `028D` (RET). 25 fixture instructions, 46 mutations caught; 20 optimized seed checks. Two whole-table pre-check seeds (`0x4fc6ba6c9f0d`, `0x5EED0BF1`) pass. 644 CTests, 63 identical routes / 62 fresh interpreter sessions, 1,400 matched routines at three seeds, reach/event limits clean; acceptance 1,642 s. Evidence `D:/f117-gate/p2-batch-bf-accept/`. |
-| bg | 26 Oct | 1,425 | 473 named bytes | 25 sound-driver entries in one gate: ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57` `0B74` `0B75` and seven wrappers `0887`..`08FC`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`; RSOUND.LOG `02D4` `0310`. 255 fixture instructions, 427 mutations caught, 125 optimized seed checks; two whole-table pre-check seeds (`0xaebbf86cfffe`, `0x5EED0BF2`) zero mismatches. The six MPU/OPL wait-loop fixtures force timeout and success by state index. Gate 1,970 s. |
-| bh | 26 Oct | 1,430 | 1,410 named bytes | The five larger bg4 routines: ASOUND.117 `1048` `123E`, ASOUND.LOG `0BFC`, ISOUND.117 `062E` `0443`. 614 fixture instructions, 188 mutations caught, 25 optimized seed checks; three whole-table pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`, `0x20261027`) zero mismatches. The fixtures of the accepted VGAME `4973` and ASOUND.117 `0C2E` were corrected (a macro-local name clash had made their written values address-derived) and re-proved. Gate 1,723 s. |
-| bi | 26 Oct | 1,432 | 1,393 named bytes | ASOUND.117 `0E8A`, RSOUND.117 `0002`. 542 fixture instructions, 122 mutations caught. Gate 1,714 s. |
-| bj | 26 Oct | 1,436 | 283 named bytes | ASOUND.117 `0720` `0694`, ASOUND.LOG `0140`, RSOUND.117 `050A`. 107 fixture instructions, 124 mutations caught. Gate 1,694 s. ASOUND.LOG `00FE` withdrawn after a real-route divergence. |
-| bk | 27 Oct | 1,444 | 418 named bytes | ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`, RSOUND.117 `0E4C` `0CAE`. 140 fixture instructions, 228 mutations caught, 40 optimized seed checks. Three whole-table pre-check seeds and all 53 reached routes pass. 688 CTests, 63 identical routes / 62 fresh interpreter sessions; acceptance 1,659 s. Evidence `D:/f117-gate/p2-batch-bk-accept/`. |
-| bl | 27 Oct | 1,477 | 892 named bytes | 33 routines: eight Roland (RSOUND.LOG `0390` `0306` `03FA`, RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`), two ISOUND.117 (`0079` `0045`), six ASOUND.117 helpers (`0BD4` `0C08` `0B76` `197B` `018F` `0210`) and 17 ASOUND.117 song/voice-start wrappers. 334 fixture instructions, 900 mutations caught, 165 optimized seed checks. Two whole-table pre-check seeds and all 49 reached routes pass. 721 CTests, 63 identical routes / 62 fresh interpreter sessions; acceptance 2,078 s. Evidence `D:/f117-gate/p2-batch-bl-accept/`. |
-| bm | 27 Oct | 1,487 | 3,018 named bytes | Ten routines from twelve proof agents: RSOUND.117 `1225`, ASOUND.117 `1BCC` `1BAF`, ISOUND.117 `0023` `07CF`, END `57B0` (the 92-byte dispatch arm; 11 `FATAL_JUMPS` rows), ISOUND.LOG `00B8` (dispatch logic only: its arms are stubbed), ASOUND.LOG `0804` and `0D1A` (partial, `107C` unclaimed), ASOUND.117 `1360` (one body for its 13 arms). 1,036 fixture instructions, 313 mutations caught. 731 tests, 63 identical routes / 62 fresh interpreter sessions; gate 1,797 s. Six bytes are claimed but uncredited: the two exits from END `57B0` into other arms. Held: ASOUND.117 `08F94` (no census row covers its bytes yet), RSOUND.LOG `08BE` partial (guard review). Evidence `D:/f117-gate/p2-batch-bm-accept/`. |
-| bm2 | 27 Oct | 1,487 | 0 (fix only) | Call-budget harness repair: after a call into original code only the exact returned clock is exempt, never later C instructions. It found two accepted bodies under-claiming room, both ours: START `8CA8` (no room claimed before its two INT 21h) and START `2F4C` (claim 33, longest path 35). Fixed, whole table at three seeds 0 mismatching, gate 1,854 s, 731 tests, 63 routes / 62 fresh sessions. Evidence `D:/f117-gate/p2-batch-bm2-accept/`, `bn-budget/`. |
+| as | 22 Oct | 1,248 | 263 named bytes | MGRAPHIC `0A02` (open the bitmap buffer and write its dimensions), `0A4D` (close it and advance the arena by its rounded paragraph count) and `0A6A` (encode a row, trimming leading and trailing zeros). All 94 instructions covered, eleven private seeds per routine, all 79 mutations caught; exact 66-checkpoint game and 26-checkpoint boot proofs. Three whole-table pre-gate seeds passed; 489 CTests; acceptance 1,621 s. |
+| at | 22 Oct | 1,251 | 429 named bytes | MGRAPHIC `0BC0` (clip sprite bounds), `061A` (draw a font string: colour controls, variable widths, clipping, opaque/transparent glyphs) and `0F3B` (the one-instruction mode-zero prefix to `0F3D`, with its continuation left to the existing code). All 161 implemented instructions covered, eleven private seeds per entry, 108 mutations caught. The bounded prefix earns only its two bytes, and its wrong-flag mutants are caught. All 1,248 existing routine reports remained identical at seed `0x27182818`. Three pre-gate whole-table seeds and 492 CTests passed; acceptance 1,595 s. |
+| au | 22 Oct | 1,256 | 330 named bytes | MGRAPHIC text-string cluster: `02B9` and `037F` (clip helpers), `03D1` (the shared far-return tail), `03E8` (shared set-up, leaves by JMP SI) and `03C9` (a front end). All 130 implemented instructions covered, 212 mutations caught, exact game and boot proofs on routes that run every branch (`central_america_ground_training` for `02B9` and `03D1`, `cargo_pilot` for `03E8`, `ibm_boot` for `03C9`, `full_cycle` for `037F`; `full_cycle` misses the rare arms of the others). `02B9`, `037F`, `03E8` and `03C9` are audited as partial: a rejected string leaves through the shared `03D1` tail (run inline or handed back to), `03E8` leaves a dead restore arm unwritten, `03C9` calls the original `03E8`. All 1,251 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. 497 CTests; acceptance 1,920 s. |
+| av | 22 Oct | 1,261 | 129 named bytes | MGRAPHIC text-string cluster, the rest: `031D` (clip B), and the front ends `02A1`, `02B0`, `0314`, `0376`. All 51 implemented instructions covered, 211 mutations caught, exact game and boot proofs (`persian_gulf_air_training` for `031D`, whose cut arm `full_cycle` never reaches; `full_cycle` for the front ends). All five are audited as partial (they call the original `03E8` or hand back at `03D1`/`03CC`); the private audit ran before the gate this time. All 1,256 existing routine reports unchanged at seed `0x27182818`; six pre-gate whole-table seeds clean. Every route-executed MGRAPHIC byte is now matched. 502 CTests; acceptance 1,727 s. |
+| aw | 22 Oct | 1,268 | 945 named bytes | START selection change `5E6F`, theatre page `5A8A`, message panel `6045` and panel rectangles `5FFA`; DSWAP `2097` and SETUP `1D69` near-heap malloc; PLAYER `0520` video-mode query. All 458 instructions covered, all 372 mutations caught. The private route proofs are thin for `5A8A`/`5FFA` (once each), `6045` (three times) and `1D69` (twice); the full gate runs each in 27 or more sessions. The theatre page has 35 fixture-only instructions. Six whole-table pre-gate seeds clean; all 1,261 old reports unchanged at `0x27182818`. 509 CTests; acceptance 1,671 s. |
+| ax | 23 Oct | 1,287 | 271 named bytes | 19 leaf routines: START cel steps, BIOS ticks, mouse position, flush count and free-or-exit; END ticks; MISC BIOS key read; DSWAP flush count, current drive and empty picture hook; SETUP calibration counters; MPS_LOGO video mode, exit checksum and formatter word/pointer readers; PLAYER picture close/end flag and interrupt-vector get/set. All 141 instructions covered, 344 caught mutations, 95 optimized seed checks. Six whole-table prechecks pass: 1,266 old reports identical, two changes explained by exact callee-return recovery and the existing mid-run probe's random draw. The harness now rejects contradictory unfinished I/O, checks all INT clocks and recognizes exact original returns with extra stack pops without granting completion credit; 19 synthetic cases pass. 528 CTests. Added gameplay credit 230 bytes, fixture-only credit 41; core gate 1,584 s, acceptance 1,795 s. |
+| loadbase | 23 Oct | 1,287 | 0 (infrastructure) | Relocation proof infrastructure, no new routine: the harness loads the launcher, overlays and sound drivers at 0800h (CLI controls permit zero or 0400h..0800h), applies generated relocation metadata at both image reloads and compares named coverage against relocated bytes; the seven ordinary programs keep their historical zero base. All 1,287 zero-base reports identical; all 73 affected entries pass at 0400h and 0800h without skips; a planted DS=0 mutant invisible at zero is caught at both nonzero bases. A graphics fixture's empty renderer page table was repaired after a nonzero-base trace showed code being overwritten (a fixture repair, not a game bug). The new CMake loader target changed the interpreter key, so the closing audit now checks the fresh references the fallback actually used. 529 CTests, six whole-table precheck seeds; core gate 1,369 s. Evidence also in `D:/f117-gate/modules-loadbase-20261022/` |
+| ay | 23 Oct | 1,290 | 1,114 named bytes | First sound-driver overlay routines: RSOUND.LOG `021B` (private-stack wrapper around two tick callees, `roland_boot`), ASOUND.LOG `0344` (AdLib timer tick service, `full_cycle`) and ISOUND.LOG `0253` (PC-speaker sequencer tick, `ibm_boot`). 420 instructions covered, all 199 mutations caught. `0344` and `0253` are audited as partial: each stops at the counter-0 control write (a run-loop wake) and the original finishes the reload, STI and RET. Real routes run only part of `0344` and `0253` (no route reaches the sweep arms or the stream readers); lockstep holds the rest. Two harness hunks: a coverage-origin line for each of the two, and a self-write exemption for ISOUND.LOG's call counter at `cs:0251`. Gameplay credit +698 bytes, fixture-only +416 (named code no route runs joins the all-code scope). Whole-table pre-check at `0xadb6a420a86f`: 1,290 routines, 0 mismatching. 532 CTests; acceptance 1,896 s. |
+| az | 23 Oct | 1,303 | 849 named bytes | First sound-driver leaf families, 13 routines in one gate: ASOUND.LOG `0515` (voice-record reset), `058F` (resets six records; hands back at its tail jump into `0515`, which runs as its own matched callee), `0A1C` and `0B30` (OPL operator-register writers, stubbed `02F6`) and `0333` (noise step, far return); ASOUND.117 `03C4` (its overlay twin); ISOUND.117 `0163` (sequencer and speaker-gate reset) and `0140` (song-state setup, calls the original `0168`); RSOUND.LOG `0171` (sequencer state, 63-iteration loop handed back at the loop head), `040C` and `020A`; RSOUND.117 `0B42` and `0B9C`. 272 instructions covered, all 366 mutations caught (21,535 real route calls for `03C4`, 8,155 for `0B9C`). Audit marks `058F`, `0140`, `0163` and `0171` partial. **Defect fixed:** the commit-keyed pre-check seed exposed START `28CE` (batch ax): the body read all four stack arguments up front, but the original reads `count` after it has stored `x`, so a stack overlapping the data segment gave a different AX (`28CE` now reads each argument through BP in the original's order; 14 seeds of 20,000 states and two whole-table seeds clean). 545 CTests; acceptance 1,897 s. |
+| ba | 23 Oct | 1,322 | 1,048 named bytes | 19 sound-driver routines in one gate: ASOUND.LOG `019A` (chip init, 255 OPL register writes through stubbed `0300`) and the OPL register-writer family `07DC` `09B6` `0A00` `0A62` `0AAA` `0AEC` `0BB8` (stubbed `02F6`); ASOUND.117 `0839` and `05A5`; ISOUND.117 `0008`, `05A4`, `0626` and `0102` (speaker noise/vibrato tick with a forced vibrato arm); ISOUND.LOG `010B`; RSOUND.LOG `02BE`, `0580` and `0FA2` (six voice records, `08BE` stubbed); RSOUND.117 `0E2A`. 397 instructions covered, all 595 mutations caught (23,898 real route calls for `0102`, 53,520 for `0839`; `02BE`, `0008` and `010B`'s sibling arms are reached once or by lockstep only). Eight bodies are audited as partial (calls into original or already-matched code, claims the audit cannot count). **Defect fixed:** the commit-keyed seed exposed END `100D` (batch ad era): its block was checked with `room(c, 8)` but a CALL followed, and `guest_call` charges the CALL itself, so a stop limit landing exactly there ran the CALL one instruction late; the three call sites now reserve `+ 1`. A scan found 39 further bodies with the same shape (many false positives: bodies that claim the call in a separate `SM4_NEED`); all reserve `+ 1` now, which can only make a body decline sooner. 564 CTests; acceptance 1,991 s. |
+| bb | 24 Oct | 1,355 | 1,623 named bytes | 33 more sound-driver routines in one gate: ASOUND.LOG `0640` `06AA` `0BE2` (eight calls to the matched OPL writers) `05DA` `0618` `05F7` (open/close/dispatch entries, relocated segment words, `05F7`'s indirect table call proved whole); ASOUND.117 `0E5E` family (`0DCE` `0D1C` `0C2E`), `03D8`/`03D5` (one body, claimed once), `0B90`, and the voice-reset group `05E7` with six thunk prefixes (`05E3` `05DC` `05D5` `05CE` `05C7` `05C0`, registered at the jump-only entry `05E7`); RSOUND.117 voice-start family (`0EDB` owns the shared tail, `0EBD` `0EC7` `0ED1` as bounded prefixes), `0444` `046D` `03D6` (stub `0C7C`); RSOUND.LOG `05F6` `05CC` `0611`; ISOUND.LOG `0051`; ISOUND.117 `008E` `00B5`. 641 instructions covered, all 877 mutations caught. **Two audit catches, both fixed before the gate:** `05F7`'s two exit paths both claimed the shared tail at `0616`, which the disjointness check rejects — restructured to a single shared label; `05F6`'s fixture let two of its table's real targets (`0458`, `048E`) run as original code half the time, which would have credited their bytes to `05F6` without a proof — the fixture now always stubs them. Also added the sixth design rule "hardware wait loop" (unused: a first read found all 8 candidate loops can be completed by a fixture, so they were matched instead of exempted) and F117.COM's launcher as a reviewed "program launcher" original entry. 597 CTests; acceptance 2,032 s. |
+| bc | 24 Oct | 1,359 | 170 named bytes | Four installer routines in the sound-driver overlays: ASOUND.LOG `005A`, ISOUND.LOG `060E`, RSOUND.LOG `005B` and its separate one-instruction return `00AD` (`full_cycle`, `ibm_boot`, `roland_boot`). 57 instructions covered, five private seeds plus a fresh one per routine, all 80 mutants caught. Three `POPF_STOPS` rows; the hand-backs are audited as partial, `00AD` uses `NOBLOCKS`. RSOUND.LOG's already-installed branch targets the STI at `00AC`, while ASOUND.LOG `005A` and ISOUND.LOG `060E` skip STI on theirs. Also: the launcher reference corrected to guest range `0100..03CA` (249 executed bytes recognized), runtime-patched singleton jumps validated (`docs/census-runtime-jumps.tsv`; [progress.md](progress.md#capture-validation-and-reference-ranges)), and the ISOUND.LOG `0253` fixture repaired after a coverage floor at precheck seed `0x600DF00D` (reproved separately, no new credit). 601 CTests; gate 1,741 s. Commit `51a70f1` |
+| bd | 24 Oct | 1,383 | 864 named bytes | 24 sound-driver routines: ASOUND.117 `041E` `0424` `0634` `0647` `0686` `075D` `08B0` `0BF4` (record-reset thunks into the matched voice-reset body, and leaves); ISOUND.LOG `006E` `0161` `066C`; RSOUND.117 `0490` `04E1` (MIDI volume/pan), `0E95` `0EB3` `10CF` `1119` (voice-start prefixes), `11F9` (MPU driver start), `1309`, `0A6B` (hook INT 0Ah once); RSOUND.LOG `063C` `06F4` `0754` `0860`. 314 instructions, 574 mutants caught; gate 625 CTests, acceptance 1,836 s. Four proved ISOUND.LOG timer-path entries (`0603` `060D` `0635` `0663`) were held back: registering them made `err_vgame_no_photo` differ between engines. The cause was later traced to an engine defect, not the bodies (a stale module instance, below; fix and the four entries in batch bd2). Evidence `D:/f117-gate/p2-batch-bd-accept/`, commit `4cf1600`. |
+| bd2 | 25 Oct | 1,387 | 64 named bytes | The stale-override engine fix (below) and bd's four held-back ISOUND.LOG timer-path entries `0603` `060D` `0635` `0663`. The first gate attempt failed the `quiz_*` routes: the check compared packed START.EXE file bytes and declined the QUIZ override, so it now reads the translator's unpacked image (`attempt1/`). 630 CTests; acceptance 1,883 s. Evidence `D:/f117-gate/p2-batch-bd2-accept/`. |
+| be | 25 Oct | 1,396 | 73 named bytes | Eight ASOUND.117 command thunks (`0899` `08C2` `0892` `08D0` `090E` `08AD` `08BB` `088B`) and RSOUND.LOG `00AE` timer uninstall. 39 fixture instructions, 212 mutations caught; 45 optimized seed checks; 73 new route-executed bytes, fixture-only bytes unchanged. Also repairs VGAME `EDC2`'s scan-before-PUSH-BP alias (clean-master failing control, unchanged fixture/harness), and the measured D101/Q12b fixes. Two whole-table pre-check seeds pass; 640 CTests. Core gate 1,338 s; batch acceptance 1,802 s; combined acceptance including repeated fix/default checks 1,948 s. N=1 260,613 frames / 260,527 pairs; boot N=4/9 736 / 732. Evidence `D:/f117-gate/p2-batch-be-accept/`, `d101-q12-measure-20261025/`, `edc2-master-20261025/`; commit `a172459`, [CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40259878238). |
+| bf | 25 Oct | 1,400 | 61 named bytes | RSOUND.LOG one-shot timer installer in four entries: `0251` (guard, vector, PIT0 control write; 15 instructions), `027C` (reload low/high bytes; stops after the second write), `0289` (POP AX, STI; stops after the STI), `028D` (RET). 25 fixture instructions, 46 mutations caught; 20 optimized seed checks. Two whole-table pre-check seeds (`0x4fc6ba6c9f0d`, `0x5EED0BF1`) pass. 644 CTests; acceptance 1,642 s. Evidence `D:/f117-gate/p2-batch-bf-accept/`. |
+| bg | 26 Oct | 1,425 | 473 named bytes | 25 sound-driver entries in one gate (the owner's 26 Oct plan: fewer, larger gates), all route-executed: ISOUND.117 `0065` `05B7`; ASOUND.117 `1929` `193E` `033A` `0B57`, the speaker-timer pair `0B74` `0B75` and seven wrappers `0887` `088E` `0895` `08B7` `08D3` `08DA` `08FC`; ASOUND.LOG `00DA` `00FA` `0423` `042C` `0300` `02F6`; RSOUND.117 `0C43` `0C7C`; RSOUND.LOG `02D4` `0310`. 255 fixture instructions, 427 mutations caught, 125 optimized seed checks; two whole-table pre-check seeds (`0xaebbf86cfffe`, `0x5EED0BF2`) zero mismatches. The six MPU/OPL wait-loop fixtures force timeout and success by state index. Gate 1,970 s. Evidence `D:/f117-gate/p2-batch-bg-accept/`. |
+| bh | 26 Oct | 1,430 | 1,410 named bytes | The five larger bg4 routines, all route-executed: ASOUND.117 `1048` (operator register emit, 205 instructions) and `123E` (instrument pair load), ASOUND.LOG `0BFC` (operator loader, 110 instructions), ISOUND.117 `062E` (effect-record selector, 128 instructions) and `0443` (word effect decoder). 614 fixture instructions, 188 mutations caught, 25 optimized seed checks; three whole-table pre-check seeds (`0x5295f6b75bad`, `0x5EED0BF3`, `0x20261027`) zero mismatches. The fixtures of the accepted VGAME `4973` and ASOUND.117 `0C2E` were corrected (a macro-local name clash had made their written values address-derived) and re-proved. 674 CTests; gate 1,723 s. Evidence `D:/f117-gate/p2-batch-bh-accept/`. |
+| bi | 26 Oct | 1,432 | 1,393 named bytes | ASOUND.117 `0E8A` (AdLib voice change, 170 instructions) and RSOUND.117 `0002` (Roland per-voice sequencer step, 372 instructions, jump-table arms; it declines while the Q16 fix at `0348` is installed, `fix_inside`). 542 fixture instructions, 122 mutations caught. The private audit needed two batch-local widenings: an `XCALL(target,ip,ret)` claim form, and the declared SPANS row for overlay routines, whose indirect arms the static dossier does not list. 676 CTests; gate 1,714 s. Evidence `D:/f117-gate/p2-batch-bi-accept/`. |
+| bj | 26 Oct | 1,436 | 283 named bytes | ASOUND.117 `0720` and `0694` (voice-record reset wrappers; `0694` hands back at the `05C0` thunk), ASOUND.LOG `0140` (AdLib detect and init, 90 bytes) and RSOUND.117 `050A` (steps the eight voices through `0002`). 107 fixture instructions, 124 mutations caught. 680 CTests; gate 1,694 s. ASOUND.LOG `00FE` (delay-loop calibration, proved privately) was **withdrawn**: its lockstep stubbed the PIT sampler `00DA`, and on the real `setup_calibration` route the matched body took the timer IRQ at a different boundary after its nested `call 00DA` (hash `0edb...` against the interpreter's `4a39...`); it stays original until proved against the real sampler. Evidence `D:/f117-gate/p2-batch-bj-accept/`; the failed gate with `00FE` is `p2-batch-bj-failed-00FE-20261026/`. |
+| bk | 27 Oct | 1,444 | 418 named bytes | ASOUND.117 `1882` `0562` `0C1C`, ASOUND.LOG `116E`, ISOUND.LOG `00A2`, RSOUND.LOG `0349`, RSOUND.117 `0E4C` `0CAE`, all route-executed. 140 fixture instructions, 228 mutations caught, 40 optimized seed checks. The AdLib noise fixture patched the wrong jump operand and was corrected before proving; the pitch-bend fixture saves FLAGS before logging, reads the return stack through SS and recognizes its tail-called writer's outer RET. Three whole-table pre-check seeds and all 53 reached routes (matched routines disabled) pass. 688 CTests; acceptance 1,659 s. Evidence `D:/f117-gate/p2-batch-bk-accept/`, independent private-proof verification `root-private-verification.json`. |
+| bl | 27 Oct | 1,477 | 892 named bytes | 33 routines from three proof agents working side by side: eight Roland (RSOUND.LOG `0390` `0306` `03FA`, RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`), two ISOUND.117 (`0079` `0045`), six ASOUND.117 helpers (`0BD4` `0C08` `0B76` `197B` `018F` `0210`) and 17 ASOUND.117 song/voice-start wrappers (`064D` `0670` `0876` `08E8` `089C` `085F` `0903` `0640` `0662` `0669` `068D` `06BE` `06E8` `0704` `08BE` `08CC` `08E1`). 334 fixture instructions, 900 mutations caught, 165 optimized seed checks. `0306` and `0C72` are 10-byte hand-backs into the already matched MPS writers; `089C` needed a `g_cov_ip` row for its lone RET below the entry; `0E70` needed the `0E4C` outer-RET recognition extended; `0045` and `0BD4` needed the native INT 1A function 2 answer. ASOUND.117 `025A` was **blocked**: it ends in a loop that polls six voice bytes only the timer interrupt clears, so no lockstep state reaches its RET. Pre-checks: two whole-table seeds (`0xa1bc7fe770f2`, `0x5EED0B12`; 5.83 M states each, zero mismatches) and all 49 reached routes agree with matched routines disabled (`route_precheck.py` on all 33 entries; `D:/f117-gate/bl-prechecks/`). 721 CTests; acceptance 2,078 s. P2 92.59% -> 93.01%; unmatched executed bytes 7,537 -> 6,659. Evidence `D:/f117-gate/p2-batch-bl-accept/`. |
+| bm | 27 Oct | 1,487 | 3,018 named bytes | Ten routines from twelve proof agents: RSOUND.117 `1225`, ASOUND.117 `1BCC` `1BAF`, ISOUND.117 `0023` `07CF`, END `57B0` (the 92-byte dispatch arm; 11 `FATAL_JUMPS` rows), ISOUND.LOG `00B8` (dispatch logic only: its arms are stubbed), ASOUND.LOG `0804` and `0D1A` (partial, `107C` unclaimed), ASOUND.117 `1360` (one body for its 13 arms). 1,036 fixture instructions, 313 mutations caught. 731 tests; gate 1,797 s. Six bytes are claimed but uncredited: the two exits from END `57B0` into other arms. Held: START `08F94` (no census row covers its bytes yet), RSOUND.LOG `08BE` partial (guard review). Evidence `D:/f117-gate/p2-batch-bm-accept/`. |
+| bm2 | 27 Oct | 1,487 | 0 (fix only) | Call-budget harness repair: after a call into original code only the exact returned clock is exempt, never later C instructions. It found two accepted bodies under-claiming room, both ours: START `8CA8` (no room claimed before its two INT 21h) and START `2F4C` (claim 33, longest path 35). Fixed, whole table at three seeds 0 mismatching, gate 1,854 s, 731 tests. Commit `5190cc1`. Evidence `D:/f117-gate/p2-batch-bm2-accept/`, `bn-budget/`. |
 
 Notes that still matter:
 
 - Census boundaries can repeat a byte across two rows: batch af's 692 newly covered bytes gave 697
   census-byte credits (`D:/f117-gate/p2-batch-af-accept/credit-reconciliation.json`).
-
 - END `3BF4`'s wide test envelope includes nine fixture callee JMPs: 95 covered
   instructions represent 86 original ones. Code-operand stores keep separate
   stop boundaries.
@@ -561,8 +538,8 @@ Notes that still matter:
 - `04D2` mission-route marks and `3D4F` debrief graphics-region preparation
   (16 Oct): all 94/103 instructions at five seeds, 42/35 mutations caught;
   `full_cycle` one call each. Proofs `D:/f117-gate/p2-end-{04d2,3d4f}`.
-  This four-routine batch also shares one normal /O2 matched object between
-  the two runtime archives. Full gate, all 45 N=1 routes and boot N=4/9 pass;
+  This four-routine batch (c) also made the two runtime archives share one
+  matched object. Full gate, all 45 N=1 routes and boot N=4/9 pass;
   evidence `D:/f117-gate/p2-batch-c-accept/final-gate-verdict.json`.
 
 - `02A4` debrief opening and `1607` palette fade (16 Oct): five seeds,
@@ -705,14 +682,15 @@ Each is fixed; the named regressions keep the failing seed or case.
   `matched_frame_code_alias`). START/END's shadow-text helper keeps PUSH SS's
   memory write when it aliases the stack (`matched_shadow_stack_alias`).
 - **Fix sites inside matched bodies.** A named body ran through D1's site
-  (`0x441D`, in `3ADA`), so the fix never ran in the recompiled engine. Five
-  matched routines contain a fix site after their entry (`3ADA` with D1 and
-  D1REAL, flight input with D1REAL, `vgame_scene_set_override` with D34,
-  `vgame_detect_evaluate` with D6); each declines while that fix is on. No
+  (`0x441D`, in `3ADA`), so the fix never ran in the recompiled engine. A
+  matched body with a fix site after its entry now declines while that fix is
+  on (a `fix_inside` guard; 23 bodies in `src/matched/matched.c`, among them
+  `3ADA` with D1 and D1REAL, flight input with D1REAL,
+  `vgame_scene_set_override` with D34 and `vgame_detect_evaluate` with D6). No
   route triggers D34 or D6 yet.
 - **Shared hooks.** `1450`'s address is also the presentation observer's
-  frame-phase hook; it calls `observe_game_draw` itself and is on
-  `code_overrides`' deliberate list.
+  frame-phase hook; it calls `observe_game_draw` itself and is on the
+  `deliberate` duplicate list in `tests/test_overrides.c`.
 - **Room and returns.** Four divides in `3ADA` sat outside their room claims;
   `room_audit.py` (private) checks every claim. A missed `RET 8` let the
   original finish every state unseen; the harness now fails any callee return
@@ -749,14 +727,13 @@ Each is fixed; the named regressions keep the failing seed or case.
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
       address, pinned to the shipped file by hash. Normal play enables all
-      thirty-four; core/headless and ordinary parity keep them off. `--fix none`
+      34; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
 - [x] **Fixes for the original's bugs**: 34 normal-play switches, individually
       selectable; recordings retain the selected set. Each linked entry gives
-      the implementation and its focused evidence. The 17 Q-series/hardening
-      fixes passed the combined gate at `95a5730`. D10, D35 and D36 remain
-      closed ([legacy-reports.md](legacy-reports.md)); `QUIZ` is a separate
+      the implementation and its focused evidence. D10, D35 and D36 remain
+      closed ([closed historical reports](bugs.md#closed-historical-reports)); `QUIZ` is a separate
       opt-in option.
 
 | Fix | Verified behaviour |
@@ -796,16 +773,23 @@ Each is fixed; the named regressions keep the failing seed or case.
 | [D101](bugs.md#d101-transfer-tick-erase-reads-an-unwritten-slot) | Initialize the Transfer page tick slot and skip invalid erases |
 | [Q12b](bugs.md#q12b-projectile-map-marker-size-comes-from-saved-si) | Explicit 2x2 projectile markers (99.956% nonzero in the route histogram) |
 
-  - *Speed* ([speed-sweep.md](speed-sweep.md)): normal play now defaults to
-    60 million instructions/s and D1REAL at 15 normal /30 compressed updates/s,
-    approved after [broader validation](cadence15-validation.md). The historical
-    20-million setting without repairs was selected
-    ([why](speed-sweep.md#fast-machine-default-9-october-2026)): the game's
-    own clamp holds S at 15, no swings in 214 flights. D1's 11.6 fps cap gives
-    a 1.2882x mission clock rather than real time
-    ([D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026)), and a
+  - *Speed and cadence* ([speed-sweep.md](speed-sweep.md)): normal play runs
+    at 60 million instructions/s with D1REAL's production cadence
+    `--sim-hz 15` (15 normal / 30 compressed updates/s, S15, recorded cadence
+    and explicit per-machine state; owner, 18 Oct), after the
+    [broader 15/60 validation](speed-sweep.md#fifteen-step-play-mode-validation): twelve paired cases,
+    960 exact airborne timing windows (160 unique minutes, 35 min 40 s
+    actually compressed), a successful landing, a confirmed strike hit and
+    credit, a paired thirty-minute compression soak and a native 4K60
+    compressed-flight capture (p99 16.92 ms, all logic frames exact). At 40
+    MIPS North Cape's compressed flight falls behind, hence 60. Unsuccessful
+    automated air missions and the incomplete strike return remain explicit
+    limits. No frame cap restores real-time pacing: D1's 11.6 fps cap gives a
+    1.2882x mission clock
+    ([D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026)) and a
     [15 fps cap](speed-sweep.md#actual-15-fps-limiter-experiment-9-october-2026)
-    gives 1.25x, so no cap restores real-time pacing.
+    1.25x. Original 486/ET4000 references reach about 16.5 updates/s with S
+    around 13: period-hardware responsiveness, not S15 intent.
   - *Combat at high S*
     ([measurements](speed-sweep.md#controlled-threat-profile-combat-measurement-9-10-oct-2026)):
     the game's signed hit guard suppresses SA-5 damage at S >= 14 (D1TTL);
@@ -816,21 +800,9 @@ Each is fixed; the named regressions keep the failing seed or case.
     -0.08).
   - *D1REAL*
     ([evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete)):
-    an optional real-time cadence; seven clock/dialog cases pass at 9, 20 and
-    40 MIPS in both engines and airborne clocks run at real time. The
-    original's key-poll timing still limits exact whole-flight determinism
-    across speeds, so it does not establish a safe speed.
-    Production `--sim-hz 15` (15 normal / 30 compressed updates, S15, recorded
-    cadence and explicit per-machine state) became the normal-play default at
-    60 MIPS after [broader 15/60 validation](cadence15-validation.md) (owner,
-    18 Oct): twelve paired cases, 960 exact airborne timing windows (160 unique
-    minutes, 35 min 40 s actually compressed), a successful landing, a
-    confirmed strike hit/credit, a paired thirty-minute compression soak and a
-    native 4K60 compressed-flight capture (p99 16.92 ms, all logic frames
-    exact). At 40 MIPS North Cape's compressed flight falls behind, hence 60.
-    Unsuccessful automated air missions and the incomplete strike return
-    remain explicit limits. Original 486/ET4000 references reach about 16.5
-    updates/s with S around 13: period-hardware responsiveness, not S15 intent.
+    seven clock/dialog cases pass at 9, 20 and 40 MIPS in both engines and
+    airborne clocks run at real time. The original's key-poll timing still
+    limits exact whole-flight determinism across speeds.
 - [x] **60+ fps and 4K presentation.** Optional and off by default
       (`--presentation enhanced`, or `--present replay|interp|rerun` with
       `--present-scale N`; `presentation =` / `present =` in f117a.ini). Design, measurements and history:
@@ -864,7 +836,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     The earlier pairing interpolation (`--present interp`) remains; identity
     pairing is off (it deformed objects; `F117_PRESENT_IDENT=1`). **Threaded
     presentation:** fullscreen Direct3D 11 3840x2160 at 59.99 Hz with vsync
-    at N=9 passed on 13 Oct (one late interval in 7,715 flight pictures);
+    at N=9 passed on 13 Oct ([results](presentation.md));
     hidden 4K throughput 119-150 fps. A palette frozen in threaded `interp`
     and `rerun` at N>1 (gun rounds solid red, fades frozen) was fixed on 15
     Oct. **Scene-input capture** (`F117R_OBSERVE_SCENE=N`,
@@ -884,9 +856,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     [presentation.md](presentation.md) and the Stage 3/4 entries in
     `docs/progress.json`. Other physical machines, other refresh rates and the
     owner's visual judgement are a Phase 4 maybe; what the owner decided
-    against is under "Possible future work" below. Ask before any visible or
-    fullscreen test.
-
+    against is under "Possible future work" below.
 - [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, nothing credited yet).
       *Built so far* (24 Oct, `ab4256b`): `--presentation original|enhanced` and `--fixes original|recommended`, also as
       `presentation =` and `fixes =` in f117a.ini (`remastered` is refused as not built; later `--fix` options make a custom set);

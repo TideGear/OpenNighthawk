@@ -47,7 +47,8 @@ def fixes_share():
     table = fixes[fixes.index("FIXES[] = {"):]
     available = set(re.findall(r'\{\s*"(D\d+)",', table[:table.index("};")]))
     bugs = open(os.path.join(ROOT, "docs", "bugs.md"), encoding="utf-8").read()
-    sections = dict(re.findall(r"^###\s+(D\d+)\.[^\n]*\n(.*?)(?=^### |\Z)", bugs, re.M | re.S))
+    # A D report is a ### section, or a #### entry inside a group of the Q-series section.
+    sections = dict(re.findall(r"^####?\s+(D\d+)\.[^\n]*\n(.*?)(?=^#{2,4} |\Z)", bugs, re.M | re.S))
     closed = {key for key, body in sections.items()
               if re.search(r"^- \*\*Disposition\.\*\* Closed:", body, re.M)}
     actionable = set(sections) - closed

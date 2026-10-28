@@ -203,18 +203,19 @@ programs) is charged by the nearest of three synthetic child programs:
 710,453 for up to 1 KB, 735,408 up to 9,506 bytes, 2,465,831 above
 (`T386_EXEC_SMALL/MEDIUM/LARGE`). A load's cost is dominated by where the
 file lies relative to the previous disk access, not by its size: fifteen more
-synthetic sizes (`exec_sizes.py`, 512 B to 47,100 B) came back non-monotonic
-(164,590 cycles for 2 KB, 1.7 M for 6 KB, 4.4 M for 40 KB), so no per-byte
-formula fits.
+synthetic sizes (`exec_sizes.py` in the same probe directory, 512 B to
+47,100 B) came back non-monotonic (164,590 cycles for 2 KB, 1.7 M for 6 KB,
+4.4 M for 40 KB), so no per-byte formula fits.
 
 Effect on the intro against the saved 86Box run
-(`D:/f117-gate/frames-1989/box`, `frames386.py`):
+(`D:/f117-gate/frames-1989/box`, `frames386.py`; each row's `report.json` is
+in the run named, under `D:/f117-gate/`):
 
-| | drift at the end | exact pictures |
-|---|---:|---:|
-| file charges only | +428.5 ms | 1,237 of 1,275 |
-| with synthetic-size EXEC/overlay charges | +96.4 ms | 1,237 of 1,275 |
-| with the three named files at their measured cost (current) | +39.3 ms | 1,237 of 1,275 |
+| | drift at the end | exact pictures | run |
+|---|---:|---:|---|
+| file charges only | +428.5 ms | 1,237 of 1,275 | `frames-1989-fixed` |
+| with synthetic-size EXEC/overlay charges | +96.4 ms | 1,237 of 1,275 | `frames-execfix` |
+| with the three named files at their measured cost (current) | +39.3 ms | 1,237 of 1,275 | `frames-realfiles` |
 
 Before the EXEC charges the largest steps were MPS_LOGO's exit (+214 ms),
 PLAYER's exit to START (+248 ms), the roster (+280 ms, ordinary file access
@@ -227,21 +228,22 @@ pictures, AdLib and scene timing; the DOSBox checks keep the DOSBox profile.
 `compare_timing86.py` requires recorded 386 settings, matches held pictures by
 their 86Box pixel hash in order, and requires every local held picture to
 match. Missing reference scanouts delimit screen-off gaps; the final unclosed
-reference picture is censored by the capture stop. Limits (tightened 10 Oct
-2026): longest held-picture duration difference 0.30 s (was 0.35), start
-drift 1.5 s (was 2.2), at least 17 paired scenes. Eight tests in
+reference picture is censored by the capture stop. Limits (`LIMITS` in
+`compare_timing86.py`): longest held-picture duration difference 0.30 s,
+start drift 1.5 s, at least 17 paired scenes. Eight tests in
 `tests/test_reference_timing.py` guard profile identity, content/order
 matching, pixel hashing, duplicate frames, screen-off gaps, censored
 endpoints, missing scenes and timing limits.
 
 Result (10 Oct 2026, `D:/f117-gate/pc-parity-profile-aware`): every check
-passes. 85 exact and one close 86Box picture (p037, a mid-fade sample,
-listed in `expected_misses86.txt`), sound, both 802-byte roster saves, and all
-21 local held pictures matched among 22 reference holds; largest duration
-difference 0.214022 s, start drift 1.112912 s. The final stationary PLAYER
-hangar lasts 6.472724 s here and 6.491997 s on 86Box, 19.273 ms apart. (An
-earlier 0.37 s failure on that hangar was a harness error: it compared
-against the DOSBox-profile capture and counted 57 ms of screen-off time.)
+passes: the 86Box pictures (as in [the intro
+check](build_86box.md#the-intro-check-capture_intropy)), sound, both 802-byte
+roster saves, and all 21 local held pictures matched among 22 reference
+holds; largest duration difference 0.214022 s, start drift 1.112912 s. The
+final stationary PLAYER hangar lasts 6.472724 s here and 6.491997 s on
+86Box, 19.273 ms apart. Compare against the 386-profile capture only: the
+DOSBox-profile capture, with 57 ms of screen-off time counted, failed that
+hangar by 0.37 s.
 
 ## Measured: `probe386.py`
 
@@ -365,13 +367,12 @@ same frame. `--box DIR`/`--ours DIR` reuse a run (rerun only ours after a
 profile change: about 15 s); `--only box|ours` makes one run. Both runs are
 deterministic: two runs gave byte-identical `frames.csv` on each side.
 
-Current result: the last row of the EXEC table under "File services" above.
-PASS is not met. The misses, as analysed on
-the FreeDOS VM, are single-frame pictures taken mid-draw or mid-fade (86Box
-scans line by line, this machine in four 100-line parts) and START's mode-set
-blank, which this machine does not have. A steady 0.109-frame offset is where
-each machine takes its picture (86Box at vertical sync start, this machine at
-line 400).
+Current result: the last row of the EXEC table under "File services" above;
+PASS is not met. The misses, as analysed on the FreeDOS VM, are single-frame
+pictures taken mid-draw or mid-fade (86Box scans line by line, this machine
+in four 100-line parts) and START's mode-set blank, which this machine does
+not have. A steady 0.109-frame offset is where each machine takes its
+picture (86Box at vertical sync start, this machine at line 400).
 
 **Why the drift is all at loads.** On the FreeDOS VM (`vmt386`, 8 Oct 2026,
 before any disk or EXEC charge) the end drift was +1,571 ms (+110 frames), all

@@ -1,13 +1,13 @@
 # Reviewed static code: reachability audit
 
-The 21 October analysis covered 10,301 reviewed static bytes that the 63-route
-interpreter captures leave unexecuted and uncredited (the current uncredited
-total, which includes later reviews and the encoded SETUP rows below, is in
-[roadmap.md](roadmap.md)). It identified no additional route, which does not
+The analysis (21 October 2026) covered 10,301 reviewed static bytes that the
+route captures leave unexecuted and uncredited (the current reviewed static
+total is printed by `py tools/progress.py`; what the measure counts is in
+[progress.md](progress.md)). It identified no additional route, which does not
 prove that no input can reach them. All these bytes remain in the Phase 2
 denominator; this review certifies no new dead code.
 
-The resumed independent review checked 27 ranges (6,505 bytes) in groups A and
+An independent review checked 27 ranges (6,505 bytes) in groups A and
 D-H against the current installed images: hashes, complete instructions, exact
 ends and zero observed execution agree. Its direct walk does not resolve every
 indirect transfer, callback registration, interrupt vector or pointer writer.
@@ -17,7 +17,7 @@ Absence of a direct reference cannot close those entry paths.
 |---|---:|---|
 | A: VGAME raster helpers | 1,042 | Normal startup selects M. The reviewed `1377:0204..0356` range also contains EGA and MCGA pixel routines; it is not exclusively CGA/Tandy. Caller and pointer-writer closure remains open. |
 | B: formatting arms | 1,251 | Scanned format literals use no modifier states. Variable or constructed format arguments were not fully resolved; some reviewed rows also contain executed arms. |
-| C: DSWAP formatting core | 1,104 | Identified callers require floppy-read success or DOS allocation/free failure. The owner declined floppy support; machine-option-only error paths remain original code, not dead code. |
+| C: DSWAP formatting core | 1,104 | Identified callers require floppy-read success or DOS allocation/free failure. The owner declined floppy support, so the floppy path stays original; machine-option-only error paths are proved with test inputs ([progress.md](progress.md#phase-2-completion-requirements-owner-23-24-and-27-october-2026)). Neither is dead code. |
 | D: SETUP library cluster | 2,724 | No reachable direct root identified. Indirect runtime calls and callback-table writers remain unresolved. |
 | E: picture/stream/span wrappers | 1,480 | No reachable direct caller identified. Writable and stack-supplied callback domains need closure. |
 | F: signal and INT 23h shims | 569 | The candidate registration functions install real handlers. Their registration, handler fallthrough and dynamic callback paths must be checked together. |
@@ -53,16 +53,16 @@ precise byte ranges and preserve all accepted matching credit.
 
 Private evidence is in `D:/f117-gate/static-route-verify-20261021/`:
 `resumed-candidates.tsv/json`, `resumed-audit.py/txt`, `resumed-report.md` and
-the superseding `group-a-closure.md` with its table/writer inventory. The
-earlier `static-route-plan-20261021/` remains a route-planning lead, with its
-categorical unreachability assertions superseded by this review.
+`group-a-closure.md` (it replaces the report's group A finding) with its
+table/writer inventory. `static-route-plan-20261021/` is only a route-planning
+lead: its categorical unreachability assertions do not hold.
 
 A later exclusion needs a certificate for each exact range, covering direct,
 computed, callback, vector, fallthrough and relevant writer paths under the
 supported machine and input conditions. Until that evidence exists, retain
 the workload. Lack of current route coverage is not a certificate.
 
-## Encoded SETUP code adopted (24 October 2026)
+## Encoded SETUP code
 
 `census-encoded-code.json` pins two independently reviewed code ranges at
 SETUP `01E1:0050..00CE` and `01E1:0141..030C`: 585 bytes / 268 instructions.

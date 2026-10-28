@@ -21,7 +21,7 @@ fixes both and adds the hooks below:
 1. `pacman -S autoconf automake libtool make nasm` and the UCRT64 freetype,
    libpng, zlib, SDL2_net, libslirp, fluidsynth and ffmpeg packages.
 2. `git clone --depth 1 https://github.com/joncampbell123/dosbox-x.git`
-   (master at 2026.10.01 was used), then `git apply
+   to `D:\86box-src\dbx-src` (master at 2026.10.01 was used), then `git apply
    dosbox-x-auto-video.patch`.
 3. In an MSYS2 UCRT64 shell in the checkout: `./build-mingw` (it builds its
    own SDL1; the result is a static `src/dosbox-x.exe`, no DLLs needed).
@@ -30,8 +30,10 @@ fixes both and adds the hooks below:
    (plain `make` from another shell fails with "Cannot create temporary file
    in C:\Windows").
 
-`pc_parity.py` looks for the executable at `D:\86box-src\dbx-src\src\dosbox-x.exe`
-unless given `--dosbox-x PATH`.
+`pc_parity.py`, `save_parity.py`, `speaker_parity.py`, `dosbox_cargo_pilot.py`
+and `fidelity.py --reference dosbox-x` look for the executable at
+`D:\86box-src\dbx-src\src\dosbox-x.exe` (the first three take `--dosbox-x
+PATH`, `fidelity.py` `--dosbox PATH`).
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without
 `fullscreen=false` in a layer after it; that file asks for fullscreen.**
