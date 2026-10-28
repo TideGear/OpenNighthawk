@@ -7,7 +7,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 27 October 2026: batch bm accepted by the gate (ten routines; P2 93.67%, All 92.09%); checklist 40,504 / 46,112 bytes (87.84%). The checklist fell from 90.20% only because the scope grew by 1,206 bytes; no checklist entry was removed. Commit: see `git log`.**
+more than once, what it costs). **Current state, 27 October 2026: batch bm accepted by the gate (ten routines); with checklist round 4, P2 93.94%, All 92.17%; checklist 41,749 / 46,112 bytes (90.54%) after round 4 (the 90.20% to 87.84% fall was only the scope growing by 1,206 bytes; no entry was removed). Commit: see `git log`.**
 The working copy is **`C:\Dev\F-117A Recomp`**; the old `My Drive` copy is stale: do not use it.
 The accepted runtime is batch bm (`D:/f117-gate/p2-batch-bm-accept/`, the commit that adds it: see `git log`); batch bl was `9e06249`.
 There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) were built at `28b34b2`;
@@ -59,9 +59,7 @@ This machine has no `gh`; check the pushed commit's CI through the GitHub Action
    routines of the seven programs); one big routine is one chain that more agents cannot shorten. Verification stays with root and is the part that does not scale: use sub-agents for mechanical reads, never for the decision.
    Batches of about 30-50 routines are best (a gate costs about the same at any size); prove batch N+1 while batch N is in its gate. Never weaken a check to go faster.
    Use the actual session limit: this Codex session allowed three concurrent subagents plus root, so three proof agents and later a separate reviewer were used. Keep the machine-wide three-compiler throttle. Measured in this continuation: first private harness build about 180-196 s; unchanged-harness mutant builds about 1.1-1.6 s, not three minutes per mutant (`project/build/.ninja_log`).
-4. **Checklist round 4 remains next and parallelises almost perfectly:** 40,504 / 46,112 bytes (87.84%), 5,608 bytes without entries (the denominator grew by 17 bytes with bl). It needs no gate and almost no CPU: re-cut the refused units into packets
-   (10 + 43 status-mismatched ACCEPTs, 9 differing ranges, 27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT from round 3, round-2 leftovers, the 192 new bytes) and launch one fresh blind reader per packet group, as many at once as the work allows
-   (round 1 ran up to 20 at a time: 156 groups in 15-20 minutes). Work and validators: `D:/f117-gate/checklist-full-20261026/` (`round3/` and `round3b/` have the scripts). Each packet needs a fresh independent blind reader.
+4. **Checklist round 4 done (27 Oct); round 5 is next and needs no gate:** 41,749 / 46,112 bytes (90.54%), 4,363 bytes without entries. Round 4: 143 packets / 29 groups, 143 reads (99 ACCEPT, 33 ACCEPT-WITH-CHANGES, 11 NEEDS-CONTEXT); 32 units / 1,245 bytes / 37 rows adopted by `round4/stage_r4.py` (same rule as round 3: ACCEPT, status equals the structural proposal, exact range, no name correction) and `round4/validate_stage_r4.py` (checklist 40,504 to 41,749, gameplay unchanged). Round 5 packets: the 36 status-differs units (readers judged e.g. unreached-held where the proposal said needs-route: a fresh reader must confirm the status), 25 range-wording, 6 missing-field, 33 with-changes (use the reader's corrected name or range, give it to a DIFFERENT reader) and 11 NEEDS-CONTEXT (add the context the reader named, e.g. the stream helper at START `0x9992`). Work: `D:/f117-gate/checklist-full-20261026/round4/` (build_r4.py, validate_r4.py, units.tsv, reads/, staged-round4.report.tsv). The proposed names are structural placeholders (`..._checklist_fragments`), as in round 3.
 5. **ASOUND.LOG `00FE` is still withdrawn** (its lockstep stubs the PIT sampler `00DA`; the real `setup_calibration` route takes an IRQ at a different boundary after the nested call). One of the batch-bm agents has the re-proof; otherwise keep it original.
    Debug with recomp versus `F117R_NO_MATCHED=1`, `F117R_MATCHED_LIMIT` bisect and `--dump 0:10` at budgets; `--trace` forces the interpreter.
 6. **Process notes:** run only new CTests before the full gate; keep the commit-derived seed and one independent whole-table seed; `route_precheck.py` on every new entry (not only the stubbed ones: about 10 minutes for 33 entries).
@@ -75,7 +73,7 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 93.67%, P3 76.34%, All 92.09%
+- **Scoreboard:** P1 100.00%, P2 93.94%, P3 76.34%, All 92.17%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
@@ -92,7 +90,7 @@ entry. Consolidate it instead of appending to it.
     F117.COM, MGRAPHIC and MISC: none.
   - Naming item (previous all-code measure): **181,258 / 206,232** creditable bytes; 24,974 uncredited,
     including 13,809 reviewed static code bytes no route runs.
-  - Accounted-for checklist: **40,504 / 46,112 bytes (87.84%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
+  - Accounted-for checklist: **41,749 / 46,112 bytes (90.54%)**; `docs/reference-reviewed.tsv` has 1,636 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`;
     the 523 round-2 rows: `D:/f117-gate/checklist-full-20261026/round2/`; the round 3 and 3b rows: `round3/`, `round3b/`; the 792 round-1 rows from the full blind pass: `D:/f117-gate/checklist-full-20261026/` (reads/, staged-round1.tsv, reconcile-result.json)). Every `stays-original` entry
     must name its design rule.
@@ -290,7 +288,7 @@ governs day-to-day work.
   the batch bh commit: 780 -> 20,708 of 44,714 bytes, 46.31%, P2 82.14% -> 87.27%); 368 accept-with-changes, 21 needs-context, 13 reject and 66 status
   mismatches are NOT adopted. Reader names and ranges were corrected where they over-claimed (a retry named a failure, an arm named a whole function, a
   range cutting a function mid-instruction). **Round 2** (`round2/`) re-cut those 468 units into 588 packets / 79 groups: all read, 367 units / 13,976 bytes adopted.
-  The checklist is now 40,504 / 46,112 (87.84%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
+  The checklist is now 41,749 / 46,112 (90.54%) after rounds 3, 3b and 4 (resume state item 4); round 4 covers what is left,
   with corrected blind reads and no unsupported exclusions. Use the actual available reader slots; this session has at most three concurrent subagents.
 - **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 7,666 of the 9,456 unmatched executed bytes (after bh): the
   `.117` overlays (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG` drivers ("AdLib Logo 7-18-91",

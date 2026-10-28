@@ -369,31 +369,31 @@
       "fixture_only": 27782,
       "remaining": 4844,
       "original_awaiting_review": 20,
-      "reviewed_entries": 1599,
+      "reviewed_entries": 1636,
       "checklist": {
         "bytes": 46112,
-        "with_reviewed_entry": 40504,
-        "without_reviewed_entry": 5608,
+        "with_reviewed_entry": 41749,
+        "without_reviewed_entry": 4363,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 21337,
-            "without_reviewed_entry": 2241
+            "with_reviewed_entry": 21710,
+            "without_reviewed_entry": 1868
           },
           "never_run": {
-            "with_reviewed_entry": 3705,
-            "without_reviewed_entry": 589
+            "with_reviewed_entry": 3886,
+            "without_reviewed_entry": 408
           },
           "slots": {
             "with_reviewed_entry": 5,
             "without_reviewed_entry": 0
           },
           "supp-credited": {
-            "with_reviewed_entry": 2266,
-            "without_reviewed_entry": 1938
+            "with_reviewed_entry": 2933,
+            "without_reviewed_entry": 1271
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 13048,
-            "without_reviewed_entry": 761
+            "with_reviewed_entry": 13072,
+            "without_reviewed_entry": 737
           },
           "unreached": {
             "with_reviewed_entry": 143,
@@ -417,7 +417,7 @@
           "remaining": 1195,
           "original_awaiting_review": 0,
           "not_in_denominator": 281,
-          "not_in_denominator_reviewed": 125,
+          "not_in_denominator_reviewed": 156,
           "in_previous_scope": 5373
         },
         "ASOUND.LOG": {
@@ -428,7 +428,7 @@
           "remaining": 169,
           "original_awaiting_review": 0,
           "not_in_denominator": 1145,
-          "not_in_denominator_reviewed": 124,
+          "not_in_denominator_reviewed": 734,
           "in_previous_scope": 2615
         },
         "DSWAP": {
@@ -450,7 +450,7 @@
           "remaining": 223,
           "original_awaiting_review": 0,
           "not_in_denominator": 7776,
-          "not_in_denominator_reviewed": 7443,
+          "not_in_denominator_reviewed": 7516,
           "in_previous_scope": 14755
         },
         "F117.COM": {
@@ -494,7 +494,7 @@
           "remaining": 0,
           "original_awaiting_review": 0,
           "not_in_denominator": 474,
-          "not_in_denominator_reviewed": 450,
+          "not_in_denominator_reviewed": 470,
           "in_previous_scope": 3237
         },
         "MISC": {
@@ -516,7 +516,7 @@
           "remaining": 270,
           "original_awaiting_review": 0,
           "not_in_denominator": 4799,
-          "not_in_denominator_reviewed": 4143,
+          "not_in_denominator_reviewed": 4287,
           "in_previous_scope": 6639
         },
         "NSOUND.117": {
@@ -538,7 +538,7 @@
           "remaining": 273,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 3226,
+          "not_in_denominator_reviewed": 3231,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {
@@ -549,7 +549,7 @@
           "remaining": 256,
           "original_awaiting_review": 0,
           "not_in_denominator": 197,
-          "not_in_denominator_reviewed": 0,
+          "not_in_denominator_reviewed": 3,
           "in_previous_scope": 2213
         },
         "RSOUND.LOG": {
@@ -571,7 +571,7 @@
           "remaining": 118,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
-          "not_in_denominator_reviewed": 4582,
+          "not_in_denominator_reviewed": 4587,
           "in_previous_scope": 3436
         },
         "START": {
@@ -593,7 +593,7 @@
           "remaining": 549,
           "original_awaiting_review": 0,
           "not_in_denominator": 12107,
-          "not_in_denominator_reviewed": 9817,
+          "not_in_denominator_reviewed": 10171,
           "in_previous_scope": 71936
         }
       }

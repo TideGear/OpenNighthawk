@@ -70,8 +70,8 @@ quiz. It is off by default and is enabled only when named explicitly;
   by design (97.04%, the gameplay score), and cover 184,279 of 207,438
   creditable bytes across all 17 game code files. The historical census has 1,122
   rows wholly covered and 291 in part; executed code outside its rows and reviewed static code count too.
-  The checklist accounts for 40,504 / 46,112 bytes (87.84%) outside the routes.
-  Together with the tooling, these measures make up P2's 93.67%
+  The checklist accounts for 41,749 / 46,112 bytes (90.54%) outside the routes.
+  Together with the tooling, these measures make up P2's 93.94%
   ([how progress is measured](docs/progress.md)).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -

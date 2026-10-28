@@ -232,9 +232,12 @@ not the recompilation:
       367 units / 13,976 bytes adopted in 523 rows. Round 2 finished at 34,684 / 44,714 (77.57%), P2 90.40%.
       The 221 unadopted units (10,016 bytes), plus 14 current-scope bytes absent from the older packet snapshot,
       went into corrected round-3 packets. Round 3 read 228 packets / 46 groups and adopted 101 units / 4,476 bytes;
-      round 3b adopted another 19 units / 1,344 bytes after an exact leading-range check. Current checklist:
-      **40,504 / 44,906 bytes (90.20%)**, with 4,402 bytes still without an entry. The denominator includes 192 newly scoped
-      bytes from batches bi, bj and bl. Round 4 must retain those bytes and every refused or unresolved earlier unit.
+      round 3b adopted another 19 units / 1,344 bytes after an exact leading-range check. Round 4 (27 Oct) re-cut the remaining
+      5,608 bytes into 143 packets / 29 groups, all read by fresh blind readers: 99 ACCEPT, 33 ACCEPT-WITH-CHANGES, 11 NEEDS-CONTEXT.
+      Only ACCEPT units whose reader-judged status equals the proposal and whose range matches exactly were adopted: 32 units / 1,245 bytes
+      in 37 rows. Current checklist: **41,749 / 46,112 bytes (90.54%)**, with 4,363 bytes still without an entry.
+      The denominator includes the bytes newly scoped by batches bi, bj, bl and bm. The unadopted units (36 status differs, 25 range wording,
+      6 missing fields, 33 with changes, 11 needs context) go to round 5 with corrected names or added context.
       No matching credit or exclusions were added by these reviews.
       Evidence `D:/f117-gate/checklist-full-20261026/`.
       **What is left:** the sound drivers hold most of the unmatched executed
