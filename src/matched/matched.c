@@ -98132,7 +98132,1468 @@ L1878:
 #undef XB
 }
 
+/* MPS_LOGO 0146:0822, far: the C run-time's huge-model memcpy(dst, src, n): dst and src are far pointers
+ * (offset, segment) at [bp+6] and [bp+0A], n is the word at [bp+0E]; the answer is dst in DX:AX.
+ *   - DS, DI and SI are saved; with n = 0 nothing is copied.
+ *   - Otherwise the copy goes in pieces that never run past the end of either 64K segment: the piece is
+ *     the smaller of n and the room left above DI and above SI (computed with the NOT / SUB / SBB / AND /
+ *     ADD mask trick, so no branch).
+ *     It is moved as words (REP MOVSW), then one odd byte (ADC CX,CX / REP MOVSB).
+ *   - What is left of n is the rest; if none remains the routine ends. When SI came round to 0 the source
+ *     segment moves up 1000h paragraphs; when DI came round to 0 the destination segment does, and the loop
+ *     starts the next piece.
+ *   - The end loads dst into DX:AX, restores SI, DI, DS and BP, and returns far (the caller drops the
+ *     arguments). The string instructions follow DF, as the original's do. */
+static int mps_logo_huge_memcpy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DST = 6, DST_SEG = 8, SRC = 0x0A, SRC_SEG = 0x0C, COUNT = 0x0E, SEGSTEP = 0x1000 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XADD(a_, b_) ((uint16_t)alu_op(c, 0, (a_), (b_), 1))
+#define XSBB(a_, b_) ((uint16_t)alu_op(c, 3, (a_), (b_), 1))
+#define XSUB(a_, b_) ((uint16_t)alu_op(c, 5, (a_), (b_), 1))
+#define XAND(a_, b_) ((uint16_t)alu_op(c, 4, (a_), (b_), 1))
+#define XOR(a_, b_) ((uint16_t)alu_op(c, 1, (a_), (b_), 1))
+    if (!room(c, 7)) return 0;
+    /* push bp / mov bp, sp / mov cx, n / push ds / push di / push si / jcxz */
+    XB(7, 0x0822);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_CX] = bp_get(c, COUNT);
+    cpu_push16(c, c->seg[S_DS]);
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    if (c->r[R_CX] == 0) goto done;
+    XB(2, 0x082D);                                                /* lds si, src / les di, dst */
+    c->r[R_SI] = bp_get(c, SRC);
+    c->seg[S_DS] = bp_get(c, SRC_SEG);
+    c->r[R_DI] = bp_get(c, DST);
+    c->seg[S_ES] = bp_get(c, DST_SEG);
+piece:
+    XB(18, 0x0833);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    c->r[R_DX] = (uint16_t)~c->r[R_DI];
+    c->r[R_AX] = XSUB(c->r[R_AX], c->r[R_DX]);
+    c->r[R_BX] = XSBB(c->r[R_BX], c->r[R_BX]);
+    c->r[R_AX] = XAND(c->r[R_AX], c->r[R_BX]);
+    c->r[R_AX] = XADD(c->r[R_AX], c->r[R_DX]);
+    c->r[R_DX] = (uint16_t)~c->r[R_SI];
+    c->r[R_AX] = XSUB(c->r[R_AX], c->r[R_DX]);
+    c->r[R_BX] = XSBB(c->r[R_BX], c->r[R_BX]);
+    c->r[R_AX] = XAND(c->r[R_AX], c->r[R_BX]);
+    c->r[R_AX] = XADD(c->r[R_AX], c->r[R_DX]);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_CX]; c->r[R_CX] = t_; }   /* xchg cx, ax */
+    c->r[R_AX] = XSUB(c->r[R_AX], c->r[R_CX]);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);               /* shr cx, 1 */
+    { const unsigned k_ = c->r[R_CX] ? c->r[R_CX] : 1;            /* rep movsw: a clock a word, one for none */
+      SM4_NEED(k_, 0x0854); c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0); }
+    XB(2, 0x0856);                                                /* adc cx, cx / rep movsb */
+    c->r[R_CX] = (uint16_t)alu_op(c, 2, c->r[R_CX], c->r[R_CX], 1);
+    rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);
+    XB(2, 0x085A);                                                /* xchg cx, ax / jcxz */
+    { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_CX]; c->r[R_CX] = t_; }
+    if (c->r[R_CX] == 0) goto done;
+    XB(2, 0x085D);                                                /* or si, si / jne */
+    c->r[R_SI] = XOR(c->r[R_SI], c->r[R_SI]);
+    if (!x86_cond(c, 5)) {
+        XB(3, 0x0861);                                            /* source wrapped: next segment */
+        c->r[R_AX] = c->seg[S_DS];
+        c->r[R_AX] = XADD(c->r[R_AX], SEGSTEP);
+        c->seg[S_DS] = c->r[R_AX];
+    }
+    XB(2, 0x0868);                                                /* or di, di / jne */
+    c->r[R_DI] = XOR(c->r[R_DI], c->r[R_DI]);
+    if (x86_cond(c, 5)) goto piece;
+    XB(4, 0x086C);                                                /* destination wrapped / jmp */
+    c->r[R_AX] = c->seg[S_ES];
+    c->r[R_AX] = XADD(c->r[R_AX], SEGSTEP);
+    c->seg[S_ES] = c->r[R_AX];
+    goto piece;
+done:
+    XB(7, 0x0875);
+    c->r[R_AX] = bp_get(c, DST);
+    c->r[R_DX] = bp_get(c, DST_SEG);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XOR
+#undef XAND
+#undef XSUB
+#undef XSBB
+#undef XADD
+#undef XB
+}
+
+/* MPS_LOGO 0146:067C, far: strstr(haystack, needle), the C run-time's substring search. Arguments (far call):
+ * haystack at [bp+6], needle at [bp+8], both near pointers into DS (ES is set to DS for the scans).
+ *   - The needle's length is counted (repne scasb for the NUL) and kept at [bp-2]. An empty needle
+ *     answers the haystack at once.
+ *   - The haystack's length minus the needle's gives the number of start positions left (DX); when
+ *     that is not above 0 the answer is 0.
+ *   - Each round loads the needle's first byte, scans the haystack from the current position for it
+ *     (repne scasb, at most DX bytes: none found ends with 0), and compares the rest of the needle
+ *     (repe cmpsb, CX = needle length: the first byte is compared again). A mismatch tries the next
+ *     position, a match answers the address of the found byte (BX - 1).
+ *   - SI, DI and BP are saved and restored. Every REP iteration is one clock and a stop can land on
+ *     any of them; a REP with CX 0 is one clock too.
+ * No callees. */
+static int mps_logo_strstr(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HAY = 6, NEEDLE = 8, LEN = -2 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 10)) return 0;
+    /* push bp / mov bp, sp / sub sp, 2 / push si / push di / push ds / pop es / mov di, needle / xor ax, ax / mov cx, FFFFh */
+    XB(10, 0x067C);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 2, 1);
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = bp_get(c, NEEDLE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_CX] = 0xFFFF;
+    for (;;) {                                                    /* repne scasb: the needle's NUL */
+        XB(1, 0x068E);
+        if (c->r[R_CX] == 0) break;
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0 || (c->flags & F_ZF)) break;
+    }
+    XB(3, 0x0690);                                                /* not cx / dec cx / jcxz */
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    if (c->r[R_CX] == 0) goto empty;
+    XB(6, 0x0695);       /* dec cx / mov [bp-2], cx / mov di, haystack / mov bx, di / xor ax, ax / mov cx, FFFFh */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    bp_put(c, LEN, c->r[R_CX]);
+    c->r[R_DI] = bp_get(c, HAY);
+    c->r[R_BX] = c->r[R_DI];
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_CX] = 0xFFFF;
+    for (;;) {                                                    /* repne scasb: the haystack's NUL */
+        XB(1, 0x06A3);
+        if (c->r[R_CX] == 0) break;
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0 || (c->flags & F_ZF)) break;
+    }
+    XB(5, 0x06A5);                                       /* not cx / dec cx / mov dx, cx / sub dx, [bp-2] / jbe */
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], bp_get(c, LEN), 1);
+    if (x86_cond(c, 6)) goto none;
+    XB(1, 0x06AF);                                                /* mov di, bx */
+    c->r[R_DI] = c->r[R_BX];
+retry:
+    XB(4, 0x06B1);                       /* mov si, needle / lodsb / mov di, bx / mov cx, dx */
+    c->r[R_SI] = bp_get(c, NEEDLE);
+    x86_lods(c, 0, c->seg[S_DS]);
+    c->r[R_DI] = c->r[R_BX];
+    c->r[R_CX] = c->r[R_DX];
+    for (;;) {                                                    /* repne scasb: the needle's first byte */
+        XB(1, 0x06B9);
+        if (c->r[R_CX] == 0) break;
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0 || (c->flags & F_ZF)) break;
+    }
+    XB(1, 0x06BB);                                                /* jne: not found */
+    if (x86_cond(c, 5)) goto none;
+    XB(4, 0x06BD);                       /* mov dx, cx / mov bx, di / mov cx, [bp-2] / jcxz */
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_BX] = c->r[R_DI];
+    c->r[R_CX] = bp_get(c, LEN);
+    if (c->r[R_CX] == 0) goto found;
+    for (;;) {                                                    /* repe cmpsb: the needle against the haystack */
+        XB(1, 0x06C6);
+        if (c->r[R_CX] == 0) break;
+        x86_cmps(c, 0, c->seg[S_DS]);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0 || !(c->flags & F_ZF)) break;
+    }
+    XB(1, 0x06C8);                                                /* jne: try the next position */
+    if (x86_cond(c, 5)) goto retry;
+found:
+    XB(2, 0x06CA);                                                /* lea ax, [bx-1] / jmp */
+    c->r[R_AX] = (uint16_t)(c->r[R_BX] - 1);
+    goto leave;
+empty:
+    XB(2, 0x06CF);                                                /* mov ax, haystack / jmp */
+    c->r[R_AX] = bp_get(c, HAY);
+    goto leave;
+none:
+    XB(1, 0x06D4);                                                /* xor ax, ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+leave:
+    XB(5, 0x06D6);                                                /* pop di / pop si / mov sp, bp / pop bp / retf */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* START.EXE 0000:8F94, the C run-time's divide-error handler (INT 0 is pointed here by the start-up at 8FD8 and
+ * the program never returns from it). DS is loaded from the word stored in the code at CS:8FC3 (the program's
+ * data segment, relocated by the loader, so it is read from the loaded code and not copied from the dossier).
+ * The exit routine's address 9094h is stored in the run-time's cell [AE1A] (through SS, as the original does),
+ * AX = 3 is pushed (the message number) and the banner writer 9800 (plain RET) and the message writer 9873
+ * (RET 2: it removes that argument) are called. When the console hook's signature [B170] (through SS) holds
+ * D6D6h the word the message writer left is popped and pushed again and the hook at [B174] (through SS, near,
+ * plain RET assumed) is called. Last 00FFh is pushed and the exit routine is called through DS:[AE1A]: the
+ * exit(0FFh) ends the program with DOS function 4Ch and does not return, so the body stops there (the guest
+ * call comes back 0 when the program ends). A return would run the original's code at 8FC3, the data word
+ * decoded as instructions and then the next routine's code, which only the original can do: the body hands
+ * back there. The only callees are 9800, 9873, the hook and the exit routine. */
+static int start_divide_error_handler(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { DS_WORD = 0x8FC3, EXIT_CELL = 0xAE1A, HOOK_SIGNATURE = 0xB170, HOOK_CELL = 0xB174 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 4)) return 0;
+    XB(4, 0x8F94);                                                /* mov ax,cs:[8FC3] / mov ds,ax / mov ax,3 / mov ss:[AE1A],9094h */
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], DS_WORD);
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = 0x0003;
+    seg_write16(c, c->seg[S_SS], EXIT_CELL, 0x9094);
+    SM4_NEED(1, 0x8FA4);                                          /* push ax */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 1;
+    SM4_NEED(1, 0x8FA5);
+    XRUN(guest_call_pop(m, 0x9800, 0x8FA8, 0));                   /* call 9800: the banner */
+    SM4_NEED(1, 0x8FA8);
+    XRUN(guest_call_pop(m, 0x9873, 0x8FAB, 2));                   /* call 9873: the message (RET 2) */
+    XB(2, 0x8FAB);                                                /* cmp ss:[B170],D6D6h / jne 8FBB */
+    alu_op(c, 7, seg_read16(c, c->seg[S_SS], HOOK_SIGNATURE), 0xD6D6, 1);
+    if (x86_cond(c, 4)) {                                         /* the hook is there */
+        XB(2, 0x8FB4);                                            /* pop ax / push ax */
+        c->r[R_AX] = cpu_pop16(c);
+        cpu_push16(c, c->r[R_AX]);
+        SM4_NEED(1, 0x8FB6);
+        XRUN(guest_call_pop(m, seg_read16(c, c->seg[S_SS], HOOK_CELL), 0x8FBB, 0));   /* call ss:[B174] */
+    }
+    XB(2, 0x8FBB);                                                /* mov ax,0FFh / push ax */
+    c->r[R_AX] = 0x00FF;
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x8FBF);
+    XRUN(guest_call_pop(m, seg_read16(c, c->seg[S_DS], EXIT_CELL), 0x8FC3, 0));   /* call [AE1A]: exit(0FFh) */
+    c->ip = 0x8FC3;                                               /* a return: the original's code goes on */
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.117 0F98: the Roland overlay's "start the five percussion/music voices" routine (near, no arguments, no result). It loads
+ * CX, the time/pitch word the voice starts copy into their record, with the data-segment offset of a table (LEA CX,[imm] is a plain
+ * offset: 01B8h, 04A2h, 0590h, 078Ch) and calls in turn the voice-start entries 0EDB (voice 1), 0ED1 (voice 2), 0EC7 (voice 3)
+ * and 0EBD (voice 4), each a plain near call with a plain RET (the caller pops nothing). The fifth start is a tail jump:
+ * CX = 0B40h (LEA) and JMP 0E95, the voice 9 entry, whose RET returns to this routine's caller. Only the ten instructions of this
+ * routine belong to this body: the callees run here as the original code (or fixture stubs) and the entry 0E95 with the shared
+ * tail has its own proofs, so the body hands back at 0E95 once the jump is charged. Nothing is read from memory and no flag is
+ * touched (LEA and JMP leave them); the callees' clock is charged by the callees themselves. DX, BX and the other registers are
+ * whatever the callees leave. When a call has not returned (the clock's limit came first) the original carries on from where the
+ * machine is. */
+static int rsound_117_start_voices_one_to_four_then_nine(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0F98);                                                         /* lea cx,[01B8h] */
+    c->r[R_CX] = 0x01B8;
+    SM4_NEED(1, 0x0F9C);
+    XRUN(guest_call_pop(m, 0x0EDB, 0x0F9F, 0));                            /* call 0EDB: voice 1 */
+    XB(1, 0x0F9F);                                                         /* lea cx,[04A2h] */
+    c->r[R_CX] = 0x04A2;
+    SM4_NEED(1, 0x0FA3);
+    XRUN(guest_call_pop(m, 0x0ED1, 0x0FA6, 0));                            /* call 0ED1: voice 2 */
+    XB(1, 0x0FA6);                                                         /* lea cx,[0590h] */
+    c->r[R_CX] = 0x0590;
+    SM4_NEED(1, 0x0FAA);
+    XRUN(guest_call_pop(m, 0x0EC7, 0x0FAD, 0));                            /* call 0EC7: voice 3 */
+    XB(1, 0x0FAD);                                                         /* lea cx,[078Ch] */
+    c->r[R_CX] = 0x078C;
+    SM4_NEED(1, 0x0FB1);
+    XRUN(guest_call_pop(m, 0x0EBD, 0x0FB4, 0));                            /* call 0EBD: voice 4 */
+    XB(2, 0x0FB4);                                                         /* lea cx,[0B40h] / jmp 0E95 */
+    c->r[R_CX] = 0x0B40;
+    c->ip = 0x0E95;
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* RSOUND.LOG 08BE, near, one argument: the pointer to a channel record (DS-relative, 22h bytes).
+ * One tick of one channel of the Roland MT-32 driver's music sequencer; the twin of the AdLib
+ * driver's ASOUND.LOG 0D1A. Record: +0 ticks left in the current note, +1 and +2 the
+ * steps of two timed sweeps, +3 the step of a third, +4 the current key, +5 the program,
+ * +6 the note-on velocity, +7 the note-length bias, +8 the gate counter, +9/+0Ah/+0Bh
+ * the sweep timers (reloads +0Fh/+10h/+11h), +0Ch/+0Dh/+0Eh the sweep values, +12h the
+ * repeat count of the second sweep, +14h the restart point, +16h the stream pointer,
+ * +18h/+1Ah the loop marks, +1Ch/+1Eh the loop counters, +20h the new restart point.
+ * The tick counts the gate counter [+8] down (063C() releases the held notes when it
+ * reaches zero) and the tick counter [+0]. When [+0] reaches zero the stream at [+16h]
+ * is read: a byte 0F2h..0FFh is a command run through the table at cs:0DB8 (each command
+ * ends at 0DD4, which reads the next byte unless a chord was just played), any other
+ * byte starts a note. A note reads the key [+4] and the length [+0] and advances the
+ * pointer by two; a zero in either calls 063C() and goes to the tail, otherwise the gate
+ * [+8] = length - [+7] and the note on 06F4(key, velocity) is sent (not when the bias is
+ * negative and the key is the one already held in the channel's slot at
+ * 0494+4*[0492]); the key is remembered in the slot. The tail runs three timed sweeps
+ * ([+2] with 07A6(), [+1] with 0804(), [+3] with 0860()) and counts the channel in [0492].
+ * Commands: FF/FE loops A and B, FD restart, FC program (0754), FB bias, FA second sweep,
+ * F9 velocity, F8 first sweep, F7 0804(), F6 07A6(), F5 chord (06F4 per key, slots freed
+ * with FFh), F4 pan (0860), F3 third sweep, F2 random pick through 020A().
+ * Callees: 063C, 06F4, 0754, 07A6, 0804, 0860 plain RET with the caller's own
+ * ADD SP,n; 020A far, RETF. The jump through the table is read from the loaded code; a
+ * word that is not one of the fourteen handlers hands the machine back at that address.
+ * SI, DI, BP are saved and restored.
+ * Code-alias guard: the driver's DS is its own code segment, so the stack, the cells
+ * 0308, 0378, 0492, the record, the chord slots 0494+4*[0492]+k and the byte store of
+ * command F2 can be addressed onto this routine's own 1763 code bytes (08BE..0FA0). The
+ * body keeps no code of its own: it declines at the entry when the frame, a cell or the
+ * record would overlap the code, and hands back (at the chord arm's entry, or at the store)
+ * when a slot or F2 store would hit it. After every returning callee a snapshot
+ * detects changed code and hands back at the original return IP; a moved record
+ * argument on the code also hands back. Lockstep skips actual code-writing states,
+ * so snapshot-triggered handbacks need focused validation outside its comparisons.
+ * The record and all stream-directed stores are also guarded against the two-byte
+ * argument word at SS:entrySP+2, so writes cannot retarget later record accesses
+ * onto code midway through a block. Entry rejects fixed-cell/argument overlap too.
+ * No port accesses (the sends are in the callees), no STI. */
+static int rsound_log_channel_tick(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    uint8_t code_[0x06E3];
+    const uint32_t code_lo_ = phys(c->seg[S_CS], 0x08BE);
+    for (unsigned i_ = 0; i_ < sizeof code_; i_++) code_[i_] = mem_read8(c, code_lo_ + i_);
+    const uint16_t arg_off_ = (uint16_t)(c->r[R_SP] + 2);
+    int hit_ = 0;
+#define XAFTER(ret_) do { for (unsigned k_ = 0; k_ < sizeof code_; k_++) \
+    if (mem_read8(c, code_lo_ + k_) != code_[k_]) { c->ip = (ret_); return 1; } \
+    XHITW(c->seg[S_DS], bp_get(c, 4), 0x22); if (hit_) { c->ip = (ret_); return 1; } \
+    XHITA(c->seg[S_DS], bp_get(c, 4), 0x22); if (hit_) { c->ip = (ret_); return 1; } } while (0)
+#define XHITW(seg_, off_, n_) do { hit_ = 0; for (unsigned k_ = 0; k_ < (unsigned)(n_); k_++) \
+    if (phys((seg_), (uint16_t)((off_) + k_)) - code_lo_ < 0x06E3u) { hit_ = 1; break; } } while (0)
+    /* Protect the two physical bytes holding the caller's record argument. */
+#define XHITA(seg_, off_, n_) do { hit_ = 0; \
+    const uint32_t aa_ = phys(c->seg[S_SS], arg_off_); \
+    const uint32_t ab_ = phys(c->seg[S_SS], (uint16_t)(arg_off_ + 1)); \
+    for (unsigned k_ = 0; k_ < (unsigned)(n_); k_++) { \
+        const uint32_t ap_ = phys((seg_), (uint16_t)((off_) + k_)); \
+        if (ap_ == aa_ || ap_ == ab_) { hit_ = 1; break; } } } while (0)
+    /* declines before changing anything: the frame (pushes, locals, the callees' return words) on the code, a cell
+     * the routine writes (0308 by 020A, 0378, 0492) on the code, or the record on the code */
+#define XENTRY() do { \
+    XHITW(c->seg[S_SS], c->r[R_SP] - 40, 40); if (hit_) return 0; \
+    XHITW(c->seg[S_DS], 0x0308, 2); if (hit_) return 0; \
+    XHITA(c->seg[S_DS], 0x0308, 2); if (hit_) return 0; \
+    XHITW(c->seg[S_DS], 0x0378, 1); if (hit_) return 0; \
+    XHITA(c->seg[S_DS], 0x0378, 1); if (hit_) return 0; \
+    XHITW(c->seg[S_DS], 0x0492, 1); if (hit_) return 0; \
+    XHITA(c->seg[S_DS], 0x0492, 1); if (hit_) return 0; \
+    XHITW(c->seg[S_DS], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2)), 0x22); if (hit_) return 0; \
+    XHITA(c->seg[S_DS], seg_read16(c, c->seg[S_SS], arg_off_), 0x22); if (hit_) return 0; } while (0)
+    /* before a store at DS:off whose address comes from the stream or the slot list: hand back at the store when it hits the code */
+#define XGUARD(off_, ip_) do { XHITW(c->seg[S_DS], (off_), 1); if (hit_) { c->ip = (ip_); return 1; } \
+    XHITA(c->seg[S_DS], (off_), 1); if (hit_) { c->ip = (ip_); return 1; } } while (0)
+    /* before the chord list is stored: the stores are the keys at 0494+4*[0492]+k (k from 0, at least once, n times) and
+     * then FFh at k = n..3 (n signed); hand back at the arm's entry when any of those bytes is on the code */
+#define XCHORD(ip_) do { \
+    const uint16_t a0_ = (uint16_t)(0x0494 + 4 * (unsigned)ds_get8(c, 0x0492)); \
+    const int n_ = (int8_t)ds_get8(c, (uint16_t)(bp_get(c, -2) + 1)); \
+    XHITW(c->seg[S_DS], a0_, (n_ >= 1 ? n_ : 1)); if (hit_) { c->ip = (ip_); return 1; } \
+    XHITA(c->seg[S_DS], a0_, (n_ >= 1 ? n_ : 1)); if (hit_) { c->ip = (ip_); return 1; } \
+    if (n_ < 4) { XHITA(c->seg[S_DS], (uint16_t)(a0_ + n_), (unsigned)(4 - n_)); if (hit_) { c->ip = (ip_); return 1; } } \
+    if (n_ < 4) { XHITW(c->seg[S_DS], (uint16_t)(a0_ + n_), (unsigned)(4 - n_)); if (hit_) { c->ip = (ip_); return 1; } } } while (0)
+#define XDISPATCH() do { const uint16_t t_ = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0DB8)); \
+    switch (t_) { case 0x0D42: goto L0D42; case 0x0D02: goto L0D02; case 0x0CDA: goto L0CDA; case 0x0B9C: goto L0B9C; case 0x0B76: goto L0B76; case 0x0B50: goto L0B50; case 0x0B22: goto L0B22; case 0x0B0A: goto L0B0A; case 0x0ACE: goto L0ACE; case 0x0AB6: goto L0AB6; case 0x0A90: goto L0A90; case 0x0A44: goto L0A44; case 0x09AC: goto L09AC; case 0x092A: goto L092A; \
+    default: c->ip = t_; return 1; } } while (0)
+    /* 08BE entry: [bp+4] is the channel record. The gate counter [+8] counts down (063C() when it reaches zero), the tick counter [+0] counts down, and only when it is zero does the stream run. */
+    if (!room(c, 9)) return 0;
+    XENTRY();
+    XB(9, 0x08BE);
+    x86_push_reg(c, R_BP); /* 08BE push bp */
+    c->r[R_BP] = (uint16_t)(c->r[R_SP]); /* 08BF mov bp, sp */
+    c->r[R_SP] = (uint16_t)(alu_op(c, 5, c->r[R_SP], 0x0008, 1)); /* 08C1 sub sp, 8 */
+    x86_push_reg(c, R_SI); /* 08C5 push si */
+    x86_push_reg(c, R_DI); /* 08C6 push di */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 08C7 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 08CA mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 08CC and ax, 0xff */
+    if (x86_cond(c, 5)) goto L08D4; goto L08D1; /* 08CF jne 0x8d4 */
+    /* 08D1 tick counter was zero: nothing to read, go to the tail */
+    L08D1:
+    XB(1, 0x08D1);
+    goto L0EC3; /* 08D1 jmp 0xec3 */
+    /* 08D4 gate counter [+8]: when non-zero count it down, and call 063C() (release the held notes) when it reaches zero */
+    L08D4:
+    XB(4, 0x08D4);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 08D4 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0008)))); /* 08D7 mov al, byte ptr [bx + 8] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 08DA and ax, 0xff */
+    if (x86_cond(c, 4)) goto L08F0; goto L08DF; /* 08DD je 0x8f0 */
+    L08DF:
+    XB(5, 0x08DF);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 08DF mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0008), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0008)), 0))); /* 08E2 dec byte ptr [bx + 8] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0008)))); /* 08E5 mov al, byte ptr [bx + 8] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 08E8 and ax, 0xff */
+    if (x86_cond(c, 5)) goto L08F0; goto L08ED; /* 08EB jne 0x8f0 */
+    L08ED:
+    SM4_NEED(1, 0x08ED);
+    XRUN(guest_call_pop(m, 0x063C, 0x08F0, 0)); /* 08ED call 0x63c */
+    XAFTER(0x08F0);
+    /* 08F0 count the tick counter [+0] down; a result above zero skips the stream */
+    L08F0:
+    XB(5, 0x08F0);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 08F0 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX])), 0))); /* 08F3 dec byte ptr [bx] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 08F5 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 08F7 and ax, 0xff */
+    if (x86_cond(c, 14)) goto L08FF; goto L08FC; /* 08FA jle 0x8ff */
+    L08FC:
+    XB(1, 0x08FC);
+    goto L0EC3; /* 08FC jmp 0xec3 */
+    /* 08FF stream loop: the byte at [+16h] is a command only when it is above 0F1h as a signed byte (0F2h..0FFh), anything else is a note */
+    L08FF:
+    XB(8, 0x08FF);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 08FF mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 0902 mov ax, word ptr [bx + 0x16] */
+    bp_put(c, -2, (uint16_t)(c->r[R_AX])); /* 0905 mov word ptr [bp - 2], ax */
+    c->r[R_BX] = (uint16_t)(c->r[R_AX]); /* 0908 mov bx, ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 090A mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 090C cwde */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x0080, 1)); /* 090D and ax, 0x80 */
+    if (x86_cond(c, 5)) goto L0915; goto L0912; /* 0910 jne 0x915 */
+    /* 0912 bit 7 clear: a note */
+    L0912:
+    XB(1, 0x0912);
+    goto L0DE2; /* 0912 jmp 0xde2 */
+    L0915:
+    XB(3, 0x0915);
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0915 mov bx, word ptr [bp - 2] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX])), 0xF1, 0); /* 0918 cmp byte ptr [bx], 0xf1 */
+    if (x86_cond(c, 15)) goto L0920; goto L091D; /* 091B jg 0x920 */
+    /* 091D 80h..0F1h: also a note */
+    L091D:
+    XB(1, 0x091D);
+    goto L0DE2; /* 091D jmp 0xde2 */
+    /* 0920 a command: index = byte + 14 (0..13) through the table at cs:0DB8 */
+    L0920:
+    XB(4, 0x0920);
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0920 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0923 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0925 cwde */
+    goto L0DA4; /* 0926 jmp 0xda4 */
+    /* 092A FFh loop A: counter [+1Ch], mark [+18h] */
+    L092A:
+    XB(3, 0x092A);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 092A mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001C)), 0x0000, 1); /* 092D cmp word ptr [bx + 0x1c], 0 */
+    if (x86_cond(c, 4)) goto L0936; goto L0933; /* 0931 je 0x936 */
+    L0933:
+    XB(1, 0x0933);
+    goto L0978; /* 0933 jmp 0x978 */
+    L0936:
+    XB(4, 0x0936);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0936 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0939 mov bx, word ptr [bp - 2] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX])), 0x00, 0); /* 093C cmp byte ptr [bx], 0 */
+    if (x86_cond(c, 5)) goto L095E; goto L0941; /* 093F jne 0x95e */
+    L0941:
+    XB(9, 0x0941);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0941 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0944 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0948 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 094B mov ax, word ptr [bx + 0x16] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 094E mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0018), (uint16_t)(c->r[R_AX])); /* 0951 mov word ptr [bx + 0x18], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0954 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001C), (uint16_t)(0x0000)); /* 0957 mov word ptr [bx + 0x1c], 0 */
+    goto L0976; /* 095C jmp 0x976 */
+    L095E:
+    XB(9, 0x095E);
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 095E mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0961 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0963 cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0964 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001C), (uint16_t)(c->r[R_AX])); /* 0967 mov word ptr [bx + 0x1c], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 096A mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0018))); /* 096D mov ax, word ptr [bx + 0x18] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0970 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 0973 mov word ptr [bx + 0x16], ax */
+    goto L0976;
+    L0976:
+    XB(1, 0x0976);
+    goto L09A8; /* 0976 jmp 0x9a8 */
+    L0978:
+    XB(5, 0x0978);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0978 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001C), (uint16_t)(alu_dec(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001C)), 1))); /* 097B dec word ptr [bx + 0x1c] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 097E mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001C)), 0x0000, 1); /* 0981 cmp word ptr [bx + 0x1c], 0 */
+    if (x86_cond(c, 5)) goto L099C; goto L0987; /* 0985 jne 0x99c */
+    L0987:
+    XB(7, 0x0987);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0987 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 098A add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 098E mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 0991 mov ax, word ptr [bx + 0x16] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0994 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0018), (uint16_t)(c->r[R_AX])); /* 0997 mov word ptr [bx + 0x18], ax */
+    goto L09A8; /* 099A jmp 0x9a8 */
+    L099C:
+    XB(4, 0x099C);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 099C mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0018))); /* 099F mov ax, word ptr [bx + 0x18] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09A2 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 09A5 mov word ptr [bx + 0x16], ax */
+    goto L09A8;
+    L09A8:
+    XB(1, 0x09A8);
+    goto L0DD4; /* 09A8 jmp 0xdd4 */
+    /* 09AC FEh loop B: counter [+1Eh], marks [+1Ah] and [+18h] */
+    L09AC:
+    XB(3, 0x09AC);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09AC mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001E)), 0x0000, 1); /* 09AF cmp word ptr [bx + 0x1e], 0 */
+    if (x86_cond(c, 4)) goto L09B8; goto L09B5; /* 09B3 je 0x9b8 */
+    L09B5:
+    XB(1, 0x09B5);
+    goto L0A04; /* 09B5 jmp 0xa04 */
+    L09B8:
+    XB(4, 0x09B8);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 09B8 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 09BB mov bx, word ptr [bp - 2] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX])), 0x00, 0); /* 09BE cmp byte ptr [bx], 0 */
+    if (x86_cond(c, 5)) goto L09E8; goto L09C3; /* 09C1 jne 0x9e8 */
+    L09C3:
+    XB(11, 0x09C3);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09C3 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 09C6 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09CA mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 09CD mov ax, word ptr [bx + 0x16] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09D0 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001A), (uint16_t)(c->r[R_AX])); /* 09D3 mov word ptr [bx + 0x1a], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09D6 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001C), (uint16_t)(0x0000)); /* 09D9 mov word ptr [bx + 0x1c], 0 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09DE mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001E), (uint16_t)(0x0000)); /* 09E1 mov word ptr [bx + 0x1e], 0 */
+    goto L0A00; /* 09E6 jmp 0xa00 */
+    L09E8:
+    XB(9, 0x09E8);
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 09E8 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 09EB mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 09ED cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09EE mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001E), (uint16_t)(c->r[R_AX])); /* 09F1 mov word ptr [bx + 0x1e], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09F4 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x001A))); /* 09F7 mov ax, word ptr [bx + 0x1a] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 09FA mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 09FD mov word ptr [bx + 0x16], ax */
+    goto L0A00;
+    L0A00:
+    XB(1, 0x0A00);
+    goto L0A40; /* 0A00 jmp 0xa40 */
+    L0A04:
+    XB(5, 0x0A04);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A04 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001E), (uint16_t)(alu_dec(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001E)), 1))); /* 0A07 dec word ptr [bx + 0x1e] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A0A mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + 0x001E)), 0x0000, 1); /* 0A0D cmp word ptr [bx + 0x1e], 0 */
+    if (x86_cond(c, 5)) goto L0A34; goto L0A13; /* 0A11 jne 0xa34 */
+    L0A13:
+    XB(11, 0x0A13);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A13 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0A16 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A1A mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 0A1D mov ax, word ptr [bx + 0x16] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A20 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001A), (uint16_t)(c->r[R_AX])); /* 0A23 mov word ptr [bx + 0x1a], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A26 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 0A29 mov ax, word ptr [bx + 0x16] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A2C mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0018), (uint16_t)(c->r[R_AX])); /* 0A2F mov word ptr [bx + 0x18], ax */
+    goto L0A40; /* 0A32 jmp 0xa40 */
+    L0A34:
+    XB(4, 0x0A34);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A34 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x001A))); /* 0A37 mov ax, word ptr [bx + 0x1a] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A3A mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 0A3D mov word ptr [bx + 0x16], ax */
+    goto L0A40;
+    L0A40:
+    XB(1, 0x0A40);
+    goto L0DD4; /* 0A40 jmp 0xdd4 */
+    /* 0A44 FDh restart: the point [+20h], or [+14h] when it is zero */
+    L0A44:
+    XB(3, 0x0A44);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A44 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0020)), 0x0000, 1); /* 0A47 cmp word ptr [bx + 0x20], 0 */
+    if (x86_cond(c, 5)) goto L0A5C; goto L0A4D; /* 0A4B jne 0xa5c */
+    L0A4D:
+    XB(5, 0x0A4D);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A4D mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0014))); /* 0A50 mov ax, word ptr [bx + 0x14] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A53 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 0A56 mov word ptr [bx + 0x16], ax */
+    goto L0A8C; /* 0A59 jmp 0xa8c */
+    L0A5C:
+    XB(16, 0x0A5C);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A5C mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0020))); /* 0A5F mov ax, word ptr [bx + 0x20] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A62 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0014), (uint16_t)(c->r[R_AX])); /* 0A65 mov word ptr [bx + 0x14], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A68 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0020))); /* 0A6B mov ax, word ptr [bx + 0x20] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A6E mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(c->r[R_AX])); /* 0A71 mov word ptr [bx + 0x16], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A74 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0020))); /* 0A77 mov ax, word ptr [bx + 0x20] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A7A mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0018), (uint16_t)(c->r[R_AX])); /* 0A7D mov word ptr [bx + 0x18], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A80 mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0020))); /* 0A83 mov ax, word ptr [bx + 0x20] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A86 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001A), (uint16_t)(c->r[R_AX])); /* 0A89 mov word ptr [bx + 0x1a], ax */
+    goto L0A8C;
+    L0A8C:
+    XB(1, 0x0A8C);
+    goto L0DD4; /* 0A8C jmp 0xdd4 */
+    /* 0A90 FCh: [+5] = program, [+16h] += 2, 0754(program) sends it */
+    L0A90:
+    XB(11, 0x0A90);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0A90 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0A93 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0A96 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A98 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0005), (uint8_t)(get_r8(c, 0))); /* 0A9B mov byte ptr [bx + 5], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0A9E mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0AA1 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0AA5 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0AA8 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0AAA cwde */
+    x86_push_reg(c, R_AX); /* 0AAB push ax */
+    SM4_NEED(1, 0x0AAC);
+    XRUN(guest_call_pop(m, 0x0754, 0x0AAF, 0)); /* 0AAC call 0x754 */
+    XAFTER(0x0AAF);
+    XB(2, 0x0AAF);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0AAF add sp, 2 */
+    goto L0DD4; /* 0AB2 jmp 0xdd4 */
+    /* 0AB6 FBh: [+7] = note-length bias, [+16h] += 2 */
+    L0AB6:
+    XB(8, 0x0AB6);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0AB6 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0AB9 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0ABC mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0ABE mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0007), (uint8_t)(get_r8(c, 0))); /* 0AC1 mov byte ptr [bx + 7], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AC4 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0AC7 add word ptr [bx + 0x16], 2 */
+    goto L0DD4; /* 0ACB jmp 0xdd4 */
+    /* 0ACE FAh: [+10h], [+1] and [+12h] from the stream, timer [+0Ah] = 1, [+16h] += 4 */
+    L0ACE:
+    XB(20, 0x0ACE);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0ACE inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0AD1 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0AD4 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AD6 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0010), (uint8_t)(get_r8(c, 0))); /* 0AD9 mov byte ptr [bx + 0x10], al */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0ADC inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0ADF mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0AE2 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AE4 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0001), (uint8_t)(get_r8(c, 0))); /* 0AE7 mov byte ptr [bx + 1], al */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0AEA inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0AED mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0AF0 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AF2 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0012), (uint8_t)(get_r8(c, 0))); /* 0AF5 mov byte ptr [bx + 0x12], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AF8 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000A), (uint8_t)(0x01)); /* 0AFB mov byte ptr [bx + 0xa], 1 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0AFF mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0004, 1))); /* 0B02 add word ptr [bx + 0x16], 4 */
+    goto L0DD4; /* 0B06 jmp 0xdd4 */
+    /* 0B0A F9h: [+6] = note-on velocity, [+16h] += 2 */
+    L0B0A:
+    XB(8, 0x0B0A);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B0A inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B0D mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B10 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B12 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0006), (uint8_t)(get_r8(c, 0))); /* 0B15 mov byte ptr [bx + 6], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B18 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0B1B add word ptr [bx + 0x16], 2 */
+    goto L0DD4; /* 0B1F jmp 0xdd4 */
+    /* 0B22 F8h: [+0Fh] and [+2] from the stream, timer [+9] = 1, [+16h] += 3 */
+    L0B22:
+    XB(15, 0x0B22);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B22 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B25 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B28 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B2A mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000F), (uint8_t)(get_r8(c, 0))); /* 0B2D mov byte ptr [bx + 0xf], al */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B30 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B33 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B36 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B38 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0002), (uint8_t)(get_r8(c, 0))); /* 0B3B mov byte ptr [bx + 2], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B3E mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0009), (uint8_t)(0x01)); /* 0B41 mov byte ptr [bx + 9], 1 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B45 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0003, 1))); /* 0B48 add word ptr [bx + 0x16], 3 */
+    goto L0DD4; /* 0B4C jmp 0xdd4 */
+    /* 0B50 F7h: [+0Dh] = p, [+16h] += 2, 0804(p) */
+    L0B50:
+    XB(11, 0x0B50);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B50 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B53 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B56 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B58 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000D), (uint8_t)(get_r8(c, 0))); /* 0B5B mov byte ptr [bx + 0xd], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B5E mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0B61 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B65 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B68 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0B6A cwde */
+    x86_push_reg(c, R_AX); /* 0B6B push ax */
+    SM4_NEED(1, 0x0B6C);
+    XRUN(guest_call_pop(m, 0x0804, 0x0B6F, 0)); /* 0B6C call 0x804 */
+    XAFTER(0x0B6F);
+    XB(2, 0x0B6F);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0B6F add sp, 2 */
+    goto L0DD4; /* 0B72 jmp 0xdd4 */
+    /* 0B76 F6h: [+0Ch] = p, [+16h] += 2, 07A6(p) */
+    L0B76:
+    XB(11, 0x0B76);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B76 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B79 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B7C mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B7E mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000C), (uint8_t)(get_r8(c, 0))); /* 0B81 mov byte ptr [bx + 0xc], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0B84 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0B87 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B8B mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0B8E mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0B90 cwde */
+    x86_push_reg(c, R_AX); /* 0B91 push ax */
+    SM4_NEED(1, 0x0B92);
+    XRUN(guest_call_pop(m, 0x07A6, 0x0B95, 0)); /* 0B92 call 0x7a6 */
+    XAFTER(0x0B95);
+    XB(2, 0x0B95);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0B95 add sp, 2 */
+    goto L0DD4; /* 0B98 jmp 0xdd4 */
+    /* 0B9C F5h chord: n notes (each sent as a note on through 06F4 unless held, remembered in the channel's four-byte list at 0494+4*[0492]), the rest of the list freed with FFh, then the note length [+0] and the gate [+8]; [0378] = 1 ends the stream reading for this tick */
+    L0B9C:
+    XCHORD(0x0B9C);
+    XB(21, 0x0B9C);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0B9C inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0B9F mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0BA2 mov al, byte ptr [bx] */
+    bp_put8(c, -6, (uint8_t)(get_r8(c, 0))); /* 0BA4 mov byte ptr [bp - 6], al */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0BA7 mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0BAA cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0BAB mov bx, word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0BAE add bx, ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0001)))); /* 0BB0 mov al, byte ptr [bx + 1] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0BB3 cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0BB4 mov bx, word ptr [bp + 4] */
+    set_r8(c, 1, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0007)))); /* 0BB7 mov cl, byte ptr [bx + 7] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0BBA mov word ptr [bp - 8], ax */
+    c->r[R_AX] = (uint16_t)(c->r[R_CX]); /* 0BBD mov ax, cx */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0BBF cwde */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0BC0 mov cx, word ptr [bp - 8] */
+    c->r[R_CX] = (uint16_t)(alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1)); /* 0BC3 sub cx, ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0BC5 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0008), (uint8_t)(get_r8(c, 1))); /* 0BC8 mov byte ptr [bx + 8], cl */
+    bp_put8(c, -4, (uint8_t)(0x00)); /* 0BCB mov byte ptr [bp - 4], 0 */
+    goto L0C5A; /* 0BCF jmp 0xc5a */
+    /* 0BD2 chord loop: one note of the list per pass */
+    L0BD2:
+    XB(8, 0x0BD2);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0BD2 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0BD5 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0BD8 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0BDA mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0004), (uint8_t)(get_r8(c, 0))); /* 0BDD mov byte ptr [bx + 4], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0BE0 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0007)), 0x00, 0); /* 0BE3 cmp byte ptr [bx + 7], 0 */
+    if (x86_cond(c, 13)) goto L0C1A; goto L0BE9; /* 0BE7 jge 0xc1a */
+    L0BE9:
+    XB(19, 0x0BE9);
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0492))); /* 0BE9 mov al, byte ptr [0x492] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0BEC and ax, 0xff */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0BEF shl ax, 1 */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0BF1 shl ax, 1 */
+    c->r[R_BX] = (uint16_t)(0x0494); /* 0BF3 mov bx, 0x494 */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0BF6 add bx, ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -4))); /* 0BF8 mov al, byte ptr [bp - 4] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0BFB cwde */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0BFC add bx, ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0BFE mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C00 and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0C03 mov bx, word ptr [bp + 4] */
+    set_r8(c, 1, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0C06 mov cl, byte ptr [bx + 4] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0C09 mov word ptr [bp - 8], ax */
+    c->r[R_AX] = (uint16_t)(c->r[R_CX]); /* 0C0C mov ax, cx */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C0E and ax, 0xff */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0C11 mov cx, word ptr [bp - 8] */
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1); /* 0C14 cmp cx, ax */
+    if (x86_cond(c, 5)) goto L0C1A; goto L0C18; /* 0C16 jne 0xc1a */
+    L0C18:
+    XB(1, 0x0C18);
+    goto L0C34; /* 0C18 jmp 0xc34 */
+    L0C1A:
+    XB(8, 0x0C1A);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0C1A mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0006)))); /* 0C1D mov al, byte ptr [bx + 6] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C20 and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0C23 push ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0C24 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0C27 mov al, byte ptr [bx + 4] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C2A and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0C2D push ax */
+    SM4_NEED(1, 0x0C2E);
+    XRUN(guest_call_pop(m, 0x06F4, 0x0C31, 0)); /* 0C2E call 0x6f4 */
+    XAFTER(0x0C31);
+    XB(1, 0x0C31);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0004, 1)); /* 0C31 add sp, 4 */
+    goto L0C34;
+    L0C34:
+    XB(13, 0x0C34);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0C34 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0C37 mov al, byte ptr [bx + 4] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0C3A mov word ptr [bp - 8], ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0492))); /* 0C3D mov al, byte ptr [0x492] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C40 and ax, 0xff */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0C43 shl ax, 1 */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0C45 shl ax, 1 */
+    c->r[R_BX] = (uint16_t)(0x0494); /* 0C47 mov bx, 0x494 */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0C4A add bx, ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -4))); /* 0C4C mov al, byte ptr [bp - 4] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0C4F cwde */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0C50 add bx, ax */
+    c->r[R_AX] = (uint16_t)(bp_get(c, -8)); /* 0C52 mov ax, word ptr [bp - 8] */
+    XGUARD(c->r[R_BX], 0x0C55); /* re-check the slot address at the store: a callee may have changed [0492] */
+    XB(2, 0x0C55);
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(get_r8(c, 0))); /* 0C55 mov byte ptr [bx], al */
+    bp_put8(c, -4, (uint8_t)(alu_inc(c, bp_get8(c, -4), 0))); /* 0C57 inc byte ptr [bp - 4] */
+    goto L0C5A;
+    L0C5A:
+    XB(8, 0x0C5A);
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -4))); /* 0C5A mov al, byte ptr [bp - 4] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0C5D cwde */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0C5E mov word ptr [bp - 8], ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0C61 mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0C64 cwde */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0C65 mov cx, word ptr [bp - 8] */
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1); /* 0C68 cmp cx, ax */
+    if (x86_cond(c, 13)) goto L0C6F; goto L0C6C; /* 0C6A jge 0xc6f */
+    L0C6C:
+    XB(1, 0x0C6C);
+    goto L0BD2; /* 0C6C jmp 0xbd2 */
+    L0C6F:
+    XB(3, 0x0C6F);
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0C6F mov al, byte ptr [bp - 6] */
+    bp_put8(c, -4, (uint8_t)(get_r8(c, 0))); /* 0C72 mov byte ptr [bp - 4], al */
+    goto L0C93; /* 0C75 jmp 0xc93 */
+    /* 0C78 free the remaining slots of the list */
+    L0C78:
+    XB(9, 0x0C78);
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0492))); /* 0C78 mov al, byte ptr [0x492] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0C7B and ax, 0xff */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0C7E shl ax, 1 */
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0C80 shl ax, 1 */
+    c->r[R_BX] = (uint16_t)(0x0494); /* 0C82 mov bx, 0x494 */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0C85 add bx, ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -4))); /* 0C87 mov al, byte ptr [bp - 4] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0C8A cwde */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0C8B add bx, ax */
+    XGUARD(c->r[R_BX], 0x0C8D); /* re-check the slot address at the store: a callee may have changed [0492] */
+    XB(2, 0x0C8D);
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(0xFF)); /* 0C8D mov byte ptr [bx], 0xff */
+    bp_put8(c, -4, (uint8_t)(alu_inc(c, bp_get8(c, -4), 0))); /* 0C90 inc byte ptr [bp - 4] */
+    goto L0C93;
+    L0C93:
+    XB(2, 0x0C93);
+    (void)alu_op(c, 7, bp_get8(c, -4), 0x04, 0); /* 0C93 cmp byte ptr [bp - 4], 4 */
+    if (x86_cond(c, 12)) goto L0C78; goto L0C99; /* 0C97 jl 0xc78 */
+    /* 0C99 the length byte after the list */
+    L0C99:
+    XB(24, 0x0C99);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0C99 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0C9C mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0C9F mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CA1 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(get_r8(c, 0))); /* 0CA4 mov byte ptr [bx], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CA6 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0CA9 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0CAB and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CAE mov bx, word ptr [bp + 4] */
+    set_r8(c, 1, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0007)))); /* 0CB1 mov cl, byte ptr [bx + 7] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0CB4 mov word ptr [bp - 8], ax */
+    c->r[R_AX] = (uint16_t)(c->r[R_CX]); /* 0CB7 mov ax, cx */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0CB9 cwde */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0CBA mov cx, word ptr [bp - 8] */
+    c->r[R_CX] = (uint16_t)(alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1)); /* 0CBD sub cx, ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CBF mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0008), (uint8_t)(get_r8(c, 1))); /* 0CC2 mov byte ptr [bx + 8], cl */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0CC5 mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0CC8 cwde */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 0, c->r[R_AX], 0x0003, 1)); /* 0CC9 add ax, 3 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CCC mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), c->r[R_AX], 1))); /* 0CCF add word ptr [bx + 0x16], ax */
+    ds_put8(c, 0x0378, (uint8_t)(0x01)); /* 0CD2 mov byte ptr [0x378], 1 */
+    goto L0DD4; /* 0CD7 jmp 0xdd4 */
+    /* 0CDA F4h: [+0Eh] = p, 0860(p), [+16h] += 2 */
+    L0CDA:
+    XB(9, 0x0CDA);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0CDA inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0CDD mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0CE0 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CE2 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000E), (uint8_t)(get_r8(c, 0))); /* 0CE5 mov byte ptr [bx + 0xe], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CE8 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000E)))); /* 0CEB mov al, byte ptr [bx + 0xe] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0CEE and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0CF1 push ax */
+    SM4_NEED(1, 0x0CF2);
+    XRUN(guest_call_pop(m, 0x0860, 0x0CF5, 0)); /* 0CF2 call 0x860 */
+    XAFTER(0x0CF5);
+    XB(4, 0x0CF5);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0CF5 add sp, 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0CF8 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0CFB add word ptr [bx + 0x16], 2 */
+    goto L0DD4; /* 0CFF jmp 0xdd4 */
+    /* 0D02 F3h: [+11h] and [+3] from the stream; a zero [+3] centres with 0860(40h); timer [+0Bh] = 1; [+16h] += 3 */
+    L0D02:
+    XB(13, 0x0D02);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0D02 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0D05 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0D08 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D0A mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0011), (uint8_t)(get_r8(c, 0))); /* 0D0D mov byte ptr [bx + 0x11], al */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0D10 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0D13 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0D16 mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D18 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0003), (uint8_t)(get_r8(c, 0))); /* 0D1B mov byte ptr [bx + 3], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D1E mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0003)), 0x00, 0); /* 0D21 cmp byte ptr [bx + 3], 0 */
+    if (x86_cond(c, 5)) goto L0D31; goto L0D27; /* 0D25 jne 0xd31 */
+    L0D27:
+    XB(2, 0x0D27);
+    c->r[R_AX] = (uint16_t)(0x0040); /* 0D27 mov ax, 0x40 */
+    x86_push_reg(c, R_AX); /* 0D2A push ax */
+    SM4_NEED(1, 0x0D2B);
+    XRUN(guest_call_pop(m, 0x0860, 0x0D2E, 0)); /* 0D2B call 0x860 */
+    XAFTER(0x0D2E);
+    XB(1, 0x0D2E);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0D2E add sp, 2 */
+    goto L0D31;
+    L0D31:
+    XB(5, 0x0D31);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D31 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000B), (uint8_t)(0x01)); /* 0D34 mov byte ptr [bx + 0xb], 1 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D38 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0003, 1))); /* 0D3B add word ptr [bx + 0x16], 3 */
+    goto L0DD4; /* 0D3F jmp 0xdd4 */
+    /* 0D42 F2h: n, then n bytes; 020A() steps the random word, the pick ((n - 1) AND [0308]) is copied to the place the byte after the list names; [+16h] += n + 3 */
+    L0D42:
+    XB(5, 0x0D42);
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0D42 inc word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0D45 mov bx, word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0D48 mov al, byte ptr [bx] */
+    bp_put8(c, -6, (uint8_t)(get_r8(c, 0))); /* 0D4A mov byte ptr [bp - 6], al */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0D4D inc word ptr [bp - 2] */
+    SM4_NEED(1, 0x0D50);
+    XRUN(guest_call_far(m, 0x0D50, 0x0D55)); /* lcall 0, 0x20a */
+    XAFTER(0x0D55);
+    XB(25, 0x0D55);
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0D55 mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D58 cwde */
+    c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /* 0D59 dec ax */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], ds_get(c, 0x0308), 1)); /* 0D5A and ax, word ptr [0x308] */
+    bp_put8(c, -4, (uint8_t)(get_r8(c, 0))); /* 0D5E mov byte ptr [bp - 4], al */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -4))); /* 0D61 mov al, byte ptr [bp - 4] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D64 cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0D65 mov bx, word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0D68 add bx, ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0D6A mov al, byte ptr [bx] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0D6C mov word ptr [bp - 8], ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0D6F mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D72 cwde */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0D73 mov bx, word ptr [bp - 2] */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0D76 add bx, ax */
+    c->r[R_AX] = (uint16_t)(0x0001); /* 0D78 mov ax, 1 */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0D7B add bx, ax */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0D7D mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D80 cwde */
+    c->r[R_SI] = (uint16_t)(bp_get(c, -2)); /* 0D81 mov si, word ptr [bp - 2] */
+    c->r[R_SI] = (uint16_t)(alu_op(c, 0, c->r[R_SI], c->r[R_AX], 1)); /* 0D84 add si, ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_SI])))); /* 0D86 mov al, byte ptr [si] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D88 cwde */
+    c->r[R_BX] = (uint16_t)(alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1)); /* 0D89 add bx, ax */
+    c->r[R_AX] = (uint16_t)(bp_get(c, -8)); /* 0D8B mov ax, word ptr [bp - 8] */
+    goto L0D8E;
+    L0D8E:
+    XGUARD(c->r[R_BX], 0x0D8E);
+    XB(7, 0x0D8E);
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(get_r8(c, 0))); /* 0D8E mov byte ptr [bx], al */
+    set_r8(c, 0, (uint8_t)(bp_get8(c, -6))); /* 0D90 mov al, byte ptr [bp - 6] */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0D93 cwde */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 0, c->r[R_AX], 0x0003, 1)); /* 0D94 add ax, 3 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0D97 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), c->r[R_AX], 1))); /* 0D9A add word ptr [bx + 0x16], ax */
+    goto L0DD4; /* 0D9D jmp 0xdd4 */
+    /* 0DA4 table dispatch */
+    L0DA4:
+    XB(3, 0x0DA4);
+    c->r[R_AX] = (uint16_t)(alu_op(c, 5, c->r[R_AX], 0xFFF2, 1)); /* 0DA4 sub ax, 0xfff2 */
+    (void)alu_op(c, 7, c->r[R_AX], 0x000D, 1); /* 0DA7 cmp ax, 0xd */
+    if (x86_cond(c, 6)) goto L0DAF; goto L0DAC; /* 0DAA jbe 0xdaf */
+    L0DAC:
+    c->ip = 0x0DAC; return 1; /* unclaimed range-check fallback; original continues */
+    L0DAF:
+    XB(3, 0x0DAF);
+    c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 1, 1)); /* 0DAF shl ax, 1 */
+    c->r[R_BX] = (uint16_t)(c->r[R_AX]); /* 0DB1 mov bx, ax */
+    XDISPATCH(); /* 0DB3 jmp word ptr cs:[bx + 0xdb8] */
+    /* 0DD4 end of every command: [0378] set (a chord) stops the reading, otherwise the next stream byte */
+    L0DD4:
+    XB(3, 0x0DD4);
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0378))); /* 0DD4 mov al, byte ptr [0x378] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0DD7 and ax, 0xff */
+    if (x86_cond(c, 4)) goto L0DDE; goto L0DDC; /* 0DDA je 0xdde */
+    L0DDC:
+    XB(1, 0x0DDC);
+    goto L0DE2; /* 0DDC jmp 0xde2 */
+    L0DDE:
+    XB(1, 0x0DDE);
+    goto L08FF; /* 0DDE jmp 0x8ff */
+    /* 0DE2 a note, or the end of a chord: [0378] set only clears it and goes to the tail */
+    L0DE2:
+    XB(3, 0x0DE2);
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0378))); /* 0DE2 mov al, byte ptr [0x378] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0DE5 and ax, 0xff */
+    if (x86_cond(c, 4)) goto L0DED; goto L0DEA; /* 0DE8 je 0xded */
+    L0DEA:
+    XB(1, 0x0DEA);
+    goto L0EBE; /* 0DEA jmp 0xebe */
+    /* 0DED a note: [+4] = key, [+0] = length from the stream, [+16h] += 2; a zero in either releases the notes (063C) and goes to the tail */
+    L0DED:
+    XB(19, 0x0DED);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0DED mov bx, word ptr [bp + 4] */
+    c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016))); /* 0DF0 mov ax, word ptr [bx + 0x16] */
+    bp_put(c, -2, (uint16_t)(c->r[R_AX])); /* 0DF3 mov word ptr [bp - 2], ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0DF6 mov bx, word ptr [bp - 2] */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0DF9 inc word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0DFC mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0DFE mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0004), (uint8_t)(get_r8(c, 0))); /* 0E01 mov byte ptr [bx + 4], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, -2)); /* 0E04 mov bx, word ptr [bp - 2] */
+    bp_put(c, -2, (uint16_t)(alu_inc(c, bp_get(c, -2), 1))); /* 0E07 inc word ptr [bp - 2] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0E0A mov al, byte ptr [bx] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E0C mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX]), (uint8_t)(get_r8(c, 0))); /* 0E0F mov byte ptr [bx], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E11 mov bx, word ptr [bp + 4] */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), (uint16_t)(alu_op(c, 0, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0016)), 0x0002, 1))); /* 0E14 add word ptr [bx + 0x16], 2 */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E18 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0E1B mov al, byte ptr [bx + 4] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E1E and ax, 0xff */
+    if (x86_cond(c, 4)) goto L0E2D; goto L0E23; /* 0E21 je 0xe2d */
+    L0E23:
+    XB(4, 0x0E23);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E23 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0E26 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E28 and ax, 0xff */
+    if (x86_cond(c, 5)) goto L0E34; goto L0E2D; /* 0E2B jne 0xe34 */
+    L0E2D:
+    SM4_NEED(1, 0x0E2D);
+    XRUN(guest_call_pop(m, 0x063C, 0x0E30, 0)); /* 0E2D call 0x63c */
+    XAFTER(0x0E30);
+    XB(1, 0x0E30);
+    goto L0EBC; /* 0E30 jmp 0xebc */
+    /* 0E34 gate = length - [+7]; a negative [+7] (tie) skips the note on when the key is the one held in the slot, else 06F4(key, velocity [+6]); the key is remembered */
+    L0E34:
+    XB(15, 0x0E34);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E34 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX])))); /* 0E37 mov al, byte ptr [bx] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E39 and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E3C mov bx, word ptr [bp + 4] */
+    set_r8(c, 1, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0007)))); /* 0E3F mov cl, byte ptr [bx + 7] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0E42 mov word ptr [bp - 8], ax */
+    c->r[R_AX] = (uint16_t)(c->r[R_CX]); /* 0E45 mov ax, cx */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); /* 0E47 cwde */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0E48 mov cx, word ptr [bp - 8] */
+    c->r[R_CX] = (uint16_t)(alu_op(c, 5, c->r[R_CX], c->r[R_AX], 1)); /* 0E4B sub cx, ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E4D mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0008), (uint8_t)(get_r8(c, 1))); /* 0E50 mov byte ptr [bx + 8], cl */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E53 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0007)), 0x00, 0); /* 0E56 cmp byte ptr [bx + 7], 0 */
+    if (x86_cond(c, 13)) goto L0E86; goto L0E5C; /* 0E5A jge 0xe86 */
+    L0E5C:
+    XB(15, 0x0E5C);
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0492))); /* 0E5C mov al, byte ptr [0x492] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E5F and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(c->r[R_AX]); /* 0E62 mov bx, ax */
+    c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1)); /* 0E64 shl bx, 1 */
+    c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1)); /* 0E66 shl bx, 1 */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0494)))); /* 0E68 mov al, byte ptr [bx + 0x494] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E6C and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E6F mov bx, word ptr [bp + 4] */
+    set_r8(c, 1, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0E72 mov cl, byte ptr [bx + 4] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0E75 mov word ptr [bp - 8], ax */
+    c->r[R_AX] = (uint16_t)(c->r[R_CX]); /* 0E78 mov ax, cx */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E7A and ax, 0xff */
+    c->r[R_CX] = (uint16_t)(bp_get(c, -8)); /* 0E7D mov cx, word ptr [bp - 8] */
+    (void)alu_op(c, 7, c->r[R_CX], c->r[R_AX], 1); /* 0E80 cmp cx, ax */
+    if (x86_cond(c, 5)) goto L0E86; goto L0E84; /* 0E82 jne 0xe86 */
+    L0E84:
+    XB(1, 0x0E84);
+    goto L0EA0; /* 0E84 jmp 0xea0 */
+    L0E86:
+    XB(8, 0x0E86);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E86 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0006)))); /* 0E89 mov al, byte ptr [bx + 6] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E8C and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0E8F push ax */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0E90 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0E93 mov al, byte ptr [bx + 4] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0E96 and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0E99 push ax */
+    SM4_NEED(1, 0x0E9A);
+    XRUN(guest_call_pop(m, 0x06F4, 0x0E9D, 0)); /* 0E9A call 0x6f4 */
+    XAFTER(0x0E9D);
+    XB(1, 0x0E9D);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0004, 1)); /* 0E9D add sp, 4 */
+    goto L0EA0;
+    L0EA0:
+    XB(9, 0x0EA0);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EA0 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0004)))); /* 0EA3 mov al, byte ptr [bx + 4] */
+    bp_put(c, -8, (uint16_t)(c->r[R_AX])); /* 0EA6 mov word ptr [bp - 8], ax */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, 0x0492))); /* 0EA9 mov al, byte ptr [0x492] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0EAC and ax, 0xff */
+    c->r[R_BX] = (uint16_t)(c->r[R_AX]); /* 0EAF mov bx, ax */
+    c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1)); /* 0EB1 shl bx, 1 */
+    c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 1, 1)); /* 0EB3 shl bx, 1 */
+    c->r[R_AX] = (uint16_t)(bp_get(c, -8)); /* 0EB5 mov ax, word ptr [bp - 8] */
+    goto L0EB8;
+    L0EB8:
+    XGUARD((uint16_t)(c->r[R_BX] + 0x0494), 0x0EB8);
+    XB(1, 0x0EB8);
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0494), (uint8_t)(get_r8(c, 0))); /* 0EB8 mov byte ptr [bx + 0x494], al */
+    goto L0EBC;
+    L0EBC:
+    XB(1, 0x0EBC);
+    goto L0EC3; /* 0EBC jmp 0xec3 */
+    /* 0EBE chord ends: clear [0378] */
+    L0EBE:
+    XB(1, 0x0EBE);
+    ds_put8(c, 0x0378, (uint8_t)(0x00)); /* 0EBE mov byte ptr [0x378], 0 */
+    goto L0EC3;
+    /* 0EC3 tail 1: timer [+9] of step [+2]: reload from [+0Fh], [+0Ch] += [+2], 07A6([+0Ch]) */
+    L0EC3:
+    XB(3, 0x0EC3);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EC3 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0002)), 0x00, 0); /* 0EC6 cmp byte ptr [bx + 2], 0 */
+    if (x86_cond(c, 4)) goto L0F02; goto L0ECC; /* 0ECA je 0xf02 */
+    L0ECC:
+    XB(5, 0x0ECC);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0ECC mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0009), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0009)), 0))); /* 0ECF dec byte ptr [bx + 9] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0009)))); /* 0ED2 mov al, byte ptr [bx + 9] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0ED5 and ax, 0xff */
+    if (x86_cond(c, 5)) goto L0F02; goto L0EDA; /* 0ED8 jne 0xf02 */
+    L0EDA:
+    XB(12, 0x0EDA);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EDA mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000F)))); /* 0EDD mov al, byte ptr [bx + 0xf] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EE0 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0009), (uint8_t)(get_r8(c, 0))); /* 0EE3 mov byte ptr [bx + 9], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EE6 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0002)))); /* 0EE9 mov al, byte ptr [bx + 2] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EEC mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000C), (uint8_t)(alu_op(c, 0, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000C)), get_r8(c, 0), 0))); /* 0EEF add byte ptr [bx + 0xc], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0EF2 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000C)))); /* 0EF5 mov al, byte ptr [bx + 0xc] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0EF8 and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0EFB push ax */
+    SM4_NEED(1, 0x0EFC);
+    XRUN(guest_call_pop(m, 0x07A6, 0x0EFF, 0)); /* 0EFC call 0x7a6 */
+    XAFTER(0x0EFF);
+    XB(1, 0x0EFF);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0EFF add sp, 2 */
+    goto L0F02;
+    /* 0F02 tail 2: timer [+0Ah] of step [+1]: reload from [+10h], [+0Dh] += [+1], 0804([+0Dh]); [+12h] counts the repeats and clears [+1] at zero */
+    L0F02:
+    XB(3, 0x0F02);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F02 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0001)), 0x00, 0); /* 0F05 cmp byte ptr [bx + 1], 0 */
+    if (x86_cond(c, 5)) goto L0F0E; goto L0F0B; /* 0F09 jne 0xf0e */
+    L0F0B:
+    XB(1, 0x0F0B);
+    goto L0F58; /* 0F0B jmp 0xf58 */
+    L0F0E:
+    XB(5, 0x0F0E);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F0E mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000A), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000A)), 0))); /* 0F11 dec byte ptr [bx + 0xa] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000A)))); /* 0F14 mov al, byte ptr [bx + 0xa] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0F17 and ax, 0xff */
+    if (x86_cond(c, 5)) goto L0F44; goto L0F1C; /* 0F1A jne 0xf44 */
+    L0F1C:
+    XB(12, 0x0F1C);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F1C mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0010)))); /* 0F1F mov al, byte ptr [bx + 0x10] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F22 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000A), (uint8_t)(get_r8(c, 0))); /* 0F25 mov byte ptr [bx + 0xa], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F28 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0001)))); /* 0F2B mov al, byte ptr [bx + 1] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F2E mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000D), (uint8_t)(alu_op(c, 0, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000D)), get_r8(c, 0), 0))); /* 0F31 add byte ptr [bx + 0xd], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F34 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000D)))); /* 0F37 mov al, byte ptr [bx + 0xd] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0F3A and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0F3D push ax */
+    SM4_NEED(1, 0x0F3E);
+    XRUN(guest_call_pop(m, 0x0804, 0x0F41, 0)); /* 0F3E call 0x804 */
+    XAFTER(0x0F41);
+    XB(1, 0x0F41);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0F41 add sp, 2 */
+    goto L0F44;
+    L0F44:
+    XB(5, 0x0F44);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F44 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0012), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0012)), 0))); /* 0F47 dec byte ptr [bx + 0x12] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0012)))); /* 0F4A mov al, byte ptr [bx + 0x12] */
+    set_r8(c, 0, (uint8_t)(alu_op(c, 4, get_r8(c, 0), get_r8(c, 0), 0))); /* 0F4D and al, al */
+    if (x86_cond(c, 5)) goto L0F58; goto L0F51; /* 0F4F jne 0xf58 */
+    L0F51:
+    XB(2, 0x0F51);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F51 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0001), (uint8_t)(0x00)); /* 0F54 mov byte ptr [bx + 1], 0 */
+    goto L0F58;
+    /* 0F58 tail 3: timer [+0Bh] of step [+3]: reload from [+11h], [+0Eh] += [+3], 0860([+0Eh]) */
+    L0F58:
+    XB(3, 0x0F58);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F58 mov bx, word ptr [bp + 4] */
+    (void)alu_op(c, 7, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0003)), 0x00, 0); /* 0F5B cmp byte ptr [bx + 3], 0 */
+    if (x86_cond(c, 4)) goto L0F97; goto L0F61; /* 0F5F je 0xf97 */
+    L0F61:
+    XB(5, 0x0F61);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F61 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000B), (uint8_t)(alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000B)), 0))); /* 0F64 dec byte ptr [bx + 0xb] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000B)))); /* 0F67 mov al, byte ptr [bx + 0xb] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0F6A and ax, 0xff */
+    if (x86_cond(c, 5)) goto L0F97; goto L0F6F; /* 0F6D jne 0xf97 */
+    L0F6F:
+    XB(12, 0x0F6F);
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F6F mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0011)))); /* 0F72 mov al, byte ptr [bx + 0x11] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F75 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000B), (uint8_t)(get_r8(c, 0))); /* 0F78 mov byte ptr [bx + 0xb], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F7B mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0003)))); /* 0F7E mov al, byte ptr [bx + 3] */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F81 mov bx, word ptr [bp + 4] */
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x000E), (uint8_t)(alu_op(c, 0, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000E)), get_r8(c, 0), 0))); /* 0F84 add byte ptr [bx + 0xe], al */
+    c->r[R_BX] = (uint16_t)(bp_get(c, 4)); /* 0F87 mov bx, word ptr [bp + 4] */
+    set_r8(c, 0, (uint8_t)(ds_get8(c, (uint16_t)(c->r[R_BX] + 0x000E)))); /* 0F8A mov al, byte ptr [bx + 0xe] */
+    c->r[R_AX] = (uint16_t)(alu_op(c, 4, c->r[R_AX], 0x00FF, 1)); /* 0F8D and ax, 0xff */
+    x86_push_reg(c, R_AX); /* 0F90 push ax */
+    SM4_NEED(1, 0x0F91);
+    XRUN(guest_call_pop(m, 0x0860, 0x0F94, 0)); /* 0F91 call 0x860 */
+    XAFTER(0x0F94);
+    XB(1, 0x0F94);
+    c->r[R_SP] = (uint16_t)(alu_op(c, 0, c->r[R_SP], 0x0002, 1)); /* 0F94 add sp, 2 */
+    goto L0F97;
+    /* 0F97 count the channel in [0492] and leave */
+    L0F97:
+    XB(6, 0x0F97);
+    ds_put8(c, 0x0492, (uint8_t)(alu_inc(c, ds_get8(c, 0x0492), 0))); /* 0F97 inc byte ptr [0x492] */
+    c->r[R_DI] = cpu_pop16(c); /* 0F9B pop di */
+    c->r[R_SI] = cpu_pop16(c); /* 0F9C pop si */
+    c->r[R_SP] = (uint16_t)(c->r[R_BP]); /* 0F9D mov sp, bp */
+    c->r[R_BP] = cpu_pop16(c); /* 0F9F pop bp */
+    c->ip = cpu_pop16(c); /* 0FA0 ret */
+    return 1;
+#undef XCHORD
+#undef XDISPATCH
+#undef XGUARD
+#undef XENTRY
+#undef XHITA
+#undef XHITW
+#undef XAFTER
+#undef XRUN
+#undef XB
+}
+
+/* VGAME 0000:D569 (near, one argument at [BP+4]): close the packed picture's DOS file. A thin wrapper: it
+ * opens a frame, pushes its own argument (the handle) again, calls the far picture routine 11B8:00C4
+ * (vgame_picture_close_far, cdecl: it returns with a plain RETF and leaves the argument for the caller),
+ * drops the argument with POP BX, takes the frame down (LEAVE) and returns with RET. The callee's segment is
+ * a relocated immediate in the CALL FAR; guest_call_far reads it from the code. Whatever the callee leaves in
+ * the registers is the wrapper's answer. */
+static int vgame_close_picture_handle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0xD569);
+    cpu_push16(c, c->r[R_BP]);                                        /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                          /* mov bp, sp */
+    cpu_push16(c, bp_get(c, 4));                                      /* push word ptr [bp+4]: the handle */
+    SM4_NEED(1, 0xD56F);
+    XRUN(guest_call_far(m, 0xD56F, 0xD574));                          /* call far 11B8:00C4 */
+    XB(3, 0xD574);
+    c->r[R_BX] = cpu_pop16(c);                                        /* pop bx: drop the argument */
+    x86_leave(c);                                                     /* leave */
+    near_ret(c);                                                      /* ret */
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* ISOUND.LOG 0000:0675 (near stub): load BX with the address AC and jump to the speaker note start at 0468.
+ *  LEA BX,[00ACh] / JMP 0468. This body claims only these two instructions (7 bytes, 2 clocks) and hands back at 0468 (the note start,
+ *  claimed by its own proof, isound_log_start_speaker_note, or run as original code): BX = 00ACh, every other register, the flags and the stack are
+ *  untouched. */
+static int isound_log_start_note_at_ac(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NOTE_TABLE = 0x00AC, NOTE_START = 0x0468 };
+    if (!room(c, 2)) return 0;
+    SM4_NEED(2, 0x0675);
+    c->icount += 2;                                               /* lea bx,[00ACh] / jmp 0468 */
+    c->r[R_BX] = NOTE_TABLE;
+    c->ip = NOTE_START;
+    return 1;
+}
+
+/* ISOUND.LOG 0000:0468 (near; BX points at a note record in the driver's data segment DS): the start of a speaker note. This body claims
+ * the first 14 instructions (48 bytes at 0468h..0497h) and hands back at 0498h (the common tail that reads the note's length, effect word and
+ * tone selector; it is claimed by the speaker tick body or runs as original code).
+ *  - AX = 0 (XOR AX,AX), DS:[008Eh] = 1 (the "note active" byte).
+ *  - AX is pushed, AX = DS:[0055h] (the last note byte), CMP AL,[BX] (the new note byte; the flags are the compare's), AX is popped
+ *    (so AX = 0 again). When the last note byte is not below the new one (JAE: carry clear) the routine returns at once (the bare RET at 0467h, one
+ *    instruction below the entry) - the note is not restarted.
+ *  - Otherwise the effect state is cleared: DS:[0095h] = 0, DS:[0063h] = 0, DS:[005Dh] = 0; DS:[0057h] = AX (0); AX = 0118h (LEA) and
+ *    DS:[005Fh] = AX (the vibrato table); DS:[0059h] = BX (the note pointer). AX is left at 0118h.
+ * 14 clocks to the hand-back at 0498h; the early return is 7 + 1 clocks. */
+static int isound_log_start_speaker_note(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ACTIVE = 0x008E, LAST_NOTE = 0x0055, EFFECT_A = 0x0095, EFFECT_B = 0x0063, EFFECT_C = 0x005D, SAVED_AX = 0x0057,
+           VIBRATO = 0x005F, NOTE_PTR = 0x0059, TABLE_ADDR = 0x0118, NOTE_BODY = 0x0498 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x0468);                                                /* xor ax,ax / mov byte [8Eh],1 / push ax / mov ax,[55h] / cmp al,[bx] / pop ax / jae 0467 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    ds_put8(c, ACTIVE, 0x01);
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = ds_get(c, LAST_NOTE);
+    alu_op(c, 7, get_r8(c, R_AL), ds_get8(c, c->r[R_BX]), 0);
+    c->r[R_AX] = cpu_pop16(c);
+    if (x86_cond(c, 3)) {
+        XB(1, 0x0467);                                            /* ret */
+        near_ret(c);
+        return 1;
+    }
+    XB(7, 0x0478);                                                /* mov [95h],0 / mov [63h],0 / mov [5Dh],0 / mov [57h],ax / lea ax,[118h] / mov [5Fh],ax / mov [59h],bx */
+    ds_put(c, EFFECT_A, 0);
+    ds_put(c, EFFECT_B, 0);
+    ds_put(c, EFFECT_C, 0);
+    ds_put(c, SAVED_AX, c->r[R_AX]);
+    c->r[R_AX] = TABLE_ADDR;
+    ds_put(c, VIBRATO, c->r[R_AX]);
+    ds_put(c, NOTE_PTR, c->r[R_BX]);
+    c->ip = NOTE_BODY;
+    return 1;
+#undef XB
+}
+
+/* PLAYER.EXE 026B:0211, near (no arguments), the retrace re-synchronisation the clock handler calls once in
+ * every 20 ticks (the byte counter at ds:[1A1B]). It counts that byte down; while it is not zero the routine
+ * only enables interrupts and returns (the original's 0270). On zero it reloads the counter with 14h, clears BL
+ * and CX, points DX at the VGA status port 3DAh and looks at the flag byte ds:[1A1A]: zero sends it to the
+ * timer-reprogram arm at 0244 (the original's code, which writes the PIT); otherwise it disables interrupts,
+ * reads the status port, and if the vertical retrace bit (8) is set also goes to 0244. Otherwise it executes
+ * STI. Named region ends at that STI (POPF_STOPS: PLAYER.EXE 026B:0211 -> 0231): STI sets the run limit to 0
+ * so the run loop may take a timer tick, and the loop that waits for the retrace edge (0231..023A, back to the
+ * CLI at 022A) remains the original's continuation code, as do 0244 and 0270.
+ * The IN is a port access and is charged at its own place in the clock, with its bus delay claimed. */
+static int player_retrace_resync_enter(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x0211);                                                /* dec byte [1A1B] / jne 0270 */
+    {
+        const uint32_t a_ = phys(c->seg[S_DS], 0x1A1B);
+        mem_write8(c, a_, (uint8_t)alu_dec(c, mem_read8(c, a_), 0));
+    }
+    if (x86_cond(c, 5)) { c->ip = 0x0270; return 1; }             /* not yet: the original's STI and RET */
+    XB(7, 0x0217);                                                /* mov al,14h / mov [1A1B],al / xor bl,bl / xor cx,cx / mov dx,3DAh / cmp [1A1A],0 / je 0244 */
+    set_r8(c, R_AL, 0x14);
+    mem_write8(c, phys(c->seg[S_DS], 0x1A1B), get_r8(c, R_AL));
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 6, get_r8(c, R_BL), get_r8(c, R_BL), 0));
+    c->r[R_CX] = (uint16_t)alu_op(c, 6, c->r[R_CX], c->r[R_CX], 1);
+    c->r[R_DX] = 0x03DA;
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], 0x1A1A)), 0x00, 0);
+    if (x86_cond(c, 4)) { c->ip = 0x0244; return 1; }             /* no retrace wait: the timer arm */
+    SM4_NEED(4 + IO_SLACK(1), 0x022A);                            /* cli / in al,dx / test al,8 / jne 0244 */
+    x86_cli(c);
+    c->icount += 1;
+    c->op_ip = 0x022B;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    alu_logic(c, (uint32_t)(get_r8(c, R_AL)) & 0x08, 0);
+    c->icount += 1;
+    c->icount += 1;                                               /* 022E jne 0244 */
+    if (x86_cond(c, 5)) { c->ip = 0x0244; return 1; }             /* in the retrace already */
+    SM4_NEED(1, 0x0230);
+    x86_sti(c);                                                   /* 0230 sti */
+    c->icount += 1;
+    c->ip = 0x0231;
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0211, player_retrace_resync_enter, "retrace re-synchronisation (called from the clock handler every 20th tick): count the tick down, then clear the flag test registers and either hand over to the timer-reprogram arm at 0244, or read the VGA status port with interrupts off and stop immediately after the STI at 0230 (POPF_STOPS); the arms past those hand-backs remain original continuation code", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0468, isound_log_start_speaker_note, "PC-speaker driver: restart a speaker note (clear the effect state, keep the note pointer in [59h]) unless the last note byte is not below the new one; hands back at the note body 0498", 1 },
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0675, isound_log_start_note_at_ac, "PC-speaker driver: BX = 00ACh and hand back at the speaker note start 0468", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD569, vgame_close_picture_handle, "close the packed picture file whose handle is the argument, through the far picture routine 11B8:00C4", 1 },
+    { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x08BE, rsound_log_channel_tick, "one tick of one Roland MT-32 music channel: count the gate and note counters of the record, run the stream commands (loops, restarts, program, velocity, sweeps, chords, pan, random pick) through the jump table, send the notes, run three timed sweeps, and count the channel; partial implementation hands range-check fallback to original", 1 },
+    { "matched", "RSOUND.117", RSOUND_117_47304, 0x023E, 0x0F98, rsound_117_start_voices_one_to_four_then_nine, "Roland overlay: start voices 1, 2, 3 and 4 (calls 0EDB, 0ED1, 0EC7, 0EBD) with the time/pitch tables at DS offsets 01B8h, 04A2h, 0590h and 078Ch in CX, then CX = 0B40h and a jump to the voice 9 start 0E95 (proved separately)", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8F94, start_divide_error_handler, "the C run-time's divide-error handler: load the data segment from the code word at CS:8FC3, write the exit routine's address into [AE1A], print the banner and the message (9800, 9873), call the console hook when [B170] holds D6D6h, and call exit(0FFh) through [AE1A], which ends the program", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x067C, mps_logo_strstr, "find the first occurrence of one string inside another, far", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0822, mps_logo_huge_memcpy, "huge-model memcpy: far destination and source copied in pieces that stop at each 64K segment end", 2 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x1360, asound_117_voice_script_step_1360, "AdLib overlay: one tick of a voice record's script player (record at [1B62]; 13-command table at CS:173A with 13 arms inline, entries 1360 13D6 146A 153E 1594 15C0 15DA 15F4 1612 16B8 16D2 16F0 and unrun 1644 165E): count the event down, read notes and commands, call 0E5E 0E8A 0DCE 0C2E 123E and the far 03C4, step the two slides, add one to [1A02]", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0D1A, asound_log_channel_tick, "one tick of one AdLib music channel: count the gate and note counters of the record at [0672], run the stream commands (loops, restarts, parameters, random byte copy) through the jump table, start the next note, and count the tick; partial implementation hands range-check fallback to original", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x0804, asound_log_start_channel_note, "start the note of channel [0512] in one of two alternating AdLib note slots: key off the slot's previous channel, copy the channel's note record to the slot, install the timer; a record whose first byte is zero is just keyed on", 1 },

@@ -169,15 +169,15 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,487 matched routines registered in batches a to bm (the
+      **Done:** 1,496 matched routines registered in batches a to bn (the
       [batch table](#batch-table); bm2 was a fix-only gate). Gameplay score
-      97.04%: 156,432 matched bytes a route runs plus 2,631 reviewed
+      97.50%: 157,178 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
       by design. In the census, named code runs 160,095 of 165,479 creditable
       bytes (1,123 of 1,535 functions wholly, 291 in part).
 
-      **Accounted-for checklist:** 41,749 of 46,112 bytes (90.54%) outside the
+      **Accounted-for checklist:** 45,390 of 47,433 bytes (95.69%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
       1,636 entries); 4,363 bytes have none. Four rounds of blind second reads
       by independent readers (26-27 Oct) adopted, from 780 reviewed bytes:
@@ -340,6 +340,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bl | 27 Oct | 1,477 | 892 named bytes | 33 routines from three proof agents working side by side: eight Roland (RSOUND.LOG `0390` `0306` `03FA`, RSOUND.117 `0CF5` `0C72` `0E70` `112F` `0C2D`), two ISOUND.117 (`0079` `0045`), six ASOUND.117 helpers (`0BD4` `0C08` `0B76` `197B` `018F` `0210`) and 17 ASOUND.117 song/voice-start wrappers (`064D` `0670` `0876` `08E8` `089C` `085F` `0903` `0640` `0662` `0669` `068D` `06BE` `06E8` `0704` `08BE` `08CC` `08E1`). 334 fixture instructions, 900 mutations caught, 165 optimized seed checks. `0306` and `0C72` are 10-byte hand-backs into the already matched MPS writers; `089C` needed a `g_cov_ip` row for its lone RET below the entry; `0E70` needed the `0E4C` outer-RET recognition extended; `0045` and `0BD4` needed the native INT 1A function 2 answer. ASOUND.117 `025A` was **blocked**: it ends in a loop that polls six voice bytes only the timer interrupt clears, so no lockstep state reaches its RET. Pre-checks: two whole-table seeds (`0xa1bc7fe770f2`, `0x5EED0B12`; 5.83 M states each, zero mismatches) and all 49 reached routes agree with matched routines disabled (`route_precheck.py` on all 33 entries; `D:/f117-gate/bl-prechecks/`). 721 CTests; acceptance 2,078 s. P2 92.59% -> 93.01%; unmatched executed bytes 7,537 -> 6,659. Evidence `D:/f117-gate/p2-batch-bl-accept/`. |
 | bm | 27 Oct | 1,487 | 3,018 named bytes | Ten routines from twelve proof agents: RSOUND.117 `1225`, ASOUND.117 `1BCC` `1BAF`, ISOUND.117 `0023` `07CF`, END `57B0` (the 92-byte dispatch arm; 11 `FATAL_JUMPS` rows), ISOUND.LOG `00B8` (dispatch logic only: its arms are stubbed), ASOUND.LOG `0804` and `0D1A` (partial, `107C` unclaimed), ASOUND.117 `1360` (one body for its 13 arms). 1,036 fixture instructions, 313 mutations caught. 731 tests; gate 1,797 s. Six bytes are claimed but uncredited: the two exits from END `57B0` into other arms. Held: START `08F94` (no census row covers its bytes yet), RSOUND.LOG `08BE` partial (guard review). Evidence `D:/f117-gate/p2-batch-bm-accept/`. |
 | bm2 | 27 Oct | 1,487 | 0 (fix only) | Call-budget harness repair: after a call into original code only the exact returned clock is exempt, never later C instructions. It found two accepted bodies under-claiming room, both ours: START `8CA8` (no room claimed before its two INT 21h) and START `2F4C` (claim 33, longest path 35). Fixed, whole table at three seeds 0 mismatching, gate 1,854 s, 731 tests. Commit `5190cc1`. Evidence `D:/f117-gate/p2-batch-bm2-accept/`, `bn-budget/`. |
+| bn | 28 Oct | 1,496 | 2,067 named bytes | Nine routines from the proof agents: MPS_LOGO `0822` (huge-model memcpy) and `067C` (strstr), START `8F94` (divide-error handler, its own census row and PROGRAM_ENDS row), RSOUND.117 `0F98`, RSOUND.LOG `08BE` (625 of 626 instructions; the 3-byte jump at `0DAC` stays original), VGAME `D569`, ISOUND.LOG `0675` and `0468` (bounded prefixes), PLAYER `0211` (prefix to the STI). Four proofs carry private harness hunks that are now in `tests/func_lockstep.c`: a decline-floor check (0F98), a limit-probe return check (0468) and a return-code probe (D569), plus POPF_STOPS and PROGRAM_ENDS rows. Whole table at two seeds 0 mismatching, 60 routes identical with and without matched routines, gate 1,913 s, 740 tests, 287 mutations. Checklist round 5 adopted in the same commit (88 units, 3,641 bytes). Evidence `D:/f117-gate/p2-batch-bn-accept/`. |
 
 Notes that still matter:
 

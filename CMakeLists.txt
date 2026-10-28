@@ -1812,6 +1812,24 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.LOG:D1A)
     add_test(NAME matched_asound_117_voice_script_step_1360 COMMAND func_lockstep --states 5000
       --only ASOUND.117:1360)
+    add_test(NAME matched_mps_logo_huge_memcpy COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:822)
+    add_test(NAME matched_mps_logo_strstr COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:67C)
+    add_test(NAME matched_start_divide_error_handler COMMAND func_lockstep --states 5000
+      --only START.EXE:8F94)
+    add_test(NAME matched_rsound_117_start_voices_one_to_four_then_nine COMMAND func_lockstep --states 5000
+      --only RSOUND.117:F98)
+    add_test(NAME matched_rsound_log_channel_tick COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:8BE)
+    add_test(NAME matched_vgame_close_picture_handle COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:D569)
+    add_test(NAME matched_isound_log_start_note_at_ac COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:675)
+    add_test(NAME matched_isound_log_start_speaker_note COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:468)
+    add_test(NAME matched_player_retrace_resync_enter COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:211)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
