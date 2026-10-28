@@ -7,16 +7,17 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). **Current state, 27 October 2026: batch bl remains the accepted runtime (`9e06249`, 33 routines); P2 93.01%; checklist 40,504 / 44,906 bytes (90.20%). Batch bm was resumed with three proof agents and an independent harness reviewer, then stopped at the owner's request. All workers are stopped; private notes and an unfinished harness patch are saved. Nothing new is integrated or credited (resume state 2).**
+more than once, what it costs). **Current state, 27 October 2026: batch bm accepted by the gate (ten routines; P2 93.67%, All 92.09%); checklist 40,504 / 46,112 bytes (87.84%). The checklist fell from 90.20% only because the scope grew by 1,206 bytes; no checklist entry was removed. Commit: see `git log`.**
 The working copy is **`C:\Dev\F-117A Recomp`**; the old `My Drive` copy is stale: do not use it.
-The accepted runtime is batch bl (`D:/f117-gate/p2-batch-bl-accept/`, commit `9e06249`); batch bk was `a1bc7fe`.
+The accepted runtime is batch bm (`D:/f117-gate/p2-batch-bm-accept/`, the commit that adds it: see `git log`); batch bl was `9e06249`.
 There are 34 normal-play switches. Kit libraries (`D:/f117-gate/kit-libs`, manifest) were built at `28b34b2`;
 the only `src/` changes since are matched bodies, which each private proof replaces itself, so the libraries remain valid.
 This machine has no `gh`; check the pushed commit's CI through the GitHub Actions API.
 
 ### Resume state
 
-1. **Batch bl accepted and pushed (`9e06249`).** 33 routines, +892 named bytes, 334 fixture instructions, 900 mutations caught, 165 optimized seeds; gate 2,078 s, 721 tests,
+1. **Batch bm accepted by the gate (27 Oct; gate 1,797 s, 731 tests, 63 routes identical).** Ten routines: RSOUND.117 `1225`, ASOUND.117 `1BCC` `1BAF` `1360`, ISOUND.117 `0023` `07CF`, END `57B0` (the 92-byte dispatch arm, its 11 `FATAL_JUMPS` rows added), ISOUND.LOG `00B8` (dispatch logic only; its arms are stubbed), ASOUND.LOG `0804` and `0D1A` (`0D1A` partial: `107C` unclaimed). +3,018 named bytes, 1,036 fixture instructions, 313 mutations caught. Six bytes are claimed but uncredited: the two exits from END `57B0` into other arms (`580C`, `583A`). Pre-checks: `route_precheck` identical for every entry, and two whole-table seeds (the second run with `1360` included: 1,487 matched routines, 0 mismatching). Evidence `D:/f117-gate/p2-batch-bm-accept/`. Next, held for owner decisions: ASOUND.117 `08F94` (its bytes sit in an unreviewed gap in the C start-up coverage: `8F94`..`8FC2`, the divide-error handler the C start-up installs; needs a census decision before integration; its `PROGRAM_ENDS` row `{ "START.EXE", 0, 0x8F94, 0xF5F2 }` must be added by hand) and RSOUND.LOG `08BE` partial (guard branches untested; a second reader should review them first).
+1b. **Batch bl accepted and pushed (`9e06249`).** 33 routines, +892 named bytes, 334 fixture instructions, 900 mutations caught, 165 optimized seeds; gate 2,078 s, 721 tests,
    63 identical routes / 62 fresh interpreter sessions. Pre-checks: whole-table seeds `0xa1bc7fe770f2` (the gate's) and `0x5EED0B12` (5.83 M states each, zero mismatches) and
    `route_precheck.py` on all 33 entries (49 reached routes, all identical with matched routines disabled, about 10 minutes at `--jobs 6`). Evidence `D:/f117-gate/p2-batch-bl-accept/`,
    `D:/f117-gate/bl-prechecks/`. CI for `9e06249`: green (Windows build and ROM-free tests). Contents: Roland chains, ISOUND.117 `0079` `0045`, ASOUND.117 `0BD4` `0C08` `0B76` `197B` `018F` `0210` and 17 song/voice-start wrappers.
@@ -25,7 +26,7 @@ This machine has no `gh`; check the pushed commit's CI through the GitHub Action
    (the static audit cannot read per-port clock charging, calls without `SM4_NEED`, or a first claim written as an expression; same precedent as batch bk), `0E70` prefix `XB`, `0079` and `018F` `NOBLOCKS`.
    Harness hunks applied by hand because `integrate_many.py` carries only FATAL_JUMPS/SHARED_ENDINGS rows: 0E70's outer-RET recognition (the `0E4C` line widened), the INT 1A function 2 answer plus
    `g_native_int1a` rows for ISOUND.117 `0045` and ASOUND.117 `0BD4`, and a `g_cov_ip = 0x0838` row for ASOUND.117 `089C`. They are in `tests/func_lockstep.c` now.
-2. **Latest batch-bm stop (27 Oct; owner requested handoff, commit, push and stop).** Three proof agents resumed part of the earlier twelve-agent queue; a fourth agent reviewed the harness. All are stopped and no proof/build child processes remain. Existing `p2-*-bl-*` directories feed batch bm; the new repaired directories use `bm`. **Nothing below is integrated or credited.** Read each directory's `NOTES.md`; interrupted runs require a complete rerun, not a tally of surviving logs.
+2. **Earlier batch-bm stop (27 Oct, before the gate; its proof notes still apply, but item 1 supersedes its status lines).** Three proof agents resumed part of the earlier twelve-agent queue; a fourth agent reviewed the harness. All are stopped and no proof/build child processes remain. Existing `p2-*-bl-*` directories feed batch bm; the new repaired directories use `bm`. **Nothing below is integrated or credited.** Read each directory's `NOTES.md`; interrupted runs require a complete rerun, not a tally of surviving logs.
    - **First on resumption: validate the saved harness repair.** PLAYER `0540` exposed a real gap: both event-limit checks exempted the whole body once it had made any call, so a tail could overrun and still finish in the correct state. The proposed `g_callend` / `body_overrun` check permits only the exact clock returned by original code (including an atomic service crossing the limit), then rejects subsequent charged C instructions. Full patch: `D:/f117-gate/bm-root-review/pending-call-budget.patch` (SHA256 `8ba8afa8221c1fabc1c440752961800848cf3328522231affa22a7783cd844b1`); full source snapshot `pending-func_lockstep.c`. **The tracked harness was restored to HEAD for this handoff-only commit.** Three initial synthetic call/tail cases passed, as did PLAYER's five seeds and all 22 mutants under the new check. Independent review found no blocking issue; it added two atomic-service control cases, but their main build was stopped before validation. Apply the patch, rebuild, run `--check-io-rules`, then whole-table seeds before accepting it. Preserve private proof inputs; changing their `tests-base.c` invalidates their evidence.
    - **RSOUND.117 `0BAD` (`p2-rsound-117-bl-0BAD`), root verified through finish:** five fresh seeds, 37/37 instructions, 43/43 actual mutant mismatches, 26 identical `roland_boot` checkpoints and final hash, 8,288 calls; IBM boot unchanged. `private-verdict.json` exists; root witness `D:/f117-gate/bm-root-review/rsound-117-0BAD.json`. Ready for integration and the usual prechecks/gate, not credited yet. The route reaches only 25/37 instructions; callees `0B9C`/`050A` are stubbed, so keep the route precheck. No harness hunk.
    - **ASOUND.117 `0B98` (`p2-asound-117-bl-0B98`), steps 1-7 complete:** 14/14 instructions, five fresh seeds (6,098-6,121 comparisons), 25/25 meaningful mutants caught. Equivalent ignored-result CMP-to-SUB and zeroing XOR-to-SUB edits were replaced; failed evidence preserved. Root started `finish_all.py ...:full_cycle`, then stopped its entire tree during the build: no checkpoint, boot or private-verdict result. Rerun finish from the start. `resume-audit.json` and `D:/f117-gate/p2-driver-bm-audit.py` support mechanical validation; no harness hunk.
@@ -58,7 +59,7 @@ This machine has no `gh`; check the pushed commit's CI through the GitHub Action
    routines of the seven programs); one big routine is one chain that more agents cannot shorten. Verification stays with root and is the part that does not scale: use sub-agents for mechanical reads, never for the decision.
    Batches of about 30-50 routines are best (a gate costs about the same at any size); prove batch N+1 while batch N is in its gate. Never weaken a check to go faster.
    Use the actual session limit: this Codex session allowed three concurrent subagents plus root, so three proof agents and later a separate reviewer were used. Keep the machine-wide three-compiler throttle. Measured in this continuation: first private harness build about 180-196 s; unchanged-harness mutant builds about 1.1-1.6 s, not three minutes per mutant (`project/build/.ninja_log`).
-4. **Checklist round 4 remains next and parallelises almost perfectly:** 40,504 / 44,906 bytes (90.20%), 4,402 bytes without entries (the denominator grew by 17 bytes with bl). It needs no gate and almost no CPU: re-cut the refused units into packets
+4. **Checklist round 4 remains next and parallelises almost perfectly:** 40,504 / 46,112 bytes (87.84%), 5,608 bytes without entries (the denominator grew by 17 bytes with bl). It needs no gate and almost no CPU: re-cut the refused units into packets
    (10 + 43 status-mismatched ACCEPTs, 9 differing ranges, 27 ACCEPT-WITH-CHANGES, 19 NEEDS-CONTEXT from round 3, round-2 leftovers, the 192 new bytes) and launch one fresh blind reader per packet group, as many at once as the work allows
    (round 1 ran up to 20 at a time: 156 groups in 15-20 minutes). Work and validators: `D:/f117-gate/checklist-full-20261026/` (`round3/` and `round3b/` have the scripts). Each packet needs a fresh independent blind reader.
 5. **ASOUND.LOG `00FE` is still withdrawn** (its lockstep stubs the PIT sampler `00DA`; the real `setup_calibration` route takes an IRQ at a different boundary after the nested call). One of the batch-bm agents has the re-proof; otherwise keep it original.
@@ -74,14 +75,14 @@ entry. Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 93.01%, P3 76.34%, All 91.89%
+- **Scoreboard:** P1 100.00%, P2 93.67%, P3 76.34%, All 92.09%
   (`py tools/progress.py --title`; P4 and the decided-against items are not
   scored). P3 is below 100% only because of the re-release features (roadmap,
   weight 31): the first part of the two settings is built but none is credited
   yet; the presentation stages are complete.
 - **Phase 2 figures** (`docs/progress.json` after batch bl, with checklist round 3b; `py tools/progress.py` prints them;
   what they mean: [docs/progress.md](docs/progress.md)):
-  - 1,477 addresses matched; batches a to bl are accepted (table in [docs/roadmap.md](docs/roadmap.md);
+  - 1,487 addresses matched; batches a to bm are accepted (table in [docs/roadmap.md](docs/roadmap.md);
     evidence `D:/f117-gate/p2-batch-<letter>-accept/`).
   - Gameplay score (scores the matched item): **(154,617 matched + 2,631 reviewed design-rule original) /
     163,907 route-executed bytes = 95.94%**. 26,576 matched bytes run only in fixtures and earn no gameplay credit.
@@ -91,7 +92,7 @@ entry. Consolidate it instead of appending to it.
     F117.COM, MGRAPHIC and MISC: none.
   - Naming item (previous all-code measure): **181,258 / 206,232** creditable bytes; 24,974 uncredited,
     including 13,809 reviewed static code bytes no route runs.
-  - Accounted-for checklist: **40,504 / 44,906 bytes (90.20%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
+  - Accounted-for checklist: **40,504 / 46,112 bytes (87.84%)**; `docs/reference-reviewed.tsv` has 1,599 second-read entries
     (evidence for the first 41: `D:/f117-gate/reference-reviewed-20261021/`; the 10 trial entries: `D:/f117-gate/unmatched-reference-20261026/trial-reads/`;
     the 523 round-2 rows: `D:/f117-gate/checklist-full-20261026/round2/`; the round 3 and 3b rows: `round3/`, `round3b/`; the 792 round-1 rows from the full blind pass: `D:/f117-gate/checklist-full-20261026/` (reads/, staged-round1.tsv, reconcile-result.json)). Every `stays-original` entry
     must name its design rule.
@@ -289,7 +290,7 @@ governs day-to-day work.
   the batch bh commit: 780 -> 20,708 of 44,714 bytes, 46.31%, P2 82.14% -> 87.27%); 368 accept-with-changes, 21 needs-context, 13 reject and 66 status
   mismatches are NOT adopted. Reader names and ranges were corrected where they over-claimed (a retry named a failure, an arm named a whole function, a
   range cutting a function mid-instruction). **Round 2** (`round2/`) re-cut those 468 units into 588 packets / 79 groups: all read, 367 units / 13,976 bytes adopted.
-  The checklist is now 40,504 / 44,906 (90.20%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
+  The checklist is now 40,504 / 46,112 (87.84%) after rounds 3 and 3b (resume state item 2); round 4 covers what is left,
   with corrected blind reads and no unsupported exclusions. Use the actual available reader slots; this session has at most three concurrent subagents.
 - **Driver code stays in scope (owner, 26 Oct; settled, do not reopen).** Drivers are 7,666 of the 9,456 unmatched executed bytes (after bh): the
   `.117` overlays (headers "F117A AdLib/Roland/IBM 10-23-91", MicroProse copyright 1991: F-117A builds) and the `.LOG` drivers ("AdLib Logo 7-18-91",

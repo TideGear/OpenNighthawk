@@ -1792,6 +1792,26 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:8CC)
     add_test(NAME matched_asound_117_command_08e1_data_0f78 COMMAND func_lockstep --states 5000
       --only ASOUND.117:8E1)
+    add_test(NAME matched_rsound_117_dispatch_command COMMAND func_lockstep --states 5000
+      --only RSOUND.117:1225)
+    add_test(NAME matched_asound_117_chip_command_write COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1BCC)
+    add_test(NAME matched_asound_117_chip_detect_sequence COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1BAF)
+    add_test(NAME matched_isound_117_store_volume_table_args COMMAND func_lockstep --states 5000
+      --only ISOUND.117:23)
+    add_test(NAME matched_isound_117_volume_scaler_far_entry COMMAND func_lockstep --states 5000
+      --only ISOUND.117:7CF)
+    add_test(NAME matched_end_format_dispatch COMMAND func_lockstep --states 5000
+      --only END.EXE:57B0)
+    add_test(NAME matched_isound_log_dispatch_command COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:B8)
+    add_test(NAME matched_asound_log_start_channel_note COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:804)
+    add_test(NAME matched_asound_log_channel_tick COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:D1A)
+    add_test(NAME matched_asound_117_voice_script_step_1360 COMMAND func_lockstep --states 5000
+      --only ASOUND.117:1360)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
