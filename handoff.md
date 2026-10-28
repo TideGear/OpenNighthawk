@@ -12,38 +12,36 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (28 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 94.83%, P3 76.34%, All 92.44% (`py tools/progress.py --title`).
+- **Scoreboard:** P1 100.00%, P2 95.07%, P3 76.34%, All 92.52% (`py tools/progress.py --title`).
   The full figures: `py tools/progress.py --census D:/f117-gate/census.tsv --named-cover
-  D:/f117-gate/p2-batch-bn-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
-  (gameplay 97.50%, naming 89.3%, checklist 45,390 / 47,433 = 95.69%, 4,098 executed bytes unmatched).
-- **Accepted runtime:** gate `bn`, passed: 1,913 s, 740 tests, 63 routes / 62 fresh interpreter sessions, 1,496
-  matched routines, 287 private mutations, whole table at two seeds 0 mismatching. Evidence
-  `D:/f117-gate/p2-batch-bn-accept/`. Nine routines were added (see the roadmap's batch table) and checklist round 5
-  was adopted in the same commit.
+  D:/f117-gate/p2-batch-bo-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
+  (gameplay 97.80%, naming 89.5%, checklist 45,390 / 47,433 = 95.69%, 3,603 executed bytes unmatched).
+- **Accepted runtime:** gate `bo`, passed: 1,957 s, 751 tests, 63 routes, 1,507 matched routines, 280 private mutations,
+  whole table at two seeds 0 mismatching. Evidence `D:/f117-gate/p2-batch-bo-accept/`. Gate `bn` before it added nine
+  routines and adopted checklist round 5.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
 - CI is checked through the GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
 
 ## Resume here
 
-1. **Batch bo: proofs finished and checkpointed, not yet integrated** (all under `D:/f117-gate/`, root verified each
-   result file, never trust an agent's tally):
-   - Checkpointed, ready for `integrate_many.py`: ASOUND.117 `0430` (`p2-asound-117-bn-0430`, 306 bytes, 21,696 calls),
-     VGAME `0971` (`p2-vgame-bn-0971`, needs INTERRUPT_FRAMES `{ 0x120A, 0x0971, 3, 0x0A3E }` by hand), DSWAP `0FF8` and
-     `2060`, SETUP `1C46`, PLAYER `222A` (3-byte jump thunks, FATAL_JUMPS rows). The `finish.log` of a proof holds two JSON
-     records: read the FIRST (checkpoints) for `calls_of_this_routine`; the verdict record shows 0.
-   - Finished on disk, checkpoints not yet run: START `2846` and END `36BC` (7 FATAL_JUMPS rows each), PLAYER `02853`
-     (POPF_STOPS `{ "PLAYER.EXE", 0x026B, 0x01A3, 0x01B7 }`; check the missed `ss-no-shadow` mutant's reasoning), ASOUND.117
-     `025A` prefix (four harness hunks around `run_to_ret`; keep the route pre-check), PLAYER `1255` (run
-     `checkpoints --route err_player_assert`), MPS_LOGO `0307` (`p2-mpslogo-bo-0307`, 26/26 and five seeds clean after
-     a probe-only decline/overrun check; harness hunks in its `tests-base.c`; entries `030E` and `0315` not yet proved).
-   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27): its only route `err_vgame_no_photo` fails the replay check
+1. **Next batch (bp): proofs finished, not yet integrated** (all under `D:/f117-gate/`; root verifies every result
+   file, never trust an agent's tally; `finish.log` holds two JSON records, read the FIRST for `calls_of_this_routine`):
+   - MPS_LOGO `0307` (`p2-mpslogo-bo-0307`): 26/26 mutants and five seeds clean after a probe-only decline/overrun check
+     (its harness hunks are in its `tests-base.c`); run `finish_all.py` on it. Entries `030E` and `0315` are not proved.
+   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27 mutants): its only route `err_vgame_no_photo` fails the replay check
      (`lb.3dg` / `lb.3DX` not opened by VGAME). Run the same checkpoint with matched routines off before concluding.
    - DSWAP thunks (`p2-dswap-bo-thunks`, one generic body for all 12 entries, 29/29): proved with a private multi-entry
-     `kitm.py` and five hand-carried harness hunks; confirm the route and the observer/fix-site check, then adopt its
+     `kitm.py` and five hand-carried harness hunks; confirm the route and the observer/fix-site check, then use the same
      approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2.
-   - Not accepted: `0468`-style swaps. A missed mutant is never replaced by an "equivalent" one when the path is merely
-     never exercised: under-claims (a room claim smaller than the longest path) are real defects; make a probe state.
+   - ASOUND.117 `0B98` (`p2-asound-117-bl-0B98`, steps 1-7 done), PLAYER `0540` (`p2-player-bm-0540-budget`, needs
+     checkpoints `err_driver_overlay`), RSOUND.LOG `0BAD` (`p2-rsound-117-bl-0BAD`, root-verified through finish).
+   - Rule learned this round: a missed mutant is never replaced by an "equivalent" one when its path is merely never
+     exercised. Under-claims (a room claim smaller than the longest path) are real defects; add a probe state
+     (`g_decline_floor`, `g_probe_steps`, the VGAME `D569` return-code probe and the MPS_LOGO `0307` probe are examples).
+   - The batch audit (`p2-batch-bo-accept/audit_private.py`) was extended for macro-claimed calls, block macros with
+     literal arguments, one room claim charged in pieces, and rep-string claims; copy it forward, trim each dossier
+     to the credited window (keep `dossier/full-walk.json`), and set `partial` only for bodies that hand back.
 2. **Checklist round 6** (`D:/f117-gate/checklist-full-20261026/round6/`, packets were being built when the session limit
    hit; resume agent `a77677c8419658767` or rebuild with `round5/build_r5.py` as the model): 15 units where round-5's status
    differed from earlier readers, 3 accept-with-changes, 2 needs-context. The 6 protected units (stays-original,

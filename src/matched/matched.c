@@ -99584,7 +99584,464 @@ static int player_retrace_resync_enter(machine_t *m)
 #undef XB
 }
 
+/* ASOUND.117 01B6:0430 (near, no arguments; plain RET): the AdLib overlay's per-tick routine. DS is the driver's data
+ * segment, whatever the caller left. cs:[000Eh] (the tick counter, a word in the code segment) is incremented and the
+ * far random step 01B6:03C4 is called; if the busy word DS:[17ECh] is not zero the routine returns at once (RET at 054Dh).
+ * Otherwise ES, SI, DI and BP are pushed, the caller's SS:SP are kept in cs:[0010h]/cs:[0012h], ES and SS are loaded with the
+ * driver stack segment (the relocated immediate of the MOV AX,imm at 0452h, read from the loaded code at 0453h) and SP with
+ * 17DAh: everything up to the pops at 04BEh runs on that private stack.
+ *  - While the song flag [17F6h] and the rate word [17F4h] are both non-zero, the voice record at [19BEh] is started: when
+ *    its state byte is zero, [19BEh+10h] gets 0E94h and the state becomes 1; otherwise the state becomes 2 and the byte [19C6h]
+ *    becomes 2.
+ *  - The voice command table runner 1882 is called (near, plain RET).
+ *  - With the song flag set and the rate [17F4h] non-zero and different from the last rate [17E6h]: the new rate is stored in
+ *    [17E6h], OPL write 030Bh is called with AX=6 and BX=[17E8h], the rate is divided by 55h (AX / BL; the quotient plus 36h is stored
+ *    in [17EAh]) and 03FBh is called (both near, plain RET: OPL primitives).
+ *  - SS and SP are restored from cs:[0010h]/cs:[0012h] (through BX), BP, DI, SI and ES are popped.
+ *  - AL = [19FCh] | [19DCh]; when zero the routine goes to the clean-up arm 054Eh (if [17DEh] is not FFFFh, [17DEh] and [17DCh]
+ *    become FFFFh) and returns. Otherwise the two note-off counters are advanced: when [19DCh] is non-zero, [1902h] += [1906h],
+ *    [19DCh] is decremented and, when it reaches zero (and [1A04h] differs from [1A05h] or [19FCh] is zero), the OPL register
+ *    pair A0h+n / B0h+n (n=[1A04h]) is written with 08h and BL=0 through 036Bh (twice, near, plain RET); then, when
+ *    [19FCh] is non-zero, [1904h] += [1908h], [19FCh] is decremented and, when it reaches zero (and [19DCh] is non-zero or [1A05h]
+ *    differs from [1A04h]), the same pair of writes is made for n=[1A05h]. RET.
+ * The OPL primitives and the command runner go through the registry (guest_call_pop), so a matched body runs when
+ * installed and the original's instructions otherwise. A divide fault of DIV BL leaves the machine in the divide handler
+ * exactly as the original does (the instruction is charged, the routine is left). */
+static int asound_117_adlib_tick(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { TICKS = 0x000E, SAVED_SS = 0x0010, SAVED_SP = 0x0012, STACK_SEG_IMM = 0x0453,
+           BUSY = 0x17EC, SONG = 0x17F6, RATE = 0x17F4, LAST_RATE = 0x17E6, CHIP_VALUE = 0x17E8, CHIP_OUT = 0x17EA,
+           VOICE = 0x19BE, VOICE_AUX = 0x19C6, NOTE_A = 0x19DC, NOTE_B = 0x19FC, SUM_A = 0x1902, STEP_A = 0x1906,
+           SUM_B = 0x1904, STEP_B = 0x1908, CHAN_A = 0x1A04, CHAN_B = 0x1A05, MARK = 0x17DE, MARK2 = 0x17DC,
+           RUNNER = 0x1882, WRITE_REG = 0x030B, WRITE_OUT = 0x03FB, WRITE_PAIR = 0x036B };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+/* the two OPL register writes of a note-off: AL = n + A0h, then n + B0h, AH = 8, BL = 0, each through 036B */
+#define XNOTE_OFF(at1_, ret1_, at2_, ret2_) do { \
+    cpu_push16(c, c->r[R_AX]); \
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0xA0, 0)); set_r8(c, R_AH, 0x08); set_r8(c, R_BL, 0x00); \
+    XCALL((at1_), WRITE_PAIR, (ret1_)); \
+    XB(4, (ret1_)); \
+    c->r[R_AX] = cpu_pop16(c); \
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0xB0, 0)); set_r8(c, R_AH, 0x08); set_r8(c, R_BL, 0x00); \
+    XCALL((at2_), WRITE_PAIR, (ret2_)); } while (0)
+    if (!room(c, 1)) return 0;
+    XB(1, 0x0430);                                                          /* inc word cs:[000Eh] */
+    seg_write16(c, c->seg[S_CS], TICKS, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_CS], TICKS), 1));
+    SM4_NEED(1, 0x0435);
+    XRUN(guest_call_far(m, 0x0435, 0x043A));                               /* lcall 01B6:03C4 */
+    XB(2, 0x043A);                                                          /* cmp [17ECh],0 / je 0444 */
+    alu_op(c, 7, ds_get(c, BUSY), 0, 1);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x0441);                                                      /* jmp 054D */
+        goto ret_only;
+    }
+    XB(12, 0x0444);                                                         /* push es,si,di,bp / save SS,SP / es=ss=imm / sp=17DAh / cmp byte [17F6h],0 / je 048C */
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BP]);
+    seg_write16(c, c->seg[S_CS], SAVED_SS, c->seg[S_SS]);
+    seg_write16(c, c->seg[S_CS], SAVED_SP, c->r[R_SP]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], STACK_SEG_IMM);
+    c->seg[S_ES] = c->r[R_AX];
+    c->seg[S_SS] = c->r[R_AX];
+    c->inhibit_at = c->icount - 12 + 9;                                     /* MOV SS, the block's ninth instruction */
+    c->r[R_SP] = 0x17DA;
+    alu_op(c, 7, ds_get8(c, SONG), 0, 0);
+    if (x86_cond(c, 4)) goto run_commands;
+    XB(2, 0x0463);                                                          /* cmp [17F4h],0 / je 048C */
+    alu_op(c, 7, ds_get(c, RATE), 0, 1);
+    if (x86_cond(c, 4)) goto run_commands;
+    XB(2, 0x046A);                                                          /* cmp byte [19BEh],0 / jne 0482 */
+    alu_op(c, 7, ds_get8(c, VOICE), 0, 0);
+    if (x86_cond(c, 5)) {
+        XB(2, 0x0482);                                                      /* mov byte [19BEh],2 / mov byte [19C6h],2 */
+        ds_put8(c, VOICE, 0x02);
+        ds_put8(c, VOICE_AUX, 0x02);
+    } else {
+        XB(5, 0x0471);                                                      /* lea bx,[19BEh] / lea cx,[0E94h] / mov [bx+10h],cx / mov byte [bx],1 / jmp 048C */
+        c->r[R_BX] = VOICE;
+        c->r[R_CX] = 0x0E94;
+        ds_put(c, (uint16_t)(c->r[R_BX] + 0x0010), c->r[R_CX]);
+        ds_put8(c, c->r[R_BX], 0x01);
+    }
+run_commands:
+    SM4_NEED(1, 0x048C);
+    XRUN(guest_call_pop(m, RUNNER, 0x048F, 0));                            /* call 1882 */
+    XB(2, 0x048F);                                                          /* cmp byte [17F6h],0 / je 04BE */
+    alu_op(c, 7, ds_get8(c, SONG), 0, 0);
+    if (x86_cond(c, 4)) goto restore_stack;
+    XB(2, 0x0496);                                                          /* mov ax,[17F4h] / je 04BE (the flags are the compare's) */
+    c->r[R_AX] = ds_get(c, RATE);
+    if (x86_cond(c, 4)) goto restore_stack;
+    XB(2, 0x049B);                                                          /* cmp ax,[17E6h] / je 04BE */
+    alu_op(c, 7, c->r[R_AX], ds_get(c, LAST_RATE), 1);
+    if (x86_cond(c, 4)) goto restore_stack;
+    XB(3, 0x04A1);                                                          /* mov [17E6h],ax / mov ax,6 / mov bx,[17E8h] */
+    ds_put(c, LAST_RATE, c->r[R_AX]);
+    c->r[R_AX] = 0x0006;
+    c->r[R_BX] = ds_get(c, CHIP_VALUE);
+    XCALL(0x04AB, WRITE_REG, 0x04AE);                                       /* call 030B */
+    XB(3, 0x04AE);                                                          /* mov ax,[17F4h] / mov bl,55h / div bl */
+    c->r[R_AX] = ds_get(c, RATE);
+    set_r8(c, R_BL, 0x55);
+    c->ip = 0x04B5;
+    if (!x86_div8(c, get_r8(c, R_BL))) return 1;
+    XB(2, 0x04B5);                                                          /* add ax,36h / mov [17EAh],ax */
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x0036, 1);
+    ds_put(c, CHIP_OUT, c->r[R_AX]);
+    XCALL(0x04BB, WRITE_OUT, 0x04BE);                                       /* call 03FB */
+restore_stack:
+    XB(10, 0x04BE);                                                         /* mov bx,cs:[10h] / mov ss,bx / mov sp,cs:[12h] / pop bp,di,si,es / mov al,[19FCh] / or al,[19DCh] / je 054E */
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], SAVED_SS);
+    c->seg[S_SS] = c->r[R_BX];
+    c->inhibit_at = c->icount - 10 + 2;                                    /* MOV SS, the block's second instruction */
+    c->r[R_SP] = seg_read16(c, c->seg[S_CS], SAVED_SP);
+    c->r[R_BP] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_r8(c, R_AL, ds_get8(c, NOTE_B));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), ds_get8(c, NOTE_A), 0));
+    if (x86_cond(c, 4)) goto clean_up;
+    XB(2, 0x04D7);                                                          /* cmp byte [19DCh],0 / je 0512 */
+    alu_op(c, 7, ds_get8(c, NOTE_A), 0, 0);
+    if (x86_cond(c, 4)) goto note_b;
+    XB(5, 0x04DE);                                                          /* mov ax,[1902h] / add ax,[1906h] / mov [1902h],ax / dec byte [19DCh] / jne 0512 */
+    c->r[R_AX] = ds_get(c, SUM_A);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, STEP_A), 1);
+    ds_put(c, SUM_A, c->r[R_AX]);
+    ds_put8(c, NOTE_A, (uint8_t)alu_dec(c, ds_get8(c, NOTE_A), 0));
+    if (x86_cond(c, 5)) goto note_b;
+    XB(3, 0x04EE);                                                          /* mov al,[1A04h] / cmp byte [19FCh],0 / je 04FE */
+    set_r8(c, R_AL, ds_get8(c, CHAN_A));
+    alu_op(c, 7, ds_get8(c, NOTE_B), 0, 0);
+    if (!x86_cond(c, 4)) {
+        XB(2, 0x04F8);                                                      /* cmp al,[1A05h] / je 0512 */
+        alu_op(c, 7, get_r8(c, R_AL), ds_get8(c, CHAN_B), 0);
+        if (x86_cond(c, 4)) goto note_b;
+    }
+    XB(4, 0x04FE);                                                          /* push ax / add al,A0h / mov ah,8 / mov bl,0 */
+    XNOTE_OFF(0x0505, 0x0508, 0x050F, 0x0512);
+note_b:
+    XB(2, 0x0512);                                                          /* cmp byte [19FCh],0 / je 054D */
+    alu_op(c, 7, ds_get8(c, NOTE_B), 0, 0);
+    if (x86_cond(c, 4)) goto ret_only;
+    XB(5, 0x0519);                                                          /* mov ax,[1904h] / add ax,[1908h] / mov [1904h],ax / dec byte [19FCh] / jne 054D */
+    c->r[R_AX] = ds_get(c, SUM_B);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], ds_get(c, STEP_B), 1);
+    ds_put(c, SUM_B, c->r[R_AX]);
+    ds_put8(c, NOTE_B, (uint8_t)alu_dec(c, ds_get8(c, NOTE_B), 0));
+    if (x86_cond(c, 5)) goto ret_only;
+    XB(3, 0x0529);                                                          /* mov al,[1A05h] / cmp byte [19DCh],0 / jne 0539 */
+    set_r8(c, R_AL, ds_get8(c, CHAN_B));
+    alu_op(c, 7, ds_get8(c, NOTE_A), 0, 0);
+    if (!x86_cond(c, 5)) {
+        XB(2, 0x0533);                                                      /* cmp al,[1A04h] / je 054D */
+        alu_op(c, 7, get_r8(c, R_AL), ds_get8(c, CHAN_A), 0);
+        if (x86_cond(c, 4)) goto ret_only;
+    }
+    XB(4, 0x0539);                                                          /* push ax / add al,A0h / mov ah,8 / mov bl,0 */
+    XNOTE_OFF(0x0540, 0x0543, 0x054A, 0x054D);
+ret_only:
+    XB(1, 0x054D);                                                          /* ret */
+    near_ret(c);
+    return 1;
+clean_up:
+    XB(2, 0x054E);                                                          /* cmp word [17DEh],-1 / je 0561 */
+    alu_op(c, 7, ds_get(c, MARK), 0xFFFF, 1);
+    if (!x86_cond(c, 4)) {
+        XB(2, 0x0555);                                                      /* mov word [17DEh],FFFFh / mov word [17DCh],FFFFh */
+        ds_put(c, MARK, 0xFFFF);
+        ds_put(c, MARK2, 0xFFFF);
+    }
+    XB(1, 0x0561);                                                          /* ret */
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+#undef XCALL
+#undef XNOTE_OFF
+}
+
+/* VGAME 120A:0971, the renderer's divide-error handler (INT 0; the hook at 120A:027D puts it on the vector).
+ * The perspective code divides DX:AX by CX; when the quotient does not fit in a word the CPU lands here
+ * with the faulting instruction's IP, CS and FLAGS on the stack. The handler:
+ *   - steps the saved IP over the faulting instruction (three bytes: [BP+2] += 3, BP being the frame
+ *     it opens with PUSH BP);
+ *   - makes a smaller dividend of the registers: DX:AX shifted right by eight bits with the sign kept
+ *     (XCHG, MOV DL,DH, MOV DH,AL, MOV AL,AH, CBW, XCHG: the new DX is the old DX's high byte sign-extended,
+ *     the new AX the old DX's low byte over the old AX's high byte);
+ *   - divides it by CX again (IDIV CX: this may fault too, a zero CX or a quotient still too large, and
+ *     then the machine's own fault takes the original through the vector once more: the body stops at the
+ *     IDIV and lets the original run it);
+ *   - shifts the quotient back up a byte: DX = its sign, DL = AH, AH = AL, AL = 0 (CWD, MOV DL,AH, MOV AH,AL,
+ *     SUB AL,AL), so DX:AX is the quotient times 256 and the remainder is dropped;
+ *   - pops BP and returns with IRET, which restores the caller's FLAGS from the frame. */
+static int vgame_perspective_divide_fault(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    cpu_push16(c, c->r[R_BP]);                                          /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                            /* mov bp, sp */
+    bp_put(c, 2, (uint16_t)alu_add(c, bp_get(c, 2), 3, 1, 0));          /* add word ptr [bp+2], 3 */
+    {
+        const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_DX]; c->r[R_DX] = t;   /* xchg dx, ax */
+    }
+    set_r8(c, R_DL, get_r8(c, R_DH));                                   /* mov dl, dh */
+    set_r8(c, R_DH, get_r8(c, R_AL));                                   /* mov dh, al */
+    set_r8(c, R_AL, get_r8(c, R_AH));                                   /* mov al, ah */
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);            /* cbw */
+    {
+        const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_DX]; c->r[R_DX] = t;   /* xchg dx, ax */
+    }
+    c->icount += 9;
+    if (idiv16_faults(c, c->r[R_CX])) { c->ip = 0x0981; return 1; }     /* the original takes the fault */
+    SM4_NEED(7, 0x0981);
+    x86_idiv16(c, c->r[R_CX], 0);                                       /* idiv cx */
+    cwd(c);                                                             /* cwd */
+    set_r8(c, R_DL, get_r8(c, R_AH));                                   /* mov dl, ah */
+    set_r8(c, R_AH, get_r8(c, R_AL));                                   /* mov ah, al */
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));   /* sub al, al */
+    c->r[R_BP] = cpu_pop16(c);                                          /* pop bp */
+    c->icount += 7;
+    x86_iret(c);                                                        /* iret */
+    return 1;
+}
+
+/* DSWAP 0000:0FF8, a near jump thunk: JMP 1BD0, the decimal-text-to-long converter (atol). Callers that reach it through this stub arrive
+ * with their own arguments on the stack and the target builds its frame: the stub touches nothing but the
+ * program counter, and its target runs next (the original's code, or its own matched body). */
+static int dswap_string_to_long_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x0FF8);
+    c->icount += 1;
+    c->ip = 0x1BD0;
+    return 1;
+}
+
+/* DSWAP 0000:2060, a near jump thunk: JMP 2097, the near heap allocator (malloc). Callers that reach it through this stub arrive
+ * with their own arguments on the stack and the target builds its frame: the stub touches nothing but the
+ * program counter, and its target runs next (the original's code, or its own matched body). */
+static int dswap_malloc_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x2060);
+    c->icount += 1;
+    c->ip = 0x2097;
+    return 1;
+}
+
+/* SETUP 0000:1C46, a near jump thunk: JMP 1D69, the near heap allocator (malloc). Callers that reach it through this stub arrive
+ * with their own arguments on the stack and the target builds its frame: the stub touches nothing but the
+ * program counter, and its target runs next (the original's code, or its own matched body). */
+static int setup_malloc_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x1C46);
+    c->icount += 1;
+    c->ip = 0x1D69;
+    return 1;
+}
+
+/* PLAYER 0000:222A, a near jump thunk: JMP 23B1, the near heap allocator (malloc). Callers that reach it through this stub arrive
+ * with their own arguments on the stack and the target builds its frame: the stub touches nothing but the
+ * program counter, and its target runs next (the original's code, or its own matched body). */
+static int player_malloc_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x222A);
+    c->icount += 1;
+    c->ip = 0x23B1;
+    return 1;
+}
+
+/* START 0000:2846, the objective sentence switch's jump (the code before it, 2840, took one off the objective
+ * kind and ran past the table for anything above 7). AX is the case number 0..7: it is doubled into BX
+ * (SHL AX,1 / XCHG BX,AX: AX keeps the old BX) and the routine ends with a jump through the word table in the
+ * code segment at 284E, one word per case: 2696, 2696, 2760, 277D, 279A, 27E3, 27CA, 27F7. It touches nothing
+ * but AX, BX and the flags; every case is the original's code (or its own matched body) and runs next. */
+static int start_objective_kind_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);         /* shl ax, 1 */
+    {
+        const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t;   /* xchg bx, ax */
+    }
+    c->icount += 3;
+    c->ip = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x284E));   /* jmp word ptr cs:[bx+284E] */
+    return 1;
+}
+
+/* END 0000:36BC, the debriefing message switch (inside the message routine's frame, entered by the code that
+ * leads up to it with AX the message number). It takes the number less one; a result above 5 (message 0, or
+ * above 6, as an unsigned number) is the default case, which is the draw of the ending message box at 36D6.
+ * Otherwise the result is doubled into BX (SHL AX,1 / XCHG BX,AX: AX keeps the old BX) and the routine ends
+ * with a jump through the word table in the code segment at 36CA, one word per case: 3692, 3699, 36A0, 36A7,
+ * 36AE, 36B5. It touches nothing but AX, BX and the flags; every case is the original's code (or its own
+ * matched body) and runs next. */
+static int end_debrief_message_switch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);                 /* dec ax */
+    alu_sub(c, c->r[R_AX], 5, 1, 0);                                  /* cmp ax, 5 */
+    c->icount += 3;
+    if (x86_cond(c, 7)) { c->ip = 0x36D6; return 1; }                 /* ja 36D6: the default case */
+    SM4_NEED(3, 0x36C2);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);         /* shl ax, 1 */
+    {
+        const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t;   /* xchg bx, ax */
+    }
+    c->icount += 3;
+    c->ip = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x36CA));   /* jmp word ptr cs:[bx+36CA] */
+    return 1;
+}
+
+/* PLAYER.EXE 026B:01A3, the clock timer interrupt handler's entry (no arguments; entered by the hardware
+ * interrupt, left through its own IRET further down). It saves AX, BX, CX, DX and DS on the interrupted
+ * program's stack, keeps that stack's SS:SP in AX:BX, and switches to the program's own small stack: SS is
+ * the code segment (the word loaded into CX, relocated by the loader, so it is read from the loaded code
+ * and not copied from the dossier) and SP = 019Dh, just below the handler. It pushes the old SS (BX) and the
+ * old SP (AX) there, and then executes STI.
+ * MOV SS holds off interrupts for the next instruction (x86_load_ss), exactly as the original does.
+ * Named region ends at the STI (POPF_STOPS: PLAYER.EXE 026B:01A3 -> 01B7): STI sets the run limit to 0 so
+ * the run loop may take the next timer tick, and the rest of the handler (the DS load, the tick counters,
+ * the calls, the EOI and the IRET) remains the original's continuation code. */
+static int player_clock_isr_enter(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 13)) return 0;
+    x86_push_reg(c, R_AX);                                        /* 01A3 push ax */
+    x86_push_reg(c, R_BX);                                        /* 01A4 push bx */
+    x86_push_reg(c, R_CX);                                        /* 01A5 push cx */
+    x86_push_reg(c, R_DX);                                        /* 01A6 push dx */
+    cpu_push16(c, c->seg[S_DS]);                                  /* 01A7 push ds */
+    c->r[R_AX] = c->r[R_SP];                                      /* 01A8 mov ax,sp */
+    c->r[R_BX] = c->seg[S_SS];                                    /* 01AA mov bx,ss */
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], 0x01AD);             /* 01AC mov cx,26Bh (relocated) */
+    c->icount += 8;
+    x86_load_ss(c, c->r[R_CX]);                                   /* 01AF mov ss,cx: no interrupt before the next instruction */
+    c->icount += 1;
+    c->r[R_SP] = 0x019D;                                          /* 01B1 mov sp,019Dh */
+    x86_push_reg(c, R_BX);                                        /* 01B4 push bx: the old SS */
+    x86_push_reg(c, R_AX);                                        /* 01B5 push ax: the old SP */
+    c->icount += 3;
+    x86_sti(c);                                                   /* 01B6 sti */
+    c->icount += 1;
+    c->ip = 0x01B7;
+    return 1;
+}
+
+/* ASOUND.117 01B6:025A (near, no arguments), the prefix up to its hand-back at 02CA. This body proves only the
+ * instructions 025A..02C4 (112 bytes, 33 instructions): the wait loop at 02CA..02E3 and the RET at 02E5 stay original.
+ *  - The busy word DS:[17ECh] is set to FFFFh.
+ *  - The OPL write primitive 036Bh is called 22 times, once for each AL from 80h to 95h, with AH = 08h and BL = 0Eh
+ *    (each call pushes AX before and pops it after; the primitive is near, plain RET, and runs as original code).
+ *  - AX is cleared; the note cells DS:[19DCh], [19FCh] and the words [19FEh], [1A00h], [1902h], [1904h], [1906h],
+ *    [1908h] are cleared.
+ *  - CX = 0E9Ah; the six voice state bytes [190Ah], [1928h], [1946h], [1964h], [1982h], [19A0h] are set to 1, and the
+ *    words [191Ah], [1938h], [1956h], [1974h], [1992h], [19B0h] receive CX.
+ *  - The busy word is cleared again; the routine hands back to the original at 02CAh (the wait loop), with the clock
+ *    charged for everything above, the calls included.
+ * The routine's RET (02E5h) is not reached by this body. */
+static int asound_117_opl_voice_setup_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BUSY = 0x17EC, NOTE_A = 0x19DC, NOTE_B = 0x19FC, SUM_A = 0x1902, SUM_B = 0x1904, STEP_A = 0x1906,
+           STEP_B = 0x1908, WORD_C = 0x19FE, WORD_D = 0x1A00, OPL_WRITE = 0x036B, CX_VALUE = 0x0E9A };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x025A);                                     /* mov word [17ECh],0FFFFh / mov al,80h / mov bl,0Eh */
+    ds_put(c, BUSY, 0xFFFF);
+    set_r8(c, R_AL, 0x80);
+    set_r8(c, R_BL, 0x0E);
+opl_loop:
+    XB(2, 0x0264);                                     /* push ax / mov ah,8 */
+    cpu_push16(c, c->r[R_AX]);
+    set_r8(c, R_AH, 0x08);
+    XCALL(0x0267, OPL_WRITE, 0x026A);                  /* call 036Bh */
+    XB(4, 0x026A);                                     /* pop ax / inc ax / cmp al,96h / jne 0264 */
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    alu_op(c, 7, get_r8(c, R_AL), 0x96, 0);
+    if (x86_cond(c, 5)) goto opl_loop;
+    XB(23, 0x0270);                                    /* 0270..02C4: the clearing and the cell stores, in order */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* xor ax,ax */
+    ds_put8(c, NOTE_A, get_r8(c, R_AL));               /* mov [19DCh],al */
+    ds_put8(c, NOTE_B, get_r8(c, R_AL));               /* mov [19FCh],al */
+    ds_put(c, WORD_C, c->r[R_AX]);                     /* mov [19FEh],ax */
+    ds_put(c, WORD_D, c->r[R_AX]);                     /* mov [1A00h],ax */
+    ds_put(c, SUM_A, c->r[R_AX]);                      /* mov [1902h],ax */
+    ds_put(c, SUM_B, c->r[R_AX]);                      /* mov [1904h],ax */
+    ds_put(c, STEP_A, c->r[R_AX]);                     /* mov [1906h],ax */
+    ds_put(c, STEP_B, c->r[R_AX]);                     /* mov [1908h],ax */
+    c->r[R_CX] = CX_VALUE;                             /* lea cx,[0E9Ah] */
+    ds_put8(c, 0x190A, 0x01);                          /* mov byte [190Ah],1 */
+    ds_put(c, 0x191A, c->r[R_CX]);                     /* mov [191Ah],cx */
+    ds_put8(c, 0x1928, 0x01);                          /* mov byte [1928h],1 */
+    ds_put(c, 0x1938, c->r[R_CX]);                     /* mov [1938h],cx */
+    ds_put8(c, 0x1946, 0x01);                          /* mov byte [1946h],1 */
+    ds_put(c, 0x1956, c->r[R_CX]);                     /* mov [1956h],cx */
+    ds_put8(c, 0x1964, 0x01);                          /* mov byte [1964h],1 */
+    ds_put(c, 0x1974, c->r[R_CX]);                     /* mov [1974h],cx */
+    ds_put8(c, 0x1982, 0x01);                          /* mov byte [1982h],1 */
+    ds_put(c, 0x1992, c->r[R_CX]);                     /* mov [1992h],cx */
+    ds_put8(c, 0x19A0, 0x01);                          /* mov byte [19A0h],1 */
+    ds_put(c, 0x19B0, c->r[R_CX]);                     /* mov [19B0h],cx */
+    ds_put(c, BUSY, 0x0000);                           /* mov word [17ECh],0 */
+    c->ip = 0x02CA;                                    /* hand back to the original wait loop */
+    return 1;
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* PLAYER 0000:1255, an entry of the run-time's exit family (near, the exit code at [BP+4]): it opens a frame and
+ * sets CX = 1, the mode word the shared exit code at 126F reads (CL nonzero: the exit-handler tables and the
+ * flush at 1274-128E are skipped, the quick exit; CH zero: the program ends at 12C9, DOS function 4Ch, rather
+ * than returning), then jumps into the shared code at 126F. The jump is where the named code ends; the
+ * shared code is the original's. Its two siblings at 125D and 1267 set CX = 100h and 101h. */
+static int player_exit_entry(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    cpu_push16(c, c->r[R_BP]);                                        /* push bp */
+    c->r[R_BP] = c->r[R_SP];                                          /* mov bp, sp */
+    c->r[R_CX] = 1;                                                   /* mov cx, 1 */
+    c->icount += 4;                                                   /* with the jmp */
+    c->ip = 0x126F;                                                   /* jmp 126F */
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1255, player_exit_entry, "run-time exit(code) entry: open the frame, CX = 1 and join the shared exit code at 126F", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x025A, asound_117_opl_voice_setup_prefix, "AdLib voice setup prefix: busy word FFFFh, 22 OPL writes (AL 80h..95h, AH 8, BL 0Eh) through 036Bh, clear the note cells, set six voice state bytes to 1 and the pointers to CX, busy word 0; hands back at the wait loop 02CAh (the loop and its RET stay original)", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x01A3, player_clock_isr_enter, "clock timer interrupt handler entry: save AX, BX, CX, DX and DS, switch to the program's own 019Dh stack in the code segment (keeping the old SS:SP on it), and stop immediately after STI (POPF_STOPS); the rest of the handler remains original continuation code", 3 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x36BC, end_debrief_message_switch, "debriefing message switch: pick the case from AX - 1 through the jump table at 36CA, or the default draw at 36D6 (handed back)", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2846, start_objective_kind_jump, "objective sentence switch: jump through the word table at 284E to the case of kind AX (AX is already known to be 0-7)", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x222A, player_malloc_jump, "near jump thunk to the near heap allocator (malloc) at 23B1", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1C46, setup_malloc_jump, "near jump thunk to the near heap allocator (malloc) at 1D69", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x2060, dswap_malloc_jump, "near jump thunk to the near heap allocator (malloc) at 2097", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0FF8, dswap_string_to_long_jump, "near jump thunk to the decimal text to long converter (atol) at 1BD0", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0971, vgame_perspective_divide_fault, "renderer's INT 0 handler: skip the faulting 3-byte divide and redo it on the dividend shifted down a byte, an 8-bit remainder-free quotient", 3 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0430, asound_117_adlib_tick, "AdLib overlay tick: count it, step the random word (03C4), and unless the driver is busy run on the private stack 0:17DAh: start the voice record at 19BEh, run the command table (1882), reprogram the OPL rate when [17F4h] changed (030B, 03FB), then advance the two note-off counters [19DCh]/[19FCh] and write the OPL key-off pairs (036B)", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0211, player_retrace_resync_enter, "retrace re-synchronisation (called from the clock handler every 20th tick): count the tick down, then clear the flag test registers and either hand over to the timer-reprogram arm at 0244, or read the VGA status port with interrupts off and stop immediately after the STI at 0230 (POPF_STOPS); the arms past those hand-backs remain original continuation code", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0468, isound_log_start_speaker_note, "PC-speaker driver: restart a speaker note (clear the effect state, keep the note pointer in [59h]) unless the last note byte is not below the new one; hands back at the note body 0498", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0675, isound_log_start_note_at_ac, "PC-speaker driver: BX = 00ACh and hand back at the speaker note start 0468", 1 },

@@ -1830,6 +1830,28 @@ if(F117R_BUILD_TESTS)
       --only ISOUND.LOG:468)
     add_test(NAME matched_player_retrace_resync_enter COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:211)
+    add_test(NAME matched_asound_117_adlib_tick COMMAND func_lockstep --states 5000
+      --only ASOUND.117:430)
+    add_test(NAME matched_vgame_perspective_divide_fault COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:971)
+    add_test(NAME matched_dswap_string_to_long_jump COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:FF8)
+    add_test(NAME matched_dswap_malloc_jump COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:2060)
+    add_test(NAME matched_setup_malloc_jump COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:1C46)
+    add_test(NAME matched_player_malloc_jump COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:222A)
+    add_test(NAME matched_start_objective_kind_jump COMMAND func_lockstep --states 5000
+      --only START.EXE:2846)
+    add_test(NAME matched_end_debrief_message_switch COMMAND func_lockstep --states 5000
+      --only END.EXE:36BC)
+    add_test(NAME matched_player_clock_isr_enter COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1A3)
+    add_test(NAME matched_asound_117_opl_voice_setup_prefix COMMAND func_lockstep --states 5000
+      --only ASOUND.117:25A)
+    add_test(NAME matched_player_exit_entry COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1255)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
