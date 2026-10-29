@@ -101178,7 +101178,205 @@ static int mps_logo_sound_overlay_entry_0315_jump(machine_t *m)
     return 1;
 }
 
+/* ASOUND.117 01B6:035C (near, three stack arguments): the stack-argument entry of the AdLib/OPL register writer.
+ * It builds a frame (push bp / mov bp,sp) and loads the writer's register convention from the arguments:
+ *   DX = word at bp+4 (only its low byte DL is used further),
+ *   AX = word at bp+6 (AL = the OPL register number),
+ *   BL = byte at bp+8 (the value to write),
+ * then copies DL into AH (the chip selector the writer reads: 8 = both chips / card-base form), restores BP and
+ * falls straight into the register writer at 036Bh (already matched: it stores BL in the shadow [1A06h+AL] and
+ * writes the register and value to the chip). There is no RET of its own: 036Bh's RET returns to the caller of
+ * this wrapper, which must clean the three arguments. This body claims only its own 7 instructions (15 bytes,
+ * 7 clocks) and hands back at 036Bh, credited by its own proof. The flags are untouched by these instructions. */
+static int asound_117_opl_write_register_stack_args(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OPL_WRITE = 0x036B };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x035C);          /* push bp / mov bp,sp / mov dx,[bp+4] / mov ax,[bp+6] / mov bl,[bp+8] / mov ah,dl / pop bp */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_DX] = bp_get(c, 4);
+    c->r[R_AX] = bp_get(c, 6);
+    set_r8(c, R_BL, bp_get8(c, 8));
+    set_r8(c, R_AH, get_r8(c, R_DL));
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = OPL_WRITE;                                  /* hand back: the writer's RET returns to the caller */
+    return 1;
+#undef XB
+}
+
+/* ASOUND.117 01B6:18C8 (near, command number in BX): AdLib overlay driver command dispatcher.
+ * It saves the caller's DS and AX, points DS at the overlay's own code segment (so the table and the flag byte are read
+ * from the loaded code), and restores AX. A command of 0Eh or more (unsigned compare) is refused: AX=FFFFh. Commands 0..3 are
+ * always accepted; commands 4..0Dh are accepted only when the flag byte [190Dh] is not zero, otherwise they are refused the
+ * same way. An accepted command doubles BX and calls the routine whose address is the word at [18EFh+BX] (a plain RET
+ * routine, no stacked arguments; the address comes from the loaded code, so a matched arm runs as its body and any other as
+ * the original's instructions: this routine does not know the arms). The caller's registers are not otherwise touched: AX
+ * is whatever the callee returns for an accepted command, BX is the doubled command. Finally DS is restored and the
+ * routine returns near. */
+static int asound_117_driver_command_dispatch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { TABLE = 0x18EF, FLAG = 0x190D, LIMIT = 0x0E, ALWAYS = 0x04 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x18C8);                                                          /* push ds / push ax / mov ax,cs / mov ds,ax / pop ax / cmp bx,0Eh / jae 18E9 */
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = c->seg[S_CS];
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = cpu_pop16(c);
+    alu_op(c, 7, c->r[R_BX], LIMIT, 1);
+    if (x86_cond(c, 3)) goto refused;
+    XB(2, 0x18D4);                                                          /* cmp bx,4 / jb 18E0 */
+    alu_op(c, 7, c->r[R_BX], ALWAYS, 1);
+    if (!x86_cond(c, 2)) {
+        XB(2, 0x18D9);                                                      /* cmp byte [190Dh],0 / je 18E9 */
+        alu_op(c, 7, ds_get8(c, FLAG), 0x00, 0);
+        if (x86_cond(c, 4)) goto refused;
+    }
+    XB(1, 0x18E0);                                                          /* shl bx,1 */
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    SM4_NEED(1, 0x18E2);                                                    /* call word [bx+18EFh] */
+    XRUN(guest_call_pop(m, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + TABLE)), 0x18E6, 0));
+    XB(1, 0x18E6);                                                          /* jmp 18EC */
+    goto leave;
+refused:
+    XB(1, 0x18E9);                                                          /* mov ax,0FFFFh */
+    c->r[R_AX] = 0xFFFF;
+leave:
+    XB(2, 0x18EC);                                                          /* pop ds / ret */
+    c->seg[S_DS] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef XRUN
+}
+
+/* ASOUND.117 01B6:0A33 (near, no arguments; DS is the driver's data segment): the first part of the sound-effect
+ * restore tail, from 0A33 to the PIC mask write at 0A46. It is the tail of the sound-effect player at 09F2 (entered
+ * by a jump, so the RET after the whole tail returns to the player's caller).
+ * Both OPL key registers are cleared through the register writer 036B (near, plain RET; AH = 8, AL = the register,
+ * BL = the value): register B0h with 0, then register B1h with 0 (the note-off of channels 0 and 1). Then the
+ * interrupt mask saved by the speaker start (the byte [17E0]) is written to the PIC mask port 21h.
+ * That write wakes the run loop (the room claim after it is 0 in every state), so the body stops at the next
+ * instruction boundary, 0A48, and hands back there. The rest of the tail (0A48 onward: the speaker gate 61h from
+ * [17E1], the PIT counter-2 reprogramming 43h/42h, XOR AX, and the STI at 0A59) is left to the original's own
+ * instructions and is NOT covered by this body: under the lockstep it never runs in the body. Every port access
+ * is made at the clock the original makes it. The writer 036B goes through the registry (guest_call_pop), so it
+ * runs as its matched body when one is installed. */
+static int asound_117_sound_effect_restore(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3)) return 0;
+    set_r8(c, R_AH, 0x08);                                                        /* 0A33: mov ah,8 */
+    set_r8(c, R_AL, 0xB0);                                                        /* 0A35: mov al,0B0h */
+    set_r8(c, R_BL, 0x00);                                                        /* 0A37: mov bl,0 */
+    c->icount += 3;
+    SM4_NEED(1, 0x0A39);
+    RUN(guest_call_pop(m, 0x036B, 0x0A3C, 0));                                    /* 0A39: call 036B */
+    XB(2, 0x0A3C);
+    set_r8(c, R_AL, 0xB1);                                                        /* 0A3C: mov al,0B1h */
+    set_r8(c, R_BL, 0x00);                                                        /* 0A3E: mov bl,0 */
+    SM4_NEED(1, 0x0A40);
+    RUN(guest_call_pop(m, 0x036B, 0x0A43, 0));                                    /* 0A40: call 036B */
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x0A43; return 1; }
+    set_r8(c, R_AL, ds_get8(c, 0x17E0));                                          /* 0A43: mov al,[17E0] */
+    c->icount += 1;
+    c->op_ip = 0x0A46;
+    x86_out(c, 0x21, 0);                                                          /* 0A46: out 21h,al: wakes the run loop */
+    c->icount += 1;
+    c->ip = 0x0A48;                                                               /* hand back at the next instruction */
+#undef RUN
+#undef XB
+    return 1;
+}
+
+/* START 0x09FD6, the formatter's %d and %i arm (an arm of printf's _output, START 0x09D06, Borland C
+ * runtime). The dispatch (0x09E3E) has found 'd' or 'i' as the conversion character and jumps here,
+ * inside _output's frame. The arm only sets up the conversion and leaves for the common integer
+ * conversion:
+ *   [bp-4]  the flag byte gets bit 40h (a signed conversion), the other flags kept;
+ *   [bp-6]  the radix byte becomes 0Ah (ten);
+ * then a JMP to 0x0A015, the integer conversion (a matched routine of its own). Only these three
+ * instructions belong to this body: it hands the machine over at 0x0A015 after three clocks, and the
+ * conversion keeps its own proof. */
+static int start_format_signed_decimal_setup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x9FD6);
+    bp_put8(c, -4, (uint8_t)alu_op(c, 1, bp_get8(c, -4), 0x40, 0));       /* or byte [bp-4], 40h */
+    bp_put8(c, -6, 0x0A);                                                 /* mov byte [bp-6], 0Ah */
+    c->ip = 0xA015;                                                       /* jmp 0A015h */
+    return 1;
+#undef XB
+}
+
+/* SETUP 0237:0094, the end of the joystick poll that begins at 0237:005C (an overlay routine: it saves AX, BX,
+ * CX, DX, SI, DI and BP, polls the game port at 201h with interrupts off, and turns them on again with STI at
+ * 0093, where the body of 005C stops). This is the rest, entered right after the STI: the two counts the poll
+ * accumulated, BP (the first axis's) and DI (the second's), are stored to the data words [0E1C] and [0E1E]
+ * of the data segment DS; then the seven saved registers are popped back in the opposite order (BP, DI, SI,
+ * DX, CX, BX, AX) and the routine returns with a plain RET. No flag is set by any of it. */
+static int setup_joystick_read_finish(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    ds_put(c, 0x0E1C, c->r[R_BP]);                                    /* mov [0E1C], bp */
+    ds_put(c, 0x0E1E, c->r[R_DI]);                                    /* mov [0E1E], di */
+    c->r[R_BP] = cpu_pop16(c);                                        /* pop bp */
+    c->r[R_DI] = cpu_pop16(c);                                        /* pop di */
+    c->r[R_SI] = cpu_pop16(c);                                        /* pop si */
+    c->r[R_DX] = cpu_pop16(c);                                        /* pop dx */
+    c->r[R_CX] = cpu_pop16(c);                                        /* pop cx */
+    c->r[R_BX] = cpu_pop16(c);                                        /* pop bx */
+    c->r[R_AX] = cpu_pop16(c);                                        /* pop ax */
+    c->icount += 9;
+    near_ret(c);                                                      /* ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* PLAYER 0x01F4D, the formatter's exit (the epilogue of printf's _output, PLAYER 0x01A7E, Borland
+ * C runtime; the same code as START's and END's copies on their own addresses). The scan
+ * (0x01A91) reaches it at the end of the format string, and the conversion arms reach it when
+ * the count has gone negative; AX already holds the character count. DI and SI are restored from
+ * the two words the prologue pushed, SP is set to BP (dropping the 171h bytes of locals), BP is
+ * restored and the routine returns by a plain RET to the caller of the formatter. */
+static int player_format_exit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+    if (!room(c, 5)) return 0;
+    XB(5, 0x1F4D);                                                /* pop di / pop si / mov sp, bp / pop bp / ret */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F4D, player_format_exit, "the formatter's exit: restore DI, SI and BP, return", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x0094, setup_joystick_read_finish, "joystick poll, after its interrupts are back on: store the two counts, restore all registers and return", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9FD6, start_format_signed_decimal_setup, "the formatter's %d and %i arm: mark the conversion signed, radix ten, hand back to the integer conversion", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0A33, asound_117_sound_effect_restore, "Sound-effect restore, first part: clear OPL key registers B0h and B1h through 036B, then write the saved IRQ mask [17E0] to port 21h (the PIC mask write wakes the run loop); hands back at 0A48, the rest of the tail stays original", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x18C8, asound_117_driver_command_dispatch, "AdLib overlay driver command dispatcher: with DS set to the code segment, command BX of 0Eh or more returns AX=FFFFh; commands 4..0Dh also need the flag byte [190Dh] non-zero; otherwise call the routine at cs:[18EFh+2*BX] (plain RET) and restore DS", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x035C, asound_117_opl_write_register_stack_args, "AdLib overlay: stack-argument wrapper for the OPL register writer: take the register word (bp+4), the value word (bp+6) and the value byte (bp+8), load DX, AX and BL, copy DL into AH, restore BP and fall into the register writer 036Bh (handed back there)", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x0315, mps_logo_sound_overlay_entry_0315_jump, "sound overlay entry 0315: far jump through the operand the binder patched in", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x030E, mps_logo_sound_overlay_entry_030E_jump, "sound overlay entry 030E: far jump through the operand the binder patched in", 2 },
     { "matched", "END.EXE", END_47304, 0x05FA, 0x23FA, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },

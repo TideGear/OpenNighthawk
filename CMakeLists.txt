@@ -1890,6 +1890,18 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:30E)
     add_test(NAME matched_mps_logo_sound_overlay_entry_0315_jump COMMAND func_lockstep --states 5000
       --only MPS_LOGO.EXE:315)
+    add_test(NAME matched_asound_117_opl_write_register_stack_args COMMAND func_lockstep --states 5000
+      --only ASOUND.117:35C)
+    add_test(NAME matched_asound_117_driver_command_dispatch COMMAND func_lockstep --states 5000
+      --only ASOUND.117:18C8)
+    add_test(NAME matched_asound_117_sound_effect_restore COMMAND func_lockstep --states 5000
+      --only ASOUND.117:A33)
+    add_test(NAME matched_start_format_signed_decimal_setup COMMAND func_lockstep --states 5000
+      --only START.EXE:9FD6)
+    add_test(NAME matched_setup_joystick_read_finish COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:94)
+    add_test(NAME matched_player_format_exit COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1F4D)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

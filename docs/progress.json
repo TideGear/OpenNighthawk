@@ -227,12 +227,12 @@
     "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed and reviewed static instruction bytes outside those rows in all 17 game code files; added to numerator and denominator for scoring. Strictly validated SETUP XOR code is included by physical byte union; floating LZEXE decompressor and unreviewed static discoveries remain outside. gameplay (21 Oct 2026): the gameplay score's figures over the executed bytes only (denominator: every validated route-executed instruction byte; matched_route_run; stays_original_reviewed; fixture_only; remaining; checklist of previous-scope bytes outside the denominator with and without a docs/reference-reviewed.tsv entry). Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 1134,
-    "matched_bytes": 160463,
+    "matched_functions": 1135,
+    "matched_bytes": 160494,
     "partial_functions": 293,
     "classes": {
-      "credited": 160463,
-      "ran": 559,
+      "credited": 160494,
+      "ran": 528,
       "never_run": 4299,
       "unreached": 222,
       "slots": 5,
@@ -243,14 +243,14 @@
     "creditable_bytes": 165548,
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
-      "bytes": 43375,
-      "credited": 27322,
+      "bytes": 43385,
+      "credited": 27396,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
         "ASOUND.117": {
-          "bytes": 5705,
-          "credited": 5079,
+          "bytes": 5715,
+          "credited": 5152,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -334,7 +334,7 @@
         },
         "SETUP": {
           "bytes": 4000,
-          "credited": 102,
+          "credited": 103,
           "reviewed_static_bytes": 3799,
           "original_reviewed_bytes": 102
         },
@@ -363,17 +363,17 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 158473,
+      "matched_route_run": 158568,
       "stays_original_reviewed": 2631,
-      "score": 0.9828988389757607,
-      "fixture_only": 29247,
-      "remaining": 2803,
+      "score": 0.9834784359423332,
+      "fixture_only": 29257,
+      "remaining": 2708,
       "original_awaiting_review": 0,
       "reviewed_entries": 1815,
       "checklist": {
-        "bytes": 47577,
+        "bytes": 47587,
         "with_reviewed_entry": 45390,
-        "without_reviewed_entry": 2187,
+        "without_reviewed_entry": 2197,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 23166,
@@ -389,7 +389,7 @@
           },
           "supp-credited": {
             "with_reviewed_entry": 4175,
-            "without_reviewed_entry": 1445
+            "without_reviewed_entry": 1455
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 13802,
@@ -402,21 +402,21 @@
         }
       },
       "crosscheck": {
-        "previous_scope_distinct": 208853,
+        "previous_scope_distinct": 208863,
         "denominator_in_previous_scope": 161276,
         "denominator_outside_previous_scope": 2631,
-        "previous_scope_occurrences": 208923,
+        "previous_scope_occurrences": 208933,
         "previous_scope_shared_row_bytes": 70
       },
       "by_module": {
         "ASOUND.117": {
           "denominator": 5373,
-          "matched_route_run": 4747,
+          "matched_route_run": 4810,
           "stays_original_reviewed": 0,
-          "fixture_only": 332,
-          "remaining": 626,
+          "fixture_only": 342,
+          "remaining": 563,
           "original_awaiting_review": 0,
-          "not_in_denominator": 332,
+          "not_in_denominator": 342,
           "not_in_denominator_reviewed": 281,
           "in_previous_scope": 5373
         },
@@ -532,10 +532,10 @@
         },
         "PLAYER": {
           "denominator": 6506,
-          "matched_route_run": 6172,
+          "matched_route_run": 6178,
           "stays_original_reviewed": 156,
           "fixture_only": 1654,
-          "remaining": 178,
+          "remaining": 172,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
           "not_in_denominator_reviewed": 3262,
@@ -565,10 +565,10 @@
         },
         "SETUP": {
           "denominator": 3689,
-          "matched_route_run": 3321,
+          "matched_route_run": 3337,
           "stays_original_reviewed": 253,
           "fixture_only": 755,
-          "remaining": 115,
+          "remaining": 99,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
           "not_in_denominator_reviewed": 4669,
@@ -576,10 +576,10 @@
         },
         "START": {
           "denominator": 36796,
-          "matched_route_run": 36285,
+          "matched_route_run": 36295,
           "stays_original_reviewed": 288,
           "fixture_only": 4407,
-          "remaining": 223,
+          "remaining": 213,
           "original_awaiting_review": 0,
           "not_in_denominator": 5931,
           "not_in_denominator_reviewed": 5908,
