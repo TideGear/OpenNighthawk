@@ -12,17 +12,16 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (29 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.47%, P3 76.34%, All 92.64% (`py tools/progress.py --title`).
+- **Scoreboard:** P1 100.00%, P2 95.65%, P3 76.34%, All 92.69% (`py tools/progress.py --title`).
   The full figures: `py tools/progress.py --census D:/f117-gate/census.tsv --named-cover
-  D:/f117-gate/p2-batch-br-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
-  (gameplay 98.35%, naming 89.8%, checklist 45,390 / 47,577 = 95.40%, 2,708 executed bytes unmatched: ASOUND.117 563,
-  VGAME 519, ISOUND.117 401, ISOUND.LOG 225, START 213, PLAYER 172, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 112,
-  SETUP 99, END 64, RSOUND.117 44, DSWAP 2).
-- **Accepted runtime:** gate `br`, passed: 1,978 s, 776 tests, 63 routes, 1,571 matched routines, 141 private mutations,
-  whole table at two seeds 0 mismatching, route precheck of the six new entries identical. Evidence
-  `D:/f117-gate/p2-batch-br-accept/` (its `audit_private.py`, `finalize.py` and `multi_proof.py` are the current ones: copy
-  them forward from the newest accepted batch with `cp`, never `cp -n`, which kept the generic scripts and failed the audit).
-  Earlier today: gate `bq` (43 far-jump thunks, the first multi-entry family).
+  D:/f117-gate/p2-batch-bs-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
+  (gameplay 98.57%, naming 89.8%, checklist 45,390 / 47,587 = 95.38%, 2,342 executed bytes unmatched: ASOUND.117 563,
+  VGAME 324, ISOUND.117 401, ISOUND.LOG 225, PLAYER 157, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 112, SETUP 89,
+  START 67, END 64, RSOUND.117 44, DSWAP 2).
+- **Accepted runtime:** gate `bs`, passed: 2,005 s, 781 tests, 63 routes, 1,606 matched routines, 174 private mutations,
+  whole table at three seeds 0 mismatching, route precheck identical. Evidence `D:/f117-gate/p2-batch-bs-accept/` (its
+  `audit_private.py`, `finalize.py` and `multi_proof.py` are the current ones: copy them forward from the newest accepted
+  batch with `cp`, never `cp -n`). Earlier today: gates `bq` (43 far-jump thunks) and `br` (six routines).
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
 - CI is checked through the GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
@@ -33,31 +32,31 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 ## Resume here
 
 Goal in force when this was written: land Phase 2 bumps safely; a bump is committed only after a full gate passes. The
-session ended after gate `br` was committed; nothing is half-integrated.
+session ended after gate `bs` was committed; nothing is half-integrated.
 
 1. **Proved privately, not yet integrated** (all under `D:/f117-gate/`). The root verifies every result file itself (an
    agent's tally is not evidence: read `mutation-results.json`, `seeds.json`, the lock log's skipped column) and runs
    `py D:/f117-gate/accept-kit/finish_all.py DIR[:ROUTE]` before `integrate_many.py` (which needs `private-verdict.json`).
    Check the route with `grep -l "MODULE .* SEG IP" D:/f117-gate/route-cover-20261020b/*.cov`: PLAYER `1F4D` is run only
    by `err_player_assert`, and `finish_all` on `full_cycle` failed with 0 calls.
-   - **Ready after checkpoints and verdict** (numbers read by the root): VGAME `0010` main (`p2-vgame-br-0010`, 73
-     instructions, 66/66 mutants, five seeds, 0 skipped; check why the identical `p2-vgame-ta-0010` was never integrated);
-     ASOUND.117 `09F2` (`p2-asound-117-br-09F2`, 24/24; owner decision pending on how the D2 fix at the same entry interacts,
-     route unconfirmed).
+   - **Ready after checkpoints and verdict** (numbers read by the root): ASOUND.117 `09F2` (`p2-asound-117-br-09F2`, 24/24;
+     owner decision pending on how the D2 fix at the same entry interacts, route unconfirmed). VGAME `0010`, START `9D5C` and
+     the START, PLAYER and SETUP thunks were accepted in gate `bs`.
    - **Agent-reported, root has not verified:** ASOUND.117 `005E` (`p2-asound-117-br-005E`, 79/79 mutants; needs six shared
      harness changes including a new `g_strict_limit` overrun check, so it needs a fix-only gate and a re-check of every
      accepted routine); MPS_LOGO `1046`, `103B`, `111D` (`p2-mpslogo-br-*`; `111D` has no route that runs all 63
      instructions, so partial route coverage needs a ruling; IMAGE_PATCHES and FATAL_JUMPS rows to carry); RSOUND.117
-     `0D07` and RSOUND.LOG `03A2` (`p2-sndlog-br-*`, 26/26 each, but 10 and 14 drafted mutants were dropped unrun: run the
-     full set; POPF_STOPS rows); tiny leaves ISOUND.LOG `060C` and `05D1`, START `8DD7`, END `4CBB`, PLAYER `026B:0306`
-     (`p2-tiny-br-*`; they need a shared decline-probe change for one-instruction bodies); thunk families
-     `p2-vgame-br-thunks` (53), `p2-player-br-thunks` (3), `p2-setup-br-thunks` (2) (30/30 mutants each; the lock log
-     sees only the first entry, so read the per-entry seed logs; the root runs `multi_proof.py` and checkpoints), and START's
-     28 (`p2-start-next-thunks`).
+     `0D07` (36/36) and RSOUND.LOG `03A2` (40/40) (`p2-sndlog-br-*`, root-verified full mutant sets; POPF_STOPS rows
+     `0D07 -> 0D3A` and `03A2 -> 03D8` to carry); tiny leaves ISOUND.LOG `060C` and `05D1`, START `8DD7`, END `4CBB`, PLAYER
+     `026B:0306` (`p2-tiny-br-*`; they need a shared decline-probe change for one-instruction bodies). **VGAME thunk family**
+     (`p2-vgame-br-thunks`, 53 entries, 30/30 mutants, five seeds): left out of gate `bs` because 28 of its 34 non-obvious
+     entries share an address with a presentation observer (`code_overrides` lists them; `screen_leads.py`'s hook screen is
+     not enough, it missed observers registered in table form); a plain thunk there would displace the draw capture. It needs
+     an observer-aware design (the body calling the observer, and `deliberate` rows) before it can be accepted, and the
+     presentation checks (`present_light_check.py`, `presentation_check.py --mode rerun`) run beside the gate.
    - **Not passing:** PLAYER `1AD4` (2 missed over-claims) and `1ADF` (one long-run state): the cause is missing
      `FATAL_JUMPS` rows for PLAYER `1ADF`/`1AD4` to `1A91` in the shared harness, so a repair-only gate; VGAME `01B9` (3
-     missed: two need a probe whose stop lands inside the callee); START `9D5C` (agreed six-byte credit `9D5C..9D62`, 16/18
-     caught, the two `claim_ip` mutants are equivalent: replace them with the reason in `NOTES.md`) and `9E9A` (957
+     missed: two need a probe whose stop lands inside the callee); START `9E9A` (957
      undiagnosed long-run skips, parked); ASOUND.117 `097F` (boundary hand-back at `09F2` never completes under the harness;
      `096D`, `0998`, `09A1` unbuilt); ASOUND.117 `0A17` (`p2-asound-117-br-pit`: lock and seeds pass with a scripted
      port-0x42 hunk, the 29-mutant run never produced a result: `mutations.out` has no CAUGHT or MISSED line); ASOUND.LOG `008A` (needs boundary `00AC` and the POPF row
@@ -72,7 +71,12 @@ session ended after gate `br` was committed; nothing is half-integrated.
    `0AC0`/`0ACB`]; ISOUND.LOG `0581` [certify as data, leave the denominator with a written certificate]; the six protected
    checklist units [prepare evidence for the owner's review]; ISOUND.LOG `0545` [prove in pieces, do not widen the rule]; the D2
    fix interaction at ASOUND.117 `09F2`.
-3. **Lessons from this wave** (add to the traps below): a proof's "N of N instructions reached" is not what the body
+3. **Lessons from this wave** (add to the traps below): run the whole non-lockstep unit set
+   (`ctest --test-dir build -E func_lockstep --parallel 8`, about 160 s) after the build and before the gate; it caught the
+   observer collision (`code_overrides`) that the gate would have found 15 minutes in. The pre-check seeds (the gate's
+   rotating seed is the first 12 hex digits of HEAD, so it changes each commit) found two latent defects in accepted bodies,
+   VGAME `73C8` and `peek_over`/`F06C`; test an older build on the same seed to tell latent from new. Launch background
+   jobs with `CREATE_NO_WINDOW` (0x08000200), never `DETACHED_PROCESS` (it opens a console window per child). a proof's "N of N instructions reached" is not what the body
    executed: `0A33`'s body never ran past `0A46` because the PIC mask write lowers the run limit to 0, which left 13 mutants
    uncatchable until a trace showed it; narrow such a proof and hand back. A mutant is equivalent only by construction
    (for example `SM4_NEED(n, at)` after a passing `room(c, n)` never uses `at`, and `SUB` for `CMP` with a discarded result),
@@ -80,10 +84,11 @@ session ended after gate `br` was committed; nothing is half-integrated.
    `seeds` and `checkpoints`; restore with `kit._project_restore`. The mutation workers can crash on `vswhere.exe` after a good
    compile: rerun. Several lead rows are tails of routines already matched (a RET after an STI, `1132:0002` is `1058:0DA2`):
    check the parent before proving. A foreground wait loop over 10 minutes is auto-backgrounded; use a background until-loop.
-4. **Remaining unmatched executed bytes (2,708) and where the points are:** the ranked lead list is
-   `D:/f117-gate/p2-leads-bp/LEADS.tsv` (stale for rows batches bp-br matched). Largest left: ASOUND.117 PIT wait loops,
-   ISOUND.117 `026C` (276 executed), the far-jump thunk families (VGAME 53, PLAYER 3, SETUP 2, START 28), ISOUND.LOG
-   `0581` (data). The naming bar (weight 31.5, 89.8%) is the biggest pool of points left: it counts reviewed static code and
+4. **Remaining unmatched executed bytes (2,342) and where the points are:** the ranked lead list is
+   `D:/f117-gate/p2-leads-bp/LEADS.tsv`, stale: `py D:/f117-gate/accept-kit/screen_leads.py LEADS.tsv --min-bytes 8` shows
+   only 5 of 60 leads clean (all hard), so regenerate the list from the current census and named cover after each batch.
+   Largest left: ASOUND.117 PIT wait loops, ISOUND.117 `026C` (276 executed), the VGAME thunk family (170 bytes, observers),
+   ISOUND.LOG `0581` (data). The naming bar (weight 31.5, 89.8%) is the biggest pool of points left: it counts reviewed static code and
    error paths no route runs; bodies for those (printf arms need their enclosing function) are worth about three times the
    points per byte of route-executed code.
 5. **Checklist** (`D:/f117-gate/checklist-full-20261026/`): round 5 adopted 88 units (3,641 bytes). Round 6 packets were never

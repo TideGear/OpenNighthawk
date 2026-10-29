@@ -1902,6 +1902,16 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:94)
     add_test(NAME matched_player_format_exit COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:1F4D)
+    add_test(NAME matched_vgame_program_main COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:10)
+    add_test(NAME matched_start_format_plain_char_out COMMAND func_lockstep --states 5000
+      --only START.EXE:9D5C)
+    add_test(NAME matched_start_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only START.EXE:69B8,START.EXE:69D1,START.EXE:69F9,START.EXE:69FE,START.EXE:6A03,START.EXE:6A08,START.EXE:6A26,START.EXE:6A58,START.EXE:6A80,START.EXE:6A8A,START.EXE:6AA3,START.EXE:6AB7,START.EXE:6ACB,START.EXE:6ADA,START.EXE:6ADF,START.EXE:6AE4,START.EXE:6B11,START.EXE:6B16,START.EXE:6B2F,START.EXE:6B34,START.EXE:6B39,START.EXE:6B3E,START.EXE:6B7A,START.EXE:6B7F,START.EXE:6B8E,START.EXE:6BB1,START.EXE:6BBB,START.EXE:6BC0)
+    add_test(NAME matched_player_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:13B9,PLAYER.EXE:13C3,PLAYER.EXE:13C8)
+    add_test(NAME matched_setup_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:A72,SETUP.EXE:A77)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -169,9 +169,9 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,571 matched routines registered in batches a to br (the
+      **Done:** 1,606 matched routines registered in batches a to bs (the
       [batch table](#batch-table); bm2 was a fix-only gate). Gameplay score
-      98.35%: 158,568 matched bytes a route runs plus 2,631 reviewed
+      98.57%: 158,934 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
       by design. In the census, named code runs 160,463 of 165,548 creditable
@@ -189,7 +189,7 @@ not the recompilation:
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
-      - 2,708 executed bytes are unmatched, most in the sound drivers; by module:
+      - 2,342 executed bytes are unmatched, most in the sound drivers; by module:
         `py tools/progress.py`. They include the declined routines (owner,
         23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
         START `8427` and END `4393` (wait loops routes cannot finish) and
@@ -343,6 +343,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bp | 28 Oct | 1,522 | 729 named bytes | Fifteen routines from the second proof wave: ASOUND.117 `0B98`, `0BB5`, `030B` (prefix), `03FB` (prefix) and `036B`; RSOUND.117 `0ACE` (to the STI), `0AFE` and `0BAD`; RSOUND.LOG `00FD` (to the STI), `048E` and `012D`; ISOUND.LOG `0082`; ISOUND.117 `0200`; PLAYER `0540`; MPS_LOGO `0307`. New shared-harness probes carried in: `g_probe_sweep` and `g_probe_sweep_all` (stop at every clock of a path), `g_room_*` and `g_room_probe_*` (stops at each block start, early hand-back check), a probe-only decline and overrun check for MPS_LOGO `0307`, `g_int1a_by_vector`, two POPF_STOPS rows, and a coverage origin for ISOUND.117 `0200`. Whole table at two seeds 0 mismatching, 60 routes identical with and without matched routines, gate 1,955 s, 766 tests, 562 mutations. Evidence `D:/f117-gate/p2-batch-bp-accept/`. ISOUND.117 `026C` (73 of 74 mutants; `call_clamp` unobservable in lockstep) stays out. |
 | bq | 28 Oct | 1,565 | 215 named bytes | 43 five-byte far-jump thunks, the first multi-entry family: DSWAP `08DC` and eleven more (12 entries, one body), END `23FA` and twenty-eight more (29 entries, one body) and MPS_LOGO `030E` and `0315` (the sound overlay's patched jump entries). Each body reads the operand the loader patched in from the code at the entry and claims one clock. Private multi-entry audit and finalizer (`multi_proof.py`) checked every entry's seeds, mutants and checkpoint calls; the finalizer now reads the 63-route capture set (`route-cover-20261020b`), because the older 45-route set never reaches the DSWAP entries. Whole table at two seeds 0 mismatching, route precheck of all 43 entries identical, gate 2,066 s, 770 tests, 112 mutations. Evidence `D:/f117-gate/p2-batch-bq-accept/`. |
 | br | 29 Oct | 1,571 | 105 named bytes | Six routines from the third proof wave: ASOUND.117 `035C` (stack-argument wrapper for the OPL register write, hands back at `036B`), `18C8` (driver command dispatcher, indirect call through the command table) and `0A33` (sound-effect restore, narrowed to `0A33`..`0A46`: the PIC mask write lowers the run limit, so the gate, PIT reprogram and STI after `0A48` run as original code; the first version claimed 18 instructions and 13 mutants could never be caught, which a trace of the body showed); START `9FD6` (formatter signed-decimal setup arm); SETUP `0094` (joystick poll finish, one `LIVE_FRAMES` row carried by hand); PLAYER `1F4D` (formatter exit; `full_cycle` never runs it, so its checkpoints use the `err_player_assert` route). The batch audit used the bq scripts (`XB` prefix for `18C8`). Whole table at two seeds 0 mismatching, route precheck of all six identical, gate 1,978 s, 776 tests, 141 mutations. Evidence `D:/f117-gate/p2-batch-br-accept/`. |
+| bs | 29 Oct | 1,606 | 393 named bytes | VGAME `0010` (the flight program's `main`, 73 instructions, declined earlier for a span one byte short that is long fixed), START `9D5C` (formatter character arm, credit `9D5C..9D62`; the padding call after it has a variable exit clock) and 33 far-jump thunk entries (START 28, PLAYER 3, SETUP 2). The 34 VGAME thunk entries of the same proof stay out: 28 of them share an address with a presentation observer (`code_overrides` reports them), and a plain thunk there would displace the draw capture. Two latent defects in accepted bodies, found by the pre-check seeds and fixed in this gate: VGAME `73C8` (the epilogue after the log call is four instructions, claimed three, and the path that skips the call had no claim) and `peek_over` (pushed-byte window did not wrap at 1 MB, which made VGAME `F06C` finish 6 clocks late). Whole table at three seeds 0 mismatching, route precheck identical, gate 2,005 s, 781 tests, 174 mutations. Evidence `D:/f117-gate/p2-batch-bs-accept/`. |
 
 Notes that still matter:
 

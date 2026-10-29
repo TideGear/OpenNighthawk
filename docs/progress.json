@@ -228,12 +228,12 @@
     "functions": 1535,
     "bytes": 179213,
     "matched_functions": 1135,
-    "matched_bytes": 160494,
-    "partial_functions": 293,
+    "matched_bytes": 160737,
+    "partial_functions": 295,
     "classes": {
-      "credited": 160494,
-      "ran": 528,
-      "never_run": 4299,
+      "credited": 160737,
+      "ran": 312,
+      "never_run": 4272,
       "unreached": 222,
       "slots": 5,
       "data": 7131,
@@ -244,7 +244,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 43385,
-      "credited": 27396,
+      "credited": 27546,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
@@ -334,13 +334,13 @@
         },
         "SETUP": {
           "bytes": 4000,
-          "credited": 103,
+          "credited": 113,
           "reviewed_static_bytes": 3799,
           "original_reviewed_bytes": 102
         },
         "START": {
           "bytes": 2514,
-          "credited": 1194,
+          "credited": 1334,
           "reviewed_static_bytes": 1177,
           "original_reviewed_bytes": 0
         },
@@ -363,11 +363,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 158568,
+      "matched_route_run": 158934,
       "stays_original_reviewed": 2631,
-      "score": 0.9834784359423332,
-      "fixture_only": 29257,
-      "remaining": 2708,
+      "score": 0.9857114095188125,
+      "fixture_only": 29284,
+      "remaining": 2342,
       "original_awaiting_review": 0,
       "reviewed_entries": 1815,
       "checklist": {
@@ -376,11 +376,11 @@
         "without_reviewed_entry": 2197,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 23166,
+            "with_reviewed_entry": 23193,
             "without_reviewed_entry": 461
           },
           "never_run": {
-            "with_reviewed_entry": 4099,
+            "with_reviewed_entry": 4072,
             "without_reviewed_entry": 195
           },
           "slots": {
@@ -532,10 +532,10 @@
         },
         "PLAYER": {
           "denominator": 6506,
-          "matched_route_run": 6178,
+          "matched_route_run": 6193,
           "stays_original_reviewed": 156,
           "fixture_only": 1654,
-          "remaining": 172,
+          "remaining": 157,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
           "not_in_denominator_reviewed": 3262,
@@ -565,10 +565,10 @@
         },
         "SETUP": {
           "denominator": 3689,
-          "matched_route_run": 3337,
+          "matched_route_run": 3347,
           "stays_original_reviewed": 253,
           "fixture_only": 755,
-          "remaining": 99,
+          "remaining": 89,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
           "not_in_denominator_reviewed": 4669,
@@ -576,10 +576,10 @@
         },
         "START": {
           "denominator": 36796,
-          "matched_route_run": 36295,
+          "matched_route_run": 36441,
           "stays_original_reviewed": 288,
           "fixture_only": 4407,
-          "remaining": 213,
+          "remaining": 67,
           "original_awaiting_review": 0,
           "not_in_denominator": 5931,
           "not_in_denominator_reviewed": 5908,
@@ -587,10 +587,10 @@
         },
         "VGAME": {
           "denominator": 72569,
-          "matched_route_run": 71417,
+          "matched_route_run": 71612,
           "stays_original_reviewed": 633,
-          "fixture_only": 7814,
-          "remaining": 519,
+          "fixture_only": 7841,
+          "remaining": 324,
           "original_awaiting_review": 0,
           "not_in_denominator": 12107,
           "not_in_denominator_reviewed": 12013,

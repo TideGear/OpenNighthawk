@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 95.47%, P3 76.34%, All 92.64%**. Every commit
+Progress: **P1 100.00%, P2 95.65%, P3 76.34%, All 92.69%**. Every commit
 title starts with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -96,7 +96,7 @@ title starts with the current figures (`py tools/progress.py --title`);
 - **Optional sharper and smoother pictures:** finer polygon geometry and HUD
   strokes up to 4K, with the original bitmap text and artwork kept; see
   [Presentation](#presentation).
-- **What is left:** matching the remaining 2,708 route-executed bytes (most
+- **What is left:** matching the remaining 2,342 route-executed bytes (most
   of them in the sound drivers) and the code no route runs, reviewed entries
   for the 2,187 bytes outside the routes that have none, and a closing review
   of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));

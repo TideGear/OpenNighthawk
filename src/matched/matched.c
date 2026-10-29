@@ -2514,7 +2514,9 @@ static int start_fill(machine_t *m)
 static uint8_t peek_over(cpu_t *c, uint16_t seg, uint16_t off, uint32_t stack_lo, const uint8_t *over, unsigned n)
 {
     const uint32_t a = phys(seg, off);
-    return a - stack_lo < n ? over[a - stack_lo] : mem_read8(c, a);
+    /* The pushed bytes wrap at 1 MB like every other address (SS:SP near FFFFCh). */
+    const uint32_t d = (a - stack_lo) & 0xFFFFFu;
+    return d < n ? over[d] : mem_read8(c, a);
 }
 
 /* VGAME 0x0F06C / START 0x09848: look an id up in a table of (word id,
@@ -17767,8 +17769,8 @@ static int vgame_target_damage(machine_t *m)
     c->icount += 2;
     if (!x86_cond(c, 0xD)) {                                    /* signed: not >= 2 */
         if (!room(c, 3)) { c->ip = 0x758D; return 1; }
-        NEAR_THEN(0x56BB, 0x7590, 0, 3);
-    }
+        NEAR_THEN(0x56BB, 0x7590, 0, 4);                        /* pop si, pop di, leave, ret: four */
+    } else if (!room(c, 4)) { c->ip = 0x7590; return 1; }       /* the same four when the log call is skipped */
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
     x86_leave(c);
@@ -101370,7 +101372,299 @@ static int player_format_exit(machine_t *m)
 #undef XB
 }
 
+/* VGAME 0000:0010 - the flight program's main(): bind the shell's data block, run one
+ * flight, and leave with the exit code.
+ *
+ * The C start-up (E6BE) calls this with no arguments. The program was started by the
+ * shell, which left the segment of its data block in the first word of the BIOS
+ * intra-application communication area (0000:04F0, which is 0040:00F0). The routine
+ *   1. makes that segment the block's home: SHELL_BLOCK (far pointer [E574], offset 0)
+ *      and SETTINGS (far pointer [9924], offset 1272h inside the same segment);
+ *   2. hands three segment words of the block (+1Ah, +1Eh, +1Ch) to the segment-entry
+ *      binder 0FAE:0002 (vgame_bind_segment_entries), one call each;
+ *   3. saves the Ctrl-Break vector (1B73); then, when bit 0 of the block's flag byte +72h
+ *      is set, copies the saved settings at block+48h into the program's own copy with
+ *      1058:0D8C (a far pointer argument, popped by the caller); otherwise the stick
+ *      centre cells STICK_CENTRE_X and STICK_CENTRE_Y become 80h;
+ *   4. registers the display pages (02C4, vgame_register_display_pages), calls library
+ *      entry 12 (1E42:0156), gives 1377:000C the letter 'M' (it upper-cases it into the
+ *      cell 85F4), takes the block's page word (+20h) into PAGE_WORD and runs, in this
+ *      order, the flight start-up (00F0, vgame_flight_start), 45C5 (a loop of three
+ *      passes over a helper) and the flight itself (0235, vgame_flight_session);
+ *   5. when the flag bit is set, copies the settings back with 1058:0D7A;
+ *   6. restores the Ctrl-Break vector (1B96); when EXIT_CODE is zero it first sets the
+ *      text mode through the register-block interrupt call EC12 (the block C5F6: AH = 0,
+ *      AL = 3 as both input and output block, interrupt number 10h; three words
+ *      cleaned by the ADD SP,6);
+ *   7. calls the C run-time exit (E876) with EXIT_CODE as a word. That call does not
+ *      return; the instructions after it (POP BX, LEAVE, RET) are never reached on the
+ *      real machine and are kept as they are.
+ *
+ * Every callee is a plain RET near routine or a RETF far routine; the caller pops what
+ * it pushed (POP BX per word) except EC12 (ADD SP,6).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run
+ * and charges them; the calls are not counted (they charge their own). */
+static int vgame_program_main(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    /* Frame: the far pointer to the communication area word (offset at BP-4, segment at BP-2). */
+    enum { ICA_OFFSET = -4, ICA_SEGMENT = -2, ICA_WORD = 0x04F0 };
+    /* Data segment cells. */
+    enum { SHELL_BLOCK = 0xE574, SETTINGS = 0x9924, SETTINGS_OFFSET = 0x1272,
+           PAGE_WORD = 0xE584, STICK_CENTRE_X = 0x2CD3, STICK_CENTRE_Y = 0x2CD2,
+           EXIT_CODE = 0x008D, VIDEO_REQUEST = 0xC5F6 };
+    /* The shell's block. */
+    enum { BLOCK_SEGMENT_A = 0x1A, BLOCK_SEGMENT_B = 0x1E, BLOCK_SEGMENT_C = 0x1C,
+           BLOCK_FLAGS = 0x72, BLOCK_SETTINGS = 0x48, BLOCK_PAGE = 0x20 };
+    enum { STICK_CENTRE = 0x80, MODE_LETTER = 0x4D, TEXT_MODE = 3, BIOS_VIDEO = 0x10 };
+    /* Near callees. */
+    enum { SAVE_BREAK = 0x1B73, REGISTER_PAGES = 0x02C4, FLIGHT_START = 0x00F0, PASSES = 0x45C5,
+           FLIGHT = 0x0235, RESTORE_BREAK = 0x1B96, INTERRUPT_CALL = 0xEC12, EXIT = 0xE876 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+#define LOAD_BLOCK() do { c->r[R_BX] = ds_get(c, SHELL_BLOCK); c->seg[S_ES] = ds_get(c, SHELL_BLOCK + 2); } while (0)
+#define BLOCK_WORD(off_) seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (off_)))
+    if (!room(c, 12)) return 0;
+    /* The block's segment from the communication area; the first segment word to the binder. */
+    XB(12, 0x0010);
+    x86_enter(c, 4, 0);
+    bp_put(c, ICA_SEGMENT, 0);
+    bp_put(c, ICA_OFFSET, ICA_WORD);
+    c->r[R_BX] = bp_get(c, ICA_OFFSET);
+    c->seg[S_ES] = bp_get(c, ICA_SEGMENT);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    ds_put(c, SHELL_BLOCK + 2, c->r[R_AX]);
+    ds_put(c, SHELL_BLOCK, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    ds_put(c, SETTINGS + 2, c->r[R_AX]);
+    ds_put(c, SETTINGS, SETTINGS_OFFSET);
+    LOAD_BLOCK();
+    cpu_push16(c, BLOCK_WORD(BLOCK_SEGMENT_A));
+    XFAR(0x0041, 0x0046);
+    XB(3, 0x0046);
+    c->r[R_BX] = cpu_pop16(c);
+    LOAD_BLOCK();
+    cpu_push16(c, BLOCK_WORD(BLOCK_SEGMENT_B));
+    XFAR(0x004F, 0x0054);
+    XB(3, 0x0054);
+    c->r[R_BX] = cpu_pop16(c);
+    LOAD_BLOCK();
+    cpu_push16(c, BLOCK_WORD(BLOCK_SEGMENT_C));
+    XFAR(0x005D, 0x0062);
+    XB(1, 0x0062);
+    c->r[R_BX] = cpu_pop16(c);
+    XNEAR(0x0063, SAVE_BREAK, 0x0066);
+    /* The saved settings in, or the stick centred. */
+    XB(3, 0x0066);
+    LOAD_BLOCK();
+    alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + BLOCK_FLAGS))) & 1, 0);
+    if (x86_cond(c, 4)) goto centre_stick;
+    XB(3, 0x0071);
+    c->r[R_AX] = (uint16_t)(c->r[R_BX] + BLOCK_SETTINGS);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_AX]);
+    XFAR(0x0076, 0x007B);
+    XB(3, 0x007B);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    goto start_up;
+centre_stick:
+    XB(3, 0x007F);
+    set_r8(c, R_AL, STICK_CENTRE);
+    ds_put8(c, STICK_CENTRE_X, get_r8(c, R_AL));
+    ds_put8(c, STICK_CENTRE_Y, get_r8(c, R_AL));
+start_up:
+    XNEAR(0x0087, REGISTER_PAGES, 0x008A);
+    XFAR(0x008A, 0x008F);
+    XB(1, 0x008F);
+    cpu_push16(c, MODE_LETTER);
+    XFAR(0x0091, 0x0096);
+    XB(4, 0x0096);
+    c->r[R_BX] = cpu_pop16(c);
+    LOAD_BLOCK();
+    c->r[R_AX] = BLOCK_WORD(BLOCK_PAGE);
+    ds_put(c, PAGE_WORD, c->r[R_AX]);
+    XNEAR(0x00A2, FLIGHT_START, 0x00A5);
+    XNEAR(0x00A5, PASSES, 0x00A8);
+    XNEAR(0x00A8, FLIGHT, 0x00AB);
+    /* The settings back out, the Ctrl-Break vector back, the screen to text mode. */
+    XB(3, 0x00AB);
+    LOAD_BLOCK();
+    alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + BLOCK_FLAGS))) & 1, 0);
+    if (x86_cond(c, 4)) goto restore_break;
+    XB(3, 0x00B6);
+    c->r[R_AX] = (uint16_t)(c->r[R_BX] + BLOCK_SETTINGS);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_AX]);
+    XFAR(0x00BB, 0x00C0);
+    XB(2, 0x00C0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+restore_break:
+    XNEAR(0x00C2, RESTORE_BREAK, 0x00C5);
+    XB(2, 0x00C5);
+    alu_op(c, 7, ds_get8(c, EXIT_CODE), 0, 0);
+    if (x86_cond(c, 5)) goto leave;
+    XB(5, 0x00CC);
+    ds_put8(c, VIDEO_REQUEST + 1, 0);
+    ds_put8(c, VIDEO_REQUEST, TEXT_MODE);
+    cpu_push16(c, VIDEO_REQUEST);
+    cpu_push16(c, VIDEO_REQUEST);
+    cpu_push16(c, BIOS_VIDEO);
+    XNEAR(0x00DE, INTERRUPT_CALL, 0x00E1);
+    XB(1, 0x00E1);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+leave:
+    XB(3, 0x00E4);
+    set_r8(c, R_AL, ds_get8(c, EXIT_CODE));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x00EA, EXIT, 0x00ED);
+    XB(3, 0x00ED);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    near_ret(c);
+    return 1;
+#undef BLOCK_WORD
+#undef LOAD_BLOCK
+#undef XFAR
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* START 0x09D5C, the formatter's ordinary-character arm (an arm of printf's _output, START 0x09D06,
+ * Borland C runtime). The scan (0x09D19) has read a character that is not a conversion start and kept
+ * it at [bp-2]. This arm loads it into DL and sets CX = 1 (the run length), then stops at the CALL
+ * (0x09D62) and hands the machine back to the original, which makes the call to the padding run
+ * (0x0A188) and carries on with the scan. Only the two MOVs belong to this body: two instructions,
+ * six bytes, the hand-back after two clocks. */
+static int start_format_plain_char_out(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x9D5C);
+    set_r8(c, R_DL, bp_get8(c, -2));                                      /* mov dl, [bp-2] */
+    c->r[R_CX] = 0x0001;                                                  /* mov cx, 1 */
+    c->ip = 0x9D62;                                                       /* the CALL is the original's */
+    return 1;
+#undef XB
+}
+
+/* START.EXE 0A95:69B8 and 27 more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 0A95:69B8..6BC4 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int start_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
+/* PLAYER.EXE 02A3:13B9 and 2 more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 02A3:13B9..13C8 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int player_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
+/* SETUP.EXE 024C:0A72 and 1 more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 024C:0A72..0A77 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int setup_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "SETUP.EXE", SETUP_47304, 0x024C, 0x0A72, setup_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x024C, 0x0A77, setup_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x02A3, 0x13B9, player_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x02A3, 0x13C3, player_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x02A3, 0x13C8, player_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x69B8, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x69D1, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x69F9, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x69FE, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A03, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A08, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A26, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A58, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A80, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6A8A, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6AA3, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6AB7, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6ACB, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6ADA, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6ADF, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6AE4, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B11, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B16, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B2F, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B34, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B39, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B3E, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B7A, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B7F, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6B8E, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6BB1, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6BBB, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0A95, 0x6BC0, start_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9D5C, start_format_plain_char_out, "the formatter's ordinary-character arm: load the scanned character into DL and CX = 1, then hand back at the padding call", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0010, vgame_program_main, "flight program main: bind the shell's block, run one flight, restore and exit", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F4D, player_format_exit, "the formatter's exit: restore DI, SI and BP, return", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x0094, setup_joystick_read_finish, "joystick poll, after its interrupts are back on: store the two counts, restore all registers and return", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9FD6, start_format_signed_decimal_setup, "the formatter's %d and %i arm: mark the conversion signed, radix ten, hand back to the integer conversion", 1 },
