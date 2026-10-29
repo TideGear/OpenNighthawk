@@ -48,10 +48,11 @@ Goal in force when this was written: land Phase 2 bumps safely; a bump is commit
      in `tests/func_lockstep.c`: `g_decline_floor`, `g_probe_steps`, `g_probe_tail`, `g_probe_sweep`, `g_probe_sweep_all`,
      `g_room_n`/`g_room_at`/`g_room_need`, `g_room_probe_n`, a return-code probe gated to VGAME `D569`, and the probe-only
      check for MPS_LOGO `0307` (`F117_ROOM_PROBE`).
-2. **Faster mutation kit, proved and not installed:** `D:/f117-gate/kit-fast/kit.py` (diff in `kit-fast/kit.diff`) gives
+2. **Faster mutation kit, installed:** `D:/f117-gate/kit-fast/kit.py` (diff in `kit-fast/kit.diff`) gives
    byte-identical mutation results and mutant logs on three proofs, and halves (first run) to quarters (rerun) the compile
-   time by reusing the proof's built `project/` and keeping mutant worker directories. Install it only between waves (no agent
-   running), after adding a guard so `lock`, `seeds` and `checkpoints` refuse to run while `project/.mutations-restore` exists.
+   time by reusing the proof's built `project/` and keeping mutant worker directories. Installed between waves with a tested
+   guard so `lock`, `seeds` and `checkpoints` refuse to run while `project/.mutations-restore` exists; the previous kit is
+   saved as `kit/kit-before-fast.py`.
    The slot limit stays at 3 (a cl.exe peaked at 15 GB; RAM is the limit).
 3. **Remaining unmatched executed bytes (3,018) and where the points are:** ranked lead list
    `D:/f117-gate/p2-leads-bp/LEADS.tsv` and `SUMMARY.md` (recompute with `tools/census_classify`; 1,737 bytes were new leads

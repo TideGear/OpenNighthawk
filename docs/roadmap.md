@@ -174,23 +174,22 @@ not the recompilation:
       98.16%: 158,258 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
-      by design. In the census, named code runs 160,095 of 165,479 creditable
-      bytes (1,123 of 1,535 functions wholly, 291 in part).
+      by design. In the census, named code runs 160,463 of 165,548 creditable
+      bytes (1,134 of 1,535 functions wholly, 293 in part).
 
       **Accounted-for checklist:** 45,390 of 47,577 bytes (95.40%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
-      1,636 entries); 4,363 bytes have none. Four rounds of blind second reads
-      by independent readers (26-27 Oct) adopted, from 780 reviewed bytes:
+      1,815 entries); 2,187 bytes have none. Five rounds of blind second reads
+      by independent readers (26-28 Oct) adopted, from 780 reviewed bytes:
       round 1, 444 units / 19,928 bytes; round 2, 367 / 13,976; round 3, 101 /
       4,476; round 3b (exact leading-range check), 19 / 1,344; round 4, 32 /
-      1,245. Round 4 adopted only ACCEPT units whose reader-judged status equals
-      the proposal and whose range matches exactly. The reviews add no matching
+      1,245; round 5, 88 / 3,641. Round 4 adopted only ACCEPT units whose
+      reader-judged status equals the proposal and whose range matches exactly. The reviews add no matching
       credit or exclusions. Evidence `D:/f117-gate/checklist-full-20261026/`.
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
-      - 4,844 executed bytes are unmatched (20 of them design-rule original
-        awaiting a reviewed entry), most in the sound drivers; by module:
+      - 3,018 executed bytes are unmatched, most in the sound drivers; by module:
         `py tools/progress.py`. They include the declined routines (owner,
         23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
         START `8427` and END `4393` (wait loops routes cannot finish) and
@@ -198,12 +197,11 @@ not the recompilation:
         batch bj) and ASOUND.117 `025A` (blocked in batch bl). Leads:
         [../handoff.md](../handoff.md); the private list is
         `D:/f117-gate/kit/DECLINED.tsv`.
-      - 27,782 matched bytes that only fixtures reach, to be sorted into
+      - 29,247 matched bytes that only fixtures reach, to be sorted into
         routed or reviewed.
-      - The checklist's remaining 4,363 bytes: round 4 left 111 units
-        unadopted (36 status differs, 25 range wording, 6 missing fields, 33
-        with changes, 11 needs context), which go to round 5 with corrected
-        names or added context.
+      - The checklist's remaining 2,187 bytes: round 6 needs fresh blind reads
+        of unresolved units, plus owner review of the protected design-rule
+        and probable-dead units (see [handoff](../handoff.md)).
       - Beyond the routes: reviewed static code no route runs (no new route or
         dead certificate yet: indirect/callback/vector and writer closure is
         incomplete, [static-code-review.md](static-code-review.md)); the
