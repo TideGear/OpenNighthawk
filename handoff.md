@@ -34,6 +34,23 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 Goal in force when this was written: land Phase 2 bumps safely; a bump is committed only after a full gate passes. The
 session ended after gate `bs` was committed; nothing is half-integrated.
 
+**Paused 29 Oct 2026, 15:00 (usage limit); no agents or gate running, nothing half-integrated.** Next steps, in order:
+(a) the owner accepted my recommendations on the decision list: bundle the pending shared-harness edits into one reviewed
+fix-only gate (005E's `g_ipf`/`g_strict_limit`/`POPF_STOPS`, 0A17's `g_port_script`, the one-instruction decline probe,
+PLAYER `1ADF`/`1AD4` `FATAL_JUMPS` rows, the Roland `POPF_STOPS` rows); try a multi-port PIT script for `0A5B`/`0B01`, else
+certify; review `026C` and show the evidence; keep the D2 fix at `09F2` and credit the fixes-off lockstep; add a design rule that
+presentation-observer graphics slots stay original; credit `111D`'s routed part plus lockstep; `0581` as data certificate;
+`0545` in pieces; `10B3` split; prepare the six protected units' evidence for the owner. (b) These private proofs are
+root-verified (mutants all caught, five seeds ok, from the result files) and need `finish_all.py` then a batch: 005E (79/79),
+0A17 in `p2-asound-117-br-pit` (29/29), RSOUND.117 `0D07` (36/36) and RSOUND.LOG `03A2` (40/40) on `roland_boot`, MPS_LOGO
+`1046` (22/22), `103B` (22/22), `111D` (25/25), tiny leaves ISOUND.LOG `060C` (17/17) and `05D1` (21/21), START `8DD7`,
+END `4CBB`, PLAYER `026B:0306` (12/12 each), ASOUND.117 `09F2` (24/24). (c) The static-range pilot (Ghidra reading aid at
+`D:/ghidra-trial/out_all` and `out_ranges`, 16 largest unregistered ranges of `docs/census-code.tsv`) was stopped mid-build:
+dirs `p2-setup-bt-*` (17B0 family drafted, 0562 family set up) and `p2-vgame-bt-1452-*` (0063 and 04D9 families fixtured);
+resume those agents or start fresh from the directories, set `"static": true` in each config.json once steps 1-7 are green,
+and run `finish_all.py` (the kit's `checkpoints --static` accepts code no capture reaches). The whole static pool is worth
+about +2.1 points at 0.00015 points a byte; the pilot's four ranges (2,660 bytes) about +0.4.
+
 1. **Proved privately, not yet integrated** (all under `D:/f117-gate/`). The root verifies every result file itself (an
    agent's tally is not evidence: read `mutation-results.json`, `seeds.json`, the lock log's skipped column) and runs
    `py D:/f117-gate/accept-kit/finish_all.py DIR[:ROUTE]` before `integrate_many.py` (which needs `private-verdict.json`).
@@ -108,6 +125,10 @@ session ended after gate `bs` was committed; nothing is half-integrated.
 
 Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this is what governs daily work.
 
+- **Static code is matchable on lockstep alone (owner, 29 Oct 2026).** Reviewed static ranges in `docs/census-code.tsv` that no
+  captured route reaches are accepted without a real-route call: seeds, all mutants, audit, gate and the route-neutrality
+  replay (`kit.py DIR checkpoints --static`, or `"static": true` in the proof's config.json so `finish_all.py` does it);
+  the kit refuses it for code any capture reaches. Credit is the naming item's, not the gameplay score's.
 - **No meaningful game code may be missed.** Launcher, resident graphics library and sound drivers are in Phase 2
   scope; declined routines are work, not exclusions; every range that cannot be matched gets a reviewed reference
   entry. The checklist is done in full by independent blind readers; cost is no object, optimise wall time only.

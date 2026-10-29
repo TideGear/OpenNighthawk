@@ -224,7 +224,11 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   runtime handler shims, the complete VGAME `09EFA` body, the logo mouse helpers). Each row records segment/IP,
   length, instruction count, SHA256 and review evidence; every refresh verifies the hash, complete instruction
   boundaries, count and absence of overlapping reviews, and the private review also checks each instruction's
-  length with Capstone. The reviews identify code to match; they do not claim a named equivalent. Lessons that
+  length with Capstone. The reviews identify code to match; they do not claim a named equivalent. **Owner, 29 October 2026:** a matched body
+  for such code (no captured route reaches any of its instructions) is accepted on lockstep evidence alone: the five seeds,
+  every mutant caught, the batch audit, the full gate, and the route replay showing the registered body changes nothing
+  on the real routes (`kit.py checkpoints --static`, refused if any capture reaches the code). Its credit is the lockstep's
+  named cover, counted as fixture-only named bytes, and does not enter the gameplay score. Lessons that
   shaped the rules: decoder agreement alone is insufficient (the logo mouse helpers' discovery lists overlapped
   at linear `1307`/`1308` until seven bounded walks resolved them); a range must not end inside an instruction
   (PLAYER `1AD4` stops at `1B9B`, before one that the census boundary bisects); canonical segment spellings
