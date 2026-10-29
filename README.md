@@ -96,9 +96,9 @@ title starts with the current figures (`py tools/progress.py --title`);
 - **Optional sharper and smoother pictures:** finer polygon geometry and HUD
   strokes up to 4K, with the original bitmap text and artwork kept; see
   [Presentation](#presentation).
-- **What is left:** matching the remaining 4,844 route-executed bytes (most
+- **What is left:** matching the remaining 3,018 route-executed bytes (most
   of them in the sound drivers) and the code no route runs, reviewed entries
-  for the 4,363 bytes outside the routes that have none, and a closing review
+  for the 2,187 bytes outside the routes that have none, and a closing review
   of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));
   the re-release features below. Not scored: play by a person at the
   keyboard, rendered Roland output against an independent reference and
