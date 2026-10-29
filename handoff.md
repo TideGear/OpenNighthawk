@@ -31,19 +31,23 @@ Goal in force when this was written: land Phase 2 bumps safely; a bump is commit
 
 1. **Proved or partly proved, not integrated** (all under `D:/f117-gate/`; the root verifies every result file itself,
    never trusts an agent's tally; `finish.log` holds two JSON records: read the FIRST for `calls_of_this_routine`):
-   - ISOUND.117 `026C` (`p2-isound-117-bp-026C`, 111 instructions, 334 bytes, 276 executed): 73 of 74 mutants caught.
-     `call_clamp` (the `m->run_until = c->stop_at` clamp inside the call macro XRUN) is unobservable in lockstep because the
-     harness's `step_runner_run` runs a callee to its return without consulting `run_until`. Do not accept the miss. Either make
-     nested runs honour `stop_at` (a shared harness change that needs a whole-table seed and a gate), or decide with the
-     owner how a macro-level mutant that only the real run loop can see is to be treated. Needs `g_cov_ip = 0x01B4`
-     (like `0443`/`062E`/`0200`) and `checkpoints --route ibm_boot`.
+   - ISOUND.117 `026C` (`p2-isound-117-clamp-cov`, 111 instructions, 334 bytes, 276 executed): five seeds, 111/111
+     coverage, 74/74 mutants and IBM boot's 26 checkpoints pass (8,293 calls). The controlled nested-run probe catches
+     `call_clamp` by crossing the outer boundary (1038 vs 1027); review its no-earlier-event model before acceptance.
+     Carry the `g_cov_ip = 0x01B4` line and tracking-versus-credit harness changes, then run whole-table seeds and a gate.
    - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27): the `err_vgame_no_photo` replay passes with matched
      routines off as well as on, including both VGAME landscape-file opens and all 30 checkpoint hashes. The previously
      reported missing-open failure has no surviving log; its cause is unknown. Control evidence `D:/f117-gate/route-07e9-proof-unmatched/`.
-   - DSWAP thunks (`p2-dswap-bo-thunks`, one generic body for all 12 entries, 29/29): proved with a private multi-entry
-     `kitm.py` and five hand-carried harness hunks; confirm the route and the observer/fix-site check, then use the same
-     approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2 (635 bytes). MPS_LOGO `030E` and `0315` are the same
-     shape as `0307` (integrated in gate bp): one body per entry or a generic body.
+   - DSWAP thunks (`p2-dswap-return-room-proof`, one generic body for all 12 entries): five seeds pass and all 30 mutants
+     are caught, including explicit checks for declining after work and success with no room. Both error routes and IBM boot
+     pass; `err_dswap_nostart` calls all 12. run route precheck after integration. No DSWAP observer or fix sites need hooks. Carry the private
+     multi-entry harness hunks and use the same approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2 (635 bytes).
+     END's 29 thunks (`p2-end-far-thunks`) pass five seeds, 30/30 mutants, full-cycle and boot; full-cycle calls all
+     29. START's 28 thunks (`p2-start-next-thunks`) pass five seeds, 30/30 mutants, full-cycle and boot; full-cycle
+     calls 27 entries (not `6BC0`). Carry the family fixtures and harness checks, then run route prechecks for every entry.
+     Batch tools need multi-entry support: a private candidate and tests are in `D:/f117-gate/thunk-integration-candidate/`;
+     review them and test the complete batch before credit. MPS_LOGO `030E` and `0315` have separate private proofs (`p2-mpslogo-next-030E` / `0315`): five seeds, 26/26
+     mutants, and full-cycle and boot checkpoints pass with calls to both; ready for integration and batch checks.
    - Rule learned: a missed mutant is never replaced by an "equivalent" one when its path is merely never exercised.
      Under-claims (a room claim smaller than the longest path) are real defects; build a probe state. Shared probes now
      in `tests/func_lockstep.c`: `g_decline_floor`, `g_probe_steps`, `g_probe_tail`, `g_probe_sweep`, `g_probe_sweep_all`,
