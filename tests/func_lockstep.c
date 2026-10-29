@@ -52,6 +52,8 @@ typedef struct {
     uint64_t io;            /* port writes and reads (with their clock), interrupts */
     uint64_t io_clocks;     /* separate so checking INT clocks does not change synthetic read answers */
     uint32_t nread;
+    uint32_t nscript;       /* reads of the scripted port, independently for each side */
+    uint16_t ipf_seen[16];  /* per-instruction forced-read counts */
     uint32_t nlog;
     io_event log[IO_LOG];
     wake_model dev;
@@ -85,7 +87,8 @@ static uint8_t g_loaded_image[MEM_SIZE]; /* relocated reference before fixtures 
 /* A fresh port record and device model, for a run from the entry state. */
 static void side_io_reset(side_t *s)
 {
-    s->io = 0; s->io_clocks = 0; s->nread = 0; s->nlog = 0;
+    s->io = 0; s->io_clocks = 0; s->nread = 0; s->nscript = 0; s->nlog = 0;
+    memset(s->ipf_seen, 0, sizeof s->ipf_seen);
     memset(&s->dev, 0, sizeof s->dev);
     for (int ch = 0; ch < 3; ch++) s->dev.pit_access[ch] = 3;
 }
@@ -298,6 +301,12 @@ static unsigned g_probe_steps;  /* private hunk: a fixture sets the limit probe'
 static unsigned g_io_force_n, g_io_force_bit7, g_io_force_after;   /* private hunk: a fixture forces the status bit 7 of the first byte port reads (status polls)  */
 /* private hunk (batch bg): a fixture may force bits of the answers read from up to two ports: answer = (hash & and) | or, so a status wait can be made to time out. */
 static struct { uint16_t port; uint16_t and_, or_; } g_io_force[2];
+/* A fixture may force byte reads by instruction and ordinal (nth=0 means every read). */
+static struct { uint16_t ip, nth, and_, or_; } g_ipf[16];
+static unsigned g_ipf_n;
+/* A fixture may script successive byte reads of one port; afterwards use the normal answer. */
+static struct { uint16_t port; unsigned n; uint8_t v[48]; } g_port_script;
+static unsigned g_strict_limit; /* also check an overrun after STI has cleared the stop */
 static unsigned g_cap_hint;   /* private hunk (batch bg): a fixture raises the step cap of its state (a 65535-pass wait loop takes 330000 instructions) */
 static uint32_t io_r(cpu_t *c, uint16_t port, int width)
 {
@@ -312,7 +321,16 @@ static uint32_t io_r(cpu_t *c, uint16_t port, int width)
     }
     for (int f_ = 0; f_ < 2; f_++)
         if (g_io_force[f_].port == port && (g_io_force[f_].and_ || g_io_force[f_].or_)) v = (v & g_io_force[f_].and_) | g_io_force[f_].or_;
+    for (unsigned f_ = 0; f_ < g_ipf_n && width == 1; f_++)
+        if (c->op_ip == g_ipf[f_].ip) {
+            s->ipf_seen[f_]++;
+            if (!g_ipf[f_].nth || s->ipf_seen[f_] == g_ipf[f_].nth) v = (v & g_ipf[f_].and_) | g_ipf[f_].or_;
+        }
     io_note(s, 2, port, width, 0, c->icount);
+    if (width == 1 && g_port_script.n && port == g_port_script.port) {
+        const uint32_t k_ = s->nscript++;
+        if (k_ < g_port_script.n) v = g_port_script.v[k_];
+    }
     return width == 1 ? (uint32_t)(v & 0xFF) : (uint32_t)(v & 0xFFFF);
 }
 
@@ -2646,6 +2664,8 @@ static const struct { const char *module; uint16_t seg, ip, end; } PROGRAM_ENDS[
  * start-up's _fptrap: MOV AX,2 / JMP to the fatal-message exit; here the fixture's code there
  * returns). A named routine stopped there has completed its named region. */
 static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMPS[] = {
+    { "PLAYER.EXE", 0x0000, 0x1AD4, 0x1A91 }, /* formatter literal-character arm */
+    { "PLAYER.EXE", 0x0000, 0x1ADF, 0x1A91 }, /* formatter field-start arm */
     /* VGAME CE65, the key dispatcher's arm selection: it ends with a JMP to the key's arm, any of these */
     { "VGAME.EXE", 0x0000, 0xCE65, 0xC8E6 },
     { "VGAME.EXE", 0x0000, 0xCE65, 0xC8FA },
@@ -2880,6 +2900,9 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
  * (the RET), the original's code. A named routine stopped there, its limit cleared by its own POPF,
  * has completed its named region. */
 static const struct { const char *module; uint16_t seg, ip, stop; } POPF_STOPS[] = {
+    { "ASOUND.117", 0x01B6, 0x005E, 0x017A }, /* sound card detection stops after STI */
+    { "RSOUND.117", 0x023E, 0x0D07, 0x0D3A }, /* MPU-401 reset stops after STI */
+    { "RSOUND.LOG", 0x0000, 0x03A2, 0x03D8 }, /* MPU-401 reset stops after STI */
     { "ASOUND.LOG", 0x0000, 0x005A, 0x0089 }, /* timer installer stops immediately after STI */
     { "ISOUND.LOG", 0x0000, 0x060E, 0x0634 }, /* save the timer chain, stop immediately after STI */
     { "RSOUND.LOG", 0x0000, 0x005B, 0x00AD }, /* both installer paths stop immediately after STI */
@@ -3010,10 +3033,17 @@ static int same_changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
 static uint16_t g_cov_sp[0x2000][4];
 static uint8_t g_cov_nsp[0x2000];
 
+/* Track 026C's lower shared tails for call checks, but credit its own window. */
+static unsigned cov_credit_offset(void)
+{
+    return g_cov >= 0 && !strcmp(COVERED[g_cov].module, "ISOUND.117") &&
+           COVERED[g_cov].seg == 0x019C && COVERED[g_cov].ip == 0x026C ? 0x00B8 : 0;
+}
+static unsigned cov_tracking_len(void) { return COVERED[g_cov].len + cov_credit_offset(); }
 static int cov_reached(uint16_t ip, uint16_t lo, uint16_t span)
 {
     const unsigned k = (uint16_t)(ip - g_cov_ip);
-    if (g_cov < 0 || k >= COVERED[g_cov].len) return 0;
+    if (g_cov < 0 || k >= cov_tracking_len()) return 0;
     if (g_cov_nsp[k] > 4) return 1;
     for (unsigned j = 0; j < g_cov_nsp[k]; j++) if ((uint16_t)(g_cov_sp[k][j] - lo) <= span) return 1;
     return 0;
@@ -3144,7 +3174,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_panel_seen |= 1u << k;
             if (here == 0x95A4 && x86_cond(a, 7)) g_panel_seen |= 1u << 14;
         }
-        if (g_cov >= 0 && own && a->mem == g_mem[0] && (uint16_t)(here - g_cov_ip) < COVERED[g_cov].len) {
+        if (g_cov >= 0 && own && a->mem == g_mem[0] && (uint16_t)(here - g_cov_ip) < cov_tracking_len()) {
             const unsigned k = (uint16_t)(here - g_cov_ip);
             g_cov_seen[k] = 1;
             if (!cov_reached(here, a->r[R_SP], 0)) {
@@ -3308,11 +3338,19 @@ static int same_original_return(const cpu_t *c)
            a->int_depth == c->int_depth &&
            !memcmp(a->r, c->r, sizeof a->r) && !memcmp(a->seg, c->seg, sizeof a->seg);
 }
+static int g_clamp_probe;
 static int step_runner_run(machine_t *mm);
 static int step_runner(machine_t *mm)       /* (the depth tells a body's own port writes from its callees') */
 {
     g_runner_depth++;
+    const uint64_t outer_stop = mm->cpu.stop_at;
+    if (g_clamp_probe) mm->cpu.stop_at = mm->run_until; /* controlled runner has no earlier event */
     const int rc = step_runner_run(mm);
+    if (g_clamp_probe && mm->cpu.icount > outer_stop) {
+        printf("  CLAMP OVERRUN: callee ran to %llu past outer stop %llu (nested until %llu)\n",
+               (unsigned long long)mm->cpu.icount, (unsigned long long)outer_stop, (unsigned long long)mm->run_until);
+        g_callover = 1;
+    }
     g_callend = mm->cpu.icount;
     g_runner_depth--;
     return rc;
@@ -3880,6 +3918,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0 && !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x062E) g_cov_ip = 0x01B4; /* shared decoder and speaker-off tails below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x0443) g_cov_ip = 0x01B4; /* shared decoder and speaker-off tails below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x0200) g_cov_ip = 0x01B4; /* private hunk: the shared decoders, speaker-off tail and 05B7 tail around the entry */
+        if (g_cov >= 0 && !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x026C) g_cov_ip = 0x01B4; /* shared lower tails for call checks */
         if (g_cov >= 0 && !strcmp(o->module, "ISOUND.LOG") && o->seg == 0 && o->ip == 0x010B) g_cov_ip = 0x00DE;   /* the vibrato arm below the entry */
         if (g_cov >= 0 && !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x0102) g_cov_ip = 0x00CB;   /* the vibrato arm below the entry */
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
@@ -3939,6 +3978,7 @@ int main(int argc, char **argv)
         unsigned arms_branches = 0;
         unsigned long long arms_returning = 0, arms_actual = 0;
         g_dos = 0; g_dos_script_n = 0; memset(g_dos_script, 0, sizeof g_dos_script); g_kbd_force = 0; g_int10_force = 0; g_io_salt = 0; g_io_force_n = 0; g_io_force_bit7 = 0; g_io_force_after = 0; g_probe_tail = 0; g_decline_floor = 0; g_probe_steps = 0; g_probe_sweep = 0; g_probe_sweep_all = 0; g_room_n = 0; g_room_probe_n = 0; g_int1a_by_vector = 0;
+        g_ipf_n = 0; g_port_script.n = 0; g_strict_limit = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
         g_nend = 0;
@@ -53237,17 +53277,24 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                     g_ctx = ""; restore(); continue;
                 }
                 if (g_ground_fixture) {
-                    /* Require the named code to yield BEFORE IDIV; only then
-                     * let the interpreter take the fault and compare its full
-                     * interrupt frame, registers, memory, flags and clock. */
-                    if (!ran || g_lost || g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != 0x5122 || g_m.cpu.int_depth) {
-                        fprintf(stderr, "ground reload fault did not hand back at 5122 (state %d)\n", s);
+                    /* Normally the body yields before IDIV and this fixture
+                     * steps that original instruction. If a nested original
+                     * call runs through the same IDIV first, compare directly
+                     * at the matching interrupt boundary instead. */
+                    const int pending = g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == 0x5122 && !g_m.cpu.int_depth;
+                    const int already_faulted = a->op_cs == cs && a->op_ip == 0x5122 &&
+                        g_m.cpu.op_cs == a->op_cs && g_m.cpu.op_ip == a->op_ip &&
+                        g_m.cpu.int_depth == a->int_depth && g_m.cpu.seg[S_CS] == a->seg[S_CS] && g_m.cpu.ip == a->ip;
+                    if (!ran || g_lost || (!pending && !already_faulted)) {
+                        fprintf(stderr, "ground reload fault did not reach the matching 5122 boundary (state %d)\n", s);
                         mc++; mb++; restore(); continue;
                     }
                     ground_fault_mask |= a->r[R_CX] == 0 ? 1 : 2;
                     ground_faults++;
-                    cpu_step(&g_m.cpu);
-                    if (g_m.cpu.flags & F_TF) cpu_interrupt(&g_m.cpu, 1);
+                    if (pending) {
+                        cpu_step(&g_m.cpu);
+                        if (g_m.cpu.flags & F_TF) cpu_interrupt(&g_m.cpu, 1);
+                    }
                     g_cpu[1] = g_m.cpu; mc++;
                     g_ctx = " (ground reload divide fault)";
                     mb += compare(o->module, ip, cs, ip, 0);
@@ -53409,7 +53456,7 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
             if (nc_out) for (unsigned k = 0; k < sizeof g_nc_named; k++) g_nc_named[k] |= (uint8_t)(g_nc_orig[k] & ~g_nc_fall[k]);
             if (sprite_colour && ((s & 7) == 1 || (s & 7) == 2) && whole) colour_modes |= 1u << ((s >> 3) & 15);
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2) && whole) { bind_modes |= 1u << ((s >> 3) & 7); if (s == 1 || s == 2) bind_zero++; }
-            if (g_cov >= 0) for (unsigned k = 0; k < COVERED[g_cov].len; k++) {
+            if (g_cov >= 0) for (unsigned k = 0; k < cov_tracking_len(); k++) {
                 g_cov_cover[k] |= g_cov_seen[k]; if (covered_region) g_cov_whole[k] |= g_cov_seen[k];
             }
             if (g_camera_fixture) camera_branches |= g_camera_seen;
@@ -53471,11 +53518,11 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
              * original for exactly e instructions from the same entry state and
              * compare everything. (One state in four: it copies memory twice.) */
             for (unsigned sw_ = 0, swn_ = (g_probe_sweep_all && (s & 15) == 1 && steps >= 2) ? (unsigned)steps - 1 : 1; sw_ < swn_ && !mb; sw_++)   /* private hunk (036B): a fixture sweeps the mid-run stop over every clock of the path on one state in 16 */
-            if (!mb && steps >= 2 && (s & 3) == 1) {
+            if (!mb && (steps >= 2 || g_decline_floor) && (s & 3) == 1) {
                 setup_side(&g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
                 setup_side(&g_m.cpu, o, cs, ip, r, seg, flags, back, s, small);
                 const uint64_t start = g_m.cpu.icount;
-                uint64_t k = 1 + rnd() % (uint64_t)(steps - 1);
+                uint64_t k = steps >= 2 ? 1 + rnd() % (uint64_t)(steps - 1) : 0;
                 if (g_probe_tail && steps > 12 && (rnd() & 1)) k = (uint64_t)steps - 1 - rnd() % 10;   /* private hunk: half of a tail-probing fixture's mid-run stops fall in the last ten instructions */
                 if (swn_ > 1) k = 1 + sw_;   /* private hunk (036B): the sweep */
                 if (g_decline_floor && (rnd() & 1)) k = rnd() % (g_decline_floor + 1);   /* private hunk: room of 0..floor clocks at entry */
@@ -53484,13 +53531,20 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                 g_m.cpu.stop_at = start + k;
                 g_lost = 0; g_ncalls = 0; g_stopped = 0; g_callover = 0;
                 wake_arm();
+                if (!strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x026C) g_m.run_until = g_m.cpu.icount + 1000000;
+                g_clamp_probe = !strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x026C;
                 const int pr = o->fn(&g_m);
+                g_clamp_probe = 0;
                 if (g_decline_floor && !!pr != (k >= g_decline_floor)) {   /* private hunk: decline exactly when the first block does not fit */
                     printf("  MISMATCH %s %04X:%04X: with %llu clocks of room the body %s (the first block needs %u)\n", o->module, o->seg, ip,
                            (unsigned long long)k, pr ? "ran" : "declined", g_decline_floor);
                     mb++; goto probe_done;
                 }
                 if (wake_overrun(o, ip, pr, " (mid-run stop)")) { mb++; goto probe_done; }
+                if (!strcmp(o->module, "ISOUND.117") && o->seg == 0x019C && o->ip == 0x026C && pr && g_ncalls && !g_callover && g_m.cpu.icount > start + k + (2u * (unsigned)(g_m.ips / 1000u / 1024u))) {
+                    printf("  MISMATCH %s %04X:%04X: a call ran to +%llu with the limit at +%llu\n", o->module, o->seg, ip, (unsigned long long)(g_m.cpu.icount - start), (unsigned long long)k);
+                    mb++; goto probe_done;
+                }
                 if (!pr && patched_far_jump_row(o->module, o->seg, o->ip)) {
                     printf("  MISMATCH %s %04X:%04X: declined with room for the jump\n", o->module, o->seg, ip);
                     mb++; goto probe_done;
@@ -53498,6 +53552,11 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                 /* private hunk (PLAYER 01A3 room-claim): a body whose final STI or POPF has cleared the limit still ran past it */
                 if (pr && (body_overrun(&g_m.cpu) || (!g_ncalls && !g_m.cpu.stop_at && g_m.cpu.icount > start + k))) {
                     printf("  OVERRUN %s %04X:%04X: ran to +%llu with the limit at +%llu\n", o->module, o->seg, ip,
+                           (unsigned long long)(g_m.cpu.icount - start), (unsigned long long)k);
+                    g_overrun++; mb++;
+                }
+                if (pr && !mb && g_strict_limit && g_m.cpu.icount > start + k && (!g_ncalls || g_m.cpu.icount != g_callend)) {
+                    printf("  OVERRUN %s %04X:%04X: ran to +%llu with the limit at +%llu (strict limit)\n", o->module, o->seg, ip,
                            (unsigned long long)(g_m.cpu.icount - start), (unsigned long long)k);
                     g_overrun++; mb++;
                 }
@@ -53595,7 +53654,7 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
         if (g_cov >= 0) {
             unsigned all = 0, whole = 0;
-            for (unsigned k = 0; k < COVERED[g_cov].len; k++) { all += g_cov_cover[k]; whole += g_cov_whole[k]; }
+            for (unsigned k = cov_credit_offset(); k < cov_tracking_len(); k++) { all += g_cov_cover[k]; whole += g_cov_whole[k]; }
             if (g_cov_escapes) { fprintf(stderr, "%s: %llu calls escaped their return\n", COVERED[g_cov].what, g_cov_escapes); mb++; }
             printf("  %s instructions run by compared states: %u, by states completing the named region: %u (of %u)\n",
                    COVERED[g_cov].what, all, whole, COVERED[g_cov].insns);
@@ -53607,7 +53666,7 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
             const char *cover_path = getenv("F117_COVER");
             FILE *cover = cover_path ? fopen(cover_path, "w") : NULL;
             if (cover) {
-                for (unsigned k = 0; k < COVERED[g_cov].len; k++)
+                for (unsigned k = cov_credit_offset(); k < cov_tracking_len(); k++)
                     if (g_cov_cover[k]) fprintf(cover, "%04X %d\n", g_cov_ip + k, g_cov_whole[k]);
                 fclose(cover);
             }

@@ -22,25 +22,57 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
   whole table at three seeds 0 mismatching, route precheck identical. Evidence `D:/f117-gate/p2-batch-bs-accept/` (its
   `audit_private.py`, `finalize.py` and `multi_proof.py` are the current ones: copy them forward from the newest accepted
   batch with `cp`, never `cp -n`). Earlier today: gates `bq` (43 far-jump thunks) and `br` (six routines).
+- **Latest fix-only gate:** `bt` passed after a harness-only correction; runtime and P2 credit are unchanged. The gate
+  ran 781 tests and 63 routes, the three whole-table seeds had 0 mismatches, and the final verdict reports 0 new
+  instructions or named bytes. Both presentation checks and the baseline group verdict passed. Evidence:
+  `D:/f117-gate/p2-batch-bt-accept/`; its source hashes match the working tree.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
 - CI is checked through the GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
-- **No agents are running.** Every proof agent of the 28-29 Oct wave has finished or been stopped; their work is in the
-  private directories below. The owner caps concurrent agents at 10 (a "completed" agent that waits on its own background
-  build still counts), and no proof agent runs while a gate does.
+- **Background proof pipelines were found running on resumption**, contrary to the earlier pause note. Their five process
+  trees were stopped before the fix-only gate, preserving their private directories; SETUP `0979` and VGAME `1452:0556`
+  advanced to later entries before stopping. Recheck process trees and any interrupted proof results before reuse. The
+  current user limit is four concurrent agents, and no proof agent runs while a gate does.
 
 ## Resume here
 
-Goal in force when this was written: land Phase 2 bumps safely; a bump is committed only after a full gate passes. The
-session ended after gate `bs` was committed; nothing is half-integrated.
+Goal in force: reach 100% of Phase 2 safely. A batch is committed only after its full gate passes.
 
-**Paused 29 Oct 2026, 15:00 (usage limit); no agents or gate running, nothing half-integrated.** Next steps, in order:
+The `bt` fix-only batch is fully verified and passed. The rotating-seed precheck originally exposed a VGAME `5046`
+fixture assumption at state 2060; the older accepted binary reproduced it, so it was not caused by the pending harness
+edits. The trace showed the nested original-code runner could already execute the same divide at `5122`. The fixture now
+accepts either a hand-back immediately before that instruction or an already-taken divide fault only when both sides
+are at the same `CS:IP`, interrupt depth and operation boundary; it then compares the complete machine state, memory and
+I/O. Nothing is skipped. The targeted test, both full precheck seeds, all three gate seeds, and the two ground-defence
+CTest cases passed. The gate ran 781 tests and 63 routes; baseline, presentation-n1 and presentation-boot checks passed.
+`final-gate-verdict.json` reports `passed`, zero new bytes and matching source hashes. No runtime body changed and P2
+remains 95.65%.
+
+No gate or proof job is running. The next step is to commit and push the verified harness fix, then continue with the
+root-verified private proofs and static checklist ranges below. Do not stage the owner's untracked `4k60.bat` or
+`original-fixed.bat`.
+
+On resumption, `026C`'s earlier origin-only run was confirmed as a coverage-range error: 5,943 equal states,
+zero skipped, but 102/111 instructions counted because the shifted tracking window ended early. The corrected tracker
+counts 111/111 in the entry window while tracking lower shared tails; its 74/74 mutants and five seeds passed, and
+`ibm_boot` called it 8,293 times with 26 exact checkpoints. Its test-only call-clamp probe assumes no earlier event;
+the controlled runner sets the nested limit directly, and the probe passed. The fresh route gate also passed; its
+`ibm_boot` session called the far entry 8,120 times. The tracker and probe are included in the passed fix-only gate.
+The PIT loops can be driven by finite scripted reads; `0A5B` needs
+separate proof pieces at its port-wake boundaries, so neither loop is certified original. The six protected units'
+evidence is prepared at `D:/f117-gate/checklist-full-20261026/protected-owner-review-20261029.md`; no credit or owner
+decision is recorded by that note. The observer-slot design rule is now documented.
+Route choices for the pending batch are in `D:/f117-gate/pending-bs-routes.txt`: the three MPS_LOGO entries need a
+damaged-install route and the Roland entries need `roland_boot`. For ISOUND.LOG `0581`, do not classify the entire
+range as data merely because the error route also runs off-alignment zeroes: the capture includes the real timer
+handler's instruction stream as well as changed zero-filled execution. Establish exactly which records are invalid
+before making the requested data certificate or changing score accounting.
 (a) the owner accepted my recommendations on the decision list: bundle the pending shared-harness edits into one reviewed
 fix-only gate (005E's `g_ipf`/`g_strict_limit`/`POPF_STOPS`, 0A17's `g_port_script`, the one-instruction decline probe,
 PLAYER `1ADF`/`1AD4` `FATAL_JUMPS` rows, the Roland `POPF_STOPS` rows); try a multi-port PIT script for `0A5B`/`0B01`, else
-certify; review `026C` and show the evidence; keep the D2 fix at `09F2` and credit the fixes-off lockstep; add a design rule that
-presentation-observer graphics slots stay original; credit `111D`'s routed part plus lockstep; `0581` as data certificate;
-`0545` in pieces; `10B3` split; prepare the six protected units' evidence for the owner. (b) These private proofs are
+certify; use the reviewed `026C` evidence above; keep the D2 fix at `09F2` and credit the fixes-off lockstep; credit
+`111D`'s routed part plus lockstep; `0581` as data certificate; `0545` in pieces; `10B3` split; present the six protected
+units' prepared evidence for the owner's review. (b) These private proofs are
 root-verified (mutants all caught, five seeds ok, from the result files) and need `finish_all.py` then a batch: 005E (79/79),
 0A17 in `p2-asound-117-br-pit` (29/29), RSOUND.117 `0D07` (36/36) and RSOUND.LOG `03A2` (40/40) on `roland_boot`, MPS_LOGO
 `1046` (22/22), `103B` (22/22), `111D` (25/25), tiny leaves ISOUND.LOG `060C` (17/17) and `05D1` (21/21), START `8DD7`,
@@ -59,7 +91,7 @@ about +2.1 points at 0.00015 points a byte; the pilot's four ranges (2,660 bytes
    - **Ready after checkpoints and verdict** (numbers read by the root): ASOUND.117 `09F2` (`p2-asound-117-br-09F2`, 24/24;
      owner decision pending on how the D2 fix at the same entry interacts, route unconfirmed). VGAME `0010`, START `9D5C` and
      the START, PLAYER and SETUP thunks were accepted in gate `bs`.
-   - **Agent-reported, root has not verified:** ASOUND.117 `005E` (`p2-asound-117-br-005E`, 79/79 mutants; needs six shared
+   - **Root checked the seed logs, result files and input ages; not yet integrated:** ASOUND.117 `005E` (`p2-asound-117-br-005E`, 79/79 mutants; needs shared
      harness changes including a new `g_strict_limit` overrun check, so it needs a fix-only gate and a re-check of every
      accepted routine); MPS_LOGO `1046`, `103B`, `111D` (`p2-mpslogo-br-*`; `111D` has no route that runs all 63
      instructions, so partial route coverage needs a ruling; IMAGE_PATCHES and FATAL_JUMPS rows to carry); RSOUND.117
@@ -76,17 +108,17 @@ about +2.1 points at 0.00015 points a byte; the pilot's four ranges (2,660 bytes
      `FATAL_JUMPS` rows for PLAYER `1ADF`/`1AD4` to `1A91` in the shared harness, so a repair-only gate; VGAME `01B9` (3
      missed: two need a probe whose stop lands inside the callee); START `9E9A` (957
      undiagnosed long-run skips, parked); ASOUND.117 `097F` (boundary hand-back at `09F2` never completes under the harness;
-     `096D`, `0998`, `09A1` unbuilt); ASOUND.117 `0A17` (`p2-asound-117-br-pit`: lock and seeds pass with a scripted
-     port-0x42 hunk, the 29-mutant run never produced a result: `mutations.out` has no CAUGHT or MISSED line); ASOUND.LOG `008A` (needs boundary `00AC` and the POPF row
+     `096D`, `0998`, `09A1` unbuilt); ASOUND.LOG `008A` (needs boundary `00AC` and the POPF row
      dropped) and `05D1` (two unobservable mutants); ISOUND.LOG `0545` and `0138` (blocked); SETUP `10B3` (STI inside the
      retrace loop; proposed split: a prefix proof with boundary `10D3` plus an interior entry at `10D3`); VGAME `1132:0002`,
      `1132:0052` and `1D54` (tails after an STI in matched routines).
-   - **Earlier proofs still waiting:** ISOUND.117 `026C` (`p2-isound-117-clamp-cov`, 74/74 mutants; the probe is test-only, but
-     its no-earlier-event assumption and the `failed-origin-only` run need review) and `07E9` (`p2-isound-117-bo-07E9`, 27/27).
+   - **Earlier proofs still waiting:** ISOUND.117 `026C` (`p2-isound-117-clamp-cov`, 74/74 mutants; review and route
+     evidence above) and `07E9` (`p2-isound-117-bo-07E9`, 27/27).
 2. **Owner decisions pending** (recommendations agreed in conversation are in brackets): the PIT wait loops ASOUND.117
    `0A5B`, `0B01`, `0A17` (308 bytes) [scripted multi-port PIT readings in the harness, a repair-only gate, falling back to a
-   hardware-wait-loop certificate only if no sound design exists; `0A5B` also needs a ruling on credit at its wake points
-   `0AC0`/`0ACB`]; ISOUND.LOG `0581` [certify as data, leave the denominator with a written certificate]; the six protected
+   hardware-wait-loop certificate only if no sound design exists; `0A5B` needs proof pieces across wake boundaries
+   `0AC4` and `0ACD` (entry starts `0AC0` and `0ACB` respectively), plus the STI at `0B00`]; ISOUND.LOG `0581` [certify the
+   off-alignment/junk execution as data only with exact range evidence; keep real handler bytes in the denominator]; the six protected
    checklist units [prepare evidence for the owner's review]; ISOUND.LOG `0545` [prove in pieces, do not widen the rule]; the D2
    fix interaction at ASOUND.117 `09F2`.
 3. **Lessons from this wave** (add to the traps below): run the whole non-lockstep unit set
@@ -163,7 +195,7 @@ blind-read round). What a resuming session must not skip:
 - Commit titles start with `py tools/progress.py --title`; refresh the score with the new batch's named cover.
 
 Running wide: a proof is about 10-15 minutes of compute inside about two hours of agent time, so wall time follows
-the number of agents. This Claude Code session allows 20 concurrent subagents. `kit.py` throttles builds to three
+the number of agents. The current user limit is four agents at once. `kit.py` throttles builds to three
 `cl.exe` machine-wide (about 6 GB each of 31 GB). Spare-thread mask during a gate: `0xFF000000`; no proof agents
 run while a gate does.
 
