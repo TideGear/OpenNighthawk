@@ -244,7 +244,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 43375,
-      "credited": 27107,
+      "credited": 27322,
       "reviewed_static_bytes": 13809,
       "original_reviewed_bytes": 790,
       "by_module": {
@@ -262,13 +262,13 @@
         },
         "DSWAP": {
           "bytes": 2210,
-          "credited": 140,
+          "credited": 200,
           "reviewed_static_bytes": 2009,
           "original_reviewed_bytes": 0
         },
         "END": {
           "bytes": 800,
-          "credited": 26,
+          "credited": 171,
           "reviewed_static_bytes": 628,
           "original_reviewed_bytes": 0
         },
@@ -304,7 +304,7 @@
         },
         "MPS_LOGO": {
           "bytes": 1671,
-          "credited": 115,
+          "credited": 125,
           "reviewed_static_bytes": 1448,
           "original_reviewed_bytes": 0
         },
@@ -363,11 +363,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 158258,
+      "matched_route_run": 158473,
       "stays_original_reviewed": 2631,
-      "score": 0.9815871195250966,
+      "score": 0.9828988389757607,
       "fixture_only": 29247,
-      "remaining": 3018,
+      "remaining": 2803,
       "original_awaiting_review": 0,
       "reviewed_entries": 1815,
       "checklist": {
@@ -433,10 +433,10 @@
         },
         "DSWAP": {
           "denominator": 3661,
-          "matched_route_run": 3443,
+          "matched_route_run": 3503,
           "stays_original_reviewed": 156,
           "fixture_only": 2037,
-          "remaining": 62,
+          "remaining": 2,
           "original_awaiting_review": 0,
           "not_in_denominator": 4710,
           "not_in_denominator_reviewed": 4691,
@@ -444,10 +444,10 @@
         },
         "END": {
           "denominator": 15043,
-          "matched_route_run": 14546,
+          "matched_route_run": 14691,
           "stays_original_reviewed": 288,
           "fixture_only": 5936,
-          "remaining": 209,
+          "remaining": 64,
           "original_awaiting_review": 0,
           "not_in_denominator": 7776,
           "not_in_denominator_reviewed": 7623,
@@ -510,10 +510,10 @@
         },
         "MPS_LOGO": {
           "denominator": 6808,
-          "matched_route_run": 6517,
+          "matched_route_run": 6527,
           "stays_original_reviewed": 169,
           "fixture_only": 2568,
-          "remaining": 122,
+          "remaining": 112,
           "original_awaiting_review": 0,
           "not_in_denominator": 4846,
           "not_in_denominator_reviewed": 4586,

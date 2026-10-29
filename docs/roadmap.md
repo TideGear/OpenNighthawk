@@ -169,9 +169,9 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,522 matched routines registered in batches a to bp (the
+      **Done:** 1,565 matched routines registered in batches a to bq (the
       [batch table](#batch-table); bm2 was a fix-only gate). Gameplay score
-      98.16%: 158,258 matched bytes a route runs plus 2,631 reviewed
+      98.29%: 158,473 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
       by design. In the census, named code runs 160,463 of 165,548 creditable
@@ -189,7 +189,7 @@ not the recompilation:
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
-      - 3,018 executed bytes are unmatched, most in the sound drivers; by module:
+      - 2,803 executed bytes are unmatched, most in the sound drivers; by module:
         `py tools/progress.py`. They include the declined routines (owner,
         23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
         START `8427` and END `4393` (wait loops routes cannot finish) and
@@ -341,6 +341,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bn | 28 Oct | 1,496 | 2,067 named bytes | Nine routines from the proof agents: MPS_LOGO `0822` (huge-model memcpy) and `067C` (strstr), START `8F94` (divide-error handler, its own census row and PROGRAM_ENDS row), RSOUND.117 `0F98`, RSOUND.LOG `08BE` (625 of 626 instructions; the 3-byte jump at `0DAC` stays original), VGAME `D569`, ISOUND.LOG `0675` and `0468` (bounded prefixes), PLAYER `0211` (prefix to the STI). Four proofs carry private harness hunks that are now in `tests/func_lockstep.c`: a decline-floor check (0F98), a limit-probe return check (0468) and a return-code probe (D569), plus POPF_STOPS and PROGRAM_ENDS rows. Whole table at two seeds 0 mismatching, 60 routes identical with and without matched routines, gate 1,913 s, 740 tests, 287 mutations. Checklist round 5 adopted in the same commit (88 units, 3,641 bytes). Evidence `D:/f117-gate/p2-batch-bn-accept/`. |
 | bo | 28 Oct | 1,507 | 495 named bytes | Eleven routines that were proved in the bn round of agents: ASOUND.117 `0430` (AdLib tick, 306 bytes) and `025A` (prefix, 112 bytes), VGAME `0971` (renderer divide-fault handler), END `36BC` and START `2846` (switch dispatchers, 19 FATAL_JUMPS rows between them), PLAYER `01A3` (clock ISR entry, to the STI) and `1255` (exit entry), and four 3-byte jump thunks (DSWAP `0FF8` `2060`, SETUP `1C46`, PLAYER `222A`). Harness: IRET overrun check, a mid-run check for a limit cleared by a final STI, the wait-loop prefix boundary, and two per-entry exemptions in the interrupt-resume check (VGAME `0971` hands back at its IDIV; PLAYER `01A3` stops after its STI). Whole table at two seeds 0 mismatching, 60 routes identical with and without matched routines, gate 1,957 s, 751 tests, 280 mutations. Evidence `D:/f117-gate/p2-batch-bo-accept/`. |
 | bp | 28 Oct | 1,522 | 729 named bytes | Fifteen routines from the second proof wave: ASOUND.117 `0B98`, `0BB5`, `030B` (prefix), `03FB` (prefix) and `036B`; RSOUND.117 `0ACE` (to the STI), `0AFE` and `0BAD`; RSOUND.LOG `00FD` (to the STI), `048E` and `012D`; ISOUND.LOG `0082`; ISOUND.117 `0200`; PLAYER `0540`; MPS_LOGO `0307`. New shared-harness probes carried in: `g_probe_sweep` and `g_probe_sweep_all` (stop at every clock of a path), `g_room_*` and `g_room_probe_*` (stops at each block start, early hand-back check), a probe-only decline and overrun check for MPS_LOGO `0307`, `g_int1a_by_vector`, two POPF_STOPS rows, and a coverage origin for ISOUND.117 `0200`. Whole table at two seeds 0 mismatching, 60 routes identical with and without matched routines, gate 1,955 s, 766 tests, 562 mutations. Evidence `D:/f117-gate/p2-batch-bp-accept/`. ISOUND.117 `026C` (73 of 74 mutants; `call_clamp` unobservable in lockstep) stays out. |
+| bq | 28 Oct | 1,565 | 215 named bytes | 43 five-byte far-jump thunks, the first multi-entry family: DSWAP `08DC` and eleven more (12 entries, one body), END `23FA` and twenty-eight more (29 entries, one body) and MPS_LOGO `030E` and `0315` (the sound overlay's patched jump entries). Each body reads the operand the loader patched in from the code at the entry and claims one clock. Private multi-entry audit and finalizer (`multi_proof.py`) checked every entry's seeds, mutants and checkpoint calls; the finalizer now reads the 63-route capture set (`route-cover-20261020b`), because the older 45-route set never reaches the DSWAP entries. Whole table at two seeds 0 mismatching, route precheck of all 43 entries identical, gate 2,066 s, 770 tests, 112 mutations. Evidence `D:/f117-gate/p2-batch-bq-accept/`. |
 
 Notes that still matter:
 

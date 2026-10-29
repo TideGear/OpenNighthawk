@@ -98,6 +98,57 @@ static int entry_is(const char *module, uint16_t seg, uint16_t ip)
     return g_entry && g_entry->seg == seg && g_entry->ip == ip && !strcmp(g_entry->module, module);
 }
 
+/* Runtime-patched far-jump entries covered by the private thunk fixtures. */
+static const struct { const char *module; uint16_t seg, ip; } PATCHED_FAR_JUMPS[] = {
+    { "DSWAP.EXE", 0x0225, 0x08DC },
+    { "DSWAP.EXE", 0x0225, 0x0922 },
+    { "DSWAP.EXE", 0x0225, 0x09AE },
+    { "DSWAP.EXE", 0x0225, 0x09DB },
+    { "DSWAP.EXE", 0x0225, 0x09E5 },
+    { "DSWAP.EXE", 0x0225, 0x09F4 },
+    { "DSWAP.EXE", 0x0225, 0x09FE },
+    { "DSWAP.EXE", 0x0225, 0x0A03 },
+    { "DSWAP.EXE", 0x0225, 0x0A35 },
+    { "DSWAP.EXE", 0x0225, 0x0A3A },
+    { "DSWAP.EXE", 0x0225, 0x0A53 },
+    { "DSWAP.EXE", 0x0225, 0x0A9E },
+    { "END.EXE", 0x05FA, 0x23FA },
+    { "END.EXE", 0x05FA, 0x2413 },
+    { "END.EXE", 0x05FA, 0x243B },
+    { "END.EXE", 0x05FA, 0x2440 },
+    { "END.EXE", 0x05FA, 0x2445 },
+    { "END.EXE", 0x05FA, 0x244A },
+    { "END.EXE", 0x05FA, 0x2468 },
+    { "END.EXE", 0x05FA, 0x249A },
+    { "END.EXE", 0x05FA, 0x24C2 },
+    { "END.EXE", 0x05FA, 0x24CC },
+    { "END.EXE", 0x05FA, 0x24E5 },
+    { "END.EXE", 0x05FA, 0x24F9 },
+    { "END.EXE", 0x05FA, 0x2503 },
+    { "END.EXE", 0x05FA, 0x250D },
+    { "END.EXE", 0x05FA, 0x2512 },
+    { "END.EXE", 0x05FA, 0x251C },
+    { "END.EXE", 0x05FA, 0x2521 },
+    { "END.EXE", 0x05FA, 0x2553 },
+    { "END.EXE", 0x05FA, 0x2558 },
+    { "END.EXE", 0x05FA, 0x2571 },
+    { "END.EXE", 0x05FA, 0x2576 },
+    { "END.EXE", 0x05FA, 0x257B },
+    { "END.EXE", 0x05FA, 0x2580 },
+    { "END.EXE", 0x05FA, 0x25BC },
+    { "END.EXE", 0x05FA, 0x25C1 },
+    { "END.EXE", 0x05FA, 0x25D0 },
+    { "END.EXE", 0x05FA, 0x25F3 },
+    { "END.EXE", 0x05FA, 0x25FD },
+    { "END.EXE", 0x05FA, 0x2602 },
+};
+static int patched_far_jump_row(const char *module, uint16_t seg, uint16_t ip)
+{
+    for (unsigned k = 0; k < sizeof PATCHED_FAR_JUMPS / sizeof PATCHED_FAR_JUMPS[0]; k++)
+        if (PATCHED_FAR_JUMPS[k].seg == seg && PATCHED_FAR_JUMPS[k].ip == ip && !strcmp(PATCHED_FAR_JUMPS[k].module, module)) return 1;
+    return 0;
+}
+
 static side_t *side_of(cpu_t *c) { return (side_t *)c->user; }
 
 static uint64_t mix(uint64_t h, uint64_t v)
@@ -846,6 +897,49 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MPS_LOGO.EXE", 0x0315, 0x0315, 0x0005 },
+    { "MPS_LOGO.EXE", 0x030E, 0x030E, 0x0005 },
+    { "END.EXE", 0x23FA, 0x23FA, 0x0005 },
+    { "END.EXE", 0x2413, 0x2413, 0x0005 },
+    { "END.EXE", 0x243B, 0x243B, 0x0005 },
+    { "END.EXE", 0x2440, 0x2440, 0x0005 },
+    { "END.EXE", 0x2445, 0x2445, 0x0005 },
+    { "END.EXE", 0x244A, 0x244A, 0x0005 },
+    { "END.EXE", 0x2468, 0x2468, 0x0005 },
+    { "END.EXE", 0x249A, 0x249A, 0x0005 },
+    { "END.EXE", 0x24C2, 0x24C2, 0x0005 },
+    { "END.EXE", 0x24CC, 0x24CC, 0x0005 },
+    { "END.EXE", 0x24E5, 0x24E5, 0x0005 },
+    { "END.EXE", 0x24F9, 0x24F9, 0x0005 },
+    { "END.EXE", 0x2503, 0x2503, 0x0005 },
+    { "END.EXE", 0x250D, 0x250D, 0x0005 },
+    { "END.EXE", 0x2512, 0x2512, 0x0005 },
+    { "END.EXE", 0x251C, 0x251C, 0x0005 },
+    { "END.EXE", 0x2521, 0x2521, 0x0005 },
+    { "END.EXE", 0x2553, 0x2553, 0x0005 },
+    { "END.EXE", 0x2558, 0x2558, 0x0005 },
+    { "END.EXE", 0x2571, 0x2571, 0x0005 },
+    { "END.EXE", 0x2576, 0x2576, 0x0005 },
+    { "END.EXE", 0x257B, 0x257B, 0x0005 },
+    { "END.EXE", 0x2580, 0x2580, 0x0005 },
+    { "END.EXE", 0x25BC, 0x25BC, 0x0005 },
+    { "END.EXE", 0x25C1, 0x25C1, 0x0005 },
+    { "END.EXE", 0x25D0, 0x25D0, 0x0005 },
+    { "END.EXE", 0x25F3, 0x25F3, 0x0005 },
+    { "END.EXE", 0x25FD, 0x25FD, 0x0005 },
+    { "END.EXE", 0x2602, 0x2602, 0x0005 },
+    { "DSWAP.EXE", 0x08DC, 0x08DC, 0x0005 },
+    { "DSWAP.EXE", 0x0922, 0x0922, 0x0005 },
+    { "DSWAP.EXE", 0x09AE, 0x09AE, 0x0005 },
+    { "DSWAP.EXE", 0x09DB, 0x09DB, 0x0005 },
+    { "DSWAP.EXE", 0x09E5, 0x09E5, 0x0005 },
+    { "DSWAP.EXE", 0x09F4, 0x09F4, 0x0005 },
+    { "DSWAP.EXE", 0x09FE, 0x09FE, 0x0005 },
+    { "DSWAP.EXE", 0x0A03, 0x0A03, 0x0005 },
+    { "DSWAP.EXE", 0x0A35, 0x0A35, 0x0005 },
+    { "DSWAP.EXE", 0x0A3A, 0x0A3A, 0x0005 },
+    { "DSWAP.EXE", 0x0A53, 0x0A53, 0x0005 },
+    { "DSWAP.EXE", 0x0A9E, 0x0A9E, 0x0005 },
     { "ASOUND.117", 0x036B, 0x036B, 0x0059 },
     { "RSOUND.LOG", 0x012D, 0x012D, 0x0044 },
     { "ASOUND.117", 0x03FB, 0x036B, 0x00B3 },
@@ -2334,6 +2428,49 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ASOUND.117", 0x01B6, 0x03FB, 0x0023, 14, 14, "AdLib overlay: when the song flag byte [17F6] and the rate word [17F4] are both non-zero, write OPL register 50h with 3Fh - AX through 036B, then tail-jump to 036B for register 53h with the caller's AX (handed back there)", 0x036B, 87 },
     { "RSOUND.LOG", 0x0000, 0x012D, 0x0044, 26, 26, "Roland driver delay calibration: sum sixteen PIT tick counts from 00FD into DS:[0302h], average (>>4), cap at 0A28h, 5140h / average + 1 capped at 3Fh, store it * 400h as the post-message delay DS:[0304h]" },
     { "ASOUND.117", 0x01B6, 0x036B, 0x0059, 52, 52, "OPL register write: shadow [1A06h+AL]=BL, then register AL and value BL to port 388h (card type [17F2h] below 2) or to the card base cs:[0058h] (+CH, or both chips when CH=8), 30 reads before each register write and 5 before each value; AX=0" },
+    { "DSWAP.EXE", 0x0225, 0x08DC, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0922, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x09AE, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x09DB, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x09E5, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x09F4, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x09FE, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0A03, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0A35, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0A3A, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0A53, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "DSWAP.EXE", 0x0225, 0x0A9E, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x23FA, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2413, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x243B, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2440, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2445, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x244A, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2468, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x249A, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x24C2, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x24CC, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x24E5, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x24F9, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2503, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x250D, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2512, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x251C, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2521, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2553, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2558, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2571, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2576, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x257B, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2580, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x25BC, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x25C1, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x25D0, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x25F3, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x25FD, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "END.EXE", 0x05FA, 0x2602, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
+    { "MPS_LOGO.EXE", 0x00DA, 0x030E, 0x0005, 1, 1, "sound overlay entry 030E: far jump through the operand the binder patched in" },
+    { "MPS_LOGO.EXE", 0x00DA, 0x0315, 0x0005, 1, 1, "sound overlay entry 0315: far jump through the operand the binder patched in" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2661,6 +2798,12 @@ static int wake_stop_reached(const cpu_t *c, uint16_t cs)
 }
 static int program_end_reached(const recomp_override *o, const cpu_t *c, uint16_t cs)
 {
+    if (patched_far_jump_row(o->module, o->seg, o->ip)) {
+        const uint32_t at = phys(cs, o->ip);
+        return c->icount == 1001 &&
+               c->ip == (uint16_t)(g_pristine[at + 1] | (g_pristine[at + 2] << 8)) &&
+               c->seg[S_CS] == (uint16_t)(g_pristine[at + 3] | (g_pristine[at + 4] << 8));
+    }
     /* Far JMP thunks whose operand the program patches at run time (MPS_LOGO's sound overlay entries): the
      * named code is the one jump, ended when the machine stands at the destination the operand names, one
      * clock after the entry. */
@@ -2963,6 +3106,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (kind == 1 && entry_is("MGRAPHIC.EXE", 0x019C, 0x03E8) && here == 0x03E7 && op == 0xCB && sp_before == (uint16_t)(entry_sp + 2)) return inside;
         /* The pitch-bend sender tail-jumps into its byte writer; the fixture writer returns outside the named span. */
         if (kind == 1 && (entry_is("RSOUND.117", 0x023E, 0x0E4C) || entry_is("RSOUND.117", 0x023E, 0x0E70)) && is_ret && sp_before == entry_sp) return 1;
+        if (kind == 2 && is_ret && sp_before == entry_sp && g_entry && patched_far_jump_row(g_entry->module, g_entry->seg, g_entry->ip)) return 1;
         /* MPS_LOGO's sound overlay thunks (00DA:0307, 030E, 0315) jump through an operand the binder patches in: the
          * driver entry they reach is outside the thunk's own span, and its RETF at the entry's stack ends the run. */
         if (kind == 2 && is_ret && sp_before == entry_sp &&
@@ -51952,6 +52096,160 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
 #undef XPICK
 #undef XRAND
             }
+            if (!strcmp(o->module,"DSWAP.EXE") && patched_far_jump_row(o->module, o->seg, o->ip)) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){ small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
+                /* The loader's work: the table's neighbours (the thunks before and after) hold operands of their own
+                 * and stubs of their own at those destinations, so a read of the wrong entry's operand lands in code
+                 * that differs; then this thunk's own operand: a driver entry at a segment and offset of its own (a
+                 * quarter of the states keep it in the thunk's own segment, above the code). The destination is a stub
+                 * (a flag-setting ALU instruction, then RETF) that the thunk's callers would reach; an operand still
+                 * zero or wrong runs elsewhere and the comparison fails. */
+                {
+                    for(unsigned nb=0;nb<4;nb++){
+                        static const int dn_[4]={-10,-5,5,10};
+                        const uint16_t nip=(uint16_t)(o->ip+dn_[nb]);
+                        const uint16_t nseg=(uint16_t)(0x7000+(XRAND()&0x0FFF)),noff=(uint16_t)(0x0100+(XRAND()&0xFFE0));
+                        XW8(cs,nip,0xEA);XW16(cs,nip+1,noff);XW16(cs,nip+3,nseg);
+                        XW8(nseg,noff,0x2B);XW8(nseg,(uint16_t)(noff+1),0xC3);XW8(nseg,(uint16_t)(noff+2),0xCB);
+                    }
+                    const unsigned pick=(unsigned)(XRAND()&3);
+                    const uint16_t tseg=pick==0?cs:(uint16_t)(0x2000+(XRAND()&0x1FFF));
+                    const uint16_t toff=pick==0?(uint16_t)(0xF200+16*(XRAND()&0x3F)):(uint16_t)(0x0200+(XRAND()&0xFDF0));
+                    XW8(cs,o->ip,0xEA);
+                    XW16(cs,o->ip+1,toff);
+                    XW16(cs,o->ip+3,tseg);
+                    if(XRAND()&1){XW8(tseg,toff,0x03);XW8(tseg,(uint16_t)(toff+1),0xC3);}          /* ADD AX,BX */
+                    else         {XW8(tseg,toff,0x33);XW8(tseg,(uint16_t)(toff+1),0xC1);}          /* XOR AX,CX */
+                    XW8(tseg,(uint16_t)(toff+2),0xCB);                                               /* RETF */
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"END.EXE") && patched_far_jump_row(o->module, o->seg, o->ip)) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){ small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
+                /* The loader's work: the table's neighbours (the thunks before and after) hold operands of their own
+                 * and stubs of their own at those destinations, so a read of the wrong entry's operand lands in code
+                 * that differs; then this thunk's own operand: a driver entry at a segment and offset of its own (a
+                 * quarter of the states keep it in the thunk's own segment, above the code). The destination is a stub
+                 * (a flag-setting ALU instruction, then RETF) that the thunk's callers would reach; an operand still
+                 * zero or wrong runs elsewhere and the comparison fails. */
+                {
+                    for(unsigned nb=0;nb<4;nb++){
+                        static const int dn_[4]={-10,-5,5,10};
+                        const uint16_t nip=(uint16_t)(o->ip+dn_[nb]);
+                        const uint16_t nseg=(uint16_t)(0x7000+(XRAND()&0x0FFF)),noff=(uint16_t)(0x0100+(XRAND()&0xFFE0));
+                        XW8(cs,nip,0xEA);XW16(cs,nip+1,noff);XW16(cs,nip+3,nseg);
+                        XW8(nseg,noff,0x2B);XW8(nseg,(uint16_t)(noff+1),0xC3);XW8(nseg,(uint16_t)(noff+2),0xCB);
+                    }
+                    const unsigned pick=(unsigned)(XRAND()&3);
+                    const uint16_t tseg=pick==0?cs:(uint16_t)(0x2000+(XRAND()&0x1FFF));
+                    const uint16_t toff=pick==0?(uint16_t)(0xF200+16*(XRAND()&0x3F)):(uint16_t)(0x0200+(XRAND()&0xFDF0));
+                    XW8(cs,o->ip,0xEA);
+                    XW16(cs,o->ip+1,toff);
+                    XW16(cs,o->ip+3,tseg);
+                    if(XRAND()&1){XW8(tseg,toff,0x03);XW8(tseg,(uint16_t)(toff+1),0xC3);}          /* ADD AX,BX */
+                    else         {XW8(tseg,toff,0x33);XW8(tseg,(uint16_t)(toff+1),0xC1);}          /* XOR AX,CX */
+                    XW8(tseg,(uint16_t)(toff+2),0xCB);                                               /* RETF */
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x00DA && o->ip==0x030E) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+                /* Probe (only with F117_ROOM_PROBE set, so seeds stay skip-free): stop_at = icount+2 (s&7==5), icount+0 (s&7==6), icount+1 (s&7==7); others keep the normal cap. */
+                g_stop_delta_on = getenv("F117_ROOM_PROBE") != NULL && ((s&7)==5 || (s&7)==6 || (s&7)==7);
+                g_stop_delta = (s&7)==5 ? 2u : (s&7)==6 ? 0u : 1u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){ small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
+                /* The binder's work: the jump's operand, a driver entry at a segment and offset of its own (a
+                 * quarter of the states keep it in the thunk's own segment, above the code). The driver entry is a
+                 * stub (ADD AX,BX / RETF) the thunk's callers would reach; an operand still zero or wrong runs
+                 * elsewhere and the comparison fails. */
+                {
+                    const unsigned pick=(unsigned)(XRAND()&3);
+                    /* Segments with bit 15 set (pick 1) and offsets of either parity (picks 1-3, up to FFEFh so the
+                     * stub's three bytes stay inside the segment) make the masks on the operand's high and low bits
+                     * visible: a thunk that drops them lands where no stub is and the comparison fails. */
+                    const uint16_t tseg=pick==0?cs:pick==1?(uint16_t)(0x8000+(XRAND()&0x0FFF)):(uint16_t)(0x7000+(XRAND()&0x0FFF));
+                    const uint16_t toff=pick==0?(uint16_t)(0xF200+16*(XRAND()&0x3F)):(uint16_t)(((XRAND()&0x0FFE)<<4)|(XRAND()&0xF));
+                    XW8(cs,0x030E,0xEA);
+                    XW16(cs,0x030F,toff);
+                    XW16(cs,0x0311,tseg);
+                    XW8(tseg,toff,0x03);XW8(tseg,(uint16_t)(toff+1),0xC3);XW8(tseg,(uint16_t)(toff+2),0xCB);
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x00DA && o->ip==0x0315) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+                /* Probe (only with F117_ROOM_PROBE set, so seeds stay skip-free): stop_at = icount+2 (s&7==5), icount+0 (s&7==6), icount+1 (s&7==7); others keep the normal cap. */
+                g_stop_delta_on = getenv("F117_ROOM_PROBE") != NULL && ((s&7)==5 || (s&7)==6 || (s&7)==7);
+                g_stop_delta = (s&7)==5 ? 2u : (s&7)==6 ? 0u : 1u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){ small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
+                /* The binder's work: the jump's operand, a driver entry at a segment and offset of its own (a
+                 * quarter of the states keep it in the thunk's own segment, above the code). The driver entry is a
+                 * stub (ADD AX,BX / RETF) the thunk's callers would reach; an operand still zero or wrong runs
+                 * elsewhere and the comparison fails. */
+                {
+                    const unsigned pick=(unsigned)(XRAND()&3);
+                    /* Segments with bit 15 set (pick 1) and offsets of either parity (picks 1-3, up to FFEFh so the
+                     * stub's three bytes stay inside the segment) make the masks on the operand's high and low bits
+                     * visible: a thunk that drops them lands where no stub is and the comparison fails. */
+                    const uint16_t tseg=pick==0?cs:pick==1?(uint16_t)(0x8000+(XRAND()&0x0FFF)):(uint16_t)(0x7000+(XRAND()&0x0FFF));
+                    const uint16_t toff=pick==0?(uint16_t)(0xF200+16*(XRAND()&0x3F)):(uint16_t)(((XRAND()&0x0FFE)<<4)|(XRAND()&0xF));
+                    XW8(cs,0x0315,0xEA);
+                    XW16(cs,0x0316,toff);
+                    XW16(cs,0x0318,tseg);
+                    XW8(tseg,toff,0x03);XW8(tseg,(uint16_t)(toff+1),0xC3);XW8(tseg,(uint16_t)(toff+2),0xCB);
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -52265,12 +52563,17 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
              * having run the callee to the limit; only that exact returned
              * clock is exempt, never subsequent C instructions.) */
             g_lost = 0; g_ncalls = 0; g_callover = 0;
-            g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)(g_probe_steps ? g_probe_steps : steps) - 1;
+            g_m.cpu.stop_at = g_m.cpu.icount + (patched_far_jump_row(o->module, o->seg, o->ip) ? 0 : (uint64_t)(g_probe_steps ? g_probe_steps : steps) - 1);
             wake_arm();
             /* private hunk (VGAME 0971): an IRET clears stop_at (cpu_irq_state_changed), so the overrun test below cannot see
              * a routine that ends in IRET run past its limit; keep the limit the probe was given for IRET routines. */
             const uint64_t probe_limit_ = g_m.cpu.stop_at;
             const int probe_ran = o->fn(&g_m);
+            if (patched_far_jump_row(o->module, o->seg, o->ip) &&
+                (probe_ran || g_m.cpu.icount != 1000 || g_m.cpu.ip != ip || g_m.cpu.seg[S_CS] != cs)) {
+                printf("  MISMATCH %s %04X:%04X: returned success or moved with no room\n", o->module, o->seg, ip);
+                mc++; mb++; memcpy(g_mem[1], g_pristine, MEM_SIZE); restore(); break;
+            }
             if (g_probe_steps && probe_ran && g_m.cpu.icount == 1000) {   /* private hunk: a limit one clock short of the body's first block must decline (return 0) before any instruction runs */
                 printf("  MISMATCH %s+%05X: a limit probe at entry+%u returned 1 with no instruction run (a decline must return 0)\n", o->module, ((uint32_t)o->seg << 4) + ip, g_probe_steps - 1);
                 mb++; memcpy(g_mem[1], g_pristine, MEM_SIZE); restore(); break;
@@ -52302,7 +52605,7 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
             wake_arm();
-            { const int fr = o->fn(&g_m); if (wake_overrun(o, ip, fr, "")) { mb++; restore(); break; } if (probe_violation(o, ip, fr, s, &g_m.cpu)) { mc++; mb++; restore(); break; } if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { if (g_cov >= 0) g_cov_skips[4]++; ms++; restore(); continue; } }
+            { const int fr = o->fn(&g_m); if (patched_far_jump_row(o->module, o->seg, o->ip) && !fr && g_m.cpu.icount != 1000) { printf("  MISMATCH %s %04X:%04X: returned 0 after running an instruction\n", o->module, o->seg, ip); mc++; mb++; restore(); break; } if (wake_overrun(o, ip, fr, "")) { mb++; restore(); break; } if (probe_violation(o, ip, fr, s, &g_m.cpu)) { mc++; mb++; restore(); break; } if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { if (g_cov >= 0) g_cov_skips[4]++; ms++; restore(); continue; } }
             /* An interrupt handler runs whole or declines: it has no partway
              * return, so resuming anywhere but the original's address is a
              * difference, not a state to finish and skip. */
@@ -52429,6 +52732,10 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                     mb++; goto probe_done;
                 }
                 if (wake_overrun(o, ip, pr, " (mid-run stop)")) { mb++; goto probe_done; }
+                if (!pr && patched_far_jump_row(o->module, o->seg, o->ip)) {
+                    printf("  MISMATCH %s %04X:%04X: declined with room for the jump\n", o->module, o->seg, ip);
+                    mb++; goto probe_done;
+                }
                 /* private hunk (PLAYER 01A3 room-claim): a body whose final STI or POPF has cleared the limit still ran past it */
                 if (pr && (body_overrun(&g_m.cpu) || (!g_ncalls && !g_m.cpu.stop_at && g_m.cpu.icount > start + k))) {
                     printf("  OVERRUN %s %04X:%04X: ran to +%llu with the limit at +%llu\n", o->module, o->seg, ip,

@@ -1882,6 +1882,14 @@ if(F117R_BUILD_TESTS)
       --only RSOUND.LOG:12D)
     add_test(NAME matched_asound_117_opl_write_register COMMAND func_lockstep --states 5000
       --only ASOUND.117:36B)
+    add_test(NAME matched_dswap_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:8DC,DSWAP.EXE:922,DSWAP.EXE:9AE,DSWAP.EXE:9DB,DSWAP.EXE:9E5,DSWAP.EXE:9F4,DSWAP.EXE:9FE,DSWAP.EXE:A03,DSWAP.EXE:A35,DSWAP.EXE:A3A,DSWAP.EXE:A53,DSWAP.EXE:A9E)
+    add_test(NAME matched_end_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only END.EXE:23FA,END.EXE:2413,END.EXE:243B,END.EXE:2440,END.EXE:2445,END.EXE:244A,END.EXE:2468,END.EXE:249A,END.EXE:24C2,END.EXE:24CC,END.EXE:24E5,END.EXE:24F9,END.EXE:2503,END.EXE:250D,END.EXE:2512,END.EXE:251C,END.EXE:2521,END.EXE:2553,END.EXE:2558,END.EXE:2571,END.EXE:2576,END.EXE:257B,END.EXE:2580,END.EXE:25BC,END.EXE:25C1,END.EXE:25D0,END.EXE:25F3,END.EXE:25FD,END.EXE:2602)
+    add_test(NAME matched_mps_logo_sound_overlay_entry_030e_jump COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:30E)
+    add_test(NAME matched_mps_logo_sound_overlay_entry_0315_jump COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:315)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

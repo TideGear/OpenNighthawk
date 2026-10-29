@@ -101092,7 +101092,136 @@ done:
     return 1;
 }
 
+/* DSWAP.EXE 0225:08DC and eleven more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 0225:08DC..0AA7 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int dswap_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
+/* END.EXE 05FA:23FA and twenty-eight more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 05FA:23FA..2606 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int end_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
+/* MPS_LOGO 00DA:030E, sound overlay entry 030E, far: a five-byte JMP FAR thunk (EA, offset, segment) in the
+ * jump table at 00DA:0307..0319 that the program calls with CALL FAR to reach the sound driver. The table is
+ * filled at run time: the binder at 00DA:0491 copies the driver's entry words over the zero operand, and the
+ * loader has relocated the segment, so the offset and segment are read from the code at 030F and 0311, never
+ * written here. The thunk touches nothing but the program counter: the driver entry runs next (original code
+ * or its own matched body) and returns to the caller with its own RETF. */
+static int mps_logo_sound_overlay_entry_030E_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x030E);
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], 0x030F);
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], 0x0311);
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
+/* MPS_LOGO 00DA:0315, sound overlay entry 0315, far: a five-byte JMP FAR thunk (EA, offset, segment) in the
+ * jump table at 00DA:0307..0319 that the program calls with CALL FAR to reach the sound driver. The table is
+ * filled at run time: the binder at 00DA:0491 copies the driver's entry words over the zero operand, and the
+ * loader has relocated the segment, so the offset and segment are read from the code at 0316 and 0318, never
+ * written here. The thunk touches nothing but the program counter: the driver entry runs next (original code
+ * or its own matched body) and returns to the caller with its own RETF. */
+static int mps_logo_sound_overlay_entry_0315_jump(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x0315);
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], 0x0316);
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], 0x0318);
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x0315, mps_logo_sound_overlay_entry_0315_jump, "sound overlay entry 0315: far jump through the operand the binder patched in", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x030E, mps_logo_sound_overlay_entry_030E_jump, "sound overlay entry 030E: far jump through the operand the binder patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x23FA, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2413, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x243B, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2440, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2445, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x244A, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2468, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x249A, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x24C2, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x24CC, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x24E5, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x24F9, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2503, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x250D, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2512, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x251C, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2521, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2553, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2558, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2571, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2576, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x257B, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2580, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x25BC, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x25C1, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x25D0, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x25F3, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x25FD, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "END.EXE", END_47304, 0x05FA, 0x2602, end_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x08DC, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0922, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x09AE, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x09DB, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x09E5, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x09F4, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x09FE, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0A03, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0A35, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0A3A, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0A53, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0225, 0x0A9E, dswap_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x036B, asound_117_opl_write_register, "OPL register write: shadow [1A06h+AL]=BL, then register AL and value BL to port 388h (card type [17F2h] below 2) or to the card base cs:[0058h] (+CH, or both chips when CH=8), 30 reads before each register write and 5 before each value; AX=0", 1 },
     { "matched", "RSOUND.LOG", RSOUND_LOG_47304, 0x0000, 0x012D, rsound_log_calibrate_message_delay, "Roland driver delay calibration: sum sixteen PIT tick counts from 00FD into DS:[0302h], average (>>4), cap at 0A28h, 5140h / average + 1 capped at 3Fh, store it * 400h as the post-message delay DS:[0304h]", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x03FB, asound_117_write_levels_50_53, "AdLib overlay: when the song flag byte [17F6] and the rate word [17F4] are both non-zero, write OPL register 50h with 3Fh - AX through 036B, then tail-jump to 036B for register 53h with the caller's AX (handed back there)", 1 },

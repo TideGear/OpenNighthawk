@@ -12,15 +12,16 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (28 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.33%, P3 76.34%, All 92.60% (`py tools/progress.py --title`).
+- **Scoreboard:** P1 100.00%, P2 95.43%, P3 76.34%, All 92.63% (`py tools/progress.py --title`).
   The full figures: `py tools/progress.py --census D:/f117-gate/census.tsv --named-cover
-  D:/f117-gate/p2-batch-bp-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
-  (gameplay 98.16%, naming 89.8%, checklist 45,390 / 47,577 = 95.40%, 3,018 executed bytes unmatched: ASOUND.117 626,
-  VGAME 519, ISOUND.117 401, END 209, START 223, ISOUND.LOG 225, PLAYER 178, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 122,
-  SETUP 115, DSWAP 62, RSOUND.117 44).
-- **Accepted runtime:** gate `bp`, passed: 1,955 s, 766 tests, 63 routes, 1,522 matched routines, 562 private mutations,
-  whole table at two seeds 0 mismatching. Evidence `D:/f117-gate/p2-batch-bp-accept/`. Earlier today: gate `bn` (nine routines,
-  checklist round 5) and gate `bo` (eleven routines).
+  D:/f117-gate/p2-batch-bq-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
+  (gameplay 98.29%, naming 89.8%, checklist 45,390 / 47,577 = 95.40%, 2,803 executed bytes unmatched: ASOUND.117 626,
+  VGAME 519, ISOUND.117 401, ISOUND.LOG 225, START 223, PLAYER 178, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 112,
+  SETUP 115, END 64, RSOUND.117 44, DSWAP 2).
+- **Accepted runtime:** gate `bq`, passed: 2,066 s, 770 tests, 63 routes, 1,565 matched routines, 112 private mutations,
+  whole table at two seeds 0 mismatching. Evidence `D:/f117-gate/p2-batch-bq-accept/` (its finalizer reads the 63-route capture
+  set `route-cover-20261020b`; the older batch-h set never reaches the DSWAP thunks, and the batch-bq copy of `finalize.py`
+  and `multi_proof.py` handle multi-entry families: copy them forward). Earlier today: gates `bn`, `bo`, `bp`.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
 - CI is checked through the GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
@@ -59,7 +60,7 @@ Goal in force when this was written: land Phase 2 bumps safely; a bump is commit
    guard so `lock`, `seeds` and `checkpoints` refuse to run while `project/.mutations-restore` exists; the previous kit is
    saved as `kit/kit-before-fast.py`.
    The slot limit stays at 3 (a cl.exe peaked at 15 GB; RAM is the limit).
-3. **Remaining unmatched executed bytes (3,018) and where the points are:** ranked lead list
+3. **Remaining unmatched executed bytes (2,803) and where the points are:** ranked lead list
    `D:/f117-gate/p2-leads-bp/LEADS.tsv` and `SUMMARY.md` (recompute with `tools/census_classify`; 1,737 bytes were new leads
    before this wave). The largest single routines left: ISOUND.117 `026C`, four ASOUND.117 PIT wait-loop routines (`0A5B`, `0B01`,
    `0A17`, `025A` tail: 308 bytes, need a timer-interrupt answer the harness does not give), VGAME `0010` main (declined,
