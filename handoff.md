@@ -37,8 +37,9 @@ Goal in force when this was written: land Phase 2 bumps safely; a bump is commit
      nested runs honour `stop_at` (a shared harness change that needs a whole-table seed and a gate), or decide with the
      owner how a macro-level mutant that only the real run loop can see is to be treated. Needs `g_cov_ip = 0x01B4`
      (like `0443`/`062E`/`0200`) and `checkpoints --route ibm_boot`.
-   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27): its only route `err_vgame_no_photo` fails the replay check
-     (`lb.3dg` / `lb.3DX` not opened by VGAME). Run the same checkpoint with matched routines off before concluding.
+   - ISOUND.117 `07E9` (`p2-isound-117-bo-07E9`, 27/27): the `err_vgame_no_photo` replay passes with matched
+     routines off as well as on, including both VGAME landscape-file opens and all 30 checkpoint hashes. The previously
+     reported missing-open failure has no surviving log; its cause is unknown. Control evidence `D:/f117-gate/route-07e9-proof-unmatched/`.
    - DSWAP thunks (`p2-dswap-bo-thunks`, one generic body for all 12 entries, 29/29): proved with a private multi-entry
      `kitm.py` and five hand-carried harness hunks; confirm the route and the observer/fix-site check, then use the same
      approach for END 29, START 28, VGAME 53, PLAYER 3, SETUP 2 (635 bytes). MPS_LOGO `030E` and `0315` are the same
