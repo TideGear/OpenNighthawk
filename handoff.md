@@ -68,9 +68,10 @@ about +2.1 points at 0.00015 points a byte; the pilot's four ranges (2,660 bytes
      `026B:0306` (`p2-tiny-br-*`; they need a shared decline-probe change for one-instruction bodies). **VGAME thunk family**
      (`p2-vgame-br-thunks`, 53 entries, 30/30 mutants, five seeds): left out of gate `bs` because 28 of its 34 non-obvious
      entries share an address with a presentation observer (`code_overrides` lists them; `screen_leads.py`'s hook screen is
-     not enough, it missed observers registered in table form); a plain thunk there would displace the draw capture. It needs
-     an observer-aware design (the body calling the observer, and `deliberate` rows) before it can be accepted, and the
-     presentation checks (`present_light_check.py`, `presentation_check.py --mode rerun`) run beside the gate.
+     not enough, it missed observers registered in table form); a plain thunk there would displace the draw capture. The
+     presentation-observer graphics slots stay original under the owner's decision; review the remaining entries separately and
+     run the presentation checks (`present_light_check.py`, `presentation_check.py --mode rerun`) beside any gate that
+     changes presentation behavior.
    - **Not passing:** PLAYER `1AD4` (2 missed over-claims) and `1ADF` (one long-run state): the cause is missing
      `FATAL_JUMPS` rows for PLAYER `1ADF`/`1AD4` to `1A91` in the shared harness, so a repair-only gate; VGAME `01B9` (3
      missed: two need a probe whose stop lands inside the callee); START `9E9A` (957
@@ -134,7 +135,8 @@ Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this i
   entry. The checklist is done in full by independent blind readers; cost is no object, optimise wall time only.
 - **Design rules for code that stays original:** the program launcher (F117.COM `0100..03CA`), hardware wait loops
   only when no lockstep state can complete them (so far none qualifies), STI-first interrupt handlers, the packer
-  stub, DSWAP's floppy path (no emulated floppy drive). Dead code leaves the denominator only with a certificate.
+  stub, DSWAP's floppy path (no emulated floppy drive), and presentation-observer graphics slots. Each affected range
+  needs its own reviewed reference entry before credit. Dead code leaves the denominator only with a certificate.
 - **Parity target is the original on its own hardware, not DOSBox**; gameplay and logic parity outrank rendering.
   Keep all original graphics; no vector replacements.
 - **Normal play:** 15 Hz / 60 MIPS, all 34 fixes on (`--fix QUIZ` restores the quiz, off by default). Parity

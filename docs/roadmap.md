@@ -238,6 +238,9 @@ not the recompilation:
       - The program launcher, F117.COM `0100`..`03CA`: it only runs the other
         programs and tests their exit codes (owner, 23 Oct; its overlay loader
         `03CB` is matched).
+      - Presentation-observer graphics slots stay original so the observer
+        retains its entry point (owner, 29 Oct). Each affected range still
+        needs its own reviewed reference entry before it receives credit.
       - Also by design rule: hardware wait loops only when no lockstep state
         can complete them (none qualifies so far), the packer stub and DSWAP's
         floppy path (no emulated floppy drive).
