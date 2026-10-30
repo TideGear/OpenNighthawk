@@ -125,7 +125,7 @@ const char *settings_value(const settings_state *s, int i)
 int settings_key_event(settings_state *s, settings_key k)
 {
     if (!s->open) return 0;
-    const int rows = NDEFS + 3;                    /* the settings, "Save", "Watch last flight", "Close" */
+    const int rows = NDEFS + 5;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -146,6 +146,10 @@ int settings_key_event(settings_state *s, settings_key k)
         } else if (s->cursor == NDEFS + 1) {       /* Watch last flight: edits are dropped, as at Close */
             revert(s);
             s->watch_now = 1;
+        } else if (s->cursor == NDEFS + 2) {       /* Remap a key: the host takes the next two key presses */
+            s->remap_stage = 1;
+        } else if (s->cursor == NDEFS + 3) {       /* Clear key remaps: the host empties the list at once */
+            s->clear_remaps = 1;
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
@@ -191,7 +195,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int total = NDEFS + 3, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int total = NDEFS + 5, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
     const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
@@ -210,11 +214,17 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 30, y, DEFS[i].label, color);
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
-        } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : "Close without saving", color);
+        } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
+                  i == NDEFS + 3 ? "Clear key remaps" : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */
     const int fy = y0 + ph - 38;
+    if (s->remap_stage) {
+        put_text(px, w, h, x0 + 16, fy, s->remap_stage == 1 ? "Press the key to change (Esc: cancel)" : "Press the key it should act as", 0xFFFFE060u);
+        put_text(px, w, h, x0 + 16, fy + 16, s->note, 0xFF909090u);
+        return;
+    }
     put_text(px, w, h, x0 + 16, fy, "Up/Down choose, Left/Right change,", 0xFF909090u);
-    put_text(px, w, h, x0 + 16, fy + 16, "* applies after restart. Esc closes.", 0xFF909090u);
+    put_text(px, w, h, x0 + 16, fy + 16, s->note[0] ? s->note : "* applies after restart. Esc closes.", 0xFF909090u);
 }

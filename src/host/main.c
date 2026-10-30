@@ -994,7 +994,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1026,6 +1026,25 @@ int main(int argc, char **argv)
                 e.type = SDL_EVENT_KEY_DOWN;
                 e.key.scancode = k == 0 ? SDL_SCANCODE_K : SDL_SCANCODE_RIGHT;
                 e.key.mod = k == 0 ? (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) : 0;
+                SDL_PushEvent(&e);
+            }
+        }
+        /* F117_REMAP_AUTOTEST=1 (diagnostic): open the menu, choose Remap a key, press Q then W, close it. */
+        {
+            static int rm_next;
+            int rm_rows = 0;
+            settings_defs(&rm_rows);
+            if (getenv("F117_REMAP_AUTOTEST") && ++rm_frame >= 5 && rm_next < rm_rows + 7) {
+                const int k = rm_next++;
+                SDL_Event e;
+                SDL_zero(e);
+                e.type = SDL_EVENT_KEY_DOWN;
+                if (k == 0) { e.key.scancode = SDL_SCANCODE_S; e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT); }
+                else if (k <= rm_rows + 2) e.key.scancode = SDL_SCANCODE_DOWN;       /* to the Remap a key row */
+                else if (k == rm_rows + 3) e.key.scancode = SDL_SCANCODE_RETURN;
+                else if (k == rm_rows + 4) e.key.scancode = SDL_SCANCODE_Q;
+                else if (k == rm_rows + 5) e.key.scancode = SDL_SCANCODE_W;
+                else e.key.scancode = SDL_SCANCODE_ESCAPE;
                 SDL_PushEvent(&e);
             }
         }
@@ -1078,12 +1097,46 @@ int main(int argc, char **argv)
                 }
                 if (g_set.open) {                           /* the menu has the keyboard */
                     if (down) {
+                        if (g_set.remap_stage) {            /* Remap a key: this press is one of its two keys */
+                            const SDL_Scancode rsc = ev.key.scancode;
+                            if (rsc == SDL_SCANCODE_ESCAPE) g_set.remap_stage = 0;
+                            else if (g_set.remap_stage == 1) { g_set.remap_from = (int)rsc; g_set.remap_stage = 2; }
+                            else {
+                                char pair[160], cur[400] = "";
+                                snprintf(pair, sizeof pair, "%s:%s", SDL_GetScancodeName((SDL_Scancode)g_set.remap_from), SDL_GetScancodeName(rsc));
+                                if (remap_add(pair) > 0) {
+                                    char *text = config_read_file(settings_path);
+                                    if (text) config_get(text, "remap", cur, sizeof cur);
+                                    const size_t used = strlen(cur);
+                                    snprintf(cur + used, sizeof cur - used, "%s%s", used ? ", " : "", pair);
+                                    char *out = config_set(text ? text : "", "remap", cur);
+                                    FILE *rf = out ? fopen(settings_path, "wb") : NULL;
+                                    if (rf) { fputs(out, rf); fclose(rf); snprintf(g_set.note, sizeof g_set.note, "Added %s", pair); }
+                                    else snprintf(g_set.note, sizeof g_set.note, "Could not write f117a.ini");
+                                    free(text);
+                                    free(out);
+                                } else snprintf(g_set.note, sizeof g_set.note, "Those keys have no name the game can use");
+                                g_set.remap_stage = 0;
+                            }
+                            break;
+                        }
                         const SDL_Scancode sc = ev.key.scancode;
                         const int k = sc == SDL_SCANCODE_UP ? SKEY_UP : sc == SDL_SCANCODE_DOWN ? SKEY_DOWN :
                                       sc == SDL_SCANCODE_LEFT ? SKEY_LEFT : sc == SDL_SCANCODE_RIGHT ? SKEY_RIGHT :
                                       sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER ? SKEY_ENTER :
                                       sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : -1;
                         if (k >= 0) settings_key_event(&g_set, (settings_key)k);
+                        if (g_set.clear_remaps) {           /* Clear key remaps: forget them now and in the file */
+                            g_set.clear_remaps = 0;
+                            remap_clear();
+                            char *text = config_read_file(settings_path);
+                            char *out = text ? config_set(text, "remap", NULL) : NULL;
+                            FILE *rf = out ? fopen(settings_path, "wb") : NULL;
+                            if (rf) { fputs(out, rf); fclose(rf); }
+                            snprintf(g_set.note, sizeof g_set.note, "Key remaps cleared");
+                            free(text);
+                            free(out);
+                        }
                         if (g_set.changed_live) {
                             g_set.changed_live = 0;
                             int n; const setting_def *d = settings_defs(&n);

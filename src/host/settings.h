@@ -30,6 +30,10 @@ typedef struct {
     int at_open[32];               /* live settings as they were when the menu opened (the window's state) */
     int changed_live;              /* a live setting changed since the host last looked */
     int saved_now;                 /* the menu was closed with Save: the host writes the file */
+    int remap_stage;               /* Remap a key was chosen: 1 waiting for the key to change, 2 for what it acts as */
+    int remap_from;                /* the key chosen at stage 1 (an SDL scancode, set by the host) */
+    int clear_remaps;              /* Clear key remaps was chosen: the host empties the list */
+    char note[64];                 /* a line the host shows under the list (the last remap made) */
     int watch_now;                 /* "Watch last flight" was chosen: the host restarts into the newest recording */
     int want_restart;              /* Save was chosen with a restart-only setting changed */
 } settings_state;

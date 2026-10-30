@@ -13,7 +13,7 @@ Host-side only (`src/host/`, `tools/`, `docs/`, `tests/`); no change to `src/mac
 |---|---|---|---|
 | Settings menu (4) | 45% | Ctrl+Alt+S: 12 options, Roland output, Watch last flight row, writes `f117a.ini` keeping comments, restart offered (`settings.c`, `config_set/config_get`) | every option, SETUP answers, mouse; owner has not looked |
 | CRT filter (1) | 70% | `--crt`, `crt = yes`, menu entry (`crt.c`), display copy only | owner has not looked; no mask or bloom |
-| Modern controls (3) | 40% | `pad-deadzone/-invert-x/-invert-y/-fire1/-fire2`, `remap = Q:W` / `--remap`, on-screen key reference (Ctrl+Alt+K, four pages from the manual) | physical pad or HOTAS untried, no remap screen, mouse |
+| Modern controls (3) | 55% | `pad-deadzone/-invert-x/-invert-y/-fire1/-fire2`, `remap = Q:W` / `--remap`, on-screen key reference (Ctrl+Alt+K, four pages from the manual), a Remap a key screen in the settings menu | physical pad or HOTAS untried, controller-button remapping, mouse |
 | Flight replays (3) | 30% | `--watch latest|SESSION` and a menu row, from a scratch copy of the save | picking among flights, pause/seek, the menu row's restart not run end to end |
 | Accessibility (2) | 25% | keyboard remapping | subtitles (the nine words are known, see below), colourblind HUD (Remastered) |
 | Fan patches (2) | 100% | debugcom's patch (damsonn) is fix D4; web search found no other | none, unless the owner finds another |

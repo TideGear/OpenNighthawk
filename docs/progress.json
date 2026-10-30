@@ -182,9 +182,9 @@
       {
         "item": "Modern controls: controller and HOTAS with remapping, an on-screen key reference, mouse where the original had it",
         "weight": 3.0,
-        "done": 0.4,
+        "done": 0.55,
         "kind": "estimate",
-        "evidence": "29 Oct 2026, branch p3-settings-menu. Controller dead zone, axis inversion and fire-button choice (pad-* keys in f117a.ini or on the command line; src/host/controls.c, unit-tested, defaults reproduce the old fixed mapping; the app starts with the options). Keyboard remapping also exists (remap = Q:W, see the accessibility item). An on-screen key reference (Ctrl+Alt+K, four pages from the manual's Key Controls Summary, src/host/keyref.c, unit-tested and run in the real app) shows every key; the manual's appendix and text disagree on the tracking camera's left and right keys, noted on its page. Not done or not tried: any physical controller or HOTAS, a remapping screen, mouse where the original had it, the on-screen key reference."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Controller dead zone, axis inversion and fire-button choice (pad-* keys in f117a.ini or on the command line; src/host/controls.c, unit-tested, defaults reproduce the old fixed mapping; the app starts with the options). Keyboard remapping also exists (remap = Q:W, see the accessibility item). An on-screen key reference (Ctrl+Alt+K, four pages from the manual's Key Controls Summary, src/host/keyref.c, unit-tested and run in the real app) shows every key; the manual's appendix and text disagree on the tracking camera's left and right keys, noted on its page. A remapping screen is in the settings menu (Remap a key: press the key to change, then the key it should act as; applied at once and written to remap = in f117a.ini; Clear key remaps empties it; run in the real app with scripted keys). Not done or not tried: any physical controller or HOTAS, remapping of controller buttons in the menu, mouse where the original had it, the on-screen key reference."
       },
       {
         "item": "Sound device chosen in the menu: AdLib, Roland MT-32 (Munt) or PC speaker",
