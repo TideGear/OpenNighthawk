@@ -23,9 +23,16 @@ about the game, above all its simulation, stays as it is.
 
 1. **A world loader.** The original keeps four rings of 32 tile slots resident (`DS:E330`); a longer view needs
    this project to read the world data itself and build terrain beyond those rings. Which file holds the terrain is
-   not yet established: the per-theatre `*.WLD` files are only 2-3 KB (world tables, with the object-class bytes
-   the D4 fix patches), and the per-theatre `*.3DX` files (40-65 KB) are the likely candidates for the tiles and
-   models. Identifying it is the first job of R1.
+   What a first look at the shipped files shows (29 October 2026, the GOG install, nine theatres):
+   the per-theatre `*.3DG` is exactly 1,810 bytes in every theatre (magic `22`, then data that differs by
+   theatre) and `*.3DT` is 2.7-3.9 KB (magic `11`, words that include five 0x20s, then tables); a test route
+   that removes `LB.3DG` or zeroes `LB.3DT`'s magic raises START's terrain-file error
+   ([roadmap.md](roadmap.md) batch ai), so these two are the terrain files. They are far too small to hold
+   heights or tiles at the resident rings' detail; the terrain is therefore built largely at run time from
+   small tables, or its bulk lives in the model bank. The per-theatre `*.3DX` (40-65 KB) begins with an
+   ascending table of word offsets, a bank of models (what `scene_mesh.c` decodes); `*.WLD` (2-3 KB) begins
+   `BN` plus counts: object placements and classes (the object-class bytes the D4 fix patches). The format of
+   `*.3DG` and `*.3DT` is not yet known; reading it, against the guest's resident rings, is the first job of R1.
 2. **Object instances.** Which model is where, per frame, with a stable identity. The draw capture cannot give
    this (a reused projected vertex address is not an identity); the scene-input capture can, at the model request.
 3. **A rasteriser with a depth buffer** at output resolution, with the original's flat shading, light and
@@ -40,7 +47,7 @@ Each stage is its own branch and gate; none is credited before its proof, and th
 
 | Stage | Build | Proof |
 |---|---|---|
-| R1 world | find where terrain and placed objects live (`*.3DX`, `*.WLD`), then read them without the guest | tiles equal the guest's resident rings (`DS:E330`) wherever both exist, on every route |
+| R1 world | decode `*.3DG` and `*.3DT` (terrain) and `*.WLD` (placements) without the guest | tiles equal the guest's resident rings (`DS:E330`) wherever both exist, on every route |
 | R2 instances | per-frame object list from the model requests, read-only | the list equals the original's draws one for one on the route captures |
 | R3 meshes | connect `scene_mesh.c`; draw models with a depth buffer at 320x200 | pixel-compare with the original on frames where its whole-object sort is already right |
 | R4 terrain | terrain, sky, sea with sub-pixel projection | no jitter on the road and coastline frames the owner marked; near field matches R3 |
@@ -63,6 +70,6 @@ Each stage is its own branch and gate; none is credited before its proof, and th
 
 ## First step
 
-R1: identify the terrain source (start from the `*.3DX` files, 40-65 KB per theatre, and the `*.WLD` tables), then a loader for one theatre compared tile for tile with the resident rings
+R1: decode the terrain files (`*.3DG`, `*.3DT`, with `*.WLD`), then a loader for one theatre compared tile for tile with the resident rings
 on a captured route. It needs the game files and a capture of the resident tables, both of which exist, and it
 has no effect on the running game.
