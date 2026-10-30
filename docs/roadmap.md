@@ -169,17 +169,17 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,606 matched routines registered in batches a to bs (the
-      [batch table](#batch-table); bm2 was a fix-only gate). Gameplay score
-      98.57%: 158,934 matched bytes a route runs plus 2,631 reviewed
+      **Done:** 1,636 matched routines registered through batch bw (bm2 and bt
+      were fix-only gates; see the [batch table](#batch-table)). Gameplay score
+      98.80%: 159,309 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
-      by design. In the census, named code runs 160,463 of 165,548 creditable
-      bytes (1,134 of 1,535 functions wholly, 293 in part).
+      by design. In the census, named code runs 160,739 of 165,548 creditable
+      bytes (1,137 of 1,535 functions wholly, 293 in part).
 
-      **Accounted-for checklist:** 45,390 of 47,577 bytes (95.40%) outside the
+      **Accounted-for checklist:** 45,390 of 47,740 bytes (95.08%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
-      1,815 entries); 2,187 bytes have none. Five rounds of blind second reads
+      1,815 entries); 2,350 bytes have none. Five rounds of blind second reads
       by independent readers (26-28 Oct) adopted, from 780 reviewed bytes:
       round 1, 444 units / 19,928 bytes; round 2, 367 / 13,976; round 3, 101 /
       4,476; round 3b (exact leading-range check), 19 / 1,344; round 4, 32 /
@@ -189,7 +189,7 @@ not the recompilation:
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
-      - 2,342 executed bytes are unmatched, most in the sound drivers; by module:
+      - 1,967 executed bytes are unmatched, most in the sound drivers; by module:
         `py tools/progress.py`. They include the declined routines (owner,
         23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
         START `8427` and END `4393` (wait loops routes cannot finish) and
@@ -197,17 +197,18 @@ not the recompilation:
         batch bj) and ASOUND.117 `025A` (blocked in batch bl). Leads:
         [../handoff.md](../handoff.md); the private list is
         `D:/f117-gate/kit/DECLINED.tsv`.
-      - 29,247 matched bytes that only fixtures reach, to be sorted into
+      - 31,590 matched bytes that only fixtures reach, to be sorted into
         routed or reviewed.
-      - The checklist's remaining 2,187 bytes: round 6 needs fresh blind reads
-        of unresolved units, plus owner review of the protected design-rule
-        and probable-dead units (see [handoff](../handoff.md)).
+      - The checklist's remaining 2,350 bytes: rebuild round 6 against the
+        accepted `bw` tree and named cover before fresh blind reads; its
+        current 20-unit / 553-byte proposal is reusable only if the refreshed
+        scope check confirms it. Six protected units / 169 bytes still need
+        owner review (see [handoff](../handoff.md)).
       - Beyond the routes: reviewed static code no route runs (no new route or
         dead certificate yet: indirect/callback/vector and writer closure is
         incomplete, [static-code-review.md](static-code-review.md)); the
-        machine-option-only error paths, the probable-dead bytes and START
-        `8F94` (the run time's divide-error entry, to be split out of the
-        start-up row), each as the owner decided
+        machine-option-only error paths and probable-dead bytes, each as the
+        owner decided
         ([progress.md](progress.md#phase-2-completion-requirements-owner-23-24-and-27-october-2026));
         the encoded SETUP code; the packer stub's separate review; and the
         closing review of indirect entries.
@@ -264,7 +265,7 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Batch table
 
-Batches e to bv (16-29 October 2026); the routines of earlier batches are
+Batches e to bw (16-30 October 2026); the routines of earlier batches are
 listed by area in the sections after the table. Every batch passed the same
 proof (see above): five private seeds per routine with every instruction
 reached (more where a row says so), all mutations caught, exact boot (26
@@ -350,6 +351,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bt | 29 Oct | 1,606 | 0 (fix only) | Harness correction for VGAME `5046` when nested original code already takes a divide fault: the fixture now allows hand-back immediately before the divide or a matching already-taken fault only at the same `CS:IP`, interrupt depth and operation boundary, then compares full machine state, memory and I/O. No execution is skipped and no runtime body or score changed. Gate 781 tests, 63 routes, three whole-table seeds, both presentation checks and baseline verdict passed. Evidence `D:/f117-gate/p2-batch-bt-accept/`. |
 | bu | 29 Oct | 1,618 | 603 named bytes | Twelve routines: ASOUND.117 `005E`, `0A17`; RSOUND.117 `0D07`; RSOUND.LOG `03A2`; MPS_LOGO `1046`, `103B`, `111D` (partial route coverage); ISOUND.LOG `060C`, `05D1`; START `8DD7`; END `4CBB`; PLAYER `026B:0306`. 260 fully covered instructions, 327 private mutations caught, 60 optimized-seed checks. Whole table at three seeds had 0 mismatches; all 63 routes and 62 fresh interpreter sessions agreed, route precheck and both presentation checks passed. Gate 1,852 s, 793 tests. P2 95.65% -> 95.82%; no claimed-but-uncredited bytes. Evidence `D:/f117-gate/p2-batch-bu-accept/`. |
 | bv | 29 Oct | 1,628 | 821 named bytes | Ten static routines: VGAME `0063`, `00DB`, `011C`, `0160`, `04D9`; SETUP `17B0`, `17D6`, `1870`, `18A2`, `1942`. 377 fully covered instructions, 344 private mutations caught, 50 optimized-seed checks. All 63 routes / 62 fresh interpreter sessions were identical; both instruction timing profiles had 0 mismatches. Whole table at three seeds had 0 mismatches; route-only entries ran and none exceeded event limits. 63 N=1 presentation results and boot N=4/9 were exact. Gate 2,332 s, 803 tests. The segment-agnostic route precheck had 44 comparisons, all SAME; none was treated as a route hit. Credit audit found 0 uncredited bytes. P2 95.82% -> 95.94%. Evidence `D:/f117-gate/p2-batch-bv-accept/`. |
+| bw | 30 Oct | 1,636 | 1,257 named bytes | Eight static SETUP routines 0562, 0582, 05A3, 05CE, 070A, 0811, 0851 and 0979. The fixed-seed whole-table check exposed a shared crt_printf BP/SS snapshot bug at START 9430 (original AX D768, matched AX 0000); it now uses the live guest registers for BP-relative accesses. 509 fully covered instructions, 281 private mutations caught, 40 optimized-seed checks. All 63 routes / 62 fresh interpreter sessions were identical; both timing profiles and the whole table at three seeds had 0 mismatches. Route-only entries ran and none exceeded event limits. All 63 N=1 presentation cases and boot N=4/9 were exact. 811 CTests; acceptance 1,912 s. The stale interpreter key required a sequential fresh-baseline audit, which passed all 63 routes. Credit audit found 0 uncredited bytes. P2 95.94% -> 96.13%. Evidence D:/f117-gate/p2-batch-bw-accept/. |
 
 Notes that still matter:
 

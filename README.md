@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 95.94%, P3 76.34%, All 92.78%**. Every commit
+Progress: **P1 100.00%, P2 96.13%, P3 76.34%, All 92.84%**. Every commit
 title starts with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -68,13 +68,13 @@ title starts with the current figures (`py tools/progress.py --title`);
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,487 routines have named, explained C equivalents
-  proved against the original's instructions. They run 156,432 of the
+- **Named and matched:** 1,636 routines have named, explained C equivalents
+  proved against the original's instructions. They run 159,309 of the
   163,907 instruction bytes the scripted routes execute; with 2,631 bytes of
   reviewed code that stays original by design, that is the gameplay score,
-  97.04%. Across all 17 code files, named code covers 184,279 of 207,438
-  creditable bytes (88.84%), and reviewed reference entries account for
-  41,749 of the 46,112 bytes outside the routes (90.54%).
+  98.80%. Across all 17 code files, named code covers 190,964 of 209,086
+  creditable bytes (91.33%), and reviewed reference entries account for
+  45,390 of the 47,740 bytes outside the routes (95.08%).
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -
   all of memory, the registers and every byte sent to the sound card, the
@@ -96,9 +96,9 @@ title starts with the current figures (`py tools/progress.py --title`);
 - **Optional sharper and smoother pictures:** finer polygon geometry and HUD
   strokes up to 4K, with the original bitmap text and artwork kept; see
   [Presentation](#presentation).
-- **What is left:** matching the remaining 2,342 route-executed bytes (most
+- **What is left:** matching the remaining 1,967 route-executed bytes (most
   of them in the sound drivers) and the code no route runs, reviewed entries
-  for the 2,187 bytes outside the routes that have none, and a closing review
+  for the 2,350 bytes outside the routes that have none, and a closing review
   of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));
   the re-release features below. Not scored: play by a person at the
   keyboard, rendered Roland output against an independent reference and

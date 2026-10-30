@@ -4276,11 +4276,9 @@ static int crt_printf(machine_t *m, const crt_printf_t *s)
     const int a = s->far ? 2 : 0;                                 /* the far return address takes a word more */
     const uint16_t format_at = (uint16_t)(s->entry + 0x1F), format_back = sm3_after_call(c, format_at);
     const uint16_t release_at = (uint16_t)(format_back + 0xB);
-    const uint16_t ss = c->seg[S_SS];
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);       /* sub sp, 4 */
-    const uint16_t bp = c->r[R_BP];
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
     c->r[R_SI] = s->stream;
@@ -4290,16 +4288,18 @@ static int crt_printf(machine_t *m, const crt_printf_t *s)
     if (!room(c, 7 + 7)) { c->ip = (uint16_t)(s->entry + 0xF); return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);       /* add sp, 2 */
     c->r[R_DI] = c->r[R_AX];
-    c->r[R_AX] = (uint16_t)(bp + 6 + a);                          /* lea ax, [bp+6] */
+    /* Match each BP-relative operand against the live registers. An overflow
+     * path in a guest callee can leave BP changed before the caller resumes. */
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + 6 + a);                  /* lea ax, [bp+6] */
     cpu_push16(c, c->r[R_AX]);
-    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4 + a)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4 + a)));
     c->r[R_AX] = s->stream;
     cpu_push16(c, c->r[R_AX]);
     c->icount += 7;
     if (!sm3_call(m, format_at)) return 1;
     if (!room(c, 5 + 7)) { c->ip = format_back; return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);       /* add sp, 6 */
-    seg_write16(c, ss, (uint16_t)(bp - 4), c->r[R_AX]);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
     c->r[R_AX] = s->stream;
     cpu_push16(c, c->r[R_AX]);
     cpu_push16(c, c->r[R_DI]);
@@ -4307,7 +4307,7 @@ static int crt_printf(machine_t *m, const crt_printf_t *s)
     if (!sm3_call(m, release_at)) return 1;
     if (!room(c, 7)) { c->ip = sm3_after_call(c, release_at); return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);       /* add sp, 4 */
-    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 4));
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4));
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
     c->r[R_SP] = c->r[R_BP];

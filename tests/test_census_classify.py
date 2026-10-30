@@ -484,6 +484,18 @@ class GameplayTests(unittest.TestCase):
                        entries=[self.stays(0x80, 2, why="hardware wait loop: polls the timer until it changes")])
         self.assertEqual(g["stays_original_reviewed"], 2)
 
+    def test_dswap_floppy_path_is_a_design_rule(self):
+        # owner, 29 Oct 2026: there is no emulated floppy drive
+        g = self.score(ran={"T": {0x80, 0x81}},
+                       entries=[self.stays(0x80, 2, why="DSWAP's floppy path: no emulated floppy drive")])
+        self.assertEqual(g["stays_original_reviewed"], 2)
+
+    def test_presentation_observer_graphics_slots_are_a_design_rule(self):
+        # owner, 29 Oct 2026: preserve the observer's entry point at watched graphics slots
+        g = self.score(ran={"T": {0x80, 0x81}},
+                       entries=[self.stays(0x80, 2, why="presentation-observer graphics slots: preserve the draw observer")])
+        self.assertEqual(g["stays_original_reviewed"], 2)
+
     def test_original_code_inside_a_census_original_row_must_also_name_its_design_rule(self):
         # a census-original row can be wider than its design-rule routine (a C start-up row also holds the run
         # time's divide-error entry): the row alone is not evidence

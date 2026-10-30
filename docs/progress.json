@@ -244,8 +244,8 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 43538,
-      "credited": 28968,
-      "reviewed_static_bytes": 12913,
+      "credited": 30225,
+      "reviewed_static_bytes": 11656,
       "original_reviewed_bytes": 790,
       "by_module": {
         "ASOUND.117": {
@@ -334,8 +334,8 @@
         },
         "SETUP": {
           "bytes": 4000,
-          "credited": 526,
-          "reviewed_static_bytes": 3386,
+          "credited": 1783,
+          "reviewed_static_bytes": 2129,
           "original_reviewed_bytes": 102
         },
         "START": {
@@ -366,7 +366,7 @@
       "matched_route_run": 159309,
       "stays_original_reviewed": 2631,
       "score": 0.9879992922815987,
-      "fixture_only": 30333,
+      "fixture_only": 31590,
       "remaining": 1967,
       "original_awaiting_review": 0,
       "reviewed_entries": 1815,
@@ -388,11 +388,11 @@
             "without_reviewed_entry": 0
           },
           "supp-credited": {
-            "with_reviewed_entry": 5071,
+            "with_reviewed_entry": 6328,
             "without_reviewed_entry": 1608
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 12906,
+            "with_reviewed_entry": 11649,
             "without_reviewed_entry": 7
           },
           "unreached": {
@@ -567,7 +567,7 @@
           "denominator": 3689,
           "matched_route_run": 3347,
           "stays_original_reviewed": 253,
-          "fixture_only": 1168,
+          "fixture_only": 2425,
           "remaining": 89,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,

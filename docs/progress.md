@@ -1,9 +1,9 @@
 # Progress tracking
 
 Every commit title starts with the current progress (it ended with it until
-7 Oct 2026; older commits keep the suffix), for example
-`(P1 100.00%, P2 93.94%, P3 76.34%, All 92.17%) Subject`, printed by
-`py tools/progress.py --title`. `py tools/progress.py` alone prints every item
+7 Oct 2026; older commits keep the suffix). `py tools/progress.py --title`
+prints the current figures; do not copy a title from an older commit.
+`py tools/progress.py` alone prints every item
 with its completion, weight and kind, then the gameplay score with its
 unmatched bytes by module, the accounted-for checklist, the census line (with
 the fixes count) and the previous all-code measure. This page says what the
@@ -62,8 +62,10 @@ P2's "Matched functions replacing translations" item is scored by the
   rule only** (`DESIGN_RULES` in `tools/census_classify.py`): STI-first interrupt handlers, the C start-up and
   its copies, palette loaders with an STI in their loop, the program launcher (F117.COM `0100`..`03CA`, owner
   23 Oct 2026: it only runs the other programs and tests their exit codes), hardware wait loops (owner 23 Oct
-  2026: only a wait or calibration loop that no fixture can complete; none qualifies so far) and the packer
-  stub (recognized but granting nothing yet, below). Inside the census these are the
+  2026: only a wait or calibration loop that no fixture can complete; none qualifies so far), the packer
+  stub (recognized but granting nothing yet, below), DSWAP's floppy path (owner, 29 Oct 2026: no emulated floppy
+  drive) and presentation-observer graphics slots (owner, 29 Oct 2026: preserve the observer's entry point at
+  watched slots). Inside the census these are the
   `docs/census-original.tsv` rows; outside it an entry must start its reason with its rule. Declined routines
   (VGAME main, MPS_LOGO `1ADC`/`1C82`, START `8427`, END `4393`, and the rest) are remaining work,
   not original code. (b) counts only where a **reviewed reference entry** exists in
@@ -132,9 +134,6 @@ P2 is done only when all of the following hold:
   in the denominators.
 - **Probable-dead code** (12 rows / 831 bytes at the 21 Oct dead-code review; recount against the current named cover, since some have been matched since) is proved with lockstep inputs, not declared dead on weak
   evidence (owner, 27 Oct 2026). It cannot close on probability alone.
-- **START `08F94`**, the run time's divide-error entry (`8F94..8FC2`), lies inside the START C
-  start-up row (`8EDC` in `census-original.tsv`) but is not start-up code. It is split out of that
-  row, proved and counted as its own routine (owner, 27 Oct 2026).
 - Every byte outside routes has a second-read reference entry, and each unresolved classification
   has been resolved by a proof, a route or a strict certificate.
 - Static discoveries are fully reviewed and adopted with strict validation. Encoded code needs
