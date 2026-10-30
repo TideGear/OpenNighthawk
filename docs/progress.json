@@ -369,35 +369,35 @@
       "fixture_only": 31590,
       "remaining": 1967,
       "original_awaiting_review": 0,
-      "reviewed_entries": 1815,
+      "reviewed_entries": 1870,
       "checklist": {
         "bytes": 47740,
-        "with_reviewed_entry": 45390,
-        "without_reviewed_entry": 2350,
+        "with_reviewed_entry": 47265,
+        "without_reviewed_entry": 475,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 23193,
-            "without_reviewed_entry": 461
+            "with_reviewed_entry": 23364,
+            "without_reviewed_entry": 290
           },
           "never_run": {
-            "with_reviewed_entry": 4072,
-            "without_reviewed_entry": 195
+            "with_reviewed_entry": 4162,
+            "without_reviewed_entry": 105
           },
           "slots": {
             "with_reviewed_entry": 5,
             "without_reviewed_entry": 0
           },
           "supp-credited": {
-            "with_reviewed_entry": 6328,
-            "without_reviewed_entry": 1608
+            "with_reviewed_entry": 7863,
+            "without_reviewed_entry": 73
           },
           "supp-reviewed-static": {
             "with_reviewed_entry": 11649,
             "without_reviewed_entry": 7
           },
           "unreached": {
-            "with_reviewed_entry": 143,
-            "without_reviewed_entry": 79
+            "with_reviewed_entry": 222,
+            "without_reviewed_entry": 0
           }
         }
       },
@@ -417,7 +417,7 @@
           "remaining": 376,
           "original_awaiting_review": 0,
           "not_in_denominator": 473,
-          "not_in_denominator_reviewed": 281,
+          "not_in_denominator_reviewed": 467,
           "in_previous_scope": 5373
         },
         "ASOUND.LOG": {
@@ -439,7 +439,7 @@
           "remaining": 2,
           "original_awaiting_review": 0,
           "not_in_denominator": 4710,
-          "not_in_denominator_reviewed": 4691,
+          "not_in_denominator_reviewed": 4707,
           "in_previous_scope": 3505
         },
         "END": {
@@ -450,7 +450,7 @@
           "remaining": 63,
           "original_awaiting_review": 0,
           "not_in_denominator": 7776,
-          "not_in_denominator_reviewed": 7623,
+          "not_in_denominator_reviewed": 7774,
           "in_previous_scope": 14755
         },
         "F117.COM": {
@@ -472,7 +472,7 @@
           "remaining": 401,
           "original_awaiting_review": 0,
           "not_in_denominator": 112,
-          "not_in_denominator_reviewed": 63,
+          "not_in_denominator_reviewed": 112,
           "in_previous_scope": 1200
         },
         "ISOUND.LOG": {
@@ -516,7 +516,7 @@
           "remaining": 18,
           "original_awaiting_review": 0,
           "not_in_denominator": 4846,
-          "not_in_denominator_reviewed": 4586,
+          "not_in_denominator_reviewed": 4672,
           "in_previous_scope": 6639
         },
         "NSOUND.117": {
@@ -549,7 +549,7 @@
           "remaining": 5,
           "original_awaiting_review": 0,
           "not_in_denominator": 249,
-          "not_in_denominator_reviewed": 197,
+          "not_in_denominator_reviewed": 211,
           "in_previous_scope": 2213
         },
         "RSOUND.LOG": {
@@ -560,7 +560,7 @@
           "remaining": 83,
           "original_awaiting_review": 0,
           "not_in_denominator": 1308,
-          "not_in_denominator_reviewed": 27,
+          "not_in_denominator_reviewed": 1308,
           "in_previous_scope": 2128
         },
         "SETUP": {
@@ -582,7 +582,7 @@
           "remaining": 66,
           "original_awaiting_review": 0,
           "not_in_denominator": 5931,
-          "not_in_denominator_reviewed": 5908,
+          "not_in_denominator_reviewed": 5915,
           "in_previous_scope": 36508
         },
         "VGAME": {
@@ -593,7 +593,7 @@
           "remaining": 324,
           "original_awaiting_review": 0,
           "not_in_denominator": 12107,
-          "not_in_denominator_reviewed": 12013,
+          "not_in_denominator_reviewed": 12098,
           "in_previous_scope": 71936
         }
       }
