@@ -69,6 +69,13 @@ with its own rasteriser (R3-R4), so resolution and frame rate belong to it, not 
 - **HUD and panel.** The existing game-state HUD and panel code (`hud_state.h`, `hud_overlay.h`) at the output
   scale, placed for the wider frame (R5).
 - **Simulation.** Unchanged and checked as in "Rules that make it safe".
+- **Latency.** The simulation's input handling is untouched, so control timing is the original's. The picture is
+  another matter: interpolating between the two latest steps shows step N while step N+1 is being computed, so
+  the display runs up to one step behind (about 66 ms at 15 steps a second, 33 ms in 2x compression), as
+  Enhanced's `--present-age interp` does now. Remastered offers the same choice as a setting: interpolate
+  (smooth, that delay) or extrapolate (project the camera and objects forward from their last velocity: no added
+  delay, but it can overshoot on a sudden change such as a stick reversal or a hit; `--present-age extrapolate`
+  today). The default is the owner's choice once both can be seen in the cockpit.
 
 ## Rules that make it safe
 
