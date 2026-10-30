@@ -43,6 +43,8 @@
 #include "controls.h"
 #include "remap.h"
 #include "keyref.h"
+#include "subtitles.h"
+#include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -94,6 +96,9 @@ static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
 static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
+static int g_subtitles;                /* --subtitles: show the radio calls as text (subtitles.h) */
+static subtitles g_sub;
+static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
 static uint32_t *g_crt_buf; static size_t g_crt_cap;
@@ -216,6 +221,12 @@ static void on_speaker(void *u, uint64_t icount)
 {
     (void)u;
     if (H.audio) audio_speaker(H.audio, &H.m, icount);
+    if (g_sub.ready) {          /* the radio calls as text: the counts written to PIT counter 2 in mode 0 */
+        const uint8_t p61 = H.m.port61 & 3;
+        if (p61 != g_sub_p61) g_sub_p61 = p61;
+        else if (!H.m.pit[2].null_count && H.m.pit[2].mode == 0 && p61 == 3)
+            sub_count(&g_sub, H.m.pit[2].reload, (unsigned long)SDL_GetTicks());
+    }
 }
 
 static void on_input(void *u, const machine_input *in)
@@ -474,6 +485,26 @@ static void fill_flight_list(settings_state *st, const char *save_dir)
     SDL_free(names);
 }
 
+/* The subtitle line over the picture, in the font doubled, on a dark band across the lower part of the frame. */
+static void draw_subtitle(uint32_t *px, const char *line)
+{
+    const int len = (int)strlen(line), w = len * 16, x0 = (640 - w) / 2, y0 = 336, pad = 8;
+    for (int y = y0 - pad; y < y0 + 32 + pad; y++)
+        for (int x = x0 - 2 * pad; x < x0 + w + 2 * pad; x++)
+            if (x >= 0 && x < 640 && y >= 0 && y < 400) px[y * 640 + x] = 0xC0000000u;
+    for (int i = 0; i < len; i++) {
+        const unsigned char ch = (unsigned char)line[i];
+        for (int r = 0; r < 16; r++)
+            for (int c = 0; c < 8; c++)
+                if (FONT8X16[ch][r] & (0x80 >> c))
+                    for (int dy = 0; dy < 2; dy++)
+                        for (int dx = 0; dx < 2; dx++) {
+                            const int x = x0 + i * 16 + c * 2 + dx, y = y0 + r * 2 + dy;
+                            if (x >= 0 && x < 640 && y >= 0 && y < 400) px[y * 640 + x] = 0xFFFFFFFFu;
+                        }
+    }
+}
+
 /* The settings menu's fix picker: every fix with what it does and whether it is on in this run (fixes_list). */
 static void fill_fix_picker(settings_state *st)
 {
@@ -620,6 +651,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
         else if (!strcmp(a, "--remap") && v) {
             if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
             i++;
@@ -799,6 +831,15 @@ int main(int argc, char **argv)
             "Could not find the game. Point --data at the folder holding F117.COM "
             "(your own GOG, Steam or original installation).", NULL);
         return 1;
+    }
+    if (g_subtitles) {                              /* the detector's templates come from the player's own SPEECH.117 */
+        char sp[1100];
+        snprintf(sp, sizeof sp, "%s/SPEECH.117", data);
+        static uint8_t speech_bytes[26408 + 1];
+        FILE *sf = fopen(sp, "rb");
+        const size_t got = sf ? fread(speech_bytes, 1, sizeof speech_bytes, sf) : 0;
+        if (sf) fclose(sf);
+        if (!sub_init(&g_sub, speech_bytes, got)) fprintf(stderr, "subtitles: %s is not the game's SPEECH.117; none shown\n", sp);
     }
     char save_buf[700];
     if (!save) {
@@ -1080,6 +1121,7 @@ int main(int argc, char **argv)
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
+    if (getenv("F117_REPLAY_START_X4")) replay_x4 = atoi(getenv("F117_REPLAY_START_X4"));   /* diagnostic: start a replay fast */
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
     int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0;
     int mouse_buttons = 0;
@@ -1562,6 +1604,34 @@ int main(int argc, char **argv)
             }
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
+        }
+        if (g_sub.ready && !g_set.open && !ref_open && tex_menu) {      /* the radio call as text */
+            const char *line = sub_text(&g_sub, (unsigned long)SDL_GetTicks());
+            if (line && getenv("F117_SUB_LOG")) {                   /* diagnostic: say each new line, with the clock */
+                static char shown[96];
+                if (strcmp(shown, line)) { snprintf(shown, sizeof shown, "%s", line); fprintf(stderr, "subtitle: %s at clock %llu\n", line, (unsigned long long)H.m.cpu.icount); }
+            }
+            if (line) {
+                memset(menu_pixels, 0, sizeof menu_pixels);
+                draw_subtitle(menu_pixels, line);
+                static int sub_shot_done;
+                if (getenv("F117_SUB_SHOT") && !sub_shot_done && strchr(line, ' ')) {     /* diagnostic: save the overlay once */
+                    FILE *sf2 = fopen(getenv("F117_SUB_SHOT"), "wb");
+                    if (sf2) {
+                        fprintf(sf2, "P6\n640 400\n255\n");
+                        for (int k = 0; k < 640 * 400; k++) {
+                            const uint32_t v = menu_pixels[k];
+                            const unsigned a = v >> 24;
+                            const uint8_t rgb[3] = { (uint8_t)((((v >> 16) & 255) * a) / 255), (uint8_t)((((v >> 8) & 255) * a) / 255), (uint8_t)(((v & 255) * a) / 255) };
+                            fwrite(rgb, 1, 3, sf2);
+                        }
+                        fclose(sf2);
+                        sub_shot_done = 1;
+                    }
+                }
+                SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
+                SDL_RenderTexture(ren, tex_menu, NULL, &dst);
+            }
         }
         if (ref_open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);

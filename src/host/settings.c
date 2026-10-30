@@ -31,6 +31,7 @@ static const setting_def DEFS[] = {
     { "speaker",      "Speaker speech",   C_SPEAKER,      0, 0 },
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
+    { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
     { "roland",       "Roland output",    C_ROLAND,       2, 0 },
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },

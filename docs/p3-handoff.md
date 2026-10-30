@@ -15,7 +15,7 @@ Host-side only (`src/host/`, `tools/`, `docs/`, `tests/`); no change to `src/mac
 | CRT filter (1) | 70% | `--crt`, `crt = yes`, menu entry (`crt.c`), display copy only | owner has not looked; no mask or bloom |
 | Modern controls (3) | 55% | `pad-deadzone/-invert-x/-invert-y/-fire1/-fire2`, `remap = Q:W` / `--remap`, on-screen key reference (Ctrl+Alt+K, four pages from the manual), a Remap a key screen in the settings menu | physical pad or HOTAS untried, controller-button remapping, mouse |
 | Flight replays (3) | 60% | `--watch latest|SESSION` and a menu row, from a scratch copy of the save | picking among flights, pause/seek, the menu row's restart not run end to end |
-| Accessibility (2) | 25% | keyboard remapping | subtitles (the nine words are known, see below), colourblind HUD (Remastered) |
+| Accessibility (2) | 55% | keyboard remapping and its menu screen; radio subtitles (`--subtitles`, Roland and PC speaker drivers) | AdLib speech, colourblind HUD (Remastered), the PC speaker driver run |
 | Fan patches (2) | 100% | debugcom's patch (damsonn) is fix D4; web search found no other | none, unless the owner finds another |
 | Remastered (10) | 0% | `docs/remastered-design.md` (staged R1-R6); R1 terrain decoding | R2 onwards, see below |
 | Two settings, hybrid sound, sound device | 0% | design only | see "Blocked" |
@@ -79,7 +79,7 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
   integration.
 - **Hybrid sound:** needs the owner's marks (the page) and a second hidden AdLib driver fed the same requests, plus
   muting the MT-32 channels of effect ids.
-- **Subtitles:** need a host hook at the sound request (the same trap as `oracle_frame.py`) to know which words play.
+- **Subtitles under AdLib:** the speech is OPL writes there; the detector (`src/host/subtitles.c`, from the speaker counts) covers Roland and PC speaker only.
 - **Owner's own checks:** the menu (Ctrl+Alt+S), `--crt`, `--watch latest`, the nine speech clips, the sound page.
 - **Merging:** pull `master`, run the full gate (`py tools/build_recomp.py --work ...`) on the merged result, then merge.
 - Open question put to the owner: a 30-step-a-second experiment (halves display lag; needs a validation sweep like 15 had).

@@ -210,9 +210,9 @@
       {
         "item": "Accessibility: subtitles for the speech, full remapping, a colourblind-safe HUD option in Remastered",
         "weight": 2.0,
-        "done": 0.25,
+        "done": 0.55,
         "kind": "estimate",
-        "evidence": "29 Oct 2026, branch p3-settings-menu. Full keyboard remapping: remap = Q:W, Left Shift:Space in f117a.ini or --remap on the command line (SDL key names; src/host/remap.c, unit-tested; a bad name is refused with a message; the host's own chords keep the physical keys). Run in the real app: a good ini entry starts the game, a bad name exits with the message. Not done: subtitles for the speech (needs the speech text), a colourblind-safe HUD (Remastered), a remapping screen in the menu."
+        "evidence": "30 Oct 2026, branch p3-settings-menu. Full keyboard remapping (remap = Q:W, --remap, a Remap a key screen in the settings menu). Subtitles for the radio calls (--subtitles, subtitles = yes, a menu entry; src/host/subtitles.c): under the Roland and PC-speaker drivers the speech reaches the speaker as PIT counter 2 counts that follow SPEECH.117's bytes; the detector correlates the latest counts with a stretch from the middle of each of the nine words (the start of a burst runs up to 15 samples out of step), using only what the host already sees of the speaker and the player's own SPEECH.117. Checked: a unit test (all nine words, with and without the stray first event, six chained phrases including all nine in a row, the line expiring, noise finding nothing) and the real thing: a recorded Roland flight replayed in the real app showed Cleared at clock 2,344,005,572 (0.26 s after the speech began) and Cleared for take off 0.5 s later, drawn over the picture. Not done: AdLib (the speech is OPL writes there), the PC speaker driver itself was not run, a colourblind-safe HUD (Remastered), the owner has not looked."
       },
       {
         "item": "Hybrid sound: Roland MT-32 (Munt) music with AdLib sound effects, from a second, hidden AdLib driver fed the same sound requests; the game's own driver and logic stay Roland's",
