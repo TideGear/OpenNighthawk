@@ -20,6 +20,7 @@ static observe_pose_fn g_pose_fn;
 static void *g_pose_user;
 static int g_pose_pending;
 static uint16_t g_pose_model, g_pose_bank;
+static int16_t g_pose_position[3];
 
 void observe_pose_set(observe_pose_fn fn, void *user)
 {
@@ -93,6 +94,7 @@ void observe_scene_model(machine_t *m)
         g_pose_pending = 1;
         g_pose_model = peek16(rc, rc->seg[S_SS], (uint16_t)(rc->r[R_SP] + 4));
         g_pose_bank = peek16(rc, rc->seg[S_DS], 0x8590);
+        for (int k = 0; k < 3; k++) g_pose_position[k] = (int16_t)peek16(rc, rc->seg[S_SS], (uint16_t)(rc->r[R_SP] + 6 + 2 * k));
     }
     if (o && o->ident && o->prim) {
         flush(m);
@@ -141,7 +143,7 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
     flush(m);
     if (g_pose_pending && g_pose_fn) {                /* the first vertex of a request: its pose is prepared */
         g_pose_pending = 0;
-        g_pose_fn(g_pose_user, m->cpu.icount, m, g_pose_model, g_pose_bank);
+        g_pose_fn(g_pose_user, m->cpu.icount, m, g_pose_model, g_pose_bank, g_pose_position);
     }
     const f117_observer *o = g_f117_observer;
     if (!o || !o->vertex) return;

@@ -196,3 +196,11 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   16-bit arithmetic ("EXACT", checked against captured logs by `test_band_state`); the HUD and panel are state-driven too
   (`hud_state.h`). Remastered draws the bands from the same state at its own resolution and keeps the horizon at its true
   position instead of a quantised one, so only the model geometry is new.
+- **R3, from a request to camera-space primitives (30 October 2026).** `src/present/remaster_scene.c` does the work between the
+  `pose` callback and the fill, as pure code on the guest's memory: it picks the game's detail level from the request's
+  position words and the camera matrix (`scene_model_depth`), decodes the model once into a cache (a content signature of the
+  bank page keys it, so a new theatre starts afresh), reads the pose where it lies (`scene_pose_read` straight on the data
+  segment, no copy), evaluates every vertex in camera space with the game's integer arithmetic, and runs the model's material
+  commands, turning each polygon's edge chain into an ordered vertex loop. Tested on the synthetic fixture placed in a fake
+  guest memory (`presentation_remaster_scene`). Not yet checked on real data, which needs the callback running in a build: the
+  next step is a headless consumer of `observe_pose` that collects a frame and draws it with the fill.
