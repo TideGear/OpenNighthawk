@@ -158,8 +158,11 @@ placed in its function from the matched table. A `push 0` before a call is "sile
 | 21, 22, 32 | no caller in START, END, PLAYER, MPS_LOGO or the flight gate |
 
 Mac correspondence, by what the Mac code does when it asks (`mac-extract/dis`, requests through `jsr $54a`):
-Mac 323 (bay door) is asked when a weapon bay is chosen on the arms page, so it goes with DOS 29; Mac 325 (impact)
-when a weapon is picked from the list, so DOS 30; Mac 324 (hangar door) at the start of the routine that animates with
-tick waits, so DOS 31 (the launch animation). Mac 500 is the engine loop the player starts for request 311 (spool up)
-and stops for 312. The Mac also asks for its own ids 27 and 28 directly (map marks, options), with no recording
-among those extracted. The DOS refusal (34) has no Mac counterpart that I found.
+Mac 323 (bay door) is the flight key's sound: the Mac toggles the bay and asks for 323 (`CODE13:03B2`), unless a weapon
+is on its way, exactly where DOS asks for 31 (`vgame_key_bay_doors_and_tail`); so 323 goes with DOS 31. DOS also plays
+31 for the launch animation, where the Mac asks for 324 (hangar door) at the start of its animating routine
+(`CODE12:4D96`), so 324 goes with 31 too. On the weapons page the Mac asks for 323 again when a bay is chosen (DOS
+29) and for 325 (impact) when a weapon is picked (DOS 30): weaker, the Mac reusing sounds. Mac 500 is the engine loop
+the player starts for request 311 (spool up) and stops for 312. The Mac also asks for its own ids 27 and 28 directly
+(map marks, options), with no recording among those extracted. The DOS refusal (34) has no Mac counterpart that I
+found.

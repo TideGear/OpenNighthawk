@@ -195,7 +195,37 @@ def main():
         clips["amiga-" + stem] = {"b": encode(f, tmp), "s": round(seconds(f), 2), "c": False}
         other.append({"key": "amiga-" + stem, "title": name, "sub": "Amiga, " + where, "clips": {"amiga": "amiga-" + stem}})
 
-    data = {"clips": clips, "dos": dos, "speech": speech, "other": other, "silent": silent,
+    # what still needs the owner: each Mac recording beside the DOS sound its code matches, an id with no known
+    # caller, and the one design choice. Everything else is handled and sits in a collapsed section.
+    decide = []
+    MATCHES = [(31, 323, "Strong match: the 8 key (bay doors) in flight plays DOS 31, and the Mac plays 323 at the same point, "
+                         "both refused while a weapon is on its way. DOS also plays 31 for the launch animation."),
+               (29, 325, "Weaker: on the weapons page DOS plays 29 when a bay is chosen. The Mac plays 323 there "
+                         "(the same bay-door sound again) and 325 (impact) when a weapon is picked."),
+               (30, 325, "Weaker: DOS plays 30 when a weapon is placed in the bay; the Mac plays 325 (impact) for the pick.")]
+    for did, mid, why in MATCHES:
+        row = next((r for r in dos if r["key"] == "dos-%d" % did), None)
+        if row and ("mac-%d" % mid) in clips:
+            dos.remove(row)
+            row["clips"]["mac"] = "mac-%d" % mid
+            row["sub"] = "Does Mac %d fit? " % mid + why
+            decide.append(row)
+    # the Mac's hangar door (324), played at the start of the launch animation, beside DOS 31's drivers
+    d31 = next((r for r in decide if r["key"] == "dos-31"), None)
+    if d31 and "mac-324" in clips:
+        decide.insert(decide.index(d31) + 1, {"key": "mac-324", "title": "Mac 324, hangar door", "def": "mac",
+            "sub": "Does it fit the launch animation? The Mac plays 324 as that animation starts; DOS plays 31 there (same sound as the bay doors).",
+            "clips": dict(d31["clips"], mac="mac-324")})
+    other[:] = [r for r in other if r["key"] not in ("mac-323", "mac-324", "mac-325")]
+    row = next((r for r in dos if r["key"] == "dos-32"), None)
+    if row:
+        dos.remove(row)
+        row["sub"] = "No caller found anywhere in the game. Does it sound like anything you know?"
+        decide.append(row)
+    decide.append({"key": "decide-split", "title": "Hybrid sound: first version", "clips": {}, "def": "",
+                   "sub": "Ship Mac-first (the loaded DOS driver plays what has no recording), or build the Roland-for-music, AdLib-for-sounds split first? Type your choice in Note."})
+
+    data = {"decide": decide, "clips": clips, "dos": dos, "speech": speech, "other": other, "silent": silent,
             "note": "The Mac effects line up with DOS ids 4 to 20 by the Mac port's id offset of 300 (docs/sound-board.md). "
                     "Roland clips use the MT-32 1.07 control ROM; speech under the Roland and speaker drivers plays through the PC speaker."}
     template = open(os.path.join(HERE, "sound_board_template.html"), encoding="utf-8").read()
