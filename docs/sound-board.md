@@ -128,8 +128,10 @@ speech as OPL writes. The same detector gives the subtitle text.
   the game's far call into the sound driver, the host may play the recording and make the call return at once, so the DOS
   driver never sees the request.
 - App options `--mac-sounds DIR`, `--music-source` and `--sound-source` (default, mac or dos), `f117a.example.ini`.
-  Tests: `host_sound_policy`, `host_mac_sound`. The build is clean. In a real flight the hook saw 375 requests (the engine
-  note 23, 25, speech 44, 40, 0), none with a recording; a flight that fires a recorded sound has not yet been checked.
+  Tests: `host_sound_policy`, `host_mac_sound`. The build is clean. In recorded flights the hook sees every request (the engine
+  note 23 and 25, speech 44, 40, 0). With the Backspace (cannon) and Enter (fire weapon) keys pressed on the runway it saw
+  id 6 four times, each taken for the Mac recording (Mac 306), and id 32 seven times, which confirms that 32 is the refused
+  weapon release. Not yet done: listening to the mixed audio, and a flight that fires the other recorded effects.
 
 **Why a machine-layer hook, and what it costs.** The first design hooked the matched sound gate (VGAME `0D3F9` in
 `matched.c`). A full seeded flight showed that no VGAME matched routine runs in a build without generated code, so that
