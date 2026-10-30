@@ -131,3 +131,35 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
   answer 2 (AdLib), 3 (Roland) and 1 (PC speaker), `--steps 2450000000`, ids 0-45, a 5 s span. Not done: music
   from START and END (their own programs), longer spans for the sounds that reach the 5 s limit, ids 41-44
   (the driver call did not return within its limit, though output was logged).
+
+## What each sound id is (census of the original's sound calls, 30 October 2026)
+
+Method: every far call to a program's sound thunk, found in the unpacked images (START: `9A B1 6B 95 0A`; END:
+`9A F3 25 FA 05`; PLAYER, MPS_LOGO) with the id pushed before it, plus the flight gate's calls in `matched.c`; each site
+placed in its function from the matched table. A `push 0` before a call is "silence", not an id.
+
+| id | where it is asked for |
+|---|---|
+| 2 | palette fades (START, END) |
+| 3 | PLAYER.EXE after the logo (intro music) |
+| 4 to 20 | flight (VGAME gate); weapons, warnings, gear, eject |
+| 23 to 25 | engine (24 and 25 re-asked every step by `0D41F`) |
+| 26 | waiting for a button press (START, END) |
+| 27 | START world options and pilot options: the highlight moves to a new item |
+| 28 | START briefing map marks; END debrief route |
+| 29 | START weapons page: one of the bay buttons is chosen |
+| 30 | START weapons page: a weapon is placed in the bay |
+| 31 | START launch animation |
+| 33 | START pilot options: a typed character (asked only while the name still fits) |
+| 34 | START weapons page: the choice is refused (the bay already holds the item) |
+| 35 | cancel (START wait-for-press, END) |
+| 36, 37, 38, 39 | END: awards, debrief picture, report picture, landed screen (music) |
+| 40 | VGAME exit: release the sound buffer (a driver command, not a sound) |
+| 21, 22, 32 | no caller in START, END, PLAYER, MPS_LOGO or the flight gate |
+
+Mac correspondence, by what the Mac code does when it asks (`mac-extract/dis`, requests through `jsr $54a`):
+Mac 323 (bay door) is asked when a weapon bay is chosen on the arms page, so it goes with DOS 29; Mac 325 (impact)
+when a weapon is picked from the list, so DOS 30; Mac 324 (hangar door) at the start of the routine that animates with
+tick waits, so DOS 31 (the launch animation). Mac 500 is the engine loop the player starts for request 311 (spool up)
+and stops for 312. The Mac also asks for its own ids 27 and 28 directly (map marks, options), with no recording
+among those extracted. The DOS refusal (34) has no Mac counterpart that I found.

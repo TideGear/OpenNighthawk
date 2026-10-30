@@ -37,11 +37,25 @@ AMIGA_NAMES = {
     "play2_0_explosion": ("Explosion", "intro player"), "play2_1_firemissile": ("Missile fire", "intro player"),
     "play2_2_introbeep": ("Intro beep", "intro player"),
 }
+# What each id is, from the calls in the original's programs (a census of every sound call in START, END, PLAYER,
+# MPS_LOGO and the flight gate; docs/sound-board.md). "Mac" says which Mac resource the same event plays.
+MEANING = {
+    2: "palette fade (front-end screens)", 3: "intro music (PLAYER.EXE)",
+    26: "button press / wait for a click", 27: "options screens: the highlight moves to a new item",
+    28: "map marks drawn one by one (briefing map; debrief route)",
+    29: "weapons page: a bay is chosen (Mac 323, bay door)", 30: "weapons page: a weapon is loaded into the bay (Mac 325, impact)",
+    31: "launch animation (Mac 324, hangar door)", 33: "pilot options: a typed character",
+    34: "weapons page: choice refused (bay already holds it)", 35: "cancel / dismiss",
+    36: "awards screen music", 37: "debrief picture music", 38: "report picture music", 39: "pilot-landed screen music",
+    21: "no caller found", 22: "no caller found", 32: "no caller found",
+    40: "driver command (release the sound buffer when a flight ends), not a sound",
+    23: "engine / jet", 24: "engine state, asked for every frame", 25: "engine state, asked for every frame",
+}
 GROUPS = [
     ("Music", {3, 36, 37, 38, 39}),
     ("Weapons, warnings and flight effects (Mac ids 304 to 320)", set(range(4, 21))),
     ("Engine", {23, 24, 25}),
-    ("Menus, briefing and front end", {26, 28, 31, 34, 35}),
+    ("Menus, briefing, weapons page and launch", {26, 27, 28, 29, 30, 31, 33, 34, 35}),
     ("Speech phrases", {41, 42, 43, 44, 45}),
 ]
 # the owner's rule: music from the Mac if there is a recording, else Roland, else AdLib; effects AdLib; speech the
@@ -136,6 +150,8 @@ def main():
         if not any(k in row["clips"] for k in ("adlib", "roland", "speaker")):
             silent.append(i)
             continue
+        if i in MEANING:
+            row["sub"] = (row["sub"] + "; " if row["sub"] else "") + MEANING[i]
         row["group"] = next((g for g, ids in GROUPS if i in ids), "Not identified yet")
         # the default source, in order of preference (the viewer can override per sound in the game)
         if i in {3, 36, 37, 38, 39}:
