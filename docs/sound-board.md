@@ -101,3 +101,23 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
 4. The page (the Mac recordings are ready for it).
 5. The owner's marks.
 6. Hybrid sound.
+
+## Findings (29 October 2026)
+
+- **`SPEECH.117` is the nine Mac words in one file.** 26,408 bytes of headerless unsigned 8-bit audio (centre
+  about 125) at 8,000 Hz: 3.30 s. Heard by the owner as "primary, target, hit, good, nice, landing, cleared, for
+  take off, to land" - the same nine words as the Mac recordings 1000-1008, in the same order. The word boundaries
+  were cut at the quiet gaps, each chosen as the gap nearest to where the Mac word lengths predict it (all eight
+  within 0.04 s): at 0.52, 0.88, 1.10, 1.34, 1.59, 1.95, 2.30 and 2.76 s. This also gives the subtitle text
+  (roadmap "Accessibility": subtitles for the speech).
+- **Where the MT-32 ROMs are:** `C:\Users\Tideg\f117-recomp-local\roms` (21 files).
+- **The render harness works (29 October 2026, AdLib).** `f117run --steps N --sound-sweep ID,ID,...
+  [--sound-span CLOCKS] [--sound-out PREFIX]` (`src/host/headless.c`): with VGAME running at the end of `--steps`,
+  each id is rendered on its own copy of the machine; the game's own request stub (the far jump slot at
+  load+`1E42:0313`) is made a bare return in the copy so the game's engine notes stay silent, the driver's entry
+  (the stub's jump target; `0505:0B98` for ASOUND) is called with the id as the game pushes it, and the copy runs on
+  for the span with the OPL, MIDI and speaker writes logged to `PREFIX<id>.opl|.midi|.spk`, plus `PREFIXsweep.tsv`.
+  First run on `boot_to_flight` (AdLib), `--steps 2450000000`: id 6 (gun) 70 OPL writes, id 4 (crash) 1,129;
+  rebased to the request and rendered with `audio_render`, both give real audio (the gun about 0.65 s; the crash
+  still sounding at the 2 s span, so long sounds need a longer one). Not yet: the id list, Roland and speaker
+  routes, music from START and END, an automatic span, and the page.
