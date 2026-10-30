@@ -121,6 +121,10 @@ outside the gameplay denominator. Adding it lowered P2 from 90.04% to 81.09% (co
 credit was lost. Every entry needs a supported status, purpose, evidence and a second reader. An entry marked
 `probable-dead`, `needs-route` or `unreached-held` records a review but does not close that code's work.
 
+**PLAYER palette-arm boundary (owner, 30 October 2026):** the grayscale arm `PLAYER 00D5F-00DAF` remains matching
+work as `needs-route`. The palette-loader-with-STI rule does not extend to this exact fragment. Do not split it into
+`docs/census-original.tsv`; its reviewed-reference row accounts for checklist bytes only, until a route reaches it.
+
 P2 is done only when all of the following hold:
 
 - Every validated route-executed byte is matched or covered by a second-read original-by-design

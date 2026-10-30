@@ -169,26 +169,30 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,636 matched routines registered through batch bw (bm2 and bt
+      **Done:** 1,638 matched routines registered through batch bx (bm2 and bt
       were fix-only gates; see the [batch table](#batch-table)). Gameplay score
-      98.80%: 159,309 matched bytes a route runs plus 2,631 reviewed
+      98.85%: 159,398 matched bytes a route runs plus 2,631 reviewed
       design-rule original bytes, of 163,907 executed bytes. Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
       by design. In the census, named code runs 160,739 of 165,548 creditable
       bytes (1,137 of 1,535 functions wholly, 293 in part).
 
-      **Accounted-for checklist:** 47,653 of 47,736 bytes (99.83%) outside the
+      **Accounted-for checklist:** 47,734 of 47,736 bytes (100.00%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
-      1,896 entries); 83 bytes remain. Blind-read rounds by independent readers
-      adopted 46,871 bytes through round 9; earlier reviewed entries account for
+      1,897 entries); 2 bytes remain. Blind-read rounds by independent readers
+      adopted 46,952 bytes through round 10; earlier reviewed entries account for
       the rest. Rounds 1-7 adopted 46,647 bytes: round 1, 444 units / 19,928
       bytes; round 2, 367 / 13,976; round 3, 101 / 4,476; round 3b (exact
       leading-range check), 19 / 1,344; round 4, 32 / 1,245; round 5, 88 /
       3,641; round 6, 22 / 1,875; round 7, 4 / 162. Round 8 read six units /
       40 bytes and adopted five / 37. Round 9 read eight units / 270 bytes and
-      adopted six / 187 after context and corrected-name follow-ups. The 83-byte
-      remainder is PLAYER `00D5F-00DAF` (owner-rule/census boundary decision)
-      and VGAME `04E92-04E93` (probable-dead; strict certificate still required).
+      adopted six / 187 after context and corrected-name follow-ups. Round 10
+      re-read Q0003 PLAYER `00D5F-00DAF`; the owner kept this exact
+      grayscale arm in matching scope, and a fresh reader accepted it as
+      `needs-route`. This supersedes the round-9 `stays-original` read for this
+      fragment without changing the census boundary or gameplay credit. The
+      remaining two bytes are VGAME `04E92-04E93` (probable-dead; strict
+      certificate still required).
       The R7 owner-rule boundary review adopted three 2-byte epilogues: one
       C-startup fragment inside the checklist and two palette-loader tails
       outside its denominator. No checklist round changed gameplay matching.
@@ -206,9 +210,11 @@ not the recompilation:
         `D:/f117-gate/kit/DECLINED.tsv`.
       - 31,590 matched bytes that only fixtures reach, to be sorted into
         routed or reviewed.
-      - The checklist has 270 bytes left. Round 8 adopted 37 of its 40 fresh
-        bytes; Q0001 DSWAP 00D65-00D67 needs more context. The other 267 bytes
-        are older protected or owner-review units (see [handoff](../handoff.md)).
+      - The checklist has 2 bytes left: VGAME `04E92-04E93`, held as
+        `probable-dead` until a current-image certificate closes alternate and
+        indirect entries. Rounds 8-10 adopted the reviewed DSWAP and PLAYER
+        fragments recorded above. Other protected owner-review items are listed
+        in the [handoff](../handoff.md).
       - Beyond the routes: reviewed static code no route runs (no new route or
         dead certificate yet: indirect/callback/vector and writer closure is
         incomplete, [static-code-review.md](static-code-review.md)); the
@@ -357,6 +363,7 @@ census bytes by byte credit unless noted; "addresses" is the registered total.
 | bu | 29 Oct | 1,618 | 603 named bytes | Twelve routines: ASOUND.117 `005E`, `0A17`; RSOUND.117 `0D07`; RSOUND.LOG `03A2`; MPS_LOGO `1046`, `103B`, `111D` (partial route coverage); ISOUND.LOG `060C`, `05D1`; START `8DD7`; END `4CBB`; PLAYER `026B:0306`. 260 fully covered instructions, 327 private mutations caught, 60 optimized-seed checks. Whole table at three seeds had 0 mismatches; all 63 routes and 62 fresh interpreter sessions agreed, route precheck and both presentation checks passed. Gate 1,852 s, 793 tests. P2 95.65% -> 95.82%; no claimed-but-uncredited bytes. Evidence `D:/f117-gate/p2-batch-bu-accept/`. |
 | bv | 29 Oct | 1,628 | 821 named bytes | Ten static routines: VGAME `0063`, `00DB`, `011C`, `0160`, `04D9`; SETUP `17B0`, `17D6`, `1870`, `18A2`, `1942`. 377 fully covered instructions, 344 private mutations caught, 50 optimized-seed checks. All 63 routes / 62 fresh interpreter sessions were identical; both instruction timing profiles had 0 mismatches. Whole table at three seeds had 0 mismatches; route-only entries ran and none exceeded event limits. 63 N=1 presentation results and boot N=4/9 were exact. Gate 2,332 s, 803 tests. The segment-agnostic route precheck had 44 comparisons, all SAME; none was treated as a route hit. Credit audit found 0 uncredited bytes. P2 95.82% -> 95.94%. Evidence `D:/f117-gate/p2-batch-bv-accept/`. |
 | bw | 30 Oct | 1,636 | 1,257 named bytes | Eight static SETUP routines 0562, 0582, 05A3, 05CE, 070A, 0811, 0851 and 0979. The fixed-seed whole-table check exposed a shared crt_printf BP/SS snapshot bug at START 9430 (original AX D768, matched AX 0000); it now uses the live guest registers for BP-relative accesses. 509 fully covered instructions, 281 private mutations caught, 40 optimized-seed checks. All 63 routes / 62 fresh interpreter sessions were identical; both timing profiles and the whole table at three seeds had 0 mismatches. Route-only entries ran and none exceeded event limits. All 63 N=1 presentation cases and boot N=4/9 were exact. 811 CTests; acceptance 1,912 s. The stale interpreter key required a sequential fresh-baseline audit, which passed all 63 routes. Credit audit found 0 uncredited bytes. P2 95.94% -> 96.13%. Evidence D:/f117-gate/p2-batch-bw-accept/. |
+| bx | 30 Oct | 1,638 | 89 named bytes | SETUP `10B3` bounded retrace-countdown prefix (13 instructions; handbacks at `10D3`, `10E6` and `1118`) and ISOUND.LOG `0545` timer interrupt handler (relocated DS immediate proved at CS `0800` and `169B`). 40 fully covered instructions, 51 private mutations caught and 10 optimized-seed checks. Both whole-table prechecks and the full gate had zero mismatches; all 63 routes / 62 fresh interpreter sessions were identical. All 63 N=1 presentations and boot N=4/9 were exact. 823 tests; fresh sequential baseline audit passed all 63 routes because interpreter/game inputs changed. Credit audit found zero uncredited bytes. Acceptance 2,074.5 s. P2 96.62% -> 96.66% after the round-10 checklist row. Evidence D:/f117-gate/p2-batch-bx-accept/. |
 
 Notes that still matter:
 

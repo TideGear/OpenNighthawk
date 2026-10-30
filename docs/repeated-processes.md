@@ -191,12 +191,13 @@ only: proof agents never gate. Scripts are in `D:/f117-gate/accept-kit/`.
    "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`;
    there is no `gh` on this machine).
 
-**Cost.** The latest batch with new routines, bw (30 Oct), took 1,912 s
-through acceptance: 1,392 s for the fresh gate, then N=1 and boot presentation
-checks plus the sequential baseline and credit audits. The stale interpreter
-key prevented the presentation from overlapping the gate. It covered 1,636
-matched routines, ran 811 CTests and added 1,257 named bytes. Evidence:
-`D:/f117-gate/p2-batch-bw-accept/` (`final-gate-verdict.json`). A batch's new
+**Cost.** The latest batch with new routines, bx (30 Oct), took 2,074.5 s
+through acceptance: 1,531.5 s for the fresh gate, then N=1 and boot presentation
+checks, the fresh sequential baseline audit and credit checks. Changed
+interpreter/game inputs required the sequential baseline; presentation started
+after the gate. It covered 1,638 matched routines, ran 823 tests and added 89
+named bytes. Evidence: `D:/f117-gate/p2-batch-bx-accept/`
+(`final-gate-verdict.json`). A batch's new
 optimized CTests take two to three seconds (batches at to ax: 1.82-2.80 s);
 the census refresh afterwards takes seconds.
 

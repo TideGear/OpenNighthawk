@@ -1,8 +1,10 @@
-# Phase 3 handoff (29 October 2026, end of session)
+# Phase 3 handoff (updated 30 October 2026)
 
-For the next conversation. Everything below is committed on the branch `p3-settings-menu`
-(worktree `D:\f117-wt\p3-settings-menu`, pushed to `origin`), unmerged. The Phase 2 gate has not been run on it.
-Scoreboard at the last commit: **P1 100.00%, P2 95.94%, P3 81.41%, All 94.06%** (`py tools/progress.py --title`).
+The Phase 3 work described here has been merged into `master`, including the
+remaster branch. The merged tree passed the full acceptance gate during P2
+batch `bx`; continue on `master`. The local P2 acceptance commit and this
+documentation update have not been pushed. Current scoreboard:
+**P1 100.00%, P2 96.66%, P3 85.42%, All 95.30%** (`py tools/progress.py --title`).
 
 ## State of the branch
 
@@ -112,26 +114,23 @@ bank, game loads banks unchanged), `ed01de1` (offline depth-buffer model sheets)
   frame (`F117_PRESENT_SHOTS`).
 - **Not done anywhere:** a renderer in the app, `--presentation remastered`, the settings entry. Remastered stays 0%.
 
-## Merge readiness (30 October 2026, at `a1b12b9`)
+## Integration and verification (30 October 2026)
 
-- `origin/master` is still `0c2b13a`: the branch is 32 commits ahead and 0 behind, so it fast-forwards.
-- The branch changes only `CMakeLists.txt`, `README.md`, `docs/`, `src/host/`, `tests/` and `tools/`; nothing under
-  `src/machine/`, `src/cpu/`, `src/matched/`, `src/recomp/`, `src/present/` or `recompiler/`.
-- `ctest` in the branch's own build: 44 of 44 pass (the host, presentation, override and boundary tests).
-- **Not run:** the full gate (`py tools/build_recomp.py --work ...`: routes, both engines, lockstep). Run it on the merged
-  result before pushing to `master`; `headless.c` (f117run) gained the `--sound-sweep` options, which the gate's runner uses.
-
-## Update, 30 October 2026, afternoon
-
-- **`master` moved.** The other session built on the merge: `origin/master` is `d90802e` (a merge of their
-  `wip/p2-setup-handoff-20261029` into master; P2 96.60%, All 95.28%, P3 still 85.42% with all credits kept). Their gates
-  (`34dd038` and later) ran on their branch, which did not contain the Phase 3 commits; the merge combined the two and nobody
-  has gated the result. Their changes are `src/matched/matched.c`, `tests/func_lockstep.c`, `CMakeLists.txt` (new tests),
-  docs and census tools; mine touch none of the first two, so a clash is unlikely, but the combination is unproven.
-- **Branch `p3-remaster`** (from `d90802e`, pushed, not merged): `src/present/remaster_project.c` (the game's projection,
-  exact: 14,718 of 14,718 coordinates of a real flight, plus the sub-pixel form) and `src/present/remaster_raster.c`
-  (depth-correct triangle fill: nearer wins in either draw order, near-plane clip, a wider frame moves nothing, sub-pixel
-  positions), each with a test (`presentation_remaster_project`, `presentation_remaster_raster`). Neither is wired into
-  the app. Both compile standalone with `cl`; they were not built through CMake.
-- **Next, needs a full build:** the `pose` observer callback (see "R3 plan revised"). It changes `src/matched/observe.c`
-  (and a header), so wait until the memory is free: compiling `matched.c` took about 12.6 GB for the other session.
+- `master` contains the P3 settings-menu work and the `p3-remaster` merge
+  (`bfa889e`), followed by the sound-board updates. The current remote tip at
+  this handoff is `84b25ba`; local master adds the accepted P2 batch `bx` and
+  synchronized documentation. No push was made.
+- The full merged-tree acceptance passed: 823 tests, 63 routes, 62 fresh
+  interpreter sessions, all 1,638 matched routines, both timing profiles,
+  three gate seeds, N=1 presentation on all routes, and boot N=4/9. Every
+  comparison was exact. Evidence is `D:/f117-gate/p2-batch-bx-accept/`.
+- The `remaster_project.c` projection and `remaster_raster.c` depth-correct
+  triangle fill remain standalone pieces and are not wired into the app; the
+  scored Remastered feature remains at 0%. R2's `*.WLD` decoding was checked;
+  the next investigation is target/slot fields, `*.3DX`, and per-frame objects.
+- Current P3 item scores are in [docs/roadmap.md](roadmap.md): settings 60%,
+  CRT 70%, controls 55%, replays 75%, accessibility 55%, two settings 50%,
+  sound device 80%, fan patches 100%, Remastered 0%, hybrid sound 0%.
+- The old merge-readiness notes above describe the pre-merge snapshot only;
+  they are superseded by this verified state. Hybrid sound still waits on the
+  owner's marks on the sound page.

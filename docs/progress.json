@@ -369,19 +369,19 @@
       "fixture_only": 31590,
       "remaining": 1878,
       "original_awaiting_review": 0,
-      "reviewed_entries": 1896,
+      "reviewed_entries": 1897,
       "checklist": {
         "bytes": 47736,
-        "with_reviewed_entry": 47653,
-        "without_reviewed_entry": 83,
+        "with_reviewed_entry": 47734,
+        "without_reviewed_entry": 2,
         "by_class": {
           "credited": {
             "with_reviewed_entry": 23654,
             "without_reviewed_entry": 0
           },
           "never_run": {
-            "with_reviewed_entry": 4184,
-            "without_reviewed_entry": 83
+            "with_reviewed_entry": 4265,
+            "without_reviewed_entry": 2
           },
           "slots": {
             "with_reviewed_entry": 5,
@@ -538,7 +538,7 @@
           "remaining": 156,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 3325,
+          "not_in_denominator_reviewed": 3406,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {

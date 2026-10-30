@@ -12,113 +12,18 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (30 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 96.60%, P3 85.42%, All 95.28% (`py tools/progress.py --title`). Refreshed with
-  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bw-accept/named-cover` and route cover
-  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 91.33%, checklist 47,653 / 47,736 = 99.83%,
-  1,896 reviewed-reference entries; 83 checklist bytes remain. 1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
-  ASOUND.LOG 169, RSOUND.LOG 83, MPS_LOGO 18, SETUP 89, START 66, END 63, RSOUND.117 5, DSWAP 2.
-- **Latest accepted runtime:** batch `bw` passed: eight static SETUP routines, 1,257 named bytes, 509 fully covered
-  instructions, 281 private mutations caught, 40 optimized-seed checks, 811 CTests, 63 routes / 62 fresh interpreter
-  sessions. All routes were identical; both timing profiles and the whole table at three seeds had zero mismatches;
-  route-only entries ran and none exceeded event limits. All 63 N=1 presentation cases and boot N=4/9 were exact.
-  The credit audit found 0 claimed-but-uncredited bytes. Acceptance took 1,912 s and used the sequential fresh-baseline
-  audit because the cached interpreter key was stale. Evidence: `D:/f117-gate/p2-batch-bw-accept/`.
-- **Classifier repair:** the owner-approved DSWAP floppy-path and presentation-observer graphics-slot rules are now
-  recognized by the census classifier and documented with focused positive tests. No current reviewed entry uses
-  either rule, so this repair changes no gameplay score. Round 9 adopted six checklist units / 187 bytes and raised
-  P2 to 96.60%; all 82 focused scoring tests pass. This checklist change adds no runtime code or gameplay credit.
-- **Acceptance scripts:** `audit_private.py`, `finalize.py` and `multi_proof.py` are copied forward from the previous
-  accepted batch. `new_batch.py` does not copy `multi_proof.py`; carry all three forward for the next runtime batch.
-- **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
-  run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
-- **Phase 3 landed on `master` (30 Oct, owner's instruction; `0c2b13a..4ecb64b`, 39 commits, a fast-forward pushed to the
-  remote only) without the full P2 gate.** Host-side only (`src/host/`, `tools/`, `tests/`, `docs/`, `CMakeLists.txt`, the
-  example ini; nothing in `src/machine`, `src/cpu`, `src/matched`, `src/recomp`, `src/present` or the recompiler), and
-  `ctest` passed 45 of 45 on the branch's own build; but `f117run` (`headless.c`) gained `--sound-sweep` options and the
-  gate was not run on it. The current local `master` now combines the P3 work with the accepted Phase 2 branch and still
-  needs the full gate before it is pushed; run that gate when private proof workers are idle and treat a failure in the
-  P3-only changes as P3's. What P3 has and lacks, per item: [docs/p3-handoff.md](docs/p3-handoff.md). Scores
-  in P3: menu 60%, CRT 70%, controls 55%, replays 75%, accessibility 55%, two settings 50%, sound device 80%, fan patches
-  100%, Remastered 0%, hybrid sound 0%.
-- **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
-  `4k60.bat` or `original-fixed.bat`.
-- **SETUP proofs:** The idle `18A2` watcher was stopped; its `p2-setup-bt-*` proof directories are preserved.
-  The latest eight-range SETUP tranche was accepted as batch `bw`.
-- CI is checked through GitHub Actions API (no `gh` on this machine):
-  `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
+- **Active branch:** `master`. The P3 remaster history is merged here. P2 batch `bx` passed the full gate and its code is committed as `a02efaf`; the local master is not pushed, per the instruction to continue here rather than push and stop. Use `master` for the next loop. The separate `p3-hybrid-sound` work remains excluded.
+- **Scoreboard:** P1 100.00%, P2 96.66%, P3 85.42%, All 95.30% (`py tools/progress.py --title`). Refreshed with census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bx-accept/named-cover`, route cover `D:/f117-gate/route-cover-20261020b`, and the round-10 PLAYER grayscale reference row. Gameplay is 98.85% (159,398 named bytes plus 2,631 reviewed design-rule bytes of 163,907). The named-code all-code measure is 191,053 / 209,082 bytes (91.38%). Reviewed references cover 47,734 / 47,736 outside-route bytes (1,897 rows; two VGAME bytes remain). There are 1,878 route-executed unmatched bytes: ASOUND.117 376, ISOUND.117 401, VGAME 324, PLAYER 156, ASOUND.LOG 169, RSOUND.LOG 83, START 66, SETUP 57, END 63, ISOUND.LOG 158, MPS_LOGO 18, DSWAP 2, RSOUND.117 5.
+- **Latest accepted batch:** `bx` adds SETUP `10B3` (bounded retrace-countdown prefix) and ISOUND.LOG `0545` (timer interrupt handler). It contributes 89 named bytes / 40 fully covered instructions; all 51 private mutants were caught and all ten optimized seeds had positive comparisons. The credit audit found zero claimed-but-uncredited bytes. Evidence is `D:/f117-gate/p2-batch-bx-accept/`.
+- **Gate:** `final-gate-verdict.json` passed 823 tests, 63 routes and 62 fresh interpreter sessions. All 1,638 registered routines were checked with zero mismatches; the two instruction timing profiles and three gate seeds also had zero mismatches. The changed interpreter/game inputs required the sequential fresh-baseline audit, which passed all 63 routes. All 63 N=1 presentation results and boot N=4/9 were exact. The full acceptance took 2,074.5 s (core gate 1,531.5 s). The verdict hashes for `matched.c`, `func_lockstep.c` and `CMakeLists.txt` match the accepted source. The independent prechecks are in `D:/f117-gate/p2-remaster-precheck-20261030/`.
+- **Saved owner docs:** `stash@{0}` (`preserve owner docs before P3 acceptance merge`) was applied; its round-10 PLAYER reference and decision are included in the documentation commit. The stash remains as a backup and has not been dropped.
+- **Still-local owner work:** `tools/sound_board_page.py` and `tools/sound_board_template.html` have unrelated edits, and `4k60.bat` / `original-fixed.bat` are untracked. Preserve them and keep them out of the P2 acceptance commit.
+- **P2 gaps and decisions:** ASOUND.117 `09F2` remains excluded pending the D2-fix interaction decision; ISOUND.LOG `0581` needs an exact invalid-range certificate that does not exclude real timer-handler bytes; six protected checklist units still need owner review at `D:/f117-gate/checklist-full-20261026/protected-owner-review-20261029.md`; PIT waits `0A5B`/`0B01` need split proofs or a reviewed decision. PLAYER `00D5F-00DAF` remains matching work as `needs-route` until a route selects the grayscale arm. Only VGAME `04E92-04E93` remains outside reviewed references; keep it `probable-dead` until a current-image certificate closes alternate and indirect entries. Round-10 evidence is under `D:/f117-gate/checklist-full-20261026/round10-q3-needsroute-20261030/`.
+- **Phase 3:** use [docs/p3-handoff.md](docs/p3-handoff.md) for remaining features. Remastered rendering and hybrid sound are still 0%; the settings, controls, replay and accessibility items remain at the percentages in the roadmap.
 
 ## Resume here
 
-Goal in force: reach 100% of Phase 2 safely. Batch `bw` passed its full acceptance gate. Rounds 7-9 checklist
-adoptions and the progress data are refreshed; round 9 changes reference documentation only, with no runtime change.
-
-The working branch is now `master`, combining the pushed P2 branch with the P3 mainline at `e7970b6`; the merge is not
-accepted or pushed until the required full gate passes. Batch `bw` was prepared from accepted HEAD
-`0c2b13a69ce0262567c89ad241031f5de0cb463a`; pushed commit `34dd038` records that acceptance. Checklist round 9
-was prepared from accepted public HEAD `1f877b3e30a0c79e9c07146474b044deb5a11d05`. The current scoreboard is
-P1 100.00%, P2 96.60%, P3 85.42%, All 95.28% before round 10's Q3 reference-row refresh.
-
-Eight static SETUP ranges (`0562`, `0582`, `05A3`, `05CE`, `070A`, `0811`, `0851`, `0979`) passed private proof,
-root audit, static route-neutrality replay and `finish_all.py`. Their preserved proof directories are
-`D:/f117-gate/p2-setup-reproof-{0562,0582,05A3,05CE,070A,0811,0851,0979}-20261029`. The changes are integrated in
-`CMakeLists.txt`, `src/matched/matched.c` and `tests/func_lockstep.c`; the custom `05CE` return-code probe was applied
-by hand. `build.cmd` succeeded and all eight focused CTests passed. Individual route prechecks found no captured
-routes reaching these reviewed static ranges, as expected.
-
-The prior whole-table checks disagreed: rotating seed `0x0c2b13a69ce0` passed, while fixed seed `0xA25E20261029`
-found one mismatch at `START.EXE:9430` (original AX `D768`, matched AX `0000`). The mismatch also reproduces on
-accepted base `0c2b13a69ce0262567c89ad241031f5de0cb463a`, so it was a latent parity defect. Its cause is now traced:
-the guest formatter overflow path changes live BP before the caller spills and reloads `[BP-4]`, while matched
-`crt_printf` used its entry BP. `src/matched/matched.c` now uses live BP and SS for those BP-relative accesses.
-The exact fixed-seed reproduction passes, as do the same-seed five-site shared-printf check and all 28 SETUP CTests;
-`build.cmd` succeeds. A route precheck covering all eight new entries found no captured route reaches them, consistent
-with the approved static-code policy. An independent code review mapped each changed access to the corresponding
-guest BP-relative operand and found no remaining cached entry BP/SS use in `crt_printf`; the trace does not record
-transient BP/SS, so the whole-table sweeps remain necessary. These results and current runs are under
-`D:/f117-gate/p2-setup-precheck-20261030-livebp/`.
-
-The three whole-table prechecks passed at fixed seed `0xA25E20261029`, rotating seed `0xe1afc9bb8d07` and third seed
-`0x0c2b13a69ce0`; each compared all 1,636 routines with zero mismatches. The full `bw` gate, sequential 63-route
-baseline audit, 63 N=1 presentation cases, boot N=4/9, optimized seeds and private credit audit all passed. Detailed
-logs are under `D:/f117-gate/p2-setup-precheck-20261030-livebp/` and `D:/f117-gate/p2-batch-bw-accept/`.
-
-The owner's untracked `4k60.bat` and `original-fixed.bat` remain untouched and must stay out of commits. The separate
-P3 route worker/worktree was left untouched. Use `py tools/progress.py --title` for future accepted commit titles.
-
-Other remaining work is still in scope: ASOUND.117 `09F2` is excluded pending the owner's D2-fix interaction decision;
-ISOUND.LOG `0581` needs an exact invalid-range data certificate without excluding real timer-handler bytes; six
-protected checklist units need the owner's review (`D:/f117-gate/checklist-full-20261026/protected-owner-review-20261029.md`);
-PIT waits `0A5B`/`0B01` need split lockstep pieces across their wake boundaries or a reviewed decision; ISOUND.LOG `0545`
-needs proof in pieces; SETUP `10B3` needs the proposed prefix/interior split. MPS_LOGO `111D` partial route coverage was
-accepted in `bu`; do not reopen it absent new evidence.
-
-Round 9 is reconciled against the live 270-byte scope at accepted HEAD `1f877b3` and the `bw` named cover.
-Eight fresh units cover the entire scope exactly. Six units / 187 bytes were adopted in nine reference rows after
-context and corrected-name follow-ups. They are all `needs-route`, so this adds checklist review but no gameplay or
-matching credit. Q0008 DSWAP `00D65-00D67` now has the corrected name `dswap_indirect_call_result_bit1_mask_00d65`;
-the latest reader confirmed its code use as `and ax, 2`, its secondary data read, and the need to reach and return from
-the indirect call at `00D61` before route credit. Round 10 re-read Q0003 PLAYER `00D5F-00DAF`; the fresh reader
-accepted it as `needs-route` after the owner decided this exact grayscale arm remains matching work. This supersedes
-the round-9 `stays-original` reading for this fragment; do not extend the palette-loader rule or split the census row.
-It adds 81 checklist bytes with no gameplay or matching credit. Only Q0006 VGAME `04E92-04E93` remains outside the
-reviewed references. Q0006's local predicate proof only rules out the ordinary path; the older strict
-certificate fails caller/reachability closure, so keep it `probable-dead` until a current-image certificate closes
-alternate and indirect entries. Root validation passed at the exact scope: 187 distinct bytes accepted, 83 held,
-no gaps or extras, gameplay unchanged. Private packets, reads, source identities and validators are under
-`D:/f117-gate/checklist-full-20261026/round9-bw-1f877b3-refresh/`, the adjacent `round9-followup-1f877b3-refresh/`
-and `round9-dswap-name-1f877b3-refresh/`; root validation is `current-validation-final-r9.json`.
-
-The route-independent credit pool and open rules are in
-`docs/roadmap.md` and `docs/progress.md`. Current largest
-executed-code gaps are ASOUND.117 PIT waits, ISOUND.117 `026C`, presentation-observer VGAME thunks, and ISOUND.LOG `0581`;
-regenerate the lead list from the refreshed census/named cover before choosing the next body. Static naming and reviewed
-reference entries also contribute materially to P2. Protect private game data and captures from the public repository.
-
-Phase 3 (re-release features) is separate work: it continues from [docs/p3-handoff.md](docs/p3-handoff.md). The next large
-piece is Remastered's renderer (about 10 of the 14.6 points left in P3; its plan, "R3 plan revised", is in
-[docs/remastered-design.md](docs/remastered-design.md)); hybrid sound waits on the owner's marks on the sound page.
-Heavy P3 runs (route captures, sound sweeps) compete with the gate for CPU: not while a gate or proof worker runs.
-
+The accepted runtime source and refreshed documentation are committed on `master`; do not rerun the full gate for documentation-only edits. Start the next P2 loop from the refreshed census and named coverage. No gate or proof worker is currently running. For every subsequent runtime batch, follow [docs/repeated-processes.md](docs/repeated-processes.md#phase-2-batch-acceptance); never start private proof agents during a full gate.
 ## Owner decisions in force
 
 Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this is what governs daily work.
