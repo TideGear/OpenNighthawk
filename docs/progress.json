@@ -154,9 +154,9 @@
       {
         "item": "Two settings, Presentation (Original / Enhanced / Remastered) and Fixes (Original / Recommended / Custom), expanded to explicit options; saves tagged with their fix set",
         "weight": 2.0,
-        "done": 0.0,
+        "done": 0.5,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction. Partly built, not yet credited: --presentation original|enhanced, --fixes original|recommended (also f117a.ini keys) and fix-set-tagged saves (commit ab4256b); Remastered, the custom mix and the settings menu are not. Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "30 Oct 2026, branch p3-settings-menu. Fixes: Original, Recommended and Custom all work: --fixes original|recommended|custom (a custom set starts from none and takes the --fix IDs, in either order in the file; checked with --list-fixes), and the settings menu's Choose fixes screen lists every fix with its description and a switch, then writes fixes = custom and the fix = list to f117a.ini (run in the real app with scripted keys: one fix switched off gave a 33-fix ini, and a fresh run with it has exactly 33 on). Presentation: Original and Enhanced (--presentation, in the menu). Saves tagged with their fix set (commit ab4256b). Not done: the Remastered presentation, which stays refused; the owner has not looked at the picker."
       },
       {
         "item": "Fan-community patches in the Recommended fix set, credited",

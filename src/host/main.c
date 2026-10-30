@@ -437,6 +437,49 @@ static void restart_game(char **orig_argv, const char *extra1, const char *extra
 #endif
 }
 
+/* The settings menu's fix picker: every fix with what it does and whether it is on in this run (fixes_list). */
+static void fill_fix_picker(settings_state *st)
+{
+    FILE *f = tmpfile();
+    if (!f) return;
+    fixes_list(f);
+    rewind(f);
+    char line[512];
+    for (int i = 0; fgets(line, sizeof line, f) && i < SETTINGS_MAX_FIXES; i++) {
+        char id[16] = "", state[8] = "";
+        int used = 0;
+        if (sscanf(line, "%15s %7s %n", id, state, &used) < 2) { i--; continue; }
+        char *what = line + used;
+        what[strcspn(what, "\r\n")] = 0;
+        settings_set_fix(st, i, id, what, !strcmp(state, "on"));
+    }
+    fclose(f);
+}
+
+/* The picker closed with a change: write fixes = custom and the list of fixes that are on to the INI file. */
+static void write_custom_fixes(settings_state *st, const char *path)
+{
+    char list[600] = "";
+    for (int i = 0; i < st->pick_count; i++)
+        if (st->pick_on[i]) {
+            const size_t used = strlen(list);
+            snprintf(list + used, sizeof list - used, "%s%s", used ? ", " : "", st->pick_id[i]);
+        }
+    char *text = config_read_file(path);
+    char *a = config_set(text ? text : "", "fixes", "custom");
+    char *b = a ? config_set(a, "fix", list[0] ? list : "none") : NULL;
+    FILE *f = b ? fopen(path, "wb") : NULL;
+    if (f) {
+        fputs(b, f);
+        fclose(f);
+        settings_mark_saved(st, "fixes", "custom");
+        snprintf(st->note, sizeof st->note, "Custom fixes saved; applies after restart");
+    } else snprintf(st->note, sizeof st->note, "Could not write f117a.ini");
+    free(text);
+    free(a);
+    free(b);
+}
+
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL;
@@ -501,11 +544,15 @@ int main(int argc, char **argv)
      * Recorded sessions keep their
      * recorded fix set (old logs without a fix header mean the original).
      * Explicit --fix options can still add fixes to a diagnostic replay. */
-    int replay_requested = 0;
-    for (int i = 1; i < argc; i++)
+    int replay_requested = 0, fixes_custom = 0;
+    for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--replay")) replay_requested = 1;
+        /* --fixes custom (a Custom fix set): start from none, so the --fix IDs given add to nothing, wherever they
+         * come relative to it in the file */
+        if (!strcmp(argv[i], "--fixes") && i + 1 < argc && !strcmp(argv[i + 1], "custom")) fixes_custom = 1;
+    }
     if (!replay_requested)
-        fixes_enable("all", 1);
+        fixes_enable("all", fixes_custom ? 0 : 1);
 
     controls_defaults(&g_pad);
     int from_cli = 0, cli_roland = 0;
@@ -633,7 +680,8 @@ int main(int argc, char **argv)
              * --fix ID adds one, or after --fix none picks single fixes (Custom) */
             if (!strcmp(v, "original")) fixes_enable("all", 0);
             else if (!strcmp(v, "recommended")) { fixes_enable("all", 0); fixes_enable("all", 1); }
-            else { fprintf(stderr, "--fixes takes original or recommended\n"); return 2; }
+            else if (!strcmp(v, "custom")) { /* the set the --fix options name, started from none above */ }
+            else { fprintf(stderr, "--fixes takes original, recommended or custom\n"); return 2; }
             i++;
         }
         else if (!strcmp(a, "--present-scale") && v) {
@@ -994,7 +1042,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1048,6 +1096,24 @@ int main(int argc, char **argv)
                 SDL_PushEvent(&e);
             }
         }
+        /* F117_FIXES_AUTOTEST=1 (diagnostic): open the menu, choose Choose fixes, switch the first fix, come back. */
+        {
+            static int fx_next;
+            int fx_rows = 0;
+            settings_defs(&fx_rows);
+            if (getenv("F117_FIXES_AUTOTEST") && ++fx_frame >= 5 && fx_next < fx_rows + 8) {
+                const int k = fx_next++;
+                SDL_Event e;
+                SDL_zero(e);
+                e.type = SDL_EVENT_KEY_DOWN;
+                if (k == 0) { e.key.scancode = SDL_SCANCODE_S; e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT); }
+                else if (k <= fx_rows + 4) e.key.scancode = SDL_SCANCODE_DOWN;       /* to the Choose fixes row */
+                else if (k == fx_rows + 5) e.key.scancode = SDL_SCANCODE_RETURN;     /* open the picker */
+                else if (k == fx_rows + 6) e.key.scancode = SDL_SCANCODE_RETURN;     /* switch the first fix */
+                else e.key.scancode = SDL_SCANCODE_ESCAPE;                           /* back to the menu */
+                SDL_PushEvent(&e);
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1072,6 +1138,7 @@ int main(int argc, char **argv)
                     free(text);
                     settings_open(&g_set);
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
+                    fill_fix_picker(&g_set);
                     if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
                     break;
                 }
@@ -1126,6 +1193,7 @@ int main(int argc, char **argv)
                                       sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER ? SKEY_ENTER :
                                       sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : -1;
                         if (k >= 0) settings_key_event(&g_set, (settings_key)k);
+                        if (g_set.picks_changed && !g_set.picker) { g_set.picks_changed = 0; write_custom_fixes(&g_set, settings_path); }
                         if (g_set.clear_remaps) {           /* Clear key remaps: forget them now and in the file */
                             g_set.clear_remaps = 0;
                             remap_clear();

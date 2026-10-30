@@ -9,7 +9,7 @@
 #include <string.h>
 
 static const char *const C_PRESENTATION[] = { "original", "enhanced", NULL };
-static const char *const C_FIXES[] = { "original", "recommended", NULL };
+static const char *const C_FIXES[] = { "original", "recommended", "custom", NULL };
 static const char *const C_SCALE[] = { "1", "2", "3", "4", "5", "6", NULL };
 static const char *const C_YESNO[] = { "no", "yes", NULL };
 static const char *const C_SPEAKER[] = { "realsound", "pwm", NULL };
@@ -92,6 +92,24 @@ void settings_open(settings_state *s)
     memcpy(s->at_open, s->value, sizeof s->at_open);
 }
 
+void settings_set_fix(settings_state *s, int index, const char *id, const char *what, int on)
+{
+    if (index < 0 || index >= SETTINGS_MAX_FIXES) return;
+    snprintf(s->pick_id[index], sizeof s->pick_id[index], "%s", id);
+    snprintf(s->pick_what[index], sizeof s->pick_what[index], "%s", what);
+    s->pick_on[index] = on ? 1 : 0;
+    if (index + 1 > s->pick_count) s->pick_count = index + 1;
+}
+
+void settings_mark_saved(settings_state *s, const char *key, const char *value)
+{
+    for (int i = 0; i < NDEFS; i++)
+        if (!strcmp(DEFS[i].key, key)) {
+            const int at = index_of(&DEFS[i], value);
+            if (at >= 0) s->value[i] = s->saved[i] = at;
+        }
+}
+
 void settings_set_live(settings_state *s, const char *key, int choice)
 {
     for (int i = 0; i < NDEFS; i++)
@@ -125,7 +143,17 @@ const char *settings_value(const settings_state *s, int i)
 int settings_key_event(settings_state *s, settings_key k)
 {
     if (!s->open) return 0;
-    const int rows = NDEFS + 5;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
+    if (s->picker) {                               /* the fix picker has the keys */
+        const int n = s->pick_count;
+        if (k == SKEY_UP) s->pick_cursor = (s->pick_cursor + n - 1) % n;
+        else if (k == SKEY_DOWN) s->pick_cursor = (s->pick_cursor + 1) % n;
+        else if (k == SKEY_LEFT || k == SKEY_RIGHT || k == SKEY_ENTER) { s->pick_on[s->pick_cursor] ^= 1; s->picks_changed = 1; }
+        else if (k == SKEY_ESC) s->picker = 0;
+        if (s->pick_cursor < s->pick_top) s->pick_top = s->pick_cursor;
+        if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
+        return 1;
+    }
+    const int rows = NDEFS + 6;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -150,6 +178,8 @@ int settings_key_event(settings_state *s, settings_key k)
             s->remap_stage = 1;
         } else if (s->cursor == NDEFS + 3) {       /* Clear key remaps: the host empties the list at once */
             s->clear_remaps = 1;
+        } else if (s->cursor == NDEFS + 4) {       /* Choose fixes: the picker, if the host listed the fixes */
+            if (s->pick_count) { s->picker = 1; s->pick_cursor = 0; s->pick_top = 0; s->picks_changed = 0; }
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
@@ -195,7 +225,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int total = NDEFS + 5, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int total = NDEFS + 6, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
     const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
@@ -203,6 +233,32 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             const int edge = x < x0 + 2 || x >= x0 + pw - 2 || y < y0 + 2 || y >= y0 + ph - 2;
             px[(size_t)y * (size_t)w + (size_t)x] = edge ? 0xFFA0A0A0u : 0xFF101820u;
         }
+    if (s->picker) {                               /* the fix picker: a scrolling checklist */
+        const int per = SETTINGS_VISIBLE - 2;
+        put_text(px, w, h, x0 + 16, y0 + 10, "CHOOSE FIXES (custom set)", 0xFFFFFFFFu);
+        for (int i = s->pick_top; i < s->pick_top + per && i < s->pick_count; i++) {
+            const int y = y0 + 34 + (i - s->pick_top) * 20, on = i == s->pick_cursor;
+            char line[64];
+            snprintf(line, sizeof line, "[%c] %-4s %.32s", s->pick_on[i] ? 'x' : ' ', s->pick_id[i], s->pick_what[i]);
+            if (on) put_text(px, w, h, x0 + 12, y, ">", 0xFFFFE060u);
+            put_text(px, w, h, x0 + 30, y, line, on ? 0xFFFFE060u : 0xFFD0D0D0u);
+        }
+        /* the highlighted fix in full, two lines */
+        const char *what = s->pick_what[s->pick_cursor];
+        for (int line = 0; line < 2 && *what; line++) {
+            char buf[48];
+            int len = (int)strlen(what) > 44 ? 44 : (int)strlen(what);
+            if (what[len]) while (len > 0 && what[len] != ' ') len--;
+            if (len <= 0) len = 44;
+            memcpy(buf, what, (size_t)len);
+            buf[len] = 0;
+            put_text(px, w, h, x0 + 16, y0 + ph - 54 + line * 16, buf, 0xFFA0A0A0u);
+            what += len;
+            while (*what == ' ') what++;
+        }
+        put_text(px, w, h, x0 + 16, y0 + ph - 22, "Enter: switch   Esc: back   (applies after restart)", 0xFF909090u);
+        return;
+    }
     put_text(px, w, h, x0 + 16, y0 + 10, "SETTINGS", 0xFFFFFFFFu);
     for (int i = s->top; i < s->top + shown && i < total; i++) {
         const int y = y0 + 34 + (i - s->top) * 20, on = i == s->cursor;
@@ -215,7 +271,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
-                  i == NDEFS + 3 ? "Clear key remaps" : "Close without saving", color);
+                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */

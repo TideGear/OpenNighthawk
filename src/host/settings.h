@@ -19,6 +19,8 @@ typedef struct {
     int live;                      /* applied at once; the others wait for a restart */
 } setting_def;
 
+#define SETTINGS_MAX_FIXES 48
+
 typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC } settings_key;
 
 typedef struct {
@@ -34,6 +36,12 @@ typedef struct {
     int remap_from;                /* the key chosen at stage 1 (an SDL scancode, set by the host) */
     int clear_remaps;              /* Clear key remaps was chosen: the host empties the list */
     char note[64];                 /* a line the host shows under the list (the last remap made) */
+    int picker;                    /* the fix picker is up (Choose fixes...) */
+    int pick_cursor, pick_top, pick_count;
+    int picks_changed;             /* the picker closed with a change: the host writes fixes = custom and the list */
+    unsigned char pick_on[SETTINGS_MAX_FIXES];
+    char pick_id[SETTINGS_MAX_FIXES][8];
+    char pick_what[SETTINGS_MAX_FIXES][160];
     int watch_now;                 /* "Watch last flight" was chosen: the host restarts into the newest recording */
     int want_restart;              /* Save was chosen with a restart-only setting changed */
 } settings_state;
@@ -47,6 +55,12 @@ void settings_load(settings_state *s, const char *ini_text);
 /* Open the menu. A live setting shows the program's actual state, not the file's: pass it with
  * settings_set_live after opening (key as in the table, index into its choices). */
 void settings_open(settings_state *s);
+
+/* The host lists the fixes for the picker (index 0 up, in the order shown): id, what it does, whether it is on. */
+void settings_set_fix(settings_state *s, int index, const char *id, const char *what, int on);
+
+/* The host wrote a setting itself: show and remember it as saved (a value from that setting's choices). */
+void settings_mark_saved(settings_state *s, const char *key, const char *value);
 void settings_set_live(settings_state *s, const char *key, int choice);
 
 /* One key. Returns 1 when the menu used it (so the game does not see it). */

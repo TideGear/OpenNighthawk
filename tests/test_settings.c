@@ -41,12 +41,12 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
-    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 4);   /* wraps to the last row */
-    CHECK(s.top == n + 5 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
-    for (int k = 0; k < n + 4; k++) settings_key_event(&s, SKEY_UP);
+    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 5);   /* wraps to the last row */
+    CHECK(s.top == n + 6 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    for (int k = 0; k < n + 5; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
-    CHECK(s.cursor == n + 4);
+    CHECK(s.cursor == n + 5);
     /* Remap a key and Clear key remaps ask the host and keep the menu open */
     s.cursor = n + 2;
     settings_key_event(&s, SKEY_ENTER);
@@ -56,6 +56,26 @@ int main(void)
     settings_key_event(&s, SKEY_ENTER);
     CHECK(s.open && s.clear_remaps && !s.remap_stage);
     s.clear_remaps = 0;
+    /* the fix picker: the host lists the fixes, Enter opens it, Enter switches one, Esc comes back with the change noted */
+    s.cursor = n + 4;
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(!s.picker);                                          /* no list from the host: nothing to pick */
+    settings_set_fix(&s, 0, "D4", "secret airstrips outside the Gulf", 1);
+    settings_set_fix(&s, 1, "Q12b", "projectile map markers are always 2x2", 0);
+    CHECK(s.pick_count == 2);
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(s.open && s.picker && s.pick_cursor == 0 && !s.picks_changed);
+    settings_key_event(&s, SKEY_ENTER);                        /* switch D4 off */
+    CHECK(!s.pick_on[0] && s.picks_changed);
+    settings_key_event(&s, SKEY_DOWN);
+    settings_key_event(&s, SKEY_RIGHT);                        /* switch Q12b on */
+    CHECK(s.pick_on[1] && s.pick_cursor == 1);
+    settings_key_event(&s, SKEY_DOWN);                         /* wraps within the list */
+    CHECK(s.pick_cursor == 0);
+    settings_key_event(&s, SKEY_ESC);
+    CHECK(s.open && !s.picker && s.picks_changed);
+    settings_mark_saved(&s, "fixes", "custom");
+    CHECK(!strcmp(settings_value(&s, fixes), "custom") && !settings_needs_restart(&s));
     s.cursor = n + 1;                                         /* Watch last flight: asks the host, drops edits */
     settings_key_event(&s, SKEY_ENTER);
     CHECK(!s.open && s.watch_now && !s.saved_now && !settings_needs_restart(&s));
