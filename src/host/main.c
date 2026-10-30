@@ -413,12 +413,12 @@ static int restart_wanted(SDL_Window *win)
 
 /* Start the game again with the arguments it was given (each quoted: the C runtime joins them into one
  * command line, so a path with a space would otherwise split). The caller then quits. */
-static void restart_game(char **orig_argv)
+static void restart_game(char **orig_argv, const char *extra1, const char *extra2)
 {
 #ifdef _WIN32
     int n = 0;
     while (orig_argv[n]) n++;
-    char **q = (char **)calloc((size_t)n + 1, sizeof *q);
+    char **q = (char **)calloc((size_t)n + 3, sizeof *q);
     if (!q) return;
     for (int i = 0; i < n; i++) {
         const size_t len = strlen(orig_argv[i]) + 3;
@@ -426,9 +426,12 @@ static void restart_game(char **orig_argv)
         if (!q[i]) return;
         snprintf(q[i], len, "\"%s\"", orig_argv[i]);
     }
+    int m = n;
+    if (extra1) { q[m] = (char *)malloc(strlen(extra1) + 3); if (q[m]) snprintf(q[m], strlen(extra1) + 3, "\"%s\"", extra1); m++; }
+    if (extra2) { q[m] = (char *)malloc(strlen(extra2) + 3); if (q[m]) snprintf(q[m], strlen(extra2) + 3, "\"%s\"", extra2); m++; }
     _spawnvp(_P_NOWAIT, orig_argv[0], (const char *const *)q);
 #else
-    (void)orig_argv;
+    (void)orig_argv; (void)extra1; (void)extra2;
 #endif
 }
 
@@ -441,7 +444,7 @@ int main(int argc, char **argv)
     unsigned sim_hz = 15;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
-    const char *coverage = NULL, *record = NULL, *replay = NULL;
+    const char *coverage = NULL, *record = NULL, *replay = NULL, *watch = NULL;
     uint64_t time_us = 0, exit_after = 0;
     audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
     int speaker_model = 0;                  /* speaker.h: realsound */
@@ -545,6 +548,7 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
+        else if (!strcmp(a, "--watch") && v) { watch = v; i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--opl") && v) {
@@ -710,6 +714,57 @@ int main(int argc, char **argv)
         const char *base = SDL_GetPrefPath("F117Recomp", "F-117A");
         snprintf(save_buf, sizeof save_buf, "%ssave", base ? base : "./");
         save = save_buf;
+    }
+    /* --watch latest|SESSION: replay a recorded flight (sessions/session-<time>/ beside the save folder) from
+     * a scratch copy of the save it started with, so the player's own saves are never touched. */
+    char watch_log[900], watch_save[900];
+    if (watch) {
+        char sessions[800], name[200] = "";
+        snprintf(sessions, sizeof sessions, "%s/../sessions", save);      /* where the recorder writes them */
+        if (strcmp(watch, "latest")) snprintf(name, sizeof name, "%s", watch);
+        else {
+            int n = 0;
+            char **names = SDL_GlobDirectory(sessions, "session-*", 0, &n);
+            for (int k = 0; names && k < n; k++) {
+                char probe[1000];
+                snprintf(probe, sizeof probe, "%s/%s/input.log", sessions, names[k]);
+                FILE *pf = fopen(probe, "rb");
+                if (pf && strcmp(names[k], name) > 0) snprintf(name, sizeof name, "%s", names[k]);
+                if (pf) fclose(pf);
+            }
+            SDL_free(names);
+        }
+        snprintf(watch_log, sizeof watch_log, "%s/%s/input.log", sessions, name);
+        FILE *lf = name[0] ? fopen(watch_log, "rb") : NULL;
+        if (!lf) {
+            fprintf(stderr, "No recorded flight to watch (%s)\n", name[0] ? watch_log : sessions);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "F-117A", "There is no recorded flight to watch yet.", NULL);
+        } else {
+            fclose(lf);
+            snprintf(watch_save, sizeof watch_save, "%s/../watch-save", save);
+            int n = 0;
+            char **old = SDL_GlobDirectory(watch_save, NULL, 0, &n);
+            for (int k = 0; old && k < n; k++) {
+                char p[1000];
+                snprintf(p, sizeof p, "%s/%s", watch_save, old[k]);
+                SDL_RemovePath(p);
+            }
+            SDL_free(old);
+            SDL_CreateDirectory(watch_save);
+            char start[1000];
+            snprintf(start, sizeof start, "%s/%s/save-start", sessions, name);
+            char **files = SDL_GlobDirectory(start, NULL, 0, &n);
+            for (int k = 0; files && k < n; k++) {
+                char from[1100], to[1000];
+                snprintf(from, sizeof from, "%s/%s", start, files[k]);
+                snprintf(to, sizeof to, "%s/%s", watch_save, files[k]);
+                SDL_CopyFile(from, to);
+            }
+            SDL_free(files);
+            replay = watch_log;
+            save = watch_save;
+            fprintf(stderr, "Watching %s\n", name);
+        }
     }
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
@@ -1005,6 +1060,7 @@ int main(int argc, char **argv)
                         }
                         if (!g_set.open) {
                             if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
+                            if (g_set.watch_now) { restart_game(orig_argv, "--watch", "latest"); running = 0; }
                             if (g_set.saved_now) {
                                 const int restart = g_set.want_restart;
                                 char *text = config_read_file(settings_path);
@@ -1014,7 +1070,7 @@ int main(int argc, char **argv)
                                 else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", "Could not write f117a.ini", win);
                                 free(text);
                                 free(out);
-                                if (f && restart && restart_wanted(win)) { restart_game(orig_argv); running = 0; }
+                                if (f && restart && restart_wanted(win)) { restart_game(orig_argv, NULL, NULL); running = 0; }
                             }
                         }
                     }

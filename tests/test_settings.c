@@ -41,7 +41,12 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
-    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 1);   /* wraps to the last row */
+    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 2);   /* wraps to the last row */
+    s.cursor = n + 1;                                         /* Watch last flight: asks the host, drops edits */
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(!s.open && s.watch_now && !s.saved_now && !settings_needs_restart(&s));
+    settings_load(&s, "presentation = enhanced\nfullscreen = true\nscale = 4\n");
+    settings_open(&s);
     s.cursor = pres;
     settings_key_event(&s, SKEY_ENTER);                       /* Enter steps forward */
     CHECK(!strcmp(settings_value(&s, pres), "original") && settings_needs_restart(&s));

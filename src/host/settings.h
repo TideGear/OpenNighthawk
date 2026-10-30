@@ -23,12 +23,13 @@ typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC }
 
 typedef struct {
     int open;
-    int cursor;                    /* a setting, or the "Save" / "Close" rows after them */
+    int cursor;                    /* a setting, or the "Save", "Watch last flight" and "Close" rows after them */
     int value[16];                 /* the choice index per setting */
     int saved[16];                 /* what the file holds */
     int at_open[16];               /* live settings as they were when the menu opened (the window's state) */
     int changed_live;              /* a live setting changed since the host last looked */
     int saved_now;                 /* the menu was closed with Save: the host writes the file */
+    int watch_now;                 /* "Watch last flight" was chosen: the host restarts into the newest recording */
     int want_restart;              /* Save was chosen with a restart-only setting changed */
 } settings_state;
 

@@ -71,6 +71,7 @@ void settings_open(settings_state *s)
     s->cursor = 0;
     s->want_restart = 0;
     s->saved_now = 0;
+    s->watch_now = 0;
     memcpy(s->at_open, s->value, sizeof s->at_open);
 }
 
@@ -107,7 +108,7 @@ const char *settings_value(const settings_state *s, int i)
 int settings_key_event(settings_state *s, settings_key k)
 {
     if (!s->open) return 0;
-    const int rows = NDEFS + 2;                    /* the settings, "Save", "Close" */
+    const int rows = NDEFS + 3;                    /* the settings, "Save", "Watch last flight", "Close" */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -125,6 +126,9 @@ int settings_key_event(settings_state *s, settings_key k)
             s->saved_now = 1;
             s->want_restart = settings_needs_restart(s);
             s->open = 0;
+        } else if (s->cursor == NDEFS + 1) {       /* Watch last flight: edits are dropped, as at Close */
+            revert(s);
+            s->watch_now = 1;
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
@@ -168,7 +172,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int pw = 400, ph = 24 + (NDEFS + 2) * 20 + 56;
+    const int pw = 400, ph = 24 + (NDEFS + 3) * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
         for (int x = x0; x < x0 + pw; x++) {
@@ -176,7 +180,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             px[(size_t)y * (size_t)w + (size_t)x] = edge ? 0xFFA0A0A0u : 0xFF101820u;
         }
     put_text(px, w, h, x0 + 16, y0 + 10, "SETTINGS", 0xFFFFFFFFu);
-    for (int i = 0; i < NDEFS + 2; i++) {
+    for (int i = 0; i < NDEFS + 3; i++) {
         const int y = y0 + 34 + i * 20, on = i == s->cursor;
         const uint32_t color = on ? 0xFFFFE060u : 0xFFD0D0D0u;
         if (on) put_text(px, w, h, x0 + 12, y, ">", color);
@@ -186,7 +190,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 30, y, DEFS[i].label, color);
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
-        } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : "Close without saving", color);
+        } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : "Close without saving", color);
     }
     const int fy = y0 + ph - 38;
     put_text(px, w, h, x0 + 16, fy, "Up/Down choose, Left/Right change,", 0xFF909090u);

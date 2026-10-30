@@ -203,9 +203,9 @@
       {
         "item": "Flight replays: save a sortie and watch it back (other cameras in Remastered)",
         "weight": 3.0,
-        "done": 0.0,
+        "done": 0.3,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Every live session was already recorded (sessions/session-<time>/ with input.log and the starting save). New: --watch latest or a session name replays one in the window from a scratch copy of its save (watch-save), leaving the player's saves untouched and recording nothing; the settings menu has a Watch last flight row that restarts into it. Run window-less on the 24 Oct recording: it picked the newest session, showed the recorded mission briefing, saves unchanged. Not done: choosing among flights (only the newest, or one named), pausing or seeking in a replay, other cameras (Remastered), the menu row's restart not run end to end, a flight recorded under a different fix set not examined."
       },
       {
         "item": "Accessibility: subtitles for the speech, full remapping, a colourblind-safe HUD option in Remastered",
