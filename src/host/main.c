@@ -42,6 +42,7 @@
 #include "crt.h"
 #include "controls.h"
 #include "remap.h"
+#include "keyref.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -993,7 +994,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1014,6 +1015,20 @@ int main(int argc, char **argv)
             e.key.mod = k == 0 ? (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) : 0;
             SDL_PushEvent(&e);
         }
+        /* F117_REF_AUTOTEST=1 (diagnostic): press Ctrl+Alt+K, then Right twice, so the key reference's third page is
+         * up; F117_MENU_SHOT=FILE.ppm saves its picture. */
+        {
+            static int ref_next;
+            if (getenv("F117_REF_AUTOTEST") && ++ref_frame >= 5 && ref_next < 3) {
+                const int k = ref_next++;
+                SDL_Event e;
+                SDL_zero(e);
+                e.type = SDL_EVENT_KEY_DOWN;
+                e.key.scancode = k == 0 ? SDL_SCANCODE_K : SDL_SCANCODE_RIGHT;
+                e.key.mod = k == 0 ? (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) : 0;
+                SDL_PushEvent(&e);
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1032,13 +1047,33 @@ int main(int argc, char **argv)
                     break;
                 }
                 if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_S &&
-                    live && settings_path[0] && !g_set.open && tex_menu) {
+                    live && settings_path[0] && !g_set.open && !ref_open && tex_menu) {
                     char *text = config_read_file(settings_path);          /* NULL if the file is not there yet */
                     settings_load(&g_set, text);
                     free(text);
                     settings_open(&g_set);
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
                     if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
+                    break;
+                }
+                if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_K &&
+                    live && !g_set.open && tex_menu) {              /* the on-screen key reference */
+                    ref_open = !ref_open;
+                    ref_page = 0;
+                    if (ref_open && !paused) { paused = 1; pause_began = SDL_GetTicksNS(); ref_paused = 1; }
+                    else if (!ref_open && ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
+                    break;
+                }
+                if (ref_open) {                                     /* the reference has the keyboard */
+                    if (down) {
+                        const SDL_Scancode sc = ev.key.scancode;
+                        if (sc == SDL_SCANCODE_RIGHT && ref_page + 1 < KEYREF_PAGES) ref_page++;
+                        else if (sc == SDL_SCANCODE_LEFT && ref_page > 0) ref_page--;
+                        else if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_RETURN) {
+                            ref_open = 0;
+                            if (ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
+                        }
+                    }
                     break;
                 }
                 if (g_set.open) {                           /* the menu has the keyboard */
@@ -1297,6 +1332,24 @@ int main(int argc, char **argv)
             const char *shot = getenv("F117_MENU_SHOT");
             if (shot) {
                 FILE *sf = fopen(shot, "wb");
+                if (sf) {
+                    fprintf(sf, "P6\n640 400\n255\n");
+                    for (int k = 0; k < 640 * 400; k++) {
+                        const uint8_t rgb[3] = { (uint8_t)(menu_pixels[k] >> 16), (uint8_t)(menu_pixels[k] >> 8), (uint8_t)menu_pixels[k] };
+                        fwrite(rgb, 1, 3, sf);
+                    }
+                    fclose(sf);
+                }
+            }
+            SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
+            SDL_RenderTexture(ren, tex_menu, NULL, &dst);
+        }
+        if (ref_open && tex_menu) {
+            memset(menu_pixels, 0, sizeof menu_pixels);
+            keyref_render(ref_page, menu_pixels, 640, 400);
+            const char *rshot = getenv("F117_MENU_SHOT");
+            if (rshot && getenv("F117_REF_AUTOTEST")) {
+                FILE *sf = fopen(rshot, "wb");
                 if (sf) {
                     fprintf(sf, "P6\n640 400\n255\n");
                     for (int k = 0; k < 640 * 400; k++) {
