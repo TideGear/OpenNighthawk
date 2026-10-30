@@ -870,7 +870,8 @@ Each is fixed; the named regressions keep the failing seed or case.
 - [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, nothing credited yet).
       *Built on branch `p3-settings-menu`, compiled and unit-tested but not yet run in the game, so not credited* (29 Oct): the
       settings menu (Ctrl+Alt+S; presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland
-      output; writes f117a.ini, restart offered; `src/host/settings.c`) and the CRT scanline filter (`--crt`, `crt = yes`;
+      output; writes f117a.ini, restart offered; `src/host/settings.c`), controller mapping (`pad-deadzone`, `pad-invert-x/y`, `pad-fire1/2`;
+      `src/host/controls.c`; defaults reproduce the old fixed mapping) and the CRT scanline filter (`--crt`, `crt = yes`;
       `src/host/crt.c`, applied to the displayed copy only). The menu does not yet cover controller or sound-driver answers.
       *Built so far* (24 Oct, `ab4256b`): `--presentation original|enhanced` and `--fixes original|recommended`, also as
       `presentation =` and `fixes =` in f117a.ini (`remastered` is refused as not built; later `--fix` options make a custom set);

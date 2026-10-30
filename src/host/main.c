@@ -40,6 +40,7 @@
 #include "midistream.h"
 #include "settings.h"
 #include "crt.h"
+#include "controls.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -92,6 +93,7 @@ static uint64_t g_presented;          /* VGA frames shown from the replay */
 static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
+static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
 static uint32_t *g_crt_buf; static size_t g_crt_cap;
 
 /* The picture as the display should get it: with --crt, the scanline filter applied to a copy. */
@@ -500,6 +502,7 @@ int main(int argc, char **argv)
     if (!replay_requested)
         fixes_enable("all", 1);
 
+    controls_defaults(&g_pad);
     int from_cli = 0, cli_roland = 0;
     enum { ROLAND_UNSET, ROLAND_MUNT, ROLAND_WINDOWS, ROLAND_OFF } roland = ROLAND_UNSET;
     const char *mt32_roms = NULL;
@@ -528,6 +531,19 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strncmp(a, "--pad-", 6) && v) {          /* controller mapping (controls.h) */
+            const long n = strtol(v, NULL, 10);
+            const int on = v[0] == 'y' || v[0] == 'Y' || v[0] == 't' || v[0] == 'T' || n == 1;
+            if (!strcmp(a, "--pad-deadzone")) { if (n < 0 || n > 50) { fprintf(stderr, "--pad-deadzone takes 0 to 50\n"); return 2; } g_pad.deadzone = (int)n; }
+            else if (!strcmp(a, "--pad-fire1") || !strcmp(a, "--pad-fire2")) {
+                if (n < 0 || n > 31) { fprintf(stderr, "%s takes a button number 0 to 31\n", a); return 2; }
+                if (!strcmp(a, "--pad-fire1")) g_pad.fire1 = (int)n; else g_pad.fire2 = (int)n;
+            }
+            else if (!strcmp(a, "--pad-invert-x")) g_pad.invert_x = on;
+            else if (!strcmp(a, "--pad-invert-y")) g_pad.invert_y = on;
+            else { fprintf(stderr, "unknown option %s\n", a); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
@@ -1015,22 +1031,23 @@ int main(int argc, char **argv)
         }
         if (!running) break;
 
-        /* The analog stick on the game port: axes 0..255, buttons. */
+        /* The analog stick on the game port: axes 0..255, buttons (controls.h: dead zone, inversion, fire buttons). */
         if ((pad || joy) && live) {
-            float ax = 0, ay = 0;
-            unsigned b = 0;
+            int rx, ry;
+            unsigned held = 0;
             if (pad) {
-                ax = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
-                ay = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
-                if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) b |= 1;
-                if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST)) b |= 2;
+                rx = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
+                ry = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
+                if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)g_pad.fire1)) held |= 1u << g_pad.fire1;
+                if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)g_pad.fire2)) held |= 1u << g_pad.fire2;
             } else {
-                ax = SDL_GetJoystickAxis(joy, 0) / 32767.0f;
-                ay = SDL_GetJoystickAxis(joy, 1) / 32767.0f;
-                if (SDL_GetJoystickButton(joy, 0)) b |= 1;
-                if (SDL_GetJoystickButton(joy, 1)) b |= 2;
+                rx = SDL_GetJoystickAxis(joy, 0);
+                ry = SDL_GetJoystickAxis(joy, 1);
+                if (SDL_GetJoystickButton(joy, g_pad.fire1)) held |= 1u << g_pad.fire1;
+                if (SDL_GetJoystickButton(joy, g_pad.fire2)) held |= 1u << g_pad.fire2;
             }
-            unsigned axis[4] = { (unsigned)((ax + 1.0f) * 127.5f), (unsigned)((ay + 1.0f) * 127.5f), 0x100, 0x100 };
+            const unsigned b = controls_buttons(&g_pad, held);
+            unsigned axis[4] = { controls_axis(&g_pad, rx, g_pad.invert_x), controls_axis(&g_pad, ry, g_pad.invert_y), 0x100, 0x100 };
             if (axis[0] != last_axis[0] || axis[1] != last_axis[1] || b != last_buttons) {
                 machine_joystick(&H.m, 1, axis, b);
                 last_axis[0] = axis[0]; last_axis[1] = axis[1]; last_buttons = b;
