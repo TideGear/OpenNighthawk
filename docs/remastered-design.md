@@ -117,3 +117,9 @@ has no effect on the running game.
   compares them with START's memory at the loader's DS offsets: Libya, North Cape and Persian Gulf match byte for
   byte; Vietnam matches except six bytes in one target record, which the game writes after loading. Still to do for
   R2: what the target and slot fields mean, the sector grid's use, the model bank `*.3DX`, and the per-frame object list.
+  What the pieces are, from the mission generator's names (`start_mission_generate`, `matched.c`) and the bug
+  tracker: the target records are the ground targets (count at `DS:D33C`; the third header word, `E084`, is the
+  regular-target count); the 36-byte slots are the air units (count `D890`, table `D3BE`); the third 128-byte
+  table (`D2A6`) is the object-class table. Independent check of the decoded layout: fix D4's world-file offsets
+  (`LB.WLD 0x53A`, `ME.WLD 0x597`, `NC.WLD 0x607`) fall in table 2 at bytes 84, 81 and 73, and `NC.WLD 0x1F1`
+  and `0x201` fall in target records 30 and 31, byte 9 (the class byte), exactly where this decode puts them.
