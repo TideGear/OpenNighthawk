@@ -102342,7 +102342,745 @@ static int player_return_after_timer_calibrate(machine_t *m)
     return 1;
 }
 
+/* VGAME 1452:0063, vgame_far_atan2(y, x), far, cdecl: the angle of the vector
+ * (x = [bp+8], y = [bp+6]) as a 16-bit binary angle, by a table.
+ * The octant is built in BL (0..14): +8 when x is negative, +4 when y is negative
+ * (each made positive by NEG), +2 when |x| < |y| (the two are then swapped, so CX is
+ * the larger and DX the smaller). The base angle of the octant comes from the word at
+ * DS:[octant + 91A8h]; its low byte is a direction flag, its high byte the base. When
+ * the smaller is nonzero and below the larger, the fraction smaller/larger (DX:0 / CX,
+ * 16 bits) gives a 13-bit byte offset (its high byte and the top four bits of its low
+ * byte, doubled) into the arc table of words that the code loads into ES (its relocated
+ * immediate at CS:0068, table offset 1000h); with equal magnitudes or a zero larger,
+ * the last entry (offset 1FFEh) is used. The table word is added to the base (in DX
+ * with DL cleared) or, when the flag byte is negative, subtracted from it. ES and BP are
+ * restored; the answer is in AX. Returns with RETF; the caller removes the two
+ * arguments. The 16-bit DIV cannot fault (DX is below CX when it runs). No callee. */
+static int vgame_far_atan2(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 11)) return 0;
+    c->icount += 11;
+    {
+        const uint16_t cs = c->seg[S_CS], ss = c->seg[S_SS];
+        x86_push_reg(c, R_BP);
+        c->r[R_BP] = c->r[R_SP];
+        cpu_push16(c, c->seg[S_ES]);
+        c->r[R_BX] = seg_read16(c, cs, 0x0068);
+        c->seg[S_ES] = c->r[R_BX];
+        c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+        c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_BX], 1);
+        c->r[R_CX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+        c->r[R_DX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+        c->r[R_CX] = (uint16_t)alu_op(c, 1, c->r[R_CX], c->r[R_CX], 1);
+    }
+    if (x86_cond(c, 9)) goto x_done;
+    XB(2, 0x007A);
+    set_r8(c, 3, (uint8_t)alu_op(c, 0, get_r8(c, 3), 0x08, 0));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+x_done:
+    XB(2, 0x007F);
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);
+    if (x86_cond(c, 9)) goto y_done;
+    XB(2, 0x0083);
+    set_r8(c, 3, (uint8_t)alu_op(c, 0, get_r8(c, 3), 0x04, 0));
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+y_done:
+    XB(2, 0x0088);
+    alu_op(c, 7, c->r[R_CX], c->r[R_DX], 1);
+    if (x86_cond(c, 3)) goto ordered;
+    XB(2, 0x008C);
+    set_r8(c, 3, (uint8_t)alu_op(c, 0, get_r8(c, 3), 0x02, 0));
+    {
+        const uint16_t t = c->r[R_DX];
+        c->r[R_DX] = c->r[R_CX];
+        c->r[R_CX] = t;
+    }
+ordered:
+    XB(2, 0x0091);
+    alu_op(c, 7, c->r[R_DX], c->r[R_CX], 1);
+    if (x86_cond(c, 3)) goto equal;
+    XB(2, 0x0095);
+    c->r[R_CX] = (uint16_t)alu_op(c, 1, c->r[R_CX], c->r[R_CX], 1);
+    if (x86_cond(c, 4)) goto equal;
+    XB(14, 0x0099);
+    if (!x86_div16(c, c->r[R_CX])) return 0;                      /* cannot happen: DX < CX */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x91A8));
+    set_r8(c, 3, get_r8(c, 4));
+    set_r8(c, 0, (uint8_t)x86_shift(c, 4, get_r8(c, 0), 1, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 2, c->r[R_BX], 1, 1);
+    set_r8(c, 0, (uint8_t)x86_shift(c, 4, get_r8(c, 0), 1, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 2, c->r[R_BX], 1, 1);
+    set_r8(c, 0, (uint8_t)x86_shift(c, 4, get_r8(c, 0), 1, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 2, c->r[R_BX], 1, 1);
+    set_r8(c, 0, (uint8_t)x86_shift(c, 4, get_r8(c, 0), 1, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 2, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    goto pick;
+equal:
+    XB(3, 0x00C6);
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x91A8));
+    c->r[R_BX] = 0x1FFE;
+pick:
+    XB(2, 0x00B6);
+    set_r8(c, 2, (uint8_t)alu_op(c, 1, get_r8(c, 2), get_r8(c, 2), 0));
+    if (x86_cond(c, 8)) goto minus;
+    XB(6, 0x00BA);
+    set_r8(c, 2, (uint8_t)alu_op(c, 5, get_r8(c, 2), get_r8(c, 2), 0));
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x1000)), 1);
+    goto leave;
+minus:
+    XB(6, 0x00CF);
+    set_r8(c, 2, (uint8_t)alu_op(c, 5, get_r8(c, 2), get_r8(c, 2), 0));
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x1000)), 1);
+leave:
+    c->r[R_AX] = c->r[R_DX];
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* VGAME 1452:00DB, vgame_far_sine_scale(value, angle), far, cdecl: value * sin(angle) as a
+ * fixed-point product. angle = [bp+8], value = [bp+6]. The quarter-wave table of words that
+ * the code loads into ES (its relocated immediate at CS:00E0) is indexed by angle bits 2-13
+ * (BX = angle >> 2, inverted when bit 14 of the angle is set, masked to 0FFEh); the entry is
+ * negated when the angle's high byte is negative. The signed product entry * value
+ * (IMUL: DX:AX) is shifted left once as a 32-bit quantity, so DX takes bits 14-29; DL's
+ * low bit is forced on when the product's byte 2 (the old AH) is negative. Answer in AX
+ * (= DX). ES and BP are restored. Returns with RETF; the caller removes the two arguments.
+ * No callee. */
+static int vgame_far_sine_scale(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 12)) return 0;
+    c->icount += 12;
+    {
+        const uint16_t cs = c->seg[S_CS], ss = c->seg[S_SS];
+        x86_push_reg(c, R_BP);
+        c->r[R_BP] = c->r[R_SP];
+        cpu_push16(c, c->seg[S_ES]);
+        c->r[R_BX] = seg_read16(c, cs, 0x00E0);
+        c->seg[S_ES] = c->r[R_BX];
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+        c->r[R_DX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+        alu_logic(c, (uint32_t)get_r8(c, 4) & 0x40, 0);
+    }
+    if (x86_cond(c, 4)) goto masked;
+    XB(1, 0x00F5);
+    c->r[R_BX] = (uint16_t)~c->r[R_BX];
+masked:
+    XB(4, 0x00F7);
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x0FFE, 1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    set_r8(c, 4, (uint8_t)alu_op(c, 1, get_r8(c, 4), get_r8(c, 4), 0));
+    if (x86_cond(c, 9)) goto positive;
+    XB(1, 0x0104);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+positive:
+    XB(7, 0x0106);
+    c->r[R_AX] = c->r[R_BX];
+    x86_imul16(c, c->r[R_DX]);
+    set_r8(c, 7, get_r8(c, 4));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    set_r8(c, 7, (uint8_t)alu_op(c, 1, get_r8(c, 7), get_r8(c, 7), 0));
+    if (x86_cond(c, 9)) goto done;
+    XB(1, 0x0114);
+    set_r8(c, 2, (uint8_t)alu_op(c, 1, get_r8(c, 2), 0x01, 0));
+done:
+    XB(4, 0x0117);
+    c->r[R_AX] = c->r[R_DX];
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* VGAME 1452:011C, vgame_far_cosine_scale(value, angle), far, cdecl: value * cos(angle) as a
+ * fixed-point product. angle = [bp+8], value = [bp+6]. The sibling of 1452:00DB with the angle
+ * turned a quarter wave: the quarter-wave table of words that the code loads into ES (its
+ * relocated immediate at CS:0121) is indexed by angle bits 2-13 (BX = angle >> 2, inverted
+ * when bit 14 of the angle is CLEAR, masked to 0FFEh); the entry is negated when the angle's
+ * high byte plus 40h is negative. The signed product entry * value (IMUL: DX:AX) is shifted
+ * left once as a 32-bit quantity, so DX takes bits 14-29; DL's low bit is forced on when the
+ * product's byte 2 (the old AH) is negative. Answer in AX (= DX). ES and BP are restored.
+ * Returns with RETF; the caller removes the two arguments. No callee. */
+static int vgame_far_cosine_scale(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 12)) return 0;
+    c->icount += 12;
+    {
+        const uint16_t cs = c->seg[S_CS], ss = c->seg[S_SS];
+        x86_push_reg(c, R_BP);
+        c->r[R_BP] = c->r[R_SP];
+        cpu_push16(c, c->seg[S_ES]);
+        c->r[R_BX] = seg_read16(c, cs, 0x0121);
+        c->seg[S_ES] = c->r[R_BX];
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+        c->r[R_DX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+        alu_logic(c, (uint32_t)get_r8(c, 4) & 0x40, 0);
+    }
+    if (!x86_cond(c, 4)) goto masked;
+    XB(1, 0x0136);
+    c->r[R_BX] = (uint16_t)~c->r[R_BX];
+masked:
+    XB(5, 0x0138);
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x0FFE, 1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    set_r8(c, 4, (uint8_t)alu_op(c, 0, get_r8(c, 4), 0x40, 0));
+    set_r8(c, 4, (uint8_t)alu_op(c, 1, get_r8(c, 4), get_r8(c, 4), 0));
+    if (x86_cond(c, 9)) goto positive;
+    XB(1, 0x0148);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+positive:
+    XB(7, 0x014A);
+    c->r[R_AX] = c->r[R_BX];
+    x86_imul16(c, c->r[R_DX]);
+    set_r8(c, 7, get_r8(c, 4));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    set_r8(c, 7, (uint8_t)alu_op(c, 1, get_r8(c, 7), get_r8(c, 7), 0));
+    if (x86_cond(c, 9)) goto done;
+    XB(1, 0x0158);
+    set_r8(c, 2, (uint8_t)alu_op(c, 1, get_r8(c, 2), 0x01, 0));
+done:
+    XB(4, 0x015B);
+    c->r[R_AX] = c->r[R_DX];
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* VGAME 1452:0160, vgame_far_odd_table(v), far, cdecl: an odd-symmetric table lookup.
+ * v = [bp+6]. The table of words that the code loads into ES (its relocated immediate at
+ * CS:0165; entries from offset 3202h) is indexed by |v| >> 4, masked to 7FEh (a byte offset,
+ * so the 1,024 words are v's magnitude in steps of 16 above bit 4); the entry takes the sign
+ * of v (negated for a negative v; zero tests positive). Answer in AX; ES and BP are restored.
+ * Returns with RETF; the caller removes its argument. No callee. */
+static int vgame_far_odd_table(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 9)) return 0;
+    c->icount += 9;
+    {
+        const uint16_t cs = c->seg[S_CS], ss = c->seg[S_SS];
+        x86_push_reg(c, R_BP);
+        c->r[R_BP] = c->r[R_SP];
+        cpu_push16(c, c->seg[S_ES]);
+        c->r[R_BX] = seg_read16(c, cs, 0x0165);
+        c->seg[S_ES] = c->r[R_BX];
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    }
+    if (x86_cond(c, 9)) goto magnitude;
+    XB(1, 0x0172);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+magnitude:
+    XB(8, 0x0174);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x07FE, 1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3202));
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 9)) goto answer;
+    XB(1, 0x0189);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+answer:
+    XB(4, 0x018B);
+    c->r[R_AX] = c->r[R_BX];
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef XB
+}
+
+/* VGAME 1452:04D9, vgame_matrix_attitude_angles(rec, out_a, out_b, out_c), far, cdecl.
+ * rec (bp+6) points at a record of words in DS; out_a (bp+8), out_b (bp+10)
+ * and out_c (bp+12) are DS offsets that each receive one word.
+ * The far routine 1452:0160 turns the word [rec+10] into p. With |p| <= 3E80h
+ * (CMP, JA) two calls of the far routine 1452:0063 follow, with the pushed
+ * arguments (-[rec+4] last, [rec+16] first) and (-[rec+6] last, [rec+8] first);
+ * out_a gets the first result, out_c the second, out_b gets p. A steeper p
+ * makes one call 0063([rec+12] last, [rec] first): out_a gets its result,
+ * out_c gets 0, out_b gets p. All callees return with a plain RETF, so this
+ * routine removes the arguments itself with ADD SP. */
+static int vgame_matrix_attitude_angles(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define XCALL(at_,ret_) do { SM4_NEED(1,(at_)); { const uint64_t until_=m->run_until; \
+    if (m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=guest_call_far(m,(at_),(ret_)); m->run_until=until_; if(!returned_) return 1; } } while (0)
+#define ADDSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define CDQ() (c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x04D9);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = bp_get(c, 6);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x0A));
+    cpu_push16(c, c->r[R_AX]);
+    XCALL(0x04E4, 0x04E9);
+    XB(7, 0x04E9);
+    ADDSP(2);
+    cpu_push16(c, c->r[R_AX]);
+    CDQ();
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_DX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);
+    alu_op(c, 7, c->r[R_AX], 0x3E80, 1);
+    if (x86_cond(c, 7)) goto steep;
+    XB(5, 0x04F7);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x10));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x04));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    XCALL(0x0501, 0x0506);
+    XB(7, 0x0506);
+    ADDSP(4);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x08));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x06));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    XCALL(0x0514, 0x0519);
+    XB(1, 0x0519);
+    ADDSP(4);
+    goto store;
+steep:
+    XB(4, 0x0530);
+    c->r[R_BX] = ds_get(c, c->r[R_DI]);
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x0C));
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    XCALL(0x0537, 0x053C);
+    XB(4, 0x053C);
+    ADDSP(4);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+store:
+    XB(11, 0x051C);
+    c->r[R_DI] = bp_get(c, 0x0C);
+    ds_put(c, c->r[R_DI], c->r[R_AX]);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = bp_get(c, 0x08);
+    ds_put(c, c->r[R_DI], c->r[R_AX]);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = bp_get(c, 0x0A);
+    ds_put(c, c->r[R_DI], c->r[R_AX]);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef CDQ
+#undef ADDSP
+#undef XCALL
+#undef XB
+}
+
+/* SETUP 17B0, the random number generator: a linear congruential step on the 32-bit seed kept in the
+ * data words [0EB4] (low) and [0EB6] (high). The seed is multiplied by 000343FDh with the 32-bit
+ * multiply at 1870 (it takes its four words pushed as: the seed's high word, its low word, then the
+ * multiplier's 0003 high and 43FD low; RET 8 cleans them), 00269EC3h is added to the product (ADD, then
+ * ADC on the high word) and the result becomes the new seed. The value returned in AX is the new seed's
+ * high word with its top bit cleared: a number from 0 to 7FFFh. DX is left holding the whole high word.
+ * The multiply is the only call, plain near code that pops its own eight bytes. */
+static int setup_random_next(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SEED_LO = 0x0EB4, SEED_HI = 0x0EB6, MULTIPLY = 0x1870 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 8)); } while (0)
+    if (!room(c, 6)) return 0;
+    /* The multiplier and the seed, as the multiply's arguments. */
+    XB(6, 0x17B0);
+    c->r[R_AX] = 0x43FD;
+    c->r[R_DX] = 0x0003;
+    x86_push_reg(c, R_DX);
+    x86_push_reg(c, R_AX);
+    cpu_push16(c, ds_get(c, SEED_HI));
+    cpu_push16(c, ds_get(c, SEED_LO));
+    XNEAR(0x17C0, MULTIPLY, 0x17C3);
+    /* Add the increment, store the seed, return the high word without its top bit. */
+    XB(7, 0x17C3);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x9EC3, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0x0026, 1);
+    ds_put(c, SEED_LO, c->r[R_AX]);
+    ds_put(c, SEED_HI, c->r[R_DX]);
+    c->r[R_AX] = c->r[R_DX];
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 4, get_r8(c, R_AH), 0x7F, 0));
+    near_ret(c);
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 17D6, the C runtime's signed 32-bit divide: DX:AX = a / b, truncated toward zero, for
+ * a = [bp+6]:[bp+4] (high:low) and b = [bp+0A]:[bp+8]. RET 8 pops the four argument words.
+ *
+ * Both operands are made positive in place (the argument slots are overwritten with the negated
+ * values; DI counts how many were negative). If the divisor's high word is then zero, two DIVs
+ * by its low word give the quotient: the high word of the dividend divided first, its remainder
+ * carried into the second DIV. Otherwise the divisor and the dividend are shifted right together
+ * (BX:CX and DX:AX) until the divisor's high word is gone, one DIV estimates the quotient (SI), and
+ * the estimate is corrected down by one when estimate * divisor is more than the dividend (it can
+ * be at most one too big). The quotient is negated when exactly one operand was negative.
+ * SI, DI and BX are saved and restored; a zero divisor takes the divide-error interrupt in the
+ * original, so the body declines it (nothing has run). The routine makes no calls. */
+static int setup_signed_divide(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t sp = c->r[R_SP];
+    if (!seg_read16(c, ss, (uint16_t)(sp + 6)) && !seg_read16(c, ss, (uint16_t)(sp + 8))) return 0;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 9)) return 0;
+    /* Frame; DI = 0; the dividend's high word tested for sign. */
+    XB(9, 0x17D6);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_BX);
+    c->r[R_DI] = (uint16_t)alu_op(c, 6, c->r[R_DI], c->r[R_DI], 1);
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (!x86_cond(c, 13)) {                                             /* jge 17F6 */
+        /* Negative dividend: negate it in place, count it. */
+        XB(7, 0x17E5);
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        c->r[R_DX] = bp_get(c, 4);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], 0, 1);
+        bp_put(c, 6, c->r[R_AX]);
+        bp_put(c, 4, c->r[R_DX]);
+    }
+    XB(3, 0x17F6);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (!x86_cond(c, 13)) {                                             /* jge 180E */
+        /* Negative divisor: the same. */
+        XB(7, 0x17FD);
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        c->r[R_DX] = bp_get(c, 8);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], 0, 1);
+        bp_put(c, 0x0A, c->r[R_AX]);
+        bp_put(c, 8, c->r[R_DX]);
+    }
+    XB(2, 0x180E);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 5)) goto wide;                                      /* jne 1827 */
+    /* A 16-bit divisor: two DIVs. */
+    XB(9, 0x1812);
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    if (!x86_div16(c, c->r[R_CX])) return 0;                            /* cannot happen: checked above */
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = bp_get(c, 4);
+    x86_div16(c, c->r[R_CX]);
+    c->r[R_DX] = c->r[R_BX];
+    goto sign;
+wide:
+    /* A wider divisor: shift both down until the divisor fits in 16 bits. */
+    XB(4, 0x1827);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_DX] = bp_get(c, 6);
+    c->r[R_AX] = bp_get(c, 4);
+    do {
+        XB(6, 0x1832);
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);       /* shr bx,1 */
+        c->r[R_CX] = (uint16_t)x86_shift(c, 3, c->r[R_CX], 1, 1);       /* rcr cx,1 */
+        c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);
+        c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);
+    } while (x86_cond(c, 5));                                           /* jne 1832 */
+    /* The estimate, and estimate * divisor compared with the dividend. */
+    XB(8, 0x183E);
+    if (!x86_div16(c, c->r[R_CX])) return 0;                            /* cannot happen after the shifts */
+    c->r[R_SI] = c->r[R_AX];
+    x86_mul16(c, bp_get(c, 0x0A));
+    {   const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_CX]; c->r[R_CX] = t_; }
+    c->r[R_AX] = bp_get(c, 8);
+    x86_mul16(c, c->r[R_SI]);
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_CX], 1);
+    if (!x86_cond(c, 2)) {                                              /* jb 185B */
+        XB(2, 0x184F);
+        (void)alu_op(c, 7, c->r[R_DX], bp_get(c, 6), 1);
+        if (!x86_cond(c, 7)) {                                          /* ja 185B */
+            XB(1, 0x1854);
+            if (x86_cond(c, 2)) goto settled;                           /* jb 185C */
+            XB(2, 0x1856);
+            (void)alu_op(c, 7, c->r[R_AX], bp_get(c, 4), 1);
+            if (x86_cond(c, 6)) goto settled;                           /* jbe 185C */
+        }
+    }
+    /* Too big by one. */
+    XB(1, 0x185B);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+settled:
+    XB(2, 0x185C);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    {   const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_SI]; c->r[R_SI] = t_; }
+sign:
+    /* Exactly one negative operand (DI == 1): negate the quotient. */
+    XB(2, 0x185F);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    if (!x86_cond(c, 5)) {                                              /* jne 1869 */
+        XB(3, 0x1862);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_op(c, 3, c->r[R_DX], 0, 1);
+    }
+    XB(5, 0x1869);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    {   const uint16_t n_ = 8; c->ip = cpu_pop16(c); c->r[R_SP] = (uint16_t)(c->r[R_SP] + n_); }
+    return 1;
+#undef XB
+}
+
+/* SETUP 1870, the C runtime's unsigned 32-bit multiply (the low 32 bits of the product): DX:AX = a * b
+ * for a = [bp+6]:[bp+4] (high:low) and b = [bp+0A]:[bp+8]. When both high words are zero it is one MUL of
+ * the two low words. Otherwise the cross terms are added into the high word:
+ * high = high(a_lo * b_lo) + a_lo * b_hi + b_lo * a_hi (each product's low word), low = low(a_lo * b_lo).
+ * (BX is saved and restored around the long form; CX and the flags are left as the last MUL leaves them.)
+ * Returns with RET 8, popping the four argument words. It makes no calls. */
+static int setup_ulong_multiply(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 7)) return 0;
+    /* Frame, the two high words OR-ed together (the flags the JNE reads), b low word. */
+    XB(7, 0x1870);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_CX] = bp_get(c, 0x0A);
+    c->r[R_CX] = (uint16_t)alu_op(c, 1, c->r[R_CX], c->r[R_AX], 1);
+    c->r[R_CX] = bp_get(c, 8);
+    if (!x86_cond(c, 5)) {                                              /* jne 1889 */
+        /* Both high words zero: the plain product of the low words. */
+        XB(4, 0x1880);
+        c->r[R_AX] = bp_get(c, 4);
+        x86_mul16(c, c->r[R_CX]);
+        c->r[R_BP] = cpu_pop16(c);
+        {   const uint16_t n_ = 8; c->ip = cpu_pop16(c); c->r[R_SP] = (uint16_t)(c->r[R_SP] + n_); }
+        return 1;
+    }
+    XB(12, 0x1889);
+    x86_push_reg(c, R_BX);
+    x86_mul16(c, c->r[R_CX]);                                           /* a_hi * b_lo */
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = bp_get(c, 4);
+    x86_mul16(c, bp_get(c, 0x0A));                                      /* a_lo * b_hi */
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], c->r[R_AX], 1);
+    c->r[R_AX] = bp_get(c, 4);
+    x86_mul16(c, c->r[R_CX]);                                           /* a_lo * b_lo */
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_BX], 1);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    {   const uint16_t n_ = 8; c->ip = cpu_pop16(c); c->r[R_SP] = (uint16_t)(c->r[R_SP] + n_); }
+    return 1;
+#undef XB
+}
+
+/* SETUP 18A2, the C runtime's signed 32-bit remainder: DX:AX = a % b for a = [bp+6]:[bp+4] (high:low)
+ * and b = [bp+0A]:[bp+8]; the result takes the sign of a. RET 8 pops the four argument words.
+ *
+ * Both operands are made positive in place (the argument slots are overwritten); DI is 1 when a was
+ * negative, and only a's sign is counted. If the divisor's high word is then zero, two DIVs by its low
+ * word leave the remainder in DX (the second DIV's), which is returned as a 16-bit value with a zero
+ * high word, negated when a was negative. Otherwise the divisor and dividend are shifted right together
+ * until the divisor fits in 16 bits, one DIV estimates the quotient, the estimate times the divisor is
+ * formed (and reduced by one divisor when it is more than the dividend), and the dividend subtracted:
+ * the result is (estimate * b) - a, i.e. minus the remainder, so it is negated when a was NOT negative.
+ * BX and DI are saved and restored; a zero divisor takes the divide-error interrupt in the original, so
+ * the body declines it (nothing has run). The routine makes no calls. */
+static int setup_signed_remainder(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t sp = c->r[R_SP];
+    if (!seg_read16(c, ss, (uint16_t)(sp + 6)) && !seg_read16(c, ss, (uint16_t)(sp + 8))) return 0;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 8)) return 0;
+    XB(8, 0x18A2);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_BX);
+    x86_push_reg(c, R_DI);
+    c->r[R_DI] = (uint16_t)alu_op(c, 6, c->r[R_DI], c->r[R_DI], 1);
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (!x86_cond(c, 13)) {                                             /* jge 18C1 */
+        XB(7, 0x18B0);
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        c->r[R_DX] = bp_get(c, 4);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], 0, 1);
+        bp_put(c, 6, c->r[R_AX]);
+        bp_put(c, 4, c->r[R_DX]);
+    }
+    XB(3, 0x18C1);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (!x86_cond(c, 13)) {                                             /* jge 18D8 */
+        /* Negative divisor: negated in place (not counted). */
+        XB(6, 0x18C8);
+        c->r[R_DX] = bp_get(c, 8);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], 0, 1);
+        bp_put(c, 0x0A, c->r[R_AX]);
+        bp_put(c, 8, c->r[R_DX]);
+    }
+    XB(2, 0x18D8);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 5)) goto wide;                                      /* jne 18F4 */
+    /* A 16-bit divisor: two DIVs, the second's remainder. */
+    XB(10, 0x18DC);
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    if (!x86_div16(c, c->r[R_CX])) return 0;                            /* cannot happen: checked above */
+    c->r[R_AX] = bp_get(c, 4);
+    x86_div16(c, c->r[R_CX]);
+    c->r[R_AX] = c->r[R_DX];
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    if (x86_cond(c, 9)) goto negate;                                    /* jns 1935 */
+    XB(1, 0x18F2);                                                      /* jmp 193C */
+    goto done;
+wide:
+    XB(4, 0x18F4);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_DX] = bp_get(c, 6);
+    c->r[R_AX] = bp_get(c, 4);
+    do {
+        XB(6, 0x18FF);
+        c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+        c->r[R_CX] = (uint16_t)x86_shift(c, 3, c->r[R_CX], 1, 1);
+        c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);
+        c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_BX], 1);
+    } while (x86_cond(c, 5));                                           /* jne 18FF */
+    XB(7, 0x190B);
+    if (!x86_div16(c, c->r[R_CX])) return 0;                            /* cannot happen after the shifts */
+    c->r[R_CX] = c->r[R_AX];
+    x86_mul16(c, bp_get(c, 0x0A));
+    {   const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_CX]; c->r[R_CX] = t_; }
+    x86_mul16(c, bp_get(c, 8));
+    c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], c->r[R_CX], 1);
+    if (!x86_cond(c, 2)) {                                              /* jb 1926 */
+        XB(2, 0x191A);
+        (void)alu_op(c, 7, c->r[R_DX], bp_get(c, 6), 1);
+        if (!x86_cond(c, 7)) {                                          /* ja 1926 */
+            XB(1, 0x191F);
+            if (x86_cond(c, 2)) goto reduced;                           /* jb 192C */
+            XB(2, 0x1921);
+            (void)alu_op(c, 7, c->r[R_AX], bp_get(c, 4), 1);
+            if (x86_cond(c, 6)) goto reduced;                           /* jbe 192C */
+        }
+    }
+    /* The product is more than the dividend: take one divisor off. */
+    XB(2, 0x1926);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 8), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 3, c->r[R_DX], bp_get(c, 0x0A), 1);
+reduced:
+    XB(4, 0x192C);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 4), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 3, c->r[R_DX], bp_get(c, 6), 1);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    if (!x86_cond(c, 9)) {                                              /* jns 193C */
+negate:
+        XB(3, 0x1935);
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_op(c, 3, c->r[R_DX], 0, 1);
+    }
+done:
+    XB(4, 0x193C);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    {   const uint16_t n_ = 8; c->ip = cpu_pop16(c); c->r[R_SP] = (uint16_t)(c->r[R_SP] + n_); }
+    return 1;
+#undef XB
+}
+
+/* SETUP 1942, arithmetic shift right of the 32-bit value DX:AX by CL bits (0 to 255): CH is cleared,
+ * a zero count returns at once, otherwise SAR DX,1 / RCR AX,1 repeat CL times (the carry runs from the
+ * high word's low bit into the low word's top bit). CX ends at zero when a shift ran. The flags are
+ * those of the last RCR. Plain RET; no arguments, no calls. */
+static int setup_shift_right_long(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x1942);
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 6, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    if (c->r[R_CX]) {                                                   /* jcxz 194C */
+        do {
+            XB(3, 0x1946);
+            c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 1, 1);   /* sar dx,1 */
+            c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);   /* rcr ax,1 */
+            c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                    /* loop: no flags */
+        } while (c->r[R_CX]);
+    }
+    XB(1, 0x194C);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1942, setup_shift_right_long, "arithmetic shift right of DX:AX by CL bits", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x18A2, setup_signed_remainder, "C runtime signed 32-bit remainder (sign of the dividend), RET 8", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1870, setup_ulong_multiply, "C runtime unsigned 32-bit multiply (low 32 bits of the product), RET 8", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x17D6, setup_signed_divide, "C runtime signed 32-bit divide, truncating, RET 8", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x17B0, setup_random_next, "random number generator: advance the 32-bit seed by seed*000343FD+00269EC3 and return its high word without the top bit", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x04D9, vgame_matrix_attitude_angles, "attitude angles from a rotation matrix row", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0160, vgame_far_odd_table, "far odd-symmetric table lookup on a magnitude", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x011C, vgame_far_cosine_scale, "far value * cos(angle) by quarter-wave table", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x00DB, vgame_far_sine_scale, "far value * sin(angle) by quarter-wave table", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0063, vgame_far_atan2, "far atan2: angle of a vector by octant and arc table", 2 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0306, player_return_after_timer_calibrate, "near return that ends the clock-hook timer calibration at 026B:0272 (after its POPF)", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4CBB, end_return_after_timer_reload_sti, "near return after the END timer-rate reload enables interrupts (STI at 4CBA), the tail of the routine at 4C88", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x8DD7, start_return_after_timer_reload_sti, "near return after the START timer-rate reload enables interrupts (STI at 8DD6), the tail of the routine at 8DA4", 1 },

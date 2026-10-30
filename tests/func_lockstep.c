@@ -963,6 +963,16 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "SETUP.EXE", 0x1942, 0x1942, 0x000B },
+    { "SETUP.EXE", 0x18A2, 0x18A2, 0x00A0 },
+    { "SETUP.EXE", 0x1870, 0x1870, 0x0032 },
+    { "SETUP.EXE", 0x17D6, 0x17D6, 0x009A },
+    { "SETUP.EXE", 0x17B0, 0x17B0, 0x0026 },
+    { "VGAME.EXE", 0x04D9, 0x04D9, 0x006B },
+    { "VGAME.EXE", 0x0160, 0x0160, 0x0030 },
+    { "VGAME.EXE", 0x011C, 0x011C, 0x0044 },
+    { "VGAME.EXE", 0x00DB, 0x00DB, 0x0041 },
+    { "VGAME.EXE", 0x0063, 0x0063, 0x0078 },
     { "PLAYER.EXE", 0x0306, 0x0306, 0x0001 },
     { "END.EXE", 0x4CBB, 0x4CBB, 0x0001 },
     { "START.EXE", 0x8DD7, 0x8DD7, 0x0001 },
@@ -2643,6 +2653,16 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x8DD7, 0x0001, 1, 1, "near return after the START timer-rate reload enables interrupts (STI at 8DD6), the tail of the routine at 8DA4" },
     { "END.EXE", 0x0000, 0x4CBB, 0x0001, 1, 1, "near return after the END timer-rate reload enables interrupts (STI at 4CBA), the tail of the routine at 4C88" },
     { "PLAYER.EXE", 0x026B, 0x0306, 0x0001, 1, 1, "near return that ends the clock-hook timer calibration at 026B:0272 (after its POPF)" },
+    { "VGAME.EXE", 0x1452, 0x0063, 0x0078, 56, 56, "far atan2: angle of a vector by octant and arc table" },
+    { "VGAME.EXE", 0x1452, 0x00DB, 0x0041, 30, 30, "far value * sin(angle) by quarter-wave table" },
+    { "VGAME.EXE", 0x1452, 0x011C, 0x0044, 31, 31, "far value * cos(angle) by quarter-wave table" },
+    { "VGAME.EXE", 0x1452, 0x0160, 0x0030, 23, 23, "far odd-symmetric table lookup on a magnitude" },
+    { "VGAME.EXE", 0x1452, 0x04D9, 0x006B, 49, 49, "attitude angles from a rotation matrix row" },
+    { "SETUP.EXE", 0x0000, 0x17B0, 0x0026, 14, 14, "random number generator: advance the 32-bit seed by seed*000343FD+00269EC3 and return its high word without the top bit" },
+    { "SETUP.EXE", 0x0000, 0x17D6, 0x009A, 73, 73, "C runtime signed 32-bit divide, truncating, RET 8" },
+    { "SETUP.EXE", 0x0000, 0x1870, 0x0032, 23, 23, "C runtime unsigned 32-bit multiply (low 32 bits of the product), RET 8" },
+    { "SETUP.EXE", 0x0000, 0x18A2, 0x00A0, 72, 72, "C runtime signed 32-bit remainder (sign of the dividend), RET 8" },
+    { "SETUP.EXE", 0x0000, 0x1942, 0x000B, 6, 6, "arithmetic shift right of DX:AX by CL bits" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -53643,6 +53663,354 @@ static const uint8_t stub1_[] = {0x9C,0x50,0x53,0x51,0x52,0x55,0x89,0xE5,0x2E,0x
                 seg[S_SS]=(s&1)?cs:0x6000;
                 r[R_SP]=stack_offsets[(unsigned)s%7];
                 g_decline_floor=1;   /* the only block is one instruction: a stop with 0 clocks of room must decline, with 1 must run */
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x1452 && o->ip==0x0063) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+
+#define XSPECIAL(dst_) do { static const uint16_t sp_[16]={0,1,0xFFFF,0x7FFF,0x8000,0x8001,2,0xFFFE,0x4000,0xC000,0x3FFF,0x00FF,0x0100,0xFF00,0x0010,0x7FFE}; dst_=sp_[XRAND()%16]; } while(0)
+#define XVAL(dst_) do { unsigned q_=XRAND()%8; if(q_<2){XSPECIAL(dst_);}else if(q_<4)dst_=(uint16_t)(XRAND()%0x40);else if(q_<5)dst_=(uint16_t)(-(int)(XRAND()%0x40));else dst_=(uint16_t)XRAND(); } while(0)
+
+                uint16_t arg[4];
+                arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                {
+                    const unsigned k_=XRAND()%10;
+                    uint16_t y_,x_;XVAL(y_);XVAL(x_);
+                    if(k_==0)x_=y_;                                  /* equal magnitudes, same sign */
+                    else if(k_==1)x_=(uint16_t)-(int16_t)y_;         /* equal magnitudes, opposite sign */
+                    else if(k_==2)y_=0;
+                    else if(k_==3)x_=0;
+                    else if(k_==4){ x_=(uint16_t)(1+XRAND()%0x7FFF); y_=(uint16_t)(XRAND()%x_); if(XRAND()&1)x_=(uint16_t)-(int16_t)x_; if(XRAND()&1)y_=(uint16_t)-(int16_t)y_; if(XRAND()&1){uint16_t t_=x_;x_=y_;y_=t_;} }
+                    arg[0]=y_;arg[1]=x_;
+                }
+                for(unsigned t_=0;t_<8;t_++)XW16(dg,0x91A8+2*t_,(XRAND()%4==0)?(uint16_t)(XRAND()&0xFF00):(uint16_t)XRAND());
+
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                g_decline_floor=11;   /* private harness hunk (already in tests-base): the first block is 11 instructions, so a mid-run stop with fewer clocks of room must decline and with that many must run */
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
+#undef XVAL
+#undef XSPECIAL
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x1452 && o->ip==0x00DB) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+
+#define XSPECIAL(dst_) do { static const uint16_t sp_[16]={0,1,0xFFFF,0x7FFF,0x8000,0x8001,2,0xFFFE,0x4000,0xC000,0x3FFF,0x00FF,0x0100,0xFF00,0x0010,0x7FFE}; dst_=sp_[XRAND()%16]; } while(0)
+#define XVAL(dst_) do { unsigned q_=XRAND()%8; if(q_<2){XSPECIAL(dst_);}else if(q_<4)dst_=(uint16_t)(XRAND()%0x40);else if(q_<5)dst_=(uint16_t)(-(int)(XRAND()%0x40));else dst_=(uint16_t)XRAND(); } while(0)
+
+                uint16_t arg[4];
+                arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                XVAL(arg[0]);                                      /* value */
+                { uint16_t a_; XVAL(a_); if(XRAND()%3==0)a_=(uint16_t)((XRAND()&0xFFFF)|0x4000); if(XRAND()%5==0)a_&=(uint16_t)~0x4000; arg[1]=a_; }
+
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                g_decline_floor=12;   /* private harness hunk (already in tests-base): the first block is 12 instructions, so a mid-run stop with fewer clocks of room must decline and with that many must run */
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
+#undef XVAL
+#undef XSPECIAL
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x1452 && o->ip==0x011C) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+
+#define XSPECIAL(dst_) do { static const uint16_t sp_[16]={0,1,0xFFFF,0x7FFF,0x8000,0x8001,2,0xFFFE,0x4000,0xC000,0x3FFF,0x00FF,0x0100,0xFF00,0x0010,0x7FFE}; dst_=sp_[XRAND()%16]; } while(0)
+#define XVAL(dst_) do { unsigned q_=XRAND()%8; if(q_<2){XSPECIAL(dst_);}else if(q_<4)dst_=(uint16_t)(XRAND()%0x40);else if(q_<5)dst_=(uint16_t)(-(int)(XRAND()%0x40));else dst_=(uint16_t)XRAND(); } while(0)
+
+                uint16_t arg[4];
+                arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                XVAL(arg[0]);                                      /* value */
+                { uint16_t a_; XVAL(a_); if(XRAND()%3==0)a_=(uint16_t)((XRAND()&0xFFFF)|0x4000); if(XRAND()%5==0)a_&=(uint16_t)~0x4000; arg[1]=a_; }
+
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                g_decline_floor=12;   /* private harness hunk (already in tests-base): the first block is 12 instructions, so a mid-run stop with fewer clocks of room must decline and with that many must run */
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
+#undef XVAL
+#undef XSPECIAL
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x1452 && o->ip==0x0160) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                seg[S_ES]=(uint16_t)XRAND();
+
+#define XSPECIAL(dst_) do { static const uint16_t sp_[16]={0,1,0xFFFF,0x7FFF,0x8000,0x8001,2,0xFFFE,0x4000,0xC000,0x3FFF,0x00FF,0x0100,0xFF00,0x0010,0x7FFE}; dst_=sp_[XRAND()%16]; } while(0)
+#define XVAL(dst_) do { unsigned q_=XRAND()%8; if(q_<2){XSPECIAL(dst_);}else if(q_<4)dst_=(uint16_t)(XRAND()%0x40);else if(q_<5)dst_=(uint16_t)(-(int)(XRAND()%0x40));else dst_=(uint16_t)XRAND(); } while(0)
+
+                uint16_t arg[4];
+                arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                XVAL(arg[0]);
+
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                g_decline_floor=9;   /* private harness hunk (already in tests-base): the first block is 9 instructions, so a mid-run stop with fewer clocks of room must decline and with that many must run */
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
+#undef XVAL
+#undef XSPECIAL
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x1452 && o->ip==0x04D9) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                static const uint16_t sp_[12]={0,1,0xFFFF,0x8000,0x7FFF,0x4000,0xC000,0x3E80,0x3E81,0xC180,0xC17F,2};
+#define XWORD() ((XRAND()%4==0)?sp_[XRAND()%12]:(XRAND()%6==0)?(uint16_t)(XRAND()%64)-32:(uint16_t)XRAND())
+#define SSTUB(sg_,off_,fold_,cnt_,list_,nargs_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cnt_));XW8(sgx_,out_++,(cnt_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,6+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(fold_));XW8(sgx_,out_++,(fold_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(fold_));XW8(sgx_,out_++,(fold_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cnt_));XW8(sgx_,out_++,(cnt_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xE3); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,((list_)-2)&0xFF);XW8(sgx_,out_++,((list_)-2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,0xCB); } while(0)
+                const uint16_t rec=(uint16_t)(0x2000+2*(XRAND()%0x400));
+                for(unsigned k=0;k<9;k++)XW16(dg,(uint16_t)(rec+2*k),XWORD());
+                uint16_t oa=(uint16_t)(0x3000+2*(XRAND()%0x40)),ob=(uint16_t)(0x3000+2*(XRAND()%0x40)),oc=(uint16_t)(0x3000+2*(XRAND()%0x40));
+                if(XRAND()%8==0)ob=oa;
+                if(XRAND()%8==0)oc=ob;
+                if(XRAND()%8==0)oa=oc;
+                if(XRAND()%8==0)oa=(uint16_t)(rec+2*(XRAND()%9));
+                if(XRAND()%8==0)oc=(uint16_t)(rec+2*(XRAND()%9));
+                for(unsigned k=0;k<0x40;k++)XW16(dg,0x3000+2*k,XRAND());
+                const uint16_t arg[4]={rec,oa,ob,oc};
+                for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                XW16(dg,0xF810,XRAND());XW16(dg,0xF812,XRAND());XW16(dg,0xF820,0);XW16(dg,0xF822,0);
+                XW16(dg,0xF840,XWORD());
+                XW16(dg,0xF830,XWORD());XW16(dg,0xF832,XWORD());
+                SSTUB(0x1452,0x0160,0xF810,0xF820,0xF840,1);
+                SSTUB(0x1452,0x0063,0xF812,0xF822,0xF830,2);
+#undef SSTUB
+#undef XWORD
+g_room_probe_n=1; g_room_probe_k[0]=5; g_room_probe_e[0]=0;
+g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x17B0) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0]));     const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND();     (v_)=k_<n_?list_[k_]:r_; } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                {
+                    static const uint16_t e_[]={0,1,0xFFFF,0x8000,0x7FFF,0x0100,0x9EC3,0x43FD};
+                    uint16_t lo,hi;XPICK(lo,e_);XPICK(hi,e_);
+                    XW16(dg,0x0EB4,lo);XW16(dg,0x0EB6,hi);
+                }
+                g_decline_floor=6;   /* the first block is six instructions: 0..5 clocks of room must decline, 6 must run */
+                g_probe_sweep_all=1; /* sweep every stop clock, including the near call */
+                g_room_n=0; g_room_ip[0]=0x17C0; g_room_at[0]=6; g_room_need[0]=1; g_room_n=1; /* one clock is enough for the near call */
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x17D6) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0]));     const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND();     (v_)=k_<n_?list_[k_]:r_; } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                {
+                    static const uint16_t e_[]={0,1,2,0xFFFF,0xFFFE,0x8000,0x7FFF,0x8001,0x0100};
+                    const unsigned mode=XRAND()%8;
+                    uint16_t al,ah,bl,bh;
+                    XPICK(bl,e_);XPICK(bh,e_);XPICK(al,e_);XPICK(ah,e_);
+                    if(mode==0||mode==1)bh=0;                       /* 16-bit divisor */
+                    else if(mode==2)bh=(uint16_t)(XRAND()%4);
+                    else if(mode==3){ bh=(uint16_t)(0xFFFC+XRAND()%4); }
+                    if(mode>=4){                                    /* a built from a quotient, so the estimate is near the edge */
+                        uint32_t bv=((uint32_t)bh<<16)|bl;
+                        if(bh>=0x8000)bv=(uint32_t)(-(int32_t)bv);
+                        if(bv==0)bv=1;
+                        uint32_t q=XRAND()%8==0?XRAND()*65537u:(uint32_t)(XRAND()&0xFFFF)|((XRAND()%3)?0u:(uint32_t)(XRAND()&0xFF)<<16);
+                        if(bv>1) q%=(0x7FFFFFFFu/bv+1);
+                        uint32_t av=bv*q;
+                        const unsigned t=XRAND()%4;
+                        if(t==1&&bv>0)av+=bv-1; else if(t==2)av+=XRAND()%4; else if(t==3&&av)av-=1;
+                        if(XRAND()&1)av=(uint32_t)(-(int32_t)av);
+                        al=(uint16_t)av;ah=(uint16_t)(av>>16);
+                        if(XRAND()&1){ uint32_t nb=(uint32_t)(-(int32_t)bv); if(mode==4)bl=(uint16_t)nb,bh=(uint16_t)(nb>>16); else bl=(uint16_t)bv,bh=(uint16_t)(bv>>16);} 
+                        else {bl=(uint16_t)bv;bh=(uint16_t)(bv>>16);}
+                    }
+                    if(!bl&&!bh)bl=1;                               /* no zero divisor: the original faults */
+                    small[0]=al;small[1]=ah;small[2]=bl;small[3]=bh;
+                }
+                g_decline_floor=9;
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */   /* the first block */
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x1870) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0]));     const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND();     (v_)=k_<n_?list_[k_]:r_; } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                {
+                    static const uint16_t e_[]={0,1,0xFFFF,0x8000,0x7FFF,0x0100,2,0xFFFE};
+                    const unsigned mode=XRAND()%4;
+                    for(unsigned j=0;j<4;j++){ uint16_t v; XPICK(v,e_); if(j==1||j==3){ if(mode<2)v=0; else if(mode==2&&(XRAND()&1))v=0; } small[j]=v; }
+                }
+                g_decline_floor=7;   /* the first block is seven instructions */
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x18A2) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0]));     const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND();     (v_)=k_<n_?list_[k_]:r_; } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                {
+                    static const uint16_t e_[]={0,1,2,0xFFFF,0xFFFE,0x8000,0x7FFF,0x8001,0x0100};
+                    const unsigned mode=XRAND()%8;
+                    uint16_t al,ah,bl,bh;
+                    XPICK(bl,e_);XPICK(bh,e_);XPICK(al,e_);XPICK(ah,e_);
+                    if(mode==0||mode==1)bh=0;                       /* 16-bit divisor */
+                    else if(mode==2)bh=(uint16_t)(XRAND()%4);
+                    else if(mode==3){ bh=(uint16_t)(0xFFFC+XRAND()%4); }
+                    if(mode>=4){                                    /* a built from a quotient, so the estimate is near the edge */
+                        uint32_t bv=((uint32_t)bh<<16)|bl;
+                        if(bh>=0x8000)bv=(uint32_t)(-(int32_t)bv);
+                        if(bv==0)bv=1;
+                        uint32_t q=XRAND()%8==0?XRAND()*65537u:(uint32_t)(XRAND()&0xFFFF)|((XRAND()%3)?0u:(uint32_t)(XRAND()&0xFF)<<16);
+                        if(bv>1) q%=(0x7FFFFFFFu/bv+1);
+                        uint32_t av=bv*q;
+                        const unsigned t=XRAND()%4;
+                        if(t==1&&bv>0)av+=bv-1; else if(t==2)av+=XRAND()%4; else if(t==3&&av)av-=1;
+                        if(XRAND()&1)av=(uint32_t)(-(int32_t)av);
+                        al=(uint16_t)av;ah=(uint16_t)(av>>16);
+                        if(XRAND()&1){ uint32_t nb=(uint32_t)(-(int32_t)bv); if(mode==4)bl=(uint16_t)nb,bh=(uint16_t)(nb>>16); else bl=(uint16_t)bv,bh=(uint16_t)(bv>>16);} 
+                        else {bl=(uint16_t)bv;bh=(uint16_t)(bv>>16);}
+                    }
+                    if(!bl&&!bh)bl=1;                               /* no zero divisor: the original faults */
+                    small[0]=al;small[1]=ah;small[2]=bl;small[3]=bh;
+                }
+                g_decline_floor=8;
+                g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */   /* the first block */
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0x0000 && o->ip==0x1942) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0]));     const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND();     (v_)=k_<n_?list_[k_]:r_; } while(0)
+                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                {
+                    static const uint16_t e_[]={0,1,0xFFFF,0x8000,0x7FFF};
+                    uint16_t cl;
+                    const unsigned k=XRAND()%10;
+                    if(k<2)cl=0; else if(k<6)cl=1+XRAND()%8; else if(k<8)cl=(uint16_t)(14+XRAND()%5);
+                    else if(k==8)cl=(uint16_t)(30+XRAND()%4); else cl=(uint16_t)XRAND()&0xFF;
+                    r[R_CX]=(uint16_t)((XRAND()<<8)|cl);
+                    if(XRAND()%5==0)r[R_CX]=(uint16_t)(r[R_CX]&0xFF00);   /* CH set, CL zero */
+                    XPICK(r[R_AX],e_);XPICK(r[R_DX],e_);
+                }
+                g_decline_floor=2;   /* the first block is two instructions */
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

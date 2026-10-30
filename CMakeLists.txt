@@ -1936,6 +1936,26 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:4CBB)
     add_test(NAME matched_player_return_after_timer_calibrate COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:306)
+    add_test(NAME matched_vgame_far_atan2 COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:63)
+    add_test(NAME matched_vgame_far_sine_scale COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:DB)
+    add_test(NAME matched_vgame_far_cosine_scale COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:11C)
+    add_test(NAME matched_vgame_far_odd_table COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:160)
+    add_test(NAME matched_vgame_matrix_attitude_angles COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:4D9)
+    add_test(NAME matched_setup_random_next COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:17B0)
+    add_test(NAME matched_setup_signed_divide COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:17D6)
+    add_test(NAME matched_setup_ulong_multiply COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:1870)
+    add_test(NAME matched_setup_signed_remainder COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:18A2)
+    add_test(NAME matched_setup_shift_right_long COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:1942)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

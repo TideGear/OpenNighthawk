@@ -12,16 +12,18 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (29 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.82%, P3 76.34%, All 92.74% (`py tools/progress.py --title`). Refreshed with
-  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bu-accept/named-cover` and route cover
-  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 90.34%, checklist 45,390 / 47,740 = 95.08%,
+- **Scoreboard:** P1 100.00%, P2 95.94%, P3 76.34%, All 92.78% (`py tools/progress.py --title`). Refreshed with
+  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bv-accept/named-cover` and route cover
+  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 90.73%, checklist 45,390 / 47,740 = 95.08%,
   1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
   ASOUND.LOG 169, RSOUND.LOG 83, MPS_LOGO 18, SETUP 89, START 66, END 63, RSOUND.117 5, DSWAP 2.
-- **Latest accepted runtime:** batch `bu` passed: 12 routines, 603 named bytes, 260 fully covered instructions, 327 private
-  mutations caught, 60 optimized-seed checks, 793 CTests, 63 routes / 62 fresh interpreter sessions. The whole table
-  matched at three seeds, route precheck and both presentation checks passed, and the credit audit reports 0 claimed-but-
-  uncredited bytes. Evidence: `D:/f117-gate/p2-batch-bu-accept/`. Its `audit_private.py`, `finalize.py` and
+- **Latest accepted runtime:** batch `bv` passed: 10 static routines, 821 named bytes, 377 fully covered instructions,
+  344 private mutations caught, 50 optimized-seed checks, 803 CTests, 63 routes / 62 fresh interpreter sessions. The
+  whole table matched at three seeds; both timing profiles, route precheck and presentation checks passed; the credit
+  audit reports 0 claimed-but-uncredited bytes. Evidence: `D:/f117-gate/p2-batch-bv-accept/`. Its `audit_private.py`, `finalize.py` and
   `multi_proof.py` are the current acceptance scripts; copy them forward from the newest accepted batch.
+  The route precheck's 44 comparisons ignore segment and are only an offset-based superset; none was counted as a
+  route hit. These ranges are static proofs with zero captured calls, accepted under the 29 Oct owner decision below.
 - **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
   run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
@@ -37,9 +39,10 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 Goal in force: reach 100% of Phase 2 safely. Each accepted change gets the full gate before commit and push.
 
-Batch `bu` is accepted and its source is recorded in the roadmap. Twelve root-verified proofs added 603 named bytes;
-P2 is now 95.82%. Continue with the SETUP static-range pilot, then integrate only after the proof results and full gate
-pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files out of any commit.
+Batch `bv` passed its full gate and credit audit and is recorded in the roadmap. Ten root-verified static proofs added
+821 named bytes; P2 is now 95.94%. Continue with the SETUP static-range pilot, then integrate only after the proof
+results and full gate pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files
+out of any commit.
 
 Continue with the SETUP static-range pilot from the preserved proof directories. The old watcher was stopped while
 idle; inspect its result files before resuming the five ranges in `D:/f117-gate/p2-setup-bt-*`. The separate VGAME pilot has `0063` and `04D9` fixtures under
