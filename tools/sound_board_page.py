@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Build the sound board page (docs/sound-board.md) as one self-contained HTML file.
+
+    sound_board_page.py --board DIR --mac DIR --amiga DIR --speech DIR --out FILE.html
+
+DIR for --board holds adlib/, roland/ and speaker/ (each the output of sound_board_render.py, with its
+index.json); --mac and --amiga hold the decoded WAVs; --speech holds the nine cut words. Every clip is
+encoded to mono MP3 with ffmpeg and embedded as base64, so the page needs no other file. The audio never goes
+in the repository: only this script and tools/sound_board_template.html do.
+"""
+import argparse
+import base64
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import wave
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+MAC_NAMES = {
+    304: "Large explosion", 305: "Small explosion", 306: "Cannon", 307: "Blue warning", 308: "Yellow warning",
+    309: "Red warning", 310: "Tire screech", 311: "Engine spool up", 312: "Engine spool down", 313: "Missile",
+    314: "Stall horn", 315: "Drop chaff", 316: "Drop bomb", 317: "Catapult", 318: "Camera", 319: "Landing gear",
+    320: "Eject",
+}
+MAC_OTHER = {
+    200: "Title music", 321: "Death music", 322: "Good mission", 323: "Bay door", 324: "Hangar door",
+    325: "Impact", 500: "Jet sound",
+}
+AMIGA_NAMES = {
+    "f117_0_beep1": ("Front-end beep 1", "front end"), "f117_1_beep2": ("Front-end beep 2", "front end"),
+    "play2_0_explosion": ("Explosion", "intro player"), "play2_1_firemissile": ("Missile fire", "intro player"),
+    "play2_2_introbeep": ("Intro beep", "intro player"),
+}
+SPEECH = ["primary", "target", "hit", "good", "nice", "landing", "cleared", "for take off", "to land"]
+
+
+def encode(path, tmp):
+    out = os.path.join(tmp, "c.mp3")
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "22050", "-b:a", "48k", out])
+    if r.returncode:
+        raise SystemExit("ffmpeg failed on " + path)
+    with open(out, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def seconds(path):
+    w = wave.open(path)
+    return w.getnframes() / w.getframerate()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--board", required=True)
+    ap.add_argument("--mac", required=True)
+    ap.add_argument("--amiga", required=True)
+    ap.add_argument("--speech", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+    if not shutil.which("ffmpeg"):
+        raise SystemExit("ffmpeg is needed to encode the clips")
+    tmp = tempfile.mkdtemp()
+    clips, dos, speech, other = {}, [], [], []
+
+    # DOS drivers: one clip per (driver, id)
+    drivers = {}
+    for kind in ("adlib", "roland", "speaker"):
+        idx = os.path.join(a.board, kind, "index.json")
+        drivers[kind] = {e["id"]: e for e in json.load(open(idx))} if os.path.exists(idx) else {}
+    mac_by_id = {}
+    for f in glob.glob(os.path.join(a.mac, "*.wav")):
+        m = re.match(r"(\d+)_", os.path.basename(f))
+        if m:
+            mac_by_id[int(m.group(1))] = f
+    silent = []
+    for i in range(46):
+        row = {"key": "dos-%d" % i, "title": "Sound %d" % i, "sub": "", "clips": {}}
+        for kind, table in drivers.items():
+            e = table.get(i)
+            if not e:
+                continue
+            mp3 = os.path.join(a.board, kind, e["file"])
+            key = "%s-%d" % (kind, i)
+            if mp3.endswith(".mp3"):
+                clips[key] = {"b": base64.b64encode(open(mp3, "rb").read()).decode(), "s": e["seconds"], "c": bool(e.get("capped"))}
+            else:
+                clips[key] = {"b": encode(mp3, tmp), "s": e["seconds"], "c": bool(e.get("capped"))}
+            row["clips"][kind] = key
+        if 300 + i in MAC_NAMES and (300 + i) in mac_by_id:
+            key = "mac-%d" % (300 + i)
+            clips[key] = {"b": encode(mac_by_id[300 + i], tmp), "s": round(seconds(mac_by_id[300 + i]), 2), "c": False}
+            row["clips"]["mac"] = key
+            row["sub"] = "Mac resource %d: %s" % (300 + i, MAC_NAMES[300 + i])
+        if not any(k in row["clips"] for k in ("adlib", "roland", "speaker")):
+            silent.append(i)
+            continue
+        dos.append(row)
+
+    # speech: the DOS file's nine words, and the Mac's nine recordings
+    for n, word in enumerate(SPEECH):
+        row = {"key": "speech-%d" % (n + 1), "title": word.capitalize(), "sub": "word %d of 9" % (n + 1), "clips": {}}
+        f = glob.glob(os.path.join(a.speech, "%d-*.wav" % (n + 1)))
+        if f:
+            clips["dos-speech-%d" % (n + 1)] = {"b": encode(f[0], tmp), "s": round(seconds(f[0]), 2), "c": False}
+            row["clips"]["dos"] = "dos-speech-%d" % (n + 1)
+        if 1000 + n in mac_by_id:
+            clips["mac-%d" % (1000 + n)] = {"b": encode(mac_by_id[1000 + n], tmp), "s": round(seconds(mac_by_id[1000 + n]), 2), "c": False}
+            row["clips"]["mac"] = "mac-%d" % (1000 + n)
+        speech.append(row)
+
+    # Mac sounds with no DOS id, and the Amiga samples
+    for rid, name in MAC_OTHER.items():
+        if rid in mac_by_id:
+            clips["mac-%d" % rid] = {"b": encode(mac_by_id[rid], tmp), "s": round(seconds(mac_by_id[rid]), 2), "c": False}
+            other.append({"key": "mac-%d" % rid, "title": name, "sub": "Mac resource %d" % rid, "clips": {"mac": "mac-%d" % rid}})
+    for f in sorted(glob.glob(os.path.join(a.amiga, "*.wav"))):
+        stem = os.path.splitext(os.path.basename(f))[0]
+        name, where = AMIGA_NAMES.get(stem, (stem, "Amiga"))
+        clips["amiga-" + stem] = {"b": encode(f, tmp), "s": round(seconds(f), 2), "c": False}
+        other.append({"key": "amiga-" + stem, "title": name, "sub": "Amiga, " + where, "clips": {"amiga": "amiga-" + stem}})
+
+    data = {"clips": clips, "dos": dos, "speech": speech, "other": other, "silent": silent,
+            "note": "The Mac effects line up with DOS ids 4 to 20 by the Mac port's id offset of 300 (docs/sound-board.md). "
+                    "Roland clips use the MT-32 1.07 control ROM; speech under the Roland and speaker drivers plays through the PC speaker."}
+    template = open(os.path.join(HERE, "sound_board_template.html"), encoding="utf-8").read()
+    html = template.replace("/*__DATA__*/", json.dumps(data, separators=(",", ":")))
+    with open(a.out, "w", encoding="utf-8") as f:
+        f.write(html)
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("%d clips, %d DOS rows, %d speech, %d other; %.1f MB" % (len(clips), len(dos), len(speech), len(other), len(html) / 1e6))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

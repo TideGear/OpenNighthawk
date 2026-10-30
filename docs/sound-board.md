@@ -122,3 +122,12 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
   rebased to the request and rendered with `audio_render`, both give real audio (the gun about 0.65 s; the crash
   still sounding at the 2 s span, so long sounds need a longer one). Not yet: the id list, Roland and speaker
   routes, music from START and END, an automatic span, and the page.
+- **The page exists (29 October 2026).** `tools/sound_board_page.py` builds one self-contained HTML file from the
+  rendered sweeps (`tools/sound_board_render.py`), the Mac and Amiga WAVs and the nine speech words, with
+  `tools/sound_board_template.html`: 158 clips, 38 DOS sound rows (AdLib, Roland through Munt with the 1.07
+  ROMs, PC speaker, and the Mac recording where the Mac port's id offset of 300 gives one), the nine speech
+  words from DOS and Mac, and the Mac-only and Amiga sounds. Marks (kind, best source, note) are saved through
+  the page's `db`. The audio is generated and never committed. Sweeps used: `boot_to_flight` with the SETUP
+  answer 2 (AdLib), 3 (Roland) and 1 (PC speaker), `--steps 2450000000`, ids 0-45, a 5 s span. Not done: music
+  from START and END (their own programs), longer spans for the sounds that reach the 5 s limit, ids 41-44
+  (the driver call did not return within its limit, though output was logged).

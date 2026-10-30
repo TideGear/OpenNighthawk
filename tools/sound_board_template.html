@@ -1,0 +1,293 @@
+<title>F-117A Sound Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;800&family=Chivo+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a mixing-desk reference. One row per sound, one player per source side by side, marks on the right. */
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --ink: #17212b;
+  --muted: #5b6875;
+  --line: #d5dbe2;
+  --accent: #0a6f80;
+  --accent-ink: #ffffff;
+  --playing: #c24d12;
+  --adlib: #6a4fb3;
+  --roland: #0a6f80;
+  --speaker: #9a6a00;
+  --mac: #4a5560;
+  --amiga: #b3303c;
+  --dos: #2f6b3a;
+  --font: "Chivo", system-ui, sans-serif;
+  --mono: "Chivo Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171d; --panel: #1a222b; --ink: #e6ebf0; --muted: #98a5b2; --line: #2c3743;
+    --accent: #4cc3d4; --accent-ink: #08242a; --playing: #ff9a5c;
+    --adlib: #a995e6; --roland: #4cc3d4; --speaker: #e0b04a; --mac: #aab5c0; --amiga: #ee7a85; --dos: #7fc88c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171d; --panel: #1a222b; --ink: #e6ebf0; --muted: #98a5b2; --line: #2c3743;
+  --accent: #4cc3d4; --accent-ink: #08242a; --playing: #ff9a5c;
+  --adlib: #a995e6; --roland: #4cc3d4; --speaker: #e0b04a; --mac: #aab5c0; --amiga: #ee7a85; --dos: #7fc88c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 20px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 18px; font-weight: 600; margin: 34px 0 4px; }
+.lede { color: var(--muted); max-width: 70ch; margin: 0 0 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.legend b { color: var(--ink); font-weight: 600; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  background: var(--bg); padding: 10px 0; margin-top: 14px; border-bottom: 1px solid var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; padding: 5px 11px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.count { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 880px; }
+th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tr.hide { display: none; }
+.name { min-width: 150px; }
+.name b { font-weight: 600; }
+.name small { display: block; color: var(--muted); font-size: 12px; }
+.id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.play { display: inline-flex; align-items: center; gap: 7px; font: inherit; font-family: var(--mono); font-size: 12px; padding: 5px 9px 5px 7px; min-width: 72px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 5px; cursor: pointer; }
+.play svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.play:hover { border-color: var(--ink); }
+.play[data-src="adlib"] svg { color: var(--adlib); } .play[data-src="roland"] svg { color: var(--roland); }
+.play[data-src="speaker"] svg { color: var(--speaker); } .play[data-src="mac"] svg { color: var(--mac); }
+.play[data-src="amiga"] svg { color: var(--amiga); } .play[data-src="dos"] svg { color: var(--dos); }
+.play.on { border-color: var(--playing); color: var(--playing); }
+.play.on svg { color: var(--playing); }
+.play .cut { color: var(--muted); }
+.none { color: var(--muted); font-family: var(--mono); font-size: 12px; padding-left: 8px; }
+.all { font: inherit; font-size: 12px; padding: 5px 9px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.all:hover { background: var(--accent); color: var(--accent-ink); }
+select, input[type="text"] { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; max-width: 100%; }
+input[type="text"] { width: 150px; }
+select.set, input.set { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.foot { color: var(--muted); font-size: 13px; margin-top: 26px; max-width: 80ch; }
+.foot code, .lede code { font-family: var(--mono); font-size: 12px; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <h1>F-117A Sound Board</h1>
+  <p class="lede">Every sound the game can make, played through each source: the three DOS sound drivers (AdLib, Roland MT-32 through Munt, PC speaker), the Macintosh recordings and the Amiga samples. Press a button to hear it; &ldquo;All&rdquo; plays a row's sources one after another. Mark each sound and pick the source you prefer; marks are saved with this page.</p>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--adlib)"></i><b>AdLib</b> the game's ASOUND driver, rendered by DBOPL</span>
+    <span><i class="dot" style="background:var(--roland)"></i><b>Roland</b> RSOUND driver into Munt, MT-32 1.07 ROMs</span>
+    <span><i class="dot" style="background:var(--speaker)"></i><b>PC speaker</b> ISOUND driver</span>
+    <span><i class="dot" style="background:var(--mac)"></i><b>Macintosh</b> the Mac port's own recordings</span>
+    <span><i class="dot" style="background:var(--amiga)"></i><b>Amiga</b> the 8SVX samples</span>
+  </div>
+
+  <div class="bar" role="toolbar" aria-label="Filter">
+    <div class="chips" id="chips"></div>
+    <span class="status" id="status"></span>
+    <span class="count" id="count"></span>
+  </div>
+
+  <h2>DOS sound ids</h2>
+  <p class="lede">The ids the sound driver's table holds (0 to 45), each requested through the same entry the game uses. A sound that reached the five-second limit is marked <code>5s+</code>; those are music or loops and carry on past what is shown. Ids with no sound in any driver are listed at the foot.</p>
+  <div class="scroll"><table id="t-dos"></table></div>
+
+  <h2>Speech</h2>
+  <p class="lede">DOS keeps the nine words in one file, <code>SPEECH.117</code>, and chains them into calls. The clips are that file cut at its quiet gaps; the Macintosh has the same nine words as separate recordings.</p>
+  <div class="scroll"><table id="t-speech"></table></div>
+
+  <h2>Macintosh and Amiga only</h2>
+  <p class="lede">Sounds with no DOS id in the table above.</p>
+  <div class="scroll"><table id="t-other"></table></div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const KINDS = [["", "unmarked"], ["music", "music"], ["effect", "effect"], ["speech", "speech"], ["skip", "not wanted"]];
+const PREFS = [["", "no pick"], ["adlib", "AdLib"], ["roland", "Roland"], ["speaker", "PC speaker"], ["mac", "Macintosh"], ["amiga", "Amiga"], ["dos", "DOS speech"]];
+const SRC_NAME = { adlib: "AdLib", roland: "Roland", speaker: "PC speaker", mac: "Macintosh", amiga: "Amiga", dos: "DOS" };
+const marks = {};
+let db = null, saveNote = "";
+const audio = new Audio();
+let current = null, queue = [];
+const urls = {};
+
+function blobUrl(key, clip) {
+  if (!urls[key]) {
+    const bin = atob(clip.b), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    urls[key] = URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" }));
+  }
+  return urls[key];
+}
+function stopAll() {
+  queue = [];
+  audio.pause();
+  if (current) current.classList.remove("on");
+  current = null;
+}
+function play(btn, key, clip) {
+  const same = current === btn;
+  stopAll();
+  if (same) return;
+  current = btn;
+  btn.classList.add("on");
+  audio.src = blobUrl(key, clip);
+  audio.play().catch(() => stopAll());
+}
+audio.addEventListener("ended", () => {
+  if (current) current.classList.remove("on");
+  current = null;
+  const next = queue.shift();
+  if (next) play(next.btn, next.key, next.clip);
+});
+function playAll(row) {
+  stopAll();
+  const items = [];
+  row.querySelectorAll("button.play").forEach(b => items.push({ btn: b, key: b.dataset.key, clip: DATA.clips[b.dataset.key] }));
+  const first = items.shift();
+  if (!first) return;
+  queue = items;
+  play(first.btn, first.key, first.clip);
+}
+
+const ICON = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9-5.5z"/></svg>';
+function cell(tr, src, rowKey, clipKey) {
+  const td = document.createElement("td");
+  const clip = clipKey && DATA.clips[clipKey];
+  if (!clip) { td.innerHTML = '<span class="none">none</span>'; tr.appendChild(td); return; }
+  const b = document.createElement("button");
+  b.className = "play";
+  b.dataset.src = src;
+  b.dataset.key = clipKey;
+  b.setAttribute("aria-label", "Play " + SRC_NAME[src] + " " + rowKey);
+  b.innerHTML = ICON + "<span>" + clip.s.toFixed(1) + "s" + (clip.c ? ' <span class="cut">5s+</span>' : "") + "</span>";
+  b.addEventListener("click", () => play(b, clipKey, clip));
+  td.appendChild(b);
+  tr.appendChild(td);
+}
+function sel(options, value, label, onchange) {
+  const s = document.createElement("select");
+  s.setAttribute("aria-label", label);
+  options.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; s.appendChild(o); });
+  s.value = value || "";
+  s.addEventListener("change", () => onchange(s.value));
+  return s;
+}
+function buildTable(el, cols, rows) {
+  const head = document.createElement("tr");
+  ["Sound", ...cols.map(c => SRC_NAME[c]), "", "Kind", "Best source", "Note"].forEach(t => { const th = document.createElement("th"); th.textContent = t; head.appendChild(th); });
+  el.appendChild(head);
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.dataset.key = r.key;
+    const n = document.createElement("td");
+    n.className = "name";
+    n.innerHTML = '<b></b><small></small>';
+    n.firstChild.textContent = r.title;
+    n.lastChild.textContent = r.sub || "";
+    tr.appendChild(n);
+    cols.forEach(c => cell(tr, c, r.title, r.clips[c]));
+    const all = document.createElement("td");
+    const ab = document.createElement("button");
+    ab.className = "all"; ab.textContent = "All";
+    ab.setAttribute("aria-label", "Play every source for " + r.title);
+    ab.addEventListener("click", () => playAll(tr));
+    all.appendChild(ab); tr.appendChild(all);
+    const k = document.createElement("td"), p = document.createElement("td"), t = document.createElement("td");
+    k.appendChild(sel(KINDS, "", "Kind of " + r.title, v => setMark(r.key, { kind: v })));
+    p.appendChild(sel(PREFS.filter(([v]) => !v || cols.includes(v)), "", "Best source for " + r.title, v => setMark(r.key, { pref: v })));
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.id = "note-" + r.key; inp.setAttribute("aria-label", "Note on " + r.title);
+    let timer = null;
+    inp.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => setMark(r.key, { note: inp.value }), 600); });
+    t.appendChild(inp);
+    tr.append(k, p, t);
+    el.appendChild(tr);
+  });
+}
+
+function rowEl(key) { return document.querySelector('tr[data-key="' + key + '"]'); }
+function paintMark(key) {
+  const tr = rowEl(key), m = marks[key] || {};
+  if (!tr) return;
+  const [kind, pref] = tr.querySelectorAll("select");
+  kind.value = m.kind || ""; kind.classList.toggle("set", !!m.kind);
+  pref.value = m.pref || ""; pref.classList.toggle("set", !!m.pref);
+  const inp = tr.querySelector("input");
+  if (document.activeElement !== inp) inp.value = m.note || "";
+  inp.classList.toggle("set", !!m.note);
+}
+const pending = {};
+async function setMark(key, patch) {
+  marks[key] = Object.assign({}, marks[key], patch);
+  paintMark(key); applyFilter();
+  if (db) {
+    pending[key] = pending[key] || Promise.resolve();
+    pending[key] = pending[key].then(() => db.collection("marks").doc(key).set(Object.assign({}, marks[key], { updated: Date.now() })))
+      .then(() => { saveNote = "Saved"; showStatus(); })
+      .catch(e => { saveNote = "Not saved (" + ((e && e.code) || "error") + ")"; showStatus(); });
+  } else {
+    try { localStorage.setItem("f117-sound-marks", JSON.stringify(marks)); saveNote = "Saved in this browser only"; } catch (e) { saveNote = "Marks are not being saved"; }
+    showStatus();
+  }
+}
+function showStatus() { document.getElementById("status").textContent = saveNote; }
+
+let filter = "all";
+function applyFilter() {
+  let shown = 0, marked = 0, total = 0;
+  document.querySelectorAll("tr[data-key]").forEach(tr => {
+    const m = marks[tr.dataset.key] || {};
+    total++;
+    if (m.kind) marked++;
+    const ok = filter === "all" || (filter === "unmarked" ? !m.kind : m.kind === filter);
+    tr.classList.toggle("hide", !ok);
+    if (ok) shown++;
+  });
+  document.getElementById("count").textContent = marked + " of " + total + " marked, " + shown + " shown";
+  document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.f === filter ? "true" : "false"));
+}
+const chips = document.getElementById("chips");
+[["all", "All"], ["unmarked", "Unmarked"], ["music", "Music"], ["effect", "Effects"], ["speech", "Speech"], ["skip", "Not wanted"]].forEach(([f, t]) => {
+  const c = document.createElement("button");
+  c.className = "chip"; c.dataset.f = f; c.textContent = t;
+  c.addEventListener("click", () => { filter = f; applyFilter(); });
+  chips.appendChild(c);
+});
+
+buildTable(document.getElementById("t-dos"), ["adlib", "roland", "speaker", "mac"], DATA.dos);
+buildTable(document.getElementById("t-speech"), ["dos", "mac"], DATA.speech);
+buildTable(document.getElementById("t-other"), ["mac", "amiga"], DATA.other);
+document.getElementById("foot").textContent = "No sound in any DOS driver for ids " + DATA.silent.join(", ") + " (stop or unused entries). " + DATA.note;
+applyFilter();
+
+try { Object.assign(marks, JSON.parse(localStorage.getItem("f117-sound-marks") || "{}")); Object.keys(marks).forEach(paintMark); applyFilter(); } catch (e) { /* storage unavailable */ }
+
+(async () => {
+  try {
+    db = await claude.use("db");
+  } catch (e) { db = null; }
+  if (!db) { saveNote = "Marks are kept in this browser only"; showStatus(); return; }
+  db.collection("marks").onSnapshot(snap => {
+    snap.docs.forEach(d => { if (d.exists) { marks[d.id] = d.data(); paintMark(d.id); } });
+    applyFilter();
+    saveNote = "Marks are saved with this page"; showStatus();
+  }, () => { saveNote = "Could not read saved marks"; showStatus(); });
+})();
+</script>
