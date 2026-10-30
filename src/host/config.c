@@ -16,7 +16,7 @@ static const char *const VALUED[] = {
 static const char *const PATHS[] = {
     "data", "save", "log", "record", "replay", "audio-queue-log", "audio-dump", "mt32-control",
     "mt32-pcm", "mt32-roms", "coverage", "present-log", NULL };
-static const char *const SWITCHES[] = { "fullscreen", "no-aspect", "no-record", NULL };
+static const char *const SWITCHES[] = { "fullscreen", "no-aspect", "no-record", "crt", NULL };
 
 static int in(const char *const *list, const char *s)
 {

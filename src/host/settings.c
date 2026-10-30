@@ -23,6 +23,7 @@ static const setting_def DEFS[] = {
     { "fullscreen",   "Fullscreen",       C_YESNO,        0, 1 },
     { "speaker",      "Speaker speech",   C_SPEAKER,      0, 0 },
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
+    { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
 };
 #define NDEFS ((int)(sizeof DEFS / sizeof DEFS[0]))
 

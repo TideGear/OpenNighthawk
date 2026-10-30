@@ -39,6 +39,7 @@
 #include "audio.h"
 #include "midistream.h"
 #include "settings.h"
+#include "crt.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -90,6 +91,22 @@ static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
 static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
+static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
+static uint32_t *g_crt_buf; static size_t g_crt_cap;
+
+/* The picture as the display should get it: with --crt, the scanline filter applied to a copy. */
+static const uint32_t *crt_view(const uint32_t *px, int w, int h)
+{
+    if (!g_crt) return px;
+    if ((size_t)w * h > g_crt_cap) {
+        free(g_crt_buf);
+        g_crt_buf = (uint32_t *)malloc((size_t)w * h * 4);
+        g_crt_cap = g_crt_buf ? (size_t)w * h : 0;
+    }
+    if (!g_crt_buf) return px;
+    crt_scanlines(px, g_crt_buf, w, h);
+    return g_crt_buf;
+}
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
 static FILE *g_present_log;           /* --present-log */
 
@@ -510,6 +527,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--data") && v) { data = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
+        else if (!strcmp(a, "--crt")) g_crt = 1;
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
@@ -1146,12 +1164,12 @@ int main(int argc, char **argv)
             w = 320 * g_scale; h = 200 * g_scale;
             if (!fine_ready) convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
             SDL_Rect src = { 0, 0, w, h };
-            SDL_UpdateTexture(tex_fine, &src, fine_pixels, w * 4);
+            SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
             show = tex_fine;
         } else {
             present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
             SDL_Rect src = { 0, 0, w, h };
-            SDL_UpdateTexture(tex, &src, pixels, w * 4);
+            SDL_UpdateTexture(tex, &src, crt_view(pixels, w, h), w * 4);
         }
         /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
          * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
