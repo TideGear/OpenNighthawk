@@ -108,7 +108,8 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
   about 125) at 8,000 Hz: 3.30 s. Heard by the owner as "primary, target, hit, good, nice, landing, cleared, for
   take off, to land" - the same nine words as the Mac recordings 1000-1008, in the same order. The word boundaries
   were cut at the quiet gaps, each chosen as the gap nearest to where the Mac word lengths predict it (all eight
-  within 0.04 s): at 0.52, 0.88, 1.10, 1.34, 1.59, 1.95, 2.30 and 2.76 s. This also gives the subtitle text
+  within 0.04 s): at 0.52, 0.88, 1.10, 1.34, 1.59, 1.95, 2.30 and 2.76 s (the owner listened to the nine clips and
+  confirmed the cuts, 29 October). This also gives the subtitle text
   (roadmap "Accessibility": subtitles for the speech).
 - **Where the MT-32 ROMs are:** `C:\Users\Tideg\f117-recomp-local\roms` (21 files).
 - **The render harness works (29 October 2026, AdLib).** `f117run --steps N --sound-sweep ID,ID,...
