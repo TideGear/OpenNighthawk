@@ -10,9 +10,9 @@ For the next conversation on this repository. Read this, then
 This file holds only the current state, how to resume, open decisions and traps; history is in `git log`
 and in the roadmap's batch table. Keep it that way: replace, do not append.
 
-## Current state (29 October 2026)
+## Current state (30 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.94%, P3 76.34%, All 92.78% (`py tools/progress.py --title`). Refreshed with
+- **Scoreboard:** P1 100.00%, P2 95.94%, P3 85.42%, All 95.08% (`py tools/progress.py --title`). Refreshed with
   census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bv-accept/named-cover` and route cover
   `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 90.73%, checklist 45,390 / 47,740 = 95.08%,
   1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
@@ -26,6 +26,16 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
   route hit. These ranges are static proofs with zero captured calls, accepted under the 29 Oct owner decision below.
 - **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
   run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
+- **Phase 3 landed on `master` (30 Oct, owner's instruction; `0c2b13a..4ecb64b`, 39 commits, a fast-forward pushed to the
+  remote only) without the full P2 gate.** Host-side only (`src/host/`, `tools/`, `tests/`, `docs/`, `CMakeLists.txt`, the
+  example ini; nothing in `src/machine`, `src/cpu`, `src/matched`, `src/recomp`, `src/present` or the recompiler), and
+  `ctest` passed 45 of 45 on the branch's own build; but `f117run` (`headless.c`) gained `--sound-sweep` options and the
+  gate was not run on it. **Run the full gate on `master` first when the machine is free, and treat a failure as P3's.**
+  The main working tree's `master` is still at `0c2b13a` (its owner kept it untouched while a gate ran there): `git pull
+  --ff-only` once that gate is done; this file changed upstream too, so merge the two copies by hand if the tree's own
+  edits to it are still uncommitted. What P3 has and lacks, per item: [docs/p3-handoff.md](docs/p3-handoff.md). Scores
+  in P3: menu 60%, CRT 70%, controls 55%, replays 75%, accessibility 55%, two settings 50%, sound device 80%, fan patches
+  100%, Remastered 0%, hybrid sound 0%.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
   `4k60.bat` or `original-fixed.bat`.
 - **Private proof pipeline:** An orphan shell watcher waited from 14:56 to 17:52 for SETUP `18A2`'s lock-cover result;
@@ -62,6 +72,11 @@ executed-code gaps are ASOUND.117 PIT waits, ISOUND.117 `026C`, presentation-obs
 regenerate the lead list from the refreshed census/named cover before choosing the next body. Static naming and reviewed
 reference entries also contribute materially to P2. Protect private game data and captures from the public repository.
 
+Phase 3 (re-release features) is separate work: it continues from [docs/p3-handoff.md](docs/p3-handoff.md). The next large
+piece is Remastered's renderer (about 10 of the 14.6 points left in P3; its plan, "R3 plan revised", is in
+[docs/remastered-design.md](docs/remastered-design.md)); hybrid sound waits on the owner's marks on the sound page.
+Heavy P3 runs (route captures, sound sweeps) compete with the gate for CPU: not while a gate or proof worker runs.
+
 ## Owner decisions in force
 
 Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this is what governs daily work.
@@ -79,6 +94,8 @@ Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this i
   needs its own reviewed reference entry before credit. Dead code leaves the denominator only with a certificate.
 - **Parity target is the original on its own hardware, not DOSBox**; gameplay and logic parity outrank rendering.
   Keep all original graphics; no vector replacements.
+- **Phase 3 features are off or inert unless asked for:** `--crt`, `--subtitles`, `--sound`, `--remap`, `pad-*`, `--watch` and the
+  settings menu (Ctrl+Alt+S) change nothing in the game's logic; the owner has not yet looked at any of them.
 - **Normal play:** 15 Hz / 60 MIPS, all 34 fixes on (`--fix QUIZ` restores the quiz, off by default). Parity
   commands use `--fix none`.
 - **Never weaken a check to go faster.** Safe optimisation and parallelism are approved; batches of 30-50 routines
@@ -158,6 +175,8 @@ Presentation:
 ## Where things are
 
 - Game install `D:/GOG/F-117A`: never mounted or written; copy per run that needs state.
+- Phase 3 generated files (sound sweeps, rendered clips, speech cuts, memory dumps): `C:/Users/Tideg/f117-recomp-local/p3-session-29oct/`;
+  MT-32 ROMs: `C:/Users/Tideg/f117-recomp-local/roms`; the sound page: https://claude.ai/artifact/1jdGUvk4aD8bsCSxDvJbta.
 - Generated code `C:/Users/Tideg/f117-recomp-local/gen` (never committed); coverage and route outputs beside it.
 - Proofs, gates and evidence: `D:/f117-gate/` (`p2-*` proofs, `p2-batch-*-accept` gates, `kit/`, `accept-kit/`,
   `kit-libs/`, `census.tsv`, `checklist-full-20261026/`, `bn-budget/`).
