@@ -244,7 +244,7 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 43534,
-      "credited": 30225,
+      "credited": 30314,
       "reviewed_static_bytes": 11652,
       "original_reviewed_bytes": 794,
       "by_module": {
@@ -286,7 +286,7 @@
         },
         "ISOUND.LOG": {
           "bytes": 1517,
-          "credited": 1302,
+          "credited": 1359,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -334,7 +334,7 @@
         },
         "SETUP": {
           "bytes": 4000,
-          "credited": 1783,
+          "credited": 1815,
           "reviewed_static_bytes": 2129,
           "original_reviewed_bytes": 102
         },
@@ -363,11 +363,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 159309,
+      "matched_route_run": 159398,
       "stays_original_reviewed": 2631,
-      "score": 0.9879992922815987,
+      "score": 0.9885422831239666,
       "fixture_only": 31590,
-      "remaining": 1967,
+      "remaining": 1878,
       "original_awaiting_review": 0,
       "reviewed_entries": 1896,
       "checklist": {
@@ -477,10 +477,10 @@
         },
         "ISOUND.LOG": {
           "denominator": 1167,
-          "matched_route_run": 952,
+          "matched_route_run": 1009,
           "stays_original_reviewed": 0,
           "fixture_only": 350,
-          "remaining": 215,
+          "remaining": 158,
           "original_awaiting_review": 0,
           "not_in_denominator": 350,
           "not_in_denominator_reviewed": 350,
@@ -565,10 +565,10 @@
         },
         "SETUP": {
           "denominator": 3689,
-          "matched_route_run": 3347,
+          "matched_route_run": 3379,
           "stays_original_reviewed": 253,
           "fixture_only": 2425,
-          "remaining": 89,
+          "remaining": 57,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
           "not_in_denominator_reviewed": 4723,

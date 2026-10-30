@@ -2015,6 +2015,10 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:851)
     add_test(NAME matched_setup_format_signed_number COMMAND func_lockstep --states 5000
       --only SETUP.EXE:979)
+    add_test(NAME matched_setup_retrace_tick_prefix COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:10B3)
+    add_test(NAME matched_isound_log_timer_interrupt_handler COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:545)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

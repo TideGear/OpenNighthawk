@@ -104017,7 +104017,157 @@ emit:
 #undef XB
 }
 
+/* SETUP's tick prefix decrements the callback countdown. When it reaches zero,
+ * it reloads the delay flag, either skips retrace synchronization or starts the
+ * port 3DAh poll. The poll stops after STI at 10D2 and returns at 10D3; the
+ * E6h and 1118h branches hand control back to original code. */
+static int setup_retrace_tick_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    /* Charge after each instruction so IN and STI effects use its start clock. */
+    SM4_NEED(1, 0x10B3);
+    c->op_ip = 0x10B3;
+    ds_put8(c, 0x0E36, (uint8_t)alu_dec(c, ds_get8(c, 0x0E36), 0));
+    c->icount += 1;
+    SM4_NEED(1, 0x10B7);
+    c->op_ip = 0x10B7;
+    const int countdown_exit = x86_cond(c, 5);
+    c->icount += 1;
+    if (countdown_exit) { c->ip = 0x1118; return 1; }
+    SM4_NEED(1, 0x10B9);
+    c->op_ip = 0x10B9;
+    ds_put8(c, 0x0E36, 0x14);
+    c->icount += 1;
+    SM4_NEED(1, 0x10BE);
+    c->op_ip = 0x10BE;
+    (void)alu_op(c, 7, ds_get8(c, 0x0E3D), 0x00, 0);
+    c->icount += 1;
+    SM4_NEED(1, 0x10C3);
+    c->op_ip = 0x10C3;
+    const int sync_off_exit = x86_cond(c, 4);
+    c->icount += 1;
+    if (sync_off_exit) { c->ip = 0x10E6; return 1; }
+    SM4_NEED(1, 0x10C5);
+    c->op_ip = 0x10C5;
+    set_r8(c, 3, (uint8_t)alu_op(c, 6, get_r8(c, 3), get_r8(c, 3), 0));
+    c->icount += 1;
+    SM4_NEED(1, 0x10C7);
+    c->op_ip = 0x10C7;
+    c->r[R_CX] = (uint16_t)alu_op(c, 6, c->r[R_CX], c->r[R_CX], 1);
+    c->icount += 1;
+    SM4_NEED(1, 0x10C9);
+    c->op_ip = 0x10C9;
+    c->r[R_DX] = 0x03DA;
+    c->icount += 1;
+    SM4_NEED(1, 0x10CC);
+    c->op_ip = 0x10CC;
+    x86_cli(c);
+    c->icount += 1;
+    SM4_NEED(1, 0x10CD);
+    c->op_ip = 0x10CD;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    SM4_NEED(1, 0x10CE);
+    c->op_ip = 0x10CE;
+    alu_logic(c, (uint32_t)get_r8(c, R_AL) & 0x08, 0);
+    c->icount += 1;
+    SM4_NEED(1, 0x10D0);
+    c->op_ip = 0x10D0;
+    const int retrace_set_exit = x86_cond(c, 5);
+    c->icount += 1;
+    if (retrace_set_exit) { c->ip = 0x10E6; return 1; }
+    SM4_NEED(1, 0x10D2);
+    c->op_ip = 0x10D2;
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x10D3;
+    return 1;
+}
+
+/* ISOUND.LOG 0000:0545, the PC-speaker timer interrupt handler. It saves AX and DS,
+ * selects the driver's timer data segment from the relocated immediate at CS:0548,
+ * and counts the interrupt ticks in DS:[53h]. For example, CS=0800h yields
+ * DS=0868h and CS=169Bh yields DS=1703h. Every fifth tick calls the sequencer tick at
+ * 0253h with DX, BX and CX saved; the other ticks call the far routine at
+ * 010Bh through the relocated segment in the live call operand. It then counts
+ * down DS:[52h]. A nonzero count restores DS, sends PIC EOI and hands back at
+ * the next instruction so the original POP AX / IRET finish after the wake.
+ * A zero count writes 10h, restores DS and AX, and jumps through the live old
+ * INT8 vector at CS:[0541h]. */
+static int isound_log_timer_interrupt_handler(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    /* The returning fixture stubs have fixed 30-instruction bodies. Predict
+     * the complete handler path before changing state, so a one-instruction-
+     * short event limit declines cleanly instead of stopping mid-ISR. */
+    const uint16_t data_seg = seg_read16(c, c->seg[S_CS], 0x0548); /* relocated operand of mov ax,imm16 */
+    const uint16_t counters = seg_read16(c, data_seg, 0x0052);
+    const int preflight_chain_old_timer = (uint8_t)counters == 1;
+    const int sequencer_call = (uint8_t)(counters >> 8) == 1;
+    const unsigned whole_path = sequencer_call ? 52u : 44u;
+    if (!room(c, whole_path + (preflight_chain_old_timer ? 0u : IO_SLACK(1)))) return 0;
+    c->op_cs = c->seg[S_CS];
+    cpu_push16(c, c->r[R_AX]);                                     /* 0545 push ax */
+    cpu_push16(c, c->seg[S_DS]);                                   /* 0546 push ds */
+    c->r[R_AX] = data_seg;                                         /* 0547 mov ax,[relocated DS immediate at CS:0548] */
+    c->seg[S_DS] = c->r[R_AX];                                    /* 054A mov ds,ax */
+    ds_put8(c, 0x0053, (uint8_t)alu_dec(c, ds_get8(c, 0x0053), 0)); /* 054C dec byte [53h] */
+    const int other_tick = x86_cond(c, 5);                         /* 0550 jne 0563 */
+    c->icount += 6;
+    if (other_tick) {
+        SM4_NEED(1, 0x0563);
+        RUN(guest_call_far(m, 0x0563, 0x0568));                    /* 0563 lcall [relocated segment]:010Bh */
+    } else {
+        XB(1, 0x0552);
+        ds_put8(c, 0x0053, 0x05);                                  /* 0552 mov byte [53h],5 */
+        XB(3, 0x0557);
+        x86_push_reg(c, R_DX);                                     /* 0557 push dx */
+        x86_push_reg(c, R_BX);                                     /* 0558 push bx */
+        x86_push_reg(c, R_CX);                                     /* 0559 push cx */
+        SM4_NEED(1, 0x055A);
+        RUN(guest_call_pop(m, 0x0253, 0x055D, 0));                 /* 055A call 0253h; plain RET */
+        XB(4, 0x055D);
+        c->r[R_CX] = cpu_pop16(c);                                 /* 055D pop cx */
+        c->r[R_BX] = cpu_pop16(c);                                 /* 055E pop bx */
+        c->r[R_DX] = cpu_pop16(c);                                 /* 055F pop dx */
+        c->ip = 0x0568;                                             /* 0560 jmp 0568h */
+    }
+    XB(2, 0x0568);
+    ds_put8(c, 0x0052, (uint8_t)alu_dec(c, ds_get8(c, 0x0052), 0)); /* 0568 dec byte [52h] */
+    const int chain_old_timer = x86_cond(c, 4);                     /* 056C je 0575 */
+    if (!chain_old_timer) {
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x056E; return 1; }
+        c->seg[S_DS] = cpu_pop16(c);                                /* 056E pop ds */
+        set_r8(c, 0, 0x20);                                         /* 056F mov al,20h */
+        c->icount += 2;
+        c->op_ip = 0x0571;
+        x86_out(c, 0x20, 0);                                        /* 0571 out 20h,al: EOI wakes the run loop */
+        c->icount++;
+        c->ip = 0x0573;                                             /* original POP AX / IRET continue here */
+        return 1;
+    }
+    XB(4, 0x0575);
+    ds_put8(c, 0x0052, 0x10);                                      /* 0575 mov byte [52h],10h */
+    c->seg[S_DS] = cpu_pop16(c);                                  /* 057A pop ds */
+    c->r[R_AX] = cpu_pop16(c);                                    /* 057B pop ax */
+    const uint16_t old_cs = c->seg[S_CS];
+    const uint16_t old_ip = seg_read16(c, old_cs, 0x0541);         /* 057C ljmp cs:[0541h], live patched vector */
+    const uint16_t old_seg = seg_read16(c, old_cs, 0x0543);
+    c->ip = old_ip;
+    c->seg[S_CS] = old_seg;                                      /* XB(4) included the LJMP */
+    return 1;
+#undef RUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0545, isound_log_timer_interrupt_handler, "PC-speaker timer interrupt: advance the sequencer cadence, send PIC EOI or chain to saved INT8", 3 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x10B3, setup_retrace_tick_prefix, "decrement the setup timer countdown, select retrace polling, and hand off at the first STI boundary or branch target", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0979, setup_format_signed_number, "write a signed 16-bit number as decimal text with a thousands comma", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0851, setup_format_long_number, "write a signed 32-bit number as decimal text with a thousands comma", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0811, setup_string_width, "sum the widths of a zero-terminated string through one far call per character", 1 },

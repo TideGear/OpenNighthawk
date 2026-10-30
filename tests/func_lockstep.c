@@ -65,7 +65,9 @@ static side_t g_side[2];
  * and the COM launcher must not overlap the interrupt vector table. The
  * override provides a zero-base control and a second nonzero-base proof.
  * Keep the entire loaded code segment (including near fixture stubs) below
- * 20000h, where the graphics fixtures' page buffers start. Their RAM and
+ * 20000h, where the graphics fixtures' page buffers start. ISOUND.LOG 0545
+ * additionally alternates between CS=0800h and route CS=169Bh to verify that
+ * its relocated DS immediate is read from the loaded image. Their RAM and
  * canonical 5000h/6000h stacks retain their original addresses and aliases. */
 static const struct { const char *module; uint16_t base; } LOAD_BASES[] = {
     { "F117.COM", 0x0800 }, { "MGRAPHIC.EXE", 0x0800 }, { "MISC.EXE", 0x0800 },
@@ -74,7 +76,7 @@ static const struct { const char *module; uint16_t base; } LOAD_BASES[] = {
 };
 static int fixture_base_valid(int base)
 {
-    return base == -1 || base == 0 || (base >= 0x0400 && base <= 0x0800);
+    return base == -1 || base == 0 || (base >= 0x0400 && base <= 0x0800) || base == 0x169B;
 }
 static uint16_t module_load_base(const char *name, int forced)
 {
@@ -963,6 +965,8 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "ISOUND.LOG", 0x0545, 0x0545, 0x003B },
+    { "SETUP.EXE", 0x10B3, 0x10B3, 0x0021 },
     { "SETUP.EXE", 0x0979, 0x0979, 0x00D2 },
     { "SETUP.EXE", 0x0851, 0x0851, 0x0128 },
     { "SETUP.EXE", 0x0811, 0x0811, 0x0040 },
@@ -1878,6 +1882,7 @@ static const struct { const char *module; uint16_t seg, lo, hi; } SHARED_ENDINGS
     { "PLAYER.EXE", 0x026B, 0x0073, 0x009D },   /* the clock hook step leaves by LJMP to the divider setters 0073 and 008B, which return to its caller */
     { "PLAYER.EXE", 0x0000, 0x115E, 0x1163 },   /* the fixture's stand-in for the fatal handler (115E) the stack check's overflow arm jumps to: counts and RETs */
     { "END.EXE", 0x0000, 0x36D6, 0x36D7 },   /* debriefing message switch (36BC): the RET planted at 36D6 that ends every case */
+    { "ISOUND.LOG", 0x0000, 0xF900, 0xF901 }, /* the old INT8 fixture IRET after the timer-handler LJMP */
 };
 static uint16_t g_end_lo[4], g_end_hi[4];   /* the routine's module's shared code */
 static int g_nend;
@@ -2679,6 +2684,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "SETUP.EXE", 0x0000, 0x0811, 0x0040, 26, 26, "sum the widths of a zero-terminated string through one far call per character" },
     { "SETUP.EXE", 0x0000, 0x0851, 0x0128, 135, 135, "write a signed 32-bit number as decimal text with a thousands comma" },
     { "SETUP.EXE", 0x0000, 0x0979, 0x00D2, 89, 89, "write a signed 16-bit number as decimal text with a thousands comma" },
+    { "SETUP.EXE", 0x0000, 0x10B3, 0x0020, 13, 13, "decrement the setup timer countdown, select retrace polling, and hand off at the first STI boundary or branch target", 0x10D3, 13 },
+    { "ISOUND.LOG", 0x0000, 0x0545, 0x003B, 27, 27, "PC-speaker timer interrupt: advance the sequencer cadence, send PIC EOI or chain to saved INT8" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2979,6 +2986,9 @@ static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMP
     { "MPS_LOGO.EXE", 0x0146, 0x111D, 0x12C5 },    /* the formatter's conversion dispatch: a JMP to another arm */
     { "MPS_LOGO.EXE", 0x0146, 0x111D, 0x12E6 },    /* the formatter's conversion dispatch: a JMP to another arm */
     { "MPS_LOGO.EXE", 0x0146, 0x111D, 0x1364 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "SETUP.EXE", 0x0000, 0x10B3, 0x10E6 },
+    { "SETUP.EXE", 0x0000, 0x10B3, 0x1118 },
+    { "ISOUND.LOG", 0x0000, 0x0545, 0xF900 }, /* saved INT8 fixture target for timer-handler LJMP */
 };
 /* Routines whose named code ends with a POPF that restores the caller's IF: the POPF clears the run
  * limit so the run loop can take an interrupt, so the body stops after it with the machine at `stop`
@@ -3166,12 +3176,20 @@ static void nc_begin(uint8_t *map)
     g_nc_track = map; g_nc_in_callee = 0;
 }
 
+/* SETUP 10B3 is a bounded prefix. Stop at its first documented handoff:
+ * 10D3 after STI, or sibling exits 10E6/1118. CX starts at zero before
+ * the retrace LOOP, and unchanged low bits can keep that later polling
+ * loop running indefinitely; it is outside this prefix proof. */
 /* ASOUND.117 025A is proved as a bounded prefix: its tail is a wait loop (02CA..02E3) that only the timer interrupt
- * can end, so no state returns. The original run ends at the hand-back, exactly 356 clocks after the entry, with the
- * return address still on the stack (the same state the body leaves). */
-static int wait_prefix_boundary(const cpu_t *a, uint16_t cs)
+ * can end, so no state returns. The original run ends at the hand-back, exactly 356 clocks after the entry (the same
+ * state the body leaves). */
+static int wait_prefix_boundary(const cpu_t *a, uint16_t cs, uint16_t entry_sp)
 {
-    return entry_is("ASOUND.117", 0x01B6, 0x025A) && a->seg[S_CS] == cs && a->ip == 0x02CA && a->icount == 1000 + 356;
+    if (entry_is("SETUP.EXE", 0x0000, 0x10B3))
+        return a->seg[S_CS] == cs && a->r[R_SP] == entry_sp &&
+               (a->ip == 0x10D3 || a->ip == 0x10E6 || a->ip == 0x1118);
+    return entry_is("ASOUND.117", 0x01B6, 0x025A) && a->seg[S_CS] == cs &&
+           a->ip == 0x02CA && a->icount == 1000 + 356 && a->r[R_SP] == entry_sp;
 }
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_t cs, uint16_t ip)
 {
@@ -3194,7 +3212,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         entry_is("VGAME.EXE", 0x0000, 0x79BE) ||
         entry_is("VGAME.EXE", 0x0000, 0x8A90)) ? g_span : 0x300u + g_below;
     while ((unsigned)*steps < g_step_cap) {
-        if (wait_prefix_boundary(a, cs) && a->r[R_SP] == entry_sp) return 1;
+        if (wait_prefix_boundary(a, cs, entry_sp) && a->r[R_SP] == entry_sp) return 1;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -3533,7 +3551,7 @@ static int check_module_rules(void)
     for (unsigned k=0;k<sizeof historical/sizeof historical[0];k++)
         if (module_load_base(historical[k],-1)!=0 || module_load_base(historical[k],0x3000)!=0) return 1;
     if (!fixture_base_valid(-1) || !fixture_base_valid(0) || !fixture_base_valid(0x0400) ||
-        !fixture_base_valid(0x0800) || fixture_base_valid(0x03FF) || fixture_base_valid(0x0801) ||
+        !fixture_base_valid(0x0800) || !fixture_base_valid(0x169B) || fixture_base_valid(0x03FF) || fixture_base_valid(0x0801) ||
         fixture_base_valid(0x3000)) return 1;
     static const char *drivers[] = { "ASOUND.117", "ASOUND.LOG", "F117.COM", "MGRAPHIC.EXE", "MISC.EXE" };
     recomp_override o = {0};
@@ -3958,7 +3976,7 @@ int main(int argc, char **argv)
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
-        const uint16_t base = module_load_base(o->module, forced_base);
+        uint16_t base = module_load_base(o->module, forced_base);
         g_entry = o;
         if (mi % shards != shard) continue;
         g_rng = routine_seed(seed, o);
@@ -4017,7 +4035,7 @@ int main(int argc, char **argv)
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90) ||
              (!strcmp(o->module, "SETUP.EXE") && o->ip == 0x0010)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
-        const uint32_t at = (uint32_t)base * 16u + m->origin;
+        uint32_t at = (uint32_t)base * 16u + m->origin;
         if (!test_load_generated_image(g_pristine, MEM_SIZE, m, base)) {
             fprintf(stderr,"invalid relocation metadata/image for %s\n",m->name); return 2;
         }
@@ -4027,7 +4045,7 @@ int main(int argc, char **argv)
         patch_image_for(g_pristine, o);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
-        const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
+        uint16_t cs = (uint16_t)(base + o->seg); const uint16_t ip = o->ip;
         g_from = ip; g_span = 0x300;
         for (unsigned k = 0; k < sizeof SPANS / sizeof SPANS[0]; k++)
             if (!strcmp(SPANS[k].module, o->module) && SPANS[k].ip == o->ip) { g_from = SPANS[k].from; g_span = SPANS[k].span; }
@@ -4080,7 +4098,22 @@ int main(int argc, char **argv)
         unsigned long long mc = 0, ms = 0, mb = 0;
         if (!nc_out && getenv("F117_NAMED_COVER")) nc_out = fopen(getenv("F117_NAMED_COVER"), "a");
         memset(g_nc_named, 0, sizeof g_nc_named); memset(g_nc_hand, 0, sizeof g_nc_hand);
+        const int isound0545_dual_base = forced_base < 0 && !strcmp(o->module, "ISOUND.LOG") && o->seg == 0 && o->ip == 0x0545;
         for (int s = 0; s < states; s++) {
+            if (isound0545_dual_base) {
+                base = (s & 1) ? 0x169B : 0x0800;
+                at = (uint32_t)base * 16u + m->origin;
+                cs = (uint16_t)(base + o->seg);
+                if (!test_load_generated_image(g_pristine, MEM_SIZE, m, base)) {
+                    fprintf(stderr, "invalid dual-base relocation/image for %s at %04X\n", m->name, base); return 2;
+                }
+                memcpy(g_loaded_image, g_pristine + at, m->size);
+                g_nc_img = g_loaded_image; g_nc_at = at; g_nc_size = m->size;
+                stub_driver_thunks(g_pristine, at, m, o);
+                patch_image_for(g_pristine, o);
+                memcpy(g_mem[0], g_pristine, MEM_SIZE);
+                memcpy(g_mem[1], g_pristine, MEM_SIZE);
+            }
             if (s == states / 2) {
                 /* The second half runs on memory of mostly 00, FF and 01
                  * bytes: random words almost never hit a routine's exact
@@ -54677,6 +54710,149 @@ g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
 #undef XW16
 #undef XW8
             }
+if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
+    uint32_t rng_ = (uint32_t)routine_seed(seed, o) + (uint32_t)s * 2654435761u;
+#define XRAND() (rng_ = rng_ * 1664525u + 1013904223u, rng_ >> 16)
+#define XW8(seg_, off_, val_) do { const uint32_t a_ = phys((seg_), (uint16_t)(off_)); g_pristine[a_] = g_mem[0][a_] = g_mem[1][a_] = (uint8_t)(val_); } while (0)
+#define XW16(seg_, off_, val_) do { const uint16_t w_ = (uint16_t)(val_); XW8((seg_), (off_), w_); XW8((seg_), (uint16_t)((off_) + 1), w_ >> 8); } while (0)
+    const uint32_t mode_ = XRAND() % 5u;
+    const uint16_t dg_ = (XRAND() & 1u) ? 0x5000 : 0x4800;
+    seg[S_DS] = dg_;
+    seg[S_SS] = (XRAND() & 1u) ? dg_ : 0x6000;
+    r[R_SP] = 0xE000;
+    flags = (uint16_t)(flags & (uint16_t)~(F_DF | F_TF));
+    for (unsigned j_ = 0; j_ < 0x200; j_++) XW8(seg[S_SS], (uint16_t)(r[R_SP] - 0x200 + j_), XRAND());
+    for (unsigned j_ = 0; j_ < 4; j_++) { const uint16_t w_ = (uint16_t)XRAND(); XW16(seg[S_SS], (uint16_t)(r[R_SP] + 2 * j_), w_); small[j_] = w_; }
+    /* Exercise the countdown exit, sync-off exit, STI boundary and retrace-set exit. */
+    XW8(dg_, 0x0E36, mode_ == 0 ? 0 : mode_ == 4 ? 2 : 1);
+    XW8(dg_, 0x0E3D, mode_ == 1 ? 0 : 1);
+    g_io_salt = ((uint64_t)XRAND() << 32) | XRAND();
+    g_port_script.port = 0x03DA;
+    g_port_script.n = 2;
+    g_port_script.v[0] = mode_ == 3 ? 0x08 : 0x00;
+    g_port_script.v[1] = 0x08;
+    g_ipf_n = 0;
+    g_io_force[0].port = 0; g_io_force[0].and_ = 0; g_io_force[0].or_ = 0;
+    g_io_force[1].port = 0; g_io_force[1].and_ = 0; g_io_force[1].or_ = 0;
+#undef XW16
+#undef XW8
+#undef XRAND
+}
+            if (!strcmp(o->module, "ISOUND.LOG") && o->seg == 0 && o->ip == 0x0545) {
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* Keep caller DS independent; the handler switches to the DS
+                 * operand relocated in its loaded code image below. */
+                seg[S_DS]=XPICK(2)?0x0068:0x5000;
+                seg[S_SS]=XPICK(2)?seg[S_DS]:0x6000;
+                seg[S_ES]=(uint16_t)XRAND();
+                flags=(uint16_t)(flags & (0xFFFFu^(F_DF|F_TF)));
+                for(unsigned j=0;j<8;j++) r[j]=(uint16_t)XRAND();
+                switch(XPICK(4)) {
+                    case 0: r[R_SP]=(uint16_t)(0x0100+2*XPICK(0x80)); break;
+                    case 1: r[R_SP]=(uint16_t)(0xC000+2*XPICK(0x1000)); break;
+                    case 2: r[R_SP]=(uint16_t)(0xE000+2*XPICK(0x400)); break;
+                    default: r[R_SP]=(uint16_t)(0xF000+2*XPICK(0x200)); break;
+                }
+                for(unsigned j=0;j<0x300;j++) XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x300+j),XRAND());
+                for(unsigned j=0;j<4;j++) { small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
+                /* Read the loaded, relocated operand for mov ax,imm16 at CS:0548.
+                 * The fixture exercises both CS=0800h (DS=0868h) and CS=169Bh
+                 * (DS=1703h). In either case DS:[52h]/[53h] alias image offsets
+                 * 06D2h/06D3h in the data-in-code area. */
+                const uint16_t data_seg_=(uint16_t)(g_pristine[phys(cs,0x0548)] |
+                    ((uint16_t)g_pristine[phys(cs,0x0549)]<<8));
+                if (data_seg_ != (uint16_t)(cs + 0x0068) ||
+                    (forced_base < 0 && cs != ((s & 1) ? 0x169B : 0x0800))) {
+                    fprintf(stderr,"ISOUND.LOG 0545 fixture load-base/DS mismatch: CS=%04X DS=%04X state=%d\n",cs,data_seg_,s);
+                    exit(2);
+                }
+                /* The lockstep machine is zero-initialized, so set its instruction rate to
+                 * the real app default (MACHINE_APP_IPS=60,000,000). This keeps IO_SLACK
+                 * nonzero and makes the EOI/LJMP preflight predicate observable. */
+                g_m.ips = MACHINE_APP_IPS;
+                /* Cycle through all four independent counter/path combinations. The
+                 * entry probe uses a stop one clock below the exact room() budget;
+                 * the room probe also checks the exact full-path boundary. */
+                const uint8_t old_timer_ = ((unsigned)s & 1u) ? 0u : 1u;
+                const uint8_t sequencer_ = ((unsigned)s & 2u) ? 1u : 0u;
+                if (sequencer_) {
+                    r[R_AX] = 0x1357; r[R_CX] = 0x2468; r[R_DX] = 0x369A;
+                }
+                XW8(data_seg_,0x0052,old_timer_);  /* 1 -> LJMP arm, 0 -> EOI arm */
+                XW8(data_seg_,0x0053,sequencer_);  /* 1 -> sequencer call, 0 -> far tick */
+                const unsigned full_path_ = sequencer_ ? 52u : 44u;
+                const unsigned io_slack_ = old_timer_ ? 0u : (unsigned)(g_m.ips / 1000u / 1024u);
+                g_probe_steps = full_path_ + io_slack_; /* harness sets stop_at one clock below this */
+                g_probe_sweep = 1;             /* sweep mid-run stops over all entry offsets */
+                g_room_probe_n = 2;
+                g_room_probe_k[0] = full_path_ + io_slack_ - 1u;
+                g_room_probe_e[0] = 0u; /* one clock short must decline without running */
+                g_room_probe_k[1] = full_path_ + io_slack_;
+                g_room_probe_e[1] = full_path_ - (sequencer_ ? 0u : 1u) - (old_timer_ ? 0u : 1u); /* exact room() boundary completes */
+                /* The old INT8 vector is run-time data. A fixed target lets the
+                 * private FATAL_JUMPS row stop the named body at the LJMP. */
+                XW16(cs,0x0541,0xF900); XW16(cs,0x0543,cs);
+                XW8(cs,0xF900,0xCF); /* stand-in old INT8 handler: IRET */
+                const uint16_t dg=data_seg_;
+                XW16(dg,0xF800,0); XW16(dg,0xF802,XRAND());
+                XW16(dg,0xF804,0); XW16(dg,0xF806,XRAND());
+#define XSTUB(sg_,off_,cell_,far_,ret_) do { \
+    uint8_t cb_[160]; unsigned nb_=0; \
+    cb_[nb_++]=0xFF;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)(cell_);cb_[nb_++]=(uint8_t)((cell_)>>8); /* inc [call count] */ \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold AX */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x0E;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold CX */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x16;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold DX */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x1E;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold BX */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x26;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold SP */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x2E;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold BP */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x36;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold SI */ \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x3E;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold DI */ \
+    cb_[nb_++]=0x9C;cb_[nb_++]=0x58; \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); /* fold FLAGS */ \
+    cb_[nb_++]=0x8C;cb_[nb_++]=0xD8; /* AX = DS */ \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x8C;cb_[nb_++]=0xD0; /* AX = SS */ \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x8C;cb_[nb_++]=0xC0; /* AX = ES */ \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x8C;cb_[nb_++]=0xC8; /* AX = CS */ \
+    cb_[nb_++]=0xD1;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x31;cb_[nb_++]=0x06;cb_[nb_++]=(uint8_t)((cell_)+2);cb_[nb_++]=(uint8_t)(((cell_)+2)>>8); \
+    cb_[nb_++]=0x8B;cb_[nb_++]=0xC4; /* AX = SP */ \
+    cb_[nb_++]=0xB8;cb_[nb_++]=(uint8_t)(ret_);cb_[nb_++]=(uint8_t)((ret_)>>8); \
+    if (far_) { cb_[nb_++]=0x83;cb_[nb_++]=0xC0;cb_[nb_++]=0x01; } \
+    else { cb_[nb_++]=0x31;cb_[nb_++]=0xC9; } /* near callee clobbers CX; flags remain observable */ \
+    cb_[nb_++]=(far_)?0xCB:0xC3; \
+    for(unsigned q_=0;q_<nb_;q_++) XW8((sg_),(uint16_t)((off_)+q_),cb_[q_]); \
+} while(0)
+                /* 0253 is near/plain RET, so its entry uses an E9 to a safe stub. */
+                XW8(cs,0x0253,0xE9);
+                XW16(cs,0x0254,(uint16_t)(0xF200-0x0256));
+                const uint16_t near_ret_=(uint16_t)XRAND();
+                XSTUB(cs,0xF200,0xF800,0,near_ret_);
+                /* 010B is a relocated far entry and must end in RETF. */
+                {
+                    const uint32_t far_at_=phys(cs,0x0566);
+                    const uint16_t far_seg_=(uint16_t)(g_pristine[far_at_]|((uint16_t)g_pristine[far_at_+1]<<8));
+                    const uint16_t far_off_=(uint16_t)(g_pristine[phys(cs,0x0564)]|((uint16_t)g_pristine[phys(cs,0x0565)]<<8));
+                    const uint16_t far_ret_=(uint16_t)XRAND();
+                    XSTUB(far_seg_,far_off_,0xF804,1,far_ret_);
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -54939,7 +55115,7 @@ g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
                 g_ctx = ""; restore(); continue;
             }
             const uint16_t reach = g_reach;
-            if (!returned || a->seg[S_CS] != cs || (a->ip != back && !wait_prefix_boundary(a, cs)) || g_self_written) steps = (int)g_step_cap;
+            if (!returned || a->seg[S_CS] != cs || (a->ip != back && !wait_prefix_boundary(a, cs, entry_sp)) || g_self_written) steps = (int)g_step_cap;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
@@ -54952,7 +55128,7 @@ g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
                 (!strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0BCF) ||   /* leaves the decoded string on its private stack */
                 (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x0146 && o->ip == 0x08CC);   /* returns by JMP with the vector left on the stack */
             const int mg03e8_ = entry_is("MGRAPHIC.EXE", 0x019C, 0x03E8) && popped == (uint16_t)0xFFFE;   /* JMP SI with the return word popped and two words pushed */
-            if ((unsigned)steps >= g_step_cap || ((popped < 2 || popped > 18) && !(popped == 0 && wait_prefix_boundary(a, cs)) && !(setargv_ && (uint16_t)(0u - popped) < 0x400u) && !stackchk_ && !mg03e8_)) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
+            if ((unsigned)steps >= g_step_cap || ((popped < 2 || popped > 18) && !(popped == 0 && wait_prefix_boundary(a, cs, entry_sp)) && !(setargv_ && (uint16_t)(0u - popped) < 0x400u) && !stackchk_ && !mg03e8_)) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. The window is
@@ -55048,7 +55224,9 @@ g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
              * PLAYER 026B:01A3 stops right after its STI (a POPF_STOPS row, a program end). */
             if (o->matched == 3 && (g_m.cpu.seg[S_CS] != cs ||
                 (g_m.cpu.ip != back && !(!strcmp(o->module, "VGAME.EXE") && o->seg == 0x120A && o->ip == 0x0971 && g_m.cpu.ip == 0x0981) &&
-                 !(!strcmp(o->module, "PLAYER.EXE") && o->seg == 0x026B && o->ip == 0x01A3 && g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs))))) {
+                 !(!strcmp(o->module, "PLAYER.EXE") && o->seg == 0x026B && o->ip == 0x01A3 && g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs)) &&
+                 !(!strcmp(o->module, "ISOUND.LOG") && o->seg == 0 && o->ip == 0x0545 && g_cov >= 0 &&
+                   (wake_stop_reached(&g_m.cpu, cs) || program_end_reached(o, &g_m.cpu, cs)))))) {
                 printf("  MISMATCH %s+%05X (%04X:%04X): IRET resumed at %04X:%04X, the original at %04X:%04X\n",
                        o->module, ((uint32_t)o->seg << 4) + ip, o->seg, ip, g_m.cpu.seg[S_CS], g_m.cpu.ip, cs, back);
                 mc++; mb++; restore(); break;
