@@ -91,3 +91,21 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
   (call it as `.\build.cmd`; the bare name is not found). Keep builds at BelowNormal while the other session gates.
   A helper batch file sits outside the repo at `D:\f117-wt\p3-b.cmd` (output `D:\f117-wt\p3-build.out`).
 - Window-less runs: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`; `--no-record`, a copy of the install.
+
+## Update, 30 October 2026 (Remastered progress after the handoff above)
+
+Commits on the branch since: `04ac17a`/`2ca7538` (R2 world files), `1acca1d`/`cf8326a` (mesh decoder on every real
+bank, game loads banks unchanged), `ed01de1` (offline depth-buffer model sheets), `ad7697d` (sound page v2).
+
+- **Done and checked:** `*.3DG`/`*.3DT`/`*.WLD` decode (`tools/world_decode.py`, `world_check.py`; LB, NC, PG exact in
+  START's memory, VN exact but six runtime-written bytes); the mesh decoder decodes all 3,936 (model x level) cases
+  of the 11 `*.3DX` banks (`tools/model_census.c`) and the banks sit unchanged in the game's memory; real models
+  draw correctly with a depth buffer (`tools/model_sheet.c`; PNG sheets in the session folder).
+- **Next big unit (R3 proper): pose preparation.** To draw a frame from the scene-input capture (`F117R_OBSERVE_SCENE`,
+  `tools/scene_capture.py`) the part matrices and positions must be built independently of the guest: the game does
+  it in VGAME `120A:0317` (parts) and `0561` (planes) after the request at `120A:00CF`; `scene_pose_read` currently
+  needs a DS snapshot taken AFTER that preparation. Then the camera chain (`model_xform_vertex`, projection `0x129A2`)
+  with sub-pixel output, then terrain placement from the `*.3DG` tile maps and the ground-patch models (the first ~30
+  models of a theatre bank are flat patches), then widescreen, longer reach, held-out comparison with the original
+  frame (`F117_PRESENT_SHOTS`).
+- **Not done anywhere:** a renderer in the app, `--presentation remastered`, the settings entry. Remastered stays 0%.
