@@ -1,6 +1,6 @@
 # Answering SETUP's questions from the settings (design)
 
-Status: design, not implemented. Part of the in-game settings menu, a Phase 3 re-release feature
+Status: the sound-driver answer is implemented (30 October 2026) in the simpler way the gate's routes already work, see "Implemented" below; the joystick answer is a fixed no. Part of the in-game settings menu, a Phase 3 re-release feature
 in [roadmap.md](roadmap.md).
 
 ## Purpose
@@ -49,3 +49,16 @@ still shows the prompts for players who want to answer themselves.
 3. Wire it to the settings in the windowed app, with the option to show the prompts.
 
 Do this as its own pass, after the Phase 2 integration work.
+
+## Implemented (30 October 2026): `--sound`
+
+`--sound adlib|roland|speaker` (`sound =` in f117a.ini, "Sound driver" in the settings menu; `ask`, the default, leaves
+the questions to the player) types SETUP's two answers itself: `N` (no joystick) 200,000 instructions after SETUP.EXE
+starts, then the driver's digit (1 speaker, 2 AdLib, 3 Roland) after 2,000,000, each held 540,000 instructions: the
+numbers the gate's routes (`boot_to_flight.args`) use, which pass under both engines. It hooks the program-start event
+the recompiled runtime already uses, so no machine code changed, the keys are recorded as inputs like any other, and it
+is skipped for a replay (which brings its own). This is the fixed-delay approach the rules above warn against; it is
+safe here because the machine is deterministic (the same instruction count each run) and the answers are type-ahead,
+but it assumes the first question is always the joystick one. Checked in the real app: `--sound adlib` loaded
+`Asound.117`, `roland` loaded `Rsound.117`, `speaker` loaded `Isound.117`, and `ask` waited at SETUP. Not done: answering
+yes to the joystick (SETUP then calibrates), a `hybrid` choice, an option to show the prompts only when asked.

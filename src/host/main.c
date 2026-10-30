@@ -453,6 +453,33 @@ static void restart_game(char **orig_argv, const char *extra1, const char *extra
 #endif
 }
 
+/* --sound adlib|roland|speaker: answer SETUP's two questions ourselves (is there a joystick: no; which sound driver),
+ * as the gate's routes do: keys typed at fixed instruction counts after SETUP starts. Never during a replay, which
+ * brings its own inputs; the typed keys are recorded like any other input. */
+static char g_setup_sound;                           /* the digit SETUP wants: '1' speaker, '2' AdLib, '3' Roland; 0 = ask */
+
+static void setup_key(machine_t *m, uint64_t at, char key)
+{
+    char text[2] = { key, 0 };
+    const char *k = text;
+    uint8_t mk[4], br[4];
+    int nm, nb;
+    if (!keys_next(&k, mk, &nm, br, &nb)) return;
+    const uint64_t hold = 540000;                    /* as 60 ms at the gate's 9 million a second */
+    for (int i = 0; i < nm; i++) { machine_input in = { 0 }; in.at = at; in.type = INPUT_KEY; in.byte = mk[i]; machine_input_at(m, &in); }
+    for (int i = 0; i < nb; i++) { machine_input in = { 0 }; in.at = at + hold; in.type = INPUT_KEY; in.byte = br[i]; machine_input_at(m, &in); }
+}
+
+static void app_module_load(void *user, machine_t *m, const char *name, const uint8_t *file, size_t len, int kind,
+                            uint16_t load_seg, uint16_t reloc)
+{
+    recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
+        setup_key(m, m->cpu.icount + 200000, 'N');
+        setup_key(m, m->cpu.icount + 2000000, g_setup_sound);
+    }
+}
+
 static int newest_first(const void *a, const void *b)
 {
     return strcmp(*(char *const *)b, *(char *const *)a);
@@ -651,6 +678,14 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strcmp(a, "--sound") && v) {
+            if (!strcmp(v, "speaker")) g_setup_sound = '1';
+            else if (!strcmp(v, "adlib")) g_setup_sound = '2';
+            else if (!strcmp(v, "roland")) g_setup_sound = '3';
+            else if (!strcmp(v, "ask")) g_setup_sound = 0;
+            else { fprintf(stderr, "--sound takes ask, adlib, roland or speaker\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
         else if (!strcmp(a, "--remap") && v) {
             if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
@@ -781,7 +816,7 @@ int main(int argc, char **argv)
                 "             [--sim-hz 8|15] (D1REAL cadence; default 15 at 60000000 ips; replay restores recorded choice)\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--presentation original|enhanced] [--fixes original|recommended]\n"
+                "             [--presentation original|enhanced] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
                 "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
@@ -1004,7 +1039,7 @@ int main(int argc, char **argv)
     hooks.speaker = on_speaker;
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
-    hooks.module_load = recomp_module_load;
+    hooks.module_load = app_module_load;
     hooks.file_data = fixes_file_data;
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);
@@ -1017,6 +1052,7 @@ int main(int argc, char **argv)
         observe_set(&g_feed.obs);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
+    if (replay) g_setup_sound = 0;                  /* a replay brings its own inputs, SETUP's answers included */
     if (!time_us) time_us = machine_local_time_us();
     if (!replay) save_fixset_check(save, win);      /* a replay brings its recorded set */
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
