@@ -41,6 +41,7 @@
 #include "settings.h"
 #include "crt.h"
 #include "controls.h"
+#include "remap.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -534,6 +535,10 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strcmp(a, "--remap") && v) {
+            if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
+            i++;
+        }
         else if (!strncmp(a, "--pad-", 6) && v) {          /* controller mapping (controls.h) */
             const long n = strtol(v, NULL, 10);
             const int on = v[0] == 'y' || v[0] == 'Y' || v[0] == 't' || v[0] == 'T' || n == 1;
@@ -1085,7 +1090,7 @@ int main(int argc, char **argv)
                         break;
                     }
                 }
-                if (!paused && live) key_event(ev.key.scancode, down);   /* repeats re-send the make code */
+                if (!paused && live) key_event(remap_apply(ev.key.scancode), down);   /* repeats re-send the make code */
                 break;
             }
             case SDL_EVENT_MOUSE_MOTION: {

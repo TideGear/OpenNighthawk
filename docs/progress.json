@@ -182,9 +182,9 @@
       {
         "item": "Modern controls: controller and HOTAS with remapping, an on-screen key reference, mouse where the original had it",
         "weight": 3.0,
-        "done": 0.2,
+        "done": 0.25,
         "kind": "estimate",
-        "evidence": "29 Oct 2026, branch p3-settings-menu. Controller dead zone, axis inversion and fire-button choice (pad-* keys in f117a.ini or on the command line; src/host/controls.c, unit-tested, defaults reproduce the old fixed mapping; the app starts with the options). Not done or not tried: any physical controller or HOTAS, a remapping screen, mouse where the original had it, the on-screen key reference."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Controller dead zone, axis inversion and fire-button choice (pad-* keys in f117a.ini or on the command line; src/host/controls.c, unit-tested, defaults reproduce the old fixed mapping; the app starts with the options). Keyboard remapping also exists (remap = Q:W, see the accessibility item). Not done or not tried: any physical controller or HOTAS, a remapping screen, mouse where the original had it, the on-screen key reference."
       },
       {
         "item": "Sound device chosen in the menu: AdLib, Roland MT-32 (Munt) or PC speaker",
@@ -210,9 +210,9 @@
       {
         "item": "Accessibility: subtitles for the speech, full remapping, a colourblind-safe HUD option in Remastered",
         "weight": 2.0,
-        "done": 0.0,
+        "done": 0.25,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Full keyboard remapping: remap = Q:W, Left Shift:Space in f117a.ini or --remap on the command line (SDL key names; src/host/remap.c, unit-tested; a bad name is refused with a message; the host's own chords keep the physical keys). Run in the real app: a good ini entry starts the game, a bad name exits with the message. Not done: subtitles for the speech (needs the speech text), a colourblind-safe HUD (Remastered), a remapping screen in the menu."
       },
       {
         "item": "Hybrid sound: Roland MT-32 (Munt) music with AdLib sound effects, from a second, hidden AdLib driver fed the same sound requests; the game's own driver and logic stay Roland's",

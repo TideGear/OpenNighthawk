@@ -872,7 +872,7 @@ Each is fixed; the named regressions keep the failing seed or case.
       settings menu (Ctrl+Alt+S; presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland
       output; writes f117a.ini, restart offered; `src/host/settings.c`), controller mapping (`pad-deadzone`, `pad-invert-x/y`, `pad-fire1/2`;
       `src/host/controls.c`; defaults reproduce the old fixed mapping) and the CRT scanline filter (`--crt`, `crt = yes`;
-      `src/host/crt.c`, applied to the displayed copy only) and `--watch latest|SESSION` (replay a recorded flight from a scratch copy of its save; a menu row starts it). The menu does not yet cover controller or sound-driver answers.
+      `src/host/crt.c`, applied to the displayed copy only) and `--watch latest|SESSION` (replay a recorded flight from a scratch copy of its save; a menu row starts it) and keyboard remapping (`remap = Q:W` / `--remap`; `src/host/remap.c`). The menu does not yet cover controller or sound-driver answers.
       *Built so far* (24 Oct, `ab4256b`): `--presentation original|enhanced` and `--fixes original|recommended`, also as
       `presentation =` and `fixes =` in f117a.ini (`remastered` is refused as not built; later `--fix` options make a custom set);
       saves tagged with the fix set that last wrote them (a `.fixset` file beside the save folder, never in it), warning once when
