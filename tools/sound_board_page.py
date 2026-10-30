@@ -37,6 +37,16 @@ AMIGA_NAMES = {
     "play2_0_explosion": ("Explosion", "intro player"), "play2_1_firemissile": ("Missile fire", "intro player"),
     "play2_2_introbeep": ("Intro beep", "intro player"),
 }
+GROUPS = [
+    ("Music", {3, 36, 37, 38, 39}),
+    ("Weapons, warnings and flight effects (Mac ids 304 to 320)", set(range(4, 21))),
+    ("Engine", {23, 24, 25}),
+    ("Menus, briefing and front end", {26, 28, 31, 34, 35}),
+    ("Speech phrases", {41, 42, 43, 44, 45}),
+]
+# the owner's rule: music from the Mac if there is a recording, else Roland, else AdLib; effects AdLib; speech the
+# deeper voice, which the speaker and Roland drivers share (both play the speech through the PC speaker)
+MAC_MUSIC = {36: 322, 37: 321, 38: 200}      # the owner matched these by ear (marks on the Mac rows)
 SPEECH = ["primary", "target", "hit", "good", "nice", "landing", "cleared", "for take off", "to land"]
 
 
@@ -58,7 +68,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--board", required=True)
     ap.add_argument("--mac", required=True)
-    ap.add_argument("--amiga", required=True)
+    ap.add_argument("--amiga", help="Amiga samples (no longer shown by default; the owner judged them not worth using)")
     ap.add_argument("--speech", required=True)
     ap.add_argument("--board-long", help="a second board folder whose clips replace the same ids' (longer renders)")
     ap.add_argument("--board-held", help="a board folder of renders that ask for the sound again every step (sustained versions)")
@@ -117,10 +127,30 @@ def main():
             clips[key] = {"b": encode(mac_by_id[300 + i], tmp), "s": round(seconds(mac_by_id[300 + i]), 2), "c": False}
             row["clips"]["mac"] = key
             row["sub"] = "Mac resource %d: %s" % (300 + i, MAC_NAMES[300 + i])
+        if i in MAC_MUSIC and MAC_MUSIC[i] in mac_by_id:
+            mk = "mac-%d" % MAC_MUSIC[i]
+            if mk not in clips:
+                clips[mk] = {"b": encode(mac_by_id[MAC_MUSIC[i]], tmp), "s": round(seconds(mac_by_id[MAC_MUSIC[i]]), 2), "c": False}
+            row["clips"]["mac"] = mk
+            row["sub"] = "Mac resource %d is the same music" % MAC_MUSIC[i]
         if not any(k in row["clips"] for k in ("adlib", "roland", "speaker")):
             silent.append(i)
             continue
+        row["group"] = next((g for g, ids in GROUPS if i in ids), "Not identified yet")
+        # the default source, in order of preference (the viewer can override per sound in the game)
+        if i in {3, 36, 37, 38, 39}:
+            prefer = ("mac", "roland", "adlib")             # music
+        elif i in {41, 42, 43, 44, 45}:
+            prefer = ("mac", "speaker")                      # speech: the Mac words stand in for a phrase
+            if "mac" not in row["clips"]:
+                row["clips"].pop("mac", None)
+        else:
+            prefer = ("mac", "adlib", "roland", "speaker")   # sounds (AdLib has nothing for a few ids)
+        row["def"] = "mac" if (prefer[0] == "mac" and (("mac" in row["clips"]) or i in {41, 42, 43, 44, 45})) else             next((k for k in prefer[1:] if k in row["clips"]), "")
         dos.append(row)
+
+    order = [g for g, _ in GROUPS] + ["Not identified yet"]
+    dos.sort(key=lambda r: (order.index(r["group"]), int(r["key"].split("-")[1])))
 
     # speech: the DOS file's nine words, and the Mac's nine recordings
     for n, word in enumerate(SPEECH):
@@ -132,16 +162,20 @@ def main():
         if 1000 + n in mac_by_id:
             clips["mac-%d" % (1000 + n)] = {"b": encode(mac_by_id[1000 + n], tmp), "s": round(seconds(mac_by_id[1000 + n]), 2), "c": False}
             row["clips"]["mac"] = "mac-%d" % (1000 + n)
+        row["def"] = "mac" if "mac" in row["clips"] else "speaker"
         speech.append(row)
 
     # Mac sounds with no DOS id, and the Amiga samples
     for rid, name in MAC_OTHER.items():
         if rid in mac_by_id:
             clips["mac-%d" % rid] = {"b": encode(mac_by_id[rid], tmp), "s": round(seconds(mac_by_id[rid]), 2), "c": False}
-            other.append({"key": "mac-%d" % rid, "title": name, "sub": "Mac resource %d" % rid, "clips": {"mac": "mac-%d" % rid}})
-    for f in sorted(glob.glob(os.path.join(a.amiga, "*.wav"))):
+            other.append({"key": "mac-%d" % rid, "def": "mac", "title": name, "sub": "Mac resource %d" % rid, "clips": {"mac": "mac-%d" % rid}})
+    for f in (sorted(glob.glob(os.path.join(a.amiga, "*.wav"))) if a.amiga else []):
         stem = os.path.splitext(os.path.basename(f))[0]
-        name, where = AMIGA_NAMES.get(stem, (stem, "Amiga"))
+        if stem.startswith("chipcand_"):
+            name, where = ("Candidate " + stem[-2:].lstrip("0"), "raw 8-bit data from the flight program's chip-memory block, played at 8363 Hz: unverified, may not be a sound")
+        else:
+            name, where = AMIGA_NAMES.get(stem, (stem, "Amiga"))
         clips["amiga-" + stem] = {"b": encode(f, tmp), "s": round(seconds(f), 2), "c": False}
         other.append({"key": "amiga-" + stem, "title": name, "sub": "Amiga, " + where, "clips": {"amiga": "amiga-" + stem}})
 

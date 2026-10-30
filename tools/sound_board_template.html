@@ -72,6 +72,8 @@ tr.hide { display: none; }
 .play.on svg { color: var(--playing); }
 .play .cut { color: var(--muted); }
 .play.held { min-width: 0; margin-left: 4px; border-style: dashed; color: var(--muted); }
+tr.grp td { background: var(--bg); font-weight: 600; font-size: 13px; letter-spacing: 0.02em; padding-top: 12px; }
+td.def { font-size: 12px; color: var(--accent); white-space: nowrap; }
 .none { color: var(--muted); font-family: var(--mono); font-size: 12px; padding-left: 8px; }
 .all { font: inherit; font-size: 12px; padding: 5px 9px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .all:hover { background: var(--accent); color: var(--accent-ink); }
@@ -110,7 +112,7 @@ select.set, input.set { border-color: var(--accent); }
   <p class="lede">DOS keeps the nine words in one file, <code>SPEECH.117</code>, and chains them into calls. The clips are that file cut at its quiet gaps; the Macintosh has the same nine words as separate recordings.</p>
   <div class="scroll"><table id="t-speech"></table></div>
 
-  <h2>Macintosh and Amiga only</h2>
+  <h2>Macintosh only</h2>
   <p class="lede">Sounds with no DOS id in the table above.</p>
   <div class="scroll"><table id="t-other"></table></div>
 
@@ -206,9 +208,16 @@ function sel(options, value, label, onchange) {
 }
 function buildTable(el, cols, rows) {
   const head = document.createElement("tr");
-  ["Sound", ...cols.map(c => SRC_NAME[c]), "", "Kind", "Best source", "Note"].forEach(t => { const th = document.createElement("th"); th.textContent = t; head.appendChild(th); });
+  ["Sound", ...cols.map(c => SRC_NAME[c]), "", "Plays by default", "Kind", "Best source", "Note"].forEach(t => { const th = document.createElement("th"); th.textContent = t; head.appendChild(th); });
   el.appendChild(head);
+  let group = null;
   rows.forEach(r => {
+    if (r.group && r.group !== group) {
+      group = r.group;
+      const g = document.createElement("tr"), gd = document.createElement("td");
+      g.className = "grp"; gd.colSpan = cols.length + 6; gd.textContent = group;
+      g.appendChild(gd); el.appendChild(g);
+    }
     const tr = document.createElement("tr");
     tr.dataset.key = r.key;
     const n = document.createElement("td");
@@ -225,6 +234,9 @@ function buildTable(el, cols, rows) {
     ab.setAttribute("aria-label", "Play every source for " + r.title);
     ab.addEventListener("click", () => playAll(tr));
     all.appendChild(ab); tr.appendChild(all);
+    const df = document.createElement("td");
+    df.className = "def"; df.textContent = r.def ? SRC_NAME[r.def] : "";
+    tr.appendChild(df);
     const k = document.createElement("td"), p = document.createElement("td"), t = document.createElement("td");
     k.appendChild(sel(KINDS, "", "Kind of " + r.title, v => setMark(r.key, { kind: v })));
     p.appendChild(sel(PREFS.filter(([v]) => !v || cols.includes(v)), "", "Best source for " + r.title, v => setMark(r.key, { pref: v })));
@@ -289,7 +301,7 @@ const chips = document.getElementById("chips");
 
 buildTable(document.getElementById("t-dos"), ["adlib", "roland", "speaker", "mac"], DATA.dos);
 buildTable(document.getElementById("t-speech"), ["dos", "mac"], DATA.speech);
-buildTable(document.getElementById("t-other"), ["mac", "amiga"], DATA.other);
+buildTable(document.getElementById("t-other"), ["mac"], DATA.other);
 document.getElementById("foot").textContent = "No sound in any DOS driver for ids " + DATA.silent.join(", ") + " (stop or unused entries). " + DATA.note;
 applyFilter();
 
