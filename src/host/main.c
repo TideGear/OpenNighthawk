@@ -38,6 +38,10 @@
 #include "present.h"
 #include "audio.h"
 #include "midistream.h"
+#include "settings.h"
+#ifdef _WIN32
+#include <process.h>
+#endif
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
@@ -374,6 +378,41 @@ static void save_fixset_check(const char *save, SDL_Window *win)
     if (f) { fprintf(f, "%s\n", cur); fclose(f); }
 }
 
+/* The settings menu saved a setting that is read when the game starts: offer to start it again. */
+static int restart_wanted(SDL_Window *win)
+{
+    static const SDL_MessageBoxButtonData buttons[] = {
+        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Restart now" },
+        { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Later" },
+    };
+    const SDL_MessageBoxData box = { SDL_MESSAGEBOX_INFORMATION, win, "F-117A",
+        "Saved. Some of these settings apply when the game next starts.\n\nRestart now? The mission in progress is not saved.",
+        2, buttons, NULL };
+    int pressed = 0;
+    return SDL_ShowMessageBox(&box, &pressed) && pressed == 1;
+}
+
+/* Start the game again with the arguments it was given (each quoted: the C runtime joins them into one
+ * command line, so a path with a space would otherwise split). The caller then quits. */
+static void restart_game(char **orig_argv)
+{
+#ifdef _WIN32
+    int n = 0;
+    while (orig_argv[n]) n++;
+    char **q = (char **)calloc((size_t)n + 1, sizeof *q);
+    if (!q) return;
+    for (int i = 0; i < n; i++) {
+        const size_t len = strlen(orig_argv[i]) + 3;
+        q[i] = (char *)malloc(len);
+        if (!q[i]) return;
+        snprintf(q[i], len, "\"%s\"", orig_argv[i]);
+    }
+    _spawnvp(_P_NOWAIT, orig_argv[0], (const char *const *)q);
+#else
+    (void)orig_argv;
+#endif
+}
+
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL;
@@ -392,11 +431,24 @@ int main(int argc, char **argv)
     unsigned int mt32_seed = 0;
     int mt32_seed_set = 0;
 
+    /* The settings menu (Ctrl+Alt+S) writes the INI file the run reads, and restarts with the arguments
+     * as typed; --no-config leaves it without a file, so the menu is not offered. */
+    char **orig_argv = argv;
+    char settings_path[1024] = "";
+
     /* f117a.ini (beside the executable, or --config FILE): its options go
      * ahead of the command line's, so the command line wins. */
     {
         int explicit_ = 0;
         const char *ini = config_path(argc, argv, SDL_GetBasePath(), &explicit_);
+        {
+            int no_config = 0;
+            for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--no-config")) no_config = 1;
+            if (!no_config) {
+                const char *base = SDL_GetBasePath();
+                snprintf(settings_path, sizeof settings_path, "%s%s", ini ? "" : base ? base : "", ini ? ini : "f117a.ini");
+            }
+        }
         if (ini) {
             char *text = config_read_file(ini);
             char err[300], dir[1024], **merged = NULL;
@@ -658,6 +710,15 @@ int main(int argc, char **argv)
         fine_pixels = (uint32_t *)malloc(sizeof *fine_pixels * 320 * g_scale * 200 * g_scale);
         if (tex_fine) SDL_SetTextureScaleMode(tex_fine, SDL_SCALEMODE_LINEAR);
     }
+    /* the settings menu's overlay: transparent, drawn over the game's picture while the menu is open */
+    SDL_Texture *tex_menu = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
+    if (tex_menu) {
+        SDL_SetTextureScaleMode(tex_menu, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(tex_menu, SDL_BLENDMODE_BLEND);
+    }
+    static uint32_t menu_pixels[640 * 400];
+    settings_state g_set;
+    memset(&g_set, 0, sizeof g_set);
     SDL_HideCursor();
     int display_logged = 0;
 
@@ -838,7 +899,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0;
+    int running = 1, paused = 0, menu_paused = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -857,6 +918,50 @@ int main(int argc, char **argv)
                 if (down && ev.key.scancode == SDL_SCANCODE_RETURN && (mod & SDL_KMOD_ALT) && !(mod & SDL_KMOD_CTRL)) {
                     fullscreen = !fullscreen;
                     SDL_SetWindowFullscreen(win, fullscreen);
+                    break;
+                }
+                if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_S &&
+                    live && settings_path[0] && !g_set.open && tex_menu) {
+                    char *text = config_read_file(settings_path);          /* NULL if the file is not there yet */
+                    settings_load(&g_set, text);
+                    free(text);
+                    settings_open(&g_set);
+                    settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
+                    if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
+                    break;
+                }
+                if (g_set.open) {                           /* the menu has the keyboard */
+                    if (down) {
+                        const SDL_Scancode sc = ev.key.scancode;
+                        const int k = sc == SDL_SCANCODE_UP ? SKEY_UP : sc == SDL_SCANCODE_DOWN ? SKEY_DOWN :
+                                      sc == SDL_SCANCODE_LEFT ? SKEY_LEFT : sc == SDL_SCANCODE_RIGHT ? SKEY_RIGHT :
+                                      sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER ? SKEY_ENTER :
+                                      sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : -1;
+                        if (k >= 0) settings_key_event(&g_set, (settings_key)k);
+                        if (g_set.changed_live) {
+                            g_set.changed_live = 0;
+                            int n; const setting_def *d = settings_defs(&n);
+                            for (int i = 0; i < n; i++)
+                                if (!strcmp(d[i].key, "fullscreen")) {
+                                    fullscreen = !strcmp(settings_value(&g_set, i), "yes");
+                                    SDL_SetWindowFullscreen(win, fullscreen);
+                                }
+                        }
+                        if (!g_set.open) {
+                            if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
+                            if (g_set.saved_now) {
+                                const int restart = g_set.want_restart;
+                                char *text = config_read_file(settings_path);
+                                char *out = settings_apply(&g_set, text);
+                                FILE *f = out ? fopen(settings_path, "wb") : NULL;
+                                if (f) { fputs(out, f); fclose(f); }
+                                else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", "Could not write f117a.ini", win);
+                                free(text);
+                                free(out);
+                                if (f && restart && restart_wanted(win)) { restart_game(orig_argv); running = 0; }
+                            }
+                        }
+                    }
                     break;
                 }
                 if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT)) {
@@ -1073,6 +1178,12 @@ int main(int argc, char **argv)
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, show, &srcf, &dst);
+        if (g_set.open && tex_menu) {
+            memset(menu_pixels, 0, sizeof menu_pixels);
+            settings_render(&g_set, menu_pixels, 640, 400);
+            SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
+            SDL_RenderTexture(ren, tex_menu, NULL, &dst);
+        }
         SDL_RenderPresent(ren);
         if (g_present_log && !display_logged) {
             int width = 0, height = 0, vsync = 0;
