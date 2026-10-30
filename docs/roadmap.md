@@ -885,7 +885,7 @@ Each is fixed; the named regressions keep the failing seed or case.
       sharp option; the original's road and coastline jitter stays) or Remastered (below). **Fixes:** Original (473.04, every fix off),
       Recommended (every fix: the final patch, the fan-community patches, credited, and OpenNighthawk's own) or Custom. Any presentation
       combines with any fix set; the shipped default is Enhanced with Recommended. Everything but Remastered stays 4:3.
-      *Remastered:* widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
+      *Remastered* (staged design, nothing built: [remastered-design.md](remastered-design.md)): widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
       objects, so a far hangar's edge can be drawn over a nearer hangar until the camera is closer; owner's screenshots, 24 Oct) and no
       road or coastline jitter.
       *Also:* an in-game settings menu for every option now set on the command line or in an .ini, which also answers SETUP's

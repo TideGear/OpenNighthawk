@@ -1000,5 +1000,5 @@ These are correctness checks; they do not establish physical refresh or the look
 - **Real display.** `rerun`'s submitted-picture timing at 4K/60 passes on the owner's screen (18-19 October). What
   the panel shows (tearing, the look of motion at 60 and 144 Hz), fullscreen acceptance of the latest HUD batch,
   fullscreen cargo/career flights and slower machines remain owner (Phase 4) checks.
-- **Remastered** (planned 24 October 2026, not started) needs a new renderer whose design is not written yet; the
+- **Remastered** (planned 24 October 2026, not started) needs a new renderer, designed in [remastered-design.md](remastered-design.md) (stages R1-R6, nothing built); the
   roadmap's rule is that the simulation state stays equal across the three presentations on the same inputs.
