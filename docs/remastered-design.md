@@ -191,3 +191,8 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   256 H / 240 across and 256 H / 200 up for an output H high that shows the original's frame at 4:3). Still to do for R3:
   the glue from a decoded mesh and a captured pose to polygons (needs the `pose` callback described above), the original's
   colours and shading, and the frame assembler.
+- **Sky and ground need no new work (30 October 2026).** `band_state.h` already models the horizon bands as a function of the
+  camera's height and its pitch and roll sines and cosines, in floating point ("FINE") as well as the original's exact
+  16-bit arithmetic ("EXACT", checked against captured logs by `test_band_state`); the HUD and panel are state-driven too
+  (`hud_state.h`). Remastered draws the bands from the same state at its own resolution and keeps the horizon at its true
+  position instead of a quantised one, so only the model geometry is new.

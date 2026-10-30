@@ -120,3 +120,18 @@ bank, game loads banks unchanged), `ed01de1` (offline depth-buffer model sheets)
 - `ctest` in the branch's own build: 44 of 44 pass (the host, presentation, override and boundary tests).
 - **Not run:** the full gate (`py tools/build_recomp.py --work ...`: routes, both engines, lockstep). Run it on the merged
   result before pushing to `master`; `headless.c` (f117run) gained the `--sound-sweep` options, which the gate's runner uses.
+
+## Update, 30 October 2026, afternoon
+
+- **`master` moved.** The other session built on the merge: `origin/master` is `d90802e` (a merge of their
+  `wip/p2-setup-handoff-20261029` into master; P2 96.60%, All 95.28%, P3 still 85.42% with all credits kept). Their gates
+  (`34dd038` and later) ran on their branch, which did not contain the Phase 3 commits; the merge combined the two and nobody
+  has gated the result. Their changes are `src/matched/matched.c`, `tests/func_lockstep.c`, `CMakeLists.txt` (new tests),
+  docs and census tools; mine touch none of the first two, so a clash is unlikely, but the combination is unproven.
+- **Branch `p3-remaster`** (from `d90802e`, pushed, not merged): `src/present/remaster_project.c` (the game's projection,
+  exact: 14,718 of 14,718 coordinates of a real flight, plus the sub-pixel form) and `src/present/remaster_raster.c`
+  (depth-correct triangle fill: nearer wins in either draw order, near-plane clip, a wider frame moves nothing, sub-pixel
+  positions), each with a test (`presentation_remaster_project`, `presentation_remaster_raster`). Neither is wired into
+  the app. Both compile standalone with `cl`; they were not built through CMake.
+- **Next, needs a full build:** the `pose` observer callback (see "R3 plan revised"). It changes `src/matched/observe.c`
+  (and a header), so wait until the memory is free: compiling `matched.c` took about 12.6 GB for the other session.
