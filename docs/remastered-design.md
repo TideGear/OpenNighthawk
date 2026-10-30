@@ -123,3 +123,10 @@ has no effect on the running game.
   table (`D2A6`) is the object-class table. Independent check of the decoded layout: fix D4's world-file offsets
   (`LB.WLD 0x53A`, `ME.WLD 0x597`, `NC.WLD 0x607`) fall in table 2 at bytes 84, 81 and 73, and `NC.WLD 0x1F1`
   and `0x201` fall in target records 30 and 31, byte 9 (the class byte), exactly where this decode puts them.
+- **R3 groundwork, the model banks (30 October 2026).** `tools/model_census.c` runs `src/present/scene_mesh.c`'s
+  decoder over the real model files: the `*.3DX` file, loaded unchanged at the start of a zero-filled 64 KB page
+  (word 0 bounds the model index; the word at 2 + 2 x model points at the model's detail table), decodes every model
+  at every one of the eight detail levels in all 11 banks (nine theatres, `STFLT.3DX`, `PHOTO.3DX`): 492 models,
+  3,936 decodes, no failure. The largest mesh is 130 vertices, 46 planes, 188 edges. Some detail levels are empty
+  (models with no geometry at that distance). Until now the decoder had only been run on synthetic fixtures.
+  Not yet checked: that this page equals the game's in-memory bank, and the decoded meshes against drawn polygons.
