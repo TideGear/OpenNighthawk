@@ -119,9 +119,9 @@ void observe_map_marker(machine_t *m);
 void observe_scene_model(machine_t *m); /* VGAME 120A:00CF at entry, before its prologue */
 void observe_frame_compose(machine_t *m); /* VGAME 0000:2F9D at entry (the matched body calls it: its placement shadows ours) */
 
-/* The observer's own pending state (a fill's rows awaiting their 'a' bytes, a line's or an undecoded entry's page
- * bytes awaiting the next event): a copy of the machine run with another observer must start with none and must not
- * disturb the real run's. Save it, clear it, run the copy, restore it. */
+/* The observer's private state (pending draw records and the prepared-pose callback plus its pending request): a copy
+ * of the machine run with another observer must start without it and must not disturb the real run's. Save it, clear it,
+ * run the copy, restore it. */
 size_t observe_pending_size(void);
 void observe_pending_save(void *dst);
 void observe_pending_restore(const void *src);

@@ -89,6 +89,17 @@ int main(void)
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0xF800, 0x2000, 0, position, &f) == -1);       /* a data segment past the memory */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 9, position, &f) == -1);       /* a model the bank does not have */
     CHECK(f.n == 6);
+    /* A malformed runtime-only conditional path must not turn emitted commands into success. */
+    remaster_scene_free(s);
+    s = remaster_scene_new();                                /* isolate this case from the prior cached mesh */
+    CHECK(s);
+    bank[0x509] = 0x82;                                   /* setting[2] mismatches its expected -1 */
+    bank[0x50B] = 0x81;                                   /* linear validation treats this as a nested conditional */
+    bank[0x50D] = 1; bank[0x50E] = 0; bank[0x50F] = 255; bank[0x510] = 255;
+    memcpy(mem + 0x20000, bank, sizeof bank);
+    const int malformed_result = remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f);
+    CHECK(malformed_result == -1);
+    CHECK(f.n == 6);                                        /* preserve the already collected requests */
     scene_mesh_free(m);
     remaster_frame_free(&f);
     remaster_scene_free(s);

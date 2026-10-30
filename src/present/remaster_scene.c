@@ -143,7 +143,11 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     if (!mesh) return -1;
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
     if (!scene_mesh_eval(mesh, &s->pose, &s->geometry)) return -1;
+    const size_t frame_start = f->n;
     emit_ctx ctx = { mesh, &s->geometry, f, model, 0, 1 };
-    if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx) && !ctx.ok) return -1;
+    if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx)) {
+        f->n = frame_start;
+        return -1;
+    }
     return ctx.added;
 }

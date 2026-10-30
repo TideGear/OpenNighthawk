@@ -1,6 +1,7 @@
 /* ROM-free integration tests for the registered library-line/span hooks.
  * Capture their real records without loading proprietary game bytes. */
 #include "observe.h"
+#include "observe_pose.h"
 #include "recomp_rt.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@ static int nhooks, failures, collecting = 1, nrecords;
 static machine_t m, saved_machine;
 static uint8_t memory[MEM_SIZE], saved_memory[MEM_SIZE], before_pixels[64000];
 static struct { char kind; int n; int32_t v[8004]; } records[4];
+typedef struct { int calls; void *user; machine_t *machine; uint64_t clock; uint16_t model, bank; int16_t position[3]; } pose_record;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr,"line %d: %s\n",__LINE__,#c); failures++; } } while (0)
 
 /* This target compiles observe.c itself; registration hands its hooks to
@@ -64,6 +66,64 @@ static void setup(uint16_t page, uint16_t origin, int profile)
         word(0x6000,(uint16_t)(0x3B8+2*y),110);
     }
     observe_pending_clear(); observe_set(&obs); nrecords=0;
+}
+
+static void pose_capture(void *user, uint64_t clock, machine_t *machine, uint16_t model, uint16_t bank,
+                         const int16_t position[3])
+{
+    pose_record *r = (pose_record *)user;
+    r->calls++;
+    r->user = user;
+    r->machine = machine;
+    r->clock = clock;
+    r->model = model;
+    r->bank = bank;
+    memcpy(r->position, position, sizeof r->position);
+}
+
+static void exercise_pose_pending_isolation(void)
+{
+    setup(0xA000,0,0);
+    pose_record r = {0};
+    m.cpu.seg[S_DS] = 0x7000;
+    m.cpu.r[R_SP] = 0x0300;
+    m.cpu.icount = 123456;
+    word(0x7000,0x8590,0x8123);
+    word(0x6000,0x0304,0x1234);
+    word(0x6000,0x0306,(uint16_t)-5);
+    word(0x6000,0x0308,18);
+    word(0x6000,0x030A,(uint16_t)-27);
+    observe_pose_set(pose_capture,&r);
+    observe_scene_model(&m);
+
+    const size_t bytes = observe_pending_size();
+    void *saved = malloc(bytes);
+    CHECK(saved);
+    if (!saved) { observe_pose_set(NULL,NULL); return; }
+    observe_pending_save(saved);
+
+    machine_t copy = m;
+    copy.cpu.icount += 17;
+    word(0x6000,0x0304,0x4567);
+    word(0x6000,0x0306,90);
+    word(0x6000,0x0308,91);
+    word(0x6000,0x030A,92);
+    observe_pending_clear();
+    observe_scene_model(&copy);
+    observe_vertex(&copy,0,0);
+    CHECK(r.calls == 0);                                /* the copied run has no pose consumer */
+
+    word(0x6000,0x0304,0x1234);
+    word(0x6000,0x0306,(uint16_t)-5);
+    word(0x6000,0x0308,18);
+    word(0x6000,0x030A,(uint16_t)-27);
+    observe_pending_restore(saved);
+    observe_vertex(&m,0,0);
+    CHECK(r.calls == 1 && r.user == &r && r.machine == &m && r.clock == m.cpu.icount);
+    CHECK(r.model == 0x1234 && r.bank == 0x8123);
+    CHECK(r.position[0] == -5 && r.position[1] == 18 && r.position[2] == -27);
+    free(saved);
+    observe_pose_set(NULL,NULL);
 }
 
 static void invoke(uint16_t ip)
@@ -132,6 +192,7 @@ int main(int argc,char **argv)
         exercise(0xA000,0,profile,200,-1);
         exercise(0xA000,0,profile,220,0);
     }
+    exercise_pose_pending_isolation();
     if (failures) return 1;
     puts("observer rows: ordered deltas, truncation, segment/physical wrap and both timing profiles pass");
     return 0;
