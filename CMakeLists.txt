@@ -1912,6 +1912,30 @@ if(F117R_BUILD_TESTS)
       --only PLAYER.EXE:13B9,PLAYER.EXE:13C3,PLAYER.EXE:13C8)
     add_test(NAME matched_setup_patched_far_jump_thunk COMMAND func_lockstep --states 5000
       --only SETUP.EXE:A72,SETUP.EXE:A77)
+    add_test(NAME matched_asound_117_detect_sound_card COMMAND func_lockstep --states 5000
+      --only ASOUND.117:5E)
+    add_test(NAME matched_asound_117_pit_counter2_sync_start COMMAND func_lockstep --states 5000
+      --only ASOUND.117:A17)
+    add_test(NAME matched_rsound_117_mpu_reset_wait_ack COMMAND func_lockstep --states 5000
+      --only RSOUND.117:D07)
+    add_test(NAME matched_rsound_log_mpu_reset_wait_ack COMMAND func_lockstep --states 5000
+      --only RSOUND.LOG:3A2)
+    add_test(NAME matched_mps_logo_format_conversion_init COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1046)
+    add_test(NAME matched_mps_logo_format_literal_char COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:103B)
+    add_test(NAME matched_mps_logo_format_dispatch COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:111D)
+    add_test(NAME matched_isound_log_enable_interrupts_after_install COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:60C)
+    add_test(NAME matched_isound_log_reload_timer_slow_rate COMMAND func_lockstep --states 5000
+      --only ISOUND.LOG:5D1)
+    add_test(NAME matched_start_return_after_timer_reload_sti COMMAND func_lockstep --states 5000
+      --only START.EXE:8DD7)
+    add_test(NAME matched_end_return_after_timer_reload_sti COMMAND func_lockstep --states 5000
+      --only END.EXE:4CBB)
+    add_test(NAME matched_player_return_after_timer_calibrate COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:306)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

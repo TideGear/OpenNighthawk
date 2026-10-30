@@ -12,147 +12,53 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (29 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.65%, P3 76.34%, All 92.69% (`py tools/progress.py --title`).
-  The full figures: `py tools/progress.py --census D:/f117-gate/census.tsv --named-cover
-  D:/f117-gate/p2-batch-bs-accept/named-cover --route-cover D:/f117-gate/route-cover-20261020b --data D:/GOG/F-117A`
-  (gameplay 98.57%, naming 89.8%, checklist 45,390 / 47,587 = 95.38%, 2,342 executed bytes unmatched: ASOUND.117 563,
-  VGAME 324, ISOUND.117 401, ISOUND.LOG 225, PLAYER 157, ASOUND.LOG 169, RSOUND.LOG 125, MPS_LOGO 112, SETUP 89,
-  START 67, END 64, RSOUND.117 44, DSWAP 2).
-- **Accepted runtime:** gate `bs`, passed: 2,005 s, 781 tests, 63 routes, 1,606 matched routines, 174 private mutations,
-  whole table at three seeds 0 mismatching, route precheck identical. Evidence `D:/f117-gate/p2-batch-bs-accept/` (its
-  `audit_private.py`, `finalize.py` and `multi_proof.py` are the current ones: copy them forward from the newest accepted
-  batch with `cp`, never `cp -n`). Earlier today: gates `bq` (43 far-jump thunks) and `br` (six routines).
-- **Latest fix-only gate:** `bt` passed after a harness-only correction; runtime and P2 credit are unchanged. The gate
-  ran 781 tests and 63 routes, the three whole-table seeds had 0 mismatches, and the final verdict reports 0 new
-  instructions or named bytes. Both presentation checks and the baseline group verdict passed. Evidence:
-  `D:/f117-gate/p2-batch-bt-accept/`; its source hashes match the working tree.
-- **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale; do not work there.
-- CI is checked through the GitHub Actions API (no `gh` on this machine):
+- **Scoreboard:** P1 100.00%, P2 95.82%, P3 76.34%, All 92.74% (`py tools/progress.py --title`). Refreshed with
+  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bu-accept/named-cover` and route cover
+  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 90.34%, checklist 45,390 / 47,740 = 95.08%,
+  1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
+  ASOUND.LOG 169, RSOUND.LOG 83, MPS_LOGO 18, SETUP 89, START 66, END 63, RSOUND.117 5, DSWAP 2.
+- **Latest accepted runtime:** batch `bu` passed: 12 routines, 603 named bytes, 260 fully covered instructions, 327 private
+  mutations caught, 60 optimized-seed checks, 793 CTests, 63 routes / 62 fresh interpreter sessions. The whole table
+  matched at three seeds, route precheck and both presentation checks passed, and the credit audit reports 0 claimed-but-
+  uncredited bytes. Evidence: `D:/f117-gate/p2-batch-bu-accept/`. Its `audit_private.py`, `finalize.py` and
+  `multi_proof.py` are the current acceptance scripts; copy them forward from the newest accepted batch.
+- **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
+  run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
+- **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
+  `4k60.bat` or `original-fixed.bat`.
+- **Active private proof watcher:** PID 47448 is running `D:/f117-gate/p2-setup-bt-runrest.sh`, started at 14:56 on
+  29 Oct. It is waiting for SETUP `18A2`'s lock-cover result, then checks/runs seeds and mutations for `1942`, `1870`,
+  `17B0`, `17D6`, and `18A2` (two mutation workers). At the last check, `18A2/cover.txt` did not exist; inspect
+  `PILOT-TIMES.txt` and each result before reusing these directories. Do not overlap its proofs with another acceptance
+  gate.
+- CI is checked through GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
-- **Background proof pipelines were found running on resumption**, contrary to the earlier pause note. Their five process
-  trees were stopped before the fix-only gate, preserving their private directories; SETUP `0979` and VGAME `1452:0556`
-  advanced to later entries before stopping. Recheck process trees and any interrupted proof results before reuse. The
-  current user limit is four concurrent agents, and no proof agent runs while a gate does.
 
 ## Resume here
 
-Goal in force: reach 100% of Phase 2 safely. A batch is committed only after its full gate passes.
+Goal in force: reach 100% of Phase 2 safely. Each accepted change gets the full gate before commit and push.
 
-The `bt` fix-only batch is fully verified and passed. The rotating-seed precheck originally exposed a VGAME `5046`
-fixture assumption at state 2060; the older accepted binary reproduced it, so it was not caused by the pending harness
-edits. The trace showed the nested original-code runner could already execute the same divide at `5122`. The fixture now
-accepts either a hand-back immediately before that instruction or an already-taken divide fault only when both sides
-are at the same `CS:IP`, interrupt depth and operation boundary; it then compares the complete machine state, memory and
-I/O. Nothing is skipped. The targeted test, both full precheck seeds, all three gate seeds, and the two ground-defence
-CTest cases passed. The gate ran 781 tests and 63 routes; baseline, presentation-n1 and presentation-boot checks passed.
-`final-gate-verdict.json` reports `passed`, zero new bytes and matching source hashes. No runtime body changed and P2
-remains 95.65%.
+Batch `bu` is accepted and its source is recorded in the roadmap. Twelve root-verified proofs added 603 named bytes;
+P2 is now 95.82%. Continue with the SETUP static-range pilot, then integrate only after the proof results and full gate
+pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files out of any commit.
 
-No gate or proof job is running. The next step is to commit and push the verified harness fix, then continue with the
-root-verified private proofs and static checklist ranges below. Do not stage the owner's untracked `4k60.bat` or
-`original-fixed.bat`.
+Continue with the SETUP static-range pilot after checking the watcher and its result files. The watcher covers five
+ranges in `D:/f117-gate/p2-setup-bt-*`; the separate VGAME pilot has `0063` and `04D9` fixtures under
+`D:/f117-gate/p2-vgame-bt-1452-*`. These static candidates are worth about 2,660 bytes (~0.4 score points). Root-review
+seeds, mutation results and lock logs; run static checkpoints and `finish_all.py` only after each proof is green. Do not
+run a full acceptance gate while the private proof workers are active.
 
-On resumption, `026C`'s earlier origin-only run was confirmed as a coverage-range error: 5,943 equal states,
-zero skipped, but 102/111 instructions counted because the shifted tracking window ended early. The corrected tracker
-counts 111/111 in the entry window while tracking lower shared tails; its 74/74 mutants and five seeds passed, and
-`ibm_boot` called it 8,293 times with 26 exact checkpoints. Its test-only call-clamp probe assumes no earlier event;
-the controlled runner sets the nested limit directly, and the probe passed. The fresh route gate also passed; its
-`ibm_boot` session called the far entry 8,120 times. The tracker and probe are included in the passed fix-only gate.
-The PIT loops can be driven by finite scripted reads; `0A5B` needs
-separate proof pieces at its port-wake boundaries, so neither loop is certified original. The six protected units'
-evidence is prepared at `D:/f117-gate/checklist-full-20261026/protected-owner-review-20261029.md`; no credit or owner
-decision is recorded by that note. The observer-slot design rule is now documented.
-Route choices for the pending batch are in `D:/f117-gate/pending-bs-routes.txt`: the three MPS_LOGO entries need a
-damaged-install route and the Roland entries need `roland_boot`. For ISOUND.LOG `0581`, do not classify the entire
-range as data merely because the error route also runs off-alignment zeroes: the capture includes the real timer
-handler's instruction stream as well as changed zero-filled execution. Establish exactly which records are invalid
-before making the requested data certificate or changing score accounting.
-(a) the owner accepted my recommendations on the decision list: bundle the pending shared-harness edits into one reviewed
-fix-only gate (005E's `g_ipf`/`g_strict_limit`/`POPF_STOPS`, 0A17's `g_port_script`, the one-instruction decline probe,
-PLAYER `1ADF`/`1AD4` `FATAL_JUMPS` rows, the Roland `POPF_STOPS` rows); try a multi-port PIT script for `0A5B`/`0B01`, else
-certify; use the reviewed `026C` evidence above; keep the D2 fix at `09F2` and credit the fixes-off lockstep; credit
-`111D`'s routed part plus lockstep; `0581` as data certificate; `0545` in pieces; `10B3` split; present the six protected
-units' prepared evidence for the owner's review. (b) These private proofs are
-root-verified (mutants all caught, five seeds ok, from the result files) and need `finish_all.py` then a batch: 005E (79/79),
-0A17 in `p2-asound-117-br-pit` (29/29), RSOUND.117 `0D07` (36/36) and RSOUND.LOG `03A2` (40/40) on `roland_boot`, MPS_LOGO
-`1046` (22/22), `103B` (22/22), `111D` (25/25), tiny leaves ISOUND.LOG `060C` (17/17) and `05D1` (21/21), START `8DD7`,
-END `4CBB`, PLAYER `026B:0306` (12/12 each), ASOUND.117 `09F2` (24/24). (c) The static-range pilot (Ghidra reading aid at
-`D:/ghidra-trial/out_all` and `out_ranges`, 16 largest unregistered ranges of `docs/census-code.tsv`) was stopped mid-build:
-dirs `p2-setup-bt-*` (17B0 family drafted, 0562 family set up) and `p2-vgame-bt-1452-*` (0063 and 04D9 families fixtured);
-resume those agents or start fresh from the directories, set `"static": true` in each config.json once steps 1-7 are green,
-and run `finish_all.py` (the kit's `checkpoints --static` accepts code no capture reaches). The whole static pool is worth
-about +2.1 points at 0.00015 points a byte; the pilot's four ranges (2,660 bytes) about +0.4.
+Other remaining work is still in scope: ASOUND.117 `09F2` is excluded pending the owner's D2-fix interaction decision;
+ISOUND.LOG `0581` needs an exact invalid-range data certificate without excluding real timer-handler bytes; six
+protected checklist units need the owner's review (`D:/f117-gate/checklist-full-20261026/protected-owner-review-20261029.md`);
+PIT waits `0A5B`/`0B01` need split lockstep pieces across their wake boundaries or a reviewed decision; ISOUND.LOG `0545`
+needs proof in pieces; SETUP `10B3` needs the proposed prefix/interior split. MPS_LOGO `111D` partial route coverage was
+accepted in `bu`; do not reopen it absent new evidence.
 
-1. **Proved privately, not yet integrated** (all under `D:/f117-gate/`). The root verifies every result file itself (an
-   agent's tally is not evidence: read `mutation-results.json`, `seeds.json`, the lock log's skipped column) and runs
-   `py D:/f117-gate/accept-kit/finish_all.py DIR[:ROUTE]` before `integrate_many.py` (which needs `private-verdict.json`).
-   Check the route with `grep -l "MODULE .* SEG IP" D:/f117-gate/route-cover-20261020b/*.cov`: PLAYER `1F4D` is run only
-   by `err_player_assert`, and `finish_all` on `full_cycle` failed with 0 calls.
-   - **Ready after checkpoints and verdict** (numbers read by the root): ASOUND.117 `09F2` (`p2-asound-117-br-09F2`, 24/24;
-     owner decision pending on how the D2 fix at the same entry interacts, route unconfirmed). VGAME `0010`, START `9D5C` and
-     the START, PLAYER and SETUP thunks were accepted in gate `bs`.
-   - **Root checked the seed logs, result files and input ages; not yet integrated:** ASOUND.117 `005E` (`p2-asound-117-br-005E`, 79/79 mutants; needs shared
-     harness changes including a new `g_strict_limit` overrun check, so it needs a fix-only gate and a re-check of every
-     accepted routine); MPS_LOGO `1046`, `103B`, `111D` (`p2-mpslogo-br-*`; `111D` has no route that runs all 63
-     instructions, so partial route coverage needs a ruling; IMAGE_PATCHES and FATAL_JUMPS rows to carry); RSOUND.117
-     `0D07` (36/36) and RSOUND.LOG `03A2` (40/40) (`p2-sndlog-br-*`, root-verified full mutant sets; POPF_STOPS rows
-     `0D07 -> 0D3A` and `03A2 -> 03D8` to carry); tiny leaves ISOUND.LOG `060C` and `05D1`, START `8DD7`, END `4CBB`, PLAYER
-     `026B:0306` (`p2-tiny-br-*`; they need a shared decline-probe change for one-instruction bodies). **VGAME thunk family**
-     (`p2-vgame-br-thunks`, 53 entries, 30/30 mutants, five seeds): left out of gate `bs` because 28 of its 34 non-obvious
-     entries share an address with a presentation observer (`code_overrides` lists them; `screen_leads.py`'s hook screen is
-     not enough, it missed observers registered in table form); a plain thunk there would displace the draw capture. The
-     presentation-observer graphics slots stay original under the owner's decision; review the remaining entries separately and
-     run the presentation checks (`present_light_check.py`, `presentation_check.py --mode rerun`) beside any gate that
-     changes presentation behavior.
-   - **Not passing:** PLAYER `1AD4` (2 missed over-claims) and `1ADF` (one long-run state): the cause is missing
-     `FATAL_JUMPS` rows for PLAYER `1ADF`/`1AD4` to `1A91` in the shared harness, so a repair-only gate; VGAME `01B9` (3
-     missed: two need a probe whose stop lands inside the callee); START `9E9A` (957
-     undiagnosed long-run skips, parked); ASOUND.117 `097F` (boundary hand-back at `09F2` never completes under the harness;
-     `096D`, `0998`, `09A1` unbuilt); ASOUND.LOG `008A` (needs boundary `00AC` and the POPF row
-     dropped) and `05D1` (two unobservable mutants); ISOUND.LOG `0545` and `0138` (blocked); SETUP `10B3` (STI inside the
-     retrace loop; proposed split: a prefix proof with boundary `10D3` plus an interior entry at `10D3`); VGAME `1132:0002`,
-     `1132:0052` and `1D54` (tails after an STI in matched routines).
-   - **Earlier proofs still waiting:** ISOUND.117 `026C` (`p2-isound-117-clamp-cov`, 74/74 mutants; review and route
-     evidence above) and `07E9` (`p2-isound-117-bo-07E9`, 27/27).
-2. **Owner decisions pending** (recommendations agreed in conversation are in brackets): the PIT wait loops ASOUND.117
-   `0A5B`, `0B01`, `0A17` (308 bytes) [scripted multi-port PIT readings in the harness, a repair-only gate, falling back to a
-   hardware-wait-loop certificate only if no sound design exists; `0A5B` needs proof pieces across wake boundaries
-   `0AC4` and `0ACD` (entry starts `0AC0` and `0ACB` respectively), plus the STI at `0B00`]; ISOUND.LOG `0581` [certify the
-   off-alignment/junk execution as data only with exact range evidence; keep real handler bytes in the denominator]; the six protected
-   checklist units [prepare evidence for the owner's review]; ISOUND.LOG `0545` [prove in pieces, do not widen the rule]; the D2
-   fix interaction at ASOUND.117 `09F2`.
-3. **Lessons from this wave** (add to the traps below): run the whole non-lockstep unit set
-   (`ctest --test-dir build -E func_lockstep --parallel 8`, about 160 s) after the build and before the gate; it caught the
-   observer collision (`code_overrides`) that the gate would have found 15 minutes in. The pre-check seeds (the gate's
-   rotating seed is the first 12 hex digits of HEAD, so it changes each commit) found two latent defects in accepted bodies,
-   VGAME `73C8` and `peek_over`/`F06C`; test an older build on the same seed to tell latent from new. Launch background
-   jobs with `CREATE_NO_WINDOW` (0x08000200), never `DETACHED_PROCESS` (it opens a console window per child). a proof's "N of N instructions reached" is not what the body
-   executed: `0A33`'s body never ran past `0A46` because the PIC mask write lowers the run limit to 0, which left 13 mutants
-   uncatchable until a trace showed it; narrow such a proof and hand back. A mutant is equivalent only by construction
-   (for example `SM4_NEED(n, at)` after a passing `room(c, n)` never uses `at`, and `SUB` for `CMP` with a discarded result),
-   never because its path is unexercised. A stopped mutation run leaves `project/.mutations-restore`, which blocks `lock`,
-   `seeds` and `checkpoints`; restore with `kit._project_restore`. The mutation workers can crash on `vswhere.exe` after a good
-   compile: rerun. Several lead rows are tails of routines already matched (a RET after an STI, `1132:0002` is `1058:0DA2`):
-   check the parent before proving. A foreground wait loop over 10 minutes is auto-backgrounded; use a background until-loop.
-4. **Remaining unmatched executed bytes (2,342) and where the points are:** the ranked lead list is
-   `D:/f117-gate/p2-leads-bp/LEADS.tsv`, stale: `py D:/f117-gate/accept-kit/screen_leads.py LEADS.tsv --min-bytes 8` shows
-   only 5 of 60 leads clean (all hard), so regenerate the list from the current census and named cover after each batch.
-   Largest left: ASOUND.117 PIT wait loops, ISOUND.117 `026C` (276 executed), the VGAME thunk family (170 bytes, observers),
-   ISOUND.LOG `0581` (data). The naming bar (weight 31.5, 89.8%) is the biggest pool of points left: it counts reviewed static code and
-   error paths no route runs; bodies for those (printf arms need their enclosing function) are worth about three times the
-   points per byte of route-executed code.
-5. **Checklist** (`D:/f117-gate/checklist-full-20261026/`): round 5 adopted 88 units (3,641 bytes). Round 6 packets were never
-   built (rebuild with `round5/build_r5.py` as the model): 15 units where round 5's status differed from earlier readers, 3
-   accept-with-changes, 2 needs-context. The 6 protected units need the owner's review, not a reader. Rule: the Read tool
-   silently truncates near 800 lines, so every reader must read each packet to its last line and state the ranges. Then the
-   closure review of indirect calls, tables, callbacks, vectors and self-modifying code before declaring 100%.
-6. **Batch workflow lessons:** the batch audit accepts a block only when the clock charges sum exactly to its instruction
-   count; give it the body's own claim macro as the prefix (`XB` for `18C8`), `UNUSED` for macro-free bodies. Trim each
-   dossier to the credited window (keep `dossier/full-walk.json`) and set `partial` only for bodies that hand back by design.
-   Integrate with `integrate_many.py`, then carry by hand every harness hunk and table row a proof's `tests-base.c` has that
-   HEAD lacks (SETUP `0094` needed a `LIVE_FRAMES` row). Never write patch scripts through a Bash heredoc if they contain
-   backslashes: use the Write tool. The gate takes about 33 minutes with the machine to itself.
-7. **Phase 3** re-release features are worktree work beside a gate; Phase 4 stays unscored.
+The route-independent credit pool and open rules are in `docs/roadmap.md` and `docs/progress.md`. Current largest
+executed-code gaps are ASOUND.117 PIT waits, ISOUND.117 `026C`, presentation-observer VGAME thunks, and ISOUND.LOG `0581`;
+regenerate the lead list from the refreshed census/named cover before choosing the next body. Static naming and reviewed
+reference entries also contribute materially to P2. Protect private game data and captures from the public repository.
 
 ## Owner decisions in force
 
