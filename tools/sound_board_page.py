@@ -60,6 +60,7 @@ def main():
     ap.add_argument("--mac", required=True)
     ap.add_argument("--amiga", required=True)
     ap.add_argument("--speech", required=True)
+    ap.add_argument("--board-long", help="a second board folder whose clips replace the same ids' (longer renders)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     if not shutil.which("ffmpeg"):
@@ -69,9 +70,16 @@ def main():
 
     # DOS drivers: one clip per (driver, id)
     drivers = {}
+    where = {}                      # (kind, id) -> the folder its file is in
     for kind in ("adlib", "roland", "speaker"):
-        idx = os.path.join(a.board, kind, "index.json")
-        drivers[kind] = {e["id"]: e for e in json.load(open(idx))} if os.path.exists(idx) else {}
+        drivers[kind] = {}
+        # a longer render of the same id (--board-long) replaces the standard one
+        for root in (a.board, a.board_long):
+            idx = os.path.join(root, kind, "index.json") if root else None
+            if idx and os.path.exists(idx):
+                for e in json.load(open(idx)):
+                    drivers[kind][e["id"]] = e
+                    where[(kind, e["id"])] = root
     mac_by_id = {}
     for f in glob.glob(os.path.join(a.mac, "*.wav")):
         m = re.match(r"(\d+)_", os.path.basename(f))
@@ -84,7 +92,7 @@ def main():
             e = table.get(i)
             if not e:
                 continue
-            mp3 = os.path.join(a.board, kind, e["file"])
+            mp3 = os.path.join(where[(kind, i)], kind, e["file"])
             key = "%s-%d" % (kind, i)
             if mp3.endswith(".mp3"):
                 clips[key] = {"b": base64.b64encode(open(mp3, "rb").read()).decode(), "s": e["seconds"], "c": bool(e.get("capped"))}

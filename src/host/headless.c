@@ -10,7 +10,7 @@
  *           [--present-scale N] [--present-line-width N] [--present-age interp|extrapolate]
  *           [--fix ID|all|none]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
- *           [--sound-sweep ID,ID,... [--sound-span CLOCKS] [--sound-out PREFIX]]   (VGAME running at the end of --steps)
+ *           [--sound-sweep ID,ID,... [--sound-span CLOCKS] [--sound-repeat CLOCKS] [--sound-out PREFIX]]   (VGAME running at the end of --steps)
  *
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
  * (e.g. START.EXE) first starts. --type types KEYS (escapes in keys.h),
@@ -225,6 +225,29 @@ static void on_speaker(void *user, uint64_t icount)
 }
 
 
+/* Call the sound driver's entry with an id from where the copy stands, as the game's own request does (the
+ * argument pushed, a far call, the caller popping it). 1 when the driver returned. */
+static int sweep_request(machine_t *w, unsigned id, uint16_t tseg, uint16_t toff)
+{
+    cpu_t *c = &w->cpu;
+    const uint16_t cs = c->seg[S_CS], ip = c->ip;
+    cpu_push16(c, (uint16_t)id);
+    cpu_push16(c, cs);
+    cpu_push16(c, ip);
+    c->seg[S_CS] = tseg;
+    c->ip = toff;
+    c->icount++;
+    w->trap_on = 1;
+    w->trap_cs = cs;
+    w->trap_ip = ip;
+    w->trap_sp = (uint16_t)(c->r[R_SP] + 4);
+    const int rc = machine_run(w, c->icount + w->ips / 10);
+    w->trap_on = 0;
+    if (rc != RUN_TRAP) return 0;
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    return 1;
+}
+
 /* --sound-sweep IDS (diagnostic, for the sound board, docs/sound-board.md): with VGAME running at a quiet point
  * (the end of --steps), render each listed sound id through whichever driver the route chose. For each id the
  * machine is copied; the game's own sound-request stub (the far jump slot at load+1E42:0313) is turned into a bare
@@ -232,7 +255,7 @@ static void on_speaker(void *user, uint64_t icount)
  * with the id (the stub's jump target, the id pushed as the game pushes it); then the copy runs on for `span`
  * instructions with the OPL, MIDI and speaker writes logged to PREFIX<id>.opl, .midi and .spk. PREFIXsweep.tsv lists
  * id, the clock the request began and ended at, and the write counts. The real machine is not touched. */
-static int sound_sweep(machine_t *real, const char *list, uint64_t span, const char *prefix)
+static int sound_sweep(machine_t *real, const char *list, uint64_t span, uint64_t repeat, const char *prefix)
 {
     if (!strstr(dos_current_program(real), "VGAME")) {
         fprintf(stderr, "--sound-sweep needs VGAME running at the end of --steps (program is %s)\n", dos_current_program(real));
@@ -284,27 +307,25 @@ static int sound_sweep(machine_t *real, const char *list, uint64_t span, const c
         }
         const uint64_t w0 = work.opl_writes, m0 = work.midi_bytes, s0 = work.speaker_changes;
         cpu_t *c = &work.cpu;
-        const uint16_t cs = c->seg[S_CS], ip = c->ip;
+        const uint16_t home_cs = c->seg[S_CS];              /* the game's own code: where requests are made from */
         const uint64_t start = c->icount;
-        cpu_push16(c, (uint16_t)id);                        /* the argument, as the game pushes it */
-        cpu_push16(c, cs);
-        cpu_push16(c, ip);
-        c->seg[S_CS] = tseg;
-        c->ip = toff;
-        c->icount++;
-        work.trap_on = 1;
-        work.trap_cs = cs;
-        work.trap_ip = ip;
-        work.trap_sp = (uint16_t)(c->r[R_SP] + 4);
-        const int rc = machine_run(&work, c->icount + work.ips / 10);
-        work.trap_on = 0;
-        if (rc != RUN_TRAP) { fprintf(stderr, "sound %u: the driver did not return (run code %d)\n", id, rc); failures++; }
-        else c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);       /* the caller pops the argument */
+        if (!sweep_request(&work, id, tseg, toff)) { fprintf(stderr, "sound %u: the driver did not return\n", id); failures++; }
         const uint64_t called = c->icount;
         const uint64_t end = called + span;
+        uint64_t next_request = repeat ? called + repeat : ~0ull;
         while (c->icount < end) {
-            const uint64_t until = c->icount + work.ips / 100 < end ? c->icount + work.ips / 100 : end;
+            uint64_t until = c->icount + work.ips / 100 < end ? c->icount + work.ips / 100 : end;
+            if (next_request < until) until = next_request;
+            if (until <= c->icount) until = c->icount + 1;
             if (machine_run(&work, until) != RUN_SLICE) break;
+            if (c->icount >= next_request) {
+                /* a held sound is asked for again each step, as the game does; ask from the game's own code with
+                 * interrupts on, never from inside the driver's own tick */
+                for (int tries = 0; tries < 2000 && !(c->seg[S_CS] == home_cs && (c->flags & F_IF)); tries++)
+                    if (machine_run(&work, c->icount + 200) != RUN_SLICE) break;
+                sweep_request(&work, id, tseg, toff);
+                next_request = c->icount + repeat;
+            }
         }
         for (int k = 0; k < 3; k++) { fclose(*logs[k]); *logs[k] = NULL; }
         fprintf(tsv, "%u\t%llu\t%llu\t%llu\t%llu\t%llu\n", id, (unsigned long long)start, (unsigned long long)c->icount,
@@ -593,7 +614,7 @@ int main(int argc, char **argv)
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
     const char *midi_log = NULL, *speaker_log = NULL;
     const char *sweep_ids = NULL, *sweep_out = "sweep_";
-    uint64_t sweep_span = 0;
+    uint64_t sweep_span = 0, sweep_repeat = 0;
     const char *shot_meta_path = NULL;
     const char *frame_log_path = NULL;     /* --frame-log FILE: each shot's clock, its picture's scan time, the steps so far, screen-off */
     int shots_changed = 0;
@@ -668,6 +689,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--speaker-log") && v) { speaker_log = v; i++; }
         else if (!strcmp(a, "--sound-sweep") && v) { sweep_ids = v; i++; }
         else if (!strcmp(a, "--sound-span") && v) { sweep_span = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--sound-repeat") && v) { sweep_repeat = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--sound-out") && v) { sweep_out = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
@@ -928,7 +950,7 @@ int main(int argc, char **argv)
         }
         if (rc != RUN_SLICE) break;
     }
-    if (sweep_ids && sound_sweep(&m, sweep_ids, sweep_span ? sweep_span : m.ips * 2, sweep_out)) fprintf(stderr, "the sound sweep did not complete\n");
+    if (sweep_ids && sound_sweep(&m, sweep_ids, sweep_span ? sweep_span : m.ips * 2, sweep_repeat, sweep_out)) fprintf(stderr, "the sound sweep did not complete\n");
     if (trace) fclose(trace);
     if (g_obs_file) fclose(g_obs_file);
     if (dump_len) {

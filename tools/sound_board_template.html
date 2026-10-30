@@ -102,7 +102,7 @@ select.set, input.set { border-color: var(--accent); }
   </div>
 
   <h2>DOS sound ids</h2>
-  <p class="lede">The ids the sound driver's table holds (0 to 45), each requested through the same entry the game uses. A sound that reached the five-second limit is marked <code>5s+</code>; those are music or loops and carry on past what is shown. Ids with no sound in any driver are listed at the foot.</p>
+  <p class="lede">The ids the sound driver's table holds (0 to 45), each requested through the same entry the game uses. A <code>+</code> after the length means the sound was still playing when the render stopped (music or a loop), so it carries on past what is shown. Ids with no sound in any driver are listed at the foot.</p>
   <div class="scroll"><table id="t-dos"></table></div>
 
   <h2>Speech</h2>
@@ -176,7 +176,7 @@ function cell(tr, src, rowKey, clipKey) {
   b.dataset.src = src;
   b.dataset.key = clipKey;
   b.setAttribute("aria-label", "Play " + SRC_NAME[src] + " " + rowKey);
-  b.innerHTML = ICON + "<span>" + clip.s.toFixed(1) + "s" + (clip.c ? ' <span class="cut">5s+</span>' : "") + "</span>";
+  b.innerHTML = ICON + "<span>" + clip.s.toFixed(1) + "s" + (clip.c ? '<span class="cut">+</span>' : "") + "</span>";
   b.addEventListener("click", () => play(b, clipKey, clip));
   td.appendChild(b);
   tr.appendChild(td);
