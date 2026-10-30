@@ -79,6 +79,32 @@ static uint32_t dac_colour(const machine_t *m, unsigned index)
     return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
 }
 
+/* F117_REMASTER_DEBUG: how a polygon's colour word, index and shade relate to the pixel the original drew at the
+ * polygon's centre (the machine's last scanned-out picture, 320 x 200). A research aid for the colour mapping. */
+static void debug_colours(const remaster_live *r, const machine_t *m)
+{
+    enum { MAXK = 400 };
+    static struct { unsigned word, index, shade, pixel, n; } k[MAXK];
+    unsigned nk = 0;
+    for (size_t i = 0; i < r->frame.n; i++) {
+        const remaster_prim *p = &r->frame.prim[i];
+        if (p->kind != SCENE_POLYGON || p->n < 3) continue;
+        double x = 0, y = 0, z = 0;
+        for (int v = 0; v < p->n; v++) { x += p->v[v].x; y += p->v[v].y; z += p->v[v].z; }
+        x /= p->n; y /= p->n; z /= p->n;
+        if (z < 0x10000) continue;
+        const int sx = (int)(160.0 + 256.0 * x / z), sy = (int)(100.0 + 256.0 * y / z);
+        if (sx < 0 || sx >= 320 || sy < 0 || sy >= 200) continue;
+        const unsigned pixel = m->scan_pixels[sy * 320 + sx];
+        unsigned j = 0;
+        while (j < nk && !(k[j].word == p->colour_word && k[j].index == p->colour_index && k[j].shade == p->shade && k[j].pixel == pixel)) j++;
+        if (j == nk && nk < MAXK) { k[nk].word = p->colour_word; k[nk].index = p->colour_index; k[nk].shade = p->shade; k[nk].pixel = pixel; k[nk].n = 0; nk++; }
+        if (j < nk) k[j].n++;
+    }
+    for (unsigned j = 0; j < nk; j++)
+        fprintf(stderr, "[colour] word %04X index %3u shade %3u -> pixel %3u  x%u\n", k[j].word, k[j].index, k[j].shade, k[j].pixel, k[j].n);
+}
+
 static void write_frame(remaster_live *r, const machine_t *m)
 {
     remaster_target t;
@@ -95,6 +121,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
         if (p->kind != SCENE_POLYGON || p->n < 3) continue;     /* lines and dots later */
         remaster_polygon(&t, p->v, p->n, dac_colour(m, p->colour_word & 0xFF));
     }
+    if (getenv("F117_REMASTER_DEBUG")) debug_colours(r, m);
     FILE *f = fopen(r->out_path, "wb");
     if (f) {
         fprintf(f, "P6\n%d %d\n255\n", r->w, r->h);
