@@ -44,6 +44,8 @@
 #include "remap.h"
 #include "keyref.h"
 #include "subtitles.h"
+#include "macsound.h"
+#include "soundpolicy.h"
 #include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
@@ -98,6 +100,39 @@ static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
 static int g_subtitles;                /* --subtitles: show the radio calls as text (subtitles.h) */
 static subtitles g_sub;
+static macsound *g_mac;                /* --mac-sounds DIR: the Macintosh recordings (macsound.h); NULL: none */
+static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundpolicy.h): SP_NONE = the default order */
+
+/* Hybrid sound (docs/sound-board.md): the machine's exec hook fires when the game makes its far call into the sound
+ * driver (VGAME 1E42:0313, the id the game wants at SS:SP+4). Music, speech and effects each have a default source
+ * and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac recordings are
+ * the host's to play; whatever is not taken here goes on to the DOS driver as the original does. The game's own
+ * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
+static int on_sound_call(void *user, machine_t *m)
+{
+    (void)user;
+    const uint16_t id = (uint16_t)(m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 4)) & 0xFFFFF] |
+                                   m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
+    static int log_requests = -1;
+    if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
+    if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
+    if (!g_mac || !macsound_has(g_mac, id)) return 0;
+    const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
+    const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);   /* whichever driver is loaded */
+    const sp_source use = sp_choose(kind, SP_BIT(SP_MAC) | dos_any, g_source[kind]);
+    if (use != SP_MAC) return 0;
+    return macsound_play(g_mac, id);
+}
+static sp_source parse_source_option(const char *flag, const char *v)
+{
+    if (!strcmp(v, "dos")) return SP_ADLIB;          /* any DOS driver: the Mac recording is not taken */
+    const int s = sp_parse_source(v);
+    if (s < 0 || s == SP_ROLAND || s == SP_ADLIB || s == SP_SPEAKER) {
+        fprintf(stderr, "%s takes default, mac or dos\n", flag);
+        exit(2);
+    }
+    return (sp_source)s;
+}
 static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
@@ -474,6 +509,14 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                             uint16_t load_seg, uint16_t reloc)
 {
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if (kind != MODLOAD_OVERLAY) {
+        m->exec_hook_on = 0;
+        if (g_mac && !SDL_strcasecmp(name, "VGAME.EXE")) {      /* the game's sound stub: a far jump slot at load+1E42:0313 */
+            m->exec_hook_cs = (uint16_t)(load_seg + 0x1E42);
+            m->exec_hook_ip = 0x0313;
+            m->exec_hook_on = 1;
+        }
+    }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
         setup_key(m, m->cpu.icount + 200000, 'N');
         setup_key(m, m->cpu.icount + 2000000, g_setup_sound);
@@ -688,6 +731,9 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
+        else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
+        else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
+        else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--remap") && v) {
             if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
             i++;
@@ -1042,6 +1088,7 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = app_module_load;
+    hooks.exec = on_sound_call;
     hooks.file_data = fixes_file_data;
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);
@@ -1530,6 +1577,7 @@ int main(int argc, char **argv)
                 size_t produced_frames = 0;
                 size_t n;
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    macsound_mix(g_mac, abuf, n);                     /* the Mac recordings over the driver's output */
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
                     if (stream && replay_x4 == 4 && !seek_target) {   /* a replay off normal speed, or seeking, is silent */

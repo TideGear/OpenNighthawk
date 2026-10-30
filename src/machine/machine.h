@@ -106,6 +106,10 @@ typedef struct {
      * switchable data fixes correct a file as it is read (docs/bugs.md). */
     void (*file_data)(void *user, machine_t *m, const char *name, long size, long pos,
                       uint8_t *buf, size_t n);
+    /* Execution reached the address set in machine_t.exec_hook_* (hybrid sound: the game's far call into the sound
+     * driver, docs/sound-board.md). Return nonzero to make the call return at once to its caller (a far RET: the
+     * driver never sees the request); zero to let it run. May read the guest; must not change it. */
+    int (*exec)(void *user, machine_t *m);
 } machine_hooks;
 
 /* One input reaching the machine at a clock count (see machine_input_at). */
@@ -199,6 +203,9 @@ struct machine {
     /* A matched routine's call into original code (src/matched): machine_run
      * returns RUN_TRAP when CS:IP and SP reach the call's return. */
     uint8_t  trap_on;
+    /* One host execution hook (hooks.exec), off by default: CS:IP to watch. Checked beside trap_on in the run loops. */
+    uint8_t  exec_hook_on;
+    uint16_t exec_hook_cs, exec_hook_ip;
     uint16_t trap_cs, trap_ip, trap_sp;
     uint64_t run_until;      /* the current machine_run's limit, for nested runs */
     uint8_t  pit_control_irq; /* DOSBox 0.74's IRQ0 on a PIT control word; F117R_PIT_CONTROL_IRQ=0 turns it off */

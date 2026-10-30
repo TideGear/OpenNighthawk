@@ -82,6 +82,10 @@ typedef struct f117_observer {
      * presentation that re-runs the original's own drawing on a copy (docs/presentation.md, "The current plan for
      * 60+ fps"). It may read and copy the machine; it must not change it. NULL: not called. */
     void (*compose)(void *user, machine_t *m);
+    /* A sound request the game's priority gate (VGAME 0D3F9) admits: the sound id and its priority. A nonzero return
+     * means the host plays it itself (hybrid sound: a recording), so the request is not passed to the DOS driver. NULL:
+     * not called, and every admitted request goes to the driver as the original does. */
+    int (*sound)(void *user, uint16_t id, int16_t priority);
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;

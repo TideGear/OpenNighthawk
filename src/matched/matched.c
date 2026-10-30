@@ -17224,6 +17224,9 @@ static int vgame_sound_request(machine_t *m)
         }
     }
     c->icount += n;
+    if (admit && g_f117_observer && g_f117_observer->sound &&
+        g_f117_observer->sound(g_f117_observer->user, FRAME(4), (int16_t)FRAME(6)))
+        admit = 0;                                              /* the host plays it (hybrid sound) */
     if (admit) {
         cpu_push16(c, FRAME(4));
         c->icount++;
