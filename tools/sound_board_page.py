@@ -198,23 +198,27 @@ def main():
     # what still needs the owner: each Mac recording beside the DOS sound its code matches, an id with no known
     # caller, and the one design choice. Everything else is handled and sits in a collapsed section.
     decide = []
-    MATCHES = [(31, 323, "Strong match: the 8 key (bay doors) in flight plays DOS 31, and the Mac plays 323 at the same point, "
-                         "both refused while a weapon is on its way. DOS also plays 31 for the launch animation."),
-               (29, 325, "Weaker: on the weapons page DOS plays 29 when a bay is chosen. The Mac plays 323 there "
-                         "(the same bay-door sound again) and 325 (impact) when a weapon is picked."),
-               (30, 325, "Weaker: DOS plays 30 when a weapon is placed in the bay; the Mac plays 325 (impact) for the pick.")]
-    for did, mid, why in MATCHES:
-        row = next((r for r in dos if r["key"] == "dos-%d" % did), None)
+    # Each row: one moment in the game, the DOS sound played then, and the Mac clip played at the same moment.
+    # How sure I am comes from how closely the Mac and DOS code match at that moment (docs/sound-board.md).
+    MATCHES = [("dos-31", 323, "DOS 31 and Mac 323: pressing 8 in flight (bay doors)",
+                "Same moment: you press 8 and the bay doors open or close. DOS plays sound 31; the Mac plays 323 (bay door). Both skip it while a weapon is on its way. Confidence: high."),
+               ("dos-29", 323, "DOS 29 and Mac 323: weapons page, you click a bay",
+                "Same moment: on the weapons page you click one of the four bays. DOS plays sound 29; the Mac plays 323 (the bay door again). Confidence: medium."),
+               ("dos-30", 325, "DOS 30 and Mac 325: weapons page, you pick a weapon",
+                "Same moment: you choose a weapon to load into the selected bay. DOS plays sound 30; the Mac plays 325 (impact). Confidence: lower.")]
+    for key, mid, title, why in MATCHES:
+        row = next((r for r in dos if r["key"] == key), None)
         if row and ("mac-%d" % mid) in clips:
             dos.remove(row)
             row["clips"]["mac"] = "mac-%d" % mid
-            row["sub"] = "Does Mac %d fit? " % mid + why
+            row["title"] = title
+            row["sub"] = why + " Do they sound alike?"
             decide.append(row)
-    # the Mac's hangar door (324), played at the start of the launch animation, beside DOS 31's drivers
+    # the launch animation: DOS plays 31 again, the Mac plays 324 (hangar door), beside DOS 31's drivers
     d31 = next((r for r in decide if r["key"] == "dos-31"), None)
     if d31 and "mac-324" in clips:
-        decide.insert(decide.index(d31) + 1, {"key": "mac-324", "title": "Mac 324, hangar door", "def": "mac",
-            "sub": "Does it fit the launch animation? The Mac plays 324 as that animation starts; DOS plays 31 there (same sound as the bay doors).",
+        decide.insert(decide.index(d31) + 1, {"key": "mac-324", "title": "DOS 31 and Mac 324: the launch animation", "def": "mac",
+            "sub": "Same moment: the launch animation starts. DOS plays sound 31 again (the same sound as the bay doors); the Mac plays 324 (hangar door). Confidence: medium. Do they sound alike?",
             "clips": dict(d31["clips"], mac="mac-324")})
     other[:] = [r for r in other if r["key"] not in ("mac-323", "mac-324", "mac-325")]
     row = next((r for r in dos if r["key"] == "dos-32"), None)
