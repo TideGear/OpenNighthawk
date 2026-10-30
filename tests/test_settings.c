@@ -23,7 +23,7 @@ int main(void)
     int n;
     settings_defs(&n);
     const int pres = find("presentation"), fixes = find("fixes"), full = find("fullscreen"), scale = find("scale");
-    CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= 16);
+    CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= 32);
 
     /* values come from the file; absent keys take the game's defaults */
     settings_load(&s, "; mine\npresentation = Enhanced\nfullscreen = true\nscale = 4\n");
@@ -42,6 +42,11 @@ int main(void)
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
     CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 2);   /* wraps to the last row */
+    CHECK(s.top == n + 3 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    for (int k = 0; k < n + 2; k++) settings_key_event(&s, SKEY_UP);
+    CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
+    settings_key_event(&s, SKEY_UP);
+    CHECK(s.cursor == n + 2);
     s.cursor = n + 1;                                         /* Watch last flight: asks the host, drops edits */
     settings_key_event(&s, SKEY_ENTER);
     CHECK(!s.open && s.watch_now && !s.saved_now && !settings_needs_restart(&s));

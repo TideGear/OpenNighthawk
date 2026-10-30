@@ -18,6 +18,9 @@ static const char *const C_ROLAND[] = { "munt", "windows", "off", NULL };
 static const char *const C_HZ[] = { "8", "15", NULL };
 static const char *const C_OPL[] = { "dbopl", "nuked", NULL };
 static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
+static const char *const C_AGE[] = { "interp", "extrapolate", NULL };
+static const char *const C_DEAD[] = { "0", "5", "10", "15", "20", "25", "30", NULL };
+static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
 
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
 static const setting_def DEFS[] = {
@@ -33,8 +36,14 @@ static const setting_def DEFS[] = {
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
+    { "present-age",  "Picture delay",    C_AGE,          0, 0 },
+    { "pad-deadzone", "Stick dead zone %", C_DEAD,        0, 0 },
+    { "pad-invert-x", "Invert stick X",   C_YESNO,        0, 0 },
+    { "pad-invert-y", "Invert stick Y",   C_YESNO,        0, 0 },
+    { "engine",       "CPU engine",       C_ENGINE,       0, 0 },
 };
 #define NDEFS ((int)(sizeof DEFS / sizeof DEFS[0]))
+#define SETTINGS_VISIBLE 12                           /* rows shown at once; the list scrolls past them */
 
 const setting_def *settings_defs(int *count)
 {
@@ -76,6 +85,7 @@ void settings_open(settings_state *s)
 {
     s->open = 1;
     s->cursor = 0;
+    s->top = 0;
     s->want_restart = 0;
     s->saved_now = 0;
     s->watch_now = 0;
@@ -142,6 +152,8 @@ int settings_key_event(settings_state *s, settings_key k)
         revert(s);
         break;
     }
+    if (s->cursor < s->top) s->top = s->cursor;                  /* keep the cursor inside the rows shown */
+    if (s->cursor >= s->top + SETTINGS_VISIBLE) s->top = s->cursor - SETTINGS_VISIBLE + 1;
     return 1;
 }
 
@@ -179,7 +191,8 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int pw = 400, ph = 24 + (NDEFS + 3) * 20 + 56;
+    const int total = NDEFS + 3, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
         for (int x = x0; x < x0 + pw; x++) {
@@ -187,8 +200,8 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             px[(size_t)y * (size_t)w + (size_t)x] = edge ? 0xFFA0A0A0u : 0xFF101820u;
         }
     put_text(px, w, h, x0 + 16, y0 + 10, "SETTINGS", 0xFFFFFFFFu);
-    for (int i = 0; i < NDEFS + 3; i++) {
-        const int y = y0 + 34 + i * 20, on = i == s->cursor;
+    for (int i = s->top; i < s->top + shown && i < total; i++) {
+        const int y = y0 + 34 + (i - s->top) * 20, on = i == s->cursor;
         const uint32_t color = on ? 0xFFFFE060u : 0xFFD0D0D0u;
         if (on) put_text(px, w, h, x0 + 12, y, ">", color);
         if (i < NDEFS) {
@@ -199,6 +212,8 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : "Close without saving", color);
     }
+    if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
+    if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */
     const int fy = y0 + ph - 38;
     put_text(px, w, h, x0 + 16, fy, "Up/Down choose, Left/Right change,", 0xFF909090u);
     put_text(px, w, h, x0 + 16, fy + 16, "* applies after restart. Esc closes.", 0xFF909090u);
