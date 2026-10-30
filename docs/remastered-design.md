@@ -170,3 +170,37 @@ What this removes: the pose-preparation rewrite and its oracle harness. What it 
 assembler that gathers a frame's requests between two `frame_phase` events, the projection fit, shading and materials
 (`scene_mesh_materials` decodes the original's material commands), widescreen framing, the longer reach (needs the
 world loader beyond the resident rings, R1), and the settings entry. Nothing here is built yet.
+
+- **R3, the projection is known exactly (30 October 2026).** `src/present/remaster_project.c` implements the game's
+  perspective projection (VGAME `0x129A2`, as documented in `matched.c`): for a vertex whose z has a high word of at least
+  `0x100`, the pixel offset is `(x >> 8) / z_high`; from 1 to `0xFF`, `(x >> 1) / ((z >> 8) >> 1)`; below 1 the vertex is
+  behind the eye. Both are `256 x / z`, and the remainder the game throws away is the sub-pixel position that the new
+  renderer keeps (`remaster_project`). Checked against a real flight: a one-second window of `V` observer records
+  (`f117run --observe FILE:FROM:TO` with `F117R_OBSERVE_KINDS=V`, the `boot_to_flight` route at about 2.44 billion
+  clocks) holds 7,359 projected vertices, and the integer rule reproduces all 14,718 pixel coordinates exactly (both
+  ranges, both axes); a least-squares fit gives the same scale (255.9 for x). The pixels are offsets from the view's centre
+  (the view origin is added later), which also settles widescreen: keep the scale of 256 and draw more columns, and the
+  field of view widens by itself. Test: `presentation_remaster_project` (the real-log check needs `F117_VERTEX_LOG`).
+- **R3, the triangle fill (30 October 2026).** `src/present/remaster_raster.c` fills convex polygons given in camera space
+  through that projection, at the output's own resolution, with a per-pixel depth of 1/z and a near-plane clip. Tested
+  (`presentation_remaster_raster`): a nearer face covers a farther one in either draw order, including two faces that
+  cross; a polygon behind the eye draws nothing and one across the near plane is clipped; a 80-column frame and a
+  64-column frame of the same scene agree on the shared columns (a wider frame adds columns and moves nothing, the
+  widescreen rule); a whole-pixel move shifts the picture by exactly that, and a half-pixel move changes the edge
+  pixels' coverage, which the game's whole-pixel positions cannot do. Scales are per axis (the game's pixels are not square:
+  256 H / 240 across and 256 H / 200 up for an output H high that shows the original's frame at 4:3). Still to do for R3:
+  the glue from a decoded mesh and a captured pose to polygons (needs the `pose` callback described above), the original's
+  colours and shading, and the frame assembler.
+- **Sky and ground need no new work (30 October 2026).** `band_state.h` already models the horizon bands as a function of the
+  camera's height and its pitch and roll sines and cosines, in floating point ("FINE") as well as the original's exact
+  16-bit arithmetic ("EXACT", checked against captured logs by `test_band_state`); the HUD and panel are state-driven too
+  (`hud_state.h`). Remastered draws the bands from the same state at its own resolution and keeps the horizon at its true
+  position instead of a quantised one, so only the model geometry is new.
+- **R3, from a request to camera-space primitives (30 October 2026).** `src/present/remaster_scene.c` does the work between the
+  `pose` callback and the fill, as pure code on the guest's memory: it picks the game's detail level from the request's
+  position words and the camera matrix (`scene_model_depth`), decodes the model once into a cache (a content signature of the
+  bank page keys it, so a new theatre starts afresh), reads the pose where it lies (`scene_pose_read` straight on the data
+  segment, no copy), evaluates every vertex in camera space with the game's integer arithmetic, and runs the model's material
+  commands, turning each polygon's edge chain into an ordered vertex loop. Tested on the synthetic fixture placed in a fake
+  guest memory (`presentation_remaster_scene`). Not yet checked on real data, which needs the callback running in a build: the
+  next step is a headless consumer of `observe_pose` that collects a frame and draws it with the fill.

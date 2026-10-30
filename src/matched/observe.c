@@ -1,5 +1,6 @@
 /* observe.c - see observe.h. */
 #include "observe.h"
+#include "observe_pose.h"
 #include "matched.h"
 #include "recomp_rt.h"
 #include "cpu.h"
@@ -12,6 +13,24 @@
 const f117_observer *g_f117_observer;
 
 void observe_set(const f117_observer *o) { g_f117_observer = o; }
+
+/* The prepared-pose callback (observe_pose.h): the request's model and bank are noted at its entry, the callback fires at
+ * its first projected vertex. */
+typedef struct {
+    observe_pose_fn fn;
+    void *user;
+    int pending;
+    uint16_t model, bank;
+    int16_t position[3];
+} pose_observer_state;
+static pose_observer_state g_pose;
+
+void observe_pose_set(observe_pose_fn fn, void *user)
+{
+    g_pose.fn = fn;
+    g_pose.user = user;
+    g_pose.pending = 0;
+}
 
 /* Guest memory is read directly, never through the machine's accessors: they
  * charge the 386 profile's VGA bus cycles (cpu.h), and an observer must not
@@ -73,6 +92,13 @@ static void flush(machine_t *m);
 void observe_scene_model(machine_t *m)
 {
     const f117_observer *o = g_f117_observer;
+    if (g_pose.fn) {                                  /* note the request; the first vertex it projects reports it */
+        const cpu_t *rc = &m->cpu;
+        g_pose.pending = 1;
+        g_pose.model = peek16(rc, rc->seg[S_SS], (uint16_t)(rc->r[R_SP] + 4));
+        g_pose.bank = peek16(rc, rc->seg[S_DS], 0x8590);
+        for (int k = 0; k < 3; k++) g_pose.position[k] = (int16_t)peek16(rc, rc->seg[S_SS], (uint16_t)(rc->r[R_SP] + 6 + 2 * k));
+    }
     if (o && o->ident && o->prim) {
         flush(m);
         const cpu_t *c=&m->cpu;
@@ -118,6 +144,10 @@ void observe_scene_model(machine_t *m)
 void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
 {
     flush(m);
+    if (g_pose.pending && g_pose.fn) {                 /* the first vertex of a request: its pose is prepared */
+        g_pose.pending = 0;
+        g_pose.fn(g_pose.user, m->cpu.icount, m, g_pose.model, g_pose.bank, g_pose.position);
+    }
     const f117_observer *o = g_f117_observer;
     if (!o || !o->vertex) return;
     cpu_t *c = &m->cpu;
@@ -571,7 +601,10 @@ static struct {
     uint8_t before[65536];
 } g_any_display;
 
-size_t observe_pending_size(void) { return sizeof g_pend + sizeof g_line + sizeof g_any + sizeof g_any_display; }
+size_t observe_pending_size(void)
+{
+    return sizeof g_pend + sizeof g_line + sizeof g_any + sizeof g_any_display + sizeof g_pose;
+}
 
 void observe_pending_save(void *dst)
 {
@@ -579,7 +612,8 @@ void observe_pending_save(void *dst)
     memcpy(p, &g_pend, sizeof g_pend); p += sizeof g_pend;
     memcpy(p, &g_line, sizeof g_line); p += sizeof g_line;
     memcpy(p, &g_any, sizeof g_any); p += sizeof g_any;
-    memcpy(p, &g_any_display, sizeof g_any_display);
+    memcpy(p, &g_any_display, sizeof g_any_display); p += sizeof g_any_display;
+    memcpy(p, &g_pose, sizeof g_pose);
 }
 
 void observe_pending_restore(const void *src)
@@ -588,10 +622,23 @@ void observe_pending_restore(const void *src)
     memcpy(&g_pend, p, sizeof g_pend); p += sizeof g_pend;
     memcpy(&g_line, p, sizeof g_line); p += sizeof g_line;
     memcpy(&g_any, p, sizeof g_any); p += sizeof g_any;
-    memcpy(&g_any_display, p, sizeof g_any_display);
+    memcpy(&g_any_display, p, sizeof g_any_display); p += sizeof g_any_display;
+    memcpy(&g_pose, p, sizeof g_pose);
 }
 
-void observe_pending_clear(void) { g_pend.n = 0; g_line.on = 0; g_any.on = 0; g_any_display.on = 0; }
+void observe_pending_clear(void)
+{
+    g_pend.n = 0;
+    g_line.on = 0;
+    g_any.on = 0;
+    g_any_display.on = 0;
+    g_pose.fn = NULL;
+    g_pose.user = NULL;
+    g_pose.pending = 0;
+    g_pose.model = 0;
+    g_pose.bank = 0;
+    memset(g_pose.position, 0, sizeof g_pose.position);
+}
 
 static void any_emit(machine_t *m, int entry, uint16_t page,
                      const uint8_t *before, int emit_empty)
