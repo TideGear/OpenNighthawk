@@ -14,6 +14,7 @@ static const char *const C_SCALE[] = { "1", "2", "3", "4", "5", "6", NULL };
 static const char *const C_YESNO[] = { "no", "yes", NULL };
 static const char *const C_SPEAKER[] = { "realsound", "pwm", NULL };
 static const char *const C_TIMING[] = { "dosbox", "386", NULL };
+static const char *const C_ROLAND[] = { "munt", "windows", "off", NULL };
 
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
 static const setting_def DEFS[] = {
@@ -24,6 +25,7 @@ static const setting_def DEFS[] = {
     { "speaker",      "Speaker speech",   C_SPEAKER,      0, 0 },
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
+    { "roland",       "Roland output",    C_ROLAND,       2, 0 },
 };
 #define NDEFS ((int)(sizeof DEFS / sizeof DEFS[0]))
 
