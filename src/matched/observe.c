@@ -1,5 +1,6 @@
 /* observe.c - see observe.h. */
 #include "observe.h"
+#include "observe_pose.h"
 #include "matched.h"
 #include "recomp_rt.h"
 #include "cpu.h"
@@ -12,6 +13,20 @@
 const f117_observer *g_f117_observer;
 
 void observe_set(const f117_observer *o) { g_f117_observer = o; }
+
+/* The prepared-pose callback (observe_pose.h): the request's model and bank are noted at its entry, the callback fires at
+ * its first projected vertex. */
+static observe_pose_fn g_pose_fn;
+static void *g_pose_user;
+static int g_pose_pending;
+static uint16_t g_pose_model, g_pose_bank;
+
+void observe_pose_set(observe_pose_fn fn, void *user)
+{
+    g_pose_fn = fn;
+    g_pose_user = user;
+    g_pose_pending = 0;
+}
 
 /* Guest memory is read directly, never through the machine's accessors: they
  * charge the 386 profile's VGA bus cycles (cpu.h), and an observer must not
@@ -73,6 +88,12 @@ static void flush(machine_t *m);
 void observe_scene_model(machine_t *m)
 {
     const f117_observer *o = g_f117_observer;
+    if (g_pose_fn) {                                  /* note the request; the first vertex it projects reports it */
+        const cpu_t *rc = &m->cpu;
+        g_pose_pending = 1;
+        g_pose_model = peek16(rc, rc->seg[S_SS], (uint16_t)(rc->r[R_SP] + 4));
+        g_pose_bank = peek16(rc, rc->seg[S_DS], 0x8590);
+    }
     if (o && o->ident && o->prim) {
         flush(m);
         const cpu_t *c=&m->cpu;
@@ -118,6 +139,10 @@ void observe_scene_model(machine_t *m)
 void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
 {
     flush(m);
+    if (g_pose_pending && g_pose_fn) {                /* the first vertex of a request: its pose is prepared */
+        g_pose_pending = 0;
+        g_pose_fn(g_pose_user, m->cpu.icount, m, g_pose_model, g_pose_bank);
+    }
     const f117_observer *o = g_f117_observer;
     if (!o || !o->vertex) return;
     cpu_t *c = &m->cpu;
