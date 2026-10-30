@@ -54,6 +54,22 @@ Each stage is its own branch and gate; none is credited before its proof, and th
 | R5 frame | widescreen window, widened field of view, HUD and panel placement | the same route frames at 4:3 match R3/R4; 16:9 shows more, not different, world |
 | R6 reach | longer draw distance from R1's loader | far terrain and objects appear, near ones unchanged |
 
+## Output: its own resolution and frame rate
+
+Remastered does not replay or re-run the original's draw. It draws the scene from world and object state (R1-R2)
+with its own rasteriser (R3-R4), so resolution and frame rate belong to it, not to the original's 320x200 draw:
+
+- **Resolution.** Rasterised at the output size with sub-pixel projection; there is no whole-pixel flattening to
+  jitter. R3 first draws at 320x200 so it can be compared pixel for pixel with the original, then at any size.
+- **Frame rate.** The simulation steps at its own rate (15 a second by default) and is never touched. Each display
+  refresh, Remastered interpolates the camera and the objects' positions and orientations between the two latest
+  steps (state read from the machine, as `rerun`'s snapshots are) and draws that. The limit is the display's
+  refresh, or none if the player asks for uncapped; it does not depend on the step rate. This is simpler than
+  `rerun`, which has to run the original's draw code on a machine copy with nudged inputs.
+- **HUD and panel.** The existing game-state HUD and panel code (`hud_state.h`, `hud_overlay.h`) at the output
+  scale, placed for the wider frame (R5).
+- **Simulation.** Unchanged and checked as in "Rules that make it safe".
+
 ## Rules that make it safe
 
 - **Simulation untouched.** A route run under Original, Enhanced and Remastered must give identical simulation
