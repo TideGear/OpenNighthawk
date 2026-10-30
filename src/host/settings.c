@@ -15,6 +15,9 @@ static const char *const C_YESNO[] = { "no", "yes", NULL };
 static const char *const C_SPEAKER[] = { "realsound", "pwm", NULL };
 static const char *const C_TIMING[] = { "dosbox", "386", NULL };
 static const char *const C_ROLAND[] = { "munt", "windows", "off", NULL };
+static const char *const C_HZ[] = { "8", "15", NULL };
+static const char *const C_OPL[] = { "dbopl", "nuked", NULL };
+static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
 
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
 static const setting_def DEFS[] = {
@@ -26,6 +29,10 @@ static const setting_def DEFS[] = {
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
     { "roland",       "Roland output",    C_ROLAND,       2, 0 },
+    { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
+    { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
+    { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
+    { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
 };
 #define NDEFS ((int)(sizeof DEFS / sizeof DEFS[0]))
 

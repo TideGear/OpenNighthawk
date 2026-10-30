@@ -1000,24 +1000,19 @@ int main(int argc, char **argv)
         /* F117_MENU_AUTOTEST=1 (diagnostic): a few frames in, press Ctrl+Alt+S, move to Fullscreen, change it,
          * move to Save and press Enter, as a player's keys would arrive; F117_MENU_SHOT=FILE.ppm saves the
          * menu's picture while it is open. Lets the real menu path run in a window-less check. */
-        static size_t diag_next;
-        if (getenv("F117_MENU_AUTOTEST") && ++diag_frame >= 5 && diag_next < 11) {
-            static const struct { SDL_Scancode sc; SDL_Keymod mod; } keys[] = {
-                { SDL_SCANCODE_S, (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) },
-                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
-                { SDL_SCANCODE_RIGHT, 0 },
-                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
-                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
-                { SDL_SCANCODE_RETURN, 0 },
-            };
-            for (size_t k = diag_next++; k < diag_next; k++) {
-                SDL_Event e;
-                SDL_zero(e);
-                e.type = SDL_EVENT_KEY_DOWN;
-                e.key.scancode = keys[k].sc;
-                e.key.mod = keys[k].mod;
-                SDL_PushEvent(&e);
-            }
+        static int diag_next;
+        int diag_rows = 0;
+        settings_defs(&diag_rows);
+        /* open; down to Fullscreen (row 3); change it; down to Save (row diag_rows); Enter */
+        const int diag_steps = 1 + 3 + 1 + (diag_rows - 3) + 1;
+        if (getenv("F117_MENU_AUTOTEST") && ++diag_frame >= 5 && diag_next < diag_steps) {
+            const int k = diag_next++;
+            SDL_Event e;
+            SDL_zero(e);
+            e.type = SDL_EVENT_KEY_DOWN;
+            e.key.scancode = k == 0 ? SDL_SCANCODE_S : k == 4 ? SDL_SCANCODE_RIGHT : k == diag_steps - 1 ? SDL_SCANCODE_RETURN : SDL_SCANCODE_DOWN;
+            e.key.mod = k == 0 ? (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) : 0;
+            SDL_PushEvent(&e);
         }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {

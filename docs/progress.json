@@ -175,9 +175,9 @@
       {
         "item": "In-game settings menu for every option now set by command line or .ini; SETUP's joystick and sound-driver questions answered from the settings (option to show them)",
         "weight": 4.0,
-        "done": 0.35,
+        "done": 0.45,
         "kind": "estimate",
-        "evidence": "29 Oct 2026, branch p3-settings-menu. Built and run in the real app (window-less, scripted keys, F117_MENU_AUTOTEST): Ctrl+Alt+S opens a menu that pauses the machine, edits eight options (presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland output), writes them to f117a.ini with its comments kept, and offers a restart; fullscreen applies live. The picture was checked in a saved frame. Not done: every option (fix choices, paths, sound driver, audio and presentation tuning), SETUP answers from the settings, mouse use; the owner has not looked at it."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Built and run in the real app (window-less, scripted keys, F117_MENU_AUTOTEST): Ctrl+Alt+S opens a menu that pauses the machine, edits twelve options (presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland output, game steps a second, AdLib emulation, 4:3 shape, line width), has a Watch last flight row,, writes them to f117a.ini with its comments kept, and offers a restart; fullscreen applies live. The picture was checked in a saved frame. Not done: every option (a custom fix mix, folders and ROM paths, presentation scale and age, engine, speed numbers, the controller and key settings), SETUP answers from the settings, mouse use; the owner has not looked at it."
       },
       {
         "item": "Modern controls: controller and HOTAS with remapping, an on-screen key reference, mouse where the original had it",
