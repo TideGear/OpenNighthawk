@@ -26,11 +26,10 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
   run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
   `4k60.bat` or `original-fixed.bat`.
-- **Active private proof watcher:** PID 47448 is running `D:/f117-gate/p2-setup-bt-runrest.sh`, started at 14:56 on
-  29 Oct. It is waiting for SETUP `18A2`'s lock-cover result, then checks/runs seeds and mutations for `1942`, `1870`,
-  `17B0`, `17D6`, and `18A2` (two mutation workers). At the last check, `18A2/cover.txt` did not exist; inspect
-  `PILOT-TIMES.txt` and each result before reusing these directories. Do not overlap its proofs with another acceptance
-  gate.
+- **Private proof pipeline:** An orphan shell watcher waited from 14:56 to 17:52 for SETUP `18A2`'s lock-cover result;
+  no cover file or child worker existed, so the idle shell was stopped. Proof directories are preserved. Inspect
+  `PILOT-TIMES.txt` and each result before reusing `D:/f117-gate/p2-setup-bt-*`; run no acceptance gate while any proof
+  workers are active.
 - CI is checked through GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
 
@@ -42,8 +41,8 @@ Batch `bu` is accepted and its source is recorded in the roadmap. Twelve root-ve
 P2 is now 95.82%. Continue with the SETUP static-range pilot, then integrate only after the proof results and full gate
 pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files out of any commit.
 
-Continue with the SETUP static-range pilot after checking the watcher and its result files. The watcher covers five
-ranges in `D:/f117-gate/p2-setup-bt-*`; the separate VGAME pilot has `0063` and `04D9` fixtures under
+Continue with the SETUP static-range pilot from the preserved proof directories. The old watcher was stopped while
+idle; inspect its result files before resuming the five ranges in `D:/f117-gate/p2-setup-bt-*`. The separate VGAME pilot has `0063` and `04D9` fixtures under
 `D:/f117-gate/p2-vgame-bt-1452-*`. These static candidates are worth about 2,660 bytes (~0.4 score points). Root-review
 seeds, mutation results and lock logs; run static checkpoints and `finish_all.py` only after each proof is green. Do not
 run a full acceptance gate while the private proof workers are active.
