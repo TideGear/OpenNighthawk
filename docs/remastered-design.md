@@ -181,3 +181,13 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   ranges, both axes); a least-squares fit gives the same scale (255.9 for x). The pixels are offsets from the view's centre
   (the view origin is added later), which also settles widescreen: keep the scale of 256 and draw more columns, and the
   field of view widens by itself. Test: `presentation_remaster_project` (the real-log check needs `F117_VERTEX_LOG`).
+- **R3, the triangle fill (30 October 2026).** `src/present/remaster_raster.c` fills convex polygons given in camera space
+  through that projection, at the output's own resolution, with a per-pixel depth of 1/z and a near-plane clip. Tested
+  (`presentation_remaster_raster`): a nearer face covers a farther one in either draw order, including two faces that
+  cross; a polygon behind the eye draws nothing and one across the near plane is clipped; a 80-column frame and a
+  64-column frame of the same scene agree on the shared columns (a wider frame adds columns and moves nothing, the
+  widescreen rule); a whole-pixel move shifts the picture by exactly that, and a half-pixel move changes the edge
+  pixels' coverage, which the game's whole-pixel positions cannot do. Scales are per axis (the game's pixels are not square:
+  256 H / 240 across and 256 H / 200 up for an output H high that shows the original's frame at 4:3). Still to do for R3:
+  the glue from a decoded mesh and a captured pose to polygons (needs the `pose` callback described above), the original's
+  colours and shading, and the frame assembler.
