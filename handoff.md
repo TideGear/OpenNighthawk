@@ -12,10 +12,10 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (30 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 96.56%, P3 76.34%, All 92.97% (`py tools/progress.py --title`). Refreshed with
+- **Scoreboard:** P1 100.00%, P2 96.57%, P3 76.34%, All 92.97% (`py tools/progress.py --title`). Refreshed with
   census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bw-accept/named-cover` and route cover
-  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 91.33%, checklist 47,429 / 47,736 = 99.36%,
-  1,881 reviewed-reference entries; 307 checklist bytes remain. 1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
+  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 91.33%, checklist 47,466 / 47,736 = 99.43%,
+  1,887 reviewed-reference entries; 270 checklist bytes remain. 1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
   ASOUND.LOG 169, RSOUND.LOG 83, MPS_LOGO 18, SETUP 89, START 66, END 63, RSOUND.117 5, DSWAP 2.
 - **Latest accepted runtime:** batch `bw` passed: eight static SETUP routines, 1,257 named bytes, 509 fully covered
   instructions, 281 private mutations caught, 40 optimized-seed checks, 811 CTests, 63 routes / 62 fresh interpreter
@@ -25,8 +25,8 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
   audit because the cached interpreter key was stale. Evidence: `D:/f117-gate/p2-batch-bw-accept/`.
 - **Classifier repair:** the owner-approved DSWAP floppy-path and presentation-observer graphics-slot rules are now
   recognized by the census classifier and documented with focused positive tests. No current reviewed entry uses
-  either rule, so this repair changes no gameplay score. The round-7 checklist adoption and owner-rule boundary review
-  raised P2 to 96.56%. The focused scoring tests pass (77 tests).
+  either rule, so this repair changes no gameplay score. Rounds 7 and 8 checklist adoptions raised P2 to 96.57%;
+  the focused scoring tests pass (77 tests). No runtime code changed in these checklist rounds.
 - **Acceptance scripts:** `audit_private.py`, `finalize.py` and `multi_proof.py` are copied forward from the previous
   accepted batch. `new_batch.py` does not copy `multi_proof.py`; carry all three forward for the next runtime batch.
 - **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
@@ -40,11 +40,13 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Resume here
 
-Goal in force: reach 100% of Phase 2 safely. Batch `bw` passed its full acceptance gate; round 7's checklist adoption and progress data are refreshed. No runtime changed in this checklist tranche.
+Goal in force: reach 100% of Phase 2 safely. Batch `bw` passed its full acceptance gate. Rounds 7 and 8 checklist
+adoptions and the progress data are refreshed; no runtime changed in these checklist tranches.
 
 The working branch is `wip/p2-setup-handoff-20261029`. Batch `bw` was prepared from accepted HEAD
-`0c2b13a69ce0262567c89ad241031f5de0cb463a`; pushed commit `34dd038` records that acceptance. The current
-scoreboard is P1 100.00%, P2 96.56%, P3 76.34%, All 92.97%.
+`0c2b13a69ce0262567c89ad241031f5de0cb463a`; pushed commit `34dd038` records that acceptance. Checklist round 8
+was prepared from accepted public HEAD `397bf4a`. The current scoreboard is P1 100.00%, P2 96.57%, P3 76.34%,
+All 92.97%.
 
 Eight static SETUP ranges (`0562`, `0582`, `05A3`, `05CE`, `070A`, `0811`, `0851`, `0979`) passed private proof,
 root audit, static route-neutrality replay and `finish_all.py`. Their preserved proof directories are
@@ -80,18 +82,19 @@ PIT waits `0A5B`/`0B01` need split lockstep pieces across their wake boundaries 
 needs proof in pieces; SETUP `10B3` needs the proposed prefix/interior split. MPS_LOGO `111D` partial route coverage was
 accepted in `bu`; do not reopen it absent new evidence.
 
-Round 7 is reconciled against the live 475-byte scope at accepted HEAD `cdc7da8` and the `bw` named cover. Its fresh
-set had 10 units / 202 bytes in three groups. Root verified the exact partition and packet identities; three fresh
-readers returned ten verdicts. Four units / 162 bytes were staged and validated. A separate rule-boundary review
-adopted three more 2-byte fragments: MPS_LOGO's DOS 1.x C-startup exit within the listed original row, plus the END
-and VGAME palette-loader epilogues immediately after their listed rows. The latter two use the approved palette-loader
-rule with explicit reasons. Gameplay accounting is unchanged. The checklist is now 47,429 / 47,736 bytes (99.36%);
-P2 is 96.56%, up 0.04 percentage points. Six R7 units / 40 bytes remain for a corrected name, missing control-flow
-context or fresh status review. Another 102 bytes are the older PLAYER/SETUP protected units, and 165 bytes are four
-older protected units. The 307-byte remainder is in `docs/roadmap.md`; private R7 evidence and the owner-rule review
-are under `D:/f117-gate/checklist-full-20261026/round7-bw-cdc7da8-refresh/`. Continue with a fresh round from the live
-scope; do not reuse earlier packet counts or source identities. Use at most three reader agents beside root (four
-participants total). The route-independent credit pool and open rules are in
+Round 8 is reconciled against the live 307-byte scope at accepted HEAD `397bf4a` and the `bw` named cover.
+Three fresh blind groups reviewed six units / 40 bytes; corrected-name packets received three additional fresh reads.
+Five units / 37 bytes were adopted after root validation. Q0001 DSWAP 00D65-00D67 remains held because the
+same bytes are read as data and code and the effective indirect target is unresolved. The corrected PLAYER
+0149B epilogue is held rather than dead-certified because the direct path does not establish a normal return,
+while indirect transfers remain unresolved. The reviewed checklist now has 47,466 / 47,736 bytes (99.43%);
+P2 is 96.57%. The 270-byte remainder is three unresolved DSWAP bytes plus 267 older protected/owner-review bytes.
+Private round 8 packets, reads, corrections, root review and validators are under
+`D:/f117-gate/checklist-full-20261026/round8-bw-397bf4a-refresh/`; correction packets are under the adjacent
+`round8-name-corrections-397bf4a-refresh/` and `round8-name-q2-397bf4a-refresh/` folders. Continue with a fresh
+scope reconciliation from the live 270 bytes; do not reuse earlier packet counts or source identities.
+
+The route-independent credit pool and open rules are in
 `docs/roadmap.md` and `docs/progress.md`. Current largest
 executed-code gaps are ASOUND.117 PIT waits, ISOUND.117 `026C`, presentation-observer VGAME thunks, and ISOUND.LOG `0581`;
 regenerate the lead list from the refreshed census/named cover before choosing the next body. Static naming and reviewed

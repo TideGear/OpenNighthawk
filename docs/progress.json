@@ -369,19 +369,19 @@
       "fixture_only": 31590,
       "remaining": 1967,
       "original_awaiting_review": 0,
-      "reviewed_entries": 1881,
+      "reviewed_entries": 1887,
       "checklist": {
         "bytes": 47736,
-        "with_reviewed_entry": 47429,
-        "without_reviewed_entry": 307,
+        "with_reviewed_entry": 47466,
+        "without_reviewed_entry": 270,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 23455,
-            "without_reviewed_entry": 199
+            "with_reviewed_entry": 23475,
+            "without_reviewed_entry": 179
           },
           "never_run": {
-            "with_reviewed_entry": 4162,
-            "without_reviewed_entry": 105
+            "with_reviewed_entry": 4179,
+            "without_reviewed_entry": 88
           },
           "slots": {
             "with_reviewed_entry": 5,
@@ -516,7 +516,7 @@
           "remaining": 18,
           "original_awaiting_review": 0,
           "not_in_denominator": 4846,
-          "not_in_denominator_reviewed": 4763,
+          "not_in_denominator_reviewed": 4769,
           "in_previous_scope": 6639
         },
         "NSOUND.117": {
@@ -538,7 +538,7 @@
           "remaining": 156,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 3262,
+          "not_in_denominator_reviewed": 3272,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {
@@ -571,7 +571,7 @@
           "remaining": 89,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
-          "not_in_denominator_reviewed": 4669,
+          "not_in_denominator_reviewed": 4674,
           "in_previous_scope": 3436
         },
         "START": {
@@ -582,7 +582,7 @@
           "remaining": 66,
           "original_awaiting_review": 0,
           "not_in_denominator": 5931,
-          "not_in_denominator_reviewed": 5915,
+          "not_in_denominator_reviewed": 5931,
           "in_previous_scope": 36508
         },
         "VGAME": {
