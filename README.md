@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 95.94%, P3 79.89%, All 93.68%**. Every commit
+Progress: **P1 100.00%, P2 95.94%, P3 81.41%, All 94.06%**. Every commit
 title starts with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -463,6 +463,6 @@ closed. Buy it; it is inexpensive and still available.
 - **SingleStepTests**, for the 8088 and 80286 hardware vectors.
 - **Capstone**, for the disassembly comments in the generated C and in the
   matched-routine drafts.
-- **debugcom**, for the mission-generator and secret-airstrip analysis the
+- **debugcom** and **damsonn**, for the mission-generator and secret-airstrip analysis (debugcom) and the fan patch for it (packaged by damsonn) that the
   bug tracker cites.
 - **GOG** and **Steam**, for keeping the game on sale.

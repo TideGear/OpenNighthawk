@@ -73,3 +73,16 @@ Each stage is its own branch and gate; none is credited before its proof, and th
 R1: decode the terrain files (`*.3DG`, `*.3DT`, with `*.WLD`), then a loader for one theatre compared tile for tile with the resident rings
 on a captured route. It needs the game files and a capture of the resident tables, both of which exist, and it
 has no effect on the running game.
+
+## Progress
+
+- **R1, terrain files (29 October 2026).** `tools/world_decode.py` decodes `*.3DG` (the level-4, level-3 and three
+  512-byte tile tables) and `*.3DT` (five lists of up to 32 entries; each entry a run of points, three words and a
+  kept byte) from the layouts START's matched loaders read; every byte of all nine theatres is accounted for.
+  `tools/world_check.py` compares the decoded tables with a memory dump from a run: the tables are contiguous at
+  `DS:B3A0..BAB0` in START's data segment with the point table following at `BAB0`, 7 bytes a point. Libya's
+  tables and all 376 points match the guest byte for byte (the `boot_to_flight` route, stopped just after START
+  reads `LB.3DT`, `f117run --steps N --dump 0:100000`). North Cape (368 points), Persian Gulf (346) and Vietnam (446)
+  match the same way, so four of the nine theatres are checked against the guest; the other five decode exactly from
+  their files but have not been dumped. Not done in R1: `*.WLD` placements, and the loader that goes beyond the
+  resident rings.

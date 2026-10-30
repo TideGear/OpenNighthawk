@@ -161,9 +161,9 @@
       {
         "item": "Fan-community patches in the Recommended fix set, credited",
         "weight": 2.0,
-        "done": 0.0,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026. A web search (Steam, GOG and VOGONS threads, MobyGames) found no community patch beyond debugcom's secret-airstrip fix, packaged by damsonn, which is fix D4 (the same 8-byte change; docs/bugs.md D4) and is in the Recommended set (every fix on). The other updates found are MicroProse's own (473.03, 473.04 and the later GOG builds), which the shipped install already carries. Credited in docs/bugs.md D4 and the README acknowledgements. The owner thinks D4 may be the only fan patch; if another turns up it gets a fix entry and a credit line."
       },
       {
         "item": "Remastered presentation: widescreen with a widened field of view, longer draw distance, depth-correct drawing (no far object drawn over a nearer one), no road or coastline jitter; simulation identical to the other presentations",
