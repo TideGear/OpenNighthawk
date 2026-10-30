@@ -132,16 +132,40 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
   from START and END (their own programs), longer spans for the sounds that reach the 5 s limit, ids 41-44
   (the driver call did not return within its limit, though output was logged).
 
-## Hybrid sound in the app (written 30 October 2026, not yet built or run)
+## Hybrid sound in the app (30 October 2026)
 
-`--mac-sounds DIR` (or `mac-sounds =` in the ini) loads Mac recordings named `<resource>.wav`. The game's priority
-gate (VGAME `0D3F9`) calls a new observer hook, `sound`, with each admitted request; the host plays the recording
-for ids that have one (`macsound.c`: effects 4 to 20 as Mac resource 300 + id; music 36, 37, 38 as resources 322, 321,
-200) and returns nonzero so the request is not passed to the DOS driver. `--music-source` and `--sound-source`
-(`default`, `mac`, `dos`) override the default order (`soundpolicy.c`).
+`--mac-sounds DIR` (or `mac-sounds =` in the ini) loads Mac recordings named `<resource>.wav`. When the game makes its
+far call into the sound driver (VGAME `1E42:0313`, the id at SS:SP+4), a host execution hook (`machine_hooks.exec`)
+plays the recording for ids that have one (`macsound.c`: effects 4 to 20 as Mac resource 300 + id; music 36, 37, 38 as
+resources 322, 321, 200) and makes the call return at once, so the DOS driver never sees that request. `--music-source`
+and `--sound-source` (`default`, `mac`, `dos`) override the default order (`soundpolicy.c`).
 
-What it does not do yet: the rule's Roland-for-music, AdLib-for-sounds split when there is no Mac recording needs a
-second driver fed the same requests (the loaded driver plays everything that has no recording). Speech has no Mac
-phrase recordings (the Mac has the nine words), so it stays with the DOS driver. The front ends (START, END) call the
-driver by another route, so their sounds are not taken yet. Needs the full gate before it counts: it changes
-`matched.c` (one read-only call in the gate that returns early only when a pack is loaded) and `observe.h`.
+### Why a machine-layer hook, and what it costs
+
+The first design put the hook in the matched sound gate (`matched.c`, VGAME `0D3F9`). A full seeded flight showed that no
+VGAME matched routine runs in a build without generated code, so that hook could not be tested outside the multi-hour
+generated-code build and the P2 gate. The hook moved to the machine loop instead (`pc.c`, beside the existing `trap_on`
+check). Tradeoffs:
+
+| | machine-layer hook (chosen) | hook in the matched gate |
+|---|---|---|
+| Works in every build and both engines | yes (to be confirmed for generated-code builds, below) | only where generated code runs the matched routine |
+| Test turnaround | minutes | hours (generated-code build, then the P2 gate) |
+| Touches `matched.c` (P2 gate territory) | no | yes |
+| Touches the core machine loop | yes: one extra comparison per instruction when off, which must change nothing | no |
+| Sees the game's priority | no: only the id; the original gate has already admitted the request | yes |
+| Parity of recordings and replays | identical with `--mac-sounds` off (the check is skipped); with it on, the driver sees fewer requests, so a recording made that way is not bit-for-bit comparable with the original | same |
+
+Known limits:
+- **Generated code may bypass the loop.** In a build with generated code, a translated block that reaches the driver
+  stub from inside generated code may never return to the machine loop, so the hook could miss it. Unverified; the test
+  so far is with the interpreter-based build. If a generated-code build misses requests, the hook belongs at the
+  driver's entry in the generated code as well.
+- **The driver's own state.** A swallowed request leaves the driver untouched, as if the game had not asked. The game
+  keeps asking every frame for the engine note (ids 23 to 25), which have no recording and still go through.
+- **One DOS driver at a time.** The loaded DOS driver is the one chosen at SETUP. The rule's Roland music and AdLib
+  effects together need a second driver fed the same requests; this change does not do that. Sounds with no Mac
+  recording are played by whichever driver is loaded.
+- **START and END.** They call their own thunks (`0A95:6BB1`, `05FA:25F3`), not the VGAME stub, so their sounds are not
+  taken yet.
+- **Speech.** The Mac has the nine words, not the DOS phrases, so speech stays with the DOS driver.

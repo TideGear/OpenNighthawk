@@ -103,12 +103,19 @@ static subtitles g_sub;
 static macsound *g_mac;                /* --mac-sounds DIR: the Macintosh recordings (macsound.h); NULL: none */
 static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundpolicy.h): SP_NONE = the default order */
 
-/* The game's priority gate admitted sound `id` (observe.h, sound). Music, speech and effects each have a default
- * source and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac
- * recordings are the host's to play; the DOS drivers play what is not taken here. */
-static int on_sound_request(void *user, uint16_t id, int16_t priority)
+/* Hybrid sound (docs/sound-board.md): the machine's exec hook fires when the game makes its far call into the sound
+ * driver (VGAME 1E42:0313, the id the game wants at SS:SP+4). Music, speech and effects each have a default source
+ * and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac recordings are
+ * the host's to play; whatever is not taken here goes on to the DOS driver as the original does. The game's own
+ * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
+static int on_sound_call(void *user, machine_t *m)
 {
-    (void)user; (void)priority;
+    (void)user;
+    const uint16_t id = (uint16_t)(m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 4)) & 0xFFFFF] |
+                                   m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
+    static int log_requests = -1;
+    if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
+    if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
     if (!g_mac || !macsound_has(g_mac, id)) return 0;
     const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
     const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);   /* whichever driver is loaded */
@@ -502,6 +509,14 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                             uint16_t load_seg, uint16_t reloc)
 {
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if (kind != MODLOAD_OVERLAY) {
+        m->exec_hook_on = 0;
+        if (g_mac && !SDL_strcasecmp(name, "VGAME.EXE")) {      /* the game's sound stub: a far jump slot at load+1E42:0313 */
+            m->exec_hook_cs = (uint16_t)(load_seg + 0x1E42);
+            m->exec_hook_ip = 0x0313;
+            m->exec_hook_on = 1;
+        }
+    }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
         setup_key(m, m->cpu.icount + 200000, 'N');
         setup_key(m, m->cpu.icount + 2000000, g_setup_sound);
@@ -1073,6 +1088,7 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = app_module_load;
+    hooks.exec = on_sound_call;
     hooks.file_data = fixes_file_data;
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);
@@ -1082,12 +1098,7 @@ int main(int argc, char **argv)
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
         drawlive_set_line_width(&g_live, g_line_width);
         if (g_rerun) { drawfeed_set_rerun(&g_feed); drawlive_set_rerun(&g_live); }
-        if (g_mac) g_feed.obs.sound = on_sound_request;
         observe_set(&g_feed.obs);
-    } else if (g_mac) {
-        static f117_observer sound_only;                /* hybrid sound without a presentation: only the sound hook */
-        sound_only.sound = on_sound_request;
-        observe_set(&sound_only);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) g_setup_sound = 0;                  /* a replay brings its own inputs, SETUP's answers included */

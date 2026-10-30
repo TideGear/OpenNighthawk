@@ -1205,6 +1205,13 @@ int machine_run(machine_t *m, uint64_t until)
             while (c->icount < c->stop_at && !c->halted) {
                 if (m->trap_on && c->ip == m->trap_ip && c->r[R_SP] == m->trap_sp && c->seg[S_CS] == m->trap_cs)
                     return RUN_TRAP;
+                if (m->exec_hook_on && c->ip == m->exec_hook_ip && c->seg[S_CS] == m->exec_hook_cs && m->hooks.exec &&
+                    m->hooks.exec(m->hooks.user, m)) {          /* the host took the call: a far RET stands in for it */
+                    c->ip = cpu_pop16(c);
+                    c->seg[S_CS] = cpu_pop16(c);
+                    c->icount += 2;
+                    continue;
+                }
                 if (recomp_overrides_live) {
                     const int rc = override_at(m);
                     if (rc > RUN_SLICE) return rc;
@@ -1223,6 +1230,13 @@ int machine_run(machine_t *m, uint64_t until)
             while (c->icount < c->stop_at && !c->halted) {
                 if (m->trap_on && c->ip == m->trap_ip && c->r[R_SP] == m->trap_sp && c->seg[S_CS] == m->trap_cs)
                     return RUN_TRAP;
+                if (m->exec_hook_on && c->ip == m->exec_hook_ip && c->seg[S_CS] == m->exec_hook_cs && m->hooks.exec &&
+                    m->hooks.exec(m->hooks.user, m)) {          /* the host took the call: a far RET stands in for it */
+                    c->ip = cpu_pop16(c);
+                    c->seg[S_CS] = cpu_pop16(c);
+                    c->icount += 2;
+                    continue;
+                }
                 if (recomp_overrides_live) {
                     const int rc = override_at(m);
                     if (rc > RUN_SLICE) return rc;
