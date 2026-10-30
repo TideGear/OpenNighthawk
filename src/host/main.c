@@ -585,6 +585,7 @@ int main(int argc, char **argv)
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL, *watch = NULL;
+    double seek_secs = 0;
     uint64_t time_us = 0, exit_after = 0;
     audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
     int speaker_model = 0;                  /* speaker.h: realsound */
@@ -706,6 +707,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--watch") && v) { watch = v; i++; }
+        else if (!strcmp(a, "--seek") && v) { seek_secs = atof(v); i++; }       /* a replay starts this many seconds in */
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--opl") && v) {
@@ -816,7 +818,7 @@ int main(int argc, char **argv)
                 "             [--sim-hz 8|15] (D1REAL cadence; default 15 at 60000000 ips; replay restores recorded choice)\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--presentation original|enhanced] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker]\n"
+                "             [--presentation original|enhanced] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker] [--watch latest|SESSION] [--seek SECONDS]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
                 "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
@@ -1159,7 +1161,8 @@ int main(int argc, char **argv)
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
     if (getenv("F117_REPLAY_START_X4")) replay_x4 = atoi(getenv("F117_REPLAY_START_X4"));   /* diagnostic: start a replay fast */
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0;
+    uint64_t seek_target = player && seek_secs > 0 ? (uint64_t)(seek_secs * (double)ips) : 0;   /* a replay runs flat out to here */
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0, sk_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1264,6 +1267,20 @@ int main(int argc, char **argv)
                 }
             }
         }
+        /* F117_SEEK_AUTOTEST=1 (diagnostic, with --watch): at frame 100 press ], at frame 400 press [ (use
+         * F117_RESTART_DRYRUN=1 to see the restart it asks for). */
+        {
+            if (getenv("F117_SEEK_AUTOTEST")) {
+                ++sk_frame;
+                if (sk_frame == 100 || sk_frame == 400) {
+                    SDL_Event e;
+                    SDL_zero(e);
+                    e.type = SDL_EVENT_KEY_DOWN;
+                    e.key.scancode = sk_frame == 100 ? SDL_SCANCODE_RIGHTBRACKET : SDL_SCANCODE_LEFTBRACKET;
+                    SDL_PushEvent(&e);
+                }
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1282,6 +1299,18 @@ int main(int argc, char **argv)
                     if (rs == SDL_SCANCODE_EQUALS || rs == SDL_SCANCODE_KP_PLUS) { if (replay_x4 < 64) replay_x4 *= 2; }
                     else if (rs == SDL_SCANCODE_MINUS || rs == SDL_SCANCODE_KP_MINUS) { if (replay_x4 > 1) replay_x4 /= 2; }
                     else if (rs == SDL_SCANCODE_0 || rs == SDL_SCANCODE_KP_0) replay_x4 = 4;
+                    else if (rs == SDL_SCANCODE_RIGHTBRACKET) {          /* ] jumps 30 seconds on: flat out, muted */
+                        seek_target = H.m.cpu.icount + 30 * ips;
+                        fprintf(stderr, "replay seek to clock %llu, wall %llu ms\n", (unsigned long long)seek_target, (unsigned long long)SDL_GetTicks());
+                        changed = 0;
+                    } else if (rs == SDL_SCANCODE_LEFTBRACKET) {         /* [ jumps 30 seconds back: start again, flat out to there */
+                        const double now_s = (double)H.m.cpu.icount / (double)ips;
+                        char secs[32];
+                        snprintf(secs, sizeof secs, "%.2f", now_s > 30 ? now_s - 30 : 0.0);
+                        restart_game(orig_argv, "--seek", secs);
+                        running = 0;
+                        changed = 0;
+                    }
                     else if (rs == SDL_SCANCODE_R && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT)) {
                         restart_game(orig_argv, NULL, NULL);
                         running = 0;
@@ -1471,6 +1500,14 @@ int main(int argc, char **argv)
              * rather than racing. */
             uint64_t target = host_clock_target(now_ns, ips, H.m.cpu.icount, &discarded_clocks);
             if (exit_after && target > exit_after) target = exit_after;
+            if (seek_target) {                                 /* a seek: as fast as the machine goes until it gets there */
+                if (H.m.cpu.icount >= seek_target) {
+                    seek_target = 0;
+                    vt_ns = (uint64_t)((double)H.m.cpu.icount * 1e9 / (double)ips);   /* then pace from here */
+                    discarded_clocks = 0;
+                    fprintf(stderr, "replay seek done at clock %llu, wall %llu ms\n", (unsigned long long)H.m.cpu.icount, (unsigned long long)SDL_GetTicks());
+                } else target = H.m.cpu.icount + ips / 5 < seek_target ? H.m.cpu.icount + ips / 5 : seek_target;
+            }
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
                 if (until > target) until = target;
@@ -1495,7 +1532,7 @@ int main(int argc, char **argv)
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
-                    if (stream && replay_x4 == 4) {                 /* a replay off normal speed is silent */
+                    if (stream && replay_x4 == 4 && !seek_target) {   /* a replay off normal speed, or seeking, is silent */
                         SDL_PutAudioStreamData(stream, abuf, (int)(n * 4));
                         produced_frames += n;
                     }
