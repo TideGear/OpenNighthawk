@@ -170,3 +170,14 @@ What this removes: the pose-preparation rewrite and its oracle harness. What it 
 assembler that gathers a frame's requests between two `frame_phase` events, the projection fit, shading and materials
 (`scene_mesh_materials` decodes the original's material commands), widescreen framing, the longer reach (needs the
 world loader beyond the resident rings, R1), and the settings entry. Nothing here is built yet.
+
+- **R3, the projection is known exactly (30 October 2026).** `src/present/remaster_project.c` implements the game's
+  perspective projection (VGAME `0x129A2`, as documented in `matched.c`): for a vertex whose z has a high word of at least
+  `0x100`, the pixel offset is `(x >> 8) / z_high`; from 1 to `0xFF`, `(x >> 1) / ((z >> 8) >> 1)`; below 1 the vertex is
+  behind the eye. Both are `256 x / z`, and the remainder the game throws away is the sub-pixel position that the new
+  renderer keeps (`remaster_project`). Checked against a real flight: a one-second window of `V` observer records
+  (`f117run --observe FILE:FROM:TO` with `F117R_OBSERVE_KINDS=V`, the `boot_to_flight` route at about 2.44 billion
+  clocks) holds 7,359 projected vertices, and the integer rule reproduces all 14,718 pixel coordinates exactly (both
+  ranges, both axes); a least-squares fit gives the same scale (255.9 for x). The pixels are offsets from the view's centre
+  (the view origin is added later), which also settles widescreen: keep the scale of 256 and draw more columns, and the
+  field of view widens by itself. Test: `presentation_remaster_project` (the real-log check needs `F117_VERTEX_LOG`).
