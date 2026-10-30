@@ -140,3 +140,33 @@ has no effect on the running game.
   farther one whatever their order. Inference, not yet proved: the terrain is a grid of these flat patches picked
   by the `*.3DG` tile maps, which would make the road and coastline jitter a property of how the original projects
   and fills those patches. Not yet: part angles (articulation), the original's colours and materials, placement.
+
+## R3 plan revised (30 October 2026): read the pose the game has already prepared
+
+The earlier plan (and `presentation.md`'s "pose preparation is not independent") assumed R3 must rebuild each model's
+part matrices from angles, which means reimplementing a chain of fixed-point routines in segment `1452` and `120A`
+(`rotation_from_angles`, the row composition, transpose and vector transform, documented in `matched.c`). It does not
+have to. The game prepares the pose itself before it projects a model's vertices, and everything the decoder
+needs sits in a few small ranges of the data segment at that moment (`scene_pose_read`, `scene_mesh.c`): the part
+matrices (a 9-word matrix a part at the pointer in `DS:7D50`, 36 bytes apart), the part translations (`7CDE + 12 x part`,
+or `7CD2` for a model without parts), the eye and light vectors, the settings table (`7D4E`) and the palette (`7D80`).
+`scene_mesh_eval` already turns that pose and a decoded mesh into the camera-space vertices with the original's exact
+integer arithmetic. So the live Remastered path is read-only, in the same spirit as `rerun` and the other observers:
+
+1. At each model request (VGAME `120A:00CF`, `observe_scene_model`) note the model index (stack argument, `SS:SP+4`) and the
+   bank segment (`DS:8590`).
+2. At the request's first projected vertex (`observe_vertex`, after the game has prepared the pose) copy those small DS
+   ranges. This needs one new optional observer callback (a `pose` event given the machine, read-only); it is the only
+   change to `src/matched/observe.c`, and like any change that can reach the machine it needs the full P2 gate.
+3. Decode the mesh from the bank (`scene_mesh_decode`, checked on all 492 models), evaluate it with the captured pose for
+   every vertex, not only the ones the original kept after culling, and rasterise at the output size with a depth buffer
+   and a floating-point projection fitted to the original's (the `vertex` event gives both the camera-space coordinates
+   and the pixels the original made of them, so the fit can be checked).
+4. Sky and ground bands come from the band pass's own state (`band_state.h`); terrain is the ground-patch models
+   placed by the game, so it arrives as ordinary model requests; the HUD and panel are the existing game-state
+   renderers.
+
+What this removes: the pose-preparation rewrite and its oracle harness. What it leaves: the new callback (small), a frame
+assembler that gathers a frame's requests between two `frame_phase` events, the projection fit, shading and materials
+(`scene_mesh_materials` decodes the original's material commands), widescreen framing, the longer reach (needs the
+world loader beyond the resident rings, R1), and the settings entry. Nothing here is built yet.
