@@ -933,10 +933,32 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
+        /* F117_MENU_AUTOTEST=1 (diagnostic): a few frames in, press Ctrl+Alt+S, move to Fullscreen, change it,
+         * move to Save and press Enter, as a player's keys would arrive; F117_MENU_SHOT=FILE.ppm saves the
+         * menu's picture while it is open. Lets the real menu path run in a window-less check. */
+        static size_t diag_next;
+        if (getenv("F117_MENU_AUTOTEST") && ++diag_frame >= 5 && diag_next < 11) {
+            static const struct { SDL_Scancode sc; SDL_Keymod mod; } keys[] = {
+                { SDL_SCANCODE_S, (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) },
+                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
+                { SDL_SCANCODE_RIGHT, 0 },
+                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
+                { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 }, { SDL_SCANCODE_DOWN, 0 },
+                { SDL_SCANCODE_RETURN, 0 },
+            };
+            for (size_t k = diag_next++; k < diag_next; k++) {
+                SDL_Event e;
+                SDL_zero(e);
+                e.type = SDL_EVENT_KEY_DOWN;
+                e.key.scancode = keys[k].sc;
+                e.key.mod = keys[k].mod;
+                SDL_PushEvent(&e);
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1216,6 +1238,18 @@ int main(int argc, char **argv)
         if (g_set.open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);
             settings_render(&g_set, menu_pixels, 640, 400);
+            const char *shot = getenv("F117_MENU_SHOT");
+            if (shot) {
+                FILE *sf = fopen(shot, "wb");
+                if (sf) {
+                    fprintf(sf, "P6\n640 400\n255\n");
+                    for (int k = 0; k < 640 * 400; k++) {
+                        const uint8_t rgb[3] = { (uint8_t)(menu_pixels[k] >> 16), (uint8_t)(menu_pixels[k] >> 8), (uint8_t)menu_pixels[k] };
+                        fwrite(rgb, 1, 3, sf);
+                    }
+                    fclose(sf);
+                }
+            }
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }

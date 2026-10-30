@@ -175,16 +175,16 @@
       {
         "item": "In-game settings menu for every option now set by command line or .ini; SETUP's joystick and sound-driver questions answered from the settings (option to show them)",
         "weight": 4.0,
-        "done": 0.0,
+        "done": 0.35,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Built and run in the real app (window-less, scripted keys, F117_MENU_AUTOTEST): Ctrl+Alt+S opens a menu that pauses the machine, edits eight options (presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland output), writes them to f117a.ini with its comments kept, and offers a restart; fullscreen applies live. The picture was checked in a saved frame. Not done: every option (fix choices, paths, sound driver, audio and presentation tuning), SETUP answers from the settings, mouse use; the owner has not looked at it."
       },
       {
         "item": "Modern controls: controller and HOTAS with remapping, an on-screen key reference, mouse where the original had it",
         "weight": 3.0,
-        "done": 0.0,
+        "done": 0.2,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Controller dead zone, axis inversion and fire-button choice (pad-* keys in f117a.ini or on the command line; src/host/controls.c, unit-tested, defaults reproduce the old fixed mapping; the app starts with the options). Not done or not tried: any physical controller or HOTAS, a remapping screen, mouse where the original had it, the on-screen key reference."
       },
       {
         "item": "Sound device chosen in the menu: AdLib, Roland MT-32 (Munt) or PC speaker",
@@ -196,9 +196,9 @@
       {
         "item": "Optional CRT filter for the 4:3 presentations",
         "weight": 1.0,
-        "done": 0.0,
+        "done": 0.7,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "29 Oct 2026, branch p3-settings-menu. Scanline filter (src/host/crt.c, --crt / crt = yes / menu entry) applied to the displayed copy only, off by default; unit-tested (brightness only, bright first row, dimmer gap, in place equals copy); the app ran 20 s with --crt and the enhanced presentation without a fault. Not done: the owner has not looked at the picture, and there is no mask or bloom."
       },
       {
         "item": "Flight replays: save a sortie and watch it back (other cameras in Remastered)",

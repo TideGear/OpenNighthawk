@@ -868,7 +868,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     owner's visual judgement are a Phase 4 maybe; what the owner decided
     against is under "Possible future work" below.
 - [ ] **Re-release features** (owner, 24 Oct 2026: what a highly praised re-release offers; scored in P3 at weight 31, nothing credited yet).
-      *Built on branch `p3-settings-menu`, compiled and unit-tested but not yet run in the game, so not credited* (29 Oct): the
+      *Built on branch `p3-settings-menu`, run in the real app window-less (scripted keys, `F117_MENU_AUTOTEST`, `F117_MENU_SHOT`) and credited in part; the owner has not looked at them* (29 Oct): the
       settings menu (Ctrl+Alt+S; presentation, fixes, window size, fullscreen, speaker speech, machine speed, CRT scanlines, Roland
       output; writes f117a.ini, restart offered; `src/host/settings.c`), controller mapping (`pad-deadzone`, `pad-invert-x/y`, `pad-fire1/2`;
       `src/host/controls.c`; defaults reproduce the old fixed mapping) and the CRT scanline filter (`--crt`, `crt = yes`;
