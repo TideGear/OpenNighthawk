@@ -11,17 +11,19 @@ Host-side only (`src/host/`, `tools/`, `docs/`, `tests/`); no change to `src/mac
 
 | Item (weight) | Credit | What exists | What is missing |
 |---|---|---|---|
-| Settings menu (4) | 45% | Ctrl+Alt+S: 12 options, Roland output, Watch last flight row, writes `f117a.ini` keeping comments, restart offered (`settings.c`, `config_set/config_get`) | every option, SETUP answers, mouse; owner has not looked |
-| CRT filter (1) | 70% | `--crt`, `crt = yes`, menu entry (`crt.c`), display copy only | owner has not looked; no mask or bloom |
-| Modern controls (3) | 55% | `pad-deadzone/-invert-x/-invert-y/-fire1/-fire2`, `remap = Q:W` / `--remap`, on-screen key reference (Ctrl+Alt+K, four pages from the manual), a Remap a key screen in the settings menu | physical pad or HOTAS untried, controller-button remapping, mouse |
-| Flight replays (3) | 75% | `--watch latest|SESSION` and a menu row, from a scratch copy of the save | picking among flights, pause/seek, the menu row's restart not run end to end |
-| Accessibility (2) | 55% | keyboard remapping and its menu screen; radio subtitles (`--subtitles`, Roland and PC speaker drivers) | AdLib speech, colourblind HUD (Remastered), the PC speaker driver run |
-| Fan patches (2) | 100% | debugcom's patch (damsonn) is fix D4; web search found no other | none, unless the owner finds another |
-| Remastered (10) | 0% | `docs/remastered-design.md` (staged R1-R6); R1 terrain decoding | R2 onwards, see below |
-| Two settings, hybrid sound, sound device | 0% | design only | see "Blocked" |
+| Settings menu (4) | 60% | Ctrl+Alt+S, a scrolling list of 19 options (presentation, fixes, window, fullscreen, speaker, speed, CRT, subtitles, sound driver, Roland output, game steps, AdLib emulation, 4:3 shape, line width, picture delay, stick dead zone and inversion, CPU engine), Choose fixes, Remap a key, Clear key remaps, Watch last flight and Watch a flight; writes `f117a.ini` keeping its comments; a restart is offered (`settings.c`, `config_set/config_get`) | every option (folders and ROM paths need text entry), the joystick answer, the owner has not looked |
+| CRT filter (1) | 70% | `--crt`, `crt = yes`, menu entry (`crt.c`), applied to the displayed copy only | the owner has not looked; no mask or bloom |
+| Modern controls (3) | 55% | `pad-deadzone/-invert-x/-invert-y/-fire1/-fire2`; `remap = Q:W` / `--remap` and a Remap a key screen; an on-screen key list (Ctrl+Alt+K, four pages from the manual) | no real controller or HOTAS tried, controller-button remapping, mouse |
+| Flight replays (3) | 75% | `--watch latest\|SESSION`, a chooser in the menu, `+`/`-`/`0` speed, `Ctrl+Alt+P` pause, `Ctrl+Alt+R` restart, `]`/`[` jump 30 s, `--seek SECONDS` | other cameras (Remastered), jumping to a typed time |
+| Accessibility (2) | 55% | keyboard remapping and its menu screen; radio subtitles (`--subtitles`, Roland and PC speaker drivers, from the speaker counts, `subtitles.c`) | AdLib speech, the PC speaker driver run, a colourblind HUD (Remastered) |
+| Fan patches (2) | 100% | debugcom's patch (damsonn) is fix D4; a web search found no other | none, unless the owner finds another |
+| Two settings (2) | 50% | Fixes Original / Recommended / Custom (`--fixes custom`, the Choose fixes screen), Presentation Original / Enhanced, saves tagged with their fix set | the Remastered presentation (still refused) |
+| Sound device (1) | 80% | `--sound adlib\|roland\|speaker`, `sound =`, a menu row: types SETUP's answers (`docs/setup-autoanswer.md`) | a hybrid choice, joystick yes |
+| Remastered (10) | 0% | `docs/remastered-design.md`; decoders for the terrain, world and model files, checked against the game's memory; an offline depth-buffer model sheet; the R3 plan | the renderer in the app (see "R3 plan revised") |
+| Hybrid sound (3) | 0% | the sound board page, the sweep tool, the nine speech words | the owner's marks; a second driver fed the same requests |
 
 Diagnostics added: `F117_MENU_AUTOTEST=1` and `F117_MENU_SHOT=FILE.ppm` (window-less menu run).
-Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls, remap, config).
+Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls, remap, key list, subtitles (needs `F117_SPEECH_117`), config).
 
 ## Remastered: R1 done, R2 next
 
