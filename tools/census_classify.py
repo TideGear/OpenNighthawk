@@ -71,10 +71,11 @@ RUNTIME_JUMPS = os.path.join(ROOT, "docs", "census-runtime-jumps.tsv")
 CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original", "dead")
 REVIEW_STATUSES = ("stays-original", "machine-option-only", "dead-certified", "probable-dead", "needs-route", "data",
                    "unreached-held")
-# The design rules under which a routine stays original (owner, 21 Oct 2026; program launcher and hardware wait loop added 23 Oct 2026). A routine declined for any other
-# reason (unequal, waits the routes cannot check, main(), an interior arm) is remaining work.
+# The original-code design rules: owner, 21 Oct 2026; program launcher and hardware wait loop added 23 Oct 2026;
+# DSWAP's floppy path and presentation-observer graphics slots added 29 Oct 2026. A routine declined for another
+# reason (unequal, waits that routes cannot check, main(), an interior arm) remains work.
 DESIGN_RULES = ("STI-first handler", "C start-up", "palette loader with STI", "program launcher", "hardware wait loop",
-                "packer stub")
+                "packer stub", "DSWAP's floppy path", "presentation-observer graphics slots")
 SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run time patches
 
 

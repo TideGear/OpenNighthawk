@@ -191,12 +191,14 @@ only: proof agents never gate. Scripts are in `D:/f117-gate/accept-kit/`.
    "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`;
    there is no `gh` on this machine).
 
-**Cost.** The latest batch with new routines, bm (27 Oct), took 1,797 s in
-all: the gate ([stages](#the-gate-toolsbuild_recomppy)) with the presentation
-checks beside and after it ([costs](#presentation-checks)). A batch's new
+**Cost.** The latest batch with new routines, bw (30 Oct), took 1,912 s
+through acceptance: 1,392 s for the fresh gate, then N=1 and boot presentation
+checks plus the sequential baseline and credit audits. The stale interpreter
+key prevented the presentation from overlapping the gate. It covered 1,636
+matched routines, ran 811 CTests and added 1,257 named bytes. Evidence:
+`D:/f117-gate/p2-batch-bw-accept/` (`final-gate-verdict.json`). A batch's new
 optimized CTests take two to three seconds (batches at to ax: 1.82-2.80 s);
-the census refresh afterwards takes seconds. Evidence: `D:/f117-gate/p2-batch-bm-accept/`
-(`accept.out`, `final-gate-verdict.json`).
+the census refresh afterwards takes seconds.
 
 ### Pre-checks before a batch's gate
 
@@ -312,8 +314,8 @@ in a new directory.
    original bytes). Packets contain game bytes and stay private.
 2. One fresh reader agent per group, prompted with `AGENT-PROMPT.md`: it reads
    only `READER-BRIEF.md`, its group manifest (`groups/`) and its packets, and
-   writes one `reads/<packet>.read.md` per packet. This Claude Code session runs
-   at most 20 subagents at once.
+   writes one `reads/<packet>.read.md` per packet. Run at most three reader
+   agents beside root, for four participants total.
 3. `py stage_r4.py` stages only ACCEPT reads with every field present, the
    stated range equal to the unit's, no name correction and a judged status
    equal to the proposal (`staged-round4.tsv`, `staged-round4.report.tsv`,
@@ -418,13 +420,12 @@ add the fixes they test. Do not enable every fix for ordinary parity: original
 and repaired behaviour each need their own checks. The defaults' own checks:
 [Normal-play default changes](#current-practice-by-kind-of-change).
 
-**Latest figures (27 October 2026).** 731 CTests; 63 routes identical, 62
-fresh interpreter sessions; 5,723,776 instruction states under each timing
-profile; 1,487 matched routines at three seeds; reachability and event limits
-clean. Batch bm's gate, with a coverage pass, took 1,648 s; the fix-only bm2
-gate, with coverage skipped and the N=1 presentation beside its parity,
-1,786 s (stages in the table). Evidence: `gate.log` in
-`D:/f117-gate/p2-batch-bm-accept/` and `p2-batch-bm2-accept/`.
+**Latest figures (30 October 2026).** 811 CTests; 63 routes identical, 62
+fresh interpreter sessions; 5,764,032 instruction states under each timing
+profile; 1,636 matched routines at three seeds; reachability and event limits
+clean. Batch bw's full acceptance took 1,912 s, including the fresh gate,
+sequential route-baseline audit and both presentation groups. Evidence:
+`D:/f117-gate/p2-batch-bw-accept/`.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
@@ -691,7 +692,8 @@ prompt in `kit/AGENT_PROMPT.txt`. Proof agents do steps 1-7 (through
 `mutations`), each kit command through `kit/pin.py MASK`; root runs
 `checkpoints`, the boot proof and `verdict` (`finish_all.py`) and `integrate`
 ([batch acceptance](#phase-2-batch-acceptance)). Agents work side by side, one
-directory each (this Claude Code session runs at most 20 subagents at once);
+directory each; run at most three proof agents beside root, four participants
+total.
 `kit.py` lets at most three compiles run machine-wide (`BUILD_SLOTS`, file
 locks under `kit/buildslots`). Finish the proof workers and verify every
 verdict before starting the batch's gate; run no other heavy job during it

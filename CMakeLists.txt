@@ -1978,6 +1978,22 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:18A2)
     add_test(NAME matched_setup_shift_right_long COMMAND func_lockstep --states 5000
       --only SETUP.EXE:1942)
+    add_test(NAME matched_setup_store_position_and_print COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:562)
+    add_test(NAME matched_setup_store_position_and_draw COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:582)
+    add_test(NAME matched_setup_format_and_print COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:5A3)
+    add_test(NAME matched_setup_wrap_far_text COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:5CE)
+    add_test(NAME matched_setup_wrap_text_near_070a COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:70A)
+    add_test(NAME matched_setup_string_width COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:811)
+    add_test(NAME matched_setup_format_long_number COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:851)
+    add_test(NAME matched_setup_format_signed_number COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:979)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

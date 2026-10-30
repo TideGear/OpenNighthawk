@@ -12,53 +12,78 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
 
 ## Current state (30 October 2026)
 
-- **Scoreboard:** P1 100.00%, P2 95.94%, P3 85.42%, All 95.08% (`py tools/progress.py --title`). Refreshed with
-  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bv-accept/named-cover` and route cover
-  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 90.73%, checklist 45,390 / 47,740 = 95.08%,
-  1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
+- **Scoreboard:** P1 100.00%, P2 96.60%, P3 85.42%, All 95.28% (`py tools/progress.py --title`). Refreshed with
+  census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bw-accept/named-cover` and route cover
+  `D:/f117-gate/route-cover-20261020b`. Gameplay 98.80%, naming 91.33%, checklist 47,653 / 47,736 = 99.83%,
+  1,896 reviewed-reference entries; 83 checklist bytes remain. 1,967 executed bytes remain unmatched: ASOUND.117 376, VGAME 324, ISOUND.117 401, ISOUND.LOG 215, PLAYER 156,
   ASOUND.LOG 169, RSOUND.LOG 83, MPS_LOGO 18, SETUP 89, START 66, END 63, RSOUND.117 5, DSWAP 2.
-- **Latest accepted runtime:** batch `bv` passed: 10 static routines, 821 named bytes, 377 fully covered instructions,
-  344 private mutations caught, 50 optimized-seed checks, 803 CTests, 63 routes / 62 fresh interpreter sessions. The
-  whole table matched at three seeds; both timing profiles, route precheck and presentation checks passed; the credit
-  audit reports 0 claimed-but-uncredited bytes. Evidence: `D:/f117-gate/p2-batch-bv-accept/`. Its `audit_private.py`, `finalize.py` and
-  `multi_proof.py` are the current acceptance scripts; copy them forward from the newest accepted batch.
-  The route precheck's 44 comparisons ignore segment and are only an offset-based superset; none was counted as a
-  route hit. These ranges are static proofs with zero captured calls, accepted under the 29 Oct owner decision below.
+- **Latest accepted runtime:** batch `bw` passed: eight static SETUP routines, 1,257 named bytes, 509 fully covered
+  instructions, 281 private mutations caught, 40 optimized-seed checks, 811 CTests, 63 routes / 62 fresh interpreter
+  sessions. All routes were identical; both timing profiles and the whole table at three seeds had zero mismatches;
+  route-only entries ran and none exceeded event limits. All 63 N=1 presentation cases and boot N=4/9 were exact.
+  The credit audit found 0 claimed-but-uncredited bytes. Acceptance took 1,912 s and used the sequential fresh-baseline
+  audit because the cached interpreter key was stale. Evidence: `D:/f117-gate/p2-batch-bw-accept/`.
+- **Classifier repair:** the owner-approved DSWAP floppy-path and presentation-observer graphics-slot rules are now
+  recognized by the census classifier and documented with focused positive tests. No current reviewed entry uses
+  either rule, so this repair changes no gameplay score. Round 9 adopted six checklist units / 187 bytes and raised
+  P2 to 96.60%; all 82 focused scoring tests pass. This checklist change adds no runtime code or gameplay credit.
+- **Acceptance scripts:** `audit_private.py`, `finalize.py` and `multi_proof.py` are copied forward from the previous
+  accepted batch. `new_batch.py` does not copy `multi_proof.py`; carry all three forward for the next runtime batch.
 - **Latest fix-only gate:** `bt` passed with no runtime changes or score credit. Commit `fe273e1` is pushed; GitHub Actions
   run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
 - **Phase 3 landed on `master` (30 Oct, owner's instruction; `0c2b13a..4ecb64b`, 39 commits, a fast-forward pushed to the
   remote only) without the full P2 gate.** Host-side only (`src/host/`, `tools/`, `tests/`, `docs/`, `CMakeLists.txt`, the
   example ini; nothing in `src/machine`, `src/cpu`, `src/matched`, `src/recomp`, `src/present` or the recompiler), and
   `ctest` passed 45 of 45 on the branch's own build; but `f117run` (`headless.c`) gained `--sound-sweep` options and the
-  gate was not run on it. **Run the full gate on `master` first when the machine is free, and treat a failure as P3's.**
-  The main working tree's `master` is still at `0c2b13a` (its owner kept it untouched while a gate ran there): `git pull
-  --ff-only` once that gate is done; this file changed upstream too, so merge the two copies by hand if the tree's own
-  edits to it are still uncommitted. What P3 has and lacks, per item: [docs/p3-handoff.md](docs/p3-handoff.md). Scores
+  gate was not run on it. The current local `master` now combines the P3 work with the accepted Phase 2 branch and still
+  needs the full gate before it is pushed; run that gate when private proof workers are idle and treat a failure in the
+  P3-only changes as P3's. What P3 has and lacks, per item: [docs/p3-handoff.md](docs/p3-handoff.md). Scores
   in P3: menu 60%, CRT 70%, controls 55%, replays 75%, accessibility 55%, two settings 50%, sound device 80%, fan patches
   100%, Remastered 0%, hybrid sound 0%.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
   `4k60.bat` or `original-fixed.bat`.
-- **Private proof pipeline:** An orphan shell watcher waited from 14:56 to 17:52 for SETUP `18A2`'s lock-cover result;
-  no cover file or child worker existed, so the idle shell was stopped. Proof directories are preserved. Inspect
-  `PILOT-TIMES.txt` and each result before reusing `D:/f117-gate/p2-setup-bt-*`; run no acceptance gate while any proof
-  workers are active.
+- **SETUP proofs:** The idle `18A2` watcher was stopped; its `p2-setup-bt-*` proof directories are preserved.
+  The latest eight-range SETUP tranche was accepted as batch `bw`.
 - CI is checked through GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
 
 ## Resume here
 
-Goal in force: reach 100% of Phase 2 safely. Each accepted change gets the full gate before commit and push.
+Goal in force: reach 100% of Phase 2 safely. Batch `bw` passed its full acceptance gate. Rounds 7-9 checklist
+adoptions and the progress data are refreshed; round 9 changes reference documentation only, with no runtime change.
 
-Batch `bv` passed its full gate and credit audit and is recorded in the roadmap. Ten root-verified static proofs added
-821 named bytes; P2 is now 95.94%. Continue with the SETUP static-range pilot, then integrate only after the proof
-results and full gate pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files
-out of any commit.
+The working branch is now `master`, combining the pushed P2 branch with the P3 mainline at `e7970b6`; the merge is not
+accepted or pushed until the required full gate passes. Batch `bw` was prepared from accepted HEAD
+`0c2b13a69ce0262567c89ad241031f5de0cb463a`; pushed commit `34dd038` records that acceptance. Checklist round 9
+was prepared from accepted public HEAD `1f877b3e30a0c79e9c07146474b044deb5a11d05`. The current scoreboard is
+P1 100.00%, P2 96.60%, P3 85.42%, All 95.28% before round 10's Q3 reference-row refresh.
 
-Continue with the SETUP static-range pilot from the preserved proof directories. The old watcher was stopped while
-idle; inspect its result files before resuming the five ranges in `D:/f117-gate/p2-setup-bt-*`. The separate VGAME pilot has `0063` and `04D9` fixtures under
-`D:/f117-gate/p2-vgame-bt-1452-*`. These static candidates are worth about 2,660 bytes (~0.4 score points). Root-review
-seeds, mutation results and lock logs; run static checkpoints and `finish_all.py` only after each proof is green. Do not
-run a full acceptance gate while the private proof workers are active.
+Eight static SETUP ranges (`0562`, `0582`, `05A3`, `05CE`, `070A`, `0811`, `0851`, `0979`) passed private proof,
+root audit, static route-neutrality replay and `finish_all.py`. Their preserved proof directories are
+`D:/f117-gate/p2-setup-reproof-{0562,0582,05A3,05CE,070A,0811,0851,0979}-20261029`. The changes are integrated in
+`CMakeLists.txt`, `src/matched/matched.c` and `tests/func_lockstep.c`; the custom `05CE` return-code probe was applied
+by hand. `build.cmd` succeeded and all eight focused CTests passed. Individual route prechecks found no captured
+routes reaching these reviewed static ranges, as expected.
+
+The prior whole-table checks disagreed: rotating seed `0x0c2b13a69ce0` passed, while fixed seed `0xA25E20261029`
+found one mismatch at `START.EXE:9430` (original AX `D768`, matched AX `0000`). The mismatch also reproduces on
+accepted base `0c2b13a69ce0262567c89ad241031f5de0cb463a`, so it was a latent parity defect. Its cause is now traced:
+the guest formatter overflow path changes live BP before the caller spills and reloads `[BP-4]`, while matched
+`crt_printf` used its entry BP. `src/matched/matched.c` now uses live BP and SS for those BP-relative accesses.
+The exact fixed-seed reproduction passes, as do the same-seed five-site shared-printf check and all 28 SETUP CTests;
+`build.cmd` succeeds. A route precheck covering all eight new entries found no captured route reaches them, consistent
+with the approved static-code policy. An independent code review mapped each changed access to the corresponding
+guest BP-relative operand and found no remaining cached entry BP/SS use in `crt_printf`; the trace does not record
+transient BP/SS, so the whole-table sweeps remain necessary. These results and current runs are under
+`D:/f117-gate/p2-setup-precheck-20261030-livebp/`.
+
+The three whole-table prechecks passed at fixed seed `0xA25E20261029`, rotating seed `0xe1afc9bb8d07` and third seed
+`0x0c2b13a69ce0`; each compared all 1,636 routines with zero mismatches. The full `bw` gate, sequential 63-route
+baseline audit, 63 N=1 presentation cases, boot N=4/9, optimized seeds and private credit audit all passed. Detailed
+logs are under `D:/f117-gate/p2-setup-precheck-20261030-livebp/` and `D:/f117-gate/p2-batch-bw-accept/`.
+
+The owner's untracked `4k60.bat` and `original-fixed.bat` remain untouched and must stay out of commits. The separate
+P3 route worker/worktree was left untouched. Use `py tools/progress.py --title` for future accepted commit titles.
 
 Other remaining work is still in scope: ASOUND.117 `09F2` is excluded pending the owner's D2-fix interaction decision;
 ISOUND.LOG `0581` needs an exact invalid-range data certificate without excluding real timer-handler bytes; six
@@ -67,7 +92,24 @@ PIT waits `0A5B`/`0B01` need split lockstep pieces across their wake boundaries 
 needs proof in pieces; SETUP `10B3` needs the proposed prefix/interior split. MPS_LOGO `111D` partial route coverage was
 accepted in `bu`; do not reopen it absent new evidence.
 
-The route-independent credit pool and open rules are in `docs/roadmap.md` and `docs/progress.md`. Current largest
+Round 9 is reconciled against the live 270-byte scope at accepted HEAD `1f877b3` and the `bw` named cover.
+Eight fresh units cover the entire scope exactly. Six units / 187 bytes were adopted in nine reference rows after
+context and corrected-name follow-ups. They are all `needs-route`, so this adds checklist review but no gameplay or
+matching credit. Q0008 DSWAP `00D65-00D67` now has the corrected name `dswap_indirect_call_result_bit1_mask_00d65`;
+the latest reader confirmed its code use as `and ax, 2`, its secondary data read, and the need to reach and return from
+the indirect call at `00D61` before route credit. Round 10 re-read Q0003 PLAYER `00D5F-00DAF`; the fresh reader
+accepted it as `needs-route` after the owner decided this exact grayscale arm remains matching work. This supersedes
+the round-9 `stays-original` reading for this fragment; do not extend the palette-loader rule or split the census row.
+It adds 81 checklist bytes with no gameplay or matching credit. Only Q0006 VGAME `04E92-04E93` remains outside the
+reviewed references. Q0006's local predicate proof only rules out the ordinary path; the older strict
+certificate fails caller/reachability closure, so keep it `probable-dead` until a current-image certificate closes
+alternate and indirect entries. Root validation passed at the exact scope: 187 distinct bytes accepted, 83 held,
+no gaps or extras, gameplay unchanged. Private packets, reads, source identities and validators are under
+`D:/f117-gate/checklist-full-20261026/round9-bw-1f877b3-refresh/`, the adjacent `round9-followup-1f877b3-refresh/`
+and `round9-dswap-name-1f877b3-refresh/`; root validation is `current-validation-final-r9.json`.
+
+The route-independent credit pool and open rules are in
+`docs/roadmap.md` and `docs/progress.md`. Current largest
 executed-code gaps are ASOUND.117 PIT waits, ISOUND.117 `026C`, presentation-observer VGAME thunks, and ISOUND.LOG `0581`;
 regenerate the lead list from the refreshed census/named cover before choosing the next body. Static naming and reviewed
 reference entries also contribute materially to P2. Protect private game data and captures from the public repository.
@@ -92,6 +134,8 @@ Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this i
   only when no lockstep state can complete them (so far none qualifies), STI-first interrupt handlers, the packer
   stub, DSWAP's floppy path (no emulated floppy drive), and presentation-observer graphics slots. Each affected range
   needs its own reviewed reference entry before credit. Dead code leaves the denominator only with a certificate.
+- **PLAYER grayscale arm (owner, 30 Oct 2026):** `00D5F-00DAF` remains matching work. The palette-loader rule does
+  not extend to this exact fragment; keep it `needs-route` until a route selects it, with no census-original split.
 - **Parity target is the original on its own hardware, not DOSBox**; gameplay and logic parity outrank rendering.
   Keep all original graphics; no vector replacements.
 - **Phase 3 features are off or inert unless asked for:** `--crt`, `--subtitles`, `--sound`, `--remap`, `pad-*`, `--watch` and the
@@ -113,8 +157,9 @@ blind-read round). What a resuming session must not skip:
 - Proof agents run kit steps 1-7 only (`D:/f117-gate/kit/kit.py`, brief `kit/BRIEF.md` + `kit/AGENT_PROMPT.txt`);
   root verifies every result itself (seeds, `mutation-results.json`, seed-log tallies, file ages) before
   `finish_all.py` (any number of directories, six side by side on CPUs 20-31).
-- Hand-apply the harness rows `integrate_many.py` does not carry (list under Traps), build with `.uild.cmd` from
+- Hand-apply the harness rows `integrate_many.py` does not carry (list under Traps), build with `.\build.cmd` from
   PowerShell, run only the new CTests, then `route_precheck.py` on every new entry and two whole-table seeds.
+  Shared-helper and fix-only repairs require a third pre-gate seed.
 - Run `audit_private.py` BEFORE the gate (the `new_batch.py` help text says afterwards: it is wrong); copy it and
   `finalize.py` forward from the previous batch. Check `final-gate-verdict.json`'s `source_sha256` against the tree.
 - Commit titles start with `py tools/progress.py --title`; refresh the score with the new batch's named cover.
