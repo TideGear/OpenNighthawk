@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 95.94%, P3 83.36%, All 94.56%**. Every commit
+Progress: **P1 100.00%, P2 95.94%, P3 83.70%, All 94.64%**. Every commit
 title starts with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -234,6 +234,8 @@ Host keys (chosen so as not to collide with the game's):
 | Ctrl+Alt+S | settings menu (pauses the game) |
 | Ctrl+Alt+K | the game's key list, from its manual (pauses the game) |
 | Ctrl+Alt+P | pause / resume |
+| + / - / 0 (watching a replay) | faster / slower / normal speed |
+| Ctrl+Alt+R (watching a replay) | start the replay again |
 | Ctrl+Alt+F12 | quit |
 
 ### Settings file

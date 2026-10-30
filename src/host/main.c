@@ -1079,7 +1079,9 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0;
+    int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
+    uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1169,6 +1171,21 @@ int main(int argc, char **argv)
                 SDL_PushEvent(&e);
             }
         }
+        /* F117_REPLAY_AUTOTEST=1 (diagnostic, with --watch): at frames 200, 400 and 600 press -, - and 0, so the clock
+         * lines the speed keys print show the replay run at 1x, then half, a quarter, and normal again. */
+        {
+            if (getenv("F117_REPLAY_AUTOTEST")) {
+                ++rp_frame;
+                if (rp_frame == 200 || rp_frame == 400 || rp_frame == 600 || rp_frame == 620) {
+                    SDL_Event e;
+                    SDL_zero(e);
+                    e.type = SDL_EVENT_KEY_DOWN;
+                    e.key.scancode = rp_frame == 620 ? SDL_SCANCODE_R : rp_frame == 600 ? SDL_SCANCODE_0 : SDL_SCANCODE_MINUS;
+                    if (rp_frame == 620) e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT);   /* Ctrl+Alt+R: start again */
+                    SDL_PushEvent(&e);
+                }
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1181,6 +1198,25 @@ int main(int argc, char **argv)
             case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: {
                 const int down = ev.type == SDL_EVENT_KEY_DOWN;
                 const SDL_Keymod mod = ev.key.mod;
+                if (down && !live) {                        /* a replay: speed keys, and Ctrl+Alt+R to start it again */
+                    const SDL_Scancode rs = ev.key.scancode;
+                    int changed = 1;
+                    if (rs == SDL_SCANCODE_EQUALS || rs == SDL_SCANCODE_KP_PLUS) { if (replay_x4 < 64) replay_x4 *= 2; }
+                    else if (rs == SDL_SCANCODE_MINUS || rs == SDL_SCANCODE_KP_MINUS) { if (replay_x4 > 1) replay_x4 /= 2; }
+                    else if (rs == SDL_SCANCODE_0 || rs == SDL_SCANCODE_KP_0) replay_x4 = 4;
+                    else if (rs == SDL_SCANCODE_R && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT)) {
+                        restart_game(orig_argv, NULL, NULL);
+                        running = 0;
+                        changed = 0;
+                    } else changed = 0;
+                    if (changed) {
+                        char title[96];
+                        snprintf(title, sizeof title, "F-117A - replay at %gx   (+ faster, - slower, 0 normal, Ctrl+Alt+R again)", replay_x4 / 4.0);
+                        SDL_SetWindowTitle(win, title);
+                        fprintf(stderr, "replay speed %gx at clock %llu, wall %llu ms\n", replay_x4 / 4.0, (unsigned long long)H.m.cpu.icount, (unsigned long long)(SDL_GetTicks()));
+                        break;
+                    }
+                }
                 if (down && ev.key.scancode == SDL_SCANCODE_RETURN && (mod & SDL_KMOD_ALT) && !(mod & SDL_KMOD_CTRL)) {
                     fullscreen = !fullscreen;
                     SDL_SetWindowFullscreen(win, fullscreen);
@@ -1344,9 +1380,15 @@ int main(int argc, char **argv)
             }
         }
 
+        if (player) {                                       /* a replay's own clock: real time passed times the speed */
+            const uint64_t real = SDL_GetTicksNS();
+            if (vt_last && !paused) vt_ns += (real - vt_last) * (uint64_t)replay_x4 / 4;
+            vt_last = real;
+        }
         /* Keep the machine's clock level with the wall clock. */
         if (!paused) {
-            const uint64_t now_ns = SDL_GetTicksNS() - start_ns - paused_ns;
+            uint64_t now_ns = SDL_GetTicksNS() - start_ns - paused_ns;
+            if (player) now_ns = vt_ns;                      /* a replay runs on its own clock, at the chosen speed */
             /* Never more than 100 ms behind: after a stall, catch up gently
              * rather than racing. */
             uint64_t target = host_clock_target(now_ns, ips, H.m.cpu.icount, &discarded_clocks);
@@ -1375,7 +1417,7 @@ int main(int argc, char **argv)
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
-                    if (stream) {
+                    if (stream && replay_x4 == 4) {                 /* a replay off normal speed is silent */
                         SDL_PutAudioStreamData(stream, abuf, (int)(n * 4));
                         produced_frames += n;
                     }
