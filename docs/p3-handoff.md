@@ -57,7 +57,8 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
 - **Open findings:** (1) the owner heard the AdLib **stall horn glitched**: one request gives a 0.11 s note, the game
   re-requests it every step, so single-request renders of held sounds (warnings 7-9, 11, 12, 14, probably 10 and
   the engine ones) are blips. `--sound-repeat` (re-request every N clocks from the game's own code with IF set) was
-  added and builds; its first test (ids 14, 7, 11, repeat 700000, span 18000000) was running at hand-off. Next: render
+  added and works: ids 14, 7, 11 with repeat 700000 and span 18000000 now sustain the full 2 s (id 14: 552 OPL writes,
+  against 25 for the single request); the clips are in the session folder (`board_held`), not yet heard by the owner. Next: render
   every id held in the three drivers, show a "held" button beside the single one when it is meaningfully longer.
   (2) ids 3, 36-39 reached the 5 s cap (music or loops): 20 s renders are in `board_long` (the page generator takes
   `--board-long`, not yet republished). (3) ids 41-44: the driver call did not return within 0.1 s, output logged anyway.
