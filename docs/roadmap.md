@@ -177,16 +177,18 @@ not the recompilation:
       by design. In the census, named code runs 160,739 of 165,548 creditable
       bytes (1,137 of 1,535 functions wholly, 293 in part).
 
-      **Accounted-for checklist:** 47,466 of 47,736 bytes (99.43%) outside the
+      **Accounted-for checklist:** 47,653 of 47,736 bytes (99.83%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
-      1,887 entries); 270 bytes remain. Blind-read rounds by independent readers
-      adopted 46,684 bytes through round 8; earlier reviewed entries account for
+      1,896 entries); 83 bytes remain. Blind-read rounds by independent readers
+      adopted 46,871 bytes through round 9; earlier reviewed entries account for
       the rest. Rounds 1-7 adopted 46,647 bytes: round 1, 444 units / 19,928
       bytes; round 2, 367 / 13,976; round 3, 101 / 4,476; round 3b (exact
       leading-range check), 19 / 1,344; round 4, 32 / 1,245; round 5, 88 /
       3,641; round 6, 22 / 1,875; round 7, 4 / 162. Round 8 read six units /
-      40 bytes against accepted `bw` and adopted five units / 37 bytes after
-      three corrected-name reads; Q0001 DSWAP's 3 bytes remain unresolved.
+      40 bytes and adopted five / 37. Round 9 read eight units / 270 bytes and
+      adopted six / 187 after context and corrected-name follow-ups. The 83-byte
+      remainder is PLAYER `00D5F-00DAF` (owner-rule/census boundary decision)
+      and VGAME `04E92-04E93` (probable-dead; strict certificate still required).
       The R7 owner-rule boundary review adopted three 2-byte epilogues: one
       C-startup fragment inside the checklist and two palette-loader tails
       outside its denominator. No checklist round changed gameplay matching.

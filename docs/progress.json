@@ -369,19 +369,19 @@
       "fixture_only": 31590,
       "remaining": 1967,
       "original_awaiting_review": 0,
-      "reviewed_entries": 1887,
+      "reviewed_entries": 1896,
       "checklist": {
         "bytes": 47736,
-        "with_reviewed_entry": 47466,
-        "without_reviewed_entry": 270,
+        "with_reviewed_entry": 47653,
+        "without_reviewed_entry": 83,
         "by_class": {
           "credited": {
-            "with_reviewed_entry": 23475,
-            "without_reviewed_entry": 179
+            "with_reviewed_entry": 23654,
+            "without_reviewed_entry": 0
           },
           "never_run": {
-            "with_reviewed_entry": 4179,
-            "without_reviewed_entry": 88
+            "with_reviewed_entry": 4184,
+            "without_reviewed_entry": 83
           },
           "slots": {
             "with_reviewed_entry": 5,
@@ -392,8 +392,8 @@
             "without_reviewed_entry": 0
           },
           "supp-reviewed-static": {
-            "with_reviewed_entry": 11649,
-            "without_reviewed_entry": 3
+            "with_reviewed_entry": 11652,
+            "without_reviewed_entry": 0
           },
           "unreached": {
             "with_reviewed_entry": 222,
@@ -439,7 +439,7 @@
           "remaining": 2,
           "original_awaiting_review": 0,
           "not_in_denominator": 4710,
-          "not_in_denominator_reviewed": 4707,
+          "not_in_denominator_reviewed": 4710,
           "in_previous_scope": 3505
         },
         "END": {
@@ -516,7 +516,7 @@
           "remaining": 18,
           "original_awaiting_review": 0,
           "not_in_denominator": 4846,
-          "not_in_denominator_reviewed": 4769,
+          "not_in_denominator_reviewed": 4846,
           "in_previous_scope": 6639
         },
         "NSOUND.117": {
@@ -538,7 +538,7 @@
           "remaining": 156,
           "original_awaiting_review": 0,
           "not_in_denominator": 3406,
-          "not_in_denominator_reviewed": 3272,
+          "not_in_denominator_reviewed": 3325,
           "in_previous_scope": 6350
         },
         "RSOUND.117": {
@@ -571,7 +571,7 @@
           "remaining": 89,
           "original_awaiting_review": 0,
           "not_in_denominator": 4723,
-          "not_in_denominator_reviewed": 4674,
+          "not_in_denominator_reviewed": 4723,
           "in_previous_scope": 3436
         },
         "START": {
@@ -593,7 +593,7 @@
           "remaining": 324,
           "original_awaiting_review": 0,
           "not_in_denominator": 12105,
-          "not_in_denominator_reviewed": 12098,
+          "not_in_denominator_reviewed": 12103,
           "in_previous_scope": 71936
         }
       }
