@@ -44,6 +44,8 @@
 #include "remap.h"
 #include "keyref.h"
 #include "subtitles.h"
+#include "macsound.h"
+#include "soundpolicy.h"
 #include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
@@ -98,6 +100,32 @@ static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
 static int g_subtitles;                /* --subtitles: show the radio calls as text (subtitles.h) */
 static subtitles g_sub;
+static macsound *g_mac;                /* --mac-sounds DIR: the Macintosh recordings (macsound.h); NULL: none */
+static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundpolicy.h): SP_NONE = the default order */
+
+/* The game's priority gate admitted sound `id` (observe.h, sound). Music, speech and effects each have a default
+ * source and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac
+ * recordings are the host's to play; the DOS drivers play what is not taken here. */
+static int on_sound_request(void *user, uint16_t id, int16_t priority)
+{
+    (void)user; (void)priority;
+    if (!g_mac || !macsound_has(g_mac, id)) return 0;
+    const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
+    const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);   /* whichever driver is loaded */
+    const sp_source use = sp_choose(kind, SP_BIT(SP_MAC) | dos_any, g_source[kind]);
+    if (use != SP_MAC) return 0;
+    return macsound_play(g_mac, id);
+}
+static sp_source parse_source_option(const char *flag, const char *v)
+{
+    if (!strcmp(v, "dos")) return SP_ADLIB;          /* any DOS driver: the Mac recording is not taken */
+    const int s = sp_parse_source(v);
+    if (s < 0 || s == SP_ROLAND || s == SP_ADLIB || s == SP_SPEAKER) {
+        fprintf(stderr, "%s takes default, mac or dos\n", flag);
+        exit(2);
+    }
+    return (sp_source)s;
+}
 static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
@@ -688,6 +716,9 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
+        else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
+        else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
+        else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--remap") && v) {
             if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
             i++;
@@ -1051,7 +1082,12 @@ int main(int argc, char **argv)
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
         drawlive_set_line_width(&g_live, g_line_width);
         if (g_rerun) { drawfeed_set_rerun(&g_feed); drawlive_set_rerun(&g_live); }
+        if (g_mac) g_feed.obs.sound = on_sound_request;
         observe_set(&g_feed.obs);
+    } else if (g_mac) {
+        static f117_observer sound_only;                /* hybrid sound without a presentation: only the sound hook */
+        sound_only.sound = on_sound_request;
+        observe_set(&sound_only);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) g_setup_sound = 0;                  /* a replay brings its own inputs, SETUP's answers included */
@@ -1530,6 +1566,7 @@ int main(int argc, char **argv)
                 size_t produced_frames = 0;
                 size_t n;
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    macsound_mix(g_mac, abuf, n);                     /* the Mac recordings over the driver's output */
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
                     if (stream && replay_x4 == 4 && !seek_target) {   /* a replay off normal speed, or seeking, is silent */

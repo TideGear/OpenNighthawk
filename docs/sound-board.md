@@ -131,3 +131,17 @@ MT-32's own effects are muted by dropping the MIDI channels the Roland driver us
   answer 2 (AdLib), 3 (Roland) and 1 (PC speaker), `--steps 2450000000`, ids 0-45, a 5 s span. Not done: music
   from START and END (their own programs), longer spans for the sounds that reach the 5 s limit, ids 41-44
   (the driver call did not return within its limit, though output was logged).
+
+## Hybrid sound in the app (written 30 October 2026, not yet built or run)
+
+`--mac-sounds DIR` (or `mac-sounds =` in the ini) loads Mac recordings named `<resource>.wav`. The game's priority
+gate (VGAME `0D3F9`) calls a new observer hook, `sound`, with each admitted request; the host plays the recording
+for ids that have one (`macsound.c`: effects 4 to 20 as Mac resource 300 + id; music 36, 37, 38 as resources 322, 321,
+200) and returns nonzero so the request is not passed to the DOS driver. `--music-source` and `--sound-source`
+(`default`, `mac`, `dos`) override the default order (`soundpolicy.c`).
+
+What it does not do yet: the rule's Roland-for-music, AdLib-for-sounds split when there is no Mac recording needs a
+second driver fed the same requests (the loaded driver plays everything that has no recording). Speech has no Mac
+phrase recordings (the Mac has the nine words), so it stays with the DOS driver. The front ends (START, END) call the
+driver by another route, so their sounds are not taken yet. Needs the full gate before it counts: it changes
+`matched.c` (one read-only call in the gate that returns early only when a pack is loaded) and `observe.h`.
