@@ -62,7 +62,7 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
   every id held in the three drivers, show a "held" button beside the single one when it is meaningfully longer.
   (2) ids 3, 36-39 reached the 5 s cap (music or loops): 20 s renders are in `board_long` (the page generator takes
   `--board-long`, not yet republished). (3) ids 41-44: the driver call did not return within 0.1 s, output logged anyway.
-  (4) music played from START and END is not covered (their own driver loads). (5) Mac to DOS id mapping (+300 for
+  UPDATE 30 Oct: all three are done and the page is version 2 (held buttons for 30 ids, 20 s renders for the music-length ids; page built with `--board-long` and `--board-held`). (4) music played from START and END is not covered (their own driver loads). (5) Mac to DOS id mapping (+300 for
   4-20) is from the notes, unverified by ear.
 - **Speech:** `SPEECH.117` is the nine Mac words in one headerless unsigned 8-bit file at 8,000 Hz (3.3 s): primary,
   target, hit, good, nice, landing, cleared, for take off, to land. Cut at 0.52, 0.88, 1.10, 1.34, 1.59, 1.95, 2.30,

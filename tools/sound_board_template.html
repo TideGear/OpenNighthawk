@@ -71,6 +71,7 @@ tr.hide { display: none; }
 .play.on { border-color: var(--playing); color: var(--playing); }
 .play.on svg { color: var(--playing); }
 .play .cut { color: var(--muted); }
+.play.held { min-width: 0; margin-left: 4px; border-style: dashed; color: var(--muted); }
 .none { color: var(--muted); font-family: var(--mono); font-size: 12px; padding-left: 8px; }
 .all { font: inherit; font-size: 12px; padding: 5px 9px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .all:hover { background: var(--accent); color: var(--accent-ink); }
@@ -159,7 +160,7 @@ audio.addEventListener("ended", () => {
 function playAll(row) {
   stopAll();
   const items = [];
-  row.querySelectorAll("button.play").forEach(b => items.push({ btn: b, key: b.dataset.key, clip: DATA.clips[b.dataset.key] }));
+  row.querySelectorAll("button.play:not(.held)").forEach(b => items.push({ btn: b, key: b.dataset.key, clip: DATA.clips[b.dataset.key] }));
   const first = items.shift();
   if (!first) return;
   queue = items;
@@ -179,6 +180,20 @@ function cell(tr, src, rowKey, clipKey) {
   b.innerHTML = ICON + "<span>" + clip.s.toFixed(1) + "s" + (clip.c ? '<span class="cut">+</span>' : "") + "</span>";
   b.addEventListener("click", () => play(b, clipKey, clip));
   td.appendChild(b);
+  // the same sound asked for again every step, as the game does for a held one (stall horn, warnings, engine)
+  const heldKey = tr.__clips && tr.__clips[src + "H"];
+  const held = heldKey && DATA.clips[heldKey];
+  if (held) {
+    const h = document.createElement("button");
+    h.className = "play held";
+    h.dataset.src = src;
+    h.dataset.key = heldKey;
+    h.setAttribute("aria-label", "Play " + SRC_NAME[src] + " " + rowKey + " held");
+    h.title = "Asked for again every step, as the game holds it";
+    h.innerHTML = ICON + "<span>held</span>";
+    h.addEventListener("click", () => play(h, heldKey, held));
+    td.appendChild(h);
+  }
   tr.appendChild(td);
 }
 function sel(options, value, label, onchange) {
@@ -202,6 +217,7 @@ function buildTable(el, cols, rows) {
     n.firstChild.textContent = r.title;
     n.lastChild.textContent = r.sub || "";
     tr.appendChild(n);
+    tr.__clips = r.clips;
     cols.forEach(c => cell(tr, c, r.title, r.clips[c]));
     const all = document.createElement("td");
     const ab = document.createElement("button");

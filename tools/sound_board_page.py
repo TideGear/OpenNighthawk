@@ -61,6 +61,7 @@ def main():
     ap.add_argument("--amiga", required=True)
     ap.add_argument("--speech", required=True)
     ap.add_argument("--board-long", help="a second board folder whose clips replace the same ids' (longer renders)")
+    ap.add_argument("--board-held", help="a board folder of renders that ask for the sound again every step (sustained versions)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     if not shutil.which("ffmpeg"):
@@ -80,6 +81,10 @@ def main():
                 for e in json.load(open(idx)):
                     drivers[kind][e["id"]] = e
                     where[(kind, e["id"])] = root
+    held = {}
+    for kind in ("adlib", "roland", "speaker"):
+        idx = os.path.join(a.board_held, kind, "index.json") if a.board_held else None
+        held[kind] = {e["id"]: e for e in json.load(open(idx))} if idx and os.path.exists(idx) else {}
     mac_by_id = {}
     for f in glob.glob(os.path.join(a.mac, "*.wav")):
         m = re.match(r"(\d+)_", os.path.basename(f))
@@ -99,6 +104,14 @@ def main():
             else:
                 clips[key] = {"b": encode(mp3, tmp), "s": e["seconds"], "c": bool(e.get("capped"))}
             row["clips"][kind] = key
+            # the same sound asked for again every step, as the game does for a held sound: offered only when it
+            # lasts meaningfully longer than the single request
+            h = held.get(kind, {}).get(i)
+            if h and h["seconds"] >= e["seconds"] + 0.4:
+                hpath = os.path.join(a.board_held, kind, h["file"])
+                hkey = "%sH-%d" % (kind, i)
+                clips[hkey] = {"b": base64.b64encode(open(hpath, "rb").read()).decode(), "s": h["seconds"], "c": bool(h.get("capped"))}
+                row["clips"][kind + "H"] = hkey
         if 300 + i in MAC_NAMES and (300 + i) in mac_by_id:
             key = "mac-%d" % (300 + i)
             clips[key] = {"b": encode(mac_by_id[300 + i], tmp), "s": round(seconds(mac_by_id[300 + i]), 2), "c": False}
