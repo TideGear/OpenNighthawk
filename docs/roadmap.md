@@ -177,17 +177,19 @@ not the recompilation:
       by design. In the census, named code runs 160,739 of 165,548 creditable
       bytes (1,137 of 1,535 functions wholly, 293 in part).
 
-      **Accounted-for checklist:** 47,265 of 47,740 bytes (99.01%) outside the
+      **Accounted-for checklist:** 47,429 of 47,736 bytes (99.36%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
-      1,870 entries); 475 bytes remain. Six blind-read rounds by independent
-      readers (26-30 Oct) adopted 46,485 bytes, in addition to 780 earlier
-      reviewed bytes: round 1, 444 units / 19,928 bytes; round 2, 367 / 13,976;
-      round 3, 101 / 4,476; round 3b (exact leading-range check), 19 / 1,344;
-      round 4, 32 / 1,245; round 5, 88 / 3,641; round 6, 22 / 1,875. Round 6
-      rebuilt against accepted `bw` and reviewed 36 units / 2,181 bytes in eight
-      groups; 14 units / 306 bytes remain unadopted, and six protected units /
-      169 bytes still need owner review. These entries add no matching credit or
-      exclusions. Evidence `D:/f117-gate/checklist-full-20261026/`.
+      1,881 entries); 307 bytes remain. Blind-read rounds by independent
+      readers adopted 46,647 bytes, in addition to 780 earlier reviewed bytes:
+      round 1, 444 units / 19,928 bytes; round 2, 367 / 13,976; round 3, 101 /
+      4,476; round 3b (exact leading-range check), 19 / 1,344; round 4, 32 /
+      1,245; round 5, 88 / 3,641; round 6, 22 / 1,875; round 7, 4 / 162.
+      Round 7 read 10 units / 202 bytes in three groups against accepted `bw`;
+      six units / 40 bytes remain for correction, context or a fresh status
+      review. A separate owner-rule boundary review adopted three 2-byte
+      epilogues: one C-startup fragment inside the checklist and two palette
+      loader tails outside its denominator. It changed no gameplay matching.
+      Evidence `D:/f117-gate/checklist-full-20261026/`.
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
@@ -201,11 +203,11 @@ not the recompilation:
         `D:/f117-gate/kit/DECLINED.tsv`.
       - 31,590 matched bytes that only fixtures reach, to be sorted into
         routed or reviewed.
-      - The checklist has 475 bytes left. Round 6 adopted 1,875 bytes. Of the
-        remaining 14 units / 306 bytes, 10 / 202 need correction, context or a
-        fresh independent read; four / 104 were withheld for protected statuses
-        and need separate owner or design-rule review. Six additional protected
-        units / 169 bytes need owner review (see [handoff](../handoff.md)).
+      - The checklist has 307 bytes left. Round 7 adopted 162 of its 202 fresh
+        bytes; the remaining six units / 40 bytes need correction, context or a
+        fresh status review. Another 102 bytes are three older protected units,
+        and 165 bytes are four older owner-review units (see
+        [handoff](../handoff.md)).
       - Beyond the routes: reviewed static code no route runs (no new route or
         dead certificate yet: indirect/callback/vector and writer closure is
         incomplete, [static-code-review.md](static-code-review.md)); the
