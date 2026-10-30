@@ -109,3 +109,11 @@ has no effect on the running game.
   match the same way, so four of the nine theatres are checked against the guest; the other five decode exactly from
   their files but have not been dumped. Not done in R1: `*.WLD` placements, and the loader that goes beyond the
   resident rings.
+- **R2, world files (30 October 2026).** `*.WLD` decodes with `tools/world_decode.py` from START's `world_read`
+  (`0x054BB`): four header words, the target records (16 bytes, the count is the second header word), a slot count
+  and 36-byte slots, three 128-byte tables, the 256-byte sector grid, and the place names (NUL-separated, the file
+  holds fewer than the 750 bytes the loader asks for). Every byte of all nine files is accounted for; the names are
+  real places (North Cape: Pechenga, Polyarnyy, Kilpyaur; Libya: Tripoli, Port Brega, Misratah). `world_check.py`
+  compares them with START's memory at the loader's DS offsets: Libya, North Cape and Persian Gulf match byte for
+  byte; Vietnam matches except six bytes in one target record, which the game writes after loading. Still to do for
+  R2: what the target and slot fields mean, the sector grid's use, the model bank `*.3DX`, and the per-frame object list.

@@ -9,6 +9,10 @@ The layouts are the ones START's matched routines read (src/matched/matched.c):
             then each list's point counts (a word per entry), then for each entry its points: three words
             and a word whose low byte is kept (fread(buf, 2, 1): 8 bytes in the file, stored 7 bytes apart).
 
+  STEM.WLD  world_read (START 0x054BB): four header words, the target count's records (16 bytes each), the slot
+            count (a word) and its slots (36 bytes each), three 128-byte tables, the 256-byte sector grid, and the
+            place names (NUL-separated; the loader asks for 750 bytes and takes what the file has).
+
 Usage: world_decode.py GAMEDIR [STEM ...]   (default: every theatre)
 Prints each file's decoded sizes and checks that the layout accounts for every byte of the file.
 """
@@ -59,6 +63,28 @@ def decode_3dt(data):
     return {"sizes": sizes, "lists": lists}
 
 
+def decode_wld(data):
+    head = struct.unpack_from("<4H", data, 0)            # D88C, D33C (target count), CACE, E084
+    ntarg = head[1]
+    at = 8
+    targets = [data[at + 16 * i:at + 16 * (i + 1)] for i in range(ntarg)]
+    at += 16 * ntarg
+    nslot = struct.unpack_from("<H", data, at)[0]
+    at += 2
+    slots = [data[at + 36 * i:at + 36 * (i + 1)] for i in range(nslot)]
+    at += 36 * nslot
+    tables = [data[at + 128 * i:at + 128 * (i + 1)] for i in range(3)]
+    at += 384
+    grid = data[at:at + 256]
+    at += 256
+    names = data[at:]
+    if len(grid) != 256 or len(names) > 0x2EE or len(tables[2]) != 128:
+        raise ValueError("WLD: layout does not fit (%d bytes)" % len(data))
+    places = [n.decode("latin1") for n in names.split(bytes([0])) if n]
+    return {"head": head, "targets": targets, "slots": slots, "tables": tables, "grid": grid, "names": names,
+            "places": places}
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -68,7 +94,7 @@ def main(argv):
     bad = 0
     for stem in stems:
         line = [stem]
-        for ext, fn in (("3DG", decode_3dg), ("3DT", decode_3dt)):
+        for ext, fn in (("3DG", decode_3dg), ("3DT", decode_3dt), ("WLD", decode_wld)):
             path = os.path.join(game, "%s.%s" % (stem, ext))
             try:
                 with open(path, "rb") as f:
@@ -76,6 +102,8 @@ def main(argv):
                 if ext == "3DT":
                     pts = sum(len(e) for l in d["lists"] for e in l)
                     line.append("3DT sizes %s, %d points" % (d["sizes"], pts))
+                elif ext == "WLD":
+                    line.append("WLD %d targets, %d slots, %d names" % (len(d["targets"]), len(d["slots"]), len(d["places"])))
                 else:
                     line.append("3DG ok")
             except (OSError, ValueError, struct.error) as e:

@@ -32,7 +32,7 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
   START's memory byte for byte (tables at `DS:B3A0..BAB0`, points after). CE, CU, KO, KU, ME decode but were not dumped.
 - To dump: `py tools/run_route.py tools/routes/<route>.args --data <copy of the install> --out <dir> -- --steps <N> --dump 0:100000`,
   N just after START opens `<stem>.3dT` (the route's `run.log` shows the clock). The dump is printed as hex text.
-- **R2 next:** `*.WLD` (starts `BN`, then counts; 2-3 KB): object placements and classes. Find START's matched loader
+- **R2 (30 Oct): `*.WLD` decoded and checked** (see `docs/remastered-design.md` Progress); next the meaning of target and slot fields, `*.3DX`, per-frame objects. (Old note follows.) Find START's matched loader
   (search `matched.c` near the START world loader, `lb.wld` is opened before the 3DG), decode, check against memory.
   Then the model bank `*.3DX` (offset table; `src/present/scene_mesh.c` draft decodes models).
 - Design points agreed this session: Remastered draws from state with its own rasteriser at the output size and
