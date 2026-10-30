@@ -109,3 +109,12 @@ bank, game loads banks unchanged), `ed01de1` (offline depth-buffer model sheets)
   models of a theatre bank are flat patches), then widescreen, longer reach, held-out comparison with the original
   frame (`F117_PRESENT_SHOTS`).
 - **Not done anywhere:** a renderer in the app, `--presentation remastered`, the settings entry. Remastered stays 0%.
+
+## Merge readiness (30 October 2026, at `a1b12b9`)
+
+- `origin/master` is still `0c2b13a`: the branch is 32 commits ahead and 0 behind, so it fast-forwards.
+- The branch changes only `CMakeLists.txt`, `README.md`, `docs/`, `src/host/`, `tests/` and `tools/`; nothing under
+  `src/machine/`, `src/cpu/`, `src/matched/`, `src/recomp/`, `src/present/` or `recompiler/`.
+- `ctest` in the branch's own build: 44 of 44 pass (the host, presentation, override and boundary tests).
+- **Not run:** the full gate (`py tools/build_recomp.py --work ...`: routes, both engines, lockstep). Run it on the merged
+  result before pushing to `master`; `headless.c` (f117run) gained the `--sound-sweep` options, which the gate's runner uses.
