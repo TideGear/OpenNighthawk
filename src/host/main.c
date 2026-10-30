@@ -417,6 +417,11 @@ static int restart_wanted(SDL_Window *win)
  * command line, so a path with a space would otherwise split). The caller then quits. */
 static void restart_game(char **orig_argv, const char *extra1, const char *extra2)
 {
+    if (getenv("F117_RESTART_DRYRUN")) {            /* diagnostic: say what would be started, start nothing */
+        for (int i = 0; orig_argv[i]; i++) fprintf(stderr, "%s ", orig_argv[i]);
+        fprintf(stderr, "%s %s\n", extra1 ? extra1 : "", extra2 ? extra2 : "");
+        return;
+    }
 #ifdef _WIN32
     int n = 0;
     while (orig_argv[n]) n++;
@@ -435,6 +440,38 @@ static void restart_game(char **orig_argv, const char *extra1, const char *extra
 #else
     (void)orig_argv; (void)extra1; (void)extra2;
 #endif
+}
+
+static int newest_first(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)b, *(char *const *)a);
+}
+
+/* Watch a flight: the recorded sessions (sessions/session-<time>/ beside the save folder) that have an input log,
+ * newest first, each shown as its date and the log's size. */
+static void fill_flight_list(settings_state *st, const char *save_dir)
+{
+    char sessions[900];
+    snprintf(sessions, sizeof sessions, "%s/../sessions", save_dir);
+    int n = 0;
+    char **names = SDL_GlobDirectory(sessions, "session-*", 0, &n);
+    if (!names) return;
+    qsort(names, (size_t)n, sizeof *names, newest_first);
+    int listed = 0;
+    for (int k = 0; k < n && listed < 16; k++) {
+        char log[1000];
+        snprintf(log, sizeof log, "%s/%s/input.log", sessions, names[k]);
+        SDL_PathInfo info;
+        if (!SDL_GetPathInfo(log, &info) || info.type != SDL_PATHTYPE_FILE) continue;
+        unsigned y, mo, d, h, mi, se;
+        char what[64];
+        if (sscanf(names[k], "session-%4u%2u%2u-%2u%2u%2u", &y, &mo, &d, &h, &mi, &se) == 6)
+            snprintf(what, sizeof what, "%04u-%02u-%02u %02u:%02u:%02u  %llu KB", y, mo, d, h, mi, se,
+                     (unsigned long long)((info.size + 1023) / 1024));
+        else snprintf(what, sizeof what, "%s", names[k]);
+        settings_set_flight(st, listed++, names[k], what);
+    }
+    SDL_free(names);
 }
 
 /* The settings menu's fix picker: every fix with what it does and whether it is on in this run (fixes_list). */
@@ -1042,7 +1079,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1114,6 +1151,24 @@ int main(int argc, char **argv)
                 SDL_PushEvent(&e);
             }
         }
+        /* F117_WATCH_AUTOTEST=1 (diagnostic): open the menu, choose Watch a flight, take the second one in the list. */
+        {
+            static int wa_next;
+            int wa_rows = 0;
+            settings_defs(&wa_rows);
+            if (getenv("F117_WATCH_AUTOTEST") && ++wa_frame >= 5 && wa_next < wa_rows + 9) {
+                const int k = wa_next++;
+                SDL_Event e;
+                SDL_zero(e);
+                e.type = SDL_EVENT_KEY_DOWN;
+                if (k == 0) { e.key.scancode = SDL_SCANCODE_S; e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT); }
+                else if (k <= wa_rows + 5) e.key.scancode = SDL_SCANCODE_DOWN;       /* to the Watch a flight row */
+                else if (k == wa_rows + 6) e.key.scancode = SDL_SCANCODE_RETURN;     /* open the list */
+                else if (k == wa_rows + 7) e.key.scancode = SDL_SCANCODE_DOWN;       /* the second flight */
+                else e.key.scancode = SDL_SCANCODE_RETURN;
+                SDL_PushEvent(&e);
+            }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1139,6 +1194,7 @@ int main(int argc, char **argv)
                     settings_open(&g_set);
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
                     fill_fix_picker(&g_set);
+                    fill_flight_list(&g_set, save);
                     if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
                     break;
                 }
@@ -1216,7 +1272,7 @@ int main(int argc, char **argv)
                         }
                         if (!g_set.open) {
                             if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
-                            if (g_set.watch_now) { restart_game(orig_argv, "--watch", "latest"); running = 0; }
+                            if (g_set.watch_now) { restart_game(orig_argv, "--watch", g_set.watch_name[0] ? g_set.watch_name : "latest"); running = 0; }
                             if (g_set.saved_now) {
                                 const int restart = g_set.want_restart;
                                 char *text = config_read_file(settings_path);

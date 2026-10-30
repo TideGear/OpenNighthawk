@@ -101,6 +101,14 @@ void settings_set_fix(settings_state *s, int index, const char *id, const char *
     if (index + 1 > s->pick_count) s->pick_count = index + 1;
 }
 
+void settings_set_flight(settings_state *s, int index, const char *name, const char *what)
+{
+    if (index < 0 || index >= 16) return;
+    snprintf(s->flight_name[index], sizeof s->flight_name[index], "%s", name);
+    snprintf(s->flight_what[index], sizeof s->flight_what[index], "%s", what);
+    if (index + 1 > s->flight_count) s->flight_count = index + 1;
+}
+
 void settings_mark_saved(settings_state *s, const char *key, const char *value)
 {
     for (int i = 0; i < NDEFS; i++)
@@ -143,6 +151,20 @@ const char *settings_value(const settings_state *s, int i)
 int settings_key_event(settings_state *s, settings_key k)
 {
     if (!s->open) return 0;
+    if (s->flight_picker) {                        /* the flight list has the keys */
+        const int n = s->flight_count;
+        if (k == SKEY_UP) s->pick_cursor = (s->pick_cursor + n - 1) % n;
+        else if (k == SKEY_DOWN) s->pick_cursor = (s->pick_cursor + 1) % n;
+        else if (k == SKEY_ENTER || k == SKEY_RIGHT) {      /* watch this one: edits are dropped, as at Close */
+            snprintf(s->watch_name, sizeof s->watch_name, "%s", s->flight_name[s->pick_cursor]);
+            s->flight_picker = 0;
+            revert(s);
+            s->watch_now = 1;
+        } else if (k == SKEY_ESC) s->flight_picker = 0;
+        if (s->pick_cursor < s->pick_top) s->pick_top = s->pick_cursor;
+        if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
+        return 1;
+    }
     if (s->picker) {                               /* the fix picker has the keys */
         const int n = s->pick_count;
         if (k == SKEY_UP) s->pick_cursor = (s->pick_cursor + n - 1) % n;
@@ -153,7 +175,7 @@ int settings_key_event(settings_state *s, settings_key k)
         if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
         return 1;
     }
-    const int rows = NDEFS + 6;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
+    const int rows = NDEFS + 7;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -180,6 +202,8 @@ int settings_key_event(settings_state *s, settings_key k)
             s->clear_remaps = 1;
         } else if (s->cursor == NDEFS + 4) {       /* Choose fixes: the picker, if the host listed the fixes */
             if (s->pick_count) { s->picker = 1; s->pick_cursor = 0; s->pick_top = 0; s->picks_changed = 0; }
+        } else if (s->cursor == NDEFS + 5) {       /* Watch a flight: the list of recordings, if there are any */
+            if (s->flight_count) { s->flight_picker = 1; s->pick_cursor = 0; s->pick_top = 0; }
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
@@ -225,7 +249,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int total = NDEFS + 6, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int total = NDEFS + 7, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
     const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
@@ -233,6 +257,18 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             const int edge = x < x0 + 2 || x >= x0 + pw - 2 || y < y0 + 2 || y >= y0 + ph - 2;
             px[(size_t)y * (size_t)w + (size_t)x] = edge ? 0xFFA0A0A0u : 0xFF101820u;
         }
+    if (s->flight_picker) {                        /* the flight list: newest first */
+        const int per = SETTINGS_VISIBLE - 2;
+        put_text(px, w, h, x0 + 16, y0 + 10, "WATCH A FLIGHT", 0xFFFFFFFFu);
+        for (int i = s->pick_top; i < s->pick_top + per && i < s->flight_count; i++) {
+            const int y = y0 + 34 + (i - s->pick_top) * 20, on = i == s->pick_cursor;
+            if (on) put_text(px, w, h, x0 + 12, y, ">", 0xFFFFE060u);
+            put_text(px, w, h, x0 + 30, y, s->flight_what[i], on ? 0xFFFFE060u : 0xFFD0D0D0u);
+        }
+        put_text(px, w, h, x0 + 16, y0 + ph - 38, "The game restarts to replay it from its start;", 0xFF909090u);
+        put_text(px, w, h, x0 + 16, y0 + ph - 22, "Enter: watch   Esc: back", 0xFF909090u);
+        return;
+    }
     if (s->picker) {                               /* the fix picker: a scrolling checklist */
         const int per = SETTINGS_VISIBLE - 2;
         put_text(px, w, h, x0 + 16, y0 + 10, "CHOOSE FIXES (custom set)", 0xFFFFFFFFu);
@@ -271,7 +307,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
-                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : "Close without saving", color);
+                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */

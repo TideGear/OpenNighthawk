@@ -42,6 +42,11 @@ typedef struct {
     unsigned char pick_on[SETTINGS_MAX_FIXES];
     char pick_id[SETTINGS_MAX_FIXES][8];
     char pick_what[SETTINGS_MAX_FIXES][160];
+    int flight_count;              /* recorded flights listed for Watch a flight (newest first) */
+    char flight_name[16][40];      /* the session folder names */
+    char flight_what[16][64];      /* each one as the list shows it: the date and the log's size */
+    int flight_picker;             /* the flight list is up */
+    char watch_name[40];           /* the flight chosen; empty with watch_now means the newest */
     int watch_now;                 /* "Watch last flight" was chosen: the host restarts into the newest recording */
     int want_restart;              /* Save was chosen with a restart-only setting changed */
 } settings_state;
@@ -58,6 +63,9 @@ void settings_open(settings_state *s);
 
 /* The host lists the fixes for the picker (index 0 up, in the order shown): id, what it does, whether it is on. */
 void settings_set_fix(settings_state *s, int index, const char *id, const char *what, int on);
+
+/* The host lists a recorded flight for Watch a flight (index 0 up, newest first). */
+void settings_set_flight(settings_state *s, int index, const char *name, const char *what);
 
 /* The host wrote a setting itself: show and remember it as saved (a value from that setting's choices). */
 void settings_mark_saved(settings_state *s, const char *key, const char *value);

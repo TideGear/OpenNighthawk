@@ -41,12 +41,12 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
-    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 5);   /* wraps to the last row */
-    CHECK(s.top == n + 6 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
-    for (int k = 0; k < n + 5; k++) settings_key_event(&s, SKEY_UP);
+    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 6);   /* wraps to the last row */
+    CHECK(s.top == n + 7 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    for (int k = 0; k < n + 6; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
-    CHECK(s.cursor == n + 5);
+    CHECK(s.cursor == n + 6);
     /* Remap a key and Clear key remaps ask the host and keep the menu open */
     s.cursor = n + 2;
     settings_key_event(&s, SKEY_ENTER);
@@ -76,6 +76,23 @@ int main(void)
     CHECK(s.open && !s.picker && s.picks_changed);
     settings_mark_saved(&s, "fixes", "custom");
     CHECK(!strcmp(settings_value(&s, fixes), "custom") && !settings_needs_restart(&s));
+    /* Watch a flight: nothing listed means nothing to open; with a list, Enter picks one and closes the menu */
+    s.cursor = n + 5;
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(!s.flight_picker && s.open);
+    settings_set_flight(&s, 0, "session-20261024-230019", "24 Oct 2026 23:00, 312 KB");
+    settings_set_flight(&s, 1, "session-20261024-191045", "24 Oct 2026 19:10, 40 KB");
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(s.flight_picker && s.pick_cursor == 0);
+    settings_key_event(&s, SKEY_DOWN);
+    settings_key_event(&s, SKEY_ESC);
+    CHECK(!s.flight_picker && s.open && !s.watch_now);        /* Esc comes back without choosing */
+    settings_key_event(&s, SKEY_ENTER);
+    settings_key_event(&s, SKEY_DOWN);
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(!s.open && s.watch_now && !strcmp(s.watch_name, "session-20261024-191045"));
+    settings_load(&s, "presentation = enhanced\nfullscreen = true\nscale = 4\n");
+    settings_open(&s);
     s.cursor = n + 1;                                         /* Watch last flight: asks the host, drops edits */
     settings_key_event(&s, SKEY_ENTER);
     CHECK(!s.open && s.watch_now && !s.saved_now && !settings_needs_restart(&s));
