@@ -32,6 +32,17 @@ int config_merge(const char *text, const char *dir, int argc, char **argv,
  * came from --config (so a missing file is an error). */
 const char *config_path(int argc, char **argv, const char *base_dir, int *explicit_);
 
+/* The INI text with key set to value (a copy, malloc'd). The key's first active line is rewritten
+ * in place; later active lines for the same key are dropped; with none, the first commented
+ * example (`;key = ...`, as in f117a.example.ini) becomes the line, else one is appended. Other
+ * lines, comments and the file's line endings are kept. value NULL removes the key's active lines.
+ * Returns NULL on out of memory. */
+char *config_set(const char *text, const char *key, const char *value);
+
+/* The value the INI text gives key (the last active line wins, as in config_merge), copied into
+ * out with any quotes removed; returns 1 if set, else 0. */
+int config_get(const char *text, const char *key, char *out, size_t size);
+
 /* A whole file's text (NUL-terminated, malloc'd), or NULL. */
 char *config_read_file(const char *path);
 

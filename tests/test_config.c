@@ -62,6 +62,44 @@ int main(void)
     CHECK(!strcmp(config_path(3, a1, "C:\\nowhere\\", &explicit_), "x.ini") && explicit_);
     char *a2[] = { "f117a", "--no-config", NULL };
     CHECK(config_path(2, a2, "C:\\nowhere\\", &explicit_) == NULL && !explicit_);
+    /* writing a setting back keeps everything else */
+    {
+        char val[64];
+        char *t;
+        /* an active line is rewritten in place, duplicates dropped, CRLF kept */
+        t = config_set("; mine\r\nscale = 2\r\nfullscreen = no\r\nscale = 5\r\n", "scale", "4");
+        CHECK(t && !strcmp(t, "; mine\r\nscale = 4\r\nfullscreen = no\r\n"));
+        free(t);
+        /* a commented example becomes the line, in its place */
+        t = config_set("; The window.\n;scale = 3\n;fullscreen = no\n", "scale", "4");
+        CHECK(t && !strcmp(t, "; The window.\nscale = 4\n;fullscreen = no\n"));
+        free(t);
+        /* prose that mentions a key is not mistaken for the example */
+        t = config_set("; use scale = 2 for small windows\n", "scale", "3");
+        CHECK(t && !strcmp(t, "; use scale = 2 for small windows\nscale = 3\n"));
+        free(t);
+        /* absent: appended, after a final line that lacks its break */
+        t = config_set("data = x", "fixes", "original");
+        CHECK(t && !strcmp(t, "data = x\nfixes = original\n"));
+        free(t);
+        t = config_set(NULL, "presentation", "enhanced");
+        CHECK(t && !strcmp(t, "presentation = enhanced\n"));
+        free(t);
+        /* removal drops the active lines only */
+        t = config_set("scale = 2\n;scale = 3\nfix = D4\n", "scale", NULL);
+        CHECK(t && !strcmp(t, ";scale = 3\nfix = D4\n"));
+        free(t);
+        /* what config_set writes, config_merge and config_get read back */
+        t = config_set("data = D:\\GOG\n", "presentation", "enhanced");
+        CHECK(config_get(t, "presentation", val, sizeof val) && !strcmp(val, "enhanced"));
+        CHECK(config_get(t, "data", val, sizeof val) && !strcmp(val, "D:\\GOG"));
+        CHECK(!config_get(t, "scale", val, sizeof val));
+        n = config_merge(t, NULL, 1, argv, &v, err, sizeof err);
+        CHECK(n == 6);
+        free(t);
+        CHECK(config_get("a = \"q w\"\na = z\n", "a", val, sizeof val) && !strcmp(val, "z"));
+        CHECK(config_get("a = \"q w\"\n", "a", val, sizeof val) && !strcmp(val, "q w"));
+    }
     puts("f117a.ini options pass");
     return 0;
 }

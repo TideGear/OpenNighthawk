@@ -156,6 +156,115 @@ const char *config_path(int argc, char **argv, const char *base_dir, int *explic
     return path;
 }
 
+/* The key a line sets (lower-cased, dashes dropped), its value's bounds, and whether the line is
+ * commented out (`;key = v`). Returns 0 for a line that is not of that shape, including prose. */
+static int line_key(const char *a, const char *b, char *key, size_t ksize, const char **va, const char **vb,
+                    int *commented)
+{
+    *commented = 0;
+    trim(&a, &b);
+    if (a < b && (*a == ';' || *a == '#')) {
+        *commented = 1;
+        a++;
+        trim(&a, &b);
+    }
+    if (a == b || *a == '[') return 0;
+    const char *eq = memchr(a, '=', (size_t)(b - a));
+    if (!eq) return 0;
+    const char *ka = a, *kb = eq;
+    *va = eq + 1;
+    *vb = b;
+    trim(&ka, &kb);
+    trim(va, vb);
+    while (ka < kb && *ka == '-') ka++;
+    const size_t kl = (size_t)(kb - ka);
+    if (!kl || kl >= ksize) return 0;
+    for (size_t i = 0; i < kl; i++) {
+        if (isspace((unsigned char)ka[i])) return 0;
+        key[i] = (char)tolower((unsigned char)ka[i]);
+    }
+    key[kl] = 0;
+    return 1;
+}
+
+/* The next line of p: its end without the line break, and where the following line starts. */
+static const char *next_line(const char *p, const char **lend)
+{
+    const char *end = strchr(p, '\n');
+    const char *next = end ? end + 1 : p + strlen(p);
+    if (!end) end = next;
+    *lend = end > p && end[-1] == '\r' ? end - 1 : end;
+    return next;
+}
+
+char *config_set(const char *text, const char *key, const char *value)
+{
+    if (!text) text = "";
+    const int crlf = strstr(text, "\r\n") != NULL;
+    const char *eol = crlf ? "\r\n" : "\n";
+    const size_t cap = strlen(text) + strlen(key) + (value ? strlen(value) : 0) + 16;
+    char *out = (char *)malloc(cap);
+    if (!out) return NULL;
+    size_t n = 0;
+    int have_active = 0, done = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        /* pass 0: the active lines; pass 1 (only if none was found): the first commented example */
+        if (pass == 1 && (have_active || !value)) break;
+        char *copy = NULL;
+        if (pass) { copy = (char *)malloc(n + 1); if (!copy) { free(out); return NULL; } memcpy(copy, out, n + 1); }
+        const char *src = pass ? copy : text;
+        if (pass) { n = 0; done = 0; }
+        for (const char *p = src; *p;) {
+            const char *lend, *va, *vb;
+            char k[32];
+            int commented;
+            const char *next = next_line(p, &lend);
+            const int match = line_key(p, lend, k, sizeof k, &va, &vb, &commented) && !strcmp(k, key);
+            if (match && commented == pass) {
+                if (pass == 0) have_active = 1;
+                if (value && !done) {
+                    n += (size_t)snprintf(out + n, cap - n, "%s = %s%s", key, value, eol);
+                    done = 1;
+                }
+                p = next;                     /* an active duplicate (or the removed line) is dropped */
+                continue;
+            }
+            memcpy(out + n, p, (size_t)(next - p));
+            n += (size_t)(next - p);
+            p = next;
+        }
+        free(copy);
+        out[n] = 0;
+    }
+    if (value && !done) {
+        if (n && out[n - 1] != '\n') n += (size_t)snprintf(out + n, cap - n, "%s", eol);
+        n += (size_t)snprintf(out + n, cap - n, "%s = %s%s", key, value, eol);
+    }
+    out[n] = 0;
+    return out;
+}
+
+int config_get(const char *text, const char *key, char *out, size_t size)
+{
+    int found = 0;
+    for (const char *p = text ? text : ""; *p;) {
+        const char *lend, *va, *vb;
+        char k[32];
+        int commented;
+        const char *next = next_line(p, &lend);
+        if (line_key(p, lend, k, sizeof k, &va, &vb, &commented) && !commented && !strcmp(k, key)) {
+            if (vb - va >= 2 && *va == '"' && vb[-1] == '"') { va++; vb--; }
+            size_t l = (size_t)(vb - va);
+            if (l >= size) l = size - 1;
+            memcpy(out, va, l);
+            out[l] = 0;
+            found = 1;
+        }
+        p = next;
+    }
+    return found;
+}
+
 char *config_read_file(const char *path)
 {
     FILE *f = fopen(path, "rb");
