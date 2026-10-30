@@ -28,27 +28,40 @@ and in the roadmap's batch table. Keep it that way: replace, do not append.
   run 40975806272 passed. Evidence: `D:/f117-gate/p2-batch-bt-accept/`.
 - **Working copy:** `C:\Dev\F-117A Recomp`. The old `My Drive` copy is stale. Do not stage the owner's untracked
   `4k60.bat` or `original-fixed.bat`.
-- **Private proof pipeline:** An orphan shell watcher waited from 14:56 to 17:52 for SETUP `18A2`'s lock-cover result;
-  no cover file or child worker existed, so the idle shell was stopped. Proof directories are preserved. Inspect
-  `PILOT-TIMES.txt` and each result before reusing `D:/f117-gate/p2-setup-bt-*`; run no acceptance gate while any proof
-  workers are active.
+- **Prior SETUP pilot:** The idle `18A2` watcher was stopped; its `p2-setup-bt-*` proof directories are preserved.
+  A new eight-range tranche was reproved on 29 Oct; its state and outstanding precheck are recorded below.
 - CI is checked through GitHub Actions API (no `gh` on this machine):
   `curl -s "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`.
 
 ## Resume here
 
-Goal in force: reach 100% of Phase 2 safely. Each accepted change gets the full gate before commit and push.
+Goal in force: reach 100% of Phase 2 safely. Accepted changes still require the full gate before acceptance and score
+credit. This checkpoint is explicitly WIP because a pre-gate whole-table check found an unresolved mismatch.
 
-Batch `bv` passed its full gate and credit audit and is recorded in the roadmap. Ten root-verified static proofs added
-821 named bytes; P2 is now 95.94%. Continue with the SETUP static-range pilot, then integrate only after the proof
-results and full gate pass. Commit titles use the current `py tools/progress.py --title`; keep the owner's BAT files
-out of any commit.
+The handoff checkpoint is on branch `wip/p2-setup-handoff-20261029`, based on accepted HEAD
+`0c2b13a69ce0262567c89ad241031f5de0cb463a`. The accepted scoreboard remains P1 100.00%, P2 95.94%, P3 76.34%,
+All 92.78%. Do not update the score or roadmap for this tranche yet.
 
-Continue with the SETUP static-range pilot from the preserved proof directories. The old watcher was stopped while
-idle; inspect its result files before resuming the five ranges in `D:/f117-gate/p2-setup-bt-*`. The separate VGAME pilot has `0063` and `04D9` fixtures under
-`D:/f117-gate/p2-vgame-bt-1452-*`. These static candidates are worth about 2,660 bytes (~0.4 score points). Root-review
-seeds, mutation results and lock logs; run static checkpoints and `finish_all.py` only after each proof is green. Do not
-run a full acceptance gate while the private proof workers are active.
+Eight static SETUP ranges (`0562`, `0582`, `05A3`, `05CE`, `070A`, `0811`, `0851`, `0979`) passed private proof,
+root audit, static route-neutrality replay and `finish_all.py`. Their preserved proof directories are
+`D:/f117-gate/p2-setup-reproof-{0562,0582,05A3,05CE,070A,0811,0851,0979}-20261029`. The changes are integrated in
+`CMakeLists.txt`, `src/matched/matched.c` and `tests/func_lockstep.c`; the custom `05CE` return-code probe was applied
+by hand. `build.cmd` succeeded and all eight focused CTests passed. Individual route prechecks found no captured
+routes reaching these reviewed static ranges, as expected.
+
+The two pre-gate whole-table checks do not agree. Rotating seed `0x0c2b13a69ce0` passed: 1,636 routines,
+6,853,904 states compared, 874,297 skipped, no mismatches. Fresh fixed seed `0xA25E20261029` compared 6,850,811
+states (875,291 skipped) and found one mismatch at covered entry `START.EXE:9430`: original AX `D768`, matched AX
+`0000`. It is not one of the eight new SETUP entries, but the cause has not been traced, so do not assume it is
+unrelated to the current tree. Full gate, `audit_private.py`, batch acceptance and score refresh have not run. The
+fixed-seed log is `D:/f117-gate/p2-setup-precheck-20261029/fixed.log`; rotating-seed log is beside it. A focused
+reproduction is `build/func_lockstep.exe --states 4000 --verbose --seed 0xA25E20261029 --only START.EXE:9430`;
+redirect its verbose output to a file. Next, find the first divergent instruction and establish the cause, then rerun
+both whole-table checks and the full acceptance workflow before claiming credit. If ultimately accepted, this tranche
+is estimated to add about 0.189 percentage points to P2 (95.94% to about 96.13%).
+
+The owner's untracked `4k60.bat` and `original-fixed.bat` remain untouched and must stay out of commits. The separate
+P3 route worker/worktree was left untouched. Use `py tools/progress.py --title` for future accepted commit titles.
 
 Other remaining work is still in scope: ASOUND.117 `09F2` is excluded pending the owner's D2-fix interaction decision;
 ISOUND.LOG `0581` needs an exact invalid-range data certificate without excluding real timer-handler bytes; six

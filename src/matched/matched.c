@@ -103070,7 +103070,962 @@ static int setup_shift_right_long(machine_t *m)
 #undef XB
 }
 
+/* SETUP 0000:0562 - store two words into a text-widget record, then format and print.
+ *
+ * Five arguments: the record pointer at [BP+4], two words [BP+6] and [BP+8] that are
+ * handed on, and two words [BP+0A] and [BP+0C] that the routine stores into the record at
+ * +8 and +0A (the widget's text position). Then it calls 05A3 (setup_format_and_print)
+ * with the record pointer, [BP+6] and [BP+8] pushed in that reversed order, so the
+ * record comes first, and drops the arguments with MOV SP,BP.
+ *
+ * BX keeps the record pointer and AX the last word loaded; both survive into the caller
+ * unless the callee changes them.
+ *
+ * Callee: 05A3, plain RET (the epilogue's MOV SP,BP cleans the three arguments).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the call charges its own. */
+static int setup_store_position_and_print(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, ARG1 = 6, ARG2 = 8, POS_X = 0x0A, POS_Y = 0x0C };   /* [BP+n] */
+    enum { FIELD_X = 8, FIELD_Y = 0x0A, FORMAT_AND_PRINT = 0x05A3 };       /* record fields */
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 10)) return 0;
+    XB(10, 0x0562);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = bp_get(c, POS_X);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + FIELD_X), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, POS_Y);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + FIELD_Y), c->r[R_AX]);
+    cpu_push16(c, bp_get(c, ARG2));
+    cpu_push16(c, bp_get(c, ARG1));
+    x86_push_reg(c, R_BX);
+    SM4_NEED(1, 0x057B);
+    XRUN(guest_call_pop(m, FORMAT_AND_PRINT, 0x057E, 0));
+    XB(3, 0x057E);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0582 - store two words into a text-widget record, then call the far
+ * routine 024C:08BF with the record.
+ *
+ * Four arguments: the record pointer at [BP+4], a word [BP+6] handed on, and the two
+ * words [BP+8] and [BP+0A] that the routine stores into the record at +8 and +0A (the
+ * widget's text position). It then pushes [BP+6] and the record pointer and calls the
+ * far routine 024C:08BF (a thunk into the string-output code) with them, pops both
+ * arguments into BX and drops the frame.
+ *
+ * The far RET leaves both arguments for the two POPs: first the record pointer, then the [BP+6] word; final BX is [BP+6].
+ *
+ * Call target 024C:08BF is a relocated far-jump thunk (static bytes point to 0:0). The fixture substitutes a far-returning stub; RETF leaves both arguments for the caller to pop.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the call charges its own. */
+static int setup_store_position_and_draw(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, ARG1 = 6, POS_X = 8, POS_Y = 0x0A };                /* [BP+n] */
+    enum { FIELD_X = 8, FIELD_Y = 0x0A };                                  /* record fields */
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0582);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = bp_get(c, POS_X);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + FIELD_X), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, POS_Y);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + FIELD_Y), c->r[R_AX]);
+    cpu_push16(c, bp_get(c, ARG1));
+    x86_push_reg(c, R_BX);
+    SM4_NEED(1, 0x0598);
+    XRUN(guest_call_far(m, 0x0598, 0x059D));
+    XB(5, 0x059D);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:05A3 - format a text into a 200-byte local buffer, then draw the buffer.
+ *
+ * Three arguments: a window/record word at [BP+4], and two words [BP+6] and [BP+8]
+ * (a format and its value) handed to the formatter 1276 together with the address of
+ * a 200-byte buffer on the stack (BP-0C8). The formatter's three arguments are dropped
+ * with ADD SP,6 (so the flags carry that add). The routine then pushes the buffer
+ * address and [BP+4] and calls the far routine 024C:08BF (string output), pops both
+ * arguments into BX and drops the frame.
+ *
+ * Callees: 1276 (plain RET, ADD SP,6 by the caller) and 024C:08BF (far, plain RET,
+ * two POPs by the caller).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; each call charges its own. */
+static int setup_format_and_print(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { WINDOW = 4, ARG1 = 6, ARG2 = 8 };                               /* [BP+n] */
+    enum { BUFFER = -0x00C8, BUFFER_SIZE = 0x00C8, FORMATTER = 0x1276 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 7)) return 0;
+    XB(7, 0x05A3);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], BUFFER_SIZE, 1);
+    cpu_push16(c, bp_get(c, ARG2));
+    cpu_push16(c, bp_get(c, ARG1));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x05B5);
+    XRUN(guest_call_pop(m, FORMATTER, 0x05B8, 0));
+    XB(4, 0x05B8);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, WINDOW));
+    SM4_NEED(1, 0x05C3);
+    XRUN(guest_call_far(m, 0x05C3, 0x05C8));
+    XB(5, 0x05C8);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:05CE - print a text, given as a far pointer, in word-wrapped lines.
+ *
+ * The same word wrapper as 070A (setup_wrap_text), but for a text that can lie in any
+ * segment, and with leading spaces dropped from each line. Seven arguments: the widget
+ * record at [BP+4] (its +0C holds the font handle, +8 and +0A the text position), the
+ * text as a far pointer, offset at [BP+6] and segment at [BP+8], the line width limit at
+ * [BP+0A], the x position at [BP+0C], the first y position at [BP+0E] and the y step per
+ * line at [BP+10].
+ *
+ * Locals (a 210h-byte frame, the line buffer at BP-20C): [BP-2] font, [BP-6] far start of
+ * the current line (offset, with the segment at [BP-4]), [BP-0A] far scan pointer (segment
+ * at [BP-8]), [BP-0C] characters taken, [BP-14] far start of the whole text, [BP-16] "more
+ * lines" flag, [BP-18] pixel width of the taken characters, [BP-210] and [BP-20E] a spare
+ * far pointer slot that receives the scan pointer (BX, ES) before every width call.
+ *
+ * Per line: take characters (read through LES, so ES is left holding the text segment)
+ * while the width is below the limit and the character is not 0, CR or LF, adding the
+ * width of each, the sign-extended character with the font pushed to the far routine
+ * 024C:0991. When the limit was reached, back up until a space, 0, CR, LF or hyphen is
+ * under the pointer or the pointer is back at the start of the whole text. A hyphen counts
+ * into the line. Then spaces at the start of the line are skipped; a 0 under the scan
+ * pointer clears the "more" flag. A non-empty line is copied by 1340 (destination, source
+ * offset, source segment, count) into the buffer, terminated with a zero byte, the x
+ * position is stored into the record and the buffer drawn by the far routine 024C:08BF
+ * (record, buffer); y grows by the step, plus 2 more after a CR. The next line starts
+ * after the character the scan stopped on.
+ *
+ * Callees: 024C:0991 (far, two arguments, answers the width in AX), 1340 (near, plain
+ * RET, ADD SP,8 by the caller) and 024C:08BF (far, two POPs by the caller).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the blocks begin at every branch target and after every conditional jump
+ * and call. */
+static int setup_wrap_far_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, TEXT_OFF = 6, TEXT_SEG = 8, LIMIT = 0x0A, POS_X = 0x0C, POS_Y = 0x0E,
+           STEP = 0x10 };
+    enum { FONT = -2, LINE = -6, SCAN = -0x0A, TAKEN = -0x0C, TEXT_START = -0x14, MORE = -0x16,
+           WIDTH = -0x18, SPARE = -0x210, BUFFER = -0x20C, FRAME = 0x210 };
+    enum { REC_X = 8, REC_Y = 0x0A, REC_FONT = 0x0C, COPY_BYTES = 0x1340 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define CHR() mem_read8(c, phys(c->seg[S_ES], c->r[R_BX]))
+#define LES_BX(d_) do { c->r[R_BX] = bp_get(c, (d_)); c->seg[S_ES] = bp_get(c, (d_) + 2); } while (0)
+    if (!room(c, 18)) return 0;
+    XB(18, 0x05CE);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], FRAME, 1);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = bp_get(c, TEXT_OFF);
+    c->r[R_DX] = bp_get(c, TEXT_SEG);
+    bp_put(c, TEXT_START, c->r[R_AX]);
+    bp_put(c, TEXT_START + 2, c->r[R_DX]);
+    bp_put(c, LINE, c->r[R_AX]);
+    bp_put(c, LINE + 2, c->r[R_DX]);
+    bp_put(c, SCAN, c->r[R_AX]);
+    bp_put(c, SCAN + 2, c->r[R_DX]);
+    c->r[R_BX] = bp_get(c, RECORD);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_FONT));
+    bp_put(c, FONT, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, POS_Y);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y), c->r[R_AX]);
+    bp_put8(c, MORE, 1);
+next_line:
+    XB(4, 0x0601);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    bp_put(c, TAKEN, c->r[R_AX]);
+    bp_put(c, WIDTH, c->r[R_AX]);
+    goto width_test;
+take_char:
+    XB(3, 0x060B);
+    LES_BX(SCAN);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(2, 0x0614);
+    alu_op(c, 7, CHR(), 0x0D, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(2, 0x061A);
+    alu_op(c, 7, CHR(), 0x0A, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(7, 0x0620);
+    bp_put(c, SPARE, c->r[R_BX]);
+    bp_put(c, SPARE + 2, c->seg[S_ES]);
+    bp_put(c, SCAN, (uint16_t)alu_inc(c, bp_get(c, SCAN), 1));
+    cpu_push16(c, bp_get(c, FONT));
+    set_r8(c, R_AL, CHR());
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0633);
+    XRUN(guest_call_far(m, 0x0633, 0x0638));
+    XB(4, 0x0638);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, WIDTH, (uint16_t)alu_op(c, 0, bp_get(c, WIDTH), c->r[R_AX], 1));
+    bp_put(c, TAKEN, (uint16_t)alu_inc(c, bp_get(c, TAKEN), 1));
+width_test:
+    XB(3, 0x0640);
+    c->r[R_AX] = bp_get(c, WIDTH);
+    alu_op(c, 7, bp_get(c, LIMIT), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto take_char;                                    /* JA: still room */
+line_full:
+    XB(2, 0x0648);
+    alu_op(c, 7, bp_get(c, LIMIT), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto find_break;                                   /* JA: fits */
+    XB(1, 0x064D);
+    goto back_up;
+check_break:
+    XB(2, 0x064F);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x0655);
+    alu_op(c, 7, CHR(), 0x0D, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x065B);
+    alu_op(c, 7, CHR(), 0x0A, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x0661);
+    alu_op(c, 7, CHR(), 0x2D, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x0667);
+    alu_op(c, 7, bp_get(c, TEXT_START), c->r[R_BX], 1);
+    if (x86_cond(c, 3)) goto line_end;                                     /* JAE: at the start */
+back_up:
+    XB(2, 0x066C);
+    bp_put(c, SCAN, (uint16_t)alu_dec(c, bp_get(c, SCAN), 1));
+    bp_put(c, TAKEN, (uint16_t)alu_dec(c, bp_get(c, TAKEN), 1));
+find_break:
+    XB(3, 0x0672);
+    LES_BX(SCAN);
+    alu_op(c, 7, CHR(), 0x20, 0);
+    if (x86_cond(c, 5)) goto check_break;                                  /* JNE: not a space */
+line_end:
+    XB(2, 0x067B);
+    alu_op(c, 7, CHR(), 0x2D, 0);
+    if (x86_cond(c, 5)) goto skip_spaces;                                  /* JNE: not a hyphen */
+    XB(2, 0x0681);
+    bp_put(c, TAKEN, (uint16_t)alu_inc(c, bp_get(c, TAKEN), 1));
+    goto skip_spaces;
+skip_one:
+    XB(1, 0x0686);
+    bp_put(c, LINE, (uint16_t)alu_inc(c, bp_get(c, LINE), 1));
+skip_spaces:
+    XB(3, 0x0689);
+    LES_BX(LINE);
+    alu_op(c, 7, CHR(), 0x20, 0);
+    if (x86_cond(c, 4)) goto skip_one;                                     /* JE: a leading space */
+    XB(3, 0x0692);
+    LES_BX(SCAN);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (x86_cond(c, 5)) goto have_more;                                    /* JNE: not the end */
+    XB(1, 0x069B);
+    bp_put8(c, MORE, 0);
+have_more:
+    XB(2, 0x069F);
+    alu_op(c, 7, bp_get(c, TAKEN), 0, 1);
+    if (x86_cond(c, 4)) goto advance;                                      /* nothing taken */
+    XB(5, 0x06A5);
+    cpu_push16(c, bp_get(c, TAKEN));
+    cpu_push16(c, bp_get(c, LINE + 2));
+    cpu_push16(c, bp_get(c, LINE));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x06B3);
+    XRUN(guest_call_pop(m, COPY_BYTES, 0x06B6, 0));
+    XB(9, 0x06B6);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 8, 1);
+    c->r[R_SI] = bp_get(c, TAKEN);
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + BUFFER)), 0);
+    c->r[R_AX] = bp_get(c, POS_X);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_X), c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    x86_push_reg(c, R_BX);
+    SM4_NEED(1, 0x06D0);
+    XRUN(guest_call_far(m, 0x06D0, 0x06D5));
+    XB(8, 0x06D5);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, STEP);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y),
+        (uint16_t)alu_op(c, 0, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y)), c->r[R_AX], 1));
+    c->r[R_SI] = bp_get(c, SCAN);
+    c->seg[S_ES] = bp_get(c, SCAN + 2);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])), 0x0D, 0);
+    if (x86_cond(c, 5)) goto advance;                                      /* JNE: not a CR */
+    XB(1, 0x06E9);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y),
+        (uint16_t)alu_op(c, 0, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y)), 2, 1));
+advance:
+    XB(7, 0x06ED);
+    bp_put(c, SCAN, (uint16_t)alu_inc(c, bp_get(c, SCAN), 1));
+    c->r[R_AX] = bp_get(c, SCAN);
+    c->r[R_DX] = bp_get(c, SCAN + 2);
+    bp_put(c, LINE, c->r[R_AX]);
+    bp_put(c, LINE + 2, c->r[R_DX]);
+    alu_op(c, 7, bp_get8(c, MORE), 0, 0);
+    if (x86_cond(c, 4)) goto done;                                         /* no more lines */
+    XB(1, 0x0702);
+    goto next_line;
+done:
+    XB(4, 0x0705);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef LES_BX
+#undef CHR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:070A - print a text in word-wrapped lines inside a pixel width.
+ *
+ * Six arguments: the widget record at [BP+4] (its +0C holds the font handle, +8 and +0A
+ * the text position), the text pointer at [BP+6], the line width limit at [BP+8], the
+ * x position at [BP+0A], the first y position at [BP+0C] and the y step per line at
+ * [BP+0E]. The text is zero-terminated and may hold CR (0Dh) and LF (0Ah) line ends.
+ *
+ * Locals (a 3FAh-byte frame, the line buffer at BP-3F8): [BP-2] font, [BP-4] start of the
+ * current line, [BP-6] scan pointer, [BP-8] characters taken, [BP-0C] start of the whole
+ * text, [BP-0E] "more lines" flag (1 until the zero byte is reached), [BP-10] pixel
+ * width of the taken characters.
+ *
+ * Per line: take characters while the width is below the limit and the character is not
+ * 0, CR or LF, adding the width of each (the far routine 024C:0991, called with the
+ * character and the font) and storing the scan pointer into the spare word at BP-3FA
+ * before each call. If the limit was reached, back up one character at a time until a
+ * space, 0, CR, LF or hyphen is under the pointer or the pointer is back at the start of
+ * the whole text. A hyphen counts into the line; a 0 clears the "more" flag. A non-empty
+ * line is copied by 1322 (destination, source, count) into the buffer, terminated with
+ * a zero byte, the x position is stored into the record and the buffer drawn by the far
+ * routine 024C:08BF (record, buffer); the y position (starting at the given one) grows
+ * by the step, plus 2 more after a CR. The next line starts after the character the scan
+ * stopped on.
+ *
+ * Callees: 024C:0991 (far, two arguments, answers the width in AX), 1322 (near, plain
+ * RET, ADD SP,6 by the caller) and 024C:08BF (far, two POPs by the caller).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the blocks begin at every branch target and after every conditional jump
+ * and call. */
+static int setup_wrap_text_near_070A(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, TEXT = 6, LIMIT = 8, POS_X = 0x0A, POS_Y = 0x0C, STEP = 0x0E };
+    enum { FONT = -2, LINE = -4, SCAN = -6, TAKEN = -8, TEXT_START = -0x0C, MORE = -0x0E,
+           WIDTH = -0x10, SPARE = -0x3FA, BUFFER = -0x3F8, FRAME = 0x3FA };
+    enum { REC_X = 8, REC_Y = 0x0A, REC_FONT = 0x0C, COPY_BYTES = 0x1322 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define CHR() mem_read8(c, phys(c->seg[S_DS], c->r[R_BX]))
+    if (!room(c, 14)) return 0;
+    XB(14, 0x070A);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], FRAME, 1);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = bp_get(c, TEXT);
+    bp_put(c, TEXT_START, c->r[R_AX]);
+    bp_put(c, LINE, c->r[R_AX]);
+    bp_put(c, SCAN, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, RECORD);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_FONT));
+    bp_put(c, FONT, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, POS_Y);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y), c->r[R_AX]);
+    bp_put8(c, MORE, 1);
+next_line:
+    XB(4, 0x0731);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    bp_put(c, TAKEN, c->r[R_AX]);
+    bp_put(c, WIDTH, c->r[R_AX]);
+    goto width_test;
+take_char:
+    XB(3, 0x073B);
+    c->r[R_BX] = bp_get(c, SCAN);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(2, 0x0743);
+    alu_op(c, 7, CHR(), 0x0D, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(2, 0x0748);
+    alu_op(c, 7, CHR(), 0x0A, 0);
+    if (x86_cond(c, 4)) goto line_full;
+    XB(6, 0x074D);
+    bp_put(c, SPARE, c->r[R_BX]);
+    bp_put(c, SCAN, (uint16_t)alu_inc(c, bp_get(c, SCAN), 1));
+    cpu_push16(c, bp_get(c, FONT));
+    set_r8(c, R_AL, CHR());
+    set_r8(c, 4, (uint8_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0));
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x075C);
+    XRUN(guest_call_far(m, 0x075C, 0x0761));
+    XB(4, 0x0761);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, WIDTH, (uint16_t)alu_op(c, 0, bp_get(c, WIDTH), c->r[R_AX], 1));
+    bp_put(c, TAKEN, (uint16_t)alu_inc(c, bp_get(c, TAKEN), 1));
+width_test:
+    XB(3, 0x0769);
+    c->r[R_AX] = bp_get(c, WIDTH);
+    alu_op(c, 7, bp_get(c, LIMIT), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto take_char;                                    /* JA: still room */
+line_full:
+    XB(2, 0x0771);
+    alu_op(c, 7, bp_get(c, LIMIT), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto find_break;                                   /* JA: fits */
+    XB(1, 0x0776);
+    goto back_up;
+check_break:
+    XB(2, 0x0778);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x077D);
+    alu_op(c, 7, CHR(), 0x0D, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x0782);
+    alu_op(c, 7, CHR(), 0x0A, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x0787);
+    alu_op(c, 7, CHR(), 0x2D, 0);
+    if (x86_cond(c, 4)) goto line_end;
+    XB(2, 0x078C);
+    alu_op(c, 7, bp_get(c, TEXT_START), c->r[R_BX], 1);
+    if (x86_cond(c, 3)) goto line_end;                                     /* JAE: at the start */
+back_up:
+    XB(2, 0x0791);
+    bp_put(c, SCAN, (uint16_t)alu_dec(c, bp_get(c, SCAN), 1));
+    bp_put(c, TAKEN, (uint16_t)alu_dec(c, bp_get(c, TAKEN), 1));
+find_break:
+    XB(3, 0x0797);
+    c->r[R_BX] = bp_get(c, SCAN);
+    alu_op(c, 7, CHR(), 0x20, 0);
+    if (x86_cond(c, 5)) goto check_break;                                  /* JNE: not a space */
+line_end:
+    XB(2, 0x079F);
+    alu_op(c, 7, CHR(), 0x2D, 0);
+    if (!x86_cond(c, 5)) {                                                 /* a hyphen stays on the line */
+        XB(1, 0x07A4);
+        bp_put(c, TAKEN, (uint16_t)alu_inc(c, bp_get(c, TAKEN), 1));
+    }
+    XB(2, 0x07A7);
+    alu_op(c, 7, CHR(), 0x00, 0);
+    if (!x86_cond(c, 5)) {                                                 /* the zero byte ends the text */
+        XB(1, 0x07AC);
+        bp_put8(c, MORE, 0);
+    }
+    XB(2, 0x07B0);
+    alu_op(c, 7, bp_get(c, TAKEN), 0, 1);
+    if (x86_cond(c, 4)) goto advance;                                      /* nothing taken */
+    XB(4, 0x07B6);
+    cpu_push16(c, bp_get(c, TAKEN));
+    cpu_push16(c, bp_get(c, LINE));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x07C1);
+    XRUN(guest_call_pop(m, COPY_BYTES, 0x07C4, 0));
+    XB(9, 0x07C4);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    c->r[R_SI] = bp_get(c, TAKEN);
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + BUFFER)), 0);
+    c->r[R_AX] = bp_get(c, POS_X);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_X), c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUFFER);
+    cpu_push16(c, c->r[R_AX]);
+    x86_push_reg(c, R_BX);
+    SM4_NEED(1, 0x07DE);
+    XRUN(guest_call_far(m, 0x07DE, 0x07E3));
+    XB(8, 0x07E3);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, STEP);
+    c->r[R_BX] = bp_get(c, RECORD);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y),
+        (uint16_t)alu_op(c, 0, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y)), c->r[R_AX], 1));
+    c->r[R_SI] = bp_get(c, SCAN);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], c->r[R_SI])), 0x0D, 0);
+    if (x86_cond(c, 5)) goto advance;                                      /* JNE: not a CR */
+    XB(1, 0x07F6);
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y),
+        (uint16_t)alu_op(c, 0, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + REC_Y)), 2, 1));
+advance:
+    XB(5, 0x07FA);
+    bp_put(c, SCAN, (uint16_t)alu_inc(c, bp_get(c, SCAN), 1));
+    c->r[R_AX] = bp_get(c, SCAN);
+    bp_put(c, LINE, c->r[R_AX]);
+    alu_op(c, 7, bp_get8(c, MORE), 0, 0);
+    if (x86_cond(c, 4)) goto done;                                         /* no more lines */
+    XB(1, 0x0809);
+    goto next_line;
+done:
+    XB(4, 0x080C);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef CHR
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0811 - total width of a zero-terminated string, character by character.
+ *
+ * Two arguments: a record pointer at [BP+4] and the string pointer at [BP+6]. The
+ * record's word at +0C (the font or style handle) is read once and kept in the local
+ * [BP-2]; the running pointer lives in [BP-4] and the running total in [BP-6] (both
+ * locals of an 8-byte frame). For every character before the terminating zero the
+ * pointer local is incremented FIRST, then the far routine 024C:0991 is called with the
+ * character (zero-extended, pushed second so it is the first argument) and the style
+ * word, and its answer, the width of that character, is added to the total. The
+ * character is read through the register BX, which still holds the pointer of the
+ * test before the increment. The total is returned in AX.
+ *
+ * Call target: encoded far address 024C:0991 is a relocated far-jump thunk (static bytes decode as LJMP 0:0).
+ * The fixture replaces that target with a far RETF probe that drops no argument words; the caller's two POPs
+ * remove both arguments, leaving BX as the style word until the loop test reloads it.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the call charges its own. */
+static int setup_string_width(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, STRING = 6, STYLE_FIELD = 0x0C };                   /* [BP+n], record +n */
+    enum { POINTER = -4, STYLE = -2, TOTAL = -6, FRAME = 8 };              /* locals */
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 10)) return 0;
+    XB(10, 0x0811);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], FRAME, 1);
+    c->r[R_AX] = bp_get(c, STRING);
+    bp_put(c, POINTER, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, RECORD);
+    c->r[R_AX] = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + STYLE_FIELD));
+    bp_put(c, STYLE, c->r[R_AX]);
+    bp_put(c, TOTAL, 0);
+    for (;;) {
+        XB(3, 0x0842);                                                    /* the test */
+        c->r[R_BX] = bp_get(c, POINTER);
+        alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], c->r[R_BX])), 0x00, 0);
+        if (!x86_cond(c, 5)) break;                                       /* JNE: next character */
+        XB(5, 0x082D);
+        bp_put(c, POINTER, (uint16_t)alu_inc(c, bp_get(c, POINTER), 1));
+        cpu_push16(c, bp_get(c, STYLE));
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_BX])));
+        set_r8(c, 4, (uint8_t)alu_op(c, 5, get_r8(c, 4), get_r8(c, 4), 0));
+        x86_push_reg(c, R_AX);
+        SM4_NEED(1, 0x0838);
+        XRUN(guest_call_far(m, 0x0838, 0x083D));
+        XB(3, 0x083D);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        bp_put(c, TOTAL, (uint16_t)alu_op(c, 0, bp_get(c, TOTAL), c->r[R_AX], 1));
+    }
+    XB(4, 0x084A);
+    c->r[R_AX] = bp_get(c, TOTAL);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0851 - write a signed 32-bit number as decimal text with a thousands comma.
+ *
+ * Three arguments: the number as two words, low at [BP+4] and high at [BP+6], and the
+ * output pointer (into the data segment) at [BP+8]. A negative number (high word below
+ * zero) is negated as a pair (NEG low, ADC high with 0, NEG high) and a '-' is written
+ * first. The magnitude is then taken apart with the library's 32-bit arithmetic, always
+ * with the divisor 10 (pushed as the two words DX:AX of CDQ): 18A2 (four argument words,
+ * answers the remainder in AL), 194E (three words: the address of the number and the
+ * divisor; it divides the number in place and answers the quotient in DX:AX) and 17D6
+ * (four words, answers the quotient in DX:AX). The first 18A2 gives the units digit; then
+ * 194E divides the number and its quotient (kept in SI:DI) goes through 18A2 for the tens
+ * digit; each further digit is a 17D6 quotient stored back at [BP+4]/[BP+6] and an 18A2
+ * remainder, six digits in all into the array [BP-6..BP-1], least significant first.
+ * The rest (skip leading zeros down to index 1, then write digit+30h with a ',' before
+ * index 2 once something was written, and a closing zero byte) is the same text writer as
+ * at 0979. Locals: [BP-8] output pointer, [BP-0A] "something written", [BP-0C] the digit
+ * index. DI and SI are saved on entry and restored on exit.
+ *
+ * Callees: 18A2 and 17D6 (plain near RET 8, they pop their four words), 194E (RET 6).
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the blocks begin at every branch target and after every call. */
+static int setup_format_long_number(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LOW = 4, HIGH = 6, OUT = 8 };                                   /* [BP+n] */
+    enum { DIGITS = -6, PTR = -8, WRITTEN = -0x0A, INDEX = -0x0C, FRAME = 0x0C };
+    enum { THOUSANDS_INDEX = 2, LAST_INDEX = 5, REMAINDER = 0x18A2, DIVIDE_IN_PLACE = 0x194E,
+           QUOTIENT = 0x17D6 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define CDQ() (c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000)
+#define CALL(at_, target_, pops_) do { SM4_NEED(1, (at_)); \
+    XRUN(guest_call_pop(m, (target_), (uint16_t)((at_) + 3), (pops_))); } while (0)
+/* MOV AX,10; CDQ; PUSH DX; PUSH AX - the divisor as a long - then, where the callee wants
+ * it twice, PUSH DX; PUSH AX again. */
+#define TEN() do { c->r[R_AX] = 10; CDQ(); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); } while (0)
+#define PUSH_TEN() do { cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0851);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], FRAME, 1);
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = bp_get(c, OUT);
+    bp_put(c, PTR, c->r[R_AX]);
+    alu_op(c, 7, bp_get(c, HIGH), 0, 1);
+    if (!x86_cond(c, 13)) {                                                /* JGE: not negative */
+        XB(7, 0x0865);
+        bp_put(c, LOW, (uint16_t)alu_sub(c, 0, bp_get(c, LOW), 1, 0));
+        bp_put(c, HIGH, (uint16_t)alu_op(c, 2, bp_get(c, HIGH), 0, 1));
+        bp_put(c, HIGH, (uint16_t)alu_sub(c, 0, bp_get(c, HIGH), 1, 0));
+        c->r[R_BX] = c->r[R_AX];
+        mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0x2D);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        bp_put(c, PTR, c->r[R_AX]);
+    }
+    XB(6, 0x0878);                                                         /* digit 0: remainder */
+    TEN();
+    cpu_push16(c, bp_get(c, HIGH));
+    cpu_push16(c, bp_get(c, LOW));
+    CALL(0x0884, REMAINDER, 8);
+    XB(9, 0x0887);
+    bp_put8(c, DIGITS + 0, get_r8(c, R_AL));
+    TEN();
+    PUSH_TEN();
+    c->r[R_CX] = (uint16_t)(c->r[R_BP] + LOW);
+    cpu_push16(c, c->r[R_CX]);
+    CALL(0x0896, DIVIDE_IN_PLACE, 6);
+    XB(4, 0x0899);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_SI] = c->r[R_AX];
+    c->r[R_DI] = c->r[R_DX];
+    CALL(0x089F, REMAINDER, 8);
+    XB(9, 0x08A2);
+    bp_put8(c, DIGITS + 1, get_r8(c, R_AL));
+    TEN();
+    PUSH_TEN();
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    CALL(0x08AF, QUOTIENT, 8);
+    XB(4, 0x08B2);
+    bp_put(c, LOW, c->r[R_AX]);
+    bp_put(c, HIGH, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    CALL(0x08BA, REMAINDER, 8);
+    XB(9, 0x08BD);
+    bp_put8(c, DIGITS + 2, get_r8(c, R_AL));
+    TEN();
+    PUSH_TEN();
+    cpu_push16(c, bp_get(c, HIGH));
+    cpu_push16(c, bp_get(c, LOW));
+    CALL(0x08CE, QUOTIENT, 8);
+    XB(4, 0x08D1);
+    bp_put(c, LOW, c->r[R_AX]);
+    bp_put(c, HIGH, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    CALL(0x08D9, REMAINDER, 8);
+    XB(9, 0x08DC);
+    bp_put8(c, DIGITS + 3, get_r8(c, R_AL));
+    TEN();
+    PUSH_TEN();
+    cpu_push16(c, bp_get(c, HIGH));
+    cpu_push16(c, bp_get(c, LOW));
+    CALL(0x08ED, QUOTIENT, 8);
+    XB(4, 0x08F0);
+    bp_put(c, LOW, c->r[R_AX]);
+    bp_put(c, HIGH, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    CALL(0x08F8, REMAINDER, 8);
+    XB(9, 0x08FB);
+    bp_put8(c, DIGITS + 4, get_r8(c, R_AL));
+    TEN();
+    PUSH_TEN();
+    cpu_push16(c, bp_get(c, HIGH));
+    cpu_push16(c, bp_get(c, LOW));
+    CALL(0x090C, QUOTIENT, 8);
+    XB(4, 0x090F);
+    bp_put(c, LOW, c->r[R_AX]);
+    bp_put(c, HIGH, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    CALL(0x0917, REMAINDER, 8);
+    XB(4, 0x091A);
+    bp_put8(c, DIGITS + 5, get_r8(c, R_AL));
+    bp_put8(c, WRITTEN, 0);
+    bp_put8(c, INDEX, LAST_INDEX);
+    goto test_index;
+skip_zero:
+    XB(1, 0x0927);
+    bp_put8(c, INDEX, (uint8_t)alu_dec(c, bp_get8(c, INDEX), 0));
+test_index:
+    XB(2, 0x092A);
+    alu_op(c, 7, bp_get8(c, INDEX), 0, 0);
+    if (x86_cond(c, 14)) goto emit;                                        /* JLE */
+    XB(5, 0x0930);
+    set_r8(c, R_AL, bp_get8(c, INDEX));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    c->r[R_SI] = c->r[R_AX];
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + DIGITS))), 0, 0);
+    if (x86_cond(c, 4)) goto skip_zero;                                    /* JE: zero digit */
+emit:
+    XB(2, 0x093C);
+    alu_op(c, 7, bp_get8(c, INDEX), THOUSANDS_INDEX, 0);
+    if (!x86_cond(c, 5)) {                                                 /* the thousands digit */
+        XB(2, 0x0942);
+        alu_op(c, 7, bp_get8(c, WRITTEN), 1, 0);
+        if (!x86_cond(c, 5)) {                                             /* a digit was written */
+            XB(3, 0x0948);
+            c->r[R_BX] = bp_get(c, PTR);
+            bp_put(c, PTR, (uint16_t)alu_inc(c, bp_get(c, PTR), 1));
+            mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0x2C);
+        }
+    }
+    XB(11, 0x0951);
+    set_r8(c, R_AL, bp_get8(c, INDEX));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    c->r[R_SI] = c->r[R_AX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + DIGITS))));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x30, 0));
+    c->r[R_BX] = bp_get(c, PTR);
+    bp_put(c, PTR, (uint16_t)alu_inc(c, bp_get(c, PTR), 1));
+    mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), get_r8(c, R_AL));
+    bp_put8(c, WRITTEN, 1);
+    bp_put8(c, INDEX, (uint8_t)alu_dec(c, bp_get8(c, INDEX), 0));
+    if (x86_cond(c, 9)) goto emit;                                         /* JNS */
+    XB(7, 0x096D);
+    c->r[R_BX] = bp_get(c, PTR);
+    mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PUSH_TEN
+#undef TEN
+#undef CALL
+#undef CDQ
+#undef XRUN
+#undef XB
+}
+
+/* SETUP 0000:0979 - write a signed 16-bit number as decimal text with a thousands comma.
+ *
+ * Two arguments: the number at [BP+4] and the output pointer (into the data segment) at
+ * [BP+6]. A negative number is negated in place and a '-' is written first. The
+ * magnitude is then divided by ten six times with the signed IDIV (DX:AX sign-extended
+ * from AX, so 8000h negated to 8000h gives negative "digits" that are still stored as
+ * bytes); the remainders go to the six-byte digit array at [BP-6..BP-1], least
+ * significant first. The scan starts at index 5 and walks down while the digit is zero
+ * and the index is above 0, which skips leading zeros but always keeps the units digit.
+ * From there down to index 0 each digit is written as digit+30h; the index 2 digit (the
+ * thousands) is preceded by a ',' once something was already written. The text ends with a
+ * zero byte. Locals: [BP-8] output pointer, [BP-0A] "something written" flag, [BP-0C]
+ * the digit index. SI is saved on entry and restored on exit.
+ *
+ * No calls. The division cannot trap: the divisor is the constant ten and a 16-bit
+ * dividend divided by ten always fits.
+ *
+ * The clock: each XB(n, at) claims room for the n instructions of one straight run and
+ * charges them; the blocks begin at every branch target. */
+static int setup_format_signed_number(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { NUMBER = 4, OUT = 6 };                                          /* [BP+n] */
+    enum { DIGITS = -6, PTR = -8, WRITTEN = -0x0A, INDEX = -0x0C, FRAME = 0x0C };
+    enum { THOUSANDS_INDEX = 2, LAST_INDEX = 5 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define CDQ() (c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000)
+#define DIV10() do { CDQ(); (void)x86_idiv16(c, c->r[R_CX], 0); } while (0)
+#define DIGIT(d_) bp_put8(c, (d_), get_r8(c, R_DL))
+    if (!room(c, 8)) return 0;
+    XB(8, 0x0979);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], FRAME, 1);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = bp_get(c, OUT);
+    bp_put(c, PTR, c->r[R_AX]);
+    alu_op(c, 7, bp_get(c, NUMBER), 0, 1);
+    if (!x86_cond(c, 13)) {                                                /* JGE: not negative */
+        XB(5, 0x098C);
+        bp_put(c, NUMBER, (uint16_t)alu_sub(c, 0, bp_get(c, NUMBER), 1, 0));
+        c->r[R_BX] = c->r[R_AX];
+        mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0x2D);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        bp_put(c, PTR, c->r[R_AX]);
+    }
+    XB(44, 0x0998);
+    c->r[R_AX] = bp_get(c, NUMBER);
+    c->r[R_CX] = 10;
+    DIV10();
+    DIGIT(DIGITS + 0);
+    c->r[R_AX] = bp_get(c, NUMBER);
+    DIV10();
+    bp_put(c, NUMBER, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    DIV10();
+    DIGIT(DIGITS + 1);
+    c->r[R_AX] = c->r[R_BX];
+    DIV10();
+    bp_put(c, NUMBER, c->r[R_AX]);
+    DIV10();
+    DIGIT(DIGITS + 2);
+    c->r[R_AX] = bp_get(c, NUMBER);
+    DIV10();
+    bp_put(c, NUMBER, c->r[R_AX]);
+    DIV10();
+    DIGIT(DIGITS + 3);
+    c->r[R_AX] = bp_get(c, NUMBER);
+    DIV10();
+    bp_put(c, NUMBER, c->r[R_AX]);
+    DIV10();
+    DIGIT(DIGITS + 4);
+    c->r[R_AX] = bp_get(c, NUMBER);
+    DIV10();
+    bp_put(c, NUMBER, c->r[R_AX]);
+    DIV10();
+    DIGIT(DIGITS + 5);
+    bp_put8(c, WRITTEN, 0);
+    bp_put8(c, INDEX, LAST_INDEX);
+    goto test_index;
+skip_zero:
+    XB(1, 0x09FA);
+    bp_put8(c, INDEX, (uint8_t)alu_dec(c, bp_get8(c, INDEX), 0));
+test_index:
+    XB(2, 0x09FD);
+    alu_op(c, 7, bp_get8(c, INDEX), 0, 0);
+    if (x86_cond(c, 14)) goto emit;                                        /* JLE */
+    XB(5, 0x0A03);
+    set_r8(c, R_AL, bp_get8(c, INDEX));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    c->r[R_SI] = c->r[R_AX];
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + DIGITS))), 0, 0);
+    if (x86_cond(c, 4)) goto skip_zero;                                    /* JE: zero digit */
+emit:
+    XB(2, 0x0A0F);
+    alu_op(c, 7, bp_get8(c, INDEX), THOUSANDS_INDEX, 0);
+    if (!x86_cond(c, 5)) {                                                 /* JE: the thousands digit */
+        XB(2, 0x0A15);
+        alu_op(c, 7, bp_get8(c, WRITTEN), 1, 0);
+        if (!x86_cond(c, 5)) {                                             /* JE: a digit was written */
+            XB(3, 0x0A1B);
+            c->r[R_BX] = bp_get(c, PTR);
+            bp_put(c, PTR, (uint16_t)alu_inc(c, bp_get(c, PTR), 1));
+            mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0x2C);
+        }
+    }
+    XB(11, 0x0A24);
+    set_r8(c, R_AL, bp_get8(c, INDEX));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    c->r[R_SI] = c->r[R_AX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] + DIGITS))));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 0, get_r8(c, R_AL), 0x30, 0));
+    c->r[R_BX] = bp_get(c, PTR);
+    bp_put(c, PTR, (uint16_t)alu_inc(c, bp_get(c, PTR), 1));
+    mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), get_r8(c, R_AL));
+    bp_put8(c, WRITTEN, 1);
+    bp_put8(c, INDEX, (uint8_t)alu_dec(c, bp_get8(c, INDEX), 0));
+    if (x86_cond(c, 9)) goto emit;                                         /* JNS */
+    XB(6, 0x0A40);
+    c->r[R_BX] = bp_get(c, PTR);
+    mem_write8(c, phys(c->seg[S_DS], c->r[R_BX]), 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef DIGIT
+#undef DIV10
+#undef CDQ
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0979, setup_format_signed_number, "write a signed 16-bit number as decimal text with a thousands comma", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0851, setup_format_long_number, "write a signed 32-bit number as decimal text with a thousands comma", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0811, setup_string_width, "sum the widths of a zero-terminated string through one far call per character", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x070A, setup_wrap_text_near_070A, "word-wrap a near DS string and draw each line", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x05CE, setup_wrap_far_text, "print a far-pointer text in word-wrapped lines, dropping leading spaces", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x05A3, setup_format_and_print, "format text into a local 200-byte buffer and draw it through the far string-output thunk", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0582, setup_store_position_and_draw, "store a text position into a widget record, then draw through the far string-output thunk", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0562, setup_store_position_and_print, "store a text position into a widget record, then format and print", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1942, setup_shift_right_long, "arithmetic shift right of DX:AX by CL bits", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x18A2, setup_signed_remainder, "C runtime signed 32-bit remainder (sign of the dividend), RET 8", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1870, setup_ulong_multiply, "C runtime unsigned 32-bit multiply (low 32 bits of the product), RET 8", 1 },
