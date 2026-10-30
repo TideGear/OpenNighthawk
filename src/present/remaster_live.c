@@ -1,0 +1,138 @@
+/* remaster_live.c - Remastered's view of a running game through the machine's execution hooks (see remaster_live.h). */
+#include "remaster_live.h"
+
+#include "remaster_raster.h"
+#include "remaster_scene.h"
+#include "scene_mesh.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+/* the watched entries, as {segment relative to the load segment, offset}: k = 0 the model request, 1 to 5 projection
+ * returns, 6 the per-frame draw routine */
+static const struct { uint16_t seg, ip; } WATCH[7] = {
+    { 0x120A, 0x00CF },
+    { 0x120A, 0x08D5 }, { 0x120A, 0x0901 }, { 0x120A, 0x0937 }, { 0x120A, 0x096A }, { 0x120A, 0x0970 },
+    { 0x0000, 0x1450 },
+};
+
+struct remaster_live {
+    remaster_scene *scene;
+    remaster_frame frame;
+    int pending;
+    uint16_t model, bank;
+    int16_t position[3];
+    unsigned frames, want_frame;
+    int w, h;
+    char *out_path;
+    int written;
+    unsigned requests, added, refused;
+};
+
+remaster_live *remaster_live_new(int w, int h, unsigned frame, const char *out_path)
+{
+    remaster_live *r = (remaster_live *)calloc(1, sizeof *r);
+    if (!r) return NULL;
+    r->scene = remaster_scene_new();
+    r->w = w; r->h = h; r->want_frame = frame;
+    if (out_path) {
+        r->out_path = (char *)malloc(strlen(out_path) + 1);
+        if (r->out_path) strcpy(r->out_path, out_path);
+    }
+    if (!r->scene) { remaster_live_free(r); return NULL; }
+    return r;
+}
+
+void remaster_live_free(remaster_live *r)
+{
+    if (!r) return;
+    remaster_scene_free(r->scene);
+    remaster_frame_free(&r->frame);
+    free(r->out_path);
+    free(r);
+}
+
+unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
+{
+    (void)r;
+    const unsigned base = m->exec_hook_n;
+    for (unsigned k = 0; k < 7 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
+        m->exec_hook[m->exec_hook_n].cs = (uint16_t)(load_seg + WATCH[k].seg);
+        m->exec_hook[m->exec_hook_n].ip = WATCH[k].ip;
+        m->exec_hook_n++;
+    }
+    return base;
+}
+
+static uint16_t peek16(const machine_t *m, uint16_t seg, uint16_t off)
+{
+    const uint32_t at = ((uint32_t)seg << 4) + off;
+    return (uint16_t)(m->mem[at & 0xFFFFF] | m->mem[(at + 1) & 0xFFFFF] << 8);
+}
+
+/* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
+static uint32_t dac_colour(const machine_t *m, unsigned index)
+{
+    const uint8_t *d = &m->dac[(index & 255) * 3];
+    const unsigned r = d[0] << 2 | d[0] >> 4, g = d[1] << 2 | d[1] >> 4, b = d[2] << 2 | d[2] >> 4;
+    return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+}
+
+static void write_frame(remaster_live *r, const machine_t *m)
+{
+    remaster_target t;
+    t.w = r->w; t.h = r->h;
+    t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
+    t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
+    if (!t.color || !t.inv_z) { free(t.color); free(t.inv_z); return; }
+    t.cx = r->w / 2.0; t.cy = r->h / 2.0;
+    t.sx = 256.0 * r->h / 240.0; t.sy = 256.0 * r->h / 200.0;
+    t.near_z = 0x10000;
+    remaster_clear(&t, 0xFF000000u);
+    for (size_t i = 0; i < r->frame.n; i++) {
+        const remaster_prim *p = &r->frame.prim[i];
+        if (p->kind != SCENE_POLYGON || p->n < 3) continue;     /* lines and dots later */
+        remaster_polygon(&t, p->v, p->n, dac_colour(m, p->colour_word & 0xFF));
+    }
+    FILE *f = fopen(r->out_path, "wb");
+    if (f) {
+        fprintf(f, "P6\n%d %d\n255\n", r->w, r->h);
+        for (long i = 0; i < (long)r->w * r->h; i++) {
+            const uint32_t c = t.color[i];
+            const unsigned char px[3] = { (unsigned char)(c >> 16), (unsigned char)(c >> 8), (unsigned char)c };
+            fwrite(px, 1, 3, f);
+        }
+        fclose(f);
+        r->written = 1;
+    }
+    free(t.color);
+    free(t.inv_z);
+}
+
+int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
+{
+    if (k == 0) {                                           /* the model request: return IP, CS, then the model */
+        const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        r->pending = 1;
+        r->requests++;
+        r->model = peek16(m, ss, (uint16_t)(sp + 4));
+        r->bank = peek16(m, m->cpu.seg[S_DS], 0x8590);
+        for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
+    } else if (k <= 5) {                                    /* a projection returned: the pose is prepared */
+        if (r->pending) {
+            r->pending = 0;
+            const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
+            if (n < 0) r->refused++; else r->added++;
+        }
+    } else if (k == 6) {                                    /* the per-frame draw routine: the last frame is complete */
+        if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
+        r->frames++;
+        remaster_frame_clear(&r->frame);
+        r->pending = 0;
+    }
+    return 0;
+}
+
+size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
+unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }

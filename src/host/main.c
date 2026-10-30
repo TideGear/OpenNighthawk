@@ -46,6 +46,7 @@
 #include "subtitles.h"
 #include "macsound.h"
 #include "soundpolicy.h"
+#include "remaster_live.h"
 #include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
@@ -108,9 +109,14 @@ static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundp
  * and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac recordings are
  * the host's to play; whatever is not taken here goes on to the DOS driver as the original does. The game's own
  * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
-static int on_sound_call(void *user, machine_t *m)
+static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
+static unsigned g_rlive_base;
+
+static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
+    if (g_rlive && index >= g_rlive_base) return remaster_live_exec(g_rlive, m, index - g_rlive_base);
+    if (index != 0) return 0;                                   /* index 0 is the sound stub; the others are Remastered's */
     const uint16_t id = (uint16_t)(m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 4)) & 0xFFFFF] |
                                    m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
     static int log_requests = -1;
@@ -510,11 +516,20 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
 {
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
     if (kind != MODLOAD_OVERLAY) {
-        m->exec_hook_on = 0;
+        m->exec_hook_n = 0;
         if (g_mac && !SDL_strcasecmp(name, "VGAME.EXE")) {      /* the game's sound stub: a far jump slot at load+1E42:0313 */
-            m->exec_hook_cs = (uint16_t)(load_seg + 0x1E42);
-            m->exec_hook_ip = 0x0313;
-            m->exec_hook_on = 1;
+            m->exec_hook[0].cs = (uint16_t)(load_seg + 0x1E42);
+            m->exec_hook[0].ip = 0x0313;
+            m->exec_hook_n = 1;
+        }
+        if (!SDL_strcasecmp(name, "VGAME.EXE")) {
+            const char *spec = getenv("F117_REMASTER_FRAME");       /* N:FILE.ppm: write the Nth frame's geometry as a picture */
+            if (spec && !g_rlive) {
+                const unsigned frame = (unsigned)strtoul(spec, NULL, 10);
+                const char *colon = strchr(spec, ':');
+                g_rlive = remaster_live_new(960, 720, frame, colon ? colon + 1 : NULL);
+            }
+            if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
         }
     }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
@@ -1088,7 +1103,7 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = app_module_load;
-    hooks.exec = on_sound_call;
+    hooks.exec = on_exec_hook;
     hooks.file_data = fixes_file_data;
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);

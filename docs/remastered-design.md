@@ -204,3 +204,16 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   commands, turning each polygon's edge chain into an ordered vertex loop. Tested on the synthetic fixture placed in a fake
   guest memory (`presentation_remaster_scene`). Not yet checked on real data, which needs the callback running in a build: the
   next step is a headless consumer of `observe_pose` that collects a frame and draws it with the fill.
+
+### First live frame (30 October 2026)
+
+`F117_REMASTER_FRAME=N:FILE.ppm` (f117a, `src/present/remaster_live.c`) draws the Nth frame's geometry from a running game.
+It uses the machine's execution hooks (`machine_t.exec_hook`, a table of up to eight CS:IP entries; the same mechanism
+hybrid sound uses, in `src/machine/pc.c`), not matched code, so it works in a build without generated code. It watches
+the model request (VGAME `120A:00CF`), the five projection returns (`120A:08D5`, `0901`, `0937`, `096A`, `0970`: the pose is
+prepared by the first one a request reaches, and `remaster_scene_add` reads it there) and the per-frame draw routine
+(`0000:1450`). Frame 150 of the recorded takeoff (`rec/input.log`) at 960 x 720 shows the runway ground, the horizon and
+buildings in the distance, drawn through the depth-correct fill. Not yet: the sky, the model colours (a first
+approximation takes the colour word as a palette index; shades are not applied), lines and dots, terrain from the tile
+maps, widescreen, longer reach, and the comparison with the original's frame (`F117_PRESENT_SHOTS`). Nothing is wired to
+`--presentation remastered` yet, so the feature stays at 0%.
