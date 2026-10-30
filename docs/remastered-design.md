@@ -129,4 +129,6 @@ has no effect on the running game.
   at every one of the eight detail levels in all 11 banks (nine theatres, `STFLT.3DX`, `PHOTO.3DX`): 492 models,
   3,936 decodes, no failure. The largest mesh is 130 vertices, 46 planes, 188 edges. Some detail levels are empty
   (models with no geometry at that distance). Until now the decoder had only been run on synthetic fixtures.
-  Not yet checked: that this page equals the game's in-memory bank, and the decoded meshes against drawn polygons.
+  Checked against the game: a memory dump from a flight (`boot_to_flight`, Libya) holds `LB.3DX`, `PHOTO.3DX` and
+  `STFLT.3DX` byte for byte (100% of each file), so the game loads the files unchanged and the decoder reads the
+  game's own page. Not yet checked: the decoded meshes against drawn polygons.
