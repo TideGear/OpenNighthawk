@@ -132,3 +132,11 @@ has no effect on the running game.
   Checked against the game: a memory dump from a flight (`boot_to_flight`, Libya) holds `LB.3DX`, `PHOTO.3DX` and
   `STFLT.3DX` byte for byte (100% of each file), so the game loads the files unchanged and the decoder reads the
   game's own page. Not yet checked: the decoded meshes against drawn polygons.
+- **R3 first look, the models drawn (30 October 2026).** `tools/model_sheet.c` draws every model of a bank into a
+  contact sheet with a depth buffer (triangle fans, flat shading by the plane's normal, no part articulation, no
+  original materials). `STFLT.3DX` gives recognisable aircraft, a missile, an airship and a parachute; `LB.3DX`
+  gives, first, about thirty flat ground patches (plain tiles, coast and road shapes), then buildings (boxes,
+  pyramids, a mast). The faces and vertices decode to real shapes, and the depth buffer draws a nearer face over a
+  farther one whatever their order. Inference, not yet proved: the terrain is a grid of these flat patches picked
+  by the `*.3DG` tile maps, which would make the road and coastline jitter a property of how the original projects
+  and fills those patches. Not yet: part angles (articulation), the original's colours and materials, placement.
