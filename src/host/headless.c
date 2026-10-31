@@ -221,7 +221,7 @@ static void rm_pose(void *u, uint64_t icount, machine_t *m, uint16_t model, uint
         if (vr - vl < 300 && added > 0) { g_rm_frame.n = before; added = 0; }
     }
     if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) {
-        fprintf(stderr, "req %llu model %u bank %04X pos %d,%d,%d added %d\n", (unsigned long long)icount, model, bank, pos[0], pos[1], pos[2], added);
+        fprintf(stderr, "req %llu model %u bank %04X pos %d,%d,%d added %d flip %d\n", (unsigned long long)icount, model, bank, pos[0], pos[1], pos[2], added, m->mem[((size_t)m->cpu.seg[S_DS] << 4) + 0x0346] & 1);
         const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
         const int gx = (int16_t)(ds[0x8602] | ds[0x8603] << 8), gy = (int16_t)(ds[0x8604] | ds[0x8605] << 8);
         for (size_t k = before; k < g_rm_frame.n && k < before + 3; k++) {
@@ -251,16 +251,11 @@ static void rm_compose(void *u, machine_t *m)
     static unsigned composes;
     if (g_rm_done) return;
     if (m->cpu.icount < g_rm_from) { remaster_frame_clear(&g_rm_frame); composes = 0; { extern size_t g_rm_last_n; g_rm_last_n = 0; } return; }
-    /* the game's compositions come in runs of content between empty ones: a frame is one run */
-    size_t last_n_ = g_rm_last_n;
-    const size_t fresh = g_rm_frame.n - last_n_;
-    g_rm_last_n = g_rm_frame.n;
+    /* one view composition holds a whole picture (about forty model requests; the flip bit at DS:0346 toggles per
+     * composition): a frame is the requests since the previous composition. F117_RM_WINDOW=N gathers N of them instead. */
     static int win = -1;
-    if (win < 0) { const char *e = getenv("F117_RM_WINDOW"); win = e ? atoi(e) : 0; }
-    if (win > 0) { if (++composes <= (unsigned)win) return; }
-    else
-    if (!fresh) { if (!composes) { remaster_frame_clear(&g_rm_frame); g_rm_last_n = 0; return; } }
-    else { composes++; return; }
+    if (win < 0) { const char *e = getenv("F117_RM_WINDOW"); win = e ? atoi(e) : 1; }
+    if (win > 1 && ++composes < (unsigned)win) return;
     const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
     #define DSW(o) ((int)(int16_t)(ds[o] | ds[(o) + 1] << 8))
     const int vl = DSW(0x85FA), vt = DSW(0x85FC), vr = DSW(0x85FE), vb = DSW(0x8600), gx = DSW(0x8602), gy = DSW(0x8604);
@@ -269,6 +264,8 @@ static void rm_compose(void *u, machine_t *m)
     remaster_target t = { w, h, (uint32_t *)malloc((size_t)w * h * 4), (float *)malloc((size_t)w * h * 4), kx * gx, ky * gy,
                           256.0 * kx, 256.0 * ky, 0x10000 };
     remaster_clear(&t, 0xFF2A2A2Au);
+    t.index = (uint8_t *)calloc((size_t)w * h, 1);
+    for (int i = 0; i < 256; i++) t.pal[i] = rm_rgb(&m->dac[3 * i]);
     const int hy = (int)(ky * gy);
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) t.color[y * w + x] = y < hy ? 0xFFC08040u : 0xFF305030u;
     {   /* sky and ground from the band pass's own state (band_state.h), unrounded and smooth: each class (16 sky bands,
@@ -302,7 +299,7 @@ static void rm_compose(void *u, machine_t *m)
                         }
                         if (pos && neg) continue;
                         float *a4 = &acc[((size_t)y * w + x) * 4];
-                        a4[0] = cr; a4[1] = cg; a4[2] = cb; a4[3] = 1.0f; mask[(size_t)y * w + x] = 1;
+                        a4[0] = cr; a4[1] = cg; a4[2] = cb; a4[3] = 1.0f; mask[(size_t)y * w + x] = 1; t.index[(size_t)y * w + x] = b->colour;
                     }
                 }
                 /* two vertical box blurs of about a band's height (a triangle kernel), weights carried in channel 3 */
@@ -337,9 +334,15 @@ static void rm_compose(void *u, machine_t *m)
         const size_t n = g_rm_frame.n;
         size_t *order = (size_t *)malloc((n ? n : 1) * sizeof *order);
         for (size_t k = 0; k < n; k++) order[k] = k;
-        g_rm_sort = g_rm_frame.prim;
-        qsort(order, n, sizeof *order, rm_cmp);
-        t.gen = (uint32_t *)calloc((size_t)w * h, sizeof(uint32_t));
+        /* Remastered's point is depth-correct drawing: one depth buffer across every model, with a tie (coplanar
+         * ground, a marking on it) going to the later draw in the game's own order. F117_RM_PAINTER=1 reproduces the
+         * original's whole-object sort instead (far to near, depth only inside a model), for comparison. */
+        const int painter = getenv("F117_RM_PAINTER") != NULL;
+        if (painter) {
+            g_rm_sort = g_rm_frame.prim;
+            qsort(order, n, sizeof *order, rm_cmp);
+            t.gen = (uint32_t *)calloc((size_t)w * h, sizeof(uint32_t));
+        }
         uint32_t group = 0; uint32_t last_req = 0;
         for (size_t i = 0; i < n; i++) {
             const remaster_prim *p = &g_rm_frame.prim[order[i]];
@@ -348,7 +351,10 @@ static void rm_compose(void *u, machine_t *m)
             if (!i || p->request != last_req) { group++; last_req = p->request; }
             t.cur_gen = group;
             if (p->style == 0xFB) continue;                                   /* "clear without drawing": the original paints nothing */
-            if (p->style >= 0xFC && p->style != 0xFF) continue;               /* AND / OR / stipple: not modelled yet */
+            if (p->style == 0xFC) continue;                                   /* stipple: not modelled yet */
+            t.op = p->style == 0xFD ? 1 : p->style == 0xFE ? 2 : 0;           /* OR / AND into the page (VGAME 1377:0A89, vg4_fill_logic) */
+            t.opval = (uint8_t)p->colour_word;
+            t.cur_index = p->pixel;
             uint32_t col = rm_rgb(&m->dac[3 * p->pixel]);
             if (p->style < 0xFB) {                                            /* a colour pair: the original dithers; the average is the smooth equivalent */
                 const uint32_t b = rm_rgb(&m->dac[3 * p->pixel2]);
@@ -357,7 +363,7 @@ static void rm_compose(void *u, machine_t *m)
             if (p->kind == SCENE_POLYGON && p->n >= 3) px += remaster_polygon(&t, p->v, p->n, col);
             else if (p->kind == SCENE_LINES) for (int j = 0; j + 1 < p->n; j++) px += remaster_line(&t, p->v[j], p->v[j + 1], 2.0, col);
         }
-        free(order); free(t.gen); t.gen = NULL;
+        free(order); free(t.gen); t.gen = NULL; t.op = 0;
     }
     static present_frame f;
     present_capture(m, &f);
@@ -391,9 +397,25 @@ static void rm_compose(void *u, machine_t *m)
         }
     }
     if (o) fclose(o);
+    {   /* a blend of the render and the original's viewport pixels, to see misalignment and what is missing */
+        char bp[640];
+        snprintf(bp, sizeof bp, "%s.blend.ppm", g_rm_path);
+        FILE *bo = fopen(bp, "wb");
+        if (bo) {
+            fprintf(bo, "P6\n%d %d\n255\n", x1 - x0, y1 - y0);
+            for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+                const uint32_t v = t.color[y * w + x];
+                const uint8_t *c = &f.dac[3 * f.vram[(y * 200 / h) * 320 + x * 320 / w]];
+                const int ob[3] = { (c[0] << 2) | (c[0] >> 4), (c[1] << 2) | (c[1] >> 4), (c[2] << 2) | (c[2] >> 4) };
+                const int mb[3] = { (int)(v & 255), (int)((v >> 8) & 255), (int)((v >> 16) & 255) };
+                for (int k = 0; k < 3; k++) fputc((ob[k] + mb[k]) / 2, bo);
+            }
+            fclose(bo);
+        }
+    }
     fprintf(stderr, "remaster-shot: %zu primitives, %ld pixels, viewport %d,%d-%d,%d centre %d,%d, clock %llu -> %s\n", g_rm_frame.n, px,
             vl, vt, vr, vb, gx, gy, (unsigned long long)m->cpu.icount, g_rm_path);
-    free(t.color); free(t.inv_z);
+    free(t.color); free(t.inv_z); free(t.index);
     g_rm_done = 1;
 }
 /* the matched projection only reports a vertex (and so the first one's pose) to an observer that asks for vertices */

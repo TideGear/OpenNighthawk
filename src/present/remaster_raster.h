@@ -27,6 +27,14 @@ typedef struct {
     uint32_t *gen;              /* optional, w * h: which draw group last wrote each pixel's depth */
     uint32_t cur_gen;           /* with gen set, depth is compared only against the same group: groups paint in order (the
                                    original's painter order across models), depth orders the faces within one */
+    /* optional palette-index tracking (the original paints palette indices, and some fills combine with the page):
+     * index is w * h; a colour fill writes cur_index there, an OR (op 1) or AND (op 2) fill with opval turns the index
+     * already there into index | opval or index & opval and shows pal[that] (no depth test: the original ORs spans
+     * into the page). */
+    uint8_t *index;
+    uint32_t pal[256];
+    int op;
+    uint8_t opval, cur_index;
 } remaster_target;
 
 /* Clear colour and depth. */

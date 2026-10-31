@@ -257,3 +257,15 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   inside one request (the original's painter order across models); a later polygon wins a depth tie. With these the
   Libya frame has the runway, taxiway stripes, hangars with their yellow markings, the aircraft and the centreline
   where the original has them. The shot now shows the whole original frame on the right, uncropped (owner request).
+- **R3, what the blend proves and what it does not (30 October 2026).** `--remaster-shot` writes `FILE.blend.ppm`, the
+  render at 50% over the original's viewport pixels. On a single view composition (about forty requests; the flip bit
+  at `DS:0346` toggles per composition) the hangars, runway edges, taxiway stripes and centreline dashes coincide with
+  the original's, so the geometry, pose and projection are registered. That is a registration check only: the render is
+  meant to differ where the original is wrong (stepped edges, whole-object sort, quantised gradients, jitter), and
+  the remaining ghosting is the original's pixel steps against the render's smooth edges. Depth: one depth buffer across
+  every model, a tie going to the later draw in the game's own order (`F117_RM_PAINTER=1` reproduces the original's
+  whole-object sort for comparison; on the Libya frame the two agree, as expected where the original's sort is right).
+  Fill styles follow `vg4_fill_logic` (VGAME `1377:0A89`/`0A09`): OR and AND combine with the palette index already on
+  the page (no depth), which is how the water strip at the horizon (`FD80` polygons of models 1, 3, 5, 6) is made;
+  `--remaster-shot` keeps a palette-index buffer for it. Still to model: stipple (`FCxx`), models 11 and 26 (single
+  streams that emit nothing; `F117_RM_MESH=1` prints their bytes), and everything past the 3-D view.

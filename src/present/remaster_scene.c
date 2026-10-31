@@ -3,6 +3,7 @@
 
 #include "scene_mesh.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -163,6 +164,16 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
         p->pixel = al;
         p->style = (uint8_t)(p->colour_word >> 8);
         p->pixel2 = p->style;
+    }
+    if (getenv("F117_RM_MESH") && (ctx.added == 0 || getenv("F117_RM_MESH")[0] == '2'))
+        fprintf(stderr, "mesh model %u depth %u parts %u vertices %u planes %u edges %u faces %u raw_planes %d added %d\n", model, depth, mesh->nparts,
+                mesh->nvertices, mesh->nplanes, mesh->nedges, mesh->nfaces, (int16_t)mesh->raw_planes, ctx.added);
+    if (getenv("F117_RM_MESH") && ctx.added == 0) {
+        fprintf(stderr, "  stream @%04X:", mesh->face[0]);
+        for (unsigned k = 0; k < 28; k++) fprintf(stderr, " %02X", mesh->bank[(mesh->face[0] + k) & 0xFFFF]);
+        fprintf(stderr, "  settings 0..7:");
+        for (int k = 0; k < 8; k++) fprintf(stderr, " %d", s->pose.setting[k]);
+        fprintf(stderr, "\n");
     }
     const uint32_t request = ++s->requests;
     int32_t zkey = 0;

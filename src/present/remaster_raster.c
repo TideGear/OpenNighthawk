@@ -51,10 +51,18 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             const double l3 = 1.0 - l1 - l2;
             if (l1 < 0 || l2 < 0 || l3 < 0) continue;        /* the pixel's centre is outside */
             const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
+            if (t->index && t->op) {                          /* OR / AND into the page: no depth, the index combines */
+                uint8_t *ip = &t->index[(long)y * t->w + x];
+                *ip = (uint8_t)(t->op == 1 ? (*ip | t->opval) : (*ip & t->opval));
+                t->color[(long)y * t->w + x] = t->pal[*ip];
+                written++;
+                continue;
+            }
             float *d = &t->inv_z[(long)y * t->w + x];
             if (t->gen) { uint32_t *g = &t->gen[(long)y * t->w + x]; if (*g != t->cur_gen) { *g = t->cur_gen; *d = 0.0f; } }
             if (iz < *d * 0.9999f) continue;                 /* something clearly nearer is already there; a tie (coplanar ground, a marking on it) goes to the later, as the original's painter order has it */
             *d = iz;
+            if (t->index) t->index[(long)y * t->w + x] = t->cur_index;
             t->color[(long)y * t->w + x] = color;
             written++;
         }
