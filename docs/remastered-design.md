@@ -212,8 +212,12 @@ It uses the machine's execution hooks (`machine_t.exec_hook`, a table of up to e
 hybrid sound uses, in `src/machine/pc.c`), not matched code, so it works in a build without generated code. It watches
 the model request (VGAME `120A:00CF`), the five projection returns (`120A:08D5`, `0901`, `0937`, `096A`, `0970`: the pose is
 prepared by the first one a request reaches, and `remaster_scene_add` reads it there) and the per-frame draw routine
-(`0000:1450`). Frame 150 of the recorded takeoff (`rec/input.log`) at 960 x 720 shows the runway ground, the horizon and
-buildings in the distance, drawn through the depth-correct fill. Not yet: the sky, the model colours (a first
-approximation takes the colour word as a palette index; shades are not applied), lines and dots, terrain from the tile
-maps, widescreen, longer reach, and the comparison with the original's frame (`F117_PRESENT_SHOTS`). Nothing is wired to
+(`0000:1450`). The frame is drawn at 960 x 720 with the game's own screen origin (`[8602]`, `[8604]`) and clip window (`[85FA]` to
+`[8600]`), the sky and ground bands from the state model of `band_state.h` (read at the same `0000:1450` entry; the quads are
+drawn far behind everything, depth reset before the models), and the models' polygons through the depth-correct fill, with
+colour words read as `model_fill` reads them (high byte FF one colour, darkened by `[48C4]` from A0h; below FB a dither pair,
+drawn here as the average; FB draws nothing; FE/FD/FC drawn as the low byte). Frame 150 of the recorded takeoff matches the
+original's horizon, hangar positions and dusk colours; `F117_REMASTER_FRAME=N:FILE.ppm` also writes the original's last
+picture beside it as `FILE.ppm.orig.ppm`. Not yet: the runway and terrain from the tile maps, lines and dots, the face shade
+(`[7D8A]`) in the colours, detail on the hangars, widescreen, longer reach, the HUD and cockpit (2D overlays, not geometry). Nothing is wired to
 `--presentation remastered` yet, so the feature stays at 0%.

@@ -4,6 +4,7 @@
 #include "remaster_raster.h"
 #include "remaster_scene.h"
 #include "scene_mesh.h"
+#include "band_state.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +29,8 @@ struct remaster_live {
     char *out_path;
     int written;
     unsigned requests, added, refused;
+    int32_t band_rec[BAND_REC_BASE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
+    int have_band;
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
 };
 
@@ -144,6 +147,32 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.sx = 256.0 * r->h / 240.0; t.sy = 256.0 * r->h / 200.0;
     t.near_z = 0x10000;
     remaster_clear(&t, 0xFF000000u);
+    if (r->have_band) {                         /* the sky and ground bands, as far as anything: the game's own state model */
+        band_state st;
+        band_exact_list ex;
+        band_fine_list fine;
+        const int loaded = band_state_load(r->band_rec, BAND_REC_BASE, &st);
+        const int rx = loaded ? band_exact(&st, &ex) : -1, rf = loaded && !rx ? band_fine(&st, &ex, &fine) : -1;
+        if (getenv("F117_REMASTER_DEBUG"))
+            fprintf(stderr, "[bands] loaded %d detail %d flat %d/%d height %d exact %d fine %d n %d\n", loaded, loaded ? st.detail : -9, loaded ? st.flat_a : 0, loaded ? st.flat_b : 0, loaded ? st.height : 0, rx, rf, loaded && !rx ? ex.n : -1);
+        if (loaded && !rx && !rf) {
+            const double ux = r->h / 240.0, uy = r->h / 200.0, far_z = 10000000.0;
+            for (int q = 0; q < fine.n; q++) {
+                if (getenv("F117_REMASTER_DEBUG") && (q == 0 || q == 15 || q == 16 || q == 31))
+                    fprintf(stderr, "[band %d] colour %u valid %u x %.1f %.1f %.1f %.1f y %.1f %.1f %.1f %.1f\n", q, fine.q[q].colour, fine.q[q].valid,
+                            fine.q[q].x[0], fine.q[q].x[1], fine.q[q].x[2], fine.q[q].x[3], fine.q[q].y[0], fine.q[q].y[1], fine.q[q].y[2], fine.q[q].y[3]);
+                if (!fine.q[q].valid) continue;
+                remaster_v3 v[4];
+                for (int k = 0; k < 4; k++) {   /* a screen point as a camera-space point at a very large depth */
+                    v[k].x = (int32_t)((fine.q[q].x[k] * ux - t.cx) * far_z / t.sx);
+                    v[k].y = (int32_t)((fine.q[q].y[k] * uy - t.cy) * far_z / t.sy);
+                    v[k].z = (int32_t)far_z;
+                }
+                remaster_polygon(&t, v, 4, dac_colour(m, fine.q[q].colour));
+            }
+            for (long i = 0; i < (long)t.w * t.h; i++) t.inv_z[i] = 0.0f;   /* the bands are behind everything: forget their depth */
+        }
+    }
     for (size_t i = 0; i < r->frame.n; i++) {
         const remaster_prim *p = &r->frame.prim[i];
         if (p->kind != SCENE_POLYGON || p->n < 3) continue;     /* lines and dots later */
@@ -215,6 +244,16 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
     } else if (k == 6) {                                    /* the per-frame draw routine: the last frame is complete */
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
+        {                                       /* this frame's band pass starts here: its argument is the view block */
+            const uint16_t ds = m->cpu.seg[S_DS], view = peek16(m, m->cpu.seg[S_SS], (uint16_t)(m->cpu.r[R_SP] + 2));
+            int n = 0;
+            r->band_rec[n++] = BAND_REC_VERSION;
+            r->band_rec[n++] = view;
+            r->band_rec[n++] = peek16(m, ds, (uint16_t)(view + 4));
+            for (int i = 0; i < BAND_NWORDS; i++)
+                r->band_rec[n++] = band_rec_byte[i] ? m->mem[(((uint32_t)ds << 4) + band_rec_off[i]) & 0xFFFFF] : peek16(m, ds, band_rec_off[i]);
+            r->have_band = 1;
+        }
         r->frames++;
         remaster_frame_clear(&r->frame);
         r->pending = 0;
