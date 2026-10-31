@@ -50,11 +50,13 @@ The first live frame (recorded takeoff, frame 150) matches the original's horizo
 dusk colours. Missing from it: the face shade in the colours, the runway edge strips close to the eye, hangar detail.
 The HUD, cockpit and radar are the original's 2D overlays and are not in it.
 
-**Wiring (not started):** `--presentation remastered` needs (1) a per-step capture of the frame's primitives and band state
-(what `remaster_live.c` does at the per-frame entry), (2) a display loop that draws every refresh by interpolating the
-camera and objects between the two latest steps, (3) the 2D layers composited over it (the cockpit and HUD from the
-original's frame or from the state-driven HUD of `hud_state.h`), (4) widescreen and longer reach, (5) the settings entry.
-Step 3 needs a decision on how to separate the original's 2D layers from its 3D picture; nothing here has been tried.
+**Wiring (31 October 2026, merged into `master`):** `--presentation remastered` is accepted (`src/host/main.c`, and a row in the
+settings menu). It is the Enhanced picture with the 3-D view redrawn by `src/present/remaster_live.c`: the model requests of each
+frame are captured at the machine's exec hooks, and the redrawn view replaces the fine picture's pixels whose origin tag is a scene
+tag, so the original's 2-D layers (cockpit, state-driven HUD, text) stay as Enhanced draws them. Not done: a run of this path in a
+real flight compared with the Enhanced baseline (takeoff replay, `--presentation remastered --present-scale 3`, `py tools/remaster_diff.py
+ENHANCED.ppm REMASTERED.ppm`); interpolation between the two latest steps; widescreen and longer reach; the fit rule for the cockpit and HUD
+(see `docs/remastered-design.md`). The Remastered item stays at 0.0 in `docs/progress.json` until the owner decides.
 
 ## Remastered: R1 and R2 done, R3 next
 
@@ -63,7 +65,7 @@ read `*.3DG`, `*.3DT` and `*.WLD` from the layouts START's matched loaders use (
 `0x07E88`); every byte of all nine theatres is accounted for, and LB, NC, PG and VN match START's memory (VN but six
 runtime-written bytes). The mesh decoder decodes all 3,936 (model x level) cases of the 11 `*.3DX` banks
 (`tools/model_census.c`); real models draw correctly with a depth buffer (`tools/model_sheet.c`). The projection
-(`remaster_project.c`) and the depth-correct triangle fill (`remaster_raster.c`) are standalone and not wired into the app.
+(`remaster_project.c`) and the depth-correct triangle fill (`remaster_raster.c`) are used by `remaster_live.c`, which `--presentation remastered` runs.
 
 To dump START's memory for a check: `py tools/run_route.py tools/routes/<route>.args --data <copy of the install> --out
 <dir> -- --steps <N> --dump 0:100000`, N just after START opens `<stem>.3dT`.
