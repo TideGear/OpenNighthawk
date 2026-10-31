@@ -356,6 +356,11 @@ static void rm_compose(void *u, machine_t *m)
     free(t.color); free(t.inv_z);
     g_rm_done = 1;
 }
+/* the matched projection only reports a vertex (and so the first one's pose) to an observer that asks for vertices */
+static void rm_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range, uint16_t xf_at, uint16_t px_at)
+{
+    (void)u; (void)icount; (void)xf; (void)px; (void)range; (void)xf_at; (void)px_at;
+}
 static f117_observer g_rm_obs;
 
 static FILE *g_opl_log;
@@ -851,6 +856,7 @@ int main(int argc, char **argv)
             *c3 = 0; g_rm_from = strtoull(c3 + 1, NULL, 0);
             g_rm_scene = remaster_scene_new();
             g_rm_obs.compose = rm_compose;
+            g_rm_obs.vertex = rm_vertex;
             observe_set(&g_rm_obs);
             observe_pose_set(rm_pose, NULL); i++;
         }
