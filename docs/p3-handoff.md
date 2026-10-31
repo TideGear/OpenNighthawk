@@ -94,6 +94,8 @@ date-time prefix. Below is the older R1/R2 note.
   integration.
 - **Hybrid sound:** needs the owner's marks (the page) and a second hidden AdLib driver fed the same requests, plus
   muting the MT-32 channels of effect ids.
+  **Work exists on the unmerged branch `p3-hybrid-sound` (Mac recording player and a machine-loop hook, tip `4e2f274`) and must be
+  continued: see "ALSO UNMERGED AND TO BE CONTINUED" in `handoff.md`.**
 - **Subtitles under AdLib:** the speech is OPL writes there; the detector (`src/host/subtitles.c`, from the speaker counts) covers Roland and PC speaker only.
 - **Owner's own checks:** the menu (Ctrl+Alt+S), `--crt`, `--watch latest`, the nine speech clips, the sound page.
 - **Merging:** pull `master`, run the full gate (`py tools/build_recomp.py --work ...`) on the merged result, then merge.
