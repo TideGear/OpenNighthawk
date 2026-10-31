@@ -440,6 +440,22 @@ static uint8_t *g_pristine, *g_mem[2];
 static cpu_t g_cpu[2];
 /* Only the authored zero-count binding case exceeds the usual guard. */
 static unsigned g_step_cap = 100000;
+/* A run of prefix bytes (segment overrides, LOCK, REP) is consumed by one cpu_step before any instruction completes, so the
+ * clock does not move and neither the step cap nor the event limit can stop it. Real code has at most a few; an original-code
+ * run that slid into memory its own REP STOS had just filled with one prefix byte (START 8A32, seed 0x863898e40efa, state 1627:
+ * 58,000 bytes of 2Eh) spins here for ever. Such a state cannot be compared, so it is stopped as a long run and counted. */
+#define PREFIX_RUN_LIMIT 64
+static unsigned long long g_prefix_runaways;
+static int prefix_runaway(const cpu_t *c)
+{
+    uint16_t ip = c->ip;
+    for (int n = 0; n < PREFIX_RUN_LIMIT; n++, ip++) {
+        const uint8_t b = c->mem[phys(c->seg[S_CS], ip)];
+        if (!(b == 0x26 || b == 0x2E || b == 0x36 || b == 0x3E || b == 0xF0 || b == 0xF1 || b == 0xF2 || b == 0xF3)) return 0;
+    }
+    g_prefix_runaways++;
+    return 1;
+}
 /* private probe (MPS_LOGO 00DA:0307 room probes): when set, setup_side gives the state stop_at = icount + g_stop_delta. */
 static int g_stop_delta_on;
 static unsigned g_stop_delta;
@@ -3219,6 +3235,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         entry_is("VGAME.EXE", 0x0000, 0x8A90)) ? g_span : 0x300u + g_below;
     while ((unsigned)*steps < g_step_cap) {
         if (wait_prefix_boundary(a, cs, entry_sp) && a->r[R_SP] == entry_sp) return 1;
+        if (prefix_runaway(a)) { *steps = (int)g_step_cap; return 0; }          /* a slide through prefix bytes: a long run, not a comparison */
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -3507,6 +3524,7 @@ static int step_runner_run(machine_t *mm)
             return RUN_SLICE;
         }
         if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
+        if (prefix_runaway(c)) { g_stopped = 1; return RUN_SLICE; }            /* as the event limit would stop it */
         if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
         const uint64_t limit = c->stop_at;
         const uint16_t from_cs = c->seg[S_CS], from_ip = c->ip;
@@ -3932,6 +3950,45 @@ static int check_io_rules(void)
     return 0;
 }
 
+/* F117_LOCKSTEP_WATCHDOG=N (diagnostic): when no state of the routine under test has finished for N seconds, print where the
+ * machine is (state, CS:IP, clock, limits, runner depth) and exit 3. A hung state otherwise looks like a slow gate. */
+#include <process.h>
+__declspec(dllimport) void __stdcall Sleep(unsigned long ms);
+static volatile int g_wd_state = -1;
+static volatile unsigned g_wd_ip, g_wd_seg;
+static volatile const char *g_wd_module;
+static unsigned g_wd_seconds;
+static unsigned __stdcall watchdog_main(void *unused)
+{
+    (void)unused;
+    int last = -2, same = 0;
+    for (;;) {
+        Sleep(1000);
+        const int now = g_wd_state;
+        if (now != last) { last = now; same = 0; continue; }
+        if (++same < (int)g_wd_seconds) continue;
+        fprintf(stderr, "WATCHDOG: no progress for %us in %s %04X:%04X, state %d\n  machine CS:IP %04X:%04X SS:SP %04X:%04X icount %llu stop_at %llu int_depth %d runner_depth %d\n",
+                g_wd_seconds, g_wd_module ? (const char *)g_wd_module : "?", g_wd_seg, g_wd_ip, now,
+                g_m.cpu.seg[S_CS], g_m.cpu.ip, g_m.cpu.seg[S_SS], g_m.cpu.r[R_SP], (unsigned long long)g_m.cpu.icount,
+                (unsigned long long)g_m.cpu.stop_at, (int)g_m.cpu.int_depth, g_runner_depth);
+        fprintf(stderr, "  original side g_cpu[0] CS:IP %04X:%04X SS:SP %04X:%04X AX %04X CX %04X DX %04X SI %04X DI %04X icount %llu stop_at %llu rep %d\n  body side     g_cpu[1] CS:IP %04X:%04X icount %llu\n",
+                g_cpu[0].seg[S_CS], g_cpu[0].ip, g_cpu[0].seg[S_SS], g_cpu[0].r[R_SP], g_cpu[0].r[R_AX], g_cpu[0].r[R_CX], g_cpu[0].r[R_DX],
+                g_cpu[0].r[R_SI], g_cpu[0].r[R_DI], (unsigned long long)g_cpu[0].icount, (unsigned long long)g_cpu[0].stop_at, (int)g_cpu[0].rep_prefix,
+                g_cpu[1].seg[S_CS], g_cpu[1].ip, (unsigned long long)g_cpu[1].icount);
+        for (int k = 0; k < 6; k++) {                       /* where the original side moves, and the bytes it is running */
+            const uint32_t at = phys(g_cpu[0].seg[S_CS], g_cpu[0].ip);
+            fprintf(stderr, "  sample %d: CS:IP %04X:%04X icount %llu CX %04X DI %04X SI %04X  bytes:", k, g_cpu[0].seg[S_CS], g_cpu[0].ip,
+                    (unsigned long long)g_cpu[0].icount, g_cpu[0].r[R_CX], g_cpu[0].r[R_DI], g_cpu[0].r[R_SI]);
+            for (int b = 0; b < 12; b++) fprintf(stderr, " %02X", g_mem[0][(at + (uint32_t)b) & 0xFFFFF]);
+            fprintf(stderr, "\n");
+            Sleep(40);
+        }
+        fflush(stderr);
+        _exit(3);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--check-module-rules")) return check_module_rules();
@@ -3954,6 +4011,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--shard") && i + 1 < argc && sscanf(argv[++i], "%u/%u", &shard, &shards) == 2 && shard < shards) {}
         else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...] [--shard K/N] [--load-base S]\n"); return 2; }
     }
+    { const char *wd = getenv("F117_LOCKSTEP_WATCHDOG"); if (wd && atoi(wd) > 0) { g_wd_seconds = (unsigned)atoi(wd); _beginthreadex(NULL, 0, watchdog_main, NULL, 0, NULL); } }
     if (!fixture_base_valid(forced_base)) {
         fprintf(stderr, "load base outside fixture code arena (use 0 or 0x0400..0x0800); higher memory is reserved for fixture RAM\n");
         return 2;
@@ -4106,6 +4164,7 @@ int main(int argc, char **argv)
         memset(g_nc_named, 0, sizeof g_nc_named); memset(g_nc_hand, 0, sizeof g_nc_hand);
         const int isound0545_dual_base = forced_base < 0 && !strcmp(o->module, "ISOUND.LOG") && o->seg == 0 && o->ip == 0x0545;
         for (int s = 0; s < states; s++) {
+            g_wd_module = o->module; g_wd_seg = o->seg; g_wd_ip = o->ip; g_wd_state = s;
             if (isound0545_dual_base) {
                 base = (s & 1) ? 0x169B : 0x0800;
                 at = (uint32_t)base * 16u + m->origin;
@@ -55539,7 +55598,7 @@ if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
                     const uint64_t e = g_m.cpu.icount - start;
                     cpu_t *a = &g_cpu[0];
                     /* by clock, not by step: an instruction can advance the clock by more than one */
-                    for (int guard = 0; a->icount < start + e && guard < 200000; guard++) { cpu_step(a); if (a->flags & F_TF) cpu_interrupt(a, 1); }
+                    for (int guard = 0; a->icount < start + e && guard < 200000 && !prefix_runaway(a); guard++) { cpu_step(a); if (a->flags & F_TF) cpu_interrupt(a, 1); }
                     g_side[0].overflow = g_side[1].overflow = 1;
                     g_cpu[1] = g_m.cpu;
                     if (a->icount != start + e) goto probe_done;      /* the clock jumped over the stop: not comparable */
@@ -55651,6 +55710,7 @@ if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
             if (g_cov_escapes) { fprintf(stderr, "%s: %llu calls escaped their return\n", COVERED[g_cov].what, g_cov_escapes); mb++; }
             printf("  %s instructions run by compared states: %u, by states completing the named region: %u (of %u)\n",
                    COVERED[g_cov].what, all, whole, COVERED[g_cov].insns);
+            if (g_prefix_runaways) printf("  note: %llu state(s) stopped by the prefix-run guard (more than %d consecutive prefix bytes: no instruction completes)\n", g_prefix_runaways, PREFIX_RUN_LIMIT);
             printf("  skipped: %llu fault, %llu long run, %llu bad return, %llu code written, %llu declined, %llu unfinished\n",
                    g_cov_skips[0], g_cov_skips[1], g_cov_skips[2], g_cov_skips[3], g_cov_skips[4], g_cov_skips[5]);
             /* Seeds reach flight input 1,260-1,274 and the frame update
@@ -55733,6 +55793,9 @@ if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
         if (o->matched == 3) printf("  completed interrupt/special-site states: %llu/%llu\n", g_iret_full, g_iret_special);
         compared += mc; skipped += ms; bad += mb;
     }
+    if (g_prefix_runaways)
+        printf("prefix-run guard: %llu state(s) stopped as long runs (more than %d consecutive prefix bytes at CS:IP: no instruction completes)\n",
+               g_prefix_runaways, PREFIX_RUN_LIMIT);
     printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",
            matched_count(), compared, g_finished, skipped, bad);
     return bad ? 1 : 0;
