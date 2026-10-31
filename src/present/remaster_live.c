@@ -28,6 +28,7 @@ struct remaster_live {
     char *out_path;
     int written;
     unsigned requests, added, refused;
+    int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
 };
 
 remaster_live *remaster_live_new(int w, int h, unsigned frame, const char *out_path)
@@ -139,7 +140,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     if (!t.color || !t.inv_z) { free(t.color); free(t.inv_z); return; }
-    t.cx = r->w / 2.0; t.cy = r->h / 2.0;
+    t.cx = r->origin[0] * r->h / 240.0; t.cy = r->origin[1] * r->h / 200.0;   /* the game's origin, in its 320 x 200 pixels */
     t.sx = 256.0 * r->h / 240.0; t.sy = 256.0 * r->h / 200.0;
     t.near_z = 0x10000;
     remaster_clear(&t, 0xFF000000u);
@@ -150,7 +151,18 @@ static void write_frame(remaster_live *r, const machine_t *m)
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
         remaster_polygon(&t, p->v, p->n, colour);
     }
-    if (getenv("F117_REMASTER_DEBUG")) debug_colours(r, m);
+    if (getenv("F117_REMASTER_DEBUG")) {
+        debug_colours(r, m);
+        fprintf(stderr, "[view] origin %d,%d window x %d..%d y %d..%d\n", r->origin[0], r->origin[1], r->window[0], r->window[2], r->window[1], r->window[3]);
+    }
+    {                                           /* nothing outside the game's clip window (its 320 x 200 pixels) */
+        const double ux = r->h / 240.0, uy = r->h / 200.0;
+        const int x0 = (int)(r->window[0] * ux), x1 = (int)((r->window[2] + 1) * ux);
+        const int y0 = (int)(r->window[1] * uy), y1 = (int)((r->window[3] + 1) * uy);
+        for (int y = 0; y < r->h; y++)
+            for (int x = 0; x < r->w; x++)
+                if (x < x0 || x >= x1 || y < y0 || y >= y1) t.color[(long)y * r->w + x] = 0xFF000000u;
+    }
     FILE *f = fopen(r->out_path, "wb");
     if (f) {
         fprintf(f, "P6\n%d %d\n255\n", r->w, r->h);
@@ -188,6 +200,12 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->requests++;
         r->model = peek16(m, ss, (uint16_t)(sp + 4));
         r->bank = peek16(m, m->cpu.seg[S_DS], 0x8590);
+        r->origin[0] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8602);
+        r->origin[1] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8604);
+        r->window[0] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FA);
+        r->window[1] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FC);
+        r->window[2] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FE);
+        r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
     } else if (k <= 5) {                                    /* a projection returned: the pose is prepared */
         if (r->pending) {
