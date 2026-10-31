@@ -27,6 +27,7 @@ typedef struct {
     uint8_t colour_index;
     uint16_t colour_word;                   /* the model's palette entry for the colour index */
     uint8_t shade;                          /* the face's shade (the plane's, or the model's base) */
+    uint8_t darken;                         /* the object's byte at DS:48C4 (model_fill_begin darkens shaded colours by it) */
     uint16_t face;
     uint16_t model;
 } remaster_prim;

@@ -71,6 +71,33 @@ static uint16_t peek16(const machine_t *m, uint16_t seg, uint16_t off)
     return (uint16_t)(m->mem[at & 0xFFFFF] | m->mem[(at + 1) & 0xFFFFF] << 8);
 }
 
+static uint32_t dac_colour(const machine_t *m, unsigned index);
+
+/* A colour word as the original's fill reads it (model_fill, VGAME 1377:0B09 with model_fill_begin 1377:01E0; the code is
+ * documented in src/matched/matched.c). The high byte is the style: FF one colour (the low byte; a low byte of A0h or
+ * more is darkened by the object's [48C4], never below its band base, low byte & F0); below FB a colour pair dithered
+ * across columns and swapped on odd rows (here the two palette entries blended); FE AND, FD OR and FC stipple (here
+ * drawn as the low byte's colour); FB clears without drawing (returns 0: nothing to paint). */
+static int word_colour(const machine_t *m, unsigned word, unsigned darken, uint32_t *out)
+{
+    const unsigned ah = word >> 8 & 255, al = word & 255;
+    if (ah == 0xFB) return 0;
+    if (ah == 0xFF) {
+        unsigned pixel = al;
+        if (al >= 0xA0) {
+            const unsigned base = al & 0xF0;
+            pixel = al >= darken + base ? al - darken : base;      /* al - darken, not below the band base */
+        }
+        *out = dac_colour(m, pixel);
+        return 1;
+    }
+    if (ah > 0xFB) { *out = dac_colour(m, al); return 1; }
+    const uint32_t a = dac_colour(m, ah), b = dac_colour(m, al);
+    *out = 0xFF000000u | ((((a >> 16 & 255) + (b >> 16 & 255)) / 2) << 16) | ((((a >> 8 & 255) + (b >> 8 & 255)) / 2) << 8) |
+           (((a & 255) + (b & 255)) / 2);
+    return 1;
+}
+
 /* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
 static uint32_t dac_colour(const machine_t *m, unsigned index)
 {
@@ -119,7 +146,9 @@ static void write_frame(remaster_live *r, const machine_t *m)
     for (size_t i = 0; i < r->frame.n; i++) {
         const remaster_prim *p = &r->frame.prim[i];
         if (p->kind != SCENE_POLYGON || p->n < 3) continue;     /* lines and dots later */
-        remaster_polygon(&t, p->v, p->n, dac_colour(m, p->colour_word & 0xFF));
+        uint32_t colour;
+        if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
+        remaster_polygon(&t, p->v, p->n, colour);
     }
     if (getenv("F117_REMASTER_DEBUG")) debug_colours(r, m);
     FILE *f = fopen(r->out_path, "wb");
@@ -135,6 +164,20 @@ static void write_frame(remaster_live *r, const machine_t *m)
     }
     free(t.color);
     free(t.inv_z);
+    if (r->written && strlen(r->out_path) < 900) {                  /* the original's last picture, 320 x 200, beside it */
+        char path[1024];
+        snprintf(path, sizeof path, "%s.orig.ppm", r->out_path);
+        FILE *o = fopen(path, "wb");
+        if (o) {
+            fprintf(o, "P6\n320 200\n255\n");
+            for (int i = 0; i < 64000; i++) {
+                const uint8_t *d = &m->scan_dac[m->scan_pixels[i] * 3];
+                const unsigned char px[3] = { (unsigned char)(d[0] << 2 | d[0] >> 4), (unsigned char)(d[1] << 2 | d[1] >> 4), (unsigned char)(d[2] << 2 | d[2] >> 4) };
+                fwrite(px, 1, 3, o);
+            }
+            fclose(o);
+        }
+    }
 }
 
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)

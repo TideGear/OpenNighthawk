@@ -71,6 +71,7 @@ typedef struct {
     const scene_geometry *geometry;
     remaster_frame *f;
     uint16_t model;
+    uint8_t darken;
     int added;
     int ok;
 } emit_ctx;
@@ -104,6 +105,7 @@ static int emit(void *user, const scene_material *c)
     p->colour_index = c->colour_index;
     p->colour_word = c->colour_word;
     p->shade = c->shade;
+    p->darken = x->darken;
     p->face = c->face;
     p->model = x->model;
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
@@ -144,7 +146,7 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
     if (!scene_mesh_eval(mesh, &s->pose, &s->geometry)) return -1;
     const size_t frame_start = f->n;
-    emit_ctx ctx = { mesh, &s->geometry, f, model, 0, 1 };
+    emit_ctx ctx = { mesh, &s->geometry, f, model, dsp[0x48C4], 0, 1 };
     if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx)) {
         f->n = frame_start;
         return -1;
