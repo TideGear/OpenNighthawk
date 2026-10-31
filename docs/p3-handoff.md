@@ -29,6 +29,10 @@ Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls,
 
 ## Remastered: where it stands (30 October 2026, end of session)
 
+**A parallel branch, `p3-remaster-live` (worktree `D:/f117-wt/p3-live`, 25 commits not in `master`), already has an in-app
+Remastered renderer and settings entry; see the top of `handoff.md`'s "Resume here". Reconcile with it before building
+anything below.**
+
 Read `docs/remastered-design.md` from "R3, first frame from a real flight" to the end, and the "Resume here" section of
 `handoff.md`, which holds the ordered next steps (the app path through a `DS:0346` frame-boundary gatherer and the
 diagnostic tag plane, the fit rule, the settings entry, then the proofs). Shots go to `Desktop\ONShots`, named with a
