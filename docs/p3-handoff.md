@@ -42,8 +42,7 @@ To dump START's memory for a check: `py tools/run_route.py tools/routes/<route>.
 matrices, translations, eye, light and palette before projecting; see "R3 plan revised" in the design doc), then the
 camera chain with sub-pixel output, terrain from the tile maps and the ground-patch models (the first ~30 models of a
 theatre bank are flat patches), widescreen, longer reach, and a held-out comparison with the original frame
-(`F117_PRESENT_SHOTS`). A pose callback in `observe.c` is called from matched code, so it runs only in the generated-code
-build (see "Sound" below). Remastered stays at 0% until a renderer is in the app (`--presentation remastered`, the
+(`F117_PRESENT_SHOTS`). The machine's execution hooks (`remaster_live.c`, on branch `p3-remaster-live`) read the game without matched code. Remastered stays at 0% until a renderer is in the app (`--presentation remastered`, the
 settings entry).
 
 Agreed design: Remastered draws from state with its own rasteriser at the output size and its own frame rate
@@ -59,9 +58,10 @@ The generated sweeps and rendered clips are in the session folder
 `C:\Users\Tideg\f117-recomp-local\p3-session-29oct\` (the scratchpad is temporary); the game copy used for runs is not
 saved: copy `D:\GOG\F-117A` and never run from the install itself.
 
-**A build without generated code does not run VGAME's matched routines**, so a hook that lives in `matched.c` (or in
-`observe.c` called from it) cannot be tested there: a seeded full flight (`airair_type5`) ran no VGAME matched routine.
-Put host hooks in the machine layer, or use the generated-code build (`tools/build_recomp.py`, hours).
+**In the builds tested here no VGAME matched routine dispatched** (the run's per-routine counters: a seeded full flight,
+`airair_type5`, ran none; the VGAME.EXE hash matches the table's, so the cause is not established). A hook that lives in
+`matched.c` or in `observe.c` called from it therefore could not be tested. Host hooks went into the machine layer
+(`machine_t.exec_hook`); the alternative is the generated-code build (`tools/build_recomp.py`, hours).
 
 ## Planned: asset library and setup wizard (owner-approved, 30 October 2026)
 
