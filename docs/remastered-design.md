@@ -223,3 +223,27 @@ original's horizon, hangar positions and dusk colours; `F117_REMASTER_FRAME=N:FI
 picture beside it as `FILE.ppm.orig.ppm`. Not yet: the runway and terrain from the tile maps, lines and dots, the face shade
 (`[7D8A]`) in the colours, detail on the hangars, widescreen, longer reach, the HUD and cockpit (2D overlays, not geometry). Nothing is wired to
 `--presentation remastered` yet, so the feature stays at 0%.
+
+### How the original draws the scene (read from the matched code, 30 October 2026)
+
+- **The frame** (`vgame_scene_dispatch`, `0x03CE`) sets the view up, draws the sky and ground bands (`vgame_horizon_bands`,
+  `0000:1450`: 16 sky quads in palette colours `80h + k` (flat `88h` when both illumination flags are set) and 16 ground quads
+  from the same offsets, each a four-corner polygon to the span rasteriser), then walks the scene and finishes it
+  (`vgame_scene_finish_walk`, `0D87C`).
+- **The terrain walk** (`vgame_scene_walk`, `04E6`) goes ring by ring (five rings, 16 cells a sector) round the viewpoint.
+  Each tile owns a list of seven-byte object entries from the theatre's scenery file (`vgame_load_tile_objects`, `0B05`), and
+  each entry is drawn by `compose_emit_object` (`0E2B6`): placed relative to the camera, culled (`0E3BF`), then either put on
+  the deferred list (class bit 7, `0DB3C`, drawn by the finish walk) or drawn by the model request `120A:00CF`. So the ground
+  patches, runway strips and buildings are models; nothing in this walk draws terrain polygons of its own.
+- **The other objects** (`vgame_compose_walk`, `0DC46`): aircraft, ground vehicles and specials from the object table
+  (`[4E6C]`), through `1452:03AB`, `0E289` and `120A:00CF` as well; an object whose kind has bit `400h` set goes to a different
+  drawer (`1AE9`), and kinds above `25h` also draw a label (`1B2E`). Those other drawers do not make model requests, so the
+  live capture does not see them.
+- **Each model** is drawn by `model_faces` (`120A:0C76`) face by face, each face's command stream by `model_fill_stream`
+  (`120A:0CE9`): polygons (edges through `130D:004A`, the colour byte picking a word of the model's palette table `[7D80]`,
+  filled by `model_poly_finish`, `130D:0116`), line sets and point sets. The fill style is the high byte of the colour word
+  (`model_fill`, `1377:0B09`).
+- **What is still not found:** the source of the strip of sea at the right of the horizon in the takeoff frame. It is not drawn
+  by the live capture. It is either a model drawn by a request the capture does not see (the `1AE9` drawer, or a request made
+  outside `compose_emit_object`/`compose_walk`) or part of the ground bands' neighbourhood. Next: list the polygon fills of a
+  frame that happen outside any model request, with their colour words, and match them to the missing regions.
