@@ -24,6 +24,9 @@ typedef struct {
     double cx, cy;              /* the view's centre in pixels */
     double sx, sy;              /* pixels per unit of x / z and y / z: 256 for the game's own 320 x 200 pixels */
     int32_t near_z;             /* nearer than this is clipped (the game's own smallest z is 0x10000) */
+    uint32_t *gen;              /* optional, w * h: which draw group last wrote each pixel's depth */
+    uint32_t cur_gen;           /* with gen set, depth is compared only against the same group: groups paint in order (the
+                                   original's painter order across models), depth orders the faces within one */
 } remaster_target;
 
 /* Clear colour and depth. */

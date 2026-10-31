@@ -247,3 +247,13 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   centred horizontally and anchored to the bottom, so no edge is cropped. The crosshair is drawn at the 3D view's
   projection centre (`DS:8602/8604` mapped through the same transform), so it stays on the aim point whatever the
   window shape. That is the better answer than shrinking by a fixed factor: it is exact at every window size and aspect.
+- **R3, the fill style is the palette word's high byte (30 October 2026).** From `vg4_fill_select` (VGAME `1377:0B09`,
+  `matched.c`): a word `AHAL` below `FBxx` is a colour pair (a dither of AL and AH), `FFxx` one colour (darkened by
+  `DS:48C4` when AL >= A0, `vgame_fill_begin`), `FExx` AND, `FDxx` OR, `FCxx` stipple, and **`FBxx` clears without
+  drawing**. The dark red slab over the ground was polygons with word `FB36`, which the original paints nothing for.
+  `--remaster-shot` now skips `FB`, draws a pair as the average of its two colours (the smooth equivalent of the dither)
+  and leaves AND/OR/stipple unmodelled. Also: requests made while the viewport (`DS:85FA..8600`) is under 300 wide
+  belong to the cockpit's map display and are left out; requests are painted far to near with depth tested only
+  inside one request (the original's painter order across models); a later polygon wins a depth tie. With these the
+  Libya frame has the runway, taxiway stripes, hangars with their yellow markings, the aircraft and the centreline
+  where the original has them. The shot now shows the whole original frame on the right, uncropped (owner request).

@@ -213,7 +213,13 @@ static void rm_pose(void *u, uint64_t icount, machine_t *m, uint16_t model, uint
 {
     (void)u; (void)icount;
     const size_t before = g_rm_frame.n;
-    const int added = remaster_scene_add(g_rm_scene, m->mem, MEM_SIZE, m->cpu.seg[S_DS], bank, model, pos, &g_rm_frame);
+    int added = remaster_scene_add(g_rm_scene, m->mem, MEM_SIZE, m->cpu.seg[S_DS], bank, model, pos, &g_rm_frame);
+    {   /* the cockpit's map display draws models through the same pipeline into its own small viewport (DS:85FA..8600):
+         * only the full-width 3-D view's requests belong in the main picture */
+        const uint8_t *d = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
+        const int vl = (int16_t)(d[0x85FA] | d[0x85FB] << 8), vr = (int16_t)(d[0x85FE] | d[0x85FF] << 8);
+        if (vr - vl < 300 && added > 0) { g_rm_frame.n = before; added = 0; }
+    }
     if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) {
         fprintf(stderr, "req %llu model %u bank %04X pos %d,%d,%d added %d\n", (unsigned long long)icount, model, bank, pos[0], pos[1], pos[2], added);
         const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
@@ -229,6 +235,14 @@ static uint32_t rm_rgb(const uint8_t *c)
 {
     return 0xFF000000u | ((uint32_t)((c[2] << 2) | (c[2] >> 4)) << 16) | ((uint32_t)((c[1] << 2) | (c[1] >> 4)) << 8) |
            (uint32_t)((c[0] << 2) | (c[0] >> 4));
+}
+static const remaster_prim *g_rm_sort;
+static int rm_cmp(const void *a, const void *b)
+{
+    const remaster_prim *p = &g_rm_sort[*(const size_t *)a], *q = &g_rm_sort[*(const size_t *)b];
+    if (p->zkey != q->zkey) return p->zkey > q->zkey ? -1 : 1;                 /* far first */
+    if (p->request != q->request) return p->request < q->request ? -1 : 1;
+    return *(const size_t *)a < *(const size_t *)b ? -1 : 1;
 }
 static void rm_compose(void *u, machine_t *m)
 {
@@ -319,11 +333,31 @@ static void rm_compose(void *u, machine_t *m)
         }
     }
     long px = 0;
-    for (size_t k = 0; k < g_rm_frame.n; k++) {
-        const remaster_prim *p = &g_rm_frame.prim[k];
-        const uint32_t col = rm_rgb(&m->dac[3 * p->pixel]);
-        if (p->kind == SCENE_POLYGON && p->n >= 3) px += remaster_polygon(&t, p->v, p->n, col);
-        else if (p->kind == SCENE_LINES) for (int j = 0; j + 1 < p->n; j++) px += remaster_line(&t, p->v[j], p->v[j + 1], 2.0, col);
+    {   /* the original paints model by model, far to near: one depth group per request, groups in that order */
+        const size_t n = g_rm_frame.n;
+        size_t *order = (size_t *)malloc((n ? n : 1) * sizeof *order);
+        for (size_t k = 0; k < n; k++) order[k] = k;
+        g_rm_sort = g_rm_frame.prim;
+        qsort(order, n, sizeof *order, rm_cmp);
+        t.gen = (uint32_t *)calloc((size_t)w * h, sizeof(uint32_t));
+        uint32_t group = 0; uint32_t last_req = 0;
+        for (size_t i = 0; i < n; i++) {
+            const remaster_prim *p = &g_rm_frame.prim[order[i]];
+            { static int only = -2, skip = -2; if (only == -2) { const char *e = getenv("F117_RM_ONLY"), *k = getenv("F117_RM_SKIP"); only = e ? atoi(e) : -1; skip = k ? atoi(k) : -1; }
+              if ((only >= 0 && p->model != only) || (skip >= 0 && p->model == skip)) continue; }   /* debugging: one model, or all but one */
+            if (!i || p->request != last_req) { group++; last_req = p->request; }
+            t.cur_gen = group;
+            if (p->style == 0xFB) continue;                                   /* "clear without drawing": the original paints nothing */
+            if (p->style >= 0xFC && p->style != 0xFF) continue;               /* AND / OR / stipple: not modelled yet */
+            uint32_t col = rm_rgb(&m->dac[3 * p->pixel]);
+            if (p->style < 0xFB) {                                            /* a colour pair: the original dithers; the average is the smooth equivalent */
+                const uint32_t b = rm_rgb(&m->dac[3 * p->pixel2]);
+                col = 0xFF000000u | ((((col & 255) + (b & 255)) / 2) & 255) | (((((col >> 8) & 255) + ((b >> 8) & 255)) / 2) << 8) | (((((col >> 16) & 255) + ((b >> 16) & 255)) / 2) << 16);
+            }
+            if (p->kind == SCENE_POLYGON && p->n >= 3) px += remaster_polygon(&t, p->v, p->n, col);
+            else if (p->kind == SCENE_LINES) for (int j = 0; j + 1 < p->n; j++) px += remaster_line(&t, p->v[j], p->v[j + 1], 2.0, col);
+        }
+        free(order); free(t.gen); t.gen = NULL;
     }
     static present_frame f;
     present_capture(m, &f);
@@ -337,19 +371,21 @@ static void rm_compose(void *u, machine_t *m)
         for (int j = 0; j < p->n; j++) if (p->v[j].z > 0x10000) { sx += gx + 256.0 * p->v[j].x / p->v[j].z; sy += gy - 256.0 * p->v[j].y / p->v[j].z; ok++; }
         int under = -1;
         if (ok) { const int ix = (int)(sx / ok), iy = (int)(sy / ok); if (ix >= 0 && ix < 320 && iy >= 0 && iy < 200) under = f.vram[iy * 320 + ix]; }
-        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d at %d,%d\n", p->model, p->kind, p->n, p->colour_index,
-                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under, ok ? (int)(sx / ok) : -1, ok ? (int)(sy / ok) : -1);
+        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d at %d,%d pix %u rgb %d,%d,%d\n", p->model, p->kind, p->n, p->colour_index,
+                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under, ok ? (int)(sx / ok) : -1, ok ? (int)(sy / ok) : -1, p->pixel, m->dac[3 * p->pixel], m->dac[3 * p->pixel + 1], m->dac[3 * p->pixel + 2]);
     }
     const int x0 = (int)(kx * vl), x1 = (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
-    const int cw = x1 - x0, ch = y1 - y0;
+    (void)y1;
     FILE *o = fopen(g_rm_path, "wb");
-    if (o && cw > 0 && ch > 0) {
-        fprintf(o, "P6\n%d %d\n255\n", cw * 2, ch);
-        for (int y = 0; y < ch; y++) {
-            for (int x = 0; x < cw; x++) { const uint32_t v = t.color[(y0 + y) * w + x0 + x]; fputc(v & 255, o); fputc((v >> 8) & 255, o); fputc((v >> 16) & 255, o); }
-            for (int x = 0; x < cw; x++) {
-                const int sx = (x0 + x) * 320 / w, sy = (y0 + y) * 200 / h;
-                const uint8_t *c = &f.dac[3 * f.vram[sy * 320 + sx]];
+    if (o) {   /* left: the render in the viewport's place on a dark page; right: the whole original frame, uncropped */
+        fprintf(o, "P6\n%d %d\n255\n", w * 2, h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (y >= y0 && y < y1 && x >= x0 && x < x1) { const uint32_t v = t.color[y * w + x]; fputc(v & 255, o); fputc((v >> 8) & 255, o); fputc((v >> 16) & 255, o); }
+                else { fputc(16, o); fputc(16, o); fputc(16, o); }
+            }
+            for (int x = 0; x < w; x++) {
+                const uint8_t *c = &f.dac[3 * f.vram[(y * 200 / h) * 320 + x * 320 / w]];
                 fputc((c[0] << 2) | (c[0] >> 4), o); fputc((c[1] << 2) | (c[1] >> 4), o); fputc((c[2] << 2) | (c[2] >> 4), o);
             }
         }

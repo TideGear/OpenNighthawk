@@ -29,6 +29,10 @@ typedef struct {
     uint8_t shade;                          /* the face's shade (the plane's, or the model's base) */
     uint16_t face;
     uint16_t model;
+    uint32_t request;                       /* which model request it came from (counts up in a scene) */
+    int32_t zkey;                           /* the request's farthest z: the original draws far to near */
+    uint8_t style;                          /* the word's high byte: < FBh a colour pair (pixel, pixel2), FFh one colour, FEh AND, FDh OR, FCh stipple, FBh draws nothing (VGAME 1377:0B09) */
+    uint8_t pixel2;                         /* a pair's second colour (the high byte) */
     uint8_t pixel;                          /* the palette index the original's fill ends with (VGAME 1377:01E0) */
 } remaster_prim;
 

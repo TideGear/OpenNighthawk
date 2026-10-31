@@ -20,6 +20,7 @@ struct remaster_scene {
     unsigned next;                  /* the next slot to take when none matches */
     scene_pose pose;
     scene_geometry geometry;
+    uint32_t requests;
 };
 
 void remaster_frame_clear(remaster_frame *f) { f->n = 0; }
@@ -160,6 +161,13 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
             if (!(al > base)) al = base;                  /* unsigned, as the original's JA: a borrow wraps and stays */
         }
         p->pixel = al;
+        p->style = (uint8_t)(p->colour_word >> 8);
+        p->pixel2 = p->style;
     }
+    const uint32_t request = ++s->requests;
+    int32_t zkey = 0;
+    for (size_t k = frame_start; k < f->n; k++)
+        for (int j = 0; j < f->prim[k].n; j++) if (f->prim[k].v[j].z > zkey) zkey = f->prim[k].v[j].z;
+    for (size_t k = frame_start; k < f->n; k++) { f->prim[k].request = request; f->prim[k].zkey = zkey; }
     return ctx.added;
 }
