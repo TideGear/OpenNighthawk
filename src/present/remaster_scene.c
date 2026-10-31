@@ -149,5 +149,17 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
         f->n = frame_start;
         return -1;
     }
+    /* the fill's colour rule: a word FFxx with xx >= A0 is darkened by DS:48C4, but not below its band (xx & F0) */
+    const uint8_t darken = dsp[0x48C4];
+    for (size_t k = frame_start; k < f->n; k++) {
+        remaster_prim *p = &f->prim[k];
+        uint8_t al = (uint8_t)p->colour_word;
+        if ((p->colour_word >> 8) == 0xFF && al >= 0xA0) {
+            const uint8_t base = al & 0xF0;
+            al = (uint8_t)(al - darken);
+            if (!(al > base)) al = base;                  /* unsigned, as the original's JA: a borrow wraps and stays */
+        }
+        p->pixel = al;
+    }
     return ctx.added;
 }

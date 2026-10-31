@@ -214,3 +214,9 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   that depend on distance and shade, e.g. word `FFCB` over original index 129/138), the hangars (not among the
   requests gathered; they may be drawn by another path), and the sky and ground (flat stand-ins until `band_state`
   is used). `F117_RM_DUMP=1` prints each request and primitive with the original pixel under it.
+- **R3, colour rule and lines (30 October 2026).** A primitive's pixel colour is the original's `raster_model_fill_begin`
+  rule (VGAME `1377:01E0`, `matched.c`): a palette word `FFxx` with `xx >= A0` is darkened by `DS:48C4`, never below
+  `xx & F0` (unsigned compare, so a borrow wraps and stays, as in the original); other words use the low byte
+  (`remaster_prim.pixel`). `remaster_line` draws the model's line commands. In the Libya flight the runway centreline's
+  dashes now appear where the original has them. Still wrong: the ground's brown/grey banding and the sky gradient
+  (they come from the band pass, `band_state.h`), and the hangars.

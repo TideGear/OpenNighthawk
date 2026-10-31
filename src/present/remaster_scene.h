@@ -29,6 +29,7 @@ typedef struct {
     uint8_t shade;                          /* the face's shade (the plane's, or the model's base) */
     uint16_t face;
     uint16_t model;
+    uint8_t pixel;                          /* the palette index the original's fill ends with (VGAME 1377:01E0) */
 } remaster_prim;
 
 typedef struct {

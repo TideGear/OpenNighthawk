@@ -32,4 +32,8 @@ void remaster_clear(remaster_target *t, uint32_t color);
 /* Fill a convex polygon of n vertices (n >= 3) in one colour; returns the pixels written. */
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color);
 
+/* A line between two camera-space points, width pixels wide, drawn a hair nearer than a surface at the same depth;
+ * returns the pixels written. */
+long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width, uint32_t color);
+
 #endif

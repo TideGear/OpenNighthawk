@@ -60,6 +60,32 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     return written;
 }
 
+long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width, uint32_t color)
+{
+    dv3 c[2] = { { a.x, a.y, a.z }, { b.x, b.y, b.z } };
+    const double nz = (double)t->near_z;
+    if (c[0].z < nz && c[1].z < nz) return 0;
+    for (int i = 0; i < 2; i++)
+        if (c[i].z < nz) {
+            const dv3 o = c[1 - i];
+            const double k = (nz - o.z) / (c[i].z - o.z);
+            c[i] = (dv3){ o.x + k * (c[i].x - o.x), o.y + k * (c[i].y - o.y), nz };
+        }
+    sv p[2];
+    for (int i = 0; i < 2; i++) {
+        p[i].x = t->cx + t->sx * c[i].x / c[i].z;
+        p[i].y = t->cy + t->sy * c[i].y / c[i].z;
+        p[i].iz = 1.0001 / c[i].z;                    /* a line lies on its surface: win the tie */
+    }
+    double dx = p[1].x - p[0].x, dy = p[1].y - p[0].y;
+    const double len = sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) { dx = 1; dy = 0; } else { dx /= len; dy /= len; }
+    const double ox = -dy * width * 0.5, oy = dx * width * 0.5, ex = dx * width * 0.5, ey = dy * width * 0.5;
+    sv q[4] = { { p[0].x - ex + ox, p[0].y - ey + oy, p[0].iz }, { p[0].x - ex - ox, p[0].y - ey - oy, p[0].iz },
+                { p[1].x + ex - ox, p[1].y + ey - oy, p[1].iz }, { p[1].x + ex + ox, p[1].y + ey + oy, p[1].iz } };
+    return fill_triangle(t, q[0], q[1], q[2], color) + fill_triangle(t, q[0], q[2], q[3], color);
+}
+
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color)
 {
     if (n < 3 || n > MAX_POLY - 2) return 0;

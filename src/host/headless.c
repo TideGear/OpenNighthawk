@@ -239,8 +239,9 @@ static void rm_compose(void *u, machine_t *m)
     long px = 0;
     for (size_t k = 0; k < g_rm_frame.n; k++) {
         const remaster_prim *p = &g_rm_frame.prim[k];
-        if (p->kind != SCENE_POLYGON || p->n < 3) continue;
-        px += remaster_polygon(&t, p->v, p->n, rm_rgb(&m->dac[3 * (p->colour_word & 0xFF)]));
+        const uint32_t col = rm_rgb(&m->dac[3 * p->pixel]);
+        if (p->kind == SCENE_POLYGON && p->n >= 3) px += remaster_polygon(&t, p->v, p->n, col);
+        else if (p->kind == SCENE_LINES) for (int j = 0; j + 1 < p->n; j++) px += remaster_line(&t, p->v[j], p->v[j + 1], 2.0, col);
     }
     static present_frame f;
     present_capture(m, &f);
