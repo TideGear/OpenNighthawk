@@ -1,7 +1,9 @@
 # Remastered presentation (design)
 
-Status: design only, nothing built, nothing credited. Written 29 October 2026 after a feasibility pass over what
-the repository already has. The owner's brief (24 October 2026, [roadmap.md](roadmap.md) "Re-release features"):
+Status (30 October 2026): the renderer is not in the app and nothing is credited. Built so far: the terrain, world and model
+decoders (checked against the game's memory), an offline depth-buffer model sheet, the exact projection, a depth-correct
+triangle fill and the request-to-primitives glue, all standalone ("Progress" below; current state in
+[p3-handoff.md](p3-handoff.md)). Written 29 October 2026 after a feasibility pass over what the repository already has. The owner's brief (24 October 2026, [roadmap.md](roadmap.md) "Re-release features"):
 widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
 objects, so a far hangar's edge can be drawn over a nearer one), and no road or coastline jitter. Everything else
 about the game, above all its simulation, stays as it is.
@@ -204,6 +206,81 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   commands, turning each polygon's edge chain into an ordered vertex loop. Tested on the synthetic fixture placed in a fake
   guest memory (`presentation_remaster_scene`). Not yet checked on real data, which needs the callback running in a build: the
   next step is a headless consumer of `observe_pose` that collects a frame and draws it with the fill.
+
+### First live frame (30 October 2026)
+
+`F117_REMASTER_FRAME=N:FILE.ppm` (f117a, `src/present/remaster_live.c`) draws the Nth frame's geometry from a running game.
+It uses the machine's execution hooks (`machine_t.exec_hook`, a table of up to eight CS:IP entries; the same mechanism
+hybrid sound uses, in `src/machine/pc.c`), not matched code, so it works in a build without generated code. It watches
+the model request (VGAME `120A:00CF`), the five projection returns (`120A:08D5`, `0901`, `0937`, `096A`, `0970`: the pose is
+prepared by the first one a request reaches, and `remaster_scene_add` reads it there) and the per-frame draw routine
+(`0000:1450`). The frame is drawn at 960 x 720 with the game's own screen origin (`[8602]`, `[8604]`) and clip window (`[85FA]` to
+`[8600]`), the sky and ground bands from the state model of `band_state.h` (read at the same `0000:1450` entry; the quads are
+drawn far behind everything, depth reset before the models), and the models' polygons through the depth-correct fill, with
+colour words read as `model_fill` reads them (high byte FF one colour, darkened by `[48C4]` from A0h; below FB a dither pair,
+drawn here as the average; FB draws nothing; FE/FD/FC drawn as the low byte). Frame 150 of the recorded takeoff matches the
+original's horizon, hangar positions and dusk colours; `F117_REMASTER_FRAME=N:FILE.ppm` also writes the original's last
+picture beside it as `FILE.ppm.orig.ppm`. Not yet: the runway and terrain from the tile maps, lines and dots, the face shade
+(`[7D8A]`) in the colours, detail on the hangars, widescreen, longer reach, the HUD and cockpit (2D overlays, not geometry). Nothing is wired to
+`--presentation remastered` yet, so the feature stays at 0%.
+
+### How the original draws the scene (read from the matched code, 30 October 2026)
+
+- **The frame** (`vgame_scene_dispatch`, `0x03CE`) sets the view up, draws the sky and ground bands (`vgame_horizon_bands`,
+  `0000:1450`: 16 sky quads in palette colours `80h + k` (flat `88h` when both illumination flags are set) and 16 ground quads
+  from the same offsets, each a four-corner polygon to the span rasteriser), then walks the scene and finishes it
+  (`vgame_scene_finish_walk`, `0D87C`).
+- **The terrain walk** (`vgame_scene_walk`, `04E6`) goes ring by ring (five rings, 16 cells a sector) round the viewpoint.
+  Each tile owns a list of seven-byte object entries from the theatre's scenery file (`vgame_load_tile_objects`, `0B05`), and
+  each entry is drawn by `compose_emit_object` (`0E2B6`): placed relative to the camera, culled (`0E3BF`), then either put on
+  the deferred list (class bit 7, `0DB3C`, drawn by the finish walk) or drawn by the model request `120A:00CF`. So the ground
+  patches, runway strips and buildings are models; nothing in this walk draws terrain polygons of its own.
+- **The other objects** (`vgame_compose_walk`, `0DC46`): aircraft, ground vehicles and specials from the object table
+  (`[4E6C]`), through `1452:03AB`, `0E289` and `120A:00CF` as well; an object whose kind has bit `400h` set goes to a different
+  drawer (`1AE9`), and kinds above `25h` also draw a label (`1B2E`). Those other drawers do not make model requests, so the
+  live capture does not see them.
+- **Each model** is drawn by `model_faces` (`120A:0C76`) face by face, each face's command stream by `model_fill_stream`
+  (`120A:0CE9`): polygons (edges through `130D:004A`, the colour byte picking a word of the model's palette table `[7D80]`,
+  filled by `model_poly_finish`, `130D:0116`), line sets and point sets. The fill style is the high byte of the colour word
+  (`model_fill`, `1377:0B09`).
+- **What is still not found:** the source of the strip of sea at the right of the horizon in the takeoff frame. It is not drawn
+  by the live capture. It is either a model drawn by a request the capture does not see (the `1AE9` drawer, or a request made
+  outside `compose_emit_object`/`compose_walk`) or part of the ground bands' neighbourhood. Next: list the polygon fills of a
+  frame that happen outside any model request, with their colour words, and match them to the missing regions.
+
+## Handoff state (30 October 2026, late)
+
+Built and unit-tested (3/3 remaster tests), **not yet verified in a flight**: the AND, OR and stipple fills (`remaster_polygon_logic`,
+palette indices carried in `remaster_target.index`, `word_style()` in `remaster_live.c`). They are meant to fix two visible
+defects, both traced to the original drawing a fill that combines with what is already on the page, which this renderer had
+drawn as a flat colour: the strip through the hangars (a polygon painted with the horizon colour) and the missing sea (model 15,
+colour word FE6F: AND of the ground band colours 70h-7Fh with 6Fh). Faces are fed in the original's back-to-front order
+(`scene_mesh_materials` calls `scene_mesh_order`, a port of 120A:0E5B), so overlays draw after the surfaces they modify.
+
+To check: run the takeoff replay (`--replay` of a recorded takeoff, `--presentation remastered --present-scale 3`, with
+`F117_PRESENT_SHOTS`) and the Enhanced baseline, then `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`. The hangar and
+sea regions should shrink or vanish. Only then refresh the screenshot on the owner's Desktop.
+
+Still open: validator mismatches (`F117_REMASTER_VALIDATE`; models 3, 30, 51, 50 have vertices that differ from the game's own
+projection, unexplained); a full in-order read of the original render path (120A:00CF through 0C76, 130D clipper, 1377 fills,
+0FB2 span rasteriser, scene dispatch/walk/finish) with notes here; a per-model polygon-accounting check (original fills against
+this renderer's) as a second net for missed objects; face shade [7D8A] in colours; interpolation between logic steps; widescreen.
+The branch has debug blocks ([tags], [pixel], [col], [blue], [raw], [validate]) worth trimming. P2 work is resuming: keep to
+worktrees, no concurrent full builds or gates.
+
+**First task for the next session: read the original P2 rendering code in full** (`src/matched/matched.c`, the matched routines
+for the render path: 120A:00CF, 0317, 0561, 06B5, 0902, 098C, 0A33, 0B3B, 0C76, 0CA8, 0CE9; the 130D clipper; the 1377 fills;
+the 0FB2 span rasteriser; 1452 and 1039; the scene dispatch, walk and finish routines). The owner asked for this explicitly, and
+the Remastered renderer has so far been built from partial reads, which is how the AND/OR/stipple fills were missed. Write notes
+into this file as you go, saying for each fact whether it comes from code, a comment or observation. Do this before more fixes.
+
+## Findings from the headless shot tool (30 to 31 October 2026)
+
+These came from `f117run --remaster-shot`, a research tool built in a parallel session on `master` and retired when it was
+merged with this branch (its code is at git tag `remaster-view-tool-20261031`; the findings stand and several answer
+questions listed as open above, for example the missing sea strip and the per-model polygon accounting). Where a
+sentence names `--remaster-shot`, `remaster_view`, `F117_RM_*` or `remaster_wide_check.py`, that is the retired tool.
+
 - **R3, first frame from a real flight (30 October 2026).** `f117run --remaster-shot FILE.ppm:FROM` (research aid in
   `headless.c`; read-only) installs the pose callback, gathers the model requests of ten view compositions after clock
   FROM (a composition draws only one or two models, so a single one is not a picture), fills them with

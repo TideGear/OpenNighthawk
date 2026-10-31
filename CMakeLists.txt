@@ -48,7 +48,8 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c src/present/band_state.c src/present/scene_mesh.c src/present/rerun.c src/present/remaster_scene.c src/present/remaster_raster.c src/present/remaster_project.c src/present/remaster_view.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c src/present/band_state.c src/present/scene_mesh.c src/present/rerun.c
+  src/present/remaster_scene.c src/present/remaster_raster.c src/present/remaster_project.c src/present/remaster_live.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -164,7 +165,7 @@ if(F117R_BUILD_APP)
   add_executable(audio_render tools/audio_render.c src/host/audio.c src/host/speaker.c)
   f117r_audio_target(audio_render)
 
-  set(F117R_APP_SOURCES src/host/main.c src/host/audio.c src/host/speaker.c src/host/config.c src/host/settings.c src/host/crt.c src/host/controls.c src/host/remap.c src/host/keyref.c src/host/subtitles.c src/host/soundpolicy.c)
+  set(F117R_APP_SOURCES src/host/main.c src/host/audio.c src/host/speaker.c src/host/config.c src/host/settings.c src/host/crt.c src/host/controls.c src/host/remap.c src/host/keyref.c src/host/subtitles.c src/host/soundpolicy.c src/host/macsound.c)
   add_executable(f117a WIN32 ${F117R_APP_SOURCES})
   f117r_audio_target(f117a)
   target_link_libraries(f117a PRIVATE SDL3::SDL3)
@@ -254,6 +255,9 @@ if(F117R_BUILD_TESTS)
     add_executable(test_soundpolicy tests/test_soundpolicy.c src/host/soundpolicy.c)
     target_include_directories(test_soundpolicy PRIVATE src/host)
     add_test(NAME host_sound_policy COMMAND test_soundpolicy)
+    add_executable(test_macsound tests/test_macsound.c src/host/macsound.c)
+    target_include_directories(test_macsound PRIVATE src/host)
+    add_test(NAME host_mac_sound COMMAND test_macsound ${CMAKE_CURRENT_BINARY_DIR})
     add_executable(test_controls tests/test_controls.c src/host/controls.c src/host/config.c)
     target_include_directories(test_controls PRIVATE src/host)
     add_test(NAME host_controller_mapping COMMAND test_controls)

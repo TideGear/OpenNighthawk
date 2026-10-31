@@ -44,6 +44,9 @@
 #include "remap.h"
 #include "keyref.h"
 #include "subtitles.h"
+#include "macsound.h"
+#include "soundpolicy.h"
+#include "remaster_live.h"
 #include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
@@ -51,6 +54,7 @@
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
+#include "keys.h"
 #include "host_clock.h"
 #include "config.h"
 #include "mt32.h"
@@ -98,6 +102,87 @@ static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static int g_fit_scale;               /* --presentation enhanced: --present-scale from the display's height */
 static int g_subtitles;                /* --subtitles: show the radio calls as text (subtitles.h) */
 static subtitles g_sub;
+static macsound *g_mac;                /* --mac-sounds DIR: the Macintosh recordings (macsound.h); NULL: none */
+static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundpolicy.h): SP_NONE = the default order */
+
+/* Hybrid sound (docs/sound-board.md): the machine's exec hook fires when the game makes its far call into the sound
+ * driver (VGAME 1E42:0313, the id the game wants at SS:SP+4). Music, speech and effects each have a default source
+ * and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac recordings are
+ * the host's to play; whatever is not taken here goes on to the DOS driver as the original does. The game's own
+ * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
+static int g_remaster;                 /* --presentation remastered */
+static uint8_t *g_rbuf; static size_t g_rbuf_cap;
+static uint32_t *g_rrgb; static uint8_t *g_rmask; static int g_rtrue;   /* the true colour of the Remastered pixels, when composed */
+static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
+static unsigned g_rlive_base;
+
+/* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
+ * original fine picture when there is nothing to compose. */
+static const uint8_t *remaster_apply(const uint8_t *hi)
+{
+    static int said;
+    if (!said && g_remaster && getenv("F117_REMASTER_DEBUG")) {
+        said = 1;
+        fprintf(stderr, "[remaster] apply: rlive %p hi %p tag %p scale %d\n", (void *)g_rlive, (const void *)hi, (const void *)g_live.shown_tag, g_scale);
+    }
+    if (!g_remaster || !g_rlive || !hi || !g_live.shown_tag || g_scale < 1) return hi;
+    const size_t size = (size_t)320 * g_scale * 200 * g_scale;
+    if (g_rbuf_cap < size) {
+        free(g_rbuf); free(g_rrgb); free(g_rmask);
+        g_rbuf = (uint8_t *)malloc(size);
+        g_rrgb = (uint32_t *)malloc(size * sizeof *g_rrgb);
+        g_rmask = (uint8_t *)malloc(size);
+        g_rbuf_cap = g_rbuf && g_rrgb && g_rmask ? size : 0;
+    }
+    g_rtrue = 0;
+    if (!g_rbuf_cap) return hi;
+    if (!remaster_live_composite(g_rlive, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask)) return hi;
+    g_rtrue = 1;
+    return g_rbuf;
+}
+
+/* After convert_fine has turned the fine picture's palette indices into pixels: the Remastered 3D view in true colour. */
+static void remaster_true_colour(uint32_t *pixels, size_t count)
+{
+    static int said;
+    static int calls;
+    if (getenv("F117_REMASTER_DEBUG") && ++calls % 40 == 0 && said < 6) {
+        said++;
+        size_t set = 0; for (size_t i = 0; i < count; i++) set += g_rmask ? g_rmask[i] : 0;
+        fprintf(stderr, "[overlay] true %d mask %p rgb %p count %zu mask-set %zu\n", g_rtrue, (void *)g_rmask, (void *)g_rrgb, count, set);
+    }
+    if (!g_rtrue || !g_rmask || !g_rrgb) return;
+    for (size_t i = 0; i < count; i++)
+        if (g_rmask[i]) pixels[i] = g_rrgb[i];
+}
+
+static int on_exec_hook(void *user, machine_t *m, unsigned index)
+{
+    (void)user;
+    if (g_rlive && index >= g_rlive_base) return remaster_live_exec(g_rlive, m, index - g_rlive_base);
+    if (index != 0) return 0;                                   /* index 0 is the sound stub; the others are Remastered's */
+    const uint16_t id = (uint16_t)(m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 4)) & 0xFFFFF] |
+                                   m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
+    static int log_requests = -1;
+    if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
+    if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
+    if (!g_mac || !macsound_has(g_mac, id)) return 0;
+    const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
+    const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);   /* whichever driver is loaded */
+    const sp_source use = sp_choose(kind, SP_BIT(SP_MAC) | dos_any, g_source[kind]);
+    if (use != SP_MAC) return 0;
+    return macsound_play(g_mac, id);
+}
+static sp_source parse_source_option(const char *flag, const char *v)
+{
+    if (!strcmp(v, "dos")) return SP_ADLIB;          /* any DOS driver: the Mac recording is not taken */
+    const int s = sp_parse_source(v);
+    if (s < 0 || s == SP_ROLAND || s == SP_ADLIB || s == SP_SPEAKER) {
+        fprintf(stderr, "%s takes default, mac or dos\n", flag);
+        exit(2);
+    }
+    return (sp_source)s;
+}
 static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
@@ -246,7 +331,7 @@ static void on_vsync(void *u, uint64_t icount)
         drawlive_update(&g_live, &g_feed);
         g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
                                                 : drawlive_present(&g_live, &H.m, &H.frame));
-        g_fine = g_live.shown_hi;
+        g_fine = remaster_apply(g_live.shown_hi);
     }
     H.have_frame = 1;
 }
@@ -474,6 +559,24 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                             uint16_t load_seg, uint16_t reloc)
 {
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if (kind != MODLOAD_OVERLAY) {
+        m->exec_hook_n = 0;
+        if (g_mac && !SDL_strcasecmp(name, "VGAME.EXE")) {      /* the game's sound stub: a far jump slot at load+1E42:0313 */
+            m->exec_hook[0].cs = (uint16_t)(load_seg + 0x1E42);
+            m->exec_hook[0].ip = 0x0313;
+            m->exec_hook_n = 1;
+        }
+        if (!SDL_strcasecmp(name, "VGAME.EXE")) {
+            const char *spec = getenv("F117_REMASTER_FRAME");       /* N:FILE.ppm: write the Nth frame's geometry as a picture */
+            if (g_remaster && !g_rlive) g_rlive = remaster_live_new(960, 720, ~0u, NULL);
+            if (spec && !g_rlive) {
+                const unsigned frame = (unsigned)strtoul(spec, NULL, 10);
+                const char *colon = strchr(spec, ':');
+                g_rlive = remaster_live_new(960, 720, frame, colon ? colon + 1 : NULL);
+            }
+            if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
+        }
+    }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
         setup_key(m, m->cpu.icount + 200000, 'N');
         setup_key(m, m->cpu.icount + 2000000, g_setup_sound);
@@ -688,6 +791,9 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
+        else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
+        else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
+        else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--remap") && v) {
             if (remap_add(v) < 0) { fprintf(stderr, "--remap takes pairs of key names, e.g. Q:W (SDL names: A, Left Shift, F5, Keypad 4)\n"); return 2; }
             i++;
@@ -777,8 +883,15 @@ int main(int argc, char **argv)
              * options, which a later one still refines; Remastered needs its own renderer */
             if (!strcmp(v, "original")) { g_replay = g_rerun = g_scale = g_fit_scale = 0; }
             else if (!strcmp(v, "enhanced")) { g_replay = 2; g_rerun = 1; g_fit_scale = 1; }
-            else if (!strcmp(v, "remastered")) { fprintf(stderr, "--presentation remastered is not built yet\n"); return 2; }
-            else { fprintf(stderr, "--presentation takes original or enhanced\n"); return 2; }
+            else if (!strcmp(v, "remastered")) {                 /* the Enhanced picture with the 3D view redrawn (remaster_live.h) */
+                g_replay = 2; g_rerun = 1; g_fit_scale = 1; g_remaster = 1;
+#ifdef _WIN32
+                _putenv_s("F117_PRESENT_DIAG", "1");              /* the origin planes say which pixels are the 3D view */
+#else
+                setenv("F117_PRESENT_DIAG", "1", 0);
+#endif
+            }
+            else { fprintf(stderr, "--presentation takes original, enhanced or remastered\n"); return 2; }
             i++;
         }
         else if (!strcmp(a, "--fixes") && v) {
@@ -1042,6 +1155,7 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = app_module_load;
+    hooks.exec = on_exec_hook;
     hooks.file_data = fixes_file_data;
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);
@@ -1530,6 +1644,7 @@ int main(int argc, char **argv)
                 size_t produced_frames = 0;
                 size_t n;
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    macsound_mix(g_mac, abuf, n);                     /* the Mac recordings over the driver's output */
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
                     if (stream && replay_x4 == 4 && !seek_target) {   /* a replay off normal speed, or seeking, is silent */
@@ -1586,9 +1701,10 @@ int main(int argc, char **argv)
                         memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
-                        g_fine = g_live.shown_hi;
+                        g_fine = remaster_apply(g_live.shown_hi);
                         if (g_fine && tex_fine && !H.frame.text) {
                             convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
+                            remaster_true_colour(fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             fine_ready = 1;
                         }
                     }
@@ -1607,7 +1723,7 @@ int main(int argc, char **argv)
             } else {
                 drawlive_update(&g_live, &g_feed);
                 got = drawlive_present_interp(&g_live, &H.m, &H.frame);
-                g_fine = g_live.shown_hi;
+                g_fine = remaster_apply(g_live.shown_hi);
                 const drawlive_step *a, *b;
                 drawlive_steps(&g_live, &a, &b);
                 if (a && b) {
@@ -1626,7 +1742,10 @@ int main(int argc, char **argv)
         }
         if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
             w = 320 * g_scale; h = 200 * g_scale;
-            if (!fine_ready) convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
+            if (!fine_ready) {
+                convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
+                remaster_true_colour(fine_pixels, (size_t)w * h);
+            }
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
             show = tex_fine;

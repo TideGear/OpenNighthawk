@@ -36,8 +36,12 @@ int main(void)
     /* navigating and changing; choices wrap */
     settings_open(&s);
     CHECK(s.open && s.cursor == 0);
-    CHECK(settings_key_event(&s, SKEY_RIGHT));                /* presentation: enhanced -> original */
+    CHECK(settings_key_event(&s, SKEY_RIGHT));                /* presentation: enhanced -> remastered -> original */
+    CHECK(!strcmp(settings_value(&s, pres), "remastered"));
+    CHECK(settings_key_event(&s, SKEY_RIGHT));
     CHECK(!strcmp(settings_value(&s, pres), "original"));
+    CHECK(settings_key_event(&s, SKEY_LEFT));
+    CHECK(!strcmp(settings_value(&s, pres), "remastered"));
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
@@ -100,7 +104,7 @@ int main(void)
     settings_open(&s);
     s.cursor = pres;
     settings_key_event(&s, SKEY_ENTER);                       /* Enter steps forward */
-    CHECK(!strcmp(settings_value(&s, pres), "original") && settings_needs_restart(&s));
+    CHECK(!strcmp(settings_value(&s, pres), "remastered") && settings_needs_restart(&s));
 
     /* a live setting is flagged, and does not need a restart by itself */
     s.cursor = full;
@@ -112,7 +116,7 @@ int main(void)
     char *out = settings_apply(&s, file);
     CHECK(out);
     char v[32];
-    CHECK(config_get(out, "presentation", v, sizeof v) && !strcmp(v, "original"));
+    CHECK(config_get(out, "presentation", v, sizeof v) && !strcmp(v, "remastered"));
     CHECK(config_get(out, "fullscreen", v, sizeof v) && !strcmp(v, "no"));
     CHECK(config_get(out, "scale", v, sizeof v) && !strcmp(v, "4"));
     CHECK(!config_get(out, "fixes", v, sizeof v));            /* untouched: not written */

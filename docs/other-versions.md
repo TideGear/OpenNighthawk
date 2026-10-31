@@ -35,8 +35,9 @@ code 248,520 bytes against 252,860). Addresses below are 2.3.2 unless marked 2.1
   door and impact), the engine loop (500), three pieces of music (title, death and good mission;
   resources 200, 321 and 322) and nine speech words (1000-1008) that the game chains into phrases.
   The port kept the DOS effect ids and added 300: DOS ids `0x04`-`0x14` are resources 304-320, checked
-  against 13 ids of independently known meaning. The music's DOS ids are not yet confirmed. These
-  recordings are a column of the planned [sound board](sound-board.md).
+  against 13 ids of independently known meaning. The music is DOS ids 36 to 38 (resources 322, 321 and 200, by ear).
+  The bay door (323) goes with DOS 31 and 29, the impact (325) with 30; the engine loop (500) is request 311/312. These
+  recordings are a column of the [sound board](sound-board.md), which has the evidence, and feed hybrid sound.
 - **Data.** The world data is byte-identical to DOS, so the two differ in presentation and code.
 - **Code.** 13 `CODE` resources (252,860 bytes) in `F117a Stealth Fighter 2.0`, built with THINK C
   6 and later 7. It carries no MacsBug function names: its only four symbols (`GETWDINFO`,
@@ -94,7 +95,8 @@ code 248,520 bytes against 252,860). Addresses below are 2.3.2 unless marked 2.1
   big-endian and laid out differently from `.3DX`.
 - **Sound.** Five IFF 8SVX samples, embedded in the intro player `play2` and the front end `f117`:
   an explosion, missile fire and three beeps (2.8-17.9 kHz, made with AudioMaster III). The flight
-  engine `f117f` holds no 8SVX; where its in-flight sounds come from is not established. The front
+  engine `f117f` holds no 8SVX; a 54 KB chip-memory data hunk in it is probably raw sound data, not decoded (the owner
+  judged the Amiga sounds not worth using). The front
   end still names the DOS drivers (`Asound.117` and the others), a remnant of the port.
 - **Code.** `f117f` is one flat 140 KB code hunk with absolute relocations, so its
   cross-references resolve statically where DOS's go through load-time-patched jump tables. That

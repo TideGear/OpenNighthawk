@@ -54,11 +54,6 @@
 #include "keys.h"
 #include "present.h"
 #include "observe.h"
-#include "observe_pose.h"
-#include "remaster_scene.h"
-#include "remaster_view.h"
-#include "scene_mesh.h"
-#include "band_state.h"
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
@@ -199,123 +194,6 @@ static void obs_prim(void *u, uint64_t icount, char kind, const int32_t *v, int 
 /* F117R_OBSERVE_HUD=1 also logs the HUD pass's starting state ('h', hud_state.h), F117R_OBSERVE_BANDS=1 the sky and
  * ground band pass's ('o', band_state.h); without them the log is as it always was. */
 static f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
-
-/* --remaster-shot FILE.ppm:FROM: the first view composition at or after clock FROM draws the model requests gathered
- * since the one before it with the Remastered fill (remaster_scene.c, remaster_raster.c) and writes the picture, and
- * the original's frame beside it as FILE.ppm.orig.ppm. A research aid: read-only, nothing here reaches the game. */
-static remaster_scene *g_rm_scene;
-static remaster_frame g_rm_frame;
-static uint64_t g_rm_from;
-static char g_rm_path[600];
-static int g_rm_done;
-size_t g_rm_last_n;
-static void write_shot(const machine_t *m, const char *path);
-static void rm_pose(void *u, uint64_t icount, machine_t *m, uint16_t model, uint16_t bank, const int16_t pos[3])
-{
-    (void)u; (void)icount;
-    const size_t before = g_rm_frame.n;
-    int added = remaster_scene_add(g_rm_scene, m->mem, MEM_SIZE, m->cpu.seg[S_DS], bank, model, pos, &g_rm_frame);
-    {   /* the cockpit's map display draws models through the same pipeline into its own small viewport (DS:85FA..8600):
-         * only the full-width 3-D view's requests belong in the main picture */
-        const uint8_t *d = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
-        const int vl = (int16_t)(d[0x85FA] | d[0x85FB] << 8), vr = (int16_t)(d[0x85FE] | d[0x85FF] << 8);
-        if (vr - vl < 300 && added > 0) { g_rm_frame.n = before; added = 0; }
-    }
-    if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) {
-        fprintf(stderr, "req %llu model %u bank %04X pos %d,%d,%d added %d flip %d\n", (unsigned long long)icount, model, bank, pos[0], pos[1], pos[2], added, m->mem[((size_t)m->cpu.seg[S_DS] << 4) + 0x0346] & 1);
-        const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
-        const int gx = (int16_t)(ds[0x8602] | ds[0x8603] << 8), gy = (int16_t)(ds[0x8604] | ds[0x8605] << 8);
-        for (size_t k = before; k < g_rm_frame.n && k < before + 3; k++) {
-            const remaster_prim *p = &g_rm_frame.prim[k];
-            if (p->n && p->v[0].z > 0) fprintf(stderr, "  prim kind %d n %d pixel %u at %d,%d zhi %d\n", p->kind, p->n, p->pixel,
-                                              (int)(gx + 256.0 * p->v[0].x / p->v[0].z), (int)(gy + 256.0 * p->v[0].y / p->v[0].z), p->v[0].z >> 16);
-        }
-    }
-}
-static void rm_compose(void *u, machine_t *m)
-{
-    (void)u;
-    if (getenv("F117_RM_DUMP") && m->cpu.icount >= g_rm_from - 20000000) fprintf(stderr, "compose %llu n %zu\n", (unsigned long long)m->cpu.icount, g_rm_frame.n);
-    static unsigned composes;
-    if (g_rm_done) return;
-    if (m->cpu.icount < g_rm_from) { remaster_frame_clear(&g_rm_frame); composes = 0; { extern size_t g_rm_last_n; g_rm_last_n = 0; } return; }
-    /* one view composition holds a whole picture (about forty model requests; the flip bit at DS:0346 toggles per
-     * composition): a frame is the requests since the previous composition. F117_RM_WINDOW=N gathers N of them instead. */
-    static int win = -1;
-    if (win < 0) { const char *e = getenv("F117_RM_WINDOW"); win = e ? atoi(e) : 1; }
-    if (win > 1 && ++composes < (unsigned)win) return;
-    const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
-    #define DSW(o) ((int)(int16_t)(ds[o] | ds[(o) + 1] << 8))
-    const int vl = DSW(0x85FA), vt = DSW(0x85FC), vr = DSW(0x85FE), vb = DSW(0x8600), gx = DSW(0x8602), gy = DSW(0x8604);
-    /* the original frame is 1280 x 960 at 4x; F117_RM_WIDTH wider (16:9 at this height is 1707) keeps the scale and adds
-     * columns about the projection centre: the picture grows at its sides and nothing that was drawn moves */
-    const int w0 = 1280, h = 960;
-    int w = w0;
-    { const char *e = getenv("F117_RM_WIDTH"); if (e && atoi(e) > w0) w = atoi(e); }
-    const int xoff = (w - w0) / 2;
-    const double kx = w0 / 320.0, ky = h / 200.0;
-    /* the picture itself is the shared module's (remaster_view.c): sky and ground from the band state, then the models */
-    struct { uint32_t *color; } t = { (uint32_t *)malloc((size_t)w * h * 4) };
-    const long px = remaster_view_render(ds, m->dac, &g_rm_frame, w, h, w0, t.color);
-    static present_frame f;
-    present_capture(m, &f);
-    if (getenv("F117_RM_DUMP")) {
-        for (int i = 126; i < 140; i++) fprintf(stderr, "dac %d = %d,%d,%d | shown %d,%d,%d\n", i, m->dac[3 * i], m->dac[3 * i + 1], m->dac[3 * i + 2], f.dac[3 * i], f.dac[3 * i + 1], f.dac[3 * i + 2]);
-        for (int y = 60; y < 106; y += 9) fprintf(stderr, "vram row %d: %d %d %d %d %d\n", y, f.vram[y * 320 + 20], f.vram[y * 320 + 80], f.vram[y * 320 + 160], f.vram[y * 320 + 240], f.vram[y * 320 + 300]);
-    }
-    if (getenv("F117_RM_DUMP")) for (size_t k = 0; k < g_rm_frame.n; k++) {
-        const remaster_prim *p = &g_rm_frame.prim[k];
-        double sx = 0, sy = 0; int ok = 0;
-        for (int j = 0; j < p->n; j++) if (p->v[j].z > 0x10000) { sx += gx + 256.0 * p->v[j].x / p->v[j].z; sy += gy - 256.0 * p->v[j].y / p->v[j].z; ok++; }
-        int under = -1;
-        if (ok) { const int ix = (int)(sx / ok), iy = (int)(sy / ok); if (ix >= 0 && ix < 320 && iy >= 0 && iy < 200) under = f.vram[iy * 320 + ix]; }
-        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d at %d,%d pix %u rgb %d,%d,%d\n", p->model, p->kind, p->n, p->colour_index,
-                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under, ok ? (int)(sx / ok) : -1, ok ? (int)(sy / ok) : -1, p->pixel, m->dac[3 * p->pixel], m->dac[3 * p->pixel + 1], m->dac[3 * p->pixel + 2]);
-    }
-    const int x0 = w > w0 ? 0 : (int)(kx * vl), x1 = w > w0 ? w : (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
-    (void)y1;
-    FILE *o = fopen(g_rm_path, "wb");
-    if (o) {   /* left: the render in the viewport's place on a dark page; right: the whole original frame, uncropped */
-        fprintf(o, "P6\n%d %d\n255\n", w * 2, h);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                if (y >= y0 && y < y1 && x >= x0 && x < x1) { const uint32_t v = t.color[y * w + x]; fputc(v & 255, o); fputc((v >> 8) & 255, o); fputc((v >> 16) & 255, o); }
-                else { fputc(16, o); fputc(16, o); fputc(16, o); }
-            }
-            for (int x = 0; x < w; x++) {
-                const int ox = x - xoff; const uint8_t dk[3] = { 4, 4, 4 }; const uint8_t *c = (ox < 0 || ox >= w0) ? dk : &f.dac[3 * f.vram[(y * 200 / h) * 320 + ox * 320 / w0]];
-                fputc((c[0] << 2) | (c[0] >> 4), o); fputc((c[1] << 2) | (c[1] >> 4), o); fputc((c[2] << 2) | (c[2] >> 4), o);
-            }
-        }
-    }
-    if (o) fclose(o);
-    {   /* a blend of the render and the original's viewport pixels, to see misalignment and what is missing */
-        char bp[640];
-        snprintf(bp, sizeof bp, "%s.blend.ppm", g_rm_path);
-        FILE *bo = fopen(bp, "wb");
-        if (bo) {
-            fprintf(bo, "P6\n%d %d\n255\n", x1 - x0, y1 - y0);
-            for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
-                const uint32_t v = t.color[y * w + x];
-                const int ox = x - xoff; const uint8_t dk[3] = { 4, 4, 4 }; const uint8_t *c = (ox < 0 || ox >= w0) ? dk : &f.dac[3 * f.vram[(y * 200 / h) * 320 + ox * 320 / w0]];
-                const int ob[3] = { (c[0] << 2) | (c[0] >> 4), (c[1] << 2) | (c[1] >> 4), (c[2] << 2) | (c[2] >> 4) };
-                const int mb[3] = { (int)(v & 255), (int)((v >> 8) & 255), (int)((v >> 16) & 255) };
-                for (int k = 0; k < 3; k++) fputc((ob[k] + mb[k]) / 2, bo);
-            }
-            fclose(bo);
-        }
-    }
-    fprintf(stderr, "remaster-shot: %zu primitives, %ld pixels, viewport %d,%d-%d,%d centre %d,%d, clock %llu -> %s\n", g_rm_frame.n, px,
-            vl, vt, vr, vb, gx, gy, (unsigned long long)m->cpu.icount, g_rm_path);
-    free(t.color);
-    g_rm_done = 1;
-}
-/* the matched projection only reports a vertex (and so the first one's pose) to an observer that asks for vertices */
-static void rm_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range, uint16_t xf_at, uint16_t px_at)
-{
-    (void)u; (void)icount; (void)xf; (void)px; (void)range; (void)xf_at; (void)px_at;
-}
-static f117_observer g_rm_obs;
 
 static FILE *g_opl_log;
 static FILE *g_midi_log;
@@ -802,17 +680,6 @@ int main(int argc, char **argv)
                 g_scene_limit=(unsigned)limit;g_scene_count=0;g_obs.scene=1;g_obs.want_scene=obs_want_scene;
             }
             observe_set(&g_obs); i++;
-        }
-        else if (!strcmp(a, "--remaster-shot") && v) {
-            snprintf(g_rm_path, sizeof g_rm_path, "%s", v);
-            char *c3 = strrchr(g_rm_path, ':');
-            if (!c3 || c3 == g_rm_path + 1) { fprintf(stderr, "--remaster-shot FILE.ppm:FROM\n"); return 2; }
-            *c3 = 0; g_rm_from = strtoull(c3 + 1, NULL, 0);
-            g_rm_scene = remaster_scene_new();
-            g_rm_obs.compose = rm_compose;
-            g_rm_obs.vertex = rm_vertex;
-            observe_set(&g_rm_obs);
-            observe_pose_set(rm_pose, NULL); i++;
         }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }

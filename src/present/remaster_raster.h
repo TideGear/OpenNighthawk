@@ -24,18 +24,23 @@ typedef struct {
     double cx, cy;              /* the view's centre in pixels */
     double sx, sy;              /* pixels per unit of x / z and y / z: 256 for the game's own 320 x 200 pixels */
     int32_t near_z;             /* nearer than this is clipped (the game's own smallest z is 0x10000) */
-    uint32_t *gen;              /* optional, w * h: which draw group last wrote each pixel's depth */
-    uint32_t cur_gen;           /* with gen set, depth is compared only against the same group: groups paint in order (the
-                                   original's painter order across models), depth orders the faces within one */
-    /* optional palette-index tracking (the original paints palette indices, and some fills combine with the page):
-     * index is w * h; a colour fill writes cur_index there, an OR (op 1) or AND (op 2) fill with opval turns the index
-     * already there into index | opval or index & opval and shows pal[that] (no depth test: the original ORs spans
-     * into the page). */
-    uint8_t *index;
-    uint32_t pal[256];
-    int op;
-    uint8_t opval, cur_index;
+    /* Optional, for the original's fills that combine with what is already drawn (AND, OR, stipple: remaster_polygon_logic):
+     * the palette index each pixel stands for, REMASTER_NO_INDEX where it has none, and the palette to turn an index into a
+     * colour. The solid fills write paint_index into index as they paint. */
+    uint16_t *index;            /* w * h, or NULL */
+    const uint32_t *palette;    /* 256 entries, 0xAARRGGBB */
+    uint16_t paint_index;       /* what the next polygon, shaded polygon or line writes into index */
 } remaster_target;
+
+#define REMASTER_NO_INDEX 0xFFFFu
+
+enum { REMASTER_AND, REMASTER_OR, REMASTER_STIPPLE };
+
+/* A polygon that combines with the pixels under it, as the original's fill styles FEh (AND), FDh (OR) and FCh (stipple) do with
+ * the low byte of the colour word: the pixel's palette index is ANDed or ORed with `value`, and the colour becomes that palette
+ * entry; a stipple blends the pixel half way towards palette[value]. It applies where nothing nearer is drawn, and leaves the
+ * depth alone, so what is drawn later still covers it. A pixel with no index is left as it is (AND, OR). */
+long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int op, unsigned value);
 
 /* Clear colour and depth. */
 void remaster_clear(remaster_target *t, uint32_t color);
@@ -43,8 +48,13 @@ void remaster_clear(remaster_target *t, uint32_t color);
 /* Fill a convex polygon of n vertices (n >= 3) in one colour; returns the pixels written. */
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color);
 
-/* A line between two camera-space points, width pixels wide, drawn a hair nearer than a surface at the same depth;
- * returns the pixels written. */
-long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width, uint32_t color);
+/* A convex polygon with a colour at each vertex (0xAARRGGBB), interpolated across it (the sky and ground gradients),
+ * with a hair of ordered noise so an 8-bit result shows no steps of its own. Every vertex must be in front of the near
+ * plane (a far-away polygon, as the bands are); otherwise nothing is drawn. Same depth test as remaster_polygon. */
+long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uint32_t *colors, int n);
+
+/* A line from a to b, width_px wide on the screen (a point when a == b: a square of that side), with the same depth test
+ * and near-plane clip as the polygons. Returns the pixels written. */
+long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color);
 
 #endif

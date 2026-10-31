@@ -3,12 +3,14 @@
 
 #include "scene_mesh.h"
 
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define CACHE_SIZE 1024
+
+unsigned remaster_scene_dropped[3];   /* primitives left out: a vertex the game did not make (dots), (edges), a chain that is not one */
 
 typedef struct {
     uint64_t bank;                  /* the bank's signature */
@@ -22,7 +24,6 @@ struct remaster_scene {
     unsigned next;                  /* the next slot to take when none matches */
     scene_pose pose;
     scene_geometry geometry;
-    uint32_t requests;
 };
 
 void remaster_frame_clear(remaster_frame *f) { f->n = 0; }
@@ -74,6 +75,7 @@ typedef struct {
     const scene_geometry *geometry;
     remaster_frame *f;
     uint16_t model;
+    uint8_t darken;
     int added;
     int ok;
 } emit_ctx;
@@ -97,110 +99,130 @@ static void put_vertex(remaster_prim *p, const scene_geometry *g, unsigned id)
     p->n++;
 }
 
-/* A face's command lists its edges in any order: the original's edge spans (130D:004A) take each edge alone and fill by
- * row, so no chain is needed. Order the edge set's vertices round the face: walk the edges end to end when they make one
- * closed loop, else sort the vertices by angle about their centre in the face's plane. */
-static int order_vertices(const scene_mesh *mesh, const scene_geometry *g, const scene_material *c, unsigned *out, unsigned cap)
+/* When a face's edges do not run end to end as one chain, the original still fills it: its edge spans (130D:004A) take each
+ * edge alone and fill by row. Take the edge set's vertices and order them round the face by angle about their centre in the
+ * face's plane (a convex face, as the models' faces are). Returns the count, written to ids (cap entries). */
+static unsigned order_by_angle(const scene_mesh *mesh, const scene_geometry *g, const scene_material *c, unsigned *ids, unsigned cap)
 {
-    unsigned a[32], b[32], n = c->count;
-    for (unsigned k = 0; k < n; k++) { a[k] = mesh->edge[c->item[k]].a; b[k] = mesh->edge[c->item[k]].b; }
-    int used[32] = { 0 };
-    unsigned m = 0, cur = b[0];
-    out[m++] = a[0]; used[0] = 1;
-    for (unsigned step = 1; step < n; step++) {
-        int found = -1;
-        for (unsigned k = 0; k < n; k++) if (!used[k] && (a[k] == cur || b[k] == cur)) { found = (int)k; break; }
-        if (found < 0) break;
-        out[m++] = cur;
-        used[found] = 1;
-        cur = a[found] == cur ? b[found] : a[found];
-    }
-    unsigned all_used = 1;
-    for (unsigned k = 0; k < n; k++) if (!used[k]) all_used = 0;
-    if (all_used && cur == out[0] && m >= 3) return (int)m;           /* one closed loop */
-    m = 0;                                                            /* otherwise the vertex set, by angle */
-    for (unsigned k = 0; k < n; k++) for (int e = 0; e < 2; e++) {
-        const unsigned v = e ? b[k] : a[k];
-        int seen = 0;
-        for (unsigned j = 0; j < m; j++) if (out[j] == v) seen = 1;
-        if (!seen && m < cap) out[m++] = v;
-    }
-    if (m < 3) return (int)m;
+    unsigned m = 0;
+    for (unsigned k = 0; k < c->count; k++)
+        for (int side = 0; side < 2; side++) {
+            const unsigned v = side ? mesh->edge[c->item[k]].b : mesh->edge[c->item[k]].a;
+            int seen = 0;
+            for (unsigned j = 0; j < m; j++) if (ids[j] == v) seen = 1;
+            if (!seen && m < cap) ids[m++] = v;
+        }
+    if (m < 3) return m;
     double cx = 0, cy = 0, cz = 0;
-    for (unsigned j = 0; j < m; j++) { cx += g->camera[out[j]][0]; cy += g->camera[out[j]][1]; cz += g->camera[out[j]][2]; }
+    for (unsigned j = 0; j < m; j++) { cx += g->camera[ids[j]][0]; cy += g->camera[ids[j]][1]; cz += g->camera[ids[j]][2]; }
     cx /= m; cy /= m; cz /= m;
-    double nx = 0, ny = 0, nz = 0;                                    /* the face's normal from the first non-degenerate pair */
-    const double ux = g->camera[out[0]][0] - cx, uy = g->camera[out[0]][1] - cy, uz = g->camera[out[0]][2] - cz;
+    const double ux = g->camera[ids[0]][0] - cx, uy = g->camera[ids[0]][1] - cy, uz = g->camera[ids[0]][2] - cz;
+    double nx = 0, ny = 0, nz = 0;
     for (unsigned j = 1; j < m && nx == 0 && ny == 0 && nz == 0; j++) {
-        const double vx = g->camera[out[j]][0] - cx, vy = g->camera[out[j]][1] - cy, vz = g->camera[out[j]][2] - cz;
+        const double vx = g->camera[ids[j]][0] - cx, vy = g->camera[ids[j]][1] - cy, vz = g->camera[ids[j]][2] - cz;
         nx = uy * vz - uz * vy; ny = uz * vx - ux * vz; nz = ux * vy - uy * vx;
     }
-    const double ul = sqrt(ux * ux + uy * uy + uz * uz);
-    if (ul == 0 || (nx == 0 && ny == 0 && nz == 0)) return (int)m;
-    const double wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;   /* in-plane, perpendicular to u */
+    if ((ux == 0 && uy == 0 && uz == 0) || (nx == 0 && ny == 0 && nz == 0)) return m;
+    const double wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;   /* in the plane, perpendicular to u */
     double ang[32];
     for (unsigned j = 0; j < m; j++) {
-        const double vx = g->camera[out[j]][0] - cx, vy = g->camera[out[j]][1] - cy, vz = g->camera[out[j]][2] - cz;
+        const double vx = g->camera[ids[j]][0] - cx, vy = g->camera[ids[j]][1] - cy, vz = g->camera[ids[j]][2] - cz;
         ang[j] = atan2(vx * wx + vy * wy + vz * wz, vx * ux + vy * uy + vz * uz);
     }
-    for (unsigned i = 1; i < m; i++) {                                /* insertion sort by angle */
-        const double ka = ang[i]; const unsigned kv = out[i]; unsigned j = i;
-        while (j > 0 && ang[j - 1] > ka) { ang[j] = ang[j - 1]; out[j] = out[j - 1]; j--; }
-        ang[j] = ka; out[j] = kv;
+    for (unsigned i = 1; i < m; i++) {
+        const double ka = ang[i]; const unsigned kv = ids[i]; unsigned j = i;
+        while (j > 0 && ang[j - 1] > ka) { ang[j] = ang[j - 1]; ids[j] = ids[j - 1]; j--; }
+        ang[j] = ka; ids[j] = kv;
     }
-    return (int)m;
+    return m;
 }
 
-static remaster_prim *new_prim(emit_ctx *x, const scene_material *c)
+static int emit(void *user, const scene_material *c)
 {
-    if (!grow(x->f)) { x->ok = 0; return NULL; }
+    emit_ctx *x = (emit_ctx *)user;
+    if (!grow(x->f)) { x->ok = 0; return 0; }
     remaster_prim *p = &x->f->prim[x->f->n];
     memset(p, 0, sizeof *p);
     p->kind = c->kind;
     p->colour_index = c->colour_index;
     p->colour_word = c->colour_word;
     p->shade = c->shade;
+    p->darken = x->darken;
     p->face = c->face;
     p->model = x->model;
-    return p;
-}
-
-static int emit(void *user, const scene_material *c)
-{
-    emit_ctx *x = (emit_ctx *)user;
+    if (c->kind == SCENE_LINES) {                             /* the items are edges, each its own segment (not one chain) */
+        const remaster_prim head = *p;
+        for (unsigned k = 0; k < c->count; k++) {
+            const scene_edge *e = &x->mesh->edge[c->item[k]];
+            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) { remaster_scene_dropped[1]++; continue; }
+            if (!grow(x->f)) { x->ok = 0; return 0; }
+            remaster_prim *q = &x->f->prim[x->f->n];
+            *q = head;
+            q->n = 0;
+            put_vertex(q, x->geometry, e->a);
+            put_vertex(q, x->geometry, e->b);
+            x->f->n++;
+            x->added++;
+        }
+        return 1;
+    }
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
-        remaster_prim *p = new_prim(x, c);
-        if (!p) return 0;
         for (unsigned k = 0; k < c->count && p->n < REMASTER_PRIM_VERTICES; k++) {
-            if (!x->geometry->present[c->item[k]]) return 1;  /* a vertex the game did not make: skip the dot set */
+            if (!x->geometry->present[c->item[k]]) { remaster_scene_dropped[0]++; return 1; }  /* a vertex the game did not make: skip the dot set */
             put_vertex(p, x->geometry, c->item[k]);
         }
-        x->f->n++; x->added++;
-    } else if (c->kind == SCENE_LINES) {                      /* each edge is its own segment */
+    } else {                                                  /* the items are edges: a chain of vertices */
+        /* the edges as listed need not run end to end: chain them by the vertex they share */
+        unsigned used = 0, cur = 0, taken = 0;
         for (unsigned k = 0; k < c->count; k++) {
             const scene_edge *e = &x->mesh->edge[c->item[k]];
-            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) continue;
-            remaster_prim *p = new_prim(x, c);
-            if (!p) return 0;
-            put_vertex(p, x->geometry, e->a);
-            put_vertex(p, x->geometry, e->b);
-            x->f->n++; x->added++;
+            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) { remaster_scene_dropped[1]++; return 1; }
         }
-    } else {                                                  /* a polygon: the edge set's vertices round the face */
-        unsigned ids[64];
-        for (unsigned k = 0; k < c->count; k++) {
-            const scene_edge *e = &x->mesh->edge[c->item[k]];
-            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) return 1;
+        {
+            const scene_edge *e = &x->mesh->edge[c->item[0]];
+            put_vertex(p, x->geometry, e->a); put_vertex(p, x->geometry, e->b);
+            cur = e->b; used = 1u; taken = 1;
         }
-        const int m = order_vertices(x->mesh, x->geometry, c, ids, 32);
-        if (m < 3) return 1;
-        remaster_prim *p = new_prim(x, c);
-        if (!p) return 0;
-        for (int k = 0; k < m && p->n < REMASTER_PRIM_VERTICES; k++) put_vertex(p, x->geometry, ids[k]);
-        x->f->n++; x->added++;
+        for (int progress = 1; progress && taken < c->count;) {
+            progress = 0;
+            for (unsigned k = 1; k < c->count; k++) {
+                if (used >> k & 1u) continue;
+                const scene_edge *e = &x->mesh->edge[c->item[k]];
+                if (e->a == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->b); cur = e->b; }
+                else if (e->b == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->a); cur = e->a; }
+                else continue;
+                used |= 1u << k; taken++; progress = 1;
+            }
+        }
+        if (taken < c->count) {
+            if (getenv("F117_REMASTER_DEBUG") && remaster_scene_dropped[2] < 6) {
+                fprintf(stderr, "[nochain] model %u kind %d count %u taken %u edges:", (unsigned)x->model, c->kind, c->count, taken);
+                for (unsigned k = 0; k < c->count; k++) fprintf(stderr, " %u-%u", (unsigned)x->mesh->edge[c->item[k]].a, (unsigned)x->mesh->edge[c->item[k]].b);
+                fprintf(stderr, "\n");
+            }
+            remaster_scene_dropped[2]++;
+            if (c->kind == SCENE_POLYGON) {                   /* not one chain: fill it from its edge set all the same */
+                unsigned ids[32];
+                const unsigned m = order_by_angle(x->mesh, x->geometry, c, ids, 32);
+                if (m < 3) return 1;
+                p->n = 0;
+                for (unsigned k = 0; k < m && p->n < REMASTER_PRIM_VERTICES; k++) put_vertex(p, x->geometry, ids[k]);
+                x->f->n++;
+                x->added++;
+                return 1;
+            }
+        }   /* not one chain */
+        if (c->kind == SCENE_POLYGON && p->n > 2 && x->geometry->camera[cur][0] == p->v[0].x &&
+            x->geometry->camera[cur][1] == p->v[0].y && x->geometry->camera[cur][2] == p->v[0].z)
+            p->n--;                                           /* a closed chain repeats its first vertex */
     }
+    if (c->kind == SCENE_POLYGON && p->n < 3) return 1;       /* a face needs three vertices: two are no polygon */
+    x->f->n++;
+    x->added++;
     return 1;
 }
+
+const scene_geometry *remaster_scene_geometry(const remaster_scene *s) { return &s->geometry; }
 
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f)
@@ -216,39 +238,10 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
     if (!scene_mesh_eval(mesh, &s->pose, &s->geometry)) return -1;
     const size_t frame_start = f->n;
-    emit_ctx ctx = { mesh, &s->geometry, f, model, 0, 1 };
+    emit_ctx ctx = { mesh, &s->geometry, f, model, dsp[0x48C4], 0, 1 };
     if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx)) {
         f->n = frame_start;
         return -1;
     }
-    /* the fill's colour rule: a word FFxx with xx >= A0 is darkened by DS:48C4, but not below its band (xx & F0) */
-    const uint8_t darken = dsp[0x48C4];
-    for (size_t k = frame_start; k < f->n; k++) {
-        remaster_prim *p = &f->prim[k];
-        uint8_t al = (uint8_t)p->colour_word;
-        if ((p->colour_word >> 8) == 0xFF && al >= 0xA0) {
-            const uint8_t base = al & 0xF0;
-            al = (uint8_t)(al - darken);
-            if (!(al > base)) al = base;                  /* unsigned, as the original's JA: a borrow wraps and stays */
-        }
-        p->pixel = al;
-        p->style = (uint8_t)(p->colour_word >> 8);
-        p->pixel2 = p->style;
-    }
-    if (getenv("F117_RM_MESH") && (ctx.added == 0 || getenv("F117_RM_MESH")[0] == '2'))
-        fprintf(stderr, "mesh model %u depth %u parts %u vertices %u planes %u edges %u faces %u raw_planes %d added %d\n", model, depth, mesh->nparts,
-                mesh->nvertices, mesh->nplanes, mesh->nedges, mesh->nfaces, (int16_t)mesh->raw_planes, ctx.added);
-    if (getenv("F117_RM_MESH") && ctx.added == 0) {
-        fprintf(stderr, "  stream @%04X:", mesh->face[0]);
-        for (unsigned k = 0; k < 28; k++) fprintf(stderr, " %02X", mesh->bank[(mesh->face[0] + k) & 0xFFFF]);
-        fprintf(stderr, "  settings 0..7:");
-        for (int k = 0; k < 8; k++) fprintf(stderr, " %d", s->pose.setting[k]);
-        fprintf(stderr, "\n");
-    }
-    const uint32_t request = ++s->requests;
-    int32_t zkey = 0;
-    for (size_t k = frame_start; k < f->n; k++)
-        for (int j = 0; j < f->prim[k].n; j++) if (f->prim[k].v[j].z > zkey) zkey = f->prim[k].v[j].z;
-    for (size_t k = frame_start; k < f->n; k++) { f->prim[k].request = request; f->prim[k].zkey = zkey; }
     return ctx.added;
 }

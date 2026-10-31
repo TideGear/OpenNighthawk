@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const C_PRESENTATION[] = { "original", "enhanced", NULL };
+static const char *const C_PRESENTATION[] = { "original", "enhanced", "remastered", NULL };
 static const char *const C_FIXES[] = { "original", "recommended", "custom", NULL };
 static const char *const C_SCALE[] = { "1", "2", "3", "4", "5", "6", NULL };
 static const char *const C_YESNO[] = { "no", "yes", NULL };

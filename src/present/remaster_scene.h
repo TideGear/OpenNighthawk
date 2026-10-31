@@ -14,6 +14,7 @@
 #define F117R_REMASTER_SCENE_H
 
 #include "remaster_raster.h"
+#include "scene_mesh.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -27,13 +28,9 @@ typedef struct {
     uint8_t colour_index;
     uint16_t colour_word;                   /* the model's palette entry for the colour index */
     uint8_t shade;                          /* the face's shade (the plane's, or the model's base) */
+    uint8_t darken;                         /* the object's byte at DS:48C4 (model_fill_begin darkens shaded colours by it) */
     uint16_t face;
     uint16_t model;
-    uint32_t request;                       /* which model request it came from (counts up in a scene) */
-    int32_t zkey;                           /* the request's farthest z: the original draws far to near */
-    uint8_t style;                          /* the word's high byte: < FBh a colour pair (pixel, pixel2), FFh one colour, FEh AND, FDh OR, FCh stipple, FBh draws nothing (VGAME 1377:0B09) */
-    uint8_t pixel2;                         /* a pair's second colour (the high byte) */
-    uint8_t pixel;                          /* the palette index the original's fill ends with (VGAME 1377:01E0) */
 } remaster_prim;
 
 typedef struct {
@@ -41,12 +38,17 @@ typedef struct {
     size_t n, cap;
 } remaster_frame;
 
+extern unsigned remaster_scene_dropped[3];   /* counters, for diagnostics */
+
 void remaster_frame_clear(remaster_frame *f);
 void remaster_frame_free(remaster_frame *f);
 
 typedef struct remaster_scene remaster_scene;
 remaster_scene *remaster_scene_new(void);
 void remaster_scene_free(remaster_scene *s);
+
+/* The vertices of the last model remaster_scene_add evaluated (camera space, the game's units, with which ids exist). */
+const scene_geometry *remaster_scene_geometry(const remaster_scene *s);
 
 /* Add one request's primitives to f. mem is the guest's memory (mem_size bytes: a megabyte); ds and bank_segment are
  * segments in it. Returns the number added, or -1 when the request cannot be read (a data segment or bank outside the
