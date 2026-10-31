@@ -207,12 +207,23 @@ static remaster_frame g_rm_frame;
 static uint64_t g_rm_from;
 static char g_rm_path[600];
 static int g_rm_done;
+size_t g_rm_last_n;
 static void write_shot(const machine_t *m, const char *path);
 static void rm_pose(void *u, uint64_t icount, machine_t *m, uint16_t model, uint16_t bank, const int16_t pos[3])
 {
     (void)u; (void)icount;
+    const size_t before = g_rm_frame.n;
     const int added = remaster_scene_add(g_rm_scene, m->mem, MEM_SIZE, m->cpu.seg[S_DS], bank, model, pos, &g_rm_frame);
-    if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) fprintf(stderr, "req %llu model %u bank %04X added %d\n", (unsigned long long)icount, model, bank, added);
+    if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) {
+        fprintf(stderr, "req %llu model %u bank %04X pos %d,%d,%d added %d\n", (unsigned long long)icount, model, bank, pos[0], pos[1], pos[2], added);
+        const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
+        const int gx = (int16_t)(ds[0x8602] | ds[0x8603] << 8), gy = (int16_t)(ds[0x8604] | ds[0x8605] << 8);
+        for (size_t k = before; k < g_rm_frame.n && k < before + 3; k++) {
+            const remaster_prim *p = &g_rm_frame.prim[k];
+            if (p->n && p->v[0].z > 0) fprintf(stderr, "  prim kind %d n %d pixel %u at %d,%d zhi %d\n", p->kind, p->n, p->pixel,
+                                              (int)(gx + 256.0 * p->v[0].x / p->v[0].z), (int)(gy + 256.0 * p->v[0].y / p->v[0].z), p->v[0].z >> 16);
+        }
+    }
 }
 static uint32_t rm_rgb(const uint8_t *c)
 {
@@ -225,8 +236,13 @@ static void rm_compose(void *u, machine_t *m)
     if (getenv("F117_RM_DUMP") && m->cpu.icount >= g_rm_from - 20000000) fprintf(stderr, "compose %llu n %zu\n", (unsigned long long)m->cpu.icount, g_rm_frame.n);
     static unsigned composes;
     if (g_rm_done) return;
-    if (m->cpu.icount < g_rm_from) { remaster_frame_clear(&g_rm_frame); composes = 0; return; }
-    if (++composes < 11) return;                   /* a composition draws only some of the models: gather ten */
+    if (m->cpu.icount < g_rm_from) { remaster_frame_clear(&g_rm_frame); composes = 0; { extern size_t g_rm_last_n; g_rm_last_n = 0; } return; }
+    /* the game's compositions come in runs of content between empty ones: a frame is one run */
+    size_t last_n_ = g_rm_last_n;
+    const size_t fresh = g_rm_frame.n - last_n_;
+    g_rm_last_n = g_rm_frame.n;
+    if (!fresh) { if (!composes) { remaster_frame_clear(&g_rm_frame); g_rm_last_n = 0; return; } }
+    else { composes++; return; }
     const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
     #define DSW(o) ((int)(int16_t)(ds[o] | ds[(o) + 1] << 8))
     const int vl = DSW(0x85FA), vt = DSW(0x85FC), vr = DSW(0x85FE), vb = DSW(0x8600), gx = DSW(0x8602), gy = DSW(0x8604);
@@ -277,8 +293,8 @@ static void rm_compose(void *u, machine_t *m)
         for (int j = 0; j < p->n; j++) if (p->v[j].z > 0x10000) { sx += gx + 256.0 * p->v[j].x / p->v[j].z; sy += gy - 256.0 * p->v[j].y / p->v[j].z; ok++; }
         int under = -1;
         if (ok) { const int ix = (int)(sx / ok), iy = (int)(sy / ok); if (ix >= 0 && ix < 320 && iy >= 0 && iy < 200) under = f.vram[iy * 320 + ix]; }
-        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d\n", p->model, p->kind, p->n, p->colour_index,
-                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under);
+        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d at %d,%d\n", p->model, p->kind, p->n, p->colour_index,
+                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under, ok ? (int)(sx / ok) : -1, ok ? (int)(sy / ok) : -1);
     }
     const int x0 = (int)(kx * vl), x1 = (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
     const int cw = x1 - x0, ch = y1 - y0;

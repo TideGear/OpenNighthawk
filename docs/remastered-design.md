@@ -224,3 +224,14 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   data segment words (`band_rec_off`), runs `band_fine` and paints the 32 quadrilaterals unrounded before the models. In
   the Libya flight the sky gradient and the brown ground bands match the original, smoothly instead of in steps. Left: the
   hangars, and the runway's dark surface colour.
+- **R3, the original does not redraw the whole scene each step (30 October 2026).** Counting the model requests over 30
+  million clocks of the Libya flight (about 7 logic steps) gives 26 ground-patch requests (model 30, 191 primitives),
+  21 of model 3 (bank `575E`, a distant structure), 11 of model 5, 8 of model 37 and a handful of others; none is a near
+  hangar, yet the original's frame shows large hangars on both sides. Composition passes (`compose`) come about every
+  0.77 million clocks in runs of content separated by empty passes, and one pass draws only one or two models. So the
+  original keeps its picture on the work page and draws what changed; the Remastered renderer cannot take a frame
+  from one step's requests. It needs a retained scene (the latest request per object, kept until the original redraws
+  or drops it) fed from the same callback. Open: what identifies an object across steps (the position words move with
+  the camera) and when the original drops one. `F117_RM_DUMP=1` and `F117_RM_WINDOW` (compositions gathered; the
+  frame-run mode is the default) help study it. Shots from these runs go to the owner's `Desktop\ONShots`, named
+  with a date-time prefix.
