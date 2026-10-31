@@ -104165,7 +104165,592 @@ static int isound_log_timer_interrupt_handler(machine_t *m)
 #undef XB
 }
 
+/* ISOUND.117 019C:026C, near, no arguments (DS = the driver's data segment;
+ * called once per timer tick by the far entry 00B5): the PC-speaker
+ * sequencer tick.
+ * It counts the tick in the code-segment word cs:[0002], then does nothing
+ * more (RET 0259) unless the driver is active (byte [82] = FFh).
+ * Priority [33] (signed) of 1 or less: no effect is playing.
+ *   - With the engine-noise byte [252] or the engine level [250] zero, it
+ *     clears [33] and the duration [43], marks the effect idle (call 05B7)
+ *     and switches the speaker gate off (01B4).
+ *   - With no duration left ([43] = 0) it decodes the engine word record at
+ *     0253 (046E).
+ *   - Otherwise it sets the tone [47] = ((2BCh - [250]) >> 4) + FFh and sends
+ *     a noisy divisor to counter 2 (0395).
+ * Priority above 1: an effect or song note is playing.
+ *   - A running envelope step ([41] or [3B] non-zero) goes to the countdown
+ *     at 01BD: decrement [41]; while it runs and the divisor [45] is
+ *     non-zero, slide [45] by [4B] and send it (call 04BA arms counter 2,
+ *     03AD writes it); when it ends, take the next envelope record at [3F]
+ *     (or, when that one is empty, repeat from [3D] while the count [3B]
+ *     lasts) through 03FC; else clear [73] and take the queued record
+ *     [6A]/[64] (when [66] AND [68] is non-zero), or reset the sequencer
+ *     (call 0168) and mark the effect idle (05B7).
+ *   - With neither the duration [43] nor the repeat count [35] running it
+ *     clears the byte-record flag [6C] and joins 0205 (whose JE is taken on
+ *     the flags of the OR, so the queue test at 0222 follows).
+ *   - Otherwise it decrements the duration [43]; at zero, the next record at
+ *     [39] is decoded (word format 046E or byte format 050D, chosen by [6C]),
+ *     or, when that record is empty, the repeat logic at 0200 runs ([35]
+ *     counts repeats of the record at [37]).
+ *   - While it lasts and the step mask [49] is non-zero: on the last count
+ *     with an empty next record and no repeat, the noise and step cells are
+ *     reset ([4B] = [7D] = 0, [47] = [49] = FFFFh); then [4B] is decoded:
+ *     high nibble 8 is a vibrato (width = low byte, step = bits 8-11; on the
+ *     first pass, [4D] not FFh, the centre [4E] and the bounds [50]/[52] are
+ *     set from the tone [47]; the direction [54] becomes -1 above [50] and
+ *     +1 below [52]; [47] += step * [54] by IMUL), anything else adds [4B]
+ *     to the tone [47]; with duration left, 0395 makes the noise word [7D]
+ *     (9248h added, rotated right three times), masks it with [49], adds
+ *     the tone and writes the divisor to port 42h, low byte then high byte.
+ * Record decoders (shared with the matched 0443 and 062E, run inline here):
+ * 046E word records (priority, duration, step mask, tone, slide; [64] keeps
+ * the record unless [68] is FFFFh), 050D byte records (priority byte,
+ * duration byte, tone word; the 6Eh escape into the word record at 0084
+ * through 0443, whose unsigned JA rejects it at 0442; priorities 65h and up
+ * take the slide from the CS pitch table at 04CB). Both end at the
+ * speaker-off tail 01B4 (no tone) or call 05A4 (arm the effect flag) and
+ * enable counter 2 (mode B6h) and the speaker gate (04BA/058F).
+ * Callees (all plain RET, nothing popped): 0168 (interior of 0163: clear the
+ * sequencer cells, speaker off), 05B7 and 05A4 (effect flag setters), 04BA
+ * (counter 2 mode and gate on), 03AD (write the divisor in AX to port 42h).
+ * The JMP tails into 05B7 and 05A4 are run inline with their own RETs.
+ * Every instruction is its own clock boundary; port accesses (61h, 42h,
+ * 43h with B6h: speaker gate and counter 2, none of which wakes the machine)
+ * claim their I/O slack. No STI, no PIC or counter-0 writes. */
+static int isound_117_speaker_sequencer_tick(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    if (!room(c,1)) return 0;
+#define DO(at_,code_) do { SM4_NEED(1,(at_)); code_; c->icount++; } while(0)
+#define IO(at_,code_) do { SM4_NEED(1+IO_SLACK(1),(at_)); code_; c->icount++; } while(0)
+#define AL get_r8(c,R_AL)
+#define SETAL(v_) set_r8(c,R_AL,(uint8_t)(v_))
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define DX c->r[R_DX]
+#define W(a_) ds_get(c,(uint16_t)(a_))
+#define XGB(a_) ds_get8(c,(uint16_t)(a_))
+#define PUT(a_,v_) ds_put(c,(uint16_t)(a_),(uint16_t)(v_))
+#define PUTB(a_,v_) ds_put8(c,(uint16_t)(a_),(uint8_t)(v_))
+#define INC_BX(at_) DO((at_),BX=(uint16_t)alu_inc(c,BX,1))
+#define XCMPW(at_,a_,v_) DO((at_),(void)alu_op(c,7,W(a_),(v_),1))
+#define XCMPB(at_,a_,v_) DO((at_),(void)alu_op(c,7,XGB(a_),(v_),0))
+#define XJCC(at_,cc_,lbl_) do { DO((at_),(void)0); if(x86_cond(c,(cc_)))goto lbl_; } while(0)
+#define XJMP(at_,lbl_) do { DO((at_),(void)0); goto lbl_; } while(0)
+#define XRET(at_) do { DO((at_),c->ip=cpu_pop16(c)); return 1; } while(0)
+#define XRUN(expr_) do { const uint64_t old_=m->run_until; if(c->stop_at<m->run_until)m->run_until=c->stop_at; const int ok_=(expr_); m->run_until=old_; if(!ok_)return 1; } while(0)
+#define XCALL(at_,to_,back_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(to_),(back_),0)); } while(0)
+    /* 026C: count the tick; inactive driver: return */
+    DO(0x026C,{ const uint16_t t_=seg_read16(c,c->seg[S_CS],0x0002); seg_write16(c,c->seg[S_CS],0x0002,(uint16_t)alu_inc(c,t_,1)); });
+    XCMPB(0x0271,0x82,0xFF);
+    XJCC(0x0276,5,L0259);
+    XCMPW(0x0278,0x33,1);
+    XJCC(0x027D,15,L02B4);
+    /* no effect: engine noise */
+    XCMPB(0x027F,0x252,0);
+    XJCC(0x0284,4,L025A);
+    XCMPW(0x0286,0x250,0);
+    XJCC(0x028B,4,L025A);
+    XCMPW(0x028D,0x43,0);
+    XJCC(0x0292,5,L029B);
+    DO(0x0294,BX=0x0253);
+    XJMP(0x0298,L046E);
+L029B:
+    DO(0x029B,AX=W(0x250));
+    DO(0x029E,AX=(uint16_t)alu_sub(c,0,AX,1,0));
+    DO(0x02A0,AX=(uint16_t)alu_op(c,0,AX,0x02BC,1));
+    DO(0x02A3,AX=(uint16_t)x86_shift(c,5,AX,1,1));
+    DO(0x02A5,AX=(uint16_t)x86_shift(c,5,AX,1,1));
+    DO(0x02A7,AX=(uint16_t)x86_shift(c,5,AX,1,1));
+    DO(0x02A9,AX=(uint16_t)x86_shift(c,5,AX,1,1));
+    DO(0x02AB,AX=(uint16_t)alu_op(c,0,AX,0x00FF,1));
+    DO(0x02AE,PUT(0x47,AX));
+    XJMP(0x02B1,L0395);
+
+L02B4: /* an effect or note is playing */
+    DO(0x02B4,AX=W(0x41));
+    DO(0x02B7,AX=(uint16_t)alu_op(c,1,AX,W(0x3B),1));
+    XJCC(0x02BB,5,L0256);
+    DO(0x02BD,AX=W(0x43));
+    DO(0x02C0,AX=(uint16_t)alu_op(c,1,AX,W(0x35),1));
+    XJCC(0x02C4,4,L02E7);
+    DO(0x02C6,PUT(0x43,alu_dec(c,W(0x43),1)));
+    XCMPW(0x02CA,0x43,0);
+    XJCC(0x02CF,5,L02F3);
+    DO(0x02D1,BX=W(0x39));
+    XCMPW(0x02D5,BX,0);
+    XJCC(0x02D8,4,L02EF);
+    XCMPB(0x02DA,0x6C,0);
+    XJCC(0x02DF,4,L02E4);
+    XJMP(0x02E1,L050D);
+L02E4:
+    XJMP(0x02E4,L046E);
+L02E7:
+    DO(0x02E7,PUTB(0x6C,0));
+    XJMP(0x02EC,L0205);
+L02EF:
+    XJMP(0x02EF,L0200);
+L02F2:
+    XRET(0x02F2);
+L02F3: /* the note lasts: step the tone */
+    XCMPW(0x02F3,0x49,0);
+    XJCC(0x02F8,4,L02F2);
+    XCMPW(0x02FA,0x43,1);
+    XJCC(0x02FF,5,L0320);
+    DO(0x0301,BX=W(0x39));
+    XCMPW(0x0305,BX,0);
+    XJCC(0x0308,5,L0320);
+    XCMPW(0x030A,0x35,0);
+    XJCC(0x030F,5,L0320);
+    DO(0x0311,AX=(uint16_t)alu_op(c,6,AX,AX,1));
+    DO(0x0313,PUT(0x4B,AX));
+    DO(0x0316,PUT(0x7D,AX));
+    DO(0x0319,AX=(uint16_t)alu_dec(c,AX,1));
+    DO(0x031A,PUT(0x47,AX));
+    DO(0x031D,PUT(0x49,AX));
+L0320:
+    DO(0x0320,AX=W(0x4B));
+    DO(0x0323,BX=AX);
+    DO(0x0325,DX=AX);
+    DO(0x0327,DX=(uint16_t)alu_op(c,4,DX,0x0F00,1));
+    DO(0x032B,set_r8(c,R_CL,8));
+    DO(0x032D,DX=(uint16_t)x86_shift(c,5,DX,get_r8(c,R_CL),1));
+    DO(0x032F,BX=(uint16_t)alu_op(c,4,BX,0x00FF,1));
+    DO(0x0333,AX=(uint16_t)alu_op(c,4,AX,0xF000,1));
+    DO(0x0336,(void)alu_op(c,7,AX,0x8000,1));
+    XJCC(0x0339,5,L0387);
+    /* vibrato */
+    XCMPB(0x033B,0x4D,0xFF);
+    XJCC(0x0340,4,L0359);
+    DO(0x0342,AX=W(0x47));
+    DO(0x0345,PUT(0x4E,AX));
+    DO(0x0348,AX=(uint16_t)alu_op(c,0,AX,BX,1));
+    DO(0x034A,PUT(0x50,AX));
+    DO(0x034D,AX=(uint16_t)alu_op(c,5,AX,BX,1));
+    DO(0x034F,AX=(uint16_t)alu_op(c,5,AX,BX,1));
+    DO(0x0351,PUT(0x52,AX));
+    DO(0x0354,PUTB(0x4D,0xFF));
+L0359:
+    DO(0x0359,AX=W(0x47));
+    DO(0x035C,(void)alu_op(c,7,AX,W(0x50),1));
+    XJCC(0x0360,15,L0371);
+    DO(0x0362,(void)alu_op(c,7,AX,W(0x52),1));
+    XJCC(0x0366,13,L0377);
+    DO(0x0368,PUT(0x54,1));
+    XJMP(0x036E,L0377);
+L0371:
+    DO(0x0371,PUT(0x54,0xFFFF));
+L0377:
+    DO(0x0377,AX=DX);
+    DO(0x0379,x86_imul16(c,W(0x54)));
+    DO(0x037D,AX=(uint16_t)alu_op(c,0,AX,W(0x47),1));
+    DO(0x0381,PUT(0x47,AX));
+    XJMP(0x0384,L038E);
+L0387: /* plain slide */
+    DO(0x0387,AX=W(0x4B));
+    DO(0x038A,PUT(0x47,alu_op(c,0,W(0x47),AX,1)));
+L038E:
+    XCMPW(0x038E,0x43,0);
+    XJCC(0x0393,4,L03BB);
+L0395: /* noisy divisor to counter 2 */
+    DO(0x0395,AX=0x9248);
+    DO(0x0398,AX=(uint16_t)alu_op(c,0,AX,W(0x7D),1));
+    DO(0x039C,AX=(uint16_t)x86_shift(c,1,AX,1,1));
+    DO(0x039E,AX=(uint16_t)x86_shift(c,1,AX,1,1));
+    DO(0x03A0,AX=(uint16_t)x86_shift(c,1,AX,1,1));
+    DO(0x03A2,PUT(0x7D,AX));
+    DO(0x03A5,AX=(uint16_t)alu_op(c,4,AX,W(0x49),1));
+    DO(0x03A9,AX=(uint16_t)alu_op(c,0,AX,W(0x47),1));
+L03AD:
+    IO(0x03AD,x86_out(c,0x42,0));
+    DO(0x03AF,(void)0);
+    DO(0x03B1,(void)0);
+    DO(0x03B3,SETAL(get_r8(c,R_AH)));
+    IO(0x03B5,x86_out(c,0x42,0));
+    DO(0x03B7,(void)0);
+    DO(0x03B9,(void)0);
+L03BB:
+    XRET(0x03BB);
+
+L0259:
+    XRET(0x0259);
+L025A: /* engine noise off */
+    DO(0x025A,PUT(0x33,0));
+    DO(0x0260,PUT(0x43,0));
+    XCALL(0x0266,0x05B7,0x0269);
+    XJMP(0x0269,L01B4);
+L01B4: /* speaker gate off */
+    IO(0x01B4,x86_in(c,0x61,0));
+    DO(0x01B6,SETAL(alu_op(c,4,AL,0xFC,0)));
+    IO(0x01B8,x86_out(c,0x61,0));
+    DO(0x01BA,(void)0);
+L01BC:
+    XRET(0x01BC);
+
+L0256:
+    XJMP(0x0256,L01BD);
+L01BD: /* envelope countdown */
+    DO(0x01BD,PUT(0x41,alu_dec(c,W(0x41),1)));
+    XCMPW(0x01C1,0x41,0);
+    XJCC(0x01C6,5,L01D4);
+    DO(0x01C8,BX=W(0x3F));
+    XCMPW(0x01CC,BX,0);
+    XJCC(0x01CF,4,L01EB);
+    XJMP(0x01D1,L03FC);
+L01D4:
+    XCMPW(0x01D4,0x45,0);
+    XJCC(0x01D9,4,L01BC);
+    DO(0x01DB,AX=W(0x4B));
+    DO(0x01DE,PUT(0x45,alu_op(c,0,W(0x45),AX,1)));
+    DO(0x01E2,AX=W(0x45));
+    XCALL(0x01E5,0x04BA,0x01E8);
+    XJMP(0x01E8,L03AD);
+L01EB:
+    XCMPW(0x01EB,0x3B,0);
+    XJCC(0x01F0,4,L01FD);
+    DO(0x01F2,PUT(0x3B,alu_dec(c,W(0x3B),1)));
+    DO(0x01F6,BX=W(0x3D));
+    XJMP(0x01FA,L03FC);
+L01FD:
+    XJMP(0x01FD,L021C);
+L0200: /* repeat the record at [37] */
+    XCMPW(0x0200,0x35,0);
+L0205:
+    XJCC(0x0205,4,L0222);
+    DO(0x0207,PUT(0x35,alu_dec(c,W(0x35),1)));
+    DO(0x020B,BX=W(0x37));
+    XCMPB(0x020F,0x6C,0);
+    XJCC(0x0214,4,L0219);
+    XJMP(0x0216,L050D);
+L0219:
+    XJMP(0x0219,L046E);
+L021C:
+    DO(0x021C,PUT(0x73,0));
+L0222: /* the queued record */
+    DO(0x0222,AX=W(0x66));
+    DO(0x0225,AX=(uint16_t)alu_op(c,4,AX,W(0x68),1));
+    DO(0x0229,(void)alu_op(c,7,AX,0,1));
+    XJCC(0x022C,4,L024A);
+    DO(0x022E,PUT(0x68,0));
+    DO(0x0234,BX=W(0x6A));
+    DO(0x0238,PUT(0x37,BX));
+    DO(0x023C,BX=1);
+    DO(0x023F,PUT(0x35,BX));
+    DO(0x0243,BX=W(0x64));
+    XJMP(0x0247,L050D);
+L024A:
+    DO(0x024A,PUT(0x66,0));
+    XCALL(0x0250,0x0168,0x0253);
+    XJMP(0x0253,L05B7);
+
+L03FC: /* envelope record at BX */
+    DO(0x03FC,AX=W(BX));
+    DO(0x03FE,PUT(0x33,AX));
+    INC_BX(0x0401); INC_BX(0x0402);
+    DO(0x0403,AX=W(BX));
+    DO(0x0405,PUT(0x41,AX));
+    INC_BX(0x0408); INC_BX(0x0409);
+    DO(0x040A,AX=W(BX));
+    DO(0x040C,PUT(0x45,AX));
+    INC_BX(0x040F); INC_BX(0x0410);
+    DO(0x0411,(void)alu_op(c,7,AX,0,1));
+    XJCC(0x0414,4,L043B);
+    DO(0x0416,AX=(uint16_t)alu_op(c,5,AX,W(BX),1));
+    DO(0x0418,PUT(0x49,AX));
+    INC_BX(0x041B); INC_BX(0x041C);
+    DO(0x041D,AX=W(BX));
+    DO(0x041F,PUT(0x4B,AX));
+    INC_BX(0x0422); INC_BX(0x0423);
+    DO(0x0424,PUT(0x3F,BX));
+    XCALL(0x0428,0x04BA,0x042B);
+    DO(0x042B,AX=W(0x45));
+    XCALL(0x042E,0x03AD,0x0431);
+    XCMPW(0x0431,0x73,0);
+    XJCC(0x0436,4,L0442);
+    XJMP(0x0438,L05A4);
+L043B:
+    DO(0x043B,PUT(0x3F,BX));
+    XJMP(0x043F,L01B4);
+L0442:
+    XRET(0x0442);
+
+L0443: /* word record at BX, accepted above the current priority */
+    DO(0x0443,AX=(uint16_t)alu_op(c,6,AX,AX,1));
+    DO(0x0445,x86_push_reg(c,R_AX));
+    DO(0x0446,AX=W(0x33));
+    DO(0x0449,(void)alu_op(c,7,AX,W(BX),1));
+    DO(0x044B,AX=cpu_pop16(c));
+    XJCC(0x044C,7,L0442);
+    DO(0x044E,PUT(0x73,0));
+    DO(0x0454,PUT(0x41,0));
+    DO(0x045A,PUT(0x3B,0));
+    DO(0x0460,PUT(0x35,AX));
+    DO(0x0463,AX=0x0EAA);
+    DO(0x0467,PUT(0x3D,AX));
+    DO(0x046A,PUT(0x37,BX));
+L046E: /* decode the word record at BX */
+    DO(0x046E,PUT(0x7D,0));
+    DO(0x0474,AX=W(BX));
+    XCMPW(0x0476,0x68,0xFFFF);
+    XJCC(0x047B,4,L0481);
+    DO(0x047D,PUT(0x64,BX));
+L0481:
+    DO(0x0481,PUT(0x33,AX));
+    INC_BX(0x0484); INC_BX(0x0485);
+    DO(0x0486,AX=W(BX));
+    DO(0x0488,PUT(0x43,AX));
+    INC_BX(0x048B); INC_BX(0x048C);
+    DO(0x048D,AX=W(BX));
+    DO(0x048F,PUT(0x49,AX));
+    INC_BX(0x0492); INC_BX(0x0493);
+    DO(0x0494,(void)alu_op(c,7,AX,0,1));
+    XJCC(0x0497,5,L04A0);
+    DO(0x0499,PUT(0x39,BX));
+    XJMP(0x049D,L01B4);
+L04A0:
+    DO(0x04A0,AX=W(BX));
+    DO(0x04A2,PUT(0x47,AX));
+    INC_BX(0x04A5); INC_BX(0x04A6);
+    DO(0x04A7,AX=W(BX));
+    DO(0x04A9,PUT(0x4B,AX));
+    DO(0x04AC,PUTB(0x4D,0));
+    INC_BX(0x04B1); INC_BX(0x04B2);
+    DO(0x04B3,PUT(0x39,BX));
+    XCALL(0x04B7,0x05A4,0x04BA);
+    DO(0x04BA,SETAL(0xB6));
+    IO(0x04BC,x86_out(c,0x43,0));
+    DO(0x04BE,(void)0);
+    DO(0x04C0,(void)0);
+    IO(0x04C2,x86_in(c,0x61,0));
+    DO(0x04C4,SETAL(alu_op(c,1,AL,3,0)));
+    IO(0x04C6,x86_out(c,0x61,0));
+    DO(0x04C8,(void)0);
+    XRET(0x04CA);
+
+L050D: /* decode the byte record at BX */
+    DO(0x050D,PUT(0x7D,0));
+    DO(0x0513,set_r8(c,R_AH,0));
+    DO(0x0515,SETAL(XGB(BX)));
+    XCMPW(0x0517,0x68,0xFFFF);
+    XJCC(0x051C,4,L0522);
+    DO(0x051E,PUT(0x64,BX));
+L0522:
+    DO(0x0522,PUT(0x33,AX));
+    INC_BX(0x0525);
+    DO(0x0526,set_r8(c,R_AH,0));
+    DO(0x0528,SETAL(XGB(BX)));
+    DO(0x052A,PUT(0x43,AX));
+    DO(0x052D,PUT(0x49,1));
+    INC_BX(0x0533);
+    XCMPW(0x0534,BX,0);
+    XJCC(0x0537,5,L0542);
+    INC_BX(0x0539); INC_BX(0x053A);
+    DO(0x053B,PUT(0x39,BX));
+    XJMP(0x053F,L01B4);
+L0542:
+    DO(0x0542,AX=W(BX));
+    DO(0x0544,PUT(0x47,AX));
+    DO(0x0547,x86_push_reg(c,R_BX));
+    DO(0x0548,AX=0);
+    DO(0x054B,BX=W(0x33));
+    DO(0x054F,(void)alu_op(c,7,BX,0x6E,1));
+    XJCC(0x0552,5,L056E);
+    DO(0x0554,BX=cpu_pop16(c));
+    DO(0x0555,PUT(0x33,0));
+    DO(0x055B,PUT(0x68,1));
+    DO(0x0561,PUT(0x66,0));
+    DO(0x0567,BX=0x0084);
+    XJMP(0x056B,L0443);
+L056E:
+    DO(0x056E,(void)alu_op(c,7,BX,0x65,1));
+    XJCC(0x0571,2,L057D);
+    DO(0x0573,BX=(uint16_t)alu_op(c,5,BX,0x65,1));
+    DO(0x0576,BX=(uint16_t)x86_shift(c,4,BX,1,1));
+    DO(0x0578,AX=seg_read16(c,c->seg[S_CS],(uint16_t)(BX+0x04CB)));
+L057D:
+    DO(0x057D,BX=cpu_pop16(c));
+    DO(0x057E,PUT(0x4B,AX));
+    DO(0x0581,PUTB(0x4D,0));
+    INC_BX(0x0586); INC_BX(0x0587);
+    DO(0x0588,PUT(0x39,BX));
+    XCALL(0x058C,0x05A4,0x058F);
+    DO(0x058F,SETAL(0xB6));
+    IO(0x0591,x86_out(c,0x43,0));
+    DO(0x0593,(void)0);
+    DO(0x0595,(void)0);
+    IO(0x0597,x86_in(c,0x61,0));
+    DO(0x0599,SETAL(alu_op(c,1,AL,3,0)));
+    IO(0x059B,x86_out(c,0x61,0));
+    DO(0x059D,(void)0);
+    XRET(0x059F);
+
+L05A4: /* JMP tail: arm the effect flag */
+    XCMPB(0x05A4,0x7C,1);
+    XJCC(0x05A9,4,L05C9);
+    DO(0x05AB,PUTB(0x7C,1));
+    DO(0x05B0,PUT(0x78,1));
+    XRET(0x05B6);
+L05B7: /* JMP tail: mark the effect idle */
+    XCMPB(0x05B7,0x7C,0xFF);
+    XJCC(0x05BC,4,L05C9);
+    DO(0x05BE,PUTB(0x7C,0xFF));
+    DO(0x05C3,PUT(0x78,0xFFFF));
+L05C9:
+    XRET(0x05C9);
+#undef XCALL
+#undef XRUN
+#undef XRET
+#undef XJMP
+#undef XJCC
+#undef XCMPB
+#undef XCMPW
+#undef INC_BX
+#undef PUTB
+#undef PUT
+#undef XGB
+#undef W
+#undef DX
+#undef BX
+#undef AX
+#undef SETAL
+#undef AL
+#undef IO
+#undef DO
+}
+
+/* ISOUND.117 019C:07E9 (near, no arguments; plain RET): the volume-table scaler. Every byte b of the table becomes (b>>1)*9/16 + 1.
+ * It reads the two code-segment words cs:[074Eh] (BX = the byte count of the last segment, rounded down to even) and cs:[0750h] (CX = the
+ * number of whole 64 KB segments before it) and the table's first segment DX = DS:[197Bh] (DS is the caller's data segment), and loads
+ * DS with DX. SI is saved and restored.
+ *  - For each of the CX whole segments (when CX is not zero SI starts at 0, so the pass begins at offset FFFEh) and then for the last
+ *    BX bytes, the table is walked down from the end two bytes at a time: SI -= 2, then the bytes DS:[SI] and DS:[SI+1] are each
+ *    AL = ((AL >> 1) * 9) / 16 + 1 (SHR, MUL BL with BL=9, DIV BL with BL=10h, INC AL; AH cleared first; each leaves its flags),
+ *    until SI is zero (CMP SI,0 / JNE). After a whole segment CX is decremented, DX += 1000h (the next segment) and DS = DX.
+ *  - SI is popped and the routine returns. AX, BX, CX, DX and the flags are the last values the loop leaves (BL = 10h, AH = remainder).
+ * A pass is one block of 22 instructions; the loop is run a pass at a time, and when the run loop must look at events first the routine
+ * hands back at the head of a pass (0807h) with every register as the original has it there. */
+static int isound_117_volume_table_scale(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LAST_BYTES = 0x074E, COUNT = 0x0750, TABLE_SEG = 0x197B };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+    if (!room(c, 6)) return 0;
+    XB(6, 0x07E9);                                                          /* push si / mov bx,cs:[74Eh] / and bx,FFFEh / mov cx,cs:[750h] / mov dx,[197Bh] / mov ds,dx */
+    x86_push_reg(c, R_SI);
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], LAST_BYTES);
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0xFFFE, 1);
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], COUNT);
+    c->r[R_DX] = ds_get(c, TABLE_SEG);
+    c->seg[S_DS] = c->r[R_DX];
+segment:
+    XB(3, 0x07FD);                                                          /* mov si,bx / cmp cx,0 / je 0807 */
+    c->r[R_SI] = c->r[R_BX];
+    alu_op(c, 7, c->r[R_CX], 0, 1);
+    if (!x86_cond(c, 4)) {
+        XB(1, 0x0804);                                                      /* mov si,0 */
+        c->r[R_SI] = 0;
+    }
+    do {
+        SM4_NEED(22, 0x0807);                                               /* one pass: hand back at its head if the room is short */
+        c->icount += 22;
+        c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);                   /* dec si */
+        c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);                   /* dec si */
+        set_r8(c, R_AH, 0x00);                                              /* mov ah,0 */
+        set_r8(c, R_AL, ds_get8(c, c->r[R_SI]));                            /* mov al,[si] */
+        set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));   /* shr al,1 */
+        set_r8(c, R_BL, 0x09);                                              /* mov bl,9 */
+        x86_mul8(c, get_r8(c, R_BL));                                       /* mul bl */
+        set_r8(c, R_BL, 0x10);                                              /* mov bl,10h */
+        c->ip = 0x0817;
+        if (!x86_div8(c, get_r8(c, R_BL))) return 1;                        /* div bl */
+        set_r8(c, R_AL, (uint8_t)alu_inc(c, get_r8(c, R_AL), 0));           /* inc al */
+        ds_put8(c, c->r[R_SI], get_r8(c, R_AL));                            /* mov [si],al */
+        set_r8(c, R_AH, 0x00);                                              /* mov ah,0 */
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_SI] + 1)));            /* mov al,[si+1] */
+        set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 1, 0));   /* shr al,1 */
+        set_r8(c, R_BL, 0x09);                                              /* mov bl,9 */
+        x86_mul8(c, get_r8(c, R_BL));                                       /* mul bl */
+        set_r8(c, R_BL, 0x10);                                              /* mov bl,10h */
+        c->ip = 0x082A;
+        if (!x86_div8(c, get_r8(c, R_BL))) return 1;                        /* div bl */
+        set_r8(c, R_AL, (uint8_t)alu_inc(c, get_r8(c, R_AL), 0));           /* inc al */
+        ds_put8(c, (uint16_t)(c->r[R_SI] + 1), get_r8(c, R_AL));            /* mov [si+1],al */
+        alu_op(c, 7, c->r[R_SI], 0, 1);                                     /* cmp si,0 */
+    } while (x86_cond(c, 5));                                               /* jne 0807 */
+    XB(2, 0x0834);                                                          /* cmp cx,0 / je 0842 */
+    alu_op(c, 7, c->r[R_CX], 0, 1);
+    if (!x86_cond(c, 4)) {
+        XB(4, 0x0839);                                                      /* dec cx / add dx,1000h / mov ds,dx / jmp 07FD */
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        c->r[R_DX] = (uint16_t)alu_op(c, 0, c->r[R_DX], 0x1000, 1);
+        c->seg[S_DS] = c->r[R_DX];
+        goto segment;
+    }
+    XB(2, 0x0842);                                                          /* pop si / ret */
+    c->r[R_SI] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XB
+}
+
+/* SETUP 0000:0CB2, a 24-instruction wrapper. It passes the caller's second
+ * argument and fixed mode values to 0D53, saves that result, passes it with
+ * the original first argument through 0D85, then passes the first result to
+ * 0D77. The three helpers remain original guest code and are called through
+ * the ordinary near-call path; this body preserves every pushed argument,
+ * caller cleanup/pop, local write, final AX and return. The routine itself
+ * has no conditional/error branches; helper behavior is not excluded or
+ * reimplemented here.
+ */
+static int setup_open_create_close_request(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 9)) return 0;
+    XB(9, 0x0CB2);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 4, 1);
+    { uint16_t v = bp_get(c, 6); c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); seg_write16(c, c->seg[S_SS], c->r[R_SP], v); }
+    c->r[R_AX] = 0xFFFF; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1); cpu_push16(c, c->r[R_AX]);
+    { uint16_t v = bp_get(c, 4); c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); seg_write16(c, c->seg[S_SS], c->r[R_SP], v); }
+    SM4_NEED(1, 0x0CC5);
+    RUN(guest_call_pop(m, 0x0D53, 0x0CC8, 0));
+    XB(4, 0x0CC8);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -4, c->r[R_AX]);
+    x86_push_reg(c, R_AX);
+    SM4_NEED(1, 0x0CCE);
+    RUN(guest_call_pop(m, 0x0D85, 0x0CD1, 0));
+    XB(2, 0x0CD1);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    bp_put(c, -2, c->r[R_AX]);
+    XB(1, 0x0CD7);
+    { uint16_t v = bp_get(c, -4); c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); seg_write16(c, c->seg[S_SS], c->r[R_SP], v); }
+    SM4_NEED(1, 0x0CDA);
+    RUN(guest_call_pop(m, 0x0D77, 0x0CDD, 0));
+    XB(5, 0x0CDD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = bp_get(c, -2);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c); near_ret(c);
+    return 1;
+#undef RUN
+#undef XB
+}
+
+
+
+
 static const recomp_override MATCHED[] = {
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0CB2, setup_open_create_close_request, "call the open, create and close request helpers, preserving their stack arguments and return values", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x07E9, isound_117_volume_table_scale, "Sound-effects driver: scale every byte of the volume table b -> (b>>1)*9/16+1, for the whole 64 KB segments cs:[0750h] and the last cs:[074Eh] bytes starting at segment DS:[197Bh]", 1 },
+    { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x026C, isound_117_speaker_sequencer_tick, "PC-speaker overlay sequencer tick: count the tick in cs:[2], then for an active driver step the engine noise, the envelope countdown or the note (duration, repeat, vibrato or slide, next record) and send the noisy divisor to speaker counter 2", 1 },
     { "matched", "ISOUND.LOG", ISOUND_LOG_47304, 0x0000, 0x0545, isound_log_timer_interrupt_handler, "PC-speaker timer interrupt: advance the sequencer cadence, send PIC EOI or chain to saved INT8", 3 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x10B3, setup_retrace_tick_prefix, "decrement the setup timer countdown, select retrace polling, and hand off at the first STI boundary or branch target", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0979, setup_format_signed_number, "write a signed 16-bit number as decimal text with a thousands comma", 1 },

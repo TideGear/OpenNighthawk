@@ -965,6 +965,9 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "SETUP.EXE", 0x0CB2, 0x0CB2, 0x0033 },
+    { "ISOUND.117", 0x07E9, 0x07E9, 0x005B },
+    { "ISOUND.117", 0x026C, 0x01B4, 0x0416 },
     { "ISOUND.LOG", 0x0545, 0x0545, 0x003B },
     { "SETUP.EXE", 0x10B3, 0x10B3, 0x0021 },
     { "SETUP.EXE", 0x0979, 0x0979, 0x00D2 },
@@ -2686,6 +2689,9 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "SETUP.EXE", 0x0000, 0x0979, 0x00D2, 89, 89, "write a signed 16-bit number as decimal text with a thousands comma" },
     { "SETUP.EXE", 0x0000, 0x10B3, 0x0020, 13, 13, "decrement the setup timer countdown, select retrace polling, and hand off at the first STI boundary or branch target", 0x10D3, 13 },
     { "ISOUND.LOG", 0x0000, 0x0545, 0x003B, 27, 27, "PC-speaker timer interrupt: advance the sequencer cadence, send PIC EOI or chain to saved INT8" },
+    { "ISOUND.117", 0x019C, 0x026C, 0x0150, 111, 111, "PC-speaker overlay sequencer tick: count the tick in cs:[2], then for an active driver step the engine noise, the envelope countdown or the note (duration, repeat, vibrato or slide, next record) and send the noisy divisor to speaker counter 2" },
+    { "ISOUND.117", 0x019C, 0x07E9, 0x005B, 40, 40, "Sound-effects driver: scale every byte of the volume table b -> (b>>1)*9/16+1, for the whole 64 KB segments cs:[0750h] and the last cs:[074Eh] bytes starting at segment DS:[197Bh]" },
+    { "SETUP.EXE", 0x0000, 0x0CB2, 0x0033, 24, 24, "call the open, create and close request helpers, preserving their stack arguments and return values" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -54848,6 +54854,160 @@ if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
                     XSTUB(far_seg_,far_off_,0xF804,1,far_ret_);
                 }
 #undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.117") && o->seg==0x019C && o->ip==0x026C) {
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t w__=(uint16_t)(v_);const uint16_t a__=(uint16_t)(o_);XW8((s_),a__,w__);XW8((s_),(uint16_t)(a__+1),w__>>8); } while(0)
+                uint32_t rnd_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rnd_=rnd_*1664525u+1013904223u,rnd_>>16)
+#define PICK(n_) ((unsigned)(XRAND()%(n_)))
+#define XWORD(list_) ((uint16_t)(list_)[PICK(sizeof(list_)/sizeof((list_)[0]))])
+                const uint16_t ds_=PICK(4)==0?0x5800:0x5000;
+                const uint16_t ss_=PICK(2)?ds_:0x7000;
+                static const uint16_t stack_[7]={0xF300,0xF500,0x8100,0x029C,0x0280,0x0110,0x0090};
+                const uint16_t sp_=stack_[PICK(7)];
+                seg[S_DS]=ds_;seg[S_SS]=ss_;r[R_SP]=sp_;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0xA0;j++)XW8(ss_,(uint16_t)(sp_-0x80+j),XRAND());
+                for(unsigned j=0;j<0x400;j++)XW8(ds_,j,XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t val_=(uint16_t)XRAND();small[j]=val_;XW16(ss_,(uint16_t)(sp_+2*j),val_);}
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_BP]=(uint16_t)XRAND();r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                g_io_salt=XRAND();                      /* IN 61h answers differently each state */
+                g_decline_floor=1;                      /* the first block is one instruction: 0 clocks of room must decline, 1 must run */
+                XW16(cs,0x0002,PICK(8)==0?0xFFFF:XRAND());   /* the tick counter cs:[0002] */
+                /* Record slots at 0140 + 20h*k: word, byte and envelope records, each a first word
+                 * that is zero a third of the time, priorities at the pitch-table and escape bounds. */
+                static const uint8_t pri_[12]={0x00,0x01,0x02,0x64,0x65,0x66,0x6D,0x6E,0x6F,0x80,0xFE,0xFF};
+                for(unsigned k=0;k<8;k++){
+                    const uint16_t at_=(uint16_t)(0x0140+0x20*k);
+                    if(PICK(2))XW8(ds_,at_,pri_[PICK(12)]);
+                    if(PICK(3)==0)XW16(ds_,at_,0);
+                    if(PICK(3)==0)XW16(ds_,(uint16_t)(at_+2),0);   /* byte record: no tone word */
+                    if(PICK(3)==0)XW16(ds_,(uint16_t)(at_+4),0);   /* word/envelope record: no step / no divisor */
+                }
+#define SLOT() ((uint16_t)(PICK(16)==0?XRAND():0x0140+0x20*PICK(8)))
+                const uint16_t p39_=SLOT(),p3f_=SLOT(),p3d_=SLOT(),p37_=SLOT(),p6a_=SLOT(),p64_=SLOT();
+                XW16(ds_,0x0039,p39_);XW16(ds_,0x003F,p3f_);XW16(ds_,0x003D,p3d_);
+                XW16(ds_,0x0037,p37_);XW16(ds_,0x006A,p6a_);XW16(ds_,0x0064,p64_);
+                /* The engine word record at 0253 and the escape word record at 0084. */
+                if(PICK(3)==0)XW16(ds_,0x0257,0);
+                if(PICK(3)==0)XW16(ds_,0x0088,0);
+                if(PICK(4)==0)XW16(ds_,0x0084,0);
+                static const uint16_t pr33_[10]={0x8000,0xFFFF,0x0000,0x0001,0x0002,0x0003,0x7FFF,0x0065,0x006E,0x1234};
+                static const uint16_t small_[8]={0,0,1,2,3,0xFFFF,0x8000,0x0102};
+                static const uint16_t w250_[8]={0,0x0001,0x02BB,0x02BC,0x02BD,0x8000,0xFFFF,0x1234};
+                uint16_t c33_=XWORD(pr33_);
+                if(PICK(5)==0)c33_=(uint16_t)XRAND();
+                uint16_t c41_=PICK(5)<3?0:XWORD(small_), c3b_=PICK(5)<3?0:XWORD(small_);
+                uint16_t c43_=XWORD(small_), c35_=PICK(2)?0:XWORD(small_);
+                if(PICK(6)==0)c43_=(uint16_t)XRAND();
+                uint16_t c49_=PICK(4)==0?0:(PICK(3)==0?0xFFFF:(uint16_t)XRAND());
+                const unsigned mode_=PICK(8);
+                if(mode_==0){   /* last duration count with an empty next record and no repeat: the reset at 0311 */
+                    c33_=(uint16_t)(2+PICK(0x100));c41_=0;c3b_=0;c43_=2;c35_=0;if(!c49_)c49_=1;
+                    XW16(ds_,p39_,0);
+                } else if(mode_==1){   /* a running envelope step: 01BD */
+                    c33_=(uint16_t)(2+PICK(0x7000));if(!(c41_|c3b_)){if(PICK(2))c41_=(uint16_t)(1+PICK(3));else c3b_=(uint16_t)(1+PICK(3));}
+                } else if(mode_==2){   /* no effect: engine noise */
+                    c33_=PICK(2)?(uint16_t)(0x8000|XRAND()):(uint16_t)PICK(2);
+                } else if(mode_==3){   /* nothing running: the queue test */
+                    c33_=(uint16_t)(2+PICK(0x100));c41_=0;c3b_=0;c43_=0;c35_=0;
+                } else if(mode_==4){   /* the note lasts: the step and vibrato arms */
+                    c33_=(uint16_t)(2+PICK(0x100));c41_=0;c3b_=0;c43_=(uint16_t)(2+PICK(3));if(!c49_)c49_=(uint16_t)(XRAND()|1);
+                }
+                XW16(ds_,0x0033,c33_);XW16(ds_,0x0041,c41_);XW16(ds_,0x003B,c3b_);
+                XW16(ds_,0x0043,c43_);XW16(ds_,0x0035,c35_);XW16(ds_,0x0049,c49_);
+                XW8(ds_,0x0082,PICK(8)==0?(uint8_t)PICK(0xFF):0xFF);
+                XW8(ds_,0x0252,PICK(4)==0?0:(uint8_t)(1+PICK(0xFF)));
+                XW16(ds_,0x0250,XWORD(w250_));
+                XW16(ds_,0x0045,PICK(3)==0?0:(uint16_t)XRAND());
+                XW16(ds_,0x0073,PICK(2)?0:(uint16_t)XRAND());
+                XW8(ds_,0x006C,PICK(2)?0:(uint8_t)(1+PICK(0xFF)));
+                static const uint16_t m68_[5]={0xFFFF,0,1,0x8000,0x1234};
+                XW16(ds_,0x0068,PICK(4)==0?(uint16_t)XRAND():XWORD(m68_));
+                XW16(ds_,0x0066,PICK(3)==0?0:(PICK(2)?0xFFFF:(uint16_t)XRAND()));
+                XW8(ds_,0x007C,PICK(3)==0?1:(PICK(2)?0xFF:(uint8_t)XRAND()));
+                /* the slide [4B]: high nibble 8 is the vibrato (width = low byte, step = bits 8-11) */
+                const uint16_t c4b_=PICK(2)?(uint16_t)(0x8000|(XRAND()&0x0FFF)):(uint16_t)XRAND();
+                XW16(ds_,0x004B,c4b_);
+                XW8(ds_,0x004D,PICK(2)?0xFF:(uint8_t)XRAND());
+                static const uint16_t c47_[6]={0x7FFF,0x8000,0x7F80,0x0000,0xFFFF,0x1000};
+                const uint16_t t47_=PICK(3)==0?XWORD(c47_):(uint16_t)XRAND();
+                XW16(ds_,0x0047,t47_);
+                {   /* the bounds: equal, one either side, or random */
+                    const unsigned b50_=PICK(5),b52_=PICK(5);
+                    XW16(ds_,0x0050,b50_==0?t47_:b50_==1?(uint16_t)(t47_-1):b50_==2?(uint16_t)(t47_+1):(uint16_t)XRAND());
+                    XW16(ds_,0x0052,b52_==0?t47_:b52_==1?(uint16_t)(t47_-1):b52_==2?(uint16_t)(t47_+1):(uint16_t)XRAND());
+                }
+                XW16(ds_,0x0054,PICK(3)==0?1:PICK(2)?0xFFFF:(uint16_t)XRAND());
+#undef SLOT
+#undef XWORD
+#undef PICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"ISOUND.117") && o->seg==0x019C && o->ip==0x07E9) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* ISOUND.117 07E9: the volume-table scaler. The byte count cs:[074Eh] is small (even and odd, never below 2: a pass over a whole segment takes
+                 * 32768 turns), the segment count cs:[0750h] is zero in almost every state; in a few it is 1 or 2, which makes the routine rewrite whole 64 KB
+                 * segments (the step cap is raised for those states). The table segment DX = DS:[197Bh] is 4000h or 5000h; the stack sits at 2800h or 7800h,
+                 * away from every table byte the passes touch. */
+                {   const unsigned dsel_=XPICK(10);
+                    seg[S_DS]=(dsel_<5)?0x5000:(dsel_<8)?0x4000:0x4800; }
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                {   const unsigned ssel_=XPICK(5);
+                    if(ssel_<2){seg[S_SS]=0x7800;r[R_SP]=(uint16_t)(0x4000+2*XPICK(0x3000));}
+                    else {seg[S_SS]=(ssel_&1)?0x7800:0x2800;r[R_SP]=(uint16_t)(0x0200+2*XPICK(0x3800));} }
+                for(unsigned j=0;j<0x60;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x30+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                r[R_AX]=(uint16_t)XRAND(); r[R_BX]=(uint16_t)XRAND(); r[R_CX]=(uint16_t)XRAND(); r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND(); r[R_DI]=(uint16_t)XRAND(); r[R_BP]=(uint16_t)XRAND(); seg[S_ES]=(uint16_t)XRAND();
+                if(XPICK(2))flags|=F_IF;else flags=(uint16_t)(flags & ~F_IF);
+                {   const unsigned q_=XPICK(100); const uint16_t tseg_=(XPICK(2))?0x4000:0x5000;
+                    uint16_t cnt_=0; uint16_t last_; const unsigned lq_=XPICK(10);
+                    if(q_<2)cnt_=1; else if(q_<3)cnt_=2;
+                    last_=(lq_<3)?(uint16_t)(2+2*XPICK(3)):(lq_<5)?(uint16_t)(3+2*XPICK(3)):(lq_<7)?(uint16_t)(2+XPICK(0x7E)):(uint16_t)(2+XPICK(0x40));
+                    XW16(seg[S_DS],0x197B,tseg_);
+                    XW16(cs,0x074E,last_);XW16(cs,0x0750,cnt_);
+                    for(unsigned k=0;k<0x100;k++){ const unsigned vq_=XPICK(8); XW8(tseg_,(uint16_t)k,(vq_<1)?0xFF:(vq_<2)?0x00:(vq_<3)?0x7F:(uint8_t)XRAND()); }
+                    if(cnt_){ g_cap_hint=(cnt_==1)?1200000u:2400000u;
+                              for(unsigned sg_=1;sg_<=cnt_;sg_++)for(unsigned k=0;k<0x100;k++)XW8((uint16_t)(tseg_+0x1000*sg_),(uint16_t)k,XRAND()); } }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0 && o->ip==0x0CB2) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                r[R_SP]=(uint16_t)(0x7000+2*XPICK(0x1000));
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<8;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),XRAND());
+                /* The first argument is a stable DS pathname; second argument
+                   varies over ordinary and boundary-like request values. */
+                const uint16_t path=(uint16_t)(0x2000+2*XPICK(0x100));
+                static const char nm[]="F117A.DAT";
+                for(unsigned j=0;j<sizeof(nm);j++)XW8(dg,path+j,nm[j]);
+                { const uint16_t v=path; XW16(seg[S_SS],r[R_SP],v); small[0]=v; }
+                { const uint16_t v=(uint16_t[]){0,1,2,0xFFFF,0x3D,0x3C}[XPICK(6)]; XW16(seg[S_SS],r[R_SP]+2,v); small[1]=v; }
+                XW16(seg[S_SS],r[R_SP]+4,(uint16_t)XRAND());
+                XW16(seg[S_SS],r[R_SP]+6,(uint16_t)XRAND());
 #undef XPICK
 #undef XRAND
 #undef XW16

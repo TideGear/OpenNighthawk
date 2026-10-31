@@ -2019,6 +2019,12 @@ if(F117R_BUILD_TESTS)
       --only SETUP.EXE:10B3)
     add_test(NAME matched_isound_log_timer_interrupt_handler COMMAND func_lockstep --states 5000
       --only ISOUND.LOG:545)
+    add_test(NAME matched_isound_117_speaker_sequencer_tick COMMAND func_lockstep --states 5000
+      --only ISOUND.117:26C)
+    add_test(NAME matched_isound_117_volume_table_scale COMMAND func_lockstep --states 5000
+      --only ISOUND.117:7E9)
+    add_test(NAME matched_setup_open_create_close_request COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:CB2)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
