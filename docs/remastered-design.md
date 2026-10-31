@@ -240,3 +240,10 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   normalised triangle kernel (the horizon stays sharp) and dithered on output, so the sky and ground ramps show no
   steps. Rule for the Remastered renderer: any gradient the original quantises (bands, shade ramps) is drawn
   continuous and dithered.
+- **Fit rule for the in-app Remastered view (owner, 30 October 2026): the cockpit and HUD must fit the screen, not be
+  cut off, with the crosshair still centred.** The 3D view fills the whole window (it widens at the sides: the scale
+  stays 256, more columns, nothing moves). The cockpit and HUD, which are 320x200 art, are drawn as one block scaled
+  uniformly to fit inside the window (the smaller of width/320 and height/200, never more than the window allows),
+  centred horizontally and anchored to the bottom, so no edge is cropped. The crosshair is drawn at the 3D view's
+  projection centre (`DS:8602/8604` mapped through the same transform), so it stays on the aim point whatever the
+  window shape. That is the better answer than shrinking by a fixed factor: it is exact at every window size and aspect.

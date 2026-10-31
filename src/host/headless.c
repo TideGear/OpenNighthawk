@@ -327,6 +327,10 @@ static void rm_compose(void *u, machine_t *m)
     }
     static present_frame f;
     present_capture(m, &f);
+    if (getenv("F117_RM_DUMP")) {
+        for (int i = 126; i < 140; i++) fprintf(stderr, "dac %d = %d,%d,%d | shown %d,%d,%d\n", i, m->dac[3 * i], m->dac[3 * i + 1], m->dac[3 * i + 2], f.dac[3 * i], f.dac[3 * i + 1], f.dac[3 * i + 2]);
+        for (int y = 60; y < 106; y += 9) fprintf(stderr, "vram row %d: %d %d %d %d %d\n", y, f.vram[y * 320 + 20], f.vram[y * 320 + 80], f.vram[y * 320 + 160], f.vram[y * 320 + 240], f.vram[y * 320 + 300]);
+    }
     if (getenv("F117_RM_DUMP")) for (size_t k = 0; k < g_rm_frame.n; k++) {
         const remaster_prim *p = &g_rm_frame.prim[k];
         double sx = 0, sy = 0; int ok = 0;
