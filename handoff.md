@@ -56,6 +56,50 @@ Nothing below was changed or deleted; ask the owner before deleting anything. Tw
 - **Worktrees with uncommitted changes (the work exists only on disk):** `C:/Users/Tideg/f117-recomp-local/wt` (detached HEAD, **24 files, +1958/-103**, touching `CMakeLists.txt`, `config.c`, `headless.c`, `main.c`, `matched.c` and more: the largest unrecorded change, inspect first); `D:/f117-wt/credit` (4 files: `progress.py`, `progress.md`, tests, `func_lockstep.c`); `D:/f117-wt/gate-h` (`main.c`, `rerun.c`, +76); `D:/f117-wt/experimental-livebp-20261030` and the two `.claude/worktrees/agent-*` worktrees (a few lines each in `src/matched/matched.c`, probably experiments); also `D:/f117-wt/wake-bug` (detached, 6 files), `D:/f117-wt/mission-generation-4239` (5 files) and `D:/f117-wt/setup-main-0010` (3 files; both carry the private /Od overrides: never merge wholesale), `D:/f117-wt/thunk-candidate-check` (detached, 3 files) and `D:/f117-wt/harness-rules` (detached, 1 file). No detached-HEAD commit is stranded: every one is reachable from a branch. One registered worktree, `C:/Users/Tideg/My Drive/Development/F-117A Recomp/.claude/worktrees/agent-ada5a0330bc7d4569` (locked), no longer exists on disk.
 - **Stashes:** five (`git stash list`), the first being `preserve owner docs before P3 acceptance merge`; not dropped.
 
+## Orphan triage (31 October 2026): what each rescue snapshot held
+
+Every worktree with uncommitted changes was pinned, without touching it, as a local `rescue/<name>-20261031` branch (not pushed:
+some carry private overrides and the repository is public). Each was then measured (share of its added lines already on the tree) and
+read. Result: nothing is lost by tossing any of them except the one P2 candidate below. Deleting a worktree or branch is the owner's call.
+
+| Snapshot (worktree) | Already on the tree | What is left, and the verdict |
+|---|---|---|
+| `agent-a7d0...`, `agent-ace3...`, `experimental-livebp-20261030` | 100% | nothing: toss |
+| `mission-generation-4239`, `setup-main-0010` | 99-100% | only the private `/Od /Ob0` override and fixture-iteration rows: toss (never merge wholesale) |
+| `thunk-candidate-check` | 99% | the private ISOUND `026C` clamp-probe harness; the routine was accepted in `48869f4`: toss |
+| `harness-rules` | 97% | the origin of `body_overrun` (the tree has the refined form): toss |
+| `wake-bug` | 99% | an early draft of the stale-override entry-opcode check; the tree has it (`recomp.c` `in->img` check, `tests/test_stale_override.c`): toss |
+| `credit` | 59% | the 16 Oct byte-credit design of `tools/progress.py`; the tree has the evolved form (`--named-cover`, `--route-cover`): toss |
+| `gate-h` | 1% | private 4K stage-timing instrumentation (Windows-only calls, hidden 4K window, refuses to start without `F117_PROFILE_LOG`): toss; the supported route is `--present-log` plus `tools/presentation_timing.py`. Idea worth remembering: per-stage columns (sim, wait, worker, convert, publish, plan, prepare, upload, present) |
+| `wt` (detached, base 10 Oct) | 89% | 35 of the 36 routines it added are on the tree. **Keep: `vgame_clip_divide_fault`, VGAME `0FB2:04DD`** (the clipper's INT 0 saturation handler; a one-line wrapper `vgame_raster_divide_fault(m, 0)` registered with level 3, plus lockstep rows `{ 0x0FB2, 0x04DD, 4, 0x046E }` and planted states that clear IF and TF and set `int_depth`; see the `matched.c` and `func_lockstep.c` hunks in `rescue/wt-20261031`). It exists nowhere else in git history. The tree has the sibling `084E`. `docs/progress.md` calls it "the line-clipper divide-error handler that no route reaches"; under the 29 Oct rule static code is matchable on lockstep alone, so it is a proof-and-gate candidate for the next P2 batch. The rest (model-seam repair `drawlist_finish_models`, a 17-field `'G'` snapshot record) is superseded presentation work from before the Enhanced consolidation (still in history: `5361129`, `571a490`). Its five untracked files (`nearclip.c/h` and three tests) are early drafts of what the tree has, copied to `C:/Users/Tideg/f117-recomp-local/rescue-20261031/wt-untracked/` |
+
+Old WIP branches (not in `master`, nothing running on them): `present-horizon`, `present-hud2` (their band and HUD tests exist on the tree and pass), `wip-view-compose-2f9d` (`0x2F9D` is matched and hooked), `draw-rerun-probe` (the rerun path exists), `origin/p2-batch-setup-logo`, `origin/p2-wt-batch`. All superseded; safe to delete when the owner agrees. `docs-pass`, `p3-remaster-live` and (except one moot cleanup commit) `p3-hybrid-sound` are contained in the merge.
+
+### The `0FB2:04DD` job (taken on 31 October 2026; the owner asked that no useful work be lost)
+
+Read from the game image: `04DD` is `push bp; mov bp,sp; cmp word [bp+2],046Eh; mov ax,[228Dh]; je; mov ax,[228Bh]; xor dx,ax;
+mov ax,7F00h; jns; neg ax; add word [bp+2],4; sub dx,dx; pop bp; iret` (33 bytes, 14 instructions), the same shape as the accepted
+`084E` with constants `046E/228D/228B` for `07C8/261D/261B`. The tree already has the shared body
+(`vgame_raster_divide_fault(m, spans)`, whose comment says "and 04DD"); the `spans = 0` arm is written but unregistered. The saved
+snapshot's body has an older trap-flag line (`cpu_interrupt` after the IRET) that the tree replaced (the run loop takes the trap);
+do not reuse it. Remaining work: the wrapper `vgame_clip_divide_fault`, its registry row (level 3), one `INTERRUPT_FRAMES` row
+`{ 0x0FB2, 0x04DD, 4, 0x046E }` in `tests/func_lockstep.c`, then the private proof (kit steps 1-7: coverage lock, seeds, mutants),
+`finish_all.py`, integration, `audit_private.py`, and a batch gate. Do not run private builds during a gate.
+
+### Latent lockstep hang found by the merge gate (31 October 2026): `START.EXE:8A32`, state 1627
+
+The first full gate of the merge (commit `863898e`, seed `0x863898e40efa`) never finished: matched-routine lockstep shard 7/8 sat
+on one `func_lockstep.exe` for over two hours at one thread. Reproduction: `func_lockstep.exe --states 1628 --seed 0x863898e40efa
+--only START.EXE:8A32` does not return; `--states 1627` finishes (`1627 ok`, `1628 HANG`, bisected). It is **not** caused by the merge:
+the `master` build (`48869f4`) hangs the same way; the two builds agree exactly at 100 and 200 states. The routine is
+`st2_fill_rect` (START `8A32`, END `49D2`), whose own comment says a row count of 0 (`y1 = y0 - 1`) is a 64K-row run; the driver's
+span fill in the original code then runs for an effectively unbounded time, and the lockstep's per-state limit does not stop a call into
+original code. Every other routine in shard 7 finished (73 scanned, only `VGAME 1377:0B09` slow at 21 s). The commit-derived seed
+changes with HEAD (see Traps), so an ordinary gate only hits it when a commit's seed lands a degenerate row count in that routine's first
+thousands of states. To do: make the fixture avoid or bound a degenerate row count (or have the harness skip a state whose original-code
+call exceeds a time budget as a long run), prove it does not weaken the check, then gate. The first attempt's log is
+`D:/f117-gate/p3-merge-gate-20261031/gate-attempt1-hung.log`; the second gate ran on the same source tree under a docs-only commit.
+
 ## Owner decisions in force
 
 Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this is what governs daily work.
