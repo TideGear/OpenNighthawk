@@ -175,10 +175,14 @@ static void write_frame(remaster_live *r, const machine_t *m)
     }
     for (size_t i = 0; i < r->frame.n; i++) {
         const remaster_prim *p = &r->frame.prim[i];
-        if (p->kind != SCENE_POLYGON || p->n < 3) continue;     /* lines and dots later */
         uint32_t colour;
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
-        remaster_polygon(&t, p->v, p->n, colour);
+        const double line_w = r->h / 240.0 > 1.0 ? r->h / 240.0 : 1.0;      /* one of the original's pixels, at least one of ours */
+        if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(&t, p->v, p->n, colour);
+        else if (p->kind == SCENE_LINES)
+            for (int k = 0; k + 1 < p->n; k++) remaster_line(&t, p->v[k], p->v[k + 1], line_w, colour);
+        else if (p->kind == SCENE_DOTS)
+            for (int k = 0; k < p->n; k++) remaster_line(&t, p->v[k], p->v[k], line_w * 1.5, colour);
     }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);

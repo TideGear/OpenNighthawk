@@ -32,4 +32,8 @@ void remaster_clear(remaster_target *t, uint32_t color);
 /* Fill a convex polygon of n vertices (n >= 3) in one colour; returns the pixels written. */
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color);
 
+/* A line from a to b, width_px wide on the screen (a point when a == b: a square of that side), with the same depth test
+ * and near-plane clip as the polygons. Returns the pixels written. */
+long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color);
+
 #endif

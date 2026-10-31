@@ -121,6 +121,23 @@ int main(void)
             for (int x = 1; x < 64; x++) moved &= keep[1][y * 64 + x] == keep[0][y * 64 + x - 1];
         CHECK(moved);
     }
+    /* 5. lines: drawn with a width, hidden behind a nearer face, clipped at the near plane, a point is a square */
+    {
+        remaster_target t = make(64, 48);
+        const remaster_v3 a = { -0x1000000, 0, 0x04000000 }, b = { 0x1000000, 0, 0x04000000 };    /* across the middle */
+        const long n = remaster_line(&t, a, b, 3.0, RED);
+        CHECK(n > 3 * 20);                                       /* a few pixels wide, some tens long */
+        CHECK(t.color[24 * 64 + 32] == RED && t.color[10 * 64 + 32] == BG);
+        remaster_v3 q[4];
+        quad(q, 0x02000000, 8, 0);                               /* a nearer square covers the middle of the line */
+        remaster_polygon(&t, q, 4, GREEN);
+        CHECK(t.color[24 * 64 + 32] == GREEN && t.color[24 * 64 + 32 + 20] == RED);
+        const remaster_v3 behind = { 0, 0, -0x1000000 };
+        CHECK(remaster_line(&t, behind, behind, 3.0, BLUE) == 0);
+        const remaster_v3 e = { 0x00A00000, -0x00500000, 0x08000000 };      /* the pixel 20 right of centre, 10 up: nothing nearer there */
+        CHECK(remaster_line(&t, e, e, 4.0, BLUE) >= 12);         /* a point: a square of about 4 x 4 */
+        free(t.color); free(t.inv_z);
+    }
     puts("remaster raster passes");
     return 0;
 }

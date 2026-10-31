@@ -60,6 +60,31 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     return written;
 }
 
+long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color)
+{
+    const double near_z = (double)t->near_z;
+    double ax = a.x, ay = a.y, az = a.z, bx = b.x, by = b.y, bz = b.z;
+    if (az < near_z && bz < near_z) return 0;
+    if (az < near_z) {                                       /* clip the end behind the near plane */
+        const double k = (near_z - az) / (bz - az);
+        ax += k * (bx - ax); ay += k * (by - ay); az = near_z;
+    } else if (bz < near_z) {
+        const double k = (near_z - bz) / (az - bz);
+        bx += k * (ax - bx); by += k * (ay - by); bz = near_z;
+    }
+    const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, 1.0 / az };
+    const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, 1.0 / bz };
+    double dx = sb.x - sa.x, dy = sb.y - sa.y;
+    const double len = sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) { dx = 1.0; dy = 0.0; } else { dx /= len; dy /= len; }
+    const double h = width_px / 2.0;
+    const double px = -dy * h, py = dx * h;                  /* half the width, across the line */
+    const double ex = (len < 1e-9) ? dx * h : 0.0, ey = (len < 1e-9) ? dy * h : 0.0;   /* a point gets a square */
+    const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz };
+    const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz };
+    return fill_triangle(t, q0, q1, q2, color) + fill_triangle(t, q0, q2, q3, color);
+}
+
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color)
 {
     if (n < 3 || n > MAX_POLY - 2) return 0;
