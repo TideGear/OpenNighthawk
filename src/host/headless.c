@@ -54,6 +54,9 @@
 #include "keys.h"
 #include "present.h"
 #include "observe.h"
+#include "observe_pose.h"
+#include "remaster_scene.h"
+#include "scene_mesh.h"
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
@@ -194,6 +197,83 @@ static void obs_prim(void *u, uint64_t icount, char kind, const int32_t *v, int 
 /* F117R_OBSERVE_HUD=1 also logs the HUD pass's starting state ('h', hud_state.h), F117R_OBSERVE_BANDS=1 the sky and
  * ground band pass's ('o', band_state.h); without them the log is as it always was. */
 static f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
+
+/* --remaster-shot FILE.ppm:FROM: the first view composition at or after clock FROM draws the model requests gathered
+ * since the one before it with the Remastered fill (remaster_scene.c, remaster_raster.c) and writes the picture, and
+ * the original's frame beside it as FILE.ppm.orig.ppm. A research aid: read-only, nothing here reaches the game. */
+static remaster_scene *g_rm_scene;
+static remaster_frame g_rm_frame;
+static uint64_t g_rm_from;
+static char g_rm_path[600];
+static int g_rm_done;
+static void write_shot(const machine_t *m, const char *path);
+static void rm_pose(void *u, uint64_t icount, machine_t *m, uint16_t model, uint16_t bank, const int16_t pos[3])
+{
+    (void)u; (void)icount;
+    const int added = remaster_scene_add(g_rm_scene, m->mem, MEM_SIZE, m->cpu.seg[S_DS], bank, model, pos, &g_rm_frame);
+    if (getenv("F117_RM_DUMP") && icount >= g_rm_from - 20000000) fprintf(stderr, "req %llu model %u bank %04X added %d\n", (unsigned long long)icount, model, bank, added);
+}
+static uint32_t rm_rgb(const uint8_t *c)
+{
+    return 0xFF000000u | ((uint32_t)((c[2] << 2) | (c[2] >> 4)) << 16) | ((uint32_t)((c[1] << 2) | (c[1] >> 4)) << 8) |
+           (uint32_t)((c[0] << 2) | (c[0] >> 4));
+}
+static void rm_compose(void *u, machine_t *m)
+{
+    (void)u;
+    if (getenv("F117_RM_DUMP") && m->cpu.icount >= g_rm_from - 20000000) fprintf(stderr, "compose %llu n %zu\n", (unsigned long long)m->cpu.icount, g_rm_frame.n);
+    static unsigned composes;
+    if (g_rm_done) return;
+    if (m->cpu.icount < g_rm_from) { remaster_frame_clear(&g_rm_frame); composes = 0; return; }
+    if (++composes < 11) return;                   /* a composition draws only some of the models: gather ten */
+    const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
+    #define DSW(o) ((int)(int16_t)(ds[o] | ds[(o) + 1] << 8))
+    const int vl = DSW(0x85FA), vt = DSW(0x85FC), vr = DSW(0x85FE), vb = DSW(0x8600), gx = DSW(0x8602), gy = DSW(0x8604);
+    const int w = 1280, h = 960;
+    const double kx = w / 320.0, ky = h / 200.0;
+    remaster_target t = { w, h, (uint32_t *)malloc((size_t)w * h * 4), (float *)malloc((size_t)w * h * 4), kx * gx, ky * gy,
+                          256.0 * kx, 256.0 * ky, 0x10000 };
+    remaster_clear(&t, 0xFF2A2A2Au);
+    const int hy = (int)(ky * gy);
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) t.color[y * w + x] = y < hy ? 0xFFC08040u : 0xFF305030u;
+    long px = 0;
+    for (size_t k = 0; k < g_rm_frame.n; k++) {
+        const remaster_prim *p = &g_rm_frame.prim[k];
+        if (p->kind != SCENE_POLYGON || p->n < 3) continue;
+        px += remaster_polygon(&t, p->v, p->n, rm_rgb(&m->dac[3 * (p->colour_word & 0xFF)]));
+    }
+    static present_frame f;
+    present_capture(m, &f);
+    if (getenv("F117_RM_DUMP")) for (size_t k = 0; k < g_rm_frame.n; k++) {
+        const remaster_prim *p = &g_rm_frame.prim[k];
+        double sx = 0, sy = 0; int ok = 0;
+        for (int j = 0; j < p->n; j++) if (p->v[j].z > 0x10000) { sx += gx + 256.0 * p->v[j].x / p->v[j].z; sy += gy - 256.0 * p->v[j].y / p->v[j].z; ok++; }
+        int under = -1;
+        if (ok) { const int ix = (int)(sx / ok), iy = (int)(sy / ok); if (ix >= 0 && ix < 320 && iy >= 0 && iy < 200) under = f.vram[iy * 320 + ix]; }
+        fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d\n", p->model, p->kind, p->n, p->colour_index,
+                p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under);
+    }
+    const int x0 = (int)(kx * vl), x1 = (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
+    const int cw = x1 - x0, ch = y1 - y0;
+    FILE *o = fopen(g_rm_path, "wb");
+    if (o && cw > 0 && ch > 0) {
+        fprintf(o, "P6\n%d %d\n255\n", cw * 2, ch);
+        for (int y = 0; y < ch; y++) {
+            for (int x = 0; x < cw; x++) { const uint32_t v = t.color[(y0 + y) * w + x0 + x]; fputc(v & 255, o); fputc((v >> 8) & 255, o); fputc((v >> 16) & 255, o); }
+            for (int x = 0; x < cw; x++) {
+                const int sx = (x0 + x) * 320 / w, sy = (y0 + y) * 200 / h;
+                const uint8_t *c = &f.dac[3 * f.vram[sy * 320 + sx]];
+                fputc((c[0] << 2) | (c[0] >> 4), o); fputc((c[1] << 2) | (c[1] >> 4), o); fputc((c[2] << 2) | (c[2] >> 4), o);
+            }
+        }
+    }
+    if (o) fclose(o);
+    fprintf(stderr, "remaster-shot: %zu primitives, %ld pixels, viewport %d,%d-%d,%d centre %d,%d, clock %llu -> %s\n", g_rm_frame.n, px,
+            vl, vt, vr, vb, gx, gy, (unsigned long long)m->cpu.icount, g_rm_path);
+    free(t.color); free(t.inv_z);
+    g_rm_done = 1;
+}
+static f117_observer g_rm_obs;
 
 static FILE *g_opl_log;
 static FILE *g_midi_log;
@@ -680,6 +760,16 @@ int main(int argc, char **argv)
                 g_scene_limit=(unsigned)limit;g_scene_count=0;g_obs.scene=1;g_obs.want_scene=obs_want_scene;
             }
             observe_set(&g_obs); i++;
+        }
+        else if (!strcmp(a, "--remaster-shot") && v) {
+            snprintf(g_rm_path, sizeof g_rm_path, "%s", v);
+            char *c3 = strrchr(g_rm_path, ':');
+            if (!c3 || c3 == g_rm_path + 1) { fprintf(stderr, "--remaster-shot FILE.ppm:FROM\n"); return 2; }
+            *c3 = 0; g_rm_from = strtoull(c3 + 1, NULL, 0);
+            g_rm_scene = remaster_scene_new();
+            g_rm_obs.compose = rm_compose;
+            observe_set(&g_rm_obs);
+            observe_pose_set(rm_pose, NULL); i++;
         }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }

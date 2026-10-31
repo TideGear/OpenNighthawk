@@ -204,3 +204,13 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   commands, turning each polygon's edge chain into an ordered vertex loop. Tested on the synthetic fixture placed in a fake
   guest memory (`presentation_remaster_scene`). Not yet checked on real data, which needs the callback running in a build: the
   next step is a headless consumer of `observe_pose` that collects a frame and draws it with the fill.
+- **R3, first frame from a real flight (30 October 2026).** `f117run --remaster-shot FILE.ppm:FROM` (research aid in
+  `headless.c`; read-only) installs the pose callback, gathers the model requests of ten view compositions after clock
+  FROM (a composition draws only one or two models, so a single one is not a picture), fills them with
+  `remaster_polygon` at 1280x960 about the projection centre the game publishes (`DS:8602/8604`, viewport
+  `DS:85FA..8600`, in 320x200 pixels), and writes the result beside the original's frame. On `boot_to_flight` (Libya,
+  about 2.45 billion clocks) the horizon, the runway and taxiway edges and a distant aircraft land where the original has
+  them. Not right yet: the colours (a polygon's palette word is only the base: the original's pixels are ramp entries
+  that depend on distance and shade, e.g. word `FFCB` over original index 129/138), the hangars (not among the
+  requests gathered; they may be drawn by another path), and the sky and ground (flat stand-ins until `band_state`
+  is used). `F117_RM_DUMP=1` prints each request and primitive with the original pixel under it.
