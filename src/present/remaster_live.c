@@ -142,6 +142,12 @@ static void debug_colours(const remaster_live *r, const machine_t *m)
         fprintf(stderr, "[colour] word %04X index %3u shade %3u -> pixel %3u  x%u\n", k[j].word, k[j].index, k[j].shade, k[j].pixel, k[j].n);
 }
 
+static uint32_t mean_colour(uint32_t a, uint32_t b)
+{
+    return 0xFF000000u | ((((a >> 16 & 255) + (b >> 16 & 255)) / 2) << 16) | ((((a >> 8 & 255) + (b >> 8 & 255)) / 2) << 8) |
+           (((a & 255) + (b & 255)) / 2);
+}
+
 /* Draw the sky and ground bands, then the primitives of a frame, into t (w and h set). ux and uy are the target's pixels
  * per pixel of the game's 320 x 200 picture across and down: h/240 and h/200 for a picture at the 4:3 shape, N and N for the
  * picture N times finer that the Enhanced presentation keeps (320N x 200N, stretched to 4:3 later). */
@@ -168,7 +174,16 @@ static void draw_scene(const machine_t *m, remaster_target *t, const remaster_fr
                     v[k].y = (int32_t)((fine.q[q].y[k] * uy - t->cy) * far_z / t->sy);
                     v[k].z = (int32_t)far_z;
                 }
-                remaster_polygon(t, v, 4, dac_colour(m, fine.q[q].colour));
+                /* A smooth gradient instead of 16 flat bands: the edge between two bands takes the mean of their palette
+                 * colours, the outer ends keep their own, and the colour runs linearly across each band. Corners 0 and 1
+                 * are the edge nearer the horizon, 3 and 2 the farther one (band_state.h). Sky is bands 0 to 15, ground
+                 * 16 to 31. */
+                const int k = q % 16;
+                const uint32_t own = dac_colour(m, fine.q[q].colour);
+                const uint32_t before = k > 0 ? mean_colour(dac_colour(m, fine.q[q - 1].colour), own) : own;
+                const uint32_t after = k < 15 && q + 1 < fine.n ? mean_colour(own, dac_colour(m, fine.q[q + 1].colour)) : own;
+                const uint32_t cols[4] = { before, before, after, after };
+                remaster_polygon_shaded(t, v, cols, 4);
             }
             for (long i = 0; i < (long)t->w * t->h; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
@@ -236,7 +251,10 @@ static void write_frame(remaster_live *r, const machine_t *m)
 
 /* Pixels the Enhanced presentation drew for the 3D view (model polygons, the sky and ground strips, and their fallbacks):
  * the ones Remastered replaces. Strokes, text, sprites and blits (the HUD, the panels, the cockpit art) stay. */
-static int is_scene_tag(uint8_t tag) { return tag >= DT_MODEL_SOLID && tag <= DT_SPAN_SHADE; }
+static int is_scene_tag(uint8_t tag) { return (tag >= DT_MODEL_SOLID && tag <= DT_SPAN_SHADE) || tag == DT_BAND_STATE; }
+/* The tags of span-rasteriser fills: the sky and ground strips, drawn from the band state (DT_BAND_STATE, band_state.h) or
+ * refined/coarse (and the map regions, which lie outside the 3D window). */
+static int is_span_tag(uint8_t tag) { return tag == DT_SPANPOLY_FINE || tag == DT_BAND_STATE || (tag >= DT_SPAN_NOT_POLY && tag <= DT_SPAN_SHADE); }
 
 /* The nearest of the 256 palette entries (six-bit channels) to an 0xAARRGGBB colour, with a small cache. */
 static uint8_t nearest_index(const uint8_t *dac, uint32_t c)
@@ -257,7 +275,7 @@ static uint8_t nearest_index(const uint8_t *dac, uint32_t c)
 }
 
 int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
-                            const uint8_t *dac, uint8_t *dst)
+                            const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask)
 {
     if (!r || !r->have_done || n < 1 || !src || !tag || !dac || !dst) return 0;
     const int w = 320 * n, h = 200 * n;
@@ -280,15 +298,35 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
         }
     }
     memcpy(dst, src, (size_t)w * h);
+    if (mask) memset(mask, 0, (size_t)w * h);
     const int x0 = (int)(r->done_window[0] * n), x1 = (int)((r->done_window[2] + 1) * n);
     const int y0 = (int)(r->done_window[1] * n), y1 = (int)((r->done_window[3] + 1) * n);
     long replaced = 0;
+    if (getenv("F117_REMASTER_DEBUG")) {          /* which origin tags the 3D window holds, and how many have Remastered geometry */
+        static int said, calls;
+        if (!said && ++calls == 60) {
+            said = 1;
+            long count[64] = {0}, geom[64] = {0};
+            for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
+                for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) { const long i = (long)y * w + x; count[tag[i] & 63]++; if (t.inv_z[i] > 0.0f) geom[tag[i] & 63]++; }
+            for (int k = 0; k < 64; k++) if (count[k]) fprintf(stderr, "[tags] tag %d: %ld pixels, %ld with model geometry\n", k, count[k], geom[k]);
+            {   /* one sky pixel, followed through */
+                const int px = 620 % w, py = 60 % h; const long pi = (long)py * w + px;
+                fprintf(stderr, "[pixel] (%d,%d) tag %u inv_z %g render %06X scene_tag %d span_tag %d window x %d..%d y %d..%d\n", px, py, (unsigned)tag[pi], (double)t.inv_z[pi], (unsigned)(t.color[pi] & 0xFFFFFF), is_scene_tag(tag[pi]), is_span_tag(tag[pi]), x0, x1, y0, y1);
+            }
+            fprintf(stderr, "[tags] scene range %d..%d, span tags %d and %d..%d\n", DT_MODEL_SOLID, DT_SPAN_SHADE, DT_SPANPOLY_FINE, DT_SPAN_NOT_POLY, DT_SPAN_SHADE);
+        }
+    }
     for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
         for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
             const long i = (long)y * w + x;
             /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
              * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
-            if (is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || tag[i] == DT_SPANPOLY_FINE)) { dst[i] = nearest_index(dac, t.color[i]); replaced++; }
+            if (is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i]))) {
+                dst[i] = nearest_index(dac, t.color[i]);       /* the palette index, for anything that wants one */
+                if (rgb && mask) { rgb[i] = t.color[i]; mask[i] = 1; }   /* and the true colour, which is what is shown */
+                replaced++;
+            }
         }
     free(t.color);
     free(t.inv_z);

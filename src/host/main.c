@@ -111,6 +111,7 @@ static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundp
  * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
 static int g_remaster;                 /* --presentation remastered */
 static uint8_t *g_rbuf; static size_t g_rbuf_cap;
+static uint32_t *g_rrgb; static uint8_t *g_rmask; static int g_rtrue;   /* the true colour of the Remastered pixels, when composed */
 static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
 static unsigned g_rlive_base;
 
@@ -126,12 +127,32 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     if (!g_remaster || !g_rlive || !hi || !g_live.shown_tag || g_scale < 1) return hi;
     const size_t size = (size_t)320 * g_scale * 200 * g_scale;
     if (g_rbuf_cap < size) {
-        free(g_rbuf);
+        free(g_rbuf); free(g_rrgb); free(g_rmask);
         g_rbuf = (uint8_t *)malloc(size);
-        g_rbuf_cap = g_rbuf ? size : 0;
+        g_rrgb = (uint32_t *)malloc(size * sizeof *g_rrgb);
+        g_rmask = (uint8_t *)malloc(size);
+        g_rbuf_cap = g_rbuf && g_rrgb && g_rmask ? size : 0;
     }
-    if (!g_rbuf) return hi;
-    return remaster_live_composite(g_rlive, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf) ? g_rbuf : hi;
+    g_rtrue = 0;
+    if (!g_rbuf_cap) return hi;
+    if (!remaster_live_composite(g_rlive, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask)) return hi;
+    g_rtrue = 1;
+    return g_rbuf;
+}
+
+/* After convert_fine has turned the fine picture's palette indices into pixels: the Remastered 3D view in true colour. */
+static void remaster_true_colour(uint32_t *pixels, size_t count)
+{
+    static int said;
+    static int calls;
+    if (getenv("F117_REMASTER_DEBUG") && ++calls % 40 == 0 && said < 6) {
+        said++;
+        size_t set = 0; for (size_t i = 0; i < count; i++) set += g_rmask ? g_rmask[i] : 0;
+        fprintf(stderr, "[overlay] true %d mask %p rgb %p count %zu mask-set %zu\n", g_rtrue, (void *)g_rmask, (void *)g_rrgb, count, set);
+    }
+    if (!g_rtrue || !g_rmask || !g_rrgb) return;
+    for (size_t i = 0; i < count; i++)
+        if (g_rmask[i]) pixels[i] = g_rrgb[i];
 }
 
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
@@ -1682,6 +1703,7 @@ int main(int argc, char **argv)
                         g_fine = remaster_apply(g_live.shown_hi);
                         if (g_fine && tex_fine && !H.frame.text) {
                             convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
+                            remaster_true_colour(fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             fine_ready = 1;
                         }
                     }
@@ -1719,7 +1741,10 @@ int main(int argc, char **argv)
         }
         if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
             w = 320 * g_scale; h = 200 * g_scale;
-            if (!fine_ready) convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
+            if (!fine_ready) {
+                convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
+                remaster_true_colour(fine_pixels, (size_t)w * h);
+            }
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
             show = tex_fine;

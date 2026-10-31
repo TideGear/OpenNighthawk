@@ -35,7 +35,9 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
  * Remastered colour; the HUD strokes (state-driven, on the fine grid), text, sprites and the cockpit art stay. dst
  * receives the result (same size; src is untouched). Returns 1 when anything was replaced. */
 int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
-                            const uint8_t *dac, uint8_t *dst);
+                            const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask);
+/* rgb and mask (320n x 200n, may be NULL) receive the true colour of every replaced pixel and a 1 in mask for it; the
+ * display shows those instead of the palette entry of dst, which is how a smooth gradient avoids the palette's steps. */
 
 /* Primitives collected for the frame being drawn, and frames completed. */
 size_t remaster_live_prims(const remaster_live *r);
