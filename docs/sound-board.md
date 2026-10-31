@@ -134,12 +134,14 @@ speech as OPL writes. The same detector gives the subtitle text.
   weapon release. Not yet done: listening to the mixed audio, and a flight that fires the other recorded effects.
 
 **Why a machine-layer hook, and what it costs.** The first design hooked the matched sound gate (VGAME `0D3F9` in
-`matched.c`). A full seeded flight showed that no VGAME matched routine runs in a build without generated code, so that
-hook could not be tested outside the multi-hour generated-code build and the P2 gate. Moving it to the machine loop:
+`matched.c`). In a full seeded flight (`airair_type5`, VGAME ran for 11.7 billion clocks) the run's own counters showed no VGAME
+matched routine dispatched, and the gate's marker never printed. The cause is not established: the file hash of VGAME.EXE
+matches the table's (`0x8287450CCA85106F`), so it is not a version mismatch. So that hook could not be tested here, and
+the only other route is the multi-hour generated-code build and the P2 gate. Moving it to the machine loop:
 
 | | machine-layer hook (chosen) | hook in the matched gate |
 |---|---|---|
-| Works in every build and both engines | yes, in the build tested; unverified in a generated-code build (below) | only where generated code runs the matched routine |
+| Works where the matched gate does not dispatch | yes, in the build tested; unverified in a generated-code build (below) | unknown: it did not dispatch in the build tested |
 | Test turnaround | minutes | hours (generated-code build, then the P2 gate) |
 | Touches `matched.c` (P2 gate territory) | no | yes |
 | Touches the core machine loop | yes: one comparison per instruction, and it must change nothing when off | no |
