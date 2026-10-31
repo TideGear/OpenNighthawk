@@ -11,11 +11,12 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* the watched entries, as {segment relative to the load segment, offset}: k = 0 the model request, 1 to 5 projection
- * returns, 6 the per-frame draw routine */
-static const struct { uint16_t seg, ip; } WATCH[7] = {
+/* the watched entries, as {segment relative to the load segment, offset}: k = 0 the model request, 1 model_faces (VGAME
+ * 120A:0C76, the faces of a model that is visible: run after the pose is fully prepared, so the part matrices, planes and
+ * vertices are where remaster_scene_add reads them), 2 the per-frame draw routine */
+static const struct { uint16_t seg, ip; } WATCH[3] = {
     { 0x120A, 0x00CF },
-    { 0x120A, 0x08D5 }, { 0x120A, 0x0901 }, { 0x120A, 0x0937 }, { 0x120A, 0x096A }, { 0x120A, 0x0970 },
+    { 0x120A, 0x0C76 },
     { 0x0000, 0x1450 },
 };
 
@@ -29,7 +30,7 @@ struct remaster_live {
     int w, h;
     char *out_path;
     int written;
-    unsigned requests, added, refused;
+    unsigned requests, added, refused, overwritten;
     int32_t band_rec[BAND_REC_BASE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
     int have_band;
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
@@ -66,7 +67,7 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
 {
     (void)r;
     const unsigned base = m->exec_hook_n;
-    for (unsigned k = 0; k < 7 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
+    for (unsigned k = 0; k < 3 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
         m->exec_hook[m->exec_hook_n].cs = (uint16_t)(load_seg + WATCH[k].seg);
         m->exec_hook[m->exec_hook_n].ip = WATCH[k].ip;
         m->exec_hook_n++;
@@ -274,7 +275,7 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
                 fprintf(f, "P6\n%d %d\n255\n", w, h);
                 for (long i = 0; i < (long)w * h; i++) { const uint32_t c = t.color[i]; const unsigned char px[3] = { (unsigned char)(c >> 16), (unsigned char)(c >> 8), (unsigned char)c }; fwrite(px, 1, 3, f); }
                 fclose(f); dumped = 1;
-                fprintf(stderr, "[remaster] dumped %d x %d, %zu primitives; requests %u read %u refused %u dropped %u/%u/%u\n", w, h, r->done.n, r->requests, r->added, r->refused, remaster_scene_dropped[0], remaster_scene_dropped[1], remaster_scene_dropped[2]);
+                fprintf(stderr, "[remaster] dumped %d x %d, %zu primitives; frames %u requests %u read %u refused %u overwritten %u dropped %u/%u/%u\n", w, h, r->done.n, r->frames, r->requests, r->added, r->refused, r->overwritten, remaster_scene_dropped[0], remaster_scene_dropped[1], remaster_scene_dropped[2]);
             }
         }
     }
@@ -296,6 +297,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 {
     if (k == 0) {                                           /* the model request: return IP, CS, then the model */
         const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        if (r->pending) r->overwritten++;                   /* the previous request never reached a projection */
         r->pending = 1;
         r->requests++;
         r->model = peek16(m, ss, (uint16_t)(sp + 4));
@@ -307,13 +309,13 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->window[2] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FE);
         r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
-    } else if (k <= 5) {                                    /* a projection returned: the pose is prepared */
+    } else if (k == 1) {                                    /* the model's faces are about to be drawn: the pose is prepared */
         if (r->pending) {
             r->pending = 0;
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
             if (n < 0) r->refused++; else r->added++;
         }
-    } else if (k == 6) {                                    /* the per-frame draw routine: the last frame is complete */
+    } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
         {                                       /* the completed frame becomes the one a composite uses */
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
