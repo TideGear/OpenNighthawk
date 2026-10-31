@@ -57,6 +57,7 @@
 #include "observe_pose.h"
 #include "remaster_scene.h"
 #include "scene_mesh.h"
+#include "band_state.h"
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
@@ -236,6 +237,31 @@ static void rm_compose(void *u, machine_t *m)
     remaster_clear(&t, 0xFF2A2A2Au);
     const int hy = (int)(ky * gy);
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) t.color[y * w + x] = y < hy ? 0xFFC08040u : 0xFF305030u;
+    {   /* sky and ground from the band pass's own state (band_state.h), unrounded */
+        int32_t rec[BAND_REC_BASE] = { BAND_REC_VERSION, 0, 0 };
+        for (int k = 0; k < BAND_NWORDS; k++) rec[3 + k] = band_rec_byte[k] ? ds[band_rec_off[k]] : (uint16_t)(ds[band_rec_off[k]] | ds[band_rec_off[k] + 1] << 8);
+        band_state st; static band_fine_list fl;
+        if (band_state_load(rec, BAND_REC_BASE, &st) && band_fine(&st, NULL, &fl) == 0)
+            for (int q = 0; q < fl.n; q++) {
+                const band_fquad *b = &fl.q[q];
+                if (!b->valid) continue;
+                const uint32_t col = rm_rgb(&m->dac[3 * b->colour]);
+                double X[4], Y[4];
+                for (int j = 0; j < 4; j++) { X[j] = (b->x[j] + 0.5) * kx; Y[j] = (b->y[j] + 0.5) * ky; }
+                double mnx = X[0], mxx = X[0], mny = Y[0], mxy = Y[0];
+                for (int j = 1; j < 4; j++) { if (X[j] < mnx) mnx = X[j]; if (X[j] > mxx) mxx = X[j]; if (Y[j] < mny) mny = Y[j]; if (Y[j] > mxy) mxy = Y[j]; }
+                const int bx0 = mnx < 0 ? 0 : (int)mnx, bx1 = mxx > w - 1 ? w - 1 : (int)mxx, by0 = mny < 0 ? 0 : (int)mny, by1 = mxy > h - 1 ? h - 1 : (int)mxy;
+                for (int y = by0; y <= by1; y++) for (int x = bx0; x <= bx1; x++) {
+                    int pos = 0, neg = 0;
+                    for (int j = 0; j < 4; j++) {
+                        const int j2 = (j + 1) & 3;
+                        const double e = (X[j2] - X[j]) * (y + 0.5 - Y[j]) - (Y[j2] - Y[j]) * (x + 0.5 - X[j]);
+                        if (e > 0) pos = 1; else if (e < 0) neg = 1;
+                    }
+                    if (!(pos && neg)) t.color[y * w + x] = col;
+                }
+            }
+    }
     long px = 0;
     for (size_t k = 0; k < g_rm_frame.n; k++) {
         const remaster_prim *p = &g_rm_frame.prim[k];

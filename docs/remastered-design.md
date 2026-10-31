@@ -220,3 +220,7 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   (`remaster_prim.pixel`). `remaster_line` draws the model's line commands. In the Libya flight the runway centreline's
   dashes now appear where the original has them. Still wrong: the ground's brown/grey banding and the sky gradient
   (they come from the band pass, `band_state.h`), and the hangars.
+- **R3, sky and ground from the band state (30 October 2026).** `--remaster-shot` builds the band pass's `o` record from the
+  data segment words (`band_rec_off`), runs `band_fine` and paints the 32 quadrilaterals unrounded before the models. In
+  the Libya flight the sky gradient and the brown ground bands match the original, smoothly instead of in steps. Left: the
+  hangars, and the runway's dark surface colour.
