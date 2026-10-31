@@ -1,10 +1,10 @@
 # Phase 3 handoff (updated 30 October 2026)
 
-The Phase 3 work described here has been merged into `master`, including the
-remaster branch. The merged tree passed the full acceptance gate during P2
-batch `bx`; continue on `master`. The local P2 acceptance commit and this
-documentation update have not been pushed. Current scoreboard:
-**P1 100.00%, P2 96.66%, P3 85.42%, All 95.30%** (`py tools/progress.py --title`).
+The Phase 3 work described here is merged into `master` (tip `3683c62`, pushed). The merged tree passed the full
+acceptance gate during P2 batch `bx`; the Remastered work since is host-side only (`src/host/headless.c`,
+`src/present/remaster_*`, `tools/`, `docs/`, `tests/`) and did not go through another gate. Current scoreboard:
+**P1 100.00%, P2 96.66%, P3 85.42%, All 95.30%** (`py tools/progress.py --title`). The Remastered item is still scored 0.0
+in `docs/progress.json`; the owner has been told why and can choose an interim figure (see "Remastered: where it stands").
 
 ## State of the branch
 
@@ -21,13 +21,20 @@ Host-side only (`src/host/`, `tools/`, `docs/`, `tests/`); no change to `src/mac
 | Fan patches (2) | 100% | debugcom's patch (damsonn) is fix D4; a web search found no other | none, unless the owner finds another |
 | Two settings (2) | 50% | Fixes Original / Recommended / Custom (`--fixes custom`, the Choose fixes screen), Presentation Original / Enhanced, saves tagged with their fix set | the Remastered presentation (still refused) |
 | Sound device (1) | 80% | `--sound adlib\|roland\|speaker`, `sound =`, a menu row: types SETUP's answers (`docs/setup-autoanswer.md`) | a hybrid choice, joystick yes |
-| Remastered (10) | 0% | `docs/remastered-design.md`; decoders for the terrain, world and model files, checked against the game's memory; an offline depth-buffer model sheet; the R3 plan | the renderer in the app (see "R3 plan revised") |
+| Remastered (10) | 0% (scored; see below) | `docs/remastered-design.md`; decoders for the terrain, world and model files, checked against the game's memory; `src/present/remaster_view.c` draws a real flight's 3-D view (sky and ground from the band state, depth-correct models, the original's fill styles, widescreen) via `f117run --remaster-shot` | the renderer in the app (`--presentation remastered` is still refused), the settings entry, the fit rule, the formal R2/R3 proofs over the route captures, stipple, longer reach |
 | Hybrid sound (3) | 0% | the sound board page, the sweep tool, the nine speech words | the owner's marks; a second driver fed the same requests |
 
 Diagnostics added: `F117_MENU_AUTOTEST=1` and `F117_MENU_SHOT=FILE.ppm` (window-less menu run).
 Tests: `ctest -R host_` in the worktree's `build` (settings menu, CRT, controls, remap, key list, subtitles (needs `F117_SPEECH_117`), config).
 
-## Remastered: R1 done, R2 next
+## Remastered: where it stands (30 October 2026, end of session)
+
+Read `docs/remastered-design.md` from "R3, first frame from a real flight" to the end, and the "Resume here" section of
+`handoff.md`, which holds the ordered next steps (the app path through a `DS:0346` frame-boundary gatherer and the
+diagnostic tag plane, the fit rule, the settings entry, then the proofs). Shots go to `Desktop\ONShots`, named with a
+date-time prefix. Below is the older R1/R2 note.
+
+## Remastered: R1 done, R2 next (older note)
 
 - `tools/world_decode.py` decodes `*.3DG` (terrain tile maps: mark `22`, then 16 + 256 + 3x512 bytes) and `*.3DT`
   (mark `11`, five list sizes, point counts, then points of three words and a word, 8 bytes each in the file)
