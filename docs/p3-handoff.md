@@ -26,6 +26,28 @@ merges. Everything else listed here is host-side (`src/host/`, `tools/`, `docs/`
 Diagnostics: `F117_MENU_AUTOTEST=1` and `F117_MENU_SHOT=FILE.ppm` (window-less menu run). Tests: `ctest -R host_` (settings
 menu, CRT, controls, remap, key list, subtitles (needs `F117_SPEECH_117`), config, sound policy, Mac sound).
 
+## Branches (30 October 2026)
+
+- `p3-remaster-live` (includes `p3-hybrid-sound` and the docs pass): the machine's execution-hook table (`machine_t.exec_hook`,
+  `machine.h`, `pc.c`: the one change under `src/machine`, needs the full gate), the hybrid sound player, and
+  `src/present/remaster_live.c`, which draws a recorded flight's frame from the running game
+  (`F117_REMASTER_FRAME=N:FILE.ppm`, beside it the original's last picture as `FILE.ppm.orig.ppm`; `F117_REMASTER_DEBUG=1`
+  prints the view origin and the band state). Checked: the machine-loop parity (one recorded flight, hook on and off:
+  identical exit clock and save files), the rasteriser tests (polygons, lines, dots).
+- `docs-pass` and `p3-hybrid-sound`: older tips of the same work; `p3-remaster` is merged to master.
+
+## Remastered: what the live frame does, and the app wiring still to do
+
+The first live frame (recorded takeoff, frame 150) matches the original's horizon, hangars, antennas, runway centre dots and
+dusk colours. Missing from it: the face shade in the colours, the runway edge strips close to the eye, hangar detail.
+The HUD, cockpit and radar are the original's 2D overlays and are not in it.
+
+**Wiring (not started):** `--presentation remastered` needs (1) a per-step capture of the frame's primitives and band state
+(what `remaster_live.c` does at the per-frame entry), (2) a display loop that draws every refresh by interpolating the
+camera and objects between the two latest steps, (3) the 2D layers composited over it (the cockpit and HUD from the
+original's frame or from the state-driven HUD of `hud_state.h`), (4) widescreen and longer reach, (5) the settings entry.
+Step 3 needs a decision on how to separate the original's 2D layers from its 3D picture; nothing here has been tried.
+
 ## Remastered: R1 and R2 done, R3 next
 
 Design and progress: [remastered-design.md](remastered-design.md). Decoders (`tools/world_decode.py`, `world_check.py`)
