@@ -24,7 +24,23 @@ typedef struct {
     double cx, cy;              /* the view's centre in pixels */
     double sx, sy;              /* pixels per unit of x / z and y / z: 256 for the game's own 320 x 200 pixels */
     int32_t near_z;             /* nearer than this is clipped (the game's own smallest z is 0x10000) */
+    /* Optional, for the original's fills that combine with what is already drawn (AND, OR, stipple: remaster_polygon_logic):
+     * the palette index each pixel stands for, REMASTER_NO_INDEX where it has none, and the palette to turn an index into a
+     * colour. The solid fills write paint_index into index as they paint. */
+    uint16_t *index;            /* w * h, or NULL */
+    const uint32_t *palette;    /* 256 entries, 0xAARRGGBB */
+    uint16_t paint_index;       /* what the next polygon, shaded polygon or line writes into index */
 } remaster_target;
+
+#define REMASTER_NO_INDEX 0xFFFFu
+
+enum { REMASTER_AND, REMASTER_OR, REMASTER_STIPPLE };
+
+/* A polygon that combines with the pixels under it, as the original's fill styles FEh (AND), FDh (OR) and FCh (stipple) do with
+ * the low byte of the colour word: the pixel's palette index is ANDed or ORed with `value`, and the colour becomes that palette
+ * entry; a stipple blends the pixel half way towards palette[value]. It applies where nothing nearer is drawn, and leaves the
+ * depth alone, so what is drawn later still covers it. A pixel with no index is left as it is (AND, OR). */
+long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int op, unsigned value);
 
 /* Clear colour and depth. */
 void remaster_clear(remaster_target *t, uint32_t color);

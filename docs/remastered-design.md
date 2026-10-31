@@ -247,3 +247,23 @@ picture beside it as `FILE.ppm.orig.ppm`. Not yet: the runway and terrain from t
   by the live capture. It is either a model drawn by a request the capture does not see (the `1AE9` drawer, or a request made
   outside `compose_emit_object`/`compose_walk`) or part of the ground bands' neighbourhood. Next: list the polygon fills of a
   frame that happen outside any model request, with their colour words, and match them to the missing regions.
+
+## Handoff state (30 October 2026, late)
+
+Built and unit-tested (3/3 remaster tests), **not yet verified in a flight**: the AND, OR and stipple fills (`remaster_polygon_logic`,
+palette indices carried in `remaster_target.index`, `word_style()` in `remaster_live.c`). They are meant to fix two visible
+defects, both traced to the original drawing a fill that combines with what is already on the page, which this renderer had
+drawn as a flat colour: the strip through the hangars (a polygon painted with the horizon colour) and the missing sea (model 15,
+colour word FE6F: AND of the ground band colours 70h-7Fh with 6Fh). Faces are fed in the original's back-to-front order
+(`scene_mesh_materials` calls `scene_mesh_order`, a port of 120A:0E5B), so overlays draw after the surfaces they modify.
+
+To check: run the takeoff replay (`--replay` of a recorded takeoff, `--presentation remastered --present-scale 3`, with
+`F117_PRESENT_SHOTS`) and the Enhanced baseline, then `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`. The hangar and
+sea regions should shrink or vanish. Only then refresh the screenshot on the owner's Desktop.
+
+Still open: validator mismatches (`F117_REMASTER_VALIDATE`; models 3, 30, 51, 50 have vertices that differ from the game's own
+projection, unexplained); a full in-order read of the original render path (120A:00CF through 0C76, 130D clipper, 1377 fills,
+0FB2 span rasteriser, scene dispatch/walk/finish) with notes here; a per-model polygon-accounting check (original fills against
+this renderer's) as a second net for missed objects; face shade [7D8A] in colours; interpolation between logic steps; widescreen.
+The branch has debug blocks ([tags], [pixel], [col], [blue], [raw], [validate]) worth trimming. P2 work is resuming: keep to
+worktrees, no concurrent full builds or gates.

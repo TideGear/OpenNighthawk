@@ -49,7 +49,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
   src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c src/present/band_state.c src/present/scene_mesh.c src/present/rerun.c
-  src/present/remaster_scene.c src/present/remaster_raster.c src/present/remaster_live.c)
+  src/present/remaster_scene.c src/present/remaster_raster.c src/present/remaster_project.c src/present/remaster_live.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 

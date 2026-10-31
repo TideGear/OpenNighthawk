@@ -11,6 +11,7 @@ typedef struct { double x, y, z; } dv3;
 void remaster_clear(remaster_target *t, uint32_t color)
 {
     for (long i = 0; i < (long)t->w * t->h; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
+    if (t->index) for (long i = 0; i < (long)t->w * t->h; i++) t->index[i] = REMASTER_NO_INDEX;
 }
 
 /* clip the polygon against z >= near (Sutherland-Hodgman on the one plane) */
@@ -58,6 +59,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             if (iz < *d * 0.9999f) continue;
             *d = iz;
             t->color[(long)y * t->w + x] = color;
+            if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;
         }
     return written;
@@ -97,8 +99,63 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
                 out |= (uint32_t)v << (16 - 8 * k);
             }
             t->color[(long)y * t->w + x] = out;
+            if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;
         }
+    return written;
+}
+
+static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, unsigned value)
+{
+    const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+    if (fabs(den) < 1e-12) return 0;
+    const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
+    const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
+    int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > t->w - 1) x1 = t->w - 1;
+    if (y1 > t->h - 1) y1 = t->h - 1;
+    long written = 0;
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+            const double px = x + 0.5, py = y + 0.5;
+            const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
+            const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
+            const double l3 = 1.0 - l1 - l2;
+            if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+            const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
+            const long i = (long)y * t->w + x;
+            if (iz < t->inv_z[i] * 0.9999f) continue;          /* something clearly nearer covers it */
+            if (op == REMASTER_STIPPLE) {
+                const uint32_t o = t->color[i], p = t->palette ? t->palette[value & 255] : o;
+                t->color[i] = 0xFF000000u | ((((o >> 16 & 255) + (p >> 16 & 255)) / 2) << 16) | ((((o >> 8 & 255) + (p >> 8 & 255)) / 2) << 8) | (((o & 255) + (p & 255)) / 2);
+                if (t->index) t->index[i] = REMASTER_NO_INDEX;
+                written++;
+            } else if (t->index && t->palette && t->index[i] != REMASTER_NO_INDEX) {
+                const unsigned ni = op == REMASTER_AND ? (t->index[i] & value) : (t->index[i] | value);
+                t->index[i] = (uint16_t)(ni & 255);
+                t->color[i] = t->palette[ni & 255];
+                written++;
+            }
+        }
+    return written;
+}
+
+long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int op, unsigned value)
+{
+    if (n < 3 || n > MAX_POLY - 2) return 0;
+    dv3 c[MAX_POLY];
+    const int m = clip_near(v, n, (double)t->near_z, c);
+    if (m < 3) return 0;
+    sv s[MAX_POLY];
+    for (int i = 0; i < m; i++) {
+        s[i].x = t->cx + t->sx * c[i].x / c[i].z;
+        s[i].y = t->cy + t->sy * c[i].y / c[i].z;
+        s[i].iz = 1.0 / c[i].z;
+    }
+    long written = 0;
+    for (int i = 1; i + 1 < m; i++) written += fill_triangle_logic(t, s[0], s[i], s[i + 1], op, value);
     return written;
 }
 

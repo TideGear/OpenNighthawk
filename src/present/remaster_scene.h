@@ -14,6 +14,7 @@
 #define F117R_REMASTER_SCENE_H
 
 #include "remaster_raster.h"
+#include "scene_mesh.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -45,6 +46,9 @@ void remaster_frame_free(remaster_frame *f);
 typedef struct remaster_scene remaster_scene;
 remaster_scene *remaster_scene_new(void);
 void remaster_scene_free(remaster_scene *s);
+
+/* The vertices of the last model remaster_scene_add evaluated (camera space, the game's units, with which ids exist). */
+const scene_geometry *remaster_scene_geometry(const remaster_scene *s);
 
 /* Add one request's primitives to f. mem is the guest's memory (mem_size bytes: a megabyte); ds and bank_segment are
  * segments in it. Returns the number added, or -1 when the request cannot be read (a data segment or bank outside the

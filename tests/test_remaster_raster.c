@@ -138,6 +138,33 @@ int main(void)
         CHECK(remaster_line(&t, e, e, 4.0, BLUE) >= 12);         /* a point: a square of about 4 x 4 */
         free(t.color); free(t.inv_z);
     }
+    /* 6. combining fills: AND turns the ground's palette index into the water's, OR sets bits, stipple blends, none moves depth */
+    {
+        uint32_t pal[256];
+        for (int i = 0; i < 256; i++) pal[i] = 0xFF000000u | (uint32_t)i << 16 | (uint32_t)(255 - i) << 8;   /* colour from the index */
+        remaster_target t = make(64, 48);
+        t.index = (uint16_t *)malloc(64 * 48 * 2);
+        t.palette = pal;
+        remaster_clear(&t, BG);
+        remaster_v3 q[4], r2[4];
+        quad(q, 0x04000000, 14, 0);
+        t.paint_index = 0x7C;                                    /* a ground-band colour */
+        remaster_polygon(&t, q, 4, pal[0x7C]);
+        const float z0 = t.inv_z[24 * 64 + 32];
+        quad(r2, 0x03000000, 6, 0);                              /* a nearer square that ANDs with 6Fh */
+        CHECK(remaster_polygon_logic(&t, r2, 4, REMASTER_AND, 0x6F) > 0);
+        CHECK(t.index[24 * 64 + 32] == (0x7C & 0x6F) && t.color[24 * 64 + 32] == pal[0x7C & 0x6F]);   /* water: 6Ch */
+        CHECK(t.color[24 * 64 + 32 + 10] == pal[0x7C] && t.index[24 * 64 + 32 + 10] == 0x7C);        /* outside the square */
+        CHECK(t.inv_z[24 * 64 + 32] == z0);                      /* depth is left alone */
+        CHECK(remaster_polygon_logic(&t, r2, 4, REMASTER_OR, 0x01) > 0 && t.index[24 * 64 + 32] == ((0x7C & 0x6F) | 0x01));
+        CHECK(remaster_polygon_logic(&t, r2, 4, REMASTER_STIPPLE, 0x10) > 0 && t.index[24 * 64 + 32] == REMASTER_NO_INDEX);
+        remaster_v3 far_q[4];
+        quad(far_q, 0x08000000, 30, 0);                          /* behind the first square: an AND there does nothing */
+        const uint32_t before = t.color[24 * 64 + 32 + 20];
+        remaster_polygon_logic(&t, far_q, 4, REMASTER_AND, 0x0F);
+        CHECK(t.color[24 * 64 + 32 + 20] == before);
+        free(t.color); free(t.inv_z); free(t.index);
+    }
     puts("remaster raster passes");
     return 0;
 }

@@ -173,6 +173,8 @@ static int emit(void *user, const scene_material *c)
     return 1;
 }
 
+const scene_geometry *remaster_scene_geometry(const remaster_scene *s) { return &s->geometry; }
+
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f)
 {
