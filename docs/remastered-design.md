@@ -267,3 +267,9 @@ projection, unexplained); a full in-order read of the original render path (120A
 this renderer's) as a second net for missed objects; face shade [7D8A] in colours; interpolation between logic steps; widescreen.
 The branch has debug blocks ([tags], [pixel], [col], [blue], [raw], [validate]) worth trimming. P2 work is resuming: keep to
 worktrees, no concurrent full builds or gates.
+
+**First task for the next session: read the original P2 rendering code in full** (`src/matched/matched.c`, the matched routines
+for the render path: 120A:00CF, 0317, 0561, 06B5, 0902, 098C, 0A33, 0B3B, 0C76, 0CA8, 0CE9; the 130D clipper; the 1377 fills;
+the 0FB2 span rasteriser; 1452 and 1039; the scene dispatch, walk and finish routines). The owner asked for this explicitly, and
+the Remastered renderer has so far been built from partial reads, which is how the AND/OR/stipple fills were missed. Write notes
+into this file as you go, saying for each fact whether it comes from code, a comment or observation. Do this before more fixes.
