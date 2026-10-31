@@ -269,3 +269,13 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   the page (no depth), which is how the water strip at the horizon (`FD80` polygons of models 1, 3, 5, 6) is made;
   `--remaster-shot` keeps a palette-index buffer for it. Still to model: stipple (`FCxx`), models 11 and 26 (single
   streams that emit nothing; `F117_RM_MESH=1` prints their bytes), and everything past the 3-D view.
+- **R3, a face is its edge set, not a chain (owner: "some polys are still missing", 30 October 2026).** From
+  `model_edge_spans` (VGAME `130D:004A`, `matched.c`): the original takes each edge of a face alone, accumulating flag
+  words and span rows, so a face's command may list its edges in any order. `emit` had required them to chain end to
+  end and silently dropped a face that did not. It now collects the edge set's vertices and orders them round the
+  face (an end-to-end walk when the edges form one closed loop, else by angle about the centre in the face's plane); a
+  lines command gives one segment per edge. Counted against the original's own fill log, models 37 and 51 had made
+  about half the original's fills; with the change the hangars have their arched bodies, the tower at the horizon
+  appears and more of the water. A one-edge "polygon" (the unit fixture's) is no face and gives nothing. `--remaster-shot`
+  also takes `F117_RM_WIDTH=1707` (16:9 at this height): the scale stays and columns are added about the projection
+  centre.

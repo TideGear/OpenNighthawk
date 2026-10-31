@@ -4,6 +4,7 @@
 #include "scene_mesh.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -96,10 +97,63 @@ static void put_vertex(remaster_prim *p, const scene_geometry *g, unsigned id)
     p->n++;
 }
 
-static int emit(void *user, const scene_material *c)
+/* A face's command lists its edges in any order: the original's edge spans (130D:004A) take each edge alone and fill by
+ * row, so no chain is needed. Order the edge set's vertices round the face: walk the edges end to end when they make one
+ * closed loop, else sort the vertices by angle about their centre in the face's plane. */
+static int order_vertices(const scene_mesh *mesh, const scene_geometry *g, const scene_material *c, unsigned *out, unsigned cap)
 {
-    emit_ctx *x = (emit_ctx *)user;
-    if (!grow(x->f)) { x->ok = 0; return 0; }
+    unsigned a[32], b[32], n = c->count;
+    for (unsigned k = 0; k < n; k++) { a[k] = mesh->edge[c->item[k]].a; b[k] = mesh->edge[c->item[k]].b; }
+    int used[32] = { 0 };
+    unsigned m = 0, cur = b[0];
+    out[m++] = a[0]; used[0] = 1;
+    for (unsigned step = 1; step < n; step++) {
+        int found = -1;
+        for (unsigned k = 0; k < n; k++) if (!used[k] && (a[k] == cur || b[k] == cur)) { found = (int)k; break; }
+        if (found < 0) break;
+        out[m++] = cur;
+        used[found] = 1;
+        cur = a[found] == cur ? b[found] : a[found];
+    }
+    unsigned all_used = 1;
+    for (unsigned k = 0; k < n; k++) if (!used[k]) all_used = 0;
+    if (all_used && cur == out[0] && m >= 3) return (int)m;           /* one closed loop */
+    m = 0;                                                            /* otherwise the vertex set, by angle */
+    for (unsigned k = 0; k < n; k++) for (int e = 0; e < 2; e++) {
+        const unsigned v = e ? b[k] : a[k];
+        int seen = 0;
+        for (unsigned j = 0; j < m; j++) if (out[j] == v) seen = 1;
+        if (!seen && m < cap) out[m++] = v;
+    }
+    if (m < 3) return (int)m;
+    double cx = 0, cy = 0, cz = 0;
+    for (unsigned j = 0; j < m; j++) { cx += g->camera[out[j]][0]; cy += g->camera[out[j]][1]; cz += g->camera[out[j]][2]; }
+    cx /= m; cy /= m; cz /= m;
+    double nx = 0, ny = 0, nz = 0;                                    /* the face's normal from the first non-degenerate pair */
+    const double ux = g->camera[out[0]][0] - cx, uy = g->camera[out[0]][1] - cy, uz = g->camera[out[0]][2] - cz;
+    for (unsigned j = 1; j < m && nx == 0 && ny == 0 && nz == 0; j++) {
+        const double vx = g->camera[out[j]][0] - cx, vy = g->camera[out[j]][1] - cy, vz = g->camera[out[j]][2] - cz;
+        nx = uy * vz - uz * vy; ny = uz * vx - ux * vz; nz = ux * vy - uy * vx;
+    }
+    const double ul = sqrt(ux * ux + uy * uy + uz * uz);
+    if (ul == 0 || (nx == 0 && ny == 0 && nz == 0)) return (int)m;
+    const double wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;   /* in-plane, perpendicular to u */
+    double ang[32];
+    for (unsigned j = 0; j < m; j++) {
+        const double vx = g->camera[out[j]][0] - cx, vy = g->camera[out[j]][1] - cy, vz = g->camera[out[j]][2] - cz;
+        ang[j] = atan2(vx * wx + vy * wy + vz * wz, vx * ux + vy * uy + vz * uz);
+    }
+    for (unsigned i = 1; i < m; i++) {                                /* insertion sort by angle */
+        const double ka = ang[i]; const unsigned kv = out[i]; unsigned j = i;
+        while (j > 0 && ang[j - 1] > ka) { ang[j] = ang[j - 1]; out[j] = out[j - 1]; j--; }
+        ang[j] = ka; out[j] = kv;
+    }
+    return (int)m;
+}
+
+static remaster_prim *new_prim(emit_ctx *x, const scene_material *c)
+{
+    if (!grow(x->f)) { x->ok = 0; return NULL; }
     remaster_prim *p = &x->f->prim[x->f->n];
     memset(p, 0, sizeof *p);
     p->kind = c->kind;
@@ -108,27 +162,43 @@ static int emit(void *user, const scene_material *c)
     p->shade = c->shade;
     p->face = c->face;
     p->model = x->model;
+    return p;
+}
+
+static int emit(void *user, const scene_material *c)
+{
+    emit_ctx *x = (emit_ctx *)user;
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
+        remaster_prim *p = new_prim(x, c);
+        if (!p) return 0;
         for (unsigned k = 0; k < c->count && p->n < REMASTER_PRIM_VERTICES; k++) {
             if (!x->geometry->present[c->item[k]]) return 1;  /* a vertex the game did not make: skip the dot set */
             put_vertex(p, x->geometry, c->item[k]);
         }
-    } else {                                                  /* the items are edges: a chain of vertices */
-        unsigned cur = 0;
+        x->f->n++; x->added++;
+    } else if (c->kind == SCENE_LINES) {                      /* each edge is its own segment */
+        for (unsigned k = 0; k < c->count; k++) {
+            const scene_edge *e = &x->mesh->edge[c->item[k]];
+            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) continue;
+            remaster_prim *p = new_prim(x, c);
+            if (!p) return 0;
+            put_vertex(p, x->geometry, e->a);
+            put_vertex(p, x->geometry, e->b);
+            x->f->n++; x->added++;
+        }
+    } else {                                                  /* a polygon: the edge set's vertices round the face */
+        unsigned ids[64];
         for (unsigned k = 0; k < c->count; k++) {
             const scene_edge *e = &x->mesh->edge[c->item[k]];
             if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) return 1;
-            if (k == 0) { put_vertex(p, x->geometry, e->a); put_vertex(p, x->geometry, e->b); cur = e->b; }
-            else if (e->a == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->b); cur = e->b; }
-            else if (e->b == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->a); cur = e->a; }
-            else return 1;                                    /* not a chain: leave it out */
         }
-        if (c->kind == SCENE_POLYGON && p->n > 2 && x->geometry->camera[cur][0] == p->v[0].x &&
-            x->geometry->camera[cur][1] == p->v[0].y && x->geometry->camera[cur][2] == p->v[0].z)
-            p->n--;                                           /* a closed chain repeats its first vertex */
+        const int m = order_vertices(x->mesh, x->geometry, c, ids, 32);
+        if (m < 3) return 1;
+        remaster_prim *p = new_prim(x, c);
+        if (!p) return 0;
+        for (int k = 0; k < m && p->n < REMASTER_PRIM_VERTICES; k++) put_vertex(p, x->geometry, ids[k]);
+        x->f->n++; x->added++;
     }
-    x->f->n++;
-    x->added++;
     return 1;
 }
 

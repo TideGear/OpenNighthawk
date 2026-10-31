@@ -71,24 +71,26 @@ int main(void)
     scene_pose pose;
     scene_geometry g;
     CHECK(scene_pose_read(&pose, m, ds, sizeof ds) && scene_mesh_eval(m, &pose, &g));
-    /* the glue gives the same: the fixture's three material commands (a polygon, lines, dots) */
+    /* the glue gives the same: the fixture's three material commands (a polygon, lines, dots). The fixture's "polygon"
+     * is one edge, two vertices: a face needs three (the edge set's vertices, in any order), so it gives no primitive;
+     * the lines command gives one segment per edge. */
     const int n = remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f);
-    CHECK(n == 3 && f.n == 3);
-    CHECK(f.prim[0].kind == SCENE_POLYGON && f.prim[1].kind == SCENE_LINES && f.prim[2].kind == SCENE_DOTS);
-    CHECK(f.prim[2].n == 1);                                 /* the fixture's dots command names one vertex, number 1 */
-    CHECK(f.prim[2].v[0].x == g.camera[1][0] && f.prim[2].v[0].y == g.camera[1][1] && f.prim[2].v[0].z == g.camera[1][2]);
-    CHECK(f.prim[0].n == 2 && f.prim[1].n == 2);              /* the polygon and the lines are one edge: two vertices */
+    CHECK(n == 2 && f.n == 2);
+    CHECK(f.prim[0].kind == SCENE_LINES && f.prim[1].kind == SCENE_DOTS);
+    CHECK(f.prim[1].n == 1);                                 /* the fixture's dots command names one vertex, number 1 */
+    CHECK(f.prim[1].v[0].x == g.camera[1][0] && f.prim[1].v[0].y == g.camera[1][1] && f.prim[1].v[0].z == g.camera[1][2]);
+    CHECK(f.prim[0].n == 2);                                  /* a segment: two vertices */
     CHECK(f.prim[0].v[0].x == g.camera[m->edge[0].a][0] && f.prim[0].v[1].x == g.camera[m->edge[0].b][0]);
     CHECK(f.prim[0].model == 0 && f.prim[0].colour_word == pose.palette[f.prim[0].colour_index]);
     /* asking again is served from the cache and gives the same */
     remaster_frame_clear(&f);
-    CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 3 && f.n == 3);
+    CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 2 && f.n == 2);
     /* a frame collects several requests */
-    CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 3 && f.n == 6);
+    CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 2 && f.n == 4);
     /* what cannot be read is refused, not guessed at */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0xF800, 0x2000, 0, position, &f) == -1);       /* a data segment past the memory */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 9, position, &f) == -1);       /* a model the bank does not have */
-    CHECK(f.n == 6);
+    CHECK(f.n == 4);
     /* A malformed runtime-only conditional path must not turn emitted commands into success. */
     remaster_scene_free(s);
     s = remaster_scene_new();                                /* isolate this case from the prior cached mesh */
@@ -99,7 +101,7 @@ int main(void)
     memcpy(mem + 0x20000, bank, sizeof bank);
     const int malformed_result = remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f);
     CHECK(malformed_result == -1);
-    CHECK(f.n == 6);                                        /* preserve the already collected requests */
+    CHECK(f.n == 4);                                        /* preserve the already collected requests */
     scene_mesh_free(m);
     remaster_frame_free(&f);
     remaster_scene_free(s);

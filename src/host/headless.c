@@ -259,9 +259,14 @@ static void rm_compose(void *u, machine_t *m)
     const uint8_t *ds = m->mem + ((size_t)m->cpu.seg[S_DS] << 4);
     #define DSW(o) ((int)(int16_t)(ds[o] | ds[(o) + 1] << 8))
     const int vl = DSW(0x85FA), vt = DSW(0x85FC), vr = DSW(0x85FE), vb = DSW(0x8600), gx = DSW(0x8602), gy = DSW(0x8604);
-    const int w = 1280, h = 960;
-    const double kx = w / 320.0, ky = h / 200.0;
-    remaster_target t = { w, h, (uint32_t *)malloc((size_t)w * h * 4), (float *)malloc((size_t)w * h * 4), kx * gx, ky * gy,
+    /* the original frame is 1280 x 960 at 4x; F117_RM_WIDTH wider (16:9 at this height is 1707) keeps the scale and adds
+     * columns about the projection centre: the picture grows at its sides and nothing that was drawn moves */
+    const int w0 = 1280, h = 960;
+    int w = w0;
+    { const char *e = getenv("F117_RM_WIDTH"); if (e && atoi(e) > w0) w = atoi(e); }
+    const int xoff = (w - w0) / 2;
+    const double kx = w0 / 320.0, ky = h / 200.0;
+    remaster_target t = { w, h, (uint32_t *)malloc((size_t)w * h * 4), (float *)malloc((size_t)w * h * 4), kx * gx + xoff, ky * gy,
                           256.0 * kx, 256.0 * ky, 0x10000 };
     remaster_clear(&t, 0xFF2A2A2Au);
     t.index = (uint8_t *)calloc((size_t)w * h, 1);
@@ -286,7 +291,7 @@ static void rm_compose(void *u, machine_t *m)
                     const uint8_t *c = &m->dac[3 * b->colour];
                     const float cr = (float)((c[0] << 2) | (c[0] >> 4)), cg = (float)((c[1] << 2) | (c[1] >> 4)), cb = (float)((c[2] << 2) | (c[2] >> 4));
                     double X[4], Y[4];
-                    for (int j = 0; j < 4; j++) { X[j] = (b->x[j] + 0.5) * kx; Y[j] = (b->y[j] + 0.5) * ky; }
+                    for (int j = 0; j < 4; j++) { X[j] = (b->x[j] + 0.5) * kx + xoff; Y[j] = (b->y[j] + 0.5) * ky; }
                     double mnx = X[0], mxx = X[0], mny = Y[0], mxy = Y[0];
                     for (int j = 1; j < 4; j++) { if (X[j] < mnx) mnx = X[j]; if (X[j] > mxx) mxx = X[j]; if (Y[j] < mny) mny = Y[j]; if (Y[j] > mxy) mxy = Y[j]; }
                     const int bx0 = mnx < 0 ? 0 : (int)mnx, bx1 = mxx > w - 1 ? w - 1 : (int)mxx, by0 = mny < 0 ? 0 : (int)mny, by1 = mxy > h - 1 ? h - 1 : (int)mxy;
@@ -380,7 +385,7 @@ static void rm_compose(void *u, machine_t *m)
         fprintf(stderr, "prim model %u kind %d n %d idx %u word %04X shade %u zhi %d under %d at %d,%d pix %u rgb %d,%d,%d\n", p->model, p->kind, p->n, p->colour_index,
                 p->colour_word, p->shade, p->n ? p->v[0].z >> 16 : 0, under, ok ? (int)(sx / ok) : -1, ok ? (int)(sy / ok) : -1, p->pixel, m->dac[3 * p->pixel], m->dac[3 * p->pixel + 1], m->dac[3 * p->pixel + 2]);
     }
-    const int x0 = (int)(kx * vl), x1 = (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
+    const int x0 = w > w0 ? 0 : (int)(kx * vl), x1 = w > w0 ? w : (int)(kx * (vr + 1)), y0 = (int)(ky * vt), y1 = (int)(ky * (vb + 1));
     (void)y1;
     FILE *o = fopen(g_rm_path, "wb");
     if (o) {   /* left: the render in the viewport's place on a dark page; right: the whole original frame, uncropped */
@@ -391,7 +396,7 @@ static void rm_compose(void *u, machine_t *m)
                 else { fputc(16, o); fputc(16, o); fputc(16, o); }
             }
             for (int x = 0; x < w; x++) {
-                const uint8_t *c = &f.dac[3 * f.vram[(y * 200 / h) * 320 + x * 320 / w]];
+                const int ox = x - xoff; const uint8_t dk[3] = { 4, 4, 4 }; const uint8_t *c = (ox < 0 || ox >= w0) ? dk : &f.dac[3 * f.vram[(y * 200 / h) * 320 + ox * 320 / w0]];
                 fputc((c[0] << 2) | (c[0] >> 4), o); fputc((c[1] << 2) | (c[1] >> 4), o); fputc((c[2] << 2) | (c[2] >> 4), o);
             }
         }
@@ -405,7 +410,7 @@ static void rm_compose(void *u, machine_t *m)
             fprintf(bo, "P6\n%d %d\n255\n", x1 - x0, y1 - y0);
             for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
                 const uint32_t v = t.color[y * w + x];
-                const uint8_t *c = &f.dac[3 * f.vram[(y * 200 / h) * 320 + x * 320 / w]];
+                const int ox = x - xoff; const uint8_t dk[3] = { 4, 4, 4 }; const uint8_t *c = (ox < 0 || ox >= w0) ? dk : &f.dac[3 * f.vram[(y * 200 / h) * 320 + ox * 320 / w0]];
                 const int ob[3] = { (c[0] << 2) | (c[0] >> 4), (c[1] << 2) | (c[1] >> 4), (c[2] << 2) | (c[2] >> 4) };
                 const int mb[3] = { (int)(v & 255), (int)((v >> 8) & 255), (int)((v >> 16) & 255) };
                 for (int k = 0; k < 3; k++) fputc((ob[k] + mb[k]) / 2, bo);
