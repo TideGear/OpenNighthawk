@@ -279,3 +279,9 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   appears and more of the water. A one-edge "polygon" (the unit fixture's) is no face and gives nothing. `--remaster-shot`
   also takes `F117_RM_WIDTH=1707` (16:9 at this height): the scale stays and columns are added about the projection
   centre.
+- **R5 proof, widescreen (30 October 2026).** `tools/remaster_wide_check.py` compares an `f117run --remaster-shot` render at
+  the default 1280 columns with one made with `F117_RM_WIDTH=1707` (16:9 at the same height) of the same composition: the
+  middle 1280 columns of the wide render equal the narrow one (0 of 665,600 pixels differ by more than 10 levels; the
+  tolerance only absorbs the sky's dither, which is keyed by pixel index), and the extra columns show more of the
+  world (more hangars, runway, water, ground and sky). The scale (256) stays, more columns are added about the
+  projection centre, and the band quadrilaterals extend with them.
