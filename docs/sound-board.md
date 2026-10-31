@@ -157,7 +157,7 @@ Known limits:
   MT-32's effect channels muted). Sounds with no Mac recording are played by whichever driver is loaded.
 - **START and END** call their own thunks, so their sounds are not taken yet.
 - **Speech** stays with the DOS driver: the Mac has the words, not the phrases.
-- The machine change needs the full gate before it counts.
+- The machine change (the execution hook table) passed the full gate on 30 October 2026 (`d9fc8b8`; see [p3-handoff.md](p3-handoff.md)).
 
 **Assets.** The Mac WAVs and the MT-32 ROMs are the owner's; the plan for importing them into one library folder is in
 [p3-handoff.md](p3-handoff.md). Nothing from the Mac release goes into the repository.
