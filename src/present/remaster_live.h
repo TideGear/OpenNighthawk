@@ -29,6 +29,14 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg);
  * call). */
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
 
+/* Compose the Enhanced presentation's fine picture (n times finer: 320n x 200n palette indices in src, the origin tag of
+ * each pixel in tag when F117_PRESENT_DIAG is on, dac the six-bit palette) with the last completed frame's Remastered
+ * 3D view: pixels the Enhanced picture drew for the 3D view are replaced by the nearest palette entry to the
+ * Remastered colour; the HUD strokes (state-driven, on the fine grid), text, sprites and the cockpit art stay. dst
+ * receives the result (same size; src is untouched). Returns 1 when anything was replaced. */
+int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
+                            const uint8_t *dac, uint8_t *dst);
+
 /* Primitives collected for the frame being drawn, and frames completed. */
 size_t remaster_live_prims(const remaster_live *r);
 unsigned remaster_live_frames(const remaster_live *r);

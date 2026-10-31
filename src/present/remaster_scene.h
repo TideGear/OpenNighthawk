@@ -37,6 +37,8 @@ typedef struct {
     size_t n, cap;
 } remaster_frame;
 
+extern unsigned remaster_scene_dropped[3];   /* counters, for diagnostics */
+
 void remaster_frame_clear(remaster_frame *f);
 void remaster_frame_free(remaster_frame *f);
 

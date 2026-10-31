@@ -8,6 +8,8 @@
 
 #define CACHE_SIZE 1024
 
+unsigned remaster_scene_dropped[3];   /* primitives left out: a vertex the game did not make (dots), (edges), a chain that is not one */
+
 typedef struct {
     uint64_t bank;                  /* the bank's signature */
     uint16_t model, depth;
@@ -110,19 +112,33 @@ static int emit(void *user, const scene_material *c)
     p->model = x->model;
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
         for (unsigned k = 0; k < c->count && p->n < REMASTER_PRIM_VERTICES; k++) {
-            if (!x->geometry->present[c->item[k]]) return 1;  /* a vertex the game did not make: skip the dot set */
+            if (!x->geometry->present[c->item[k]]) { remaster_scene_dropped[0]++; return 1; }  /* a vertex the game did not make: skip the dot set */
             put_vertex(p, x->geometry, c->item[k]);
         }
     } else {                                                  /* the items are edges: a chain of vertices */
-        unsigned cur = 0;
+        /* the edges as listed need not run end to end: chain them by the vertex they share */
+        unsigned used = 0, cur = 0, taken = 0;
         for (unsigned k = 0; k < c->count; k++) {
             const scene_edge *e = &x->mesh->edge[c->item[k]];
-            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) return 1;
-            if (k == 0) { put_vertex(p, x->geometry, e->a); put_vertex(p, x->geometry, e->b); cur = e->b; }
-            else if (e->a == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->b); cur = e->b; }
-            else if (e->b == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->a); cur = e->a; }
-            else return 1;                                    /* not a chain: leave it out */
+            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) { remaster_scene_dropped[1]++; return 1; }
         }
+        {
+            const scene_edge *e = &x->mesh->edge[c->item[0]];
+            put_vertex(p, x->geometry, e->a); put_vertex(p, x->geometry, e->b);
+            cur = e->b; used = 1u; taken = 1;
+        }
+        for (int progress = 1; progress && taken < c->count;) {
+            progress = 0;
+            for (unsigned k = 1; k < c->count; k++) {
+                if (used >> k & 1u) continue;
+                const scene_edge *e = &x->mesh->edge[c->item[k]];
+                if (e->a == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->b); cur = e->b; }
+                else if (e->b == cur) { if (p->n < REMASTER_PRIM_VERTICES) put_vertex(p, x->geometry, e->a); cur = e->a; }
+                else continue;
+                used |= 1u << k; taken++; progress = 1;
+            }
+        }
+        if (taken < c->count) { remaster_scene_dropped[2]++; if (c->kind == SCENE_POLYGON) return 1; }   /* not one chain */
         if (c->kind == SCENE_POLYGON && p->n > 2 && x->geometry->camera[cur][0] == p->v[0].x &&
             x->geometry->camera[cur][1] == p->v[0].y && x->geometry->camera[cur][2] == p->v[0].z)
             p->n--;                                           /* a closed chain repeats its first vertex */

@@ -109,8 +109,30 @@ static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundp
  * and the player may override it (--music-source, --sound-source: default, mac or dos). Only the Mac recordings are
  * the host's to play; whatever is not taken here goes on to the DOS driver as the original does. The game's own
  * priority gate has already admitted the request by the time it gets here, so that part of the original is unchanged. */
+static int g_remaster;                 /* --presentation remastered */
+static uint8_t *g_rbuf; static size_t g_rbuf_cap;
 static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
 static unsigned g_rlive_base;
+
+/* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
+ * original fine picture when there is nothing to compose. */
+static const uint8_t *remaster_apply(const uint8_t *hi)
+{
+    static int said;
+    if (!said && g_remaster && getenv("F117_REMASTER_DEBUG")) {
+        said = 1;
+        fprintf(stderr, "[remaster] apply: rlive %p hi %p tag %p scale %d\n", (void *)g_rlive, (const void *)hi, (const void *)g_live.shown_tag, g_scale);
+    }
+    if (!g_remaster || !g_rlive || !hi || !g_live.shown_tag || g_scale < 1) return hi;
+    const size_t size = (size_t)320 * g_scale * 200 * g_scale;
+    if (g_rbuf_cap < size) {
+        free(g_rbuf);
+        g_rbuf = (uint8_t *)malloc(size);
+        g_rbuf_cap = g_rbuf ? size : 0;
+    }
+    if (!g_rbuf) return hi;
+    return remaster_live_composite(g_rlive, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf) ? g_rbuf : hi;
+}
 
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
@@ -287,7 +309,7 @@ static void on_vsync(void *u, uint64_t icount)
         drawlive_update(&g_live, &g_feed);
         g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
                                                 : drawlive_present(&g_live, &H.m, &H.frame));
-        g_fine = g_live.shown_hi;
+        g_fine = remaster_apply(g_live.shown_hi);
     }
     H.have_frame = 1;
 }
@@ -524,6 +546,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
         }
         if (!SDL_strcasecmp(name, "VGAME.EXE")) {
             const char *spec = getenv("F117_REMASTER_FRAME");       /* N:FILE.ppm: write the Nth frame's geometry as a picture */
+            if (g_remaster && !g_rlive) g_rlive = remaster_live_new(960, 720, ~0u, NULL);
             if (spec && !g_rlive) {
                 const unsigned frame = (unsigned)strtoul(spec, NULL, 10);
                 const char *colon = strchr(spec, ':');
@@ -838,8 +861,15 @@ int main(int argc, char **argv)
              * options, which a later one still refines; Remastered needs its own renderer */
             if (!strcmp(v, "original")) { g_replay = g_rerun = g_scale = g_fit_scale = 0; }
             else if (!strcmp(v, "enhanced")) { g_replay = 2; g_rerun = 1; g_fit_scale = 1; }
-            else if (!strcmp(v, "remastered")) { fprintf(stderr, "--presentation remastered is not built yet\n"); return 2; }
-            else { fprintf(stderr, "--presentation takes original or enhanced\n"); return 2; }
+            else if (!strcmp(v, "remastered")) {                 /* the Enhanced picture with the 3D view redrawn (remaster_live.h) */
+                g_replay = 2; g_rerun = 1; g_fit_scale = 1; g_remaster = 1;
+#ifdef _WIN32
+                _putenv_s("F117_PRESENT_DIAG", "1");              /* the origin planes say which pixels are the 3D view */
+#else
+                setenv("F117_PRESENT_DIAG", "1", 0);
+#endif
+            }
+            else { fprintf(stderr, "--presentation takes original, enhanced or remastered\n"); return 2; }
             i++;
         }
         else if (!strcmp(a, "--fixes") && v) {
@@ -1649,7 +1679,7 @@ int main(int argc, char **argv)
                         memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
-                        g_fine = g_live.shown_hi;
+                        g_fine = remaster_apply(g_live.shown_hi);
                         if (g_fine && tex_fine && !H.frame.text) {
                             convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             fine_ready = 1;
@@ -1670,7 +1700,7 @@ int main(int argc, char **argv)
             } else {
                 drawlive_update(&g_live, &g_feed);
                 got = drawlive_present_interp(&g_live, &H.m, &H.frame);
-                g_fine = g_live.shown_hi;
+                g_fine = remaster_apply(g_live.shown_hi);
                 const drawlive_step *a, *b;
                 drawlive_steps(&g_live, &a, &b);
                 if (a && b) {
