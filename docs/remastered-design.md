@@ -229,9 +229,14 @@ world loader beyond the resident rings, R1), and the settings entry. Nothing her
   21 of model 3 (bank `575E`, a distant structure), 11 of model 5, 8 of model 37 and a handful of others; none is a near
   hangar, yet the original's frame shows large hangars on both sides. Composition passes (`compose`) come about every
   0.77 million clocks in runs of content separated by empty passes, and one pass draws only one or two models. So the
-  original keeps its picture on the work page and draws what changed; the Remastered renderer cannot take a frame
-  from one step's requests. It needs a retained scene (the latest request per object, kept until the original redraws
+  original appears to keep its picture on the work page and draw what changed (an inference, not yet proved); the
+  Remastered renderer then cannot take a frame from one step's requests. It needs a retained scene (the latest request per object, kept until the original redraws
   or drops it) fed from the same callback. Open: what identifies an object across steps (the position words move with
   the camera) and when the original drops one. `F117_RM_DUMP=1` and `F117_RM_WINDOW` (compositions gathered; the
   frame-run mode is the default) help study it. Shots from these runs go to the owner's `Desktop\ONShots`, named
   with a date-time prefix.
+- **Smooth gradients (owner, 30 October 2026): "gradients like the sky should be smooth without visible bands".** The band
+  quadrilaterals are painted flat into float colour per class (sky, ground), blurred vertically across the bands with a
+  normalised triangle kernel (the horizon stays sharp) and dithered on output, so the sky and ground ramps show no
+  steps. Rule for the Remastered renderer: any gradient the original quantises (bands, shade ramps) is drawn
+  continuous and dithered.
