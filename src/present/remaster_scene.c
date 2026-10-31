@@ -3,6 +3,7 @@
 
 #include "scene_mesh.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -110,6 +111,22 @@ static int emit(void *user, const scene_material *c)
     p->darken = x->darken;
     p->face = c->face;
     p->model = x->model;
+    if (c->kind == SCENE_LINES) {                             /* the items are edges, each its own segment (not one chain) */
+        const remaster_prim head = *p;
+        for (unsigned k = 0; k < c->count; k++) {
+            const scene_edge *e = &x->mesh->edge[c->item[k]];
+            if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) { remaster_scene_dropped[1]++; continue; }
+            if (!grow(x->f)) { x->ok = 0; return 0; }
+            remaster_prim *q = &x->f->prim[x->f->n];
+            *q = head;
+            q->n = 0;
+            put_vertex(q, x->geometry, e->a);
+            put_vertex(q, x->geometry, e->b);
+            x->f->n++;
+            x->added++;
+        }
+        return 1;
+    }
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
         for (unsigned k = 0; k < c->count && p->n < REMASTER_PRIM_VERTICES; k++) {
             if (!x->geometry->present[c->item[k]]) { remaster_scene_dropped[0]++; return 1; }  /* a vertex the game did not make: skip the dot set */
@@ -138,7 +155,15 @@ static int emit(void *user, const scene_material *c)
                 used |= 1u << k; taken++; progress = 1;
             }
         }
-        if (taken < c->count) { remaster_scene_dropped[2]++; if (c->kind == SCENE_POLYGON) return 1; }   /* not one chain */
+        if (taken < c->count) {
+            if (getenv("F117_REMASTER_DEBUG") && remaster_scene_dropped[2] < 6) {
+                fprintf(stderr, "[nochain] model %u kind %d count %u taken %u edges:", (unsigned)x->model, c->kind, c->count, taken);
+                for (unsigned k = 0; k < c->count; k++) fprintf(stderr, " %u-%u", (unsigned)x->mesh->edge[c->item[k]].a, (unsigned)x->mesh->edge[c->item[k]].b);
+                fprintf(stderr, "\n");
+            }
+            remaster_scene_dropped[2]++;
+            if (c->kind == SCENE_POLYGON) return 1;
+        }   /* not one chain */
         if (c->kind == SCENE_POLYGON && p->n > 2 && x->geometry->camera[cur][0] == p->v[0].x &&
             x->geometry->camera[cur][1] == p->v[0].y && x->geometry->camera[cur][2] == p->v[0].z)
             p->n--;                                           /* a closed chain repeats its first vertex */

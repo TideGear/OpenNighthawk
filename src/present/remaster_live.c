@@ -286,7 +286,9 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
     for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
         for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
             const long i = (long)y * w + x;
-            if (is_scene_tag(tag[i])) { dst[i] = nearest_index(dac, t.color[i]); replaced++; }
+            /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
+             * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
+            if (is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || tag[i] == DT_SPANPOLY_FINE)) { dst[i] = nearest_index(dac, t.color[i]); replaced++; }
         }
     free(t.color);
     free(t.inv_z);

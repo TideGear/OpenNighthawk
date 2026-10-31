@@ -52,7 +52,10 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             if (l1 < 0 || l2 < 0 || l3 < 0) continue;        /* the pixel's centre is outside */
             const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
             float *d = &t->inv_z[(long)y * t->w + x];
-            if (iz <= *d) continue;                          /* something nearer is already there */
+            /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
+             * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
+             * the original's draw order has it; an exact test would let rounding pick between them. */
+            if (iz < *d * 0.9999f) continue;
             *d = iz;
             t->color[(long)y * t->w + x] = color;
             written++;
