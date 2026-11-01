@@ -276,3 +276,7 @@ Owner weight decisions for Phase 3:
 - **24 Oct 2026:** the re-release features (roadmap, Phase 3) were added as
   unstarted items weighing 28 beside the existing 100, then hybrid sound
   (weight 3): P3 100% -> 76.34%.
+- **31 Oct 2026:** at the owner's direction the Remastered item (weight 10) and the hybrid sound item (weight 3) were split into
+  sub-items, credited only for what is built, run in the app on a recorded flight and, for hybrid sound, gated (Remastered 5.5 of
+  10, hybrid sound 2.11 of 3; the owner's own look and listen, longer draw distance, road and coastline jitter and interpolation
+  stay at 0): P3 85.42% -> 91.23%.

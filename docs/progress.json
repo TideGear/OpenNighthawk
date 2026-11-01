@@ -166,11 +166,53 @@
         "evidence": "29 Oct 2026. A web search (Steam, GOG and VOGONS threads, MobyGames) found no community patch beyond debugcom's secret-airstrip fix, packaged by damsonn, which is fix D4 (the same 8-byte change; docs/bugs.md D4) and is in the Recommended set (every fix on). The other updates found are MicroProse's own (473.03, 473.04 and the later GOG builds), which the shipped install already carries. Credited in docs/bugs.md D4 and the README acknowledgements. The owner thinks D4 may be the only fan patch; if another turns up it gets a fix entry and a credit line."
       },
       {
-        "item": "Remastered presentation: widescreen with a widened field of view, longer draw distance, depth-correct drawing (no far object drawn over a nearer one), no road or coastline jitter; simulation identical to the other presentations",
-        "weight": 10.0,
+        "item": "Remastered: the world rebuilt from the game's model requests and drawn in the app, matching the original's models and fills",
+        "weight": 3.0,
+        "done": 0.9,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. Decoders for terrain, world and models checked against the game's memory; per-model polygon accounting matches the original; AND, OR and stipple fills; fills' order ported from 120A:0E5B; sky and ground bands from the band state, drawn smooth; wired into the app (`--presentation remastered`, machine exec-hook table), gated at 59cf216. Run in a real recorded takeoff, standing and at about 80 knots, against Enhanced: no region fails tools/remaster_diff.py, 1.6% of the 3D view's pixels differ, HUD and cockpit identical; the validator mismatches are explained (stale records of the game's lazy vertex projection); face shade [7D8A] is never read by the original. Not done: a flight with fast turns, the owner's look."
+      },
+      {
+        "item": "Remastered: depth-correct drawing (no far object drawn over a nearer one)",
+        "weight": 2.0,
+        "done": 0.7,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. A depth buffer, and the faces fed in the original's back-to-front order so AND/OR overlays land after the surfaces they modify (120A:0E5B ported). Seen right in the takeoff frames (hangars, runway markings, distant aircraft); not yet checked in a crowded scene or by the owner."
+      },
+      {
+        "item": "Remastered: widescreen with HUD and cockpit placed for it",
+        "weight": 2.0,
+        "done": 0.7,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. In a window wider than 4:3 the world fills the window and the game's own picture stays whole in the middle with the crosshair centred (remaster_live_wide), mouse mapped through it; shot at 1920 x 1080. Not done: objects wholly outside the game's own field of view are not drawn in the margins (the game culls them before asking), a wider projection, other window shapes tried only through F117_WINDOW, the owner's look."
+      },
+      {
+        "item": "Remastered: longer draw distance (R6)",
+        "weight": 1.0,
         "done": 0.0,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "Not started: the game asks for models only inside its own reach."
+      },
+      {
+        "item": "Remastered: no road or coastline jitter",
+        "weight": 0.5,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not started: the terrain polygons are not model requests yet and stay as the original drew them."
+      },
+      {
+        "item": "Remastered: interpolation between logic steps",
+        "weight": 0.5,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not done. A moving takeoff at about 80 knots shows no misalignment between the composite's mask (Enhanced's interpolated picture) and its fill (the last completed frame); fast turning flight not tried."
+      },
+      {
+        "item": "Remastered: the owner has looked and approved",
+        "weight": 1.0,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "The owner's own check (visual confirmation is the owner's)."
       },
       {
         "item": "In-game settings menu for every option now set by command line or .ini; SETUP's joystick and sound-driver questions answered from the settings (option to show them)",
@@ -215,11 +257,32 @@
         "evidence": "30 Oct 2026, branch p3-settings-menu. Full keyboard remapping (remap = Q:W, --remap, a Remap a key screen in the settings menu). Subtitles for the radio calls (--subtitles, subtitles = yes, a menu entry; src/host/subtitles.c): under the Roland and PC-speaker drivers the speech reaches the speaker as PIT counter 2 counts that follow SPEECH.117's bytes; the detector correlates the latest counts with a stretch from the middle of each of the nine words (the start of a burst runs up to 15 samples out of step), using only what the host already sees of the speaker and the player's own SPEECH.117. Checked: a unit test (all nine words, with and without the stray first event, six chained phrases including all nine in a row, the line expiring, noise finding nothing) and the real thing: a recorded Roland flight replayed in the real app showed Cleared at clock 2,344,005,572 (0.26 s after the speech began) and Cleared for take off 0.5 s later, drawn over the picture. Not done: AdLib (the speech is OPL writes there), the PC speaker driver itself was not run, a colourblind-safe HUD (Remastered), the owner has not looked."
       },
       {
-        "item": "Hybrid sound: Roland MT-32 (Munt) music with AdLib sound effects, from a second, hidden AdLib driver fed the same sound requests; the game's own driver and logic stay Roland's",
-        "weight": 3.0,
+        "item": "Hybrid sound: Mac recordings over the DOS driver, source policy and the machine hook",
+        "weight": 1.0,
+        "done": 0.9,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. Source policy (Mac, then Roland or AdLib), Mac recording player and mixer, the machine-layer exec hook; a real recorded flight's cannon request (id 6) was taken for its recording (Mac 306), and the START and END thunks are hooked; gated at 59cf216. The extracted WAVs must be renamed NNN.wav (the import wizard's job). Not done: the owner has not heard it."
+      },
+      {
+        "item": "Hybrid sound: Roland music with AdLib effects from a second driver",
+        "weight": 1.2,
+        "done": 0.8,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. src/host/sidecar.c stages ASOUND.117 in a bare machine, calls its five entries and mixes its own OPL chip with Roland's output; on by default with --sound roland (owner decision), --no-adlib-effects, ini key and menu row; in a recorded takeoff 262 effect requests, 0 failed, the audio differs from plain Roland only at the cannon burst; gated at 59cf216. Not done: nobody has heard it, only AdLib beside Roland is staged."
+      },
+      {
+        "item": "Hybrid sound: START and END sounds",
+        "weight": 0.5,
+        "done": 0.5,
+        "kind": "estimate",
+        "evidence": "31 Oct 2026. Their sound thunks are hooked and START's own ids reach the host; none of their ids has a Mac recording mapped, so nothing is taken from them yet."
+      },
+      {
+        "item": "Hybrid sound: the owner has listened and approved",
+        "weight": 0.3,
         "done": 0.0,
         "kind": "estimate",
-        "evidence": "Added 24 Oct 2026 at the owner's direction (not started). Scoped in docs/roadmap.md Phase 3 'Re-release features'."
+        "evidence": "The owner's own check."
       }
     ]
   },
