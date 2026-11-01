@@ -23,7 +23,7 @@ int main(void)
     }
     CHECK(total > 50);
     /* the manual's keys that matter most are all present */
-    const char *must[] = { "Shift F10", "F2", "F7", "space bar", "Backspace", "Shift F8", NULL };
+    const char *must[] = { "Shift F10", "F2", "F7", "space bar", "Backspace", "Shift F8", "Ctrl+Alt+S", "Ctrl+Alt+K", "Ctrl+Alt+P", NULL };
     for (int k = 0; must[k]; k++) {
         int found = 0;
         for (int page = 0; page < KEYREF_PAGES; page++) {

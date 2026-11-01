@@ -6,7 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Four pages, one column each: a heading has what == NULL. From the manual's Key Controls Summary. */
+/* Five pages, one column each: a heading has what == NULL. The first four are from the manual's Key Controls Summary, the fifth is this
+ * program's own keys. */
 static const keyref_row PAGE0[] = {
     { NULL, "FLYING" },
     { "Pitch down / up", "up / down arrow, keypad 8 / 2" },
@@ -74,18 +75,35 @@ static const keyref_row PAGE3[] = {
     { "Side / missile view", "Shift F3 / Shift F4" },
     { "Tactical / inverse", "Shift F5 / Shift F6" },
 };
+static const keyref_row PAGE4[] = {
+    { NULL, "THIS PROGRAM" },
+    { "Settings menu", "Ctrl+Alt+S" },
+    { "This key list", "Ctrl+Alt+K" },
+    { "Turn its pages", "left / right arrow" },
+    { "Close the list or menu", "Esc" },
+    { "Pause the game", "Ctrl+Alt+P" },
+    { "Full screen on / off", "Alt+Enter" },
+    { "Quit", "Ctrl+Alt+F12" },
+    { NULL, "WATCHING A SAVED FLIGHT" },
+    { "Faster / slower", "+  and  -" },
+    { "Normal speed", "0" },
+    { "30 seconds on / back", "]  and  [" },
+    { "Start it again", "Ctrl+Alt+R" },
+};
 static const char *const NOTES[KEYREF_PAGES] = {
     "Joystick, mouse, arrow keys or the numeric keypad all steer.",
     "",
     "Note: the manual's appendix lists Cam left and right the other way round from its text; the text's order is shown.",
     "* shift if not using a joystick.",
+    "The settings menu and the pause work while you fly; the last four keys only while a saved flight is watched (--watch).",
 };
 
 const keyref_row *keyref_rows(int page, int *count)
 {
-    static const keyref_row *const pages[KEYREF_PAGES] = { PAGE0, PAGE1, PAGE2, PAGE3 };
+    static const keyref_row *const pages[KEYREF_PAGES] = { PAGE0, PAGE1, PAGE2, PAGE3, PAGE4 };
     static const int sizes[KEYREF_PAGES] = { (int)(sizeof PAGE0 / sizeof PAGE0[0]), (int)(sizeof PAGE1 / sizeof PAGE1[0]),
-                                             (int)(sizeof PAGE2 / sizeof PAGE2[0]), (int)(sizeof PAGE3 / sizeof PAGE3[0]) };
+                                             (int)(sizeof PAGE2 / sizeof PAGE2[0]), (int)(sizeof PAGE3 / sizeof PAGE3[0]),
+                                             (int)(sizeof PAGE4 / sizeof PAGE4[0]) };
     if (page < 0 || page >= KEYREF_PAGES) page = 0;
     if (count) *count = sizes[page];
     return pages[page];
