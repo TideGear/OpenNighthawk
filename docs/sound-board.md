@@ -162,7 +162,7 @@ Known limits:
 **Assets.** The Mac WAVs and the MT-32 ROMs are the owner's; the plan for importing them into one library folder is in
 [p3-handoff.md](p3-handoff.md). Nothing from the Mac release goes into the repository.
 
-## Second driver: design (31 October 2026, not built)
+## Second driver: the AdLib sidecar (31 October 2026, built; opt-in `--adlib-effects`)
 
 The earlier plan (a hidden copy of the whole machine receiving the same trap) is more than the job needs. The driver is four calls
 that the game makes (entry 0 init, 1 raise an id, 2 resync the clock, 3 sequencer tick, 4 noise step) and it hooks no
@@ -189,3 +189,17 @@ interrupt, so a **sidecar** is enough: a bare `machine_t` that holds only the se
   return stop address, and compare the sidecar's OPL register writes for one id with the main machine's.
 - **Not covered:** speech (stays with the loaded driver), a Roland effect with no AdLib equivalent, and START and END, which
   need their own sidecar request path only if their ids gain recordings or AdLib routing.
+
+**Built.** `src/host/sidecar.c` stages `ASOUND.117` in a bare machine (image after the MZ header at `1000:0`, relocations applied,
+`pc_io_read/pc_io_write` for the chip ports) and calls entries 0 (init), 1 (id), 3 and 4 (ticks) as far calls with a stop address.
+`f117a --sound roland --adlib-effects` loads Roland as the main driver and a sidecar with its own OPL chip; the exec hook sends the
+flight effects (ids 4-20 and 23-25) the policy gives to AdLib to the sidecar and swallows them, and the sidecar's chip is mixed with
+the main output. Everything else (music, speech, the front end's polled sounds: fades 2, waits 26, picks 27-35) stays with the
+loaded driver: a first version that also took id 2 froze START, because the game polls it. Ticks run at 60.001 Hz of the machine's
+clock, so replays stay deterministic. `tests/sidecar_probe.c` (a gate-side tool like `check_drivers`; needs the install) checks
+that the driver initialises, that a request and 200 ticks make register writes, and that id 0 stays quiet.
+Evidence: the recorded takeoff with two cannon bursts, replayed with `--sound roland` answers (SETUP `3`), plain against
+`--adlib-effects`: the sidecar took 262 requests, 0 failed, 17,333 ticks, 332 OPL writes; the mixed audio differs from the plain
+Roland run only from 277.9 s to 278.8 s (the cannon burst) and nowhere else. Not done: nobody has listened to it; RSOUND/ISOUND are
+not staged as sidecars (only AdLib effects beside Roland music); no ini key or menu row yet; the full gate has not run on this
+change (it touches `src/host` only).

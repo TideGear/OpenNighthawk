@@ -45,6 +45,7 @@
 #include "keyref.h"
 #include "subtitles.h"
 #include "macsound.h"
+#include "sidecar.h"
 #include "soundpolicy.h"
 #include "remaster_live.h"
 #include "font8x16.h"
@@ -156,6 +157,38 @@ static void remaster_true_colour(uint32_t *pixels, size_t count)
         if (g_rmask[i]) pixels[i] = g_rrgb[i];
 }
 
+/* The AdLib sidecar (--adlib-effects, sidecar.h): a second driver holding the effects beside Roland's music. Its OPL
+ * writes go to a chip of their own (g_side_audio) at the main machine's clock, never earlier than the last write. */
+static sidecar_t *g_side;
+static int g_adlib_effects;           /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music) */
+static audio_t *g_side_audio;
+static uint64_t g_side_now, g_side_last, g_side_ticks, g_side_writes, g_side_requests, g_side_failed;
+static void side_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
+{
+    (void)user; (void)icount;
+    g_side_writes++;
+    if (g_side_now < g_side_last) g_side_now = g_side_last;
+    audio_opl_write(g_side_audio, g_side_now, reg, val);
+    g_side_last = g_side_now;
+}
+static void side_request(const machine_t *m, uint16_t id)
+{
+    g_side_now = m->cpu.icount;
+    g_side_requests++;
+    if (!sidecar_request(g_side, id)) g_side_failed++;
+}
+/* The game's timer ticks at 60.001 Hz of the machine's clock: run the sidecar's ticks that have come due. */
+static void side_run(const machine_t *m, uint64_t ips)
+{
+    if (!g_side) return;
+    const uint64_t due = (uint64_t)((double)m->cpu.icount * 60.001 / (double)ips);
+    while (g_side_ticks < due) {
+        g_side_now = (uint64_t)((double)(g_side_ticks + 1) * (double)ips / 60.001);
+        sidecar_tick(g_side);
+        g_side_ticks++;
+    }
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -166,12 +199,21 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
     if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
-    if (!g_mac || !macsound_has(g_mac, id)) return 0;
+    const int has_mac = g_mac && macsound_has(g_mac, id);
+    if (!has_mac && !g_side) return 0;
     const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
-    const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);   /* whichever driver is loaded */
-    const sp_source use = sp_choose(kind, SP_BIT(SP_MAC) | dos_any, g_source[kind]);
-    if (use != SP_MAC) return 0;
-    return macsound_play(g_mac, id);
+    /* Whichever DOS driver is loaded; with the AdLib sidecar (--adlib-effects) the loaded driver is Roland's and AdLib
+     * is the sidecar's, so an effect the policy gives to AdLib goes there and music stays with Roland. */
+    const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);
+    const sp_source use = sp_choose(kind, (has_mac ? SP_BIT(SP_MAC) : 0) | dos_any, g_source[kind]);
+    if (use == SP_MAC) return macsound_play(g_mac, id);
+    /* Only the flight effects (crash, gun, warnings, weapons, engine: ids 4 to 20 and 23 to 25) are the sidecar's. The
+     * front end's requests (fades, button waits, picks) are polled by the game, so the driver that is loaded keeps them. */
+    if (use == SP_ADLIB && g_side && ((id >= 4 && id <= 20) || (id >= 23 && id <= 25))) {
+        side_request(m, id);
+        return 1;
+    }
+    return 0;
 }
 static sp_source parse_source_option(const char *flag, const char *v)
 {
@@ -561,7 +603,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
-        if (g_mac) {                                            /* each program's sound stub: a far jump slot the driver patches */
+        if (g_mac || g_side) {                                  /* each program's sound stub: a far jump slot the driver patches */
             static const struct { const char *name; uint16_t seg, ip; } slot[] = {
                 { "VGAME.EXE", 0x1E42, 0x0313 }, { "START.EXE", 0x0A95, 0x6BB1 }, { "END.EXE", 0x05FA, 0x25F3 },
             };
@@ -797,6 +839,7 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
+        else if (!strcmp(a, "--adlib-effects")) g_adlib_effects = 1;
         else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
         else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
@@ -1118,6 +1161,18 @@ int main(int argc, char **argv)
     }
     H.audio = audio_create_backend(ips, opl_backend);
     if (H.audio) audio_set_speaker_model(H.audio, speaker_model);
+    if (g_adlib_effects) {                          /* the AdLib sidecar: ASOUND.117 from the install, a chip of its own */
+        char path[1024];
+        snprintf(path, sizeof path, "%s/ASOUND.117", data);
+        FILE *df = fopen(path, "rb");
+        uint8_t *dfile = NULL; long dlen = 0;
+        if (df) { fseek(df, 0, SEEK_END); dlen = ftell(df); rewind(df); dfile = dlen > 0 ? malloc((size_t)dlen) : NULL;
+                  if (dfile && fread(dfile, 1, (size_t)dlen, df) != (size_t)dlen) { free(dfile); dfile = NULL; } fclose(df); }
+        g_side_audio = audio_create_backend(ips, opl_backend);
+        if (dfile && g_side_audio) g_side = sidecar_new_adlib(dfile, (size_t)dlen, side_opl, NULL);
+        free(dfile);
+        if (!g_side) { fprintf(stderr, "--adlib-effects: could not start the AdLib driver from %s\n", path); audio_destroy(g_side_audio); g_side_audio = NULL; }
+    }
     if (mt32_control) {
         char error[256];
         if (mt32_seed_set) srand(mt32_seed);
@@ -1649,7 +1704,16 @@ int main(int argc, char **argv)
                 const int queued_before = stream ? SDL_GetAudioStreamQueued(stream) : 0;
                 size_t produced_frames = 0;
                 size_t n;
+                if (g_side) { side_run(&H.m, ips); audio_advance(g_side_audio, H.m.cpu.icount); }
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    if (g_side) {                                     /* the sidecar's AdLib effects over Roland's music */
+                        static int16_t sbuf[AUDIO_RATE * 2];
+                        const size_t got = audio_take(g_side_audio, sbuf, n);
+                        for (size_t k = 0; k < got * 2; k++) {
+                            const int v = abuf[k] + sbuf[k];
+                            abuf[k] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+                        }
+                    }
                     macsound_mix(g_mac, abuf, n);                     /* the Mac recordings over the driver's output */
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
@@ -1920,6 +1984,7 @@ int main(int argc, char **argv)
     if (audio_queue_log) fclose(audio_queue_log);
     if (audio_dump) fclose(audio_dump);
     audio_destroy(H.audio);
+    if (g_side) { if (getenv("F117_SOUND_LOG")) fprintf(stderr, "[sidecar] %llu requests (%llu failed), %llu ticks, %llu OPL writes\n", (unsigned long long)g_side_requests, (unsigned long long)g_side_failed, (unsigned long long)g_side_ticks, (unsigned long long)g_side_writes); sidecar_free(g_side); audio_destroy(g_side_audio); }
     SDL_Quit();
     return H.audio_failed ? 1 : 0;
 }
