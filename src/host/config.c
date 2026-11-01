@@ -102,6 +102,9 @@ int config_merge(const char *text, const char *dir, int argc, char **argv,
             else if (!strcmp(val, "no") || !strcmp(val, "false") || !strcmp(val, "off") || !strcmp(val, "0")) on = 0;
             else return fail(err, err_size, line, "expected yes or no for", key);
             if (on && !push(&v, &n, &cap, dup_n(opt, strlen(opt)))) return fail(err, err_size, line, "out of memory", NULL);
+            if (!on && !strcmp(key, "adlib-effects")) {      /* on by default with Roland: "no" has to be said */
+                if (!push(&v, &n, &cap, dup_n("--no-adlib-effects", 18))) return fail(err, err_size, line, "out of memory", NULL);
+            }
             continue;
         }
         if (!in(VALUED, key)) return fail(err, err_size, line, "unknown option", key);

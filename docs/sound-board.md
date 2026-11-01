@@ -200,6 +200,6 @@ clock, so replays stay deterministic. `tests/sidecar_probe.c` (a gate-side tool 
 that the driver initialises, that a request and 200 ticks make register writes, and that id 0 stays quiet.
 Evidence: the recorded takeoff with two cannon bursts, replayed with `--sound roland` answers (SETUP `3`), plain against
 `--adlib-effects`: the sidecar took 262 requests, 0 failed, 17,333 ticks, 332 OPL writes; the mixed audio differs from the plain
-Roland run only from 277.9 s to 278.8 s (the cannon burst) and nowhere else. Not done: nobody has listened to it; RSOUND/ISOUND are
-not staged as sidecars (only AdLib effects beside Roland music); no ini key or menu row yet; the full gate has not run on this
-change (it touches `src/host` only).
+Roland run only from 277.9 s to 278.8 s (the cannon burst) and nowhere else. Since then: the ini key `adlib-effects` and a settings menu row exist, and it is **on by default with `--sound roland`** (owner, 31 Oct;
+not in a replay; `--no-adlib-effects` or `adlib-effects = no` turns it off). Gated on master at `59cf216`. Not done: nobody has
+listened to it (the owner will); RSOUND/ISOUND are not staged as sidecars (only AdLib effects beside Roland music).

@@ -191,7 +191,7 @@ static int wide_make(SDL_Renderer *ren, int aspect)
 /* The AdLib sidecar (--adlib-effects, sidecar.h): a second driver holding the effects beside Roland's music. Its OPL
  * writes go to a chip of their own (g_side_audio) at the main machine's clock, never earlier than the last write. */
 static sidecar_t *g_side;
-static int g_adlib_effects;           /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music) */
+static int g_adlib_effects = -1;      /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music); unset: on with --sound roland */
 static audio_t *g_side_audio;
 static uint64_t g_side_now, g_side_last, g_side_ticks, g_side_writes, g_side_requests, g_side_failed;
 static void side_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
@@ -880,6 +880,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
         else if (!strcmp(a, "--adlib-effects")) g_adlib_effects = 1;
+        else if (!strcmp(a, "--no-adlib-effects")) g_adlib_effects = 0;
         else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
         else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
@@ -1207,7 +1208,8 @@ int main(int argc, char **argv)
     }
     H.audio = audio_create_backend(ips, opl_backend);
     if (H.audio) audio_set_speaker_model(H.audio, speaker_model);
-    if (g_adlib_effects) {                          /* the AdLib sidecar: ASOUND.117 from the install, a chip of its own */
+    if (g_adlib_effects < 0) g_adlib_effects = g_setup_sound == '3' && !replay;   /* the default: with Roland chosen, not in a replay */
+    if (g_adlib_effects > 0) {                      /* the AdLib sidecar: ASOUND.117 from the install, a chip of its own */
         char path[1024];
         snprintf(path, sizeof path, "%s/ASOUND.117", data);
         FILE *df = fopen(path, "rb");
