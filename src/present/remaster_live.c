@@ -175,10 +175,20 @@ static uint32_t mean_colour(uint32_t a, uint32_t b)
 /* Draw the sky and ground bands, then the primitives of a frame, into t (w and h set). ux and uy are the target's pixels
  * per pixel of the game's 320 x 200 picture across and down: h/240 and h/200 for a picture at the 4:3 shape, N and N for the
  * picture N times finer that the Enhanced presentation keeps (320N x 200N, stretched to 4:3 later). */
+static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide);
 static void draw_scene(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
                        int have_band, const int origin[2], const int window[4], double ux, double uy)
 {
-    t->cx = origin[0] * ux; t->cy = origin[1] * uy;           /* the game's origin, in its 320 x 200 pixels */
+    draw_scene_ex(m, t, fr, band_rec, have_band, origin, window, ux, uy, 0.0, 0);
+}
+
+/* xoff is the target pixel at which the game's own 320-pixel-wide picture starts, and wide asks for the world to fill the
+ * target: the bands run off every side and nothing is cut at the game's clip window. */
+static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide)
+{
+    t->cx = origin[0] * ux + xoff; t->cy = origin[1] * uy;           /* the game's origin, in its 320 x 200 pixels */
     t->sx = 256.0 * ux; t->sy = 256.0 * uy;
     t->near_z = 0x10000;
     uint32_t palette[256];
@@ -198,8 +208,14 @@ static void draw_scene(const machine_t *m, remaster_target *t, const remaster_fr
                 if (!fine.q[q].valid) continue;
                 remaster_v3 v[4];
                 for (int k = 0; k < 4; k++) {   /* a screen point as a camera-space point at a very large depth */
-                    v[k].x = (int32_t)((fine.q[q].x[k] * ux - t->cx) * far_z / t->sx);
-                    v[k].y = (int32_t)((fine.q[q].y[k] * uy - t->cy) * far_z / t->sy);
+                    double bx = fine.q[q].x[k], by = fine.q[q].y[k];
+                    if (wide) {                 /* the bands' outer edges run off the target: the world has no edge at the clip window */
+                        const double far_px = (double)(t->w + t->h);
+                        if (bx <= window[0]) bx = window[0] - far_px; else if (bx >= window[2]) bx = window[2] + far_px;
+                        if (q % 16 == 15) { if (q < 16 && by <= window[1]) by = window[1] - far_px; else if (q >= 16 && by >= window[3]) by = window[3] + far_px; }
+                    }
+                    v[k].x = (int32_t)((bx * ux + xoff - t->cx) * far_z / t->sx);
+                    v[k].y = (int32_t)((by * uy - t->cy) * far_z / t->sy);
                     v[k].z = (int32_t)far_z;
                 }
                 /* A smooth gradient instead of 16 flat bands: the edge between two bands takes the mean of their palette
@@ -235,7 +251,7 @@ static void draw_scene(const machine_t *m, remaster_target *t, const remaster_fr
         else if (p->kind == SCENE_DOTS)
             for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
     }
-    {                                           /* nothing outside the game's clip window */
+    if (!wide) {                                /* nothing outside the game's clip window */
         const int x0 = (int)(window[0] * ux), x1 = (int)((window[2] + 1) * ux);
         const int y0 = (int)(window[1] * uy), y1 = (int)((window[3] + 1) * uy);
         for (int y = 0; y < t->h; y++)
@@ -406,6 +422,33 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
     free(t.inv_z);
     free(t.index);
     return replaced > 0;
+}
+
+int remaster_live_wide(remaster_live *r, const machine_t *m, int n, int wide_w, const uint8_t *src, const uint8_t *dac,
+                       const uint8_t *mask, uint32_t *out)
+{
+    if (!r || !r->have_done || n < 1 || wide_w < 320 * n || !src || !dac || !mask || !out) return 0;
+    const int bw = 320 * n, h = 200 * n, xoff = (wide_w - bw) / 2;
+    remaster_target t;
+    t.w = wide_w; t.h = h;
+    t.color = (uint32_t *)malloc((size_t)wide_w * h * 4);
+    t.inv_z = (float *)malloc((size_t)wide_w * h * 4);
+    t.index = (uint16_t *)malloc((size_t)wide_w * h * 2);
+    if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return 0; }
+    draw_scene_ex(m, &t, &r->done, r->done_band, r->done_have_band, r->done_origin, r->done_window, n, n, xoff, 1);
+    memcpy(out, t.color, (size_t)wide_w * h * 4);
+    for (int y = 0; y < h; y++)                 /* the game's own picture, centred: every pixel Remastered did not replace */
+        for (int x = 0; x < bw; x++) {
+            const long i = (long)y * bw + x;
+            if (mask[i]) continue;
+            const unsigned c = src[i];
+            const unsigned cr = dac[c * 3], cg = dac[c * 3 + 1], cb = dac[c * 3 + 2];
+            out[(long)y * wide_w + xoff + x] = 0xFF000000u | (cr << 2 | cr >> 4) << 16 | (cg << 2 | cg >> 4) << 8 | (cb << 2 | cb >> 4);
+        }
+    free(t.color);
+    free(t.inv_z);
+    free(t.index);
+    return 1;
 }
 
 static int validate_on(void)

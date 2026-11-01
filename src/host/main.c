@@ -157,6 +157,36 @@ static void remaster_true_colour(uint32_t *pixels, size_t count)
         if (g_rmask[i]) pixels[i] = g_rrgb[i];
 }
 
+/* Widescreen Remastered: in a window wider than 4:3 the world fills the window and the game's own 320 x 200 picture (HUD,
+ * cockpit) stays at its size in the middle, so nothing is cut off and the crosshair stays at the centre
+ * (remaster_live_wide). The picture is built in the shape the fine picture has before the 4:3 stretch: 1.2 times the window's
+ * width over its height, 200n rows tall. Returns 1 when g_wtex holds a fresh wide picture. */
+static SDL_Texture *g_wtex;
+static uint32_t *g_wpix;
+static int g_ww, g_wh;
+static int wide_make(SDL_Renderer *ren, int aspect)
+{
+    if (!g_remaster || !g_rlive || !g_rtrue || !g_rmask || !g_rbuf || !aspect || g_scale < 1) return 0;
+    int ow = 0, oh = 0;
+    SDL_GetRenderOutputSize(ren, &ow, &oh);
+    if (oh <= 0) return 0;
+    const double a = (double)ow / (double)oh;
+    if (a < 4.0 / 3.0 + 0.04) return 0;
+    int wide_w = (int)(200.0 * g_scale * a * 1.2 + 0.5) & ~1;
+    if (wide_w < 320 * g_scale || wide_w > 16384) return 0;
+    if (!g_wtex || g_ww != wide_w) {
+        if (g_wtex) SDL_DestroyTexture(g_wtex);
+        free(g_wpix);
+        g_ww = wide_w; g_wh = 200 * g_scale;
+        g_wtex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, g_ww, g_wh);
+        g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
+        if (!g_wtex || !g_wpix) return 0;
+    }
+    if (!remaster_live_wide(g_rlive, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_wpix)) return 0;
+    SDL_UpdateTexture(g_wtex, NULL, g_wpix, g_ww * 4);
+    return 1;
+}
+
 /* The AdLib sidecar (--adlib-effects, sidecar.h): a second driver holding the effects beside Roland's music. Its OPL
  * writes go to a chip of their own (g_side_audio) at the main machine's clock, never earlier than the last write. */
 static sidecar_t *g_side;
@@ -1104,8 +1134,14 @@ int main(int argc, char **argv)
     }
     SDL_Window *win = NULL;
     SDL_Renderer *ren = NULL;
+    int win_w = 320 * scale, win_h = 240 * scale;
+    {   /* F117_WINDOW=WxH (diagnostic): a window of another shape, for the widescreen Remastered view */
+        const char *spec = getenv("F117_WINDOW");
+        int ww = 0, wh = 0;
+        if (spec && sscanf(spec, "%dx%d", &ww, &wh) == 2 && ww >= 320 && wh >= 240 && ww <= 8192 && wh <= 8192) { win_w = ww; win_h = wh; }
+    }
     if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0",
-                                     320 * scale, 240 * scale,
+                                     win_w, win_h,
                                      SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0),
                                      &win, &ren)) {
         fprintf(stderr, "SDL_CreateWindowAndRenderer: %s\n", SDL_GetError());
@@ -1804,7 +1840,7 @@ int main(int argc, char **argv)
             }
             g_presented += (uint64_t)got;
         }
-        int w, h;
+        int w, h, wide = 0;
         SDL_Texture *show = tex;
         if (g_replay && !H.frame.text) {
             pal_note(&g_pal_shown, H.frame.dac);
@@ -1819,6 +1855,7 @@ int main(int argc, char **argv)
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
             show = tex_fine;
+            if (wide_make(ren, aspect)) { show = g_wtex; w = g_ww; h = g_wh; wide = 1; }   /* a window wider than 4:3 */
         } else {
             present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
             SDL_Rect src = { 0, 0, w, h };
@@ -1837,7 +1874,7 @@ int main(int argc, char **argv)
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {
-                    const uint32_t *px = show == tex_fine ? fine_pixels : pixels;
+                    const uint32_t *px = show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels;
                     fprintf(sf, "P6\n%d %d\n255\n", w, h);
                     for (int k = 0; k < w * h; k++) { const uint8_t rgb[3] = { (uint8_t)(px[k] >> 16), (uint8_t)(px[k] >> 8), (uint8_t)px[k] }; fwrite(rgb, 1, 3, sf); }
                     fclose(sf); left--;
@@ -1846,9 +1883,11 @@ int main(int argc, char **argv)
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
         SDL_FRect dst = output_rect(ren, aspect);
+        SDL_FRect dstv = dst;                                   /* the picture; dst stays the 4:3 shape the overlays use */
+        if (wide) { int ow = 0, oh = 0; SDL_GetRenderOutputSize(ren, &ow, &oh); dstv.x = 0; dstv.y = 0; dstv.w = (float)ow; dstv.h = (float)oh; }
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
-        SDL_RenderTexture(ren, show, &srcf, &dst);
+        SDL_RenderTexture(ren, show, &srcf, &dstv);
         if (g_set.open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);
             settings_render(&g_set, menu_pixels, 640, 400);

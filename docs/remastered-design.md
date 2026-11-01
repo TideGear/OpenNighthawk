@@ -361,3 +361,21 @@ sentence names `--remaster-shot`, `remaster_view`, `F117_RM_*` or `remaster_wide
   tolerance only absorbs the sky's dither, which is keyed by pixel index), and the extra columns show more of the
   world (more hangars, runway, water, ground and sky). The scale (256) stays, more columns are added about the
   projection centre, and the band quadrilaterals extend with them.
+
+## The fit rule in the app: widescreen (31 October 2026)
+
+In a window wider than 4:3, `--presentation remastered` now draws the world across the whole window and keeps the game's own
+320 x 200 picture (HUD, cockpit, text) at its size in the middle, so nothing is cut off and the crosshair stays at the centre
+(`remaster_live_wide`, `wide_make` in `main.c`). The world is drawn at the game's own projection scale (256) with its origin shifted
+by half the extra width; the sky and ground bands' outer edges run off every side (`draw_scene_ex`, `wide`); the pixels Remastered
+did not replace (the mask of `remaster_live_composite`) are laid in from the game's picture. The picture is built in the shape
+the fine picture has before the 4:3 stretch (1.2 times the window's aspect, 200n rows) and shown over the whole window.
+Checked on the recorded takeoff in a 1920 x 1080 window (`F117_WINDOW=1920x1080`, a diagnostic override): shot
+`Desktop/ONShots/20261031-210224-inapp-widescreen-16x9-remastered.png`; the heading tape, both HUD columns, the gun and weapon
+lines and the cockpit are whole, and the crosshair is at x = 958 of 1920.
+
+Known limits: the game culls whole models by its own 320-pixel view before asking for them, so an object that is entirely
+outside the original's field of view is not drawn in the margins (it pops in as it enters the middle); the terrain polygons
+that are not model requests yet stay as the original drew them inside the middle; the mouse position is mapped to the 4:3
+picture, so in a wide flight view the mouse is off (the front end, which is not wide, is unaffected); the cockpit's own
+sides are not extended, the world shows around it.
