@@ -69,16 +69,18 @@ read. Result: nothing is lost by tossing any of them except the one P2 candidate
 
 Old WIP branches (not in `master`, nothing running on them): `present-horizon`, `present-hud2` (their band and HUD tests exist on the tree and pass), `wip-view-compose-2f9d` (`0x2F9D` is matched and hooked), `draw-rerun-probe` (the rerun path exists), `origin/p2-batch-setup-logo`, `origin/p2-wt-batch`. All superseded; safe to delete when the owner agrees. `docs-pass`, `p3-remaster-live` and (except one moot cleanup commit) `p3-hybrid-sound` are contained in the merge.
 
-### The `0FB2:04DD` job (taken on 31 October 2026; the owner asked that no useful work be lost)
+### Done: the `0FB2:04DD` job (31 October 2026; the owner asked that no useful work be lost)
 
-Read from the game image: `04DD` is `push bp; mov bp,sp; cmp word [bp+2],046Eh; mov ax,[228Dh]; je; mov ax,[228Bh]; xor dx,ax;
-mov ax,7F00h; jns; neg ax; add word [bp+2],4; sub dx,dx; pop bp; iret` (33 bytes, 14 instructions), the same shape as the accepted
-`084E` with constants `046E/228D/228B` for `07C8/261D/261B`. The tree already has the shared body
-(`vgame_raster_divide_fault(m, spans)`, whose comment says "and 04DD"); the `spans = 0` arm is written but unregistered. The saved
-snapshot's body has an older trap-flag line (`cpu_interrupt` after the IRET) that the tree replaced (the run loop takes the trap);
-do not reuse it. Remaining work: the wrapper `vgame_clip_divide_fault`, its registry row (level 3), one `INTERRUPT_FRAMES` row
-`{ 0x0FB2, 0x04DD, 4, 0x046E }` in `tests/func_lockstep.c`, then the private proof (kit steps 1-7: coverage lock, seeds, mutants),
-`finish_all.py`, integration, `audit_private.py`, and a batch gate. Do not run private builds during a gate.
+`04DD` (the clipper's INT 0 saturation handler: `push bp; mov bp,sp; cmp word [bp+2],046Eh; mov ax,[228Dh]; je; mov ax,[228Bh];
+xor dx,ax; mov ax,7F00h; jns; neg ax; add word [bp+2],4; sub dx,dx; pop bp; iret`, 33 bytes, 14 instructions) has the same shape as the
+accepted `084E`. It is now registered as `vgame_clip_divide_fault` (`vgame_raster_divide_fault(m, 0)`, level 3) with the
+`INTERRUPT_FRAMES` row `{ 0x0FB2, 0x04DD, 4, 0x046E }`; no new body was written, the shared body already existed. Evidence:
+`func_lockstep --only VGAME.EXE:4DD` at six seeds, 3,992-4,000 states each, 0 mismatching (`084E` runs the same size); four mutants
+of the `spans = 0` arm (compare constant, denominator, IP advance, clock charge) each give 1 mismatching; full gate on the tree
+(827 tests, 63 routes identical, 1642 routines at three seeds, 0 mismatching, steps 8 and 9 clean). Landed from branch
+`p2-clip-04dd` (`dea8936`). The percentage was not refreshed: run `tools/progress.py --census` with the next batch to credit the 33 bytes.
+The old snapshot `rescue/wt-20261031` is now redundant (its body used a replaced trap-flag line) and is also in
+`D:/f117-archive/orphans-20261031.bundle`.
 
 ### Fixed: the lockstep hang at `START.EXE:8A32`, state 1627 (31 October 2026)
 
