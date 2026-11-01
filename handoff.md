@@ -31,7 +31,7 @@ Two threads. `master` is the active main branch. P2 batch `by` is accepted at 96
 - **Acceptance of the merge:** gate `D:/f117-gate/p3-merge-gate2-20261031/` (827 tests; 63 routes identical with 62 fresh interpreter sessions; 5,764,032 translated-instruction states under both timing profiles, 0 mismatching; 1,641 matched routines at three seeds, about 6.87 million states each, 0 mismatching; reachability and event limits clean) and the presentation checks beside it (`present-n1.log`: N=1 exact on 63 routes; `present-boot.log`: boot_to_flight N=4 and N=9 exact). The first gate attempt (`gate-attempt1-hung.log`) hung on a latent lockstep defect (below), not on the merge.
 - **Score unchanged:** P3 85.42%; Remastered is still 0.0 in `docs/progress.json`. The owner asked whether to raise it; the advice was not yet (the design doc credits a stage only after its proof), or about 20% with evidence. The owner decides.
 - **The headless tool I built is retired** (`remaster_view`, `f117run --remaster-shot`, `tools/remaster_wide_check.py`): code at git tag `remaster-view-tool-20261031`, findings in the design doc ("Findings from the headless shot tool"). Ported into `remaster_scene.c`: a fallback for edge sets that do not chain (angular order) and a three-vertex rule. Not in the live code: skipping requests made while the viewport (`DS:85FA..8600`) is under 300 wide (the cockpit's map display), and the frame boundary from the flip bit `DS:0346`.
-- **Next, in order:** (1) run the merged in-app path in a real flight against the Enhanced baseline, never done (takeoff replay, `--presentation remastered --present-scale 3`, `F117_PRESENT_SHOTS`, `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`); (2) the live branch's open list: face shade `[7D8A]`, validator mismatches (models 3, 30, 51, 50), interpolation between logic steps, widescreen, longer reach (R6); (3) the fit rule (cockpit and HUD scaled to fit uncropped, crosshair centred, 3-D view filling the window); (4) hybrid sound: a second driver (Roland music with AdLib effects, MT-32 effect channels muted), the START and END thunks (`0A95:6BB1`, `05FA:25F3`), a generated-code build check, the owner's marks on the sound-board page, the id mapping heard by ear; (5) the owner's credit decision.
+- **Next, in order:** (1) run the merged in-app path in a real flight against the Enhanced baseline, never done (takeoff replay, `--presentation remastered --present-scale 3`, `F117_PRESENT_SHOTS`, `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`); (2) the live branch's open list: face shade `[7D8A]`, validator mismatches (models 3, 30, 51, 50), interpolation between logic steps, widescreen, longer reach (R6); (3) the fit rule (cockpit and HUD scaled to fit uncropped, crosshair centred, 3-D view filling the window); (4) hybrid sound (the owner's stated order, 31 Oct: finish it right after the remastered renderer, before anything else in Phase 3; the `p3-hybrid-sound` branch is kept for this): a second driver (Roland music with AdLib effects, MT-32 effect channels muted), the START and END thunks (`0A95:6BB1`, `05FA:25F3`), a generated-code build check, the owner's marks on the sound-board page, the id mapping heard by ear; (5) the owner's credit decision.
 - **Owner instructions to keep:** renderer shots go to `Desktop\ONShots` named `YYYYMMDD-HHMMSS-name.png` (leave the `Prenaming` folder alone); gradients smooth with no visible bands; depth-correct drawing is the point; read `src/matched/matched.c` before guessing and say what was read.
 - **Build and run:** `.\build.cmd` from PowerShell; headless runs with `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`; a Python heredoc in Bash turns `\n` in C strings into real newlines, so use the Edit tool for such lines. Research switches on the live path: `F117_REMASTER_FRAME=N:FILE.ppm`, `F117_REMASTER_DEBUG=1`, `F117_REMASTER_VALIDATE`.
 
@@ -80,19 +80,19 @@ do not reuse it. Remaining work: the wrapper `vgame_clip_divide_fault`, its regi
 `{ 0x0FB2, 0x04DD, 4, 0x046E }` in `tests/func_lockstep.c`, then the private proof (kit steps 1-7: coverage lock, seeds, mutants),
 `finish_all.py`, integration, `audit_private.py`, and a batch gate. Do not run private builds during a gate.
 
-### Latent lockstep hang found by the merge gate (31 October 2026): `START.EXE:8A32`, state 1627
+### Fixed: the lockstep hang at `START.EXE:8A32`, state 1627 (31 October 2026)
 
 The first full gate of the merge (commit `863898e`, seed `0x863898e40efa`) never finished: matched-routine lockstep shard 7/8 sat
-on one `func_lockstep.exe` for over two hours at one thread. Reproduction: `func_lockstep.exe --states 1628 --seed 0x863898e40efa
---only START.EXE:8A32` does not return; `--states 1627` finishes (`1627 ok`, `1628 HANG`, bisected). It is **not** caused by the merge:
-the `master` build (`48869f4`) hangs the same way; the two builds agree exactly at 100 and 200 states. The routine is
-`st2_fill_rect` (START `8A32`, END `49D2`), whose own comment says a row count of 0 (`y1 = y0 - 1`) is a 64K-row run; the driver's
-span fill in the original code then runs for an effectively unbounded time, and the lockstep's per-state limit does not stop a call into
-original code. Every other routine in shard 7 finished (73 scanned, only `VGAME 1377:0B09` slow at 21 s). The commit-derived seed
-changes with HEAD (see Traps), so an ordinary gate only hits it when a commit's seed lands a degenerate row count in that routine's first
-thousands of states. To do: make the fixture avoid or bound a degenerate row count (or have the harness skip a state whose original-code
-call exceeds a time budget as a long run), prove it does not weaken the check, then gate. The first attempt's log is
-`D:/f117-gate/p3-merge-gate-20261031/gate-attempt1-hung.log`; the second gate ran on the same source tree under a docs-only commit.
+on one `func_lockstep.exe` for over two hours. Reproduction was `func_lockstep.exe --states 1628 --seed 0x863898e40efa --only
+START.EXE:8A32` (`1627` finished, `1628` hung). It was not caused by the merge: the `master` build (`48869f4`) hung the same way.
+**Root cause** (an earlier note here blamed `st2_fill_rect`'s 64K-row run; that was wrong): the planted state made the original code
+slide along a chain of instruction-prefix bytes, and `cpu_step`'s prefix loop (`src/cpu/cpu.c`) has no bound, so a single step never
+returned and the per-state step limit never fired. **Fix** (commit `7967b67`, `tests/func_lockstep.c` only; the core was left alone,
+it would need the full gate for no gain): `prefix_runaway()` stops a state whose bytes at CS:IP are more than 64 consecutive prefixes
+(no instruction can complete), counted and reported as `prefix-run guard: N state(s) stopped as long runs`; plus an opt-in watchdog,
+`F117_LOCKSTEP_WATCHDOG=N` (seconds), that prints the stuck state and exits 3. Evidence: the full table at the hanging seed finished in
+15 minutes (1641 routines, 6,873,385 states, 0 mismatching, guard stopped a handful of states per shard); the full gate on the fix
+tree passed (827 tests, 63 routes identical, 1641 routines at three seeds, 0 mismatching).
 
 ## Owner decisions in force
 
