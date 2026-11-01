@@ -119,6 +119,44 @@ static remaster_live *g_rlive_copy;       /* Remastered's collector for the reru
 static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
 static unsigned g_rlive_base;
 
+/* Widescreen Remastered: in a window wider than 4:3 the world fills the window and the game's own 320 x 200 picture (HUD,
+ * cockpit) stays at its size in the middle, so nothing is cut off and the crosshair stays at the centre. It is composed in the
+ * same pass as the Remastered 3D view (remaster_live_compose). The picture is built in the shape the fine picture has before the
+ * 4:3 stretch: 1.2 times the window's width over its height, 200n rows tall. */
+static SDL_Renderer *g_ren;            /* the window's renderer, for its output size */
+static int g_aspect_on = 1;            /* the 4:3 shape is kept (not --no-aspect) */
+static SDL_Texture *g_wtex;
+static uint32_t *g_wpix;
+static int g_ww, g_wh;
+static int g_wide_shown;               /* the last presented picture was the wide one: the mouse maps through it */
+static int g_wide_filled;              /* g_wpix holds the picture composed this time */
+
+/* The width, in fine pixels, of the wide picture the window wants, or 0 when it is not wider than 4:3 (then the 4:3 picture is used). */
+static int wide_width(void)
+{
+    if (!g_ren || !g_aspect_on || g_scale < 1) return 0;
+    int ow = 0, oh = 0;
+    SDL_GetRenderOutputSize(g_ren, &ow, &oh);
+    if (oh <= 0) return 0;
+    const double a = (double)ow / (double)oh;
+    if (a < 4.0 / 3.0 + 0.04) return 0;
+    const int wide_w = (int)(200.0 * g_scale * a * 1.2 + 0.5) & ~1;
+    return wide_w < 320 * g_scale || wide_w > 16384 ? 0 : wide_w;
+}
+
+/* The texture and the pixels for a wide picture wide_w across (made again when the shape changes). */
+static int wide_prepare(int wide_w)
+{
+    if (g_wtex && g_wpix && g_ww == wide_w) return 1;
+    if (g_wtex) SDL_DestroyTexture(g_wtex);
+    free(g_wpix);
+    g_wtex = NULL; g_wpix = NULL;
+    g_ww = wide_w; g_wh = 200 * g_scale;
+    g_wtex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, g_ww, g_wh);
+    g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
+    return g_wtex && g_wpix;
+}
+
 /* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
  * original fine picture when there is nothing to compose. */
 static const uint8_t *remaster_apply(const uint8_t *hi)
@@ -149,7 +187,18 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
         if (++calls % 120 == 1) fprintf(stderr, "[copycheck] picture from %s: copy frame %zu primitives, live frame %zu\n", src == g_rlive_copy ? "a copy" : "the live machine", g_rlive_copy ? remaster_live_done_prims(g_rlive_copy) : 0, remaster_live_done_prims(g_rlive));
     }
     g_remaster_src = src;
-    if (!remaster_live_composite(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask)) return hi;
+    g_wide_filled = 0;
+    int ww = wide_width();
+    if (ww && !wide_prepare(ww)) ww = 0;
+    const uint64_t t0 = SDL_GetPerformanceCounter();
+    const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
+    g_wide_filled = composed && ww;
+    if (getenv("F117_REMASTER_TIMING")) {               /* diagnostic: where a Remastered picture's milliseconds go (stderr, every 120th) */
+        static double sum; static unsigned n;
+        sum += (double)(SDL_GetPerformanceCounter() - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
+        if (++n % 120 == 0) { fprintf(stderr, "[timing] composite %.2f ms (mean of %u)\n", sum / n, n); }
+    }
+    if (!composed) return hi;
     g_rtrue = 1;
     return g_rbuf;
 }
@@ -169,33 +218,11 @@ static void remaster_true_colour(uint32_t *pixels, size_t count)
         if (g_rmask[i]) pixels[i] = g_rrgb[i];
 }
 
-/* Widescreen Remastered: in a window wider than 4:3 the world fills the window and the game's own 320 x 200 picture (HUD,
- * cockpit) stays at its size in the middle, so nothing is cut off and the crosshair stays at the centre
- * (remaster_live_wide). The picture is built in the shape the fine picture has before the 4:3 stretch: 1.2 times the window's
- * width over its height, 200n rows tall. Returns 1 when g_wtex holds a fresh wide picture. */
-static SDL_Texture *g_wtex;
-static uint32_t *g_wpix;
-static int g_ww, g_wh;
-static int g_wide_shown;              /* the last presented picture was the wide one: the mouse maps through it */
+/* The wide picture composed with this picture, in the texture; 0 when there is none (the window is not wide, or nothing was composed). */
 static int wide_make(SDL_Renderer *ren, int aspect)
 {
-    if (!g_remaster || !g_rlive || !g_rtrue || !g_rmask || !g_rbuf || !aspect || g_scale < 1) return 0;
-    int ow = 0, oh = 0;
-    SDL_GetRenderOutputSize(ren, &ow, &oh);
-    if (oh <= 0) return 0;
-    const double a = (double)ow / (double)oh;
-    if (a < 4.0 / 3.0 + 0.04) return 0;
-    int wide_w = (int)(200.0 * g_scale * a * 1.2 + 0.5) & ~1;
-    if (wide_w < 320 * g_scale || wide_w > 16384) return 0;
-    if (!g_wtex || g_ww != wide_w) {
-        if (g_wtex) SDL_DestroyTexture(g_wtex);
-        free(g_wpix);
-        g_ww = wide_w; g_wh = 200 * g_scale;
-        g_wtex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, g_ww, g_wh);
-        g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
-        if (!g_wtex || !g_wpix) return 0;
-    }
-    if (!remaster_live_wide(g_remaster_src, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_rrgb, g_wpix)) return 0;
+    (void)ren; (void)aspect;
+    if (!g_wide_filled || !g_wtex || !g_wpix) return 0;
     SDL_UpdateTexture(g_wtex, NULL, g_wpix, g_ww * 4);
     return 1;
 }
@@ -251,7 +278,7 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
                                    m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
-    if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
+    if (log_requests) fprintf(stderr, "[sound] id %u%s at clock %llu\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "", (unsigned long long)m->cpu.icount);
     const uint16_t mid = id == 31 && g_hook_flight ? 331 : id;     /* the Mac id of the bay-door sound (see macsound_resource) */
     const int has_mac = g_mac && macsound_has(g_mac, mid);
     if (!has_mac && !g_side) return 0;
@@ -260,11 +287,17 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
      * is the sidecar's, so an effect the policy gives to AdLib goes there and music stays with Roland. */
     const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);
     const sp_source use = sp_choose(kind, (has_mac ? SP_BIT(SP_MAC) : 0) | dos_any, g_source[kind]);
-    if (use == SP_MAC) return macsound_play(g_mac, mid);
-    /* Only the flight effects (crash, gun, warnings, weapons, engine: ids 4 to 20 and 23 to 25) are the sidecar's. The
-     * front end's requests (fades, button waits, picks) are polled by the game, so the driver that is loaded keeps them. */
-    if (use == SP_ADLIB && g_side && ((id >= 4 && id <= 20) || (id >= 23 && id <= 25))) {
+    /* A request the host takes answers as the driver does: the driver's entry 1 returns its handler's result in AX, and the one
+     * caller that reads it is the busy-poll (id 2: START, END and PLAYER loop `or ax, ax; jne` until the driver says 0), which is
+     * never taken here. Every other call site ignores AX (checked over all of them, docs/sound-code-proof.md), so 0 is right. */
+    if (use == SP_MAC) { const int played = macsound_play(g_mac, mid); if (played) m->cpu.r[R_AX] = 0; return played; }
+    /* The hybrid rule (owner): sound effects are AdLib's, music is Roland's. Ids 4 to 35 are the effects (flight, the front end's picks
+     * and marks, the weapons page); id 0 (stop) reaches both drivers; the busy-poll (2), the music (3, 36 to 39), the release (40) and
+     * the speech (41 to 45) stay with the driver that is loaded. */
+    if (g_side && id == 0) side_request(m, 0);
+    if (use == SP_ADLIB && g_side && id >= 4 && id <= 35) {
         side_request(m, id);
+        m->cpu.r[R_AX] = 0;
         return 1;
     }
     return 0;
@@ -458,6 +491,11 @@ static void midi_send(void *user, const uint8_t *msg, size_t len)
 static void on_midi(void *u, uint64_t icount, uint8_t b)
 {
     (void)u;
+    {   /* F117_MIDI_LOG=FILE (diagnostic): every byte the game sends to the MPU data port, with the machine clock */
+        static FILE *mlog; static int tried;
+        if (!tried) { tried = 1; const char *path = getenv("F117_MIDI_LOG"); if (path) mlog = fopen(path, "w"); }
+        if (mlog) fprintf(mlog, "%llu %02X\n", (unsigned long long)icount, (unsigned)b);
+    }
     if (!H.roland_out && !H.roland_unheard) H.roland_unheard = 1;
     if (H.audio && !audio_midi_byte(H.audio, icount, b)) H.audio_failed = 1;
 #ifdef _WIN32
@@ -524,6 +562,47 @@ static void window_to_guest(SDL_Renderer *ren, int aspect, float wx, float wy, i
     if (v > 0.9999f) v = 0.9999f;
     *gx = (int)(u * 320.0f);
     *gy = (int)(v * 200.0f);
+}
+
+/* The other way: the window position of a point of the game's 320 x 200 picture (its middle). */
+static void guest_to_window(SDL_Renderer *ren, int aspect, int gx, int gy, float *wx, float *wy)
+{
+    float rx, ry;
+    if (g_wide_shown && g_ww > 0 && g_wh > 0) {
+        int ow = 0, oh = 0;
+        SDL_GetRenderOutputSize(ren, &ow, &oh);
+        const float n = (float)g_wh / 200.0f;
+        const float tx = (float)(g_ww - 320 * (int)n) / 2.0f + ((float)gx + 0.5f) * n;
+        rx = tx / (float)g_ww * (float)ow;
+        ry = ((float)gy + 0.5f) / 200.0f * (float)oh;
+    } else {
+        const SDL_FRect r = output_rect(ren, aspect);
+        rx = r.x + ((float)gx + 0.5f) / 320.0f * r.w;
+        ry = r.y + ((float)gy + 0.5f) / 200.0f * r.h;
+    }
+    SDL_RenderCoordinatesToWindow(ren, rx, ry, wx, wy);
+}
+
+/* The DOS mouse driver is relative: when the game puts its cursor somewhere (the driver's "set position" call, as when it jumps to
+ * a button), the next movement continues from there. Here the host sends absolute positions, so the game's cursor used to jump
+ * back to the (hidden) Windows cursor. Whenever the game moves its cursor with no mouse input of ours pending, the Windows cursor is
+ * moved to the same place, so the next real movement starts from the game's cursor. Not in a replay (its inputs come from the log). */
+static int g_mouse_dirty;               /* a mouse event of ours is on its way into the machine */
+static int g_mouse_seen_x = -1, g_mouse_seen_y = -1;
+static int g_mouse_sent_x = -1, g_mouse_sent_y = -1;   /* what our last mouse event put in the driver (its coordinates) */
+static void mouse_follow_game(SDL_Window *win, SDL_Renderer *ren, int aspect, int skip)
+{
+    if (H.m.in_qn) return;                                 /* an input is still waiting: the driver's position is not settled */
+    const int mx = H.m.mouse_x, my = H.m.mouse_y;
+    if (g_mouse_dirty) {                                   /* ours: accepted, unless the game moved the cursor as well (a click that jumps it) */
+        g_mouse_dirty = 0; g_mouse_seen_x = mx; g_mouse_seen_y = my;
+        if (mx == g_mouse_sent_x && my == g_mouse_sent_y) return;
+    } else if (mx == g_mouse_seen_x && my == g_mouse_seen_y) return;
+    g_mouse_seen_x = mx; g_mouse_seen_y = my;              /* the game moved it */
+    if (skip || SDL_GetMouseFocus() != win) return;               /* a replay or the settings menu: the cursor is not ours to move */
+    float wx = 0, wy = 0;
+    guest_to_window(ren, aspect, mx / 2, my, &wx, &wy);
+    SDL_WarpMouseInWindow(win, wx, wy);
 }
 
 /* ---- main ------------------------------------------------------------------ */
@@ -1189,6 +1268,7 @@ int main(int argc, char **argv)
         return 1;
     }
     SDL_SetRenderVSync(ren, 1);
+    g_ren = ren; g_aspect_on = aspect;
     if (g_fit_scale) {
         /* Enhanced: as fine as the display's height allows at 4:3 (2160 lines: 9, 1440: 6, 1080: 4) */
         const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(win));
@@ -1701,6 +1781,7 @@ int main(int argc, char **argv)
                 int gx, gy;
                 window_to_guest(ren, aspect, ev.motion.x, ev.motion.y, &gx, &gy);
                 machine_mouse(&H.m, gx, gy, mouse_buttons, (int)ev.motion.xrel, (int)ev.motion.yrel);
+                g_mouse_dirty = 1; g_mouse_sent_x = gx * 2; g_mouse_sent_y = gy;
                 break;
             }
             case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: {
@@ -1710,6 +1791,7 @@ int main(int argc, char **argv)
                 int gx, gy;
                 window_to_guest(ren, aspect, ev.button.x, ev.button.y, &gx, &gy);
                 machine_mouse(&H.m, gx, gy, mouse_buttons, 0, 0);
+                g_mouse_dirty = 1; g_mouse_sent_x = gx * 2; g_mouse_sent_y = gy;
                 break;
             }
             default: break;
@@ -1777,6 +1859,7 @@ int main(int argc, char **argv)
                     break;
                 }
             }
+            mouse_follow_game(win, ren, aspect, replay != NULL || g_set.open);
             if (H.audio) {
                 audio_advance(H.audio, H.m.cpu.icount);
                 const int queued_before = stream ? SDL_GetAudioStreamQueued(stream) : 0;

@@ -43,13 +43,13 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
 /* rgb and mask (320n x 200n, may be NULL) receive the true colour of every replaced pixel and a 1 in mask for it; the
  * display shows those instead of the palette entry of dst, which is how a smooth gradient avoids the palette's steps. */
 
-/* Widescreen (the fit rule, docs/remastered-design.md): the last frame's world drawn across a target wide_w pixels wide and 200n
- * tall (wide_w >= 320n), at the game's own projection scale with its origin shifted to keep the crosshair at the centre; the
- * bands run off every side and nothing is cut at the clip window. The game's own picture (src, 320n x 200n palette indices,
- * dac its palette) is then laid in the middle at its own size for every pixel mask (from remaster_live_composite) does not
- * mark as Remastered's, so the HUD and cockpit are uncropped. out is wide_w x 200n, 0xAARRGGBB. Returns 0 when there is no frame. */
-int remaster_live_wide(remaster_live *r, const machine_t *m, int n, int wide_w, const uint8_t *src, const uint8_t *dac,
-                       const uint8_t *mask, const uint32_t *block_rgb, uint32_t *out);
+/* The composite, and with wide_w > 320n the widescreen picture too (the fit rule, docs/remastered-design.md): the world is drawn once
+ * across a canvas wide_w pixels wide and 200n tall at the game's own projection scale, with its origin shifted to keep the crosshair at
+ * the centre; the bands run off every side and nothing is cut at the clip window. The game's own picture is laid in the middle at its own
+ * size (Remastered's pixel where it replaced one, the original's elsewhere), so the HUD and cockpit are uncropped. wide_out is wide_w x
+ * 200n, 0xAARRGGBB; it needs rgb and mask (the composite's own outputs). wide_w 0: the plain composite. */
+int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
+                          const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask, int wide_w, uint32_t *wide_out);
 
 /* Primitives collected for the frame being drawn, and frames completed. */
 size_t remaster_live_prims(const remaster_live *r);

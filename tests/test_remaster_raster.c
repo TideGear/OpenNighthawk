@@ -2,6 +2,7 @@
  * a wider frame adds columns without moving what was drawn, and positions are sub-pixel. */
 #include "remaster_raster.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,6 +165,48 @@ int main(void)
         remaster_polygon_logic(&t, far_q, 4, REMASTER_AND, 0x0F);
         CHECK(t.color[24 * 64 + 32 + 20] == before);
         free(t.color); free(t.inv_z); free(t.index);
+    }
+    {   /* the fill draws exactly the pixels a brute-force test of every pixel of the bounding box would: random triangles,
+         * thin diagonal slivers and partly off-screen ones included (the row spans only skip pixels that are certainly outside) */
+        unsigned seed = 12345u;
+        #define RND() (seed = seed * 1664525u + 1013904223u, (double)(seed >> 8) / 16777216.0)
+        long compared = 0, bad = 0;
+        for (int trial = 0; trial < 4000; trial++) {
+            remaster_target t = make(96, 72);
+            const int z = 0x00800000;                            /* a constant depth, so depth plays no part */
+            double sx[3], sy[3];
+            for (int k = 0; k < 3; k++) { sx[k] = RND() * 160.0 - 32.0; sy[k] = RND() * 120.0 - 24.0; }
+            if (trial % 3 == 0) {                                /* a sliver: two vertices close together, the third far off */
+                sx[1] = sx[0] + RND() * 2.0; sy[1] = sy[0] + RND() * 2.0;
+            }
+            remaster_v3 v[3];
+            for (int k = 0; k < 3; k++) {
+                const double kx = (double)z / 256.0;
+                v[k] = (remaster_v3){ (int32_t)((sx[k] - t.cx) * kx), (int32_t)((sy[k] - t.cy) * kx), z };
+            }
+            remaster_polygon(&t, v, 3, RED);
+            /* the reference, from the vertices as the fill sees them (truncated to the integers it was given) */
+            double px[3], py[3];
+            for (int k = 0; k < 3; k++) { px[k] = t.cx + t.sx * (double)v[k].x / z; py[k] = t.cy + t.sy * (double)v[k].y / z; }
+            const double den = (py[1] - py[2]) * (px[0] - px[2]) + (px[2] - px[1]) * (py[0] - py[2]);
+            for (int y = 0; y < t.h; y++)
+                for (int x = 0; x < t.w; x++) {
+                    int inside = 0;
+                    if (fabs(den) >= 1e-12) {
+                        const double cx = x + 0.5, cy = y + 0.5;
+                        const double l1 = ((py[1] - py[2]) * (cx - px[2]) + (px[2] - px[1]) * (cy - py[2])) / den;
+                        const double l2 = ((py[2] - py[0]) * (cx - px[2]) + (px[0] - px[2]) * (cy - py[2])) / den;
+                        inside = !(l1 < 0 || l2 < 0 || 1.0 - l1 - l2 < 0);
+                    }
+                    const int drawn = t.color[(long)y * t.w + x] == RED;
+                    compared++;
+                    bad += inside != drawn;
+                }
+            free(t.color); free(t.inv_z);
+        }
+        #undef RND
+        printf("fill vs brute force: %ld pixels compared, %ld differ\n", compared, bad);
+        CHECK(bad == 0);
     }
     puts("remaster raster passes");
     return 0;

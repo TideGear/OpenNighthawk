@@ -32,6 +32,27 @@ static int clip_near(const remaster_v3 *in, int n, double near_z, dv3 *out)
 
 typedef struct { double x, y, iz; } sv;      /* a screen vertex: pixel position and 1/z */
 
+/* The columns of row y (pixel centres at y + 0.5) that can lie inside triangle abc: where the row meets its three edges, one pixel
+ * wider each side. A pixel outside it is certainly outside the triangle, so the per-pixel test (which stays) gives the same
+ * result as testing every pixel of the bounding box, at a cost that follows the area instead of the box: a long thin diagonal
+ * line no longer tests the whole rectangle around it. Returns 0 when the row misses the triangle. */
+static int row_span(sv a, sv b, sv c, double py, int *xs, int *xe)
+{
+    const sv v[3] = { a, b, c };
+    double lo = 1e300, hi = -1e300;
+    for (int i = 0; i < 3; i++) {
+        const sv p = v[i], q = v[(i + 1) % 3];
+        if (!((p.y <= py && py <= q.y) || (q.y <= py && py <= p.y))) continue;
+        if (p.y == q.y) { lo = fmin(lo, fmin(p.x, q.x)); hi = fmax(hi, fmax(p.x, q.x)); continue; }
+        const double x = p.x + (py - p.y) * (q.x - p.x) / (q.y - p.y);
+        lo = fmin(lo, x); hi = fmax(hi, x);
+    }
+    if (lo > hi) return 0;
+    *xs = (int)floor(lo - 0.5) - 1;
+    *xe = (int)ceil(hi - 0.5) + 1;
+    return 1;
+}
+
 static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
 {
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
@@ -44,8 +65,12 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
     long written = 0;
-    for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++) {
+    for (int y = y0; y <= y1; y++) {
+        int xs, xe;
+        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (xs < x0) xs = x0;
+        if (xe > x1) xe = x1;
+        for (int x = xs; x <= xe; x++) {
             const double px = x + 0.5, py = y + 0.5;
             const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
@@ -62,6 +87,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;
         }
+    }
     return written;
 }
 
@@ -77,8 +103,12 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
     long written = 0;
-    for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++) {
+    for (int y = y0; y <= y1; y++) {
+        int xs, xe;
+        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (xs < x0) xs = x0;
+        if (xe > x1) xe = x1;
+        for (int x = xs; x <= xe; x++) {
             const double px = x + 0.5, py = y + 0.5;
             const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
@@ -102,6 +132,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;
         }
+    }
     return written;
 }
 
@@ -117,8 +148,12 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
     long written = 0;
-    for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++) {
+    for (int y = y0; y <= y1; y++) {
+        int xs, xe;
+        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (xs < x0) xs = x0;
+        if (xe > x1) xe = x1;
+        for (int x = xs; x <= xe; x++) {
             const double px = x + 0.5, py = y + 0.5;
             const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
@@ -141,6 +176,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
                 written++;
             }
         }
+    }
     return written;
 }
 
