@@ -286,6 +286,14 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
     if (log_requests) fprintf(stderr, "[sound] id %u%s at clock %llu\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "", (unsigned long long)m->cpu.icount);
+    if (g_subtitles && id >= 41 && id <= 45) {                    /* the radio call as text, named by the request itself (every driver) */
+        int words[3];
+        const int n = macsound_speech_words(id, m->mem[0x46C], words);
+        /* 43 is good or nice landing by a tick counter in the driver; a recording the host plays uses its own, the drivers' own are
+         * heard by the detector (Roland, PC speaker), so only the Mac's choice is named here */
+        if (n && (id != 43 || (g_mac && macsound_has(g_mac, id) && sp_choose(SP_SPEECH, SP_BIT(SP_MAC) | SP_BIT(SP_SPEAKER), g_source[SP_SPEECH]) == SP_MAC)))
+            sub_call(&g_sub, words, n, (unsigned long)SDL_GetTicks());
+    }
     if (id == 0 && g_mac) macsound_stop_all(g_mac);              /* stop: the DOS drivers silence everything, so do the recordings (a skipped cutscene's music) */
     const uint16_t mid = id == 31 && g_hook_flight ? 331 : id;     /* the Mac id of the bay-door sound (see macsound_resource) */
     const int has_mac = g_mac && macsound_has(g_mac, mid);
@@ -802,7 +810,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
         g_hook_flight = !SDL_strcasecmp(name, "VGAME.EXE");
-        if (g_mac || g_side) {                                  /* each program's sound stub: a far jump slot the driver patches */
+        if (g_mac || g_side || g_subtitles) {                                  /* each program's sound stub: a far jump slot the driver patches */
             static const struct { const char *name; uint16_t seg, ip; } slot[] = {
                 { "VGAME.EXE", 0x1E42, 0x0313 }, { "START.EXE", 0x0A95, 0x6BB1 }, { "END.EXE", 0x05FA, 0x25F3 },
                 { "PLAYER.EXE", 0x02A3, 0x13B9 },       /* the intro: its music is id 3 */
@@ -2122,7 +2130,7 @@ int main(int argc, char **argv)
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }
-        if (g_sub.ready && !g_set.open && !ref_open && tex_menu) {      /* the radio call as text */
+        if ((g_sub.ready || g_subtitles) && !g_set.open && !ref_open && tex_menu) {      /* the radio call as text */
             const char *line = sub_text(&g_sub, (unsigned long)SDL_GetTicks());
             if (line && getenv("F117_SUB_LOG")) {                   /* diagnostic: say each new line, with the clock */
                 static char shown[96];

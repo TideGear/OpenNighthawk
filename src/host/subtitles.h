@@ -8,7 +8,8 @@
  * the file (up to 15 samples early), and a stretch from there would not match.
  *
  * The detector reads only what the host already sees of the speaker. It never touches the machine, and it
- * needs the player's own SPEECH.117. Under the AdLib driver the speech is OPL writes and is not detected. */
+ * needs the player's own SPEECH.117. Under the AdLib driver the speech is OPL writes and is not detected; for a call the host
+ * knows from the request itself (the driver's own lists, docs/sound-code-proof.md) sub_call gives the text without listening. */
 #ifndef F117R_SUBTITLES_H
 #define F117R_SUBTITLES_H
 
@@ -37,6 +38,7 @@ typedef struct {
     unsigned long word_ms;              /* when the last word was found */
     char text[96];
     int ready;
+    unsigned long by_request_until;     /* a call named by its request is showing: the detector keeps quiet until then */
 } subtitles;
 
 /* Build the templates from the bytes of SPEECH.117 (the 26,408-byte file). 0 if the file is not that file. */
@@ -44,6 +46,10 @@ int sub_init(subtitles *s, const uint8_t *speech, size_t size);
 
 /* One count written to PIT counter 2 (mode 0, speaker on), at host time now_ms. */
 void sub_count(subtitles *s, int count, unsigned long now_ms);
+
+/* A radio call named by its request: the words (indices into the nine, in order) become the line at once, whatever the driver, and the
+ * detector is ignored for as long as the call lasts. Works without sub_init (no SPEECH.117 needed). */
+void sub_call(subtitles *s, const int *words, int n, unsigned long now_ms);
 
 /* The subtitle to show at now_ms, or NULL. */
 const char *sub_text(const subtitles *s, unsigned long now_ms);

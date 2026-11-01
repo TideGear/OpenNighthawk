@@ -94,8 +94,25 @@ static int push(subtitles *s, int r, float x, float *score, float *second)
     return bestk;
 }
 
+void sub_call(subtitles *s, const int *words, int n, unsigned long now_ms)
+{
+    s->text[0] = 0;
+    unsigned long samples = 0;
+    for (int k = 0; k < n; k++) {
+        const int w = words[k];
+        if (w < 0 || w >= SUB_WORDS) continue;
+        const size_t used = strlen(s->text);
+        if (used + strlen(WORD_NAME[w]) + 2 < sizeof s->text) snprintf(s->text + used, sizeof s->text - used, "%s%s", used ? " " : "", WORD_NAME[w]);
+        samples += (unsigned long)(WORD_START[w + 1] - WORD_START[w]);
+    }
+    if (s->text[0] >= 'a' && s->text[0] <= 'z') s->text[0] = (char)(s->text[0] - 'a' + 'A');
+    s->by_request_until = now_ms + samples / 8;                  /* 8,000 samples a second */
+    s->word_ms = s->by_request_until;                            /* the line stays until the call ends, and a little after */
+}
+
 static void heard(subtitles *s, int word, unsigned long now_ms)
 {
+    if (now_ms < s->by_request_until) return;                    /* the request already named this call */
     if (!s->text[0] || now_ms - s->word_ms > PHRASE_GAP_MS) s->text[0] = 0;   /* a new line */
     const size_t used = strlen(s->text);
     if (used + strlen(WORD_NAME[word]) + 2 < sizeof s->text)
@@ -139,6 +156,6 @@ void sub_count(subtitles *s, int count, unsigned long now_ms)
 
 const char *sub_text(const subtitles *s, unsigned long now_ms)
 {
-    if (!s->ready || !s->text[0] || now_ms - s->word_ms > SHOW_MS) return NULL;
+    if (!(s->ready || s->by_request_until) || !s->text[0] || (long)(now_ms - s->word_ms) > SHOW_MS) return NULL;
     return s->text;
 }

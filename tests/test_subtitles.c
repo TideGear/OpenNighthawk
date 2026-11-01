@@ -105,6 +105,21 @@ int main(void)
         if (!t || strcmp(t, "Cleared for take off")) { printf("real stream: got '%s'\n", t ? t : "(none)"); return 1; }
         puts("subtitles: the real flight stream reads 'Cleared for take off'");
     }
+    /* a call named by its request (every driver): the line at once, the detector quiet for as long as the call lasts */
+    {
+        static subtitles q;                                         /* no sub_init: no SPEECH.117 needed */
+        const int cleared_take_off[2] = { 6, 7 }, primary_target_hit[3] = { 0, 1, 2 }, cleared_to_land[2] = { 6, 8 };
+        sub_call(&q, primary_target_hit, 3, 10000);
+        CHECK(sub_text(&q, 10000) && !strcmp(sub_text(&q, 10000), "Primary target hit"));
+        CHECK(sub_text(&q, 11500) != NULL && sub_text(&q, 13000) != NULL && sub_text(&q, 14000) == NULL);   /* its words' length (1.1 s) and 2.5 s more */
+        sub_call(&q, cleared_take_off, 2, 20000);
+        CHECK(!strcmp(sub_text(&q, 20000), "Cleared for take off"));
+        sub_call(&q, cleared_to_land, 2, 30000);
+        CHECK(!strcmp(sub_text(&q, 30000), "Cleared to land"));
+        const int bad[2] = { -1, 9 };
+        sub_call(&q, bad, 2, 40000);
+        CHECK(sub_text(&q, 40000) == NULL);                                       /* no such words: nothing */
+    }
     puts("subtitles pass");
     return 0;
 }
