@@ -47,4 +47,16 @@ void rerun_list_free(rerun_list *l);
  * records into out. Returns 1 when the copy presented and its frame closed. Call only on the thread that runs the machine. */
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
 
+/* An optional collector for the copies (Remastered's, docs/remastered-design.md "Plan: Remastered from the rerun copy"): a
+ * copy runs with its host hooks cleared, so its execution hooks (the snapshot keeps machine_t.exec_hook) reach nobody. With a
+ * collector set, each copy gets hooks.exec = exec (and hooks.user = user), and begin(user) is called just before the copy
+ * runs and end(user) just after, whether or not it finished. The collector sees the copy's machine, never the real one. */
+typedef struct {
+    void (*begin)(void *user);
+    int  (*exec)(void *user, machine_t *m, unsigned index);
+    void (*end)(void *user);
+    void *user;
+} rerun_collector;
+void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
+
 #endif

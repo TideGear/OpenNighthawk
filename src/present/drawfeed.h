@@ -155,6 +155,7 @@ typedef struct {
     const uint8_t *picture_hi;     /* the newest published step's fine picture */
     uint8_t       *inter_hi;       /* an in-between frame's */
     const uint8_t *shown_hi;       /* what the last render put in place of the scan, or NULL */
+    int            shown_copy;     /* the last render's picture is a rerun copy's (the collector's frame belongs to it) */
     /* diagnostic (F117_PRESENT_DIAG, diagtag.h): the origin plane of what was shown, or NULL, and
      * what the last render showed (a PLAN_ kind, t, the logic frames it drew from) */
     const uint8_t *picture_tag, *shown_tag;

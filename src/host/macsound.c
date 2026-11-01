@@ -98,6 +98,13 @@ int macsound_resource(int id)
     case 36: return 322;
     case 37: return 321;
     case 38: return 200;
+    /* Found by the Mac program's own calls (31 October 2026, docs/sound-board.md): the intro music is the Mac's title music
+     * (200); the weapons page's box choice (29) and placed weapon (30) are the Mac's 323 and 325 at the same moments; the
+     * flight program's bay-door key asks for 31, which main.c passes here as 331 (START's 31 is the launch animation). */
+    case 3: return 200;
+    case 29: return 323;
+    case 30: return 325;
+    case 331: return 323;
     default: break;
     }
     return id >= 4 && id <= 20 ? 300 + id : 0;

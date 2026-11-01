@@ -207,6 +207,12 @@ static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t 
     }
 }
 
+static rerun_collector g_collector;
+void rerun_set_collector(const rerun_collector *c)
+{
+    if (c) g_collector = *c; else memset(&g_collector, 0, sizeof g_collector);
+}
+
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
 {
     out->nvals = 0;
@@ -235,6 +241,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     s->cpu.int_hook = copy_int;
     memset(s->files, 0, sizeof s->files);
     memset(&s->hooks, 0, sizeof s->hooks);
+    if (g_collector.exec) { s->hooks.exec = g_collector.exec; s->hooks.user = g_collector.user; }
     s->log = NULL;
     s->on_input = NULL;
     s->on_input_user = NULL;
@@ -254,8 +261,10 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     g_done = 0;
     g_blocked = 0;
     const uint64_t start = s->cpu.icount, limit = start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
+    if (g_collector.begin) g_collector.begin(g_collector.user);
     while (!g_done && s->cpu.icount < limit)
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
+    if (g_collector.end) g_collector.end(g_collector.user);
     g_out = NULL;
     observe_set(real);
     observe_pending_restore(g_pending);

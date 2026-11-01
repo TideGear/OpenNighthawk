@@ -114,6 +114,8 @@ static sp_source g_source[SP_KINDS];   /* the player's override per kind (soundp
 static int g_remaster;                 /* --presentation remastered */
 static uint8_t *g_rbuf; static size_t g_rbuf_cap;
 static uint32_t *g_rrgb; static uint8_t *g_rmask; static int g_rtrue;   /* the true colour of the Remastered pixels, when composed */
+static remaster_live *g_remaster_src;       /* the frame the last remaster_apply used (the wide view uses the same) */
+static remaster_live *g_rlive_copy;       /* Remastered's collector for the rerun copies (rerun.h): the frame of the picture a copy drew */
 static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
 static unsigned g_rlive_base;
 
@@ -137,7 +139,17 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     }
     g_rtrue = 0;
     if (!g_rbuf_cap) return hi;
-    if (!remaster_live_composite(g_rlive, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask)) return hi;
+    /* The frame that belongs to the picture: a rerun copy's own when the picture came from one (the same moment as its mask), else the
+     * live machine's last frame (a logic step's own picture). */
+    static int no_copy = -1;                              /* F117_REMASTER_NOCOPY (diagnostic): always the live frame, as before the copies */
+    if (no_copy < 0) no_copy = getenv("F117_REMASTER_NOCOPY") != NULL;
+    remaster_live *src = !no_copy && g_live.shown_copy && g_rlive_copy ? g_rlive_copy : g_rlive;
+    if (getenv("F117_REMASTER_COPYCHECK")) {
+        static unsigned calls;
+        if (++calls % 120 == 1) fprintf(stderr, "[copycheck] picture from %s: copy frame %zu primitives, live frame %zu\n", src == g_rlive_copy ? "a copy" : "the live machine", g_rlive_copy ? remaster_live_done_prims(g_rlive_copy) : 0, remaster_live_done_prims(g_rlive));
+    }
+    g_remaster_src = src;
+    if (!remaster_live_composite(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask)) return hi;
     g_rtrue = 1;
     return g_rbuf;
 }
@@ -183,7 +195,7 @@ static int wide_make(SDL_Renderer *ren, int aspect)
         g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
         if (!g_wtex || !g_wpix) return 0;
     }
-    if (!remaster_live_wide(g_rlive, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_rrgb, g_wpix)) return 0;
+    if (!remaster_live_wide(g_remaster_src, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_rrgb, g_wpix)) return 0;
     SDL_UpdateTexture(g_wtex, NULL, g_wpix, g_ww * 4);
     return 1;
 }
@@ -191,6 +203,7 @@ static int wide_make(SDL_Renderer *ren, int aspect)
 /* The AdLib sidecar (--adlib-effects, sidecar.h): a second driver holding the effects beside Roland's music. Its OPL
  * writes go to a chip of their own (g_side_audio) at the main machine's clock, never earlier than the last write. */
 static sidecar_t *g_side;
+static int g_hook_flight;               /* the loaded program is the flight program: its sound 31 is the bay doors, not START's launch animation */
 static int g_adlib_effects = -1;      /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music); unset: on with --sound roland */
 static audio_t *g_side_audio;
 static uint64_t g_side_now, g_side_last, g_side_ticks, g_side_writes, g_side_requests, g_side_failed;
@@ -220,6 +233,15 @@ static void side_run(const machine_t *m, uint64_t ips)
     }
 }
 
+/* The rerun copies' collector (rerun_set_collector): only Remastered's entries, into the copy's own instance. A copy has no sound hook. */
+static void copy_begin(void *user) { (void)user; if (g_rlive_copy) remaster_live_copy_begin(g_rlive_copy); }
+static int copy_exec(void *user, machine_t *m, unsigned index)
+{
+    (void)user;
+    if (!g_rlive_copy || index < g_rlive_base) return 0;
+    return remaster_live_exec(g_rlive_copy, m, index - g_rlive_base);
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -230,14 +252,15 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
     if (log_requests) fprintf(stderr, "[sound] id %u%s\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "");
-    const int has_mac = g_mac && macsound_has(g_mac, id);
+    const uint16_t mid = id == 31 && g_hook_flight ? 331 : id;     /* the Mac id of the bay-door sound (see macsound_resource) */
+    const int has_mac = g_mac && macsound_has(g_mac, mid);
     if (!has_mac && !g_side) return 0;
     const sp_kind kind = id == 3 || (id >= 36 && id <= 39) ? SP_MUSIC : id >= 41 && id <= 45 ? SP_SPEECH : SP_SOUND;
     /* Whichever DOS driver is loaded; with the AdLib sidecar (--adlib-effects) the loaded driver is Roland's and AdLib
      * is the sidecar's, so an effect the policy gives to AdLib goes there and music stays with Roland. */
     const unsigned dos_any = SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER);
     const sp_source use = sp_choose(kind, (has_mac ? SP_BIT(SP_MAC) : 0) | dos_any, g_source[kind]);
-    if (use == SP_MAC) return macsound_play(g_mac, id);
+    if (use == SP_MAC) return macsound_play(g_mac, mid);
     /* Only the flight effects (crash, gun, warnings, weapons, engine: ids 4 to 20 and 23 to 25) are the sidecar's. The
      * front end's requests (fades, button waits, picks) are polled by the game, so the driver that is loaded keeps them. */
     if (use == SP_ADLIB && g_side && ((id >= 4 && id <= 20) || (id >= 23 && id <= 25))) {
@@ -643,9 +666,11 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
+        g_hook_flight = !SDL_strcasecmp(name, "VGAME.EXE");
         if (g_mac || g_side) {                                  /* each program's sound stub: a far jump slot the driver patches */
             static const struct { const char *name; uint16_t seg, ip; } slot[] = {
                 { "VGAME.EXE", 0x1E42, 0x0313 }, { "START.EXE", 0x0A95, 0x6BB1 }, { "END.EXE", 0x05FA, 0x25F3 },
+                { "PLAYER.EXE", 0x02A3, 0x13B9 },       /* the intro: its music is id 3 */
             };
             for (unsigned k = 0; k < sizeof slot / sizeof slot[0]; k++)
                 if (!SDL_strcasecmp(name, slot[k].name)) {
@@ -663,6 +688,11 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                 g_rlive = remaster_live_new(960, 720, frame, colon ? colon + 1 : NULL);
             }
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
+            if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
+                g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL };
+                if (g_rlive_copy) rerun_set_collector(&coll);
+            }
         }
     }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {

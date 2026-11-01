@@ -25,6 +25,10 @@ void remaster_live_free(remaster_live *r);
 /* Watch the entries for a VGAME loaded at load_seg: appends to m->exec_hook and returns the index of the first. */
 unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg);
 
+/* A collector that gathers the model requests of a rerun copy (rerun.h): reset before the copy runs. After it the copy's
+ * completed frame is the one remaster_live_composite and remaster_live_wide use. */
+void remaster_live_copy_begin(remaster_live *r);
+
 /* The machine reached exec_hook[base + k]; k counts from the first entry armed here. Always returns 0 (never takes a
  * call). */
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
@@ -49,6 +53,7 @@ int remaster_live_wide(remaster_live *r, const machine_t *m, int n, int wide_w, 
 
 /* Primitives collected for the frame being drawn, and frames completed. */
 size_t remaster_live_prims(const remaster_live *r);
+size_t remaster_live_done_prims(const remaster_live *r);      /* the last completed frame's */
 unsigned remaster_live_frames(const remaster_live *r);
 
 #endif

@@ -614,6 +614,7 @@ int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
 {
     r->shown_hi = r->shown_tag = NULL;
+    r->shown_copy = 0;
     if (plan->kind == PLAN_NONE) return 0;
     r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {
@@ -634,6 +635,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             if (p) {
                 memcpy(f->vram, p, 64000);
                 if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
+                r->shown_copy = plan->rerun_ready || plan->rerun_inline;
                 r->inbetweens++;
                 r->rerun_drawn++;
                 return 1;

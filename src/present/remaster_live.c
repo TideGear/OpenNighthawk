@@ -68,6 +68,15 @@ void remaster_live_free(remaster_live *r)
     free(r);
 }
 
+void remaster_live_copy_begin(remaster_live *r)
+{
+    remaster_frame_clear(&r->frame);
+    r->pending = 0;
+    r->have_band = 0;
+    r->have_done = 0;
+    r->done.n = 0;
+}
+
 unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
 {
     (void)r;
@@ -475,14 +484,27 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
             const int outline = tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
             if ((is_scene_tag(tag[i]) || outline) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i]))) {
                 uint32_t col = t.color[i];
-                if (t.line_strong[i] != col) {      /* a line pixel the depth test shortened: whole where the original drew a line next to it */
+                /* Only bright lines (the doors' yellow, the lights, the runway markings): the dark dots and lines the original draws
+                 * behind a door must stay behind it. */
+                const uint32_t ls = t.line_strong[i];
+                const int bright = (int)(ls >> 16 & 255) + (int)(ls >> 8 & 255) + (int)(ls & 255) > 200;
+                if (bright && ls != col) {          /* a line pixel the depth test shortened: whole where the original drew a line next to it */
                     int near_line = 0;
-                    for (int dy = -3; dy <= 3 && !near_line; dy++)
-                        for (int dx = -3; dx <= 3; dx++) {
+                    /* The original's lines and lights can lag one logic step behind the polygons (stale projection records): up to
+                     * about four of its pixels, twelve of ours, from where Remastered draws them. */
+                    for (int dy = -12; dy <= 12 && !near_line; dy++)
+                        for (int dx = -12; dx <= 12; dx++) {
                             const int yy = y + dy, xx = x + dx;
                             if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
-                            const uint8_t tg = tag[(long)yy * w + xx];
-                            if (tg == DT_OUTLINE_FINE || tg == DT_OUTLINE_COARSE) { near_line = 1; break; }
+                            const long ni = (long)yy * w + xx;
+                            const uint8_t tg = tag[ni];
+                            if (tg != DT_OUTLINE_FINE && tg != DT_OUTLINE_COARSE) continue;
+                            /* the original's line pixel must be this line's colour (the doors' yellow beside the doors' yellow, a
+                             * light beside its light), or a line the original hides would show */
+                            const unsigned oc = src[ni];
+                            const int dr = (int)(dac[oc * 3] << 2) - (int)(t.line_strong[i] >> 16 & 255), dg = (int)(dac[oc * 3 + 1] << 2) - (int)(t.line_strong[i] >> 8 & 255),
+                                      db = (int)(dac[oc * 3 + 2] << 2) - (int)(t.line_strong[i] & 255);
+                            if (abs(dr) + abs(dg) + abs(db) < 96) { near_line = 1; break; }
                         }
                     if (near_line) col = t.line_strong[i];
                 }
@@ -694,4 +716,5 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 }
 
 size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
+size_t remaster_live_done_prims(const remaster_live *r) { return r->have_done ? r->done.n : 0; }
 unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }
