@@ -240,16 +240,60 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         unsigned idx = 0;
         const int style = word_style(p->colour_word, p->darken, &idx);
         const double line_w = ux > 1.0 ? ux : 1.0;                    /* one of the original's pixels, at least one of ours */
+        {   /* F117_REMASTER_YELLOW=1: every primitive touching the hangar door's screen region (game pixels x 280..310, y 45..60) of the
+             * frame drawn near machine clock 2601565275 (the owner's zoom), to see what draws the door markings */
+            static int shown;
+            if (shown < 120 && getenv("F117_REMASTER_YELLOW") && m->cpu.icount > 2601400000ull && m->cpu.icount < 2601700000ull) {
+                int touch = 0;
+                for (int k = 0; k < p->n && k < 8; k++)
+                    if (p->v[k].z > 0) {
+                        const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
+                        if (sx > 280 && sx < 310 && sy > 45 && sy < 60) touch = 1;
+                    }
+                if (touch) {
+                    shown++;
+                    fprintf(stderr, "[door] clock %llu prim %zu model %u kind %d n %d word %04X colour %06X:", (unsigned long long)m->cpu.icount, i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF));
+                    for (int k = 0; k < p->n && k < 6; k++)
+                        if (p->v[k].z > 0) fprintf(stderr, " (%.1f,%.1f z %d)", origin[0] + 256.0 * p->v[k].x / p->v[k].z, origin[1] + 256.0 * p->v[k].y / p->v[k].z, (int)p->v[k].z);
+                    fprintf(stderr, "\n");
+                }
+            }
+        }
         if (p->kind == SCENE_POLYGON && p->n >= 3 && style >= 1) {     /* AND, OR, stipple: combine with what is under it */
             remaster_polygon_logic(t, p->v, p->n, style == 1 ? REMASTER_AND : style == 2 ? REMASTER_OR : REMASTER_STIPPLE, idx);
             continue;
         }
+        if (t->line_strong && (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)) continue;      /* drawn after the polygons, below */
         t->paint_index = (uint16_t)idx;
         if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(t, p->v, p->n, colour);
         else if (p->kind == SCENE_LINES)
             for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
         else if (p->kind == SCENE_DOTS)
             for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
+    }
+    if (t->line_strong) {                       /* the lines, after the polygons: whole (huge bias) into line_strong, then as the depth allows */
+        const size_t px = (size_t)t->w * t->h;
+        memcpy(t->line_strong, t->color, px * 4);
+        memcpy(t->line_tmp_z, t->inv_z, px * 4);
+        for (int pass = 0; pass < 2; pass++) {
+            uint32_t *c0 = t->color; float *z0 = t->inv_z;
+            if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_bias = 50.0; }
+            else t->line_bias = 0.0;
+            for (size_t i = 0; i < fr->n; i++) {
+                const remaster_prim *p = &fr->prim[i];
+                uint32_t colour;
+                if (p->kind != SCENE_LINES && p->kind != SCENE_DOTS) continue;
+                if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
+                unsigned idx = 0;
+                word_style(p->colour_word, p->darken, &idx);
+                const double line_w = ux > 1.0 ? ux : 1.0;
+                t->paint_index = (uint16_t)idx;
+                if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
+                else for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
+            }
+            t->color = c0; t->inv_z = z0;
+        }
+        t->line_bias = 0.0;
     }
     if (!wide) {                                /* nothing outside the game's clip window */
         const int x0 = (int)(window[0] * ux), x1 = (int)((window[2] + 1) * ux);
@@ -267,6 +311,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
+    t.line_bias = 0.0; t.line_strong = NULL; t.line_tmp_z = NULL;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);
@@ -338,7 +383,12 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
     t.color = (uint32_t *)malloc((size_t)w * h * 4);
     t.inv_z = (float *)malloc((size_t)w * h * 4);
     t.index = (uint16_t *)malloc((size_t)w * h * 2);
-    if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return 0; }
+    t.line_bias = 0.0;
+    t.line_strong = (uint32_t *)malloc((size_t)w * h * 4);
+    t.line_tmp_z = (float *)malloc((size_t)w * h * 4);
+    if (!t.color || !t.inv_z || !t.index || !t.line_strong || !t.line_tmp_z) {
+        free(t.color); free(t.inv_z); free(t.index); free(t.line_strong); free(t.line_tmp_z); return 0;
+    }
     draw_scene(m, &t, &r->done, r->done_band, r->done_have_band, r->done_origin, r->done_window, n, n);
     {                                           /* F117_REMASTER_DUMP=FILE.ppm: the render itself, once, for a look */
         static int dumped; const char *path = getenv("F117_REMASTER_DUMP");
@@ -407,40 +457,75 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
             fprintf(stderr, "[tags] scene range %d..%d, span tags %d and %d..%d\n", DT_MODEL_SOLID, DT_SPAN_SHADE, DT_SPANPOLY_FINE, DT_SPAN_NOT_POLY, DT_SPAN_SHADE);
         }
     }
+    if (getenv("F117_REMASTER_YELLOW") && m->cpu.icount > 2601400000ull && m->cpu.icount < 2601700000ull && n == 3) {
+        static int said_tags;                      /* the origin tag of the original's yellow pixels at the hangar door (fine x 850..930, y 140..175) */
+        if (said_tags < 6) {
+            said_tags++;
+            long hist[64] = {0}, kept[64] = {0};
+            for (int y = 140; y < 175; y++)
+                for (int x = 850; x < 930; x++) {
+                    const long i = (long)y * w + x;
+                    const unsigned c = src[i];
+                    if ((int)dac[c * 3] * 4 > 170 && (int)dac[c * 3 + 1] * 4 > 150 && (int)dac[c * 3 + 2] * 4 < 110) {
+                        hist[tag[i] & 63]++;
+                        if (!(is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i])))) kept[tag[i] & 63]++;
+                    }
+                }
+            for (int k = 0; k < 64; k++) if (hist[k]) fprintf(stderr, "[yel-tag] clock %llu tag %d: %ld yellow pixels, %ld kept as the original's\n", (unsigned long long)m->cpu.icount, k, hist[k], kept[k]);
+        }
+    }
     for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
         for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
             const long i = (long)y * w + x;
             /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
              * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
-            if (is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i]))) {
-                dst[i] = nearest_index(dac, t.color[i]);       /* the palette index, for anything that wants one */
-                if (rgb && mask) { rgb[i] = t.color[i]; mask[i] = 1; }   /* and the true colour, which is what is shown */
+            /* The original's model lines (outline edges, DT_OUTLINE_FINE and its coarse twin) are replaced too where Remastered has
+             * geometry: it draws its own lines, and keeping the original's as well drew every hangar door twice. */
+            const int outline = tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
+            if ((is_scene_tag(tag[i]) || outline) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i]))) {
+                uint32_t col = t.color[i];
+                if (t.line_strong[i] != col) {      /* a line pixel the depth test shortened: whole where the original drew a line next to it */
+                    int near_line = 0;
+                    for (int dy = -3; dy <= 3 && !near_line; dy++)
+                        for (int dx = -3; dx <= 3; dx++) {
+                            const int yy = y + dy, xx = x + dx;
+                            if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+                            const uint8_t tg = tag[(long)yy * w + xx];
+                            if (tg == DT_OUTLINE_FINE || tg == DT_OUTLINE_COARSE) { near_line = 1; break; }
+                        }
+                    if (near_line) col = t.line_strong[i];
+                }
+                dst[i] = nearest_index(dac, col);       /* the palette index, for anything that wants one */
+                if (rgb && mask) { rgb[i] = col; mask[i] = 1; }   /* and the true colour, which is what is shown */
                 replaced++;
             }
         }
     free(t.color);
     free(t.inv_z);
     free(t.index);
+    free(t.line_strong);
+    free(t.line_tmp_z);
     return replaced > 0;
 }
 
 int remaster_live_wide(remaster_live *r, const machine_t *m, int n, int wide_w, const uint8_t *src, const uint8_t *dac,
-                       const uint8_t *mask, uint32_t *out)
+                       const uint8_t *mask, const uint32_t *block_rgb, uint32_t *out)
 {
-    if (!r || !r->have_done || n < 1 || wide_w < 320 * n || !src || !dac || !mask || !out) return 0;
+    if (!r || !r->have_done || n < 1 || wide_w < 320 * n || !src || !dac || !mask || !block_rgb || !out) return 0;
     const int bw = 320 * n, h = 200 * n, xoff = (wide_w - bw) / 2;
     remaster_target t;
     t.w = wide_w; t.h = h;
     t.color = (uint32_t *)malloc((size_t)wide_w * h * 4);
     t.inv_z = (float *)malloc((size_t)wide_w * h * 4);
     t.index = (uint16_t *)malloc((size_t)wide_w * h * 2);
+    t.line_bias = 0.0; t.line_strong = NULL; t.line_tmp_z = NULL;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return 0; }
     draw_scene_ex(m, &t, &r->done, r->done_band, r->done_have_band, r->done_origin, r->done_window, n, n, xoff, 1);
     memcpy(out, t.color, (size_t)wide_w * h * 4);
     for (int y = 0; y < h; y++)                 /* the game's own picture, centred: every pixel Remastered did not replace */
         for (int x = 0; x < bw; x++) {
             const long i = (long)y * bw + x;
-            if (mask[i]) continue;
+            if (mask[i]) { out[(long)y * wide_w + xoff + x] = block_rgb[i]; continue; }     /* the composite's own pixel, lines settled */
             const unsigned c = src[i];
             const unsigned cr = dac[c * 3], cg = dac[c * 3 + 1], cb = dac[c * 3 + 2];
             out[(long)y * wide_w + xoff + x] = 0xFF000000u | (cr << 2 | cr >> 4) << 16 | (cg << 2 | cg >> 4) << 8 | (cb << 2 | cb >> 4);

@@ -183,7 +183,7 @@ static int wide_make(SDL_Renderer *ren, int aspect)
         g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
         if (!g_wtex || !g_wpix) return 0;
     }
-    if (!remaster_live_wide(g_rlive, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_wpix)) return 0;
+    if (!remaster_live_wide(g_rlive, &H.m, g_scale, wide_w, g_rbuf, H.frame.dac, g_rmask, g_rrgb, g_wpix)) return 0;
     SDL_UpdateTexture(g_wtex, NULL, g_wpix, g_ww * 4);
     return 1;
 }

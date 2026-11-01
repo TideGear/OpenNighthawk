@@ -389,3 +389,18 @@ the distant aircraft agree between the two at every frame looked at, and nothing
 regions at that speed. Interpolation between logic steps is therefore not shown to be needed at taxi speed; it is still open for
 fast, turning flight (the composite takes its mask from the Enhanced picture's interpolated tags and fills it from the last
 completed frame, so a fast pan could misalign the two; this has not been tried).
+
+## The hangar doors (31 October 2026): lines, the original's outline pixels and depth
+
+The owner saw it first: the doors' yellow markings (a stem and a bar, model 51's line primitives, word `FF96`) were drawn twice and the
+bar was thin. Two causes. (1) The composite replaced the original's model-polygon pixels but kept the original's model-line pixels
+(origin tag `DT_OUTLINE_FINE`, 22: all 210 yellow pixels of the door were kept), so the picture held the original's door at the
+interpolated position and Remastered's at the last logic frame's. Fix: outline pixels are replaced like polygon pixels where
+Remastered has geometry. (2) A line lies on the surface it marks, at that surface's depth, and near the horizon one pixel of height
+is a large step in depth, so the ground polygon just below a line is 'nearer' than the line and hides its lower half; a constant
+bias (tried 1.002, 1.2, 1.5, 50) either did not help or showed far hangars' lines through nearer hangars. Fix: the scene's lines are
+drawn after its polygons twice (`remaster_target.line_strong`, huge bias, every line whole; and with the default bias 1.5 into
+`color`), and the composite takes the whole line only for pixels within three fine pixels of an original outline pixel, i.e. where
+the original shows a line, and the depth-tested pixel elsewhere. Result: one stem, a full-width bar and no stray lines
+(`Desktop/ONShots/20261031-223058-hangar-door-*`). Lesson recorded in handoff.md: check lines and dots, not only polygons, and
+look at zoomed crops of the 3D view, not whole frames.

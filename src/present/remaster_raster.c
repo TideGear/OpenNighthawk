@@ -188,8 +188,11 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
         const double k = (near_z - bz) / (az - bz);
         bx += k * (ax - bx); by += k * (ay - by); bz = near_z;
     }
-    const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, 1.0 / az };
-    const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, 1.0 / bz };
+    /* A line lies on the surface it marks (a hangar's door markings, a runway's edge), at the same depth as the polygon under
+     * it: a small bias toward the eye keeps it on top, as the original's draw order does, instead of z-fighting with it. */
+    const double bias = t->line_bias > 0.0 ? t->line_bias : 1.5;     /* near the horizon one pixel of height is a big step in depth: the ground just below a line is "nearer" than the line */
+    const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, bias / az };
+    const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, bias / bz };
     double dx = sb.x - sa.x, dy = sb.y - sa.y;
     const double len = sqrt(dx * dx + dy * dy);
     if (len < 1e-9) { dx = 1.0; dy = 0.0; } else { dx /= len; dy /= len; }

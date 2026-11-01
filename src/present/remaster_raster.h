@@ -30,6 +30,14 @@ typedef struct {
     uint16_t *index;            /* w * h, or NULL */
     const uint32_t *palette;    /* 256 entries, 0xAARRGGBB */
     uint16_t paint_index;       /* what the next polygon, shaded polygon or line writes into index */
+    /* Lines lie on the surface they mark, at its depth, and a constant depth bias cannot both keep them on top of a ground
+     * polygon near the horizon and keep a far hangar's door lines hidden behind a nearer hangar. line_bias is the bias
+     * (0: the default, 1.5). When line_strong (w * h) and line_tmp_z (w * h) are set, the scene's lines are drawn after its
+     * polygons twice: with a huge bias into line_strong (every line whole), and with the default into color; the caller
+     * picks per pixel, using the original's own picture to say where a line really is visible. */
+    double line_bias;
+    uint32_t *line_strong;
+    float *line_tmp_z;
 } remaster_target;
 
 #define REMASTER_NO_INDEX 0xFFFFu
