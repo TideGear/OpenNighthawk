@@ -40,6 +40,7 @@
 #include "midistream.h"
 #include "settings.h"
 #include "crt.h"
+#include "colourblind.h"
 #include "controls.h"
 #include "remap.h"
 #include "keyref.h"
@@ -320,20 +321,22 @@ static sp_source parse_source_option(const char *flag, const char *v)
 }
 static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
+static int g_colourblind;             /* --colourblind: the colour-blind filter on the finished picture (colourblind.h) */
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
 static uint32_t *g_crt_buf; static size_t g_crt_cap;
 
-/* The picture as the display should get it: with --crt, the scanline filter applied to a copy. */
+/* The picture as the display should get it: with --crt, the scanline filter, and with --colourblind the colour filter, applied to a copy. */
 static const uint32_t *crt_view(const uint32_t *px, int w, int h)
 {
-    if (!g_crt) return px;
+    if (!g_crt && !g_colourblind) return px;
     if ((size_t)w * h > g_crt_cap) {
         free(g_crt_buf);
         g_crt_buf = (uint32_t *)malloc((size_t)w * h * 4);
         g_crt_cap = g_crt_buf ? (size_t)w * h : 0;
     }
     if (!g_crt_buf) return px;
-    crt_scanlines(px, g_crt_buf, w, h);
+    if (g_crt) crt_scanlines(px, g_crt_buf, w, h);
+    if (g_colourblind) colourblind_apply(g_crt ? g_crt_buf : px, g_crt_buf, w, h, g_colourblind);
     return g_crt_buf;
 }
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
@@ -993,6 +996,11 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strcmp(a, "--colourblind") && v) {
+            g_colourblind = colourblind_parse(v);
+            if (g_colourblind < 0) { fprintf(stderr, "--colourblind takes off, protanopia, deuteranopia or tritanopia\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--sound") && v) {
             if (!strcmp(v, "speaker")) g_setup_sound = '1';
             else if (!strcmp(v, "adlib")) g_setup_sound = '2';
@@ -2024,7 +2032,7 @@ int main(int argc, char **argv)
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {
-                    const uint32_t *px = show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels;
+                    const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);   /* as the window shows it: filters included */
                     fprintf(sf, "P6\n%d %d\n255\n", w, h);
                     for (int k = 0; k < w * h; k++) { const uint8_t rgb[3] = { (uint8_t)(px[k] >> 16), (uint8_t)(px[k] >> 8), (uint8_t)px[k] }; fwrite(rgb, 1, 3, sf); }
                     fclose(sf); left--;

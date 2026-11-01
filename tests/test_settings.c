@@ -25,6 +25,16 @@ int main(void)
     const int pres = find("presentation"), fixes = find("fixes"), full = find("fullscreen"), scale = find("scale");
     CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= 32);
 
+    /* the colour-blind aid is a menu row with its four choices, off first */
+    {
+        const int cb = find("colourblind");
+        CHECK(cb >= 0);
+        settings_load(&s, "colourblind = deuteranopia\n");
+        CHECK(!strcmp(settings_value(&s, cb), "deuteranopia"));
+        settings_load(&s, "");
+        CHECK(!strcmp(settings_value(&s, cb), "off"));
+    }
+
     /* values come from the file; absent keys take the game's defaults */
     settings_load(&s, "; mine\npresentation = Enhanced\nfullscreen = true\nscale = 4\n");
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));

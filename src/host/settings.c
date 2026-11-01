@@ -22,6 +22,7 @@ static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
 static const char *const C_AGE[] = { "interp", "extrapolate", NULL };
 static const char *const C_DEAD[] = { "0", "5", "10", "15", "20", "25", "30", NULL };
 static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
+static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
 static const setting_def DEFS[] = {
@@ -32,6 +33,7 @@ static const setting_def DEFS[] = {
     { "speaker",      "Speaker speech",   C_SPEAKER,      0, 0 },
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
+    { "colourblind",  "Colour-blind aid", C_COLOURBLIND,  0, 0 },
     { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
     { "sound",        "Sound driver",     C_SOUND,        0, 0 },
     { "roland",       "Roland output",    C_ROLAND,       2, 0 },
