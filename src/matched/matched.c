@@ -32355,6 +32355,7 @@ static int vgame_raster_divide_fault(machine_t *m, int spans)
     return 1;
 }
 static int vgame_span_divide_fault(machine_t *m) { return vgame_raster_divide_fault(m, 1); }
+static int vgame_clip_divide_fault(machine_t *m) { return vgame_raster_divide_fault(m, 0); }
 
 /* VGAME 0FB2:01E6, fill_polygon: read the first vertex, accumulate each
  * following edge, close back to the first vertex, then draw the span table.
@@ -105579,6 +105580,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x06A6, vgame_span_edge_clipped, "clip a polygon edge into the span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, vgame_polygon_fill, "fill a closed polygon through the span rasterizer", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x084E, vgame_span_divide_fault, "span divide-error saturation", 3 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x04DD, vgame_clip_divide_fault, "clipper divide-error saturation", 3 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0678, mps_logo_sprite_run, "sprite repeat or transparent run", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11A8, vgame_map_draw_frame, "moving map through the downward scene frame", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1974, vgame_camera_sky_bands, "camera sky gradient strips", 1 },

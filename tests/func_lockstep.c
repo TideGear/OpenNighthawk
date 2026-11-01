@@ -498,6 +498,7 @@ static void set_state(cpu_t *c, uint16_t cs, uint16_t ip, const uint16_t *r, con
 typedef struct { uint16_t seg, ip, advance, fault; } interrupt_frame_fixture;
 static const interrupt_frame_fixture INTERRUPT_FRAMES[] = {
     { 0x0FB2, 0x084E, 4, 0x07C8 },        /* span divide error: idiv [261D] */
+    { 0x0FB2, 0x04DD, 4, 0x046E },        /* clipper divide error: idiv [228D] */
     { 0x120A, 0x0971, 3, 0x0A3E },        /* perspective divide error: the faulting divide is three bytes */
 };
 static const interrupt_frame_fixture *interrupt_frame(const recomp_override *o)
