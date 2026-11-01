@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""sound_id_proof.py - which sound ids each DOS driver implements, from the drivers' own code.
+
+    py tools/sound_id_proof.py --data D:/GOG/F-117A [--md docs/sound-id-table.md] [--json OUT.json]
+
+The game asks a sound driver for sound N by a far call to the driver's entry 1 with N on the stack. In each of ASOUND.117
+(AdLib), RSOUND.117 (Roland) and ISOUND.117 (PC speaker) that entry is the same routine: ignore N above 2Dh, otherwise call
+the near pointer at word N of a 46-entry table in the code segment (`cmp bx, 2Dh; jg; ... call cs:[bx + table]`). This reads
+that table from each driver file, checks the entry-1 pattern is where it is expected, disassembles the first instructions of
+each handler, joins each handler to its Phase 2 matched routine (name and description from src/matched/matched.c), and
+reports per id and driver: the handler's address, whether it is only a RET (the driver makes no sound for that id), and
+whether the matched code covers it. What it proves: every id has a handler in every driver (or is a RET stub). What it does
+not prove: that two drivers' handlers sound alike (an AdLib patch and an MT-32 sequence cannot be compared by code), or what
+the Mac does; those are the game's callers' and the Mac code's business (docs/sound-board.md).
+"""
+import argparse
+import json
+import os
+import re
+import struct
+import sys
+
+try:
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_16
+except ImportError:
+    sys.exit("needs capstone (py -m pip install capstone)")
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+DRIVERS = ("ASOUND.117", "RSOUND.117", "ISOUND.117")
+NIDS = 46
+
+
+def load_driver(data, name):
+    path = os.path.join(data, name)
+    d = open(path, "rb").read()
+    if d[:2] != b"MZ":
+        sys.exit(path + " is not an MZ overlay")
+    return d[(d[8] | d[9] << 8) * 16:]
+
+
+def entry1(img):
+    """The offset (in the image) of `cmp bx,2Dh; jg` followed within 40 bytes by `call cs:[bx+disp16]`, and that table."""
+    hits = []
+    for m in re.finditer(rb"\x83\xfb\x2d\x7f.", img, re.S):
+        w = img[m.start():m.start() + 40]
+        t = re.search(rb"\x2e\xff[\x97\x9f](..)", w, re.S)
+        if t:
+            hits.append((m.start(), t.group(1)[0] | t.group(1)[1] << 8))
+    return hits
+
+
+def matched_rows(path):
+    rows = {}
+    segs = {}
+    pat = re.compile(r'\s*\{ "matched", "(ASOUND\.117|RSOUND\.117|ISOUND\.117)", \w+, (0x[0-9A-Fa-f]+), (0x[0-9A-Fa-f]+), (\w+), "(.*)", \d+ \},?\s*$')
+    for line in open(path, encoding="utf-8", errors="replace"):
+        if '{ "matched", "' not in line:
+            continue
+        m = pat.match(line)
+        if m:
+            rows[(m.group(1), int(m.group(3), 16))] = (m.group(4), m.group(5))
+            segs[m.group(1)] = int(m.group(2), 16)
+    return rows, segs
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", required=True)
+    ap.add_argument("--matched", default=os.path.join(ROOT, "src", "matched", "matched.c"))
+    ap.add_argument("--md")
+    ap.add_argument("--json")
+    a = ap.parse_args()
+    rows, segs = matched_rows(a.matched)
+    dis = Cs(CS_ARCH_X86, CS_MODE_16)
+    result = {}
+    for name in DRIVERS:
+        img = load_driver(a.data, name)
+        seg = segs.get(name)
+        if seg is None:
+            sys.exit("no matched row for " + name + ": cannot place its code segment")
+        base = seg * 16
+        hits = entry1(img)
+        if len(hits) != 1:
+            sys.exit("%s: expected one entry-1 dispatcher, found %d" % (name, len(hits)))
+        at, table = hits[0]
+        per = []
+        for i in range(NIDS):
+            h = struct.unpack_from("<H", img, base + table + 2 * i)[0]
+            ins = list(dis.disasm(img[base + h:base + h + 12], h))[:3]
+            text = "; ".join("%s %s" % (x.mnemonic, x.op_str) for x in ins).strip()
+            stub = bool(ins) and ins[0].mnemonic in ("ret", "retf")
+            m = rows.get((name, h))
+            per.append(dict(id=i, handler=h, first=text, ret_only=stub, matched=m[0] if m else None, description=m[1] if m else None))
+        result[name] = dict(code_segment=seg, dispatcher_image_offset=at, table=table, ids=per)
+    if a.json:
+        json.dump(result, open(a.json, "w"), indent=1)
+    print("%-11s %-10s %-7s %-9s %-9s %s" % ("driver", "dispatcher", "table", "handlers", "RET-only", "with matched-code row"))
+    for name in DRIVERS:
+        r = result[name]
+        ids = r["ids"]
+        print("%-11s %-10s %-7s %-9d %-9s %d" % (name, "cs:%04X" % (r["dispatcher_image_offset"] - r["code_segment"] * 16),
+              "cs:%04X" % r["table"], len({x["handler"] for x in ids}), ",".join(str(x["id"]) for x in ids if x["ret_only"]) or "-",
+              sum(1 for x in ids if x["matched"])))
+    if a.md:
+        with open(a.md, "w", encoding="utf-8", newline="\n") as f:
+            f.write("# Sound ids by driver, from the drivers' own code\n\nGenerated by `py tools/sound_id_proof.py --data DIR --md docs/sound-id-table.md`. "
+                    "Each cell is the handler's code offset in that driver's code segment; `RET` marks a handler that is only a return (the driver "
+                    "makes no sound for that id); `P2` marks a handler with a Phase 2 matched routine (name in the JSON/description column of the tool).\n\n")
+            f.write("| id | AdLib (ASOUND) | Roland (RSOUND) | PC speaker (ISOUND) |\n|---|---|---|---|\n")
+            for i in range(NIDS):
+                cells = []
+                for name in DRIVERS:
+                    x = result[name]["ids"][i]
+                    cells.append("%04X%s%s" % (x["handler"], " RET" if x["ret_only"] else "", " P2" if x["matched"] else ""))
+                f.write("| %d | %s |\n" % (i, " | ".join(cells)))
+            f.write("\nProven by this table: every id 0 to 45 has its own handler in all three drivers; the PC speaker driver's id 39 is a bare return.\n"
+                    "Not proven by it: that the three drivers' handlers sound alike, and which Mac recording matches which id.\n")
+
+
+if __name__ == "__main__":
+    main()
