@@ -180,9 +180,12 @@ interrupt, so a **sidecar** is enough: a bare `machine_t` that holds only the se
   stays with it, and the effects (kind `SP_SOUND`) the policy gives to AdLib go to the sidecar instead of the main driver;
   Mac-recorded ids still go to the Mac player first. The MT-32 effect channels need no muting then, because the main driver
   never receives the effects.
-- **Open question that blocks the first line of code:** how the game locates the driver's five entry points (the stub at
-  VGAME `1E42:0313` is a far jump slot the loader patches; where the loader reads the entry table from in the
-  `ASOUND.117` image is not yet read). Read VGAME's driver-install routine first, then stage the entries in a unit test that
-  compares the sidecar's OPL register writes for one id with the main machine's, as `snd_check` did in September.
+- **Entry points (read from a live run, 31 Oct 2026):** the five far jump slots before the sound stub (`F117_SOUND_SLOTS`-style
+  dump of START's, slot size 5 bytes, `EA off seg`) hold, for `ASOUND.117` loaded at `034F` (CS = LOAD + `01B6` = `0505`):
+  entry 0 init `0505:0B76`, entry 1 raise an id `0505:0B98` (the id at SS:SP+4 of the far call), entry 2 resync `0505:0BB5`,
+  entry 3 sequencer tick `0505:0C08`, entry 4 noise step `0505:0C1C`, i.e. CS offsets `0B76, 0B98, 0BB5, 0C08, 0C1C`, which are
+  the MZ relocation sites `0B80..0C1E` minus the `EA` operand layout. `RSOUND.117`'s entry offsets still have to be read the
+  same way (run with `--sound roland`). Next: stage the driver as `check_drivers.c` does, call each entry as a far call with a
+  return stop address, and compare the sidecar's OPL register writes for one id with the main machine's.
 - **Not covered:** speech (stays with the loaded driver), a Roland effect with no AdLib equivalent, and START and END, which
   need their own sidecar request path only if their ids gain recordings or AdLib routing.
