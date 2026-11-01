@@ -379,3 +379,13 @@ outside the original's field of view is not drawn in the margins (it pops in as 
 that are not model requests yet stay as the original drew them inside the middle; the mouse maps through the wide picture (`window_to_guest`, `g_wide_shown`: the window's centre is the game's (160, 100); worked out, not yet tried with a real mouse);
 the cockpit's own
 sides are not extended, the world shows around it.
+
+## A moving takeoff (31 October 2026)
+
+The recorded takeoff with twelve throttle presses added (`D:/f117-gate/remaster-flight-20261031/rec/input-go.log`: `K t 0D` and `8D`
+pairs from clock 2.46 billion; the aircraft reached about 80 knots by clock 2.6 billion), replayed in Enhanced and Remastered
+(`--presentation ... --present-scale 3`, frames at 2.600 to 2.602 billion). The sky and ground bands, the runway, the hangars and
+the distant aircraft agree between the two at every frame looked at, and nothing flickers at the edges of the replaced
+regions at that speed. Interpolation between logic steps is therefore not shown to be needed at taxi speed; it is still open for
+fast, turning flight (the composite takes its mask from the Enhanced picture's interpolated tags and fills it from the last
+completed frame, so a fast pan could misalign the two; this has not been tried).
