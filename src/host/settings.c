@@ -27,6 +27,13 @@ static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9
 static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
+/* The folders the Folders screen edits, typed or pasted. */
+static const struct { const char *key, *label; } TEXTS[SETTINGS_TEXTS] = {
+    { "data", "Game folder" }, { "mt32-roms", "MT-32 ROM folder" }, { "mac-sounds", "Mac recordings" },
+};
+const char *settings_text_label(int i) { return i >= 0 && i < SETTINGS_TEXTS ? TEXTS[i].label : ""; }
+const char *settings_text_key(int i) { return i >= 0 && i < SETTINGS_TEXTS ? TEXTS[i].key : ""; }
+
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
 static const setting_def DEFS[] = {
     { "presentation", "Presentation",     C_PRESENTATION, 0, 0 },
@@ -92,6 +99,13 @@ void settings_load(settings_state *s, const char *ini_text)
         }
         s->value[i] = s->saved[i] = at >= 0 ? at : DEFS[i].def;
     }
+    s->text_edit = -1;
+    for (int i = 0; i < SETTINGS_TEXTS; i++) {
+        char v[SETTINGS_TEXT_MAX] = "";
+        if (!ini_text || !config_get(ini_text, TEXTS[i].key, v, sizeof v)) v[0] = 0;
+        memcpy(s->text_val[i], v, sizeof v);
+        memcpy(s->text_saved[i], v, sizeof v);
+    }
 }
 
 void settings_open(settings_state *s)
@@ -146,6 +160,9 @@ static void revert(settings_state *s)
         if (DEFS[i].live && s->value[i] != back) s->changed_live = 1;
         s->value[i] = back;
     }
+    for (int i = 0; i < SETTINGS_TEXTS; i++) memcpy(s->text_val[i], s->text_saved[i], SETTINGS_TEXT_MAX);
+    s->text_picker = 0;
+    s->text_edit = -1;
     s->open = 0;
 }
 
@@ -153,6 +170,8 @@ int settings_needs_restart(const settings_state *s)
 {
     for (int i = 0; i < NDEFS; i++)
         if (!DEFS[i].live && s->value[i] != s->saved[i]) return 1;
+    for (int i = 0; i < SETTINGS_TEXTS; i++)
+        if (strcmp(s->text_val[i], s->text_saved[i])) return 1;
     return 0;
 }
 
@@ -161,9 +180,34 @@ const char *settings_value(const settings_state *s, int i)
     return DEFS[i].choices[s->value[i]];
 }
 
+void settings_text_input(settings_state *s, const char *utf8)
+{
+    if (!s->open || !s->text_picker || s->text_edit < 0 || !utf8) return;
+    char *v = s->text_val[s->text_edit];
+    size_t n = strlen(v);
+    for (; *utf8 && n + 1 < SETTINGS_TEXT_MAX; utf8++)
+        if ((unsigned char)*utf8 >= 32 && (unsigned char)*utf8 < 127) v[n++] = *utf8;
+    v[n] = 0;
+}
+
 int settings_key_event(settings_state *s, settings_key k)
 {
     if (!s->open) return 0;
+    if (s->text_picker) {                          /* the Folders screen has the keys */
+        if (s->text_edit >= 0) {                   /* typing: Enter keeps it, Esc puts the old text back */
+            char *v = s->text_val[s->text_edit];
+            if (k == SKEY_BACKSPACE) { size_t n = strlen(v); if (n) v[n - 1] = 0; }
+            else if (k == SKEY_ENTER) s->text_edit = -1;
+            else if (k == SKEY_ESC) { memcpy(v, s->text_old, SETTINGS_TEXT_MAX); s->text_edit = -1; }
+            return 1;
+        }
+        if (k == SKEY_UP) s->pick_cursor = (s->pick_cursor + SETTINGS_TEXTS - 1) % SETTINGS_TEXTS;
+        else if (k == SKEY_DOWN) s->pick_cursor = (s->pick_cursor + 1) % SETTINGS_TEXTS;
+        else if (k == SKEY_ENTER || k == SKEY_RIGHT) { s->text_edit = s->pick_cursor; memcpy(s->text_old, s->text_val[s->text_edit], SETTINGS_TEXT_MAX); }
+        else if (k == SKEY_BACKSPACE) s->text_val[s->pick_cursor][0] = 0;       /* clears the folder: the game's default again */
+        else if (k == SKEY_ESC) s->text_picker = 0;
+        return 1;
+    }
     if (s->flight_picker) {                        /* the flight list has the keys */
         const int n = s->flight_count;
         if (k == SKEY_UP) s->pick_cursor = (s->pick_cursor + n - 1) % n;
@@ -188,7 +232,7 @@ int settings_key_event(settings_state *s, settings_key k)
         if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
         return 1;
     }
-    const int rows = NDEFS + 7;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, Close */
+    const int rows = NDEFS + 8;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, the pickers, Close */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -217,10 +261,14 @@ int settings_key_event(settings_state *s, settings_key k)
             if (s->pick_count) { s->picker = 1; s->pick_cursor = 0; s->pick_top = 0; s->picks_changed = 0; }
         } else if (s->cursor == NDEFS + 5) {       /* Watch a flight: the list of recordings, if there are any */
             if (s->flight_count) { s->flight_picker = 1; s->pick_cursor = 0; s->pick_top = 0; }
+        } else if (s->cursor == NDEFS + 6) {       /* Folders: the typed entries */
+            s->text_picker = 1; s->text_edit = -1; s->pick_cursor = 0;
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
         revert(s);
+        break;
+    case SKEY_BACKSPACE:
         break;
     }
     if (s->cursor < s->top) s->top = s->cursor;                  /* keep the cursor inside the rows shown */
@@ -236,6 +284,13 @@ char *settings_apply(const settings_state *s, const char *ini_text)
     for (int i = 0; i < NDEFS; i++) {
         if (s->value[i] == s->saved[i]) continue;
         char *next = config_set(text, DEFS[i].key, DEFS[i].choices[s->value[i]]);
+        free(text);
+        if (!next) return NULL;
+        text = next;
+    }
+    for (int i = 0; i < SETTINGS_TEXTS; i++) {
+        if (!strcmp(s->text_val[i], s->text_saved[i])) continue;
+        char *next = config_set(text, TEXTS[i].key, s->text_val[i][0] ? s->text_val[i] : NULL);
         free(text);
         if (!next) return NULL;
         text = next;
@@ -262,7 +317,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int total = NDEFS + 7, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int total = NDEFS + 8, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
     const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
@@ -270,6 +325,25 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             const int edge = x < x0 + 2 || x >= x0 + pw - 2 || y < y0 + 2 || y >= y0 + ph - 2;
             px[(size_t)y * (size_t)w + (size_t)x] = edge ? 0xFFA0A0A0u : 0xFF101820u;
         }
+    if (s->text_picker) {                          /* the Folders screen */
+        put_text(px, w, h, x0 + 16, y0 + 10, "FOLDERS", 0xFFFFFFFFu);
+        for (int i = 0; i < SETTINGS_TEXTS; i++) {
+            const int y = y0 + 34 + i * 40, on = i == s->pick_cursor, editing = s->text_edit == i;
+            const uint32_t color = on ? 0xFFFFE060u : 0xFFD0D0D0u;
+            if (on) put_text(px, w, h, x0 + 12, y, ">", color);
+            put_text(px, w, h, x0 + 30, y, TEXTS[i].label, color);
+            if (strcmp(s->text_val[i], s->text_saved[i])) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
+            char line[48];
+            const char *v = s->text_val[i];
+            const size_t n = strlen(v);
+            if (n > 40) snprintf(line, sizeof line, "...%s%s", v + n - 37, editing ? "_" : "");
+            else snprintf(line, sizeof line, "%s%s", v[0] ? v : "(the game's default)", editing ? "_" : "");
+            put_text(px, w, h, x0 + 46, y + 18, line, editing ? 0xFFFFFFFFu : 0xFFA0A0A0u);
+        }
+        put_text(px, w, h, x0 + 16, y0 + ph - 38, s->text_edit >= 0 ? "Type or paste (Ctrl+V). Enter keeps, Esc undoes." : "Enter: edit   Backspace: clear   Esc: back", 0xFF909090u);
+        put_text(px, w, h, x0 + 16, y0 + ph - 22, "(applies after restart)", 0xFF909090u);
+        return;
+    }
     if (s->flight_picker) {                        /* the flight list: newest first */
         const int per = SETTINGS_VISIBLE - 2;
         put_text(px, w, h, x0 + 16, y0 + 10, "WATCH A FLIGHT", 0xFFFFFFFFu);
@@ -320,7 +394,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
-                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : "Close without saving", color);
+                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : i == NDEFS + 6 ? "Folders..." : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */

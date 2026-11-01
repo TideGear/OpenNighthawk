@@ -1692,6 +1692,7 @@ int main(int argc, char **argv)
                     settings_load(&g_set, text);
                     free(text);
                     settings_open(&g_set);
+                    SDL_StartTextInput(win);                              /* for the Folders screen; the other screens ignore typed text */
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
                     fill_fix_picker(&g_set);
                     fill_flight_list(&g_set, save);
@@ -1747,8 +1748,11 @@ int main(int argc, char **argv)
                         const int k = sc == SDL_SCANCODE_UP ? SKEY_UP : sc == SDL_SCANCODE_DOWN ? SKEY_DOWN :
                                       sc == SDL_SCANCODE_LEFT ? SKEY_LEFT : sc == SDL_SCANCODE_RIGHT ? SKEY_RIGHT :
                                       sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER ? SKEY_ENTER :
-                                      sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : -1;
-                        if (k >= 0) settings_key_event(&g_set, (settings_key)k);
+                                      sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : sc == SDL_SCANCODE_BACKSPACE ? SKEY_BACKSPACE : -1;
+                        if (sc == SDL_SCANCODE_V && (mod & SDL_KMOD_CTRL) && g_set.text_picker && g_set.text_edit >= 0) {   /* a paste into the folder being typed */
+                            char *clip = SDL_GetClipboardText();
+                            if (clip) { settings_text_input(&g_set, clip); SDL_free(clip); }
+                        } else if (k >= 0) settings_key_event(&g_set, (settings_key)k);
                         if (g_set.picks_changed && !g_set.picker) { g_set.picks_changed = 0; write_custom_fixes(&g_set, settings_path); }
                         if (g_set.clear_remaps) {           /* Clear key remaps: forget them now and in the file */
                             g_set.clear_remaps = 0;
@@ -1771,6 +1775,7 @@ int main(int argc, char **argv)
                                 }
                         }
                         if (!g_set.open) {
+                            SDL_StopTextInput(win);
                             if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
                             if (g_set.watch_now) { restart_game(orig_argv, "--watch", g_set.watch_name[0] ? g_set.watch_name : "latest"); running = 0; }
                             if (g_set.saved_now) {
@@ -1800,6 +1805,9 @@ int main(int argc, char **argv)
                 if (!paused && live) key_event(remap_apply(ev.key.scancode), down);   /* repeats re-send the make code */
                 break;
             }
+            case SDL_EVENT_TEXT_INPUT:                  /* typed text for the Folders screen */
+                if (g_set.open && g_set.text_picker && g_set.text_edit >= 0) settings_text_input(&g_set, ev.text.text);
+                break;
             case SDL_EVENT_MOUSE_MOTION: {
                 if (!live) break;
                 int gx, gy;

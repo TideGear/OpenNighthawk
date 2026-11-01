@@ -73,12 +73,12 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
-    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 6);   /* wraps to the last row */
-    CHECK(s.top == n + 7 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
-    for (int k = 0; k < n + 6; k++) settings_key_event(&s, SKEY_UP);
+    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 7);   /* wraps to the last row */
+    CHECK(s.top == n + 8 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    for (int k = 0; k < n + 7; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
-    CHECK(s.cursor == n + 6);
+    CHECK(s.cursor == n + 7);
     /* Remap a key and Clear key remaps ask the host and keep the menu open */
     s.cursor = n + 2;
     settings_key_event(&s, SKEY_ENTER);
@@ -186,6 +186,55 @@ int main(void)
             if (px[y * W + x]) { lit++; if (x < (W - 400) / 2 || x >= (W + 400) / 2) outside++; }
     CHECK(lit > 5000 && !outside);
     free(px);
+    /* the Folders screen: typed or pasted text is kept per folder, Backspace and Esc work, and Save writes only what changed */
+    {
+        int rows;
+        settings_defs(&rows);
+        settings_load(&s, "; mine\ndata = C:/Old/Game\nmt32-roms = C:/Roms\n");
+        CHECK(!strcmp(s.text_val[0], "C:/Old/Game") && !strcmp(s.text_val[1], "C:/Roms") && s.text_val[2][0] == 0);
+        settings_open(&s);
+        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);        /* to the Folders row */
+        settings_key_event(&s, SKEY_ENTER);
+        CHECK(s.text_picker && s.text_edit < 0);
+        settings_text_input(&s, "ignored");                                          /* not editing yet */
+        CHECK(!strcmp(s.text_val[0], "C:/Old/Game"));
+        settings_key_event(&s, SKEY_ENTER);                                          /* edit the game folder */
+        CHECK(s.text_edit == 0);
+        settings_key_event(&s, SKEY_BACKSPACE); settings_key_event(&s, SKEY_BACKSPACE); settings_key_event(&s, SKEY_BACKSPACE); settings_key_event(&s, SKEY_BACKSPACE);
+        settings_text_input(&s, "New\x01\xC3\xA9");                                  /* control and non-ASCII bytes are dropped */
+        CHECK(!strcmp(s.text_val[0], "C:/Old/New"));
+        settings_key_event(&s, SKEY_ESC);                                            /* undo */
+        CHECK(s.text_edit < 0 && !strcmp(s.text_val[0], "C:/Old/Game") && !settings_needs_restart(&s));
+        settings_key_event(&s, SKEY_ENTER);
+        settings_key_event(&s, SKEY_BACKSPACE);
+        settings_text_input(&s, "e2");
+        settings_key_event(&s, SKEY_ENTER);                                          /* keep: C:/Old/Game -> C:/Old/Game2 */
+        CHECK(!strcmp(s.text_val[0], "C:/Old/Game2") && settings_needs_restart(&s));
+        settings_key_event(&s, SKEY_DOWN);                                           /* the ROM folder: cleared with Backspace */
+        settings_key_event(&s, SKEY_BACKSPACE);
+        CHECK(s.text_val[1][0] == 0);
+        settings_key_event(&s, SKEY_ESC);                                            /* back to the menu */
+        CHECK(!s.text_picker && s.open);
+        char *out = settings_apply(&s, "; mine\ndata = C:/Old/Game\nmt32-roms = C:/Roms\n");
+        CHECK(out);
+        char v[300];
+        CHECK(config_get(out, "data", v, sizeof v) && !strcmp(v, "C:/Old/Game2"));
+        CHECK(!config_get(out, "mt32-roms", v, sizeof v));                           /* cleared: the key is gone */
+        free(out);
+        settings_key_event(&s, SKEY_ESC);                                            /* Esc in the menu drops the edits */
+        CHECK(!s.open && !strcmp(s.text_val[0], "C:/Old/Game") && !strcmp(s.text_val[1], "C:/Roms"));
+        CHECK(!strcmp(settings_text_key(0), "data") && !strcmp(settings_text_key(1), "mt32-roms") && !strcmp(settings_text_key(2), "mac-sounds"));
+        /* it draws, in bounds */
+        static uint32_t px[640 * 400];
+        settings_open(&s);
+        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);
+        settings_key_event(&s, SKEY_ENTER);
+        settings_key_event(&s, SKEY_ENTER);
+        settings_render(&s, px, 640, 400);
+        int lit = 0;
+        for (int i = 0; i < 640 * 400; i++) lit += px[i] != 0;
+        CHECK(lit > 5000);
+    }
     puts("settings menu passes");
     return 0;
 }

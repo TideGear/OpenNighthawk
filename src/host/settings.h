@@ -21,7 +21,10 @@ typedef struct {
 
 #define SETTINGS_MAX_FIXES 48
 
-typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC } settings_key;
+typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC, SKEY_BACKSPACE } settings_key;
+
+#define SETTINGS_TEXTS 3             /* the folders the Folders screen edits: the game's, the MT-32 ROMs', the Mac recordings' */
+#define SETTINGS_TEXT_MAX 260
 
 typedef struct {
     int open;
@@ -49,6 +52,11 @@ typedef struct {
     char watch_name[40];           /* the flight chosen; empty with watch_now means the newest */
     int watch_now;                 /* "Watch last flight" was chosen: the host restarts into the newest recording */
     int want_restart;              /* Save was chosen with a restart-only setting changed */
+    int text_picker;               /* the Folders screen is up */
+    int text_edit;                 /* the row being typed into, or -1 */
+    char text_val[SETTINGS_TEXTS][SETTINGS_TEXT_MAX];    /* what the screen shows */
+    char text_saved[SETTINGS_TEXTS][SETTINGS_TEXT_MAX];  /* what the file holds */
+    char text_old[SETTINGS_TEXT_MAX];                    /* the row's value before this edit, for Esc */
 } settings_state;
 
 /* the table and its length */
@@ -70,6 +78,13 @@ void settings_set_flight(settings_state *s, int index, const char *name, const c
 /* The host wrote a setting itself: show and remember it as saved (a value from that setting's choices). */
 void settings_mark_saved(settings_state *s, const char *key, const char *value);
 void settings_set_live(settings_state *s, const char *key, int choice);
+
+/* Typed text (UTF-8, as SDL reports it, or a paste) while a folder is being edited; only printable ASCII is kept. */
+void settings_text_input(settings_state *s, const char *utf8);
+
+/* The label and the f117a.ini key of folder row i (0 to SETTINGS_TEXTS - 1). */
+const char *settings_text_label(int i);
+const char *settings_text_key(int i);
 
 /* One key. Returns 1 when the menu used it (so the game does not see it). */
 int settings_key_event(settings_state *s, settings_key k);
