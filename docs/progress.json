@@ -168,9 +168,9 @@
       {
         "item": "Remastered: the world rebuilt from the game's model requests and drawn in the app, matching the original's models and fills",
         "weight": 3.0,
-        "done": 0.9,
+        "done": 0.93,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. Decoders for terrain, world and models checked against the game's memory; per-model polygon accounting matches the original; AND, OR and stipple fills; fills' order ported from 120A:0E5B; sky and ground bands from the band state, drawn smooth; wired into the app (`--presentation remastered`, machine exec-hook table), gated at 59cf216. Run in a real recorded takeoff, standing and at about 80 knots, against Enhanced: no region fails tools/remaster_diff.py, 1.6% of the 3D view's pixels differ, HUD and cockpit identical; the validator mismatches are explained (stale records of the game's lazy vertex projection); face shade [7D8A] is never read by the original. Not done: a flight with fast turns, the owner's look."
+        "evidence": "31 Oct 2026. Decoders for terrain, world and models checked against the game's memory; per-model polygon accounting matches the original; AND, OR and stipple fills; fills' order ported from 120A:0E5B; sky and ground bands from the band state, drawn smooth; wired into the app (`--presentation remastered`, machine exec-hook table), gated at 59cf216. Run in a real recorded takeoff, standing and at about 80 knots, against Enhanced: no region fails tools/remaster_diff.py, 1.6% of the 3D view's pixels differ, HUD and cockpit identical; the validator mismatches are explained (stale records of the game's lazy vertex projection); face shade [7D8A] is never read by the original. 1 Nov 2026: a flight with banking (the owner's airborne session, clock 1.9 G to 4.2 G, F117_REMASTER_KEPT): the original's own model and outline pixels left in the 3D window, which Remastered has no geometry for, were 0.2 to 0.8 per cent of the window (at most about 2,000 of 262,000 pixels, the most in the sharpest turn). Not done: the owner's look."
       },
       {
         "item": "Remastered: depth-correct drawing (no far object drawn over a nearer one)",
@@ -182,9 +182,9 @@
       {
         "item": "Remastered: widescreen with HUD and cockpit placed for it",
         "weight": 2.0,
-        "done": 0.7,
+        "done": 0.75,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. In a window wider than 4:3 the world fills the window and the game's own picture stays whole in the middle with the crosshair centred (remaster_live_wide), mouse mapped through it; shot at 1920 x 1080. Not done: objects wholly outside the game's own field of view are not drawn in the margins (the game culls them before asking), a wider projection, other window shapes tried only through F117_WINDOW, the owner's look."
+        "evidence": "31 Oct 2026. In a window wider than 4:3 the world fills the window and the game's own picture stays whole in the middle with the crosshair centred (remaster_live_wide), mouse mapped through it; shot at 1920 x 1080. 1 Nov 2026: window shapes tried on the owner's takeoff roll (Remastered, scale 3): 1920 x 1080, 2560 x 1080 (21:9: the world fills the width, the cockpit and crosshair stay centred, the hangars and a building show in the margins), 3440 x 1440 and 1280 x 800; the canvas is 1.2 times the window's shape in each case, no fault. The margins' lights are depth-tested against hangars (R12) and the door lines keep their width. Not done: objects wholly outside the game's own field of view are not drawn in the margins (the game culls them before asking; the plan is the rerun copy with a wider view), a wider projection, the owner's look."
       },
       {
         "item": "Remastered: longer draw distance (R6)",
