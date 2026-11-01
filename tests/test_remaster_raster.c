@@ -208,6 +208,37 @@ int main(void)
         printf("fill vs brute force: %ld pixels compared, %ld differ\n", compared, bad);
         CHECK(bad == 0);
     }
+    /* 3. the whole-line pass (line_slope): a light behind a flat wall stays hidden, a marking on a ground seen at a grazing angle shows */
+    {
+        remaster_target t = make(64, 48);
+        remaster_v3 wall[4];
+        quad(wall, 0x02000000, 14, 0);
+        remaster_polygon(&t, wall, 4, RED);
+        const remaster_v3 ground[4] = { { -0x300000, 0x40000, 0x300000 }, { 0x300000, 0x40000, 0x300000 }, { 0x300000, 0x40000, 0x4000000 }, { -0x300000, 0x40000, 0x4000000 } };
+        remaster_polygon(&t, ground, 4, BLUE);
+        const size_t px = (size_t)t.w * t.h;
+        float *ref = (float *)malloc(px * 4);
+        memcpy(ref, t.inv_z, px * 4);
+        {   /* the old whole-line pass (a bias of 50, no slope) draws the same light through the wall: the defect, kept as the proof */
+            uint32_t *c0 = (uint32_t *)malloc(px * 4); float *z0 = (float *)malloc(px * 4);
+            memcpy(c0, t.color, px * 4); memcpy(z0, t.inv_z, px * 4);
+            t.line_bias = 50.0; t.line_slope = 0.0;
+            remaster_line(&t, (remaster_v3){ 0, 0, 0x03000000 }, (remaster_v3){ 0, 0, 0x03000000 }, 3.0, GREEN);
+            CHECK(t.color[24 * 64 + 32] == GREEN);
+            memcpy(t.color, c0, px * 4); memcpy(t.inv_z, z0, px * 4);
+            free(c0); free(z0);
+        }
+        t.line_bias = 1.01; t.line_slope = 2.0; t.line_ref_z = ref;
+        /* a light 1.5 times farther than the wall, behind its middle */
+        remaster_line(&t, (remaster_v3){ 0, 0, 0x03000000 }, (remaster_v3){ 0, 0, 0x03000000 }, 3.0, GREEN);
+        CHECK(t.color[24 * 64 + 32] == RED);
+        /* a marking lying in the ground's plane, 1 pixel wide, across it at one depth */
+        remaster_line(&t, (remaster_v3){ -0x100000, 0x40000, 0x800000 }, (remaster_v3){ 0x100000, 0x40000, 0x800000 }, 1.0, GREEN);
+        int green = 0;
+        for (int y = 0; y < t.h; y++) for (int x = 0; x < t.w; x++) green += t.color[y * 64 + x] == GREEN;
+        CHECK(green >= 6);
+        free(ref); free(t.color); free(t.inv_z);
+    }
     puts("remaster raster passes");
     return 0;
 }

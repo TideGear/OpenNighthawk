@@ -36,6 +36,12 @@ typedef struct {
      * polygons twice: with a huge bias into line_strong (every line whole), and with the default into color; the caller
      * picks per pixel, using the original's own picture to say where a line really is visible. */
     double line_bias;
+    /* The whole-line pass: a line passes the depth test where it is no farther than the surface under it by more than that
+     * surface's own depth slope times line_slope (a ground polygon seen at a grazing angle changes depth a lot from one pixel to the
+     * next, so its markings pass; a hangar's face is nearly flat, so a light behind it does not). line_ref_z is the polygons' depth
+     * the slope is read from (the test's own buffer holds the lines drawn so far). 0: off. */
+    double line_slope;
+    const float *line_ref_z;
     uint32_t *line_strong;
     float *line_tmp_z;
 } remaster_target;

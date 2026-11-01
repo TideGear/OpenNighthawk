@@ -53,6 +53,26 @@ static int row_span(sv a, sv b, sv c, double py, int *xs, int *xe)
     return 1;
 }
 
+/* How much the polygons' inverse depth changes across one pixel at (x, y): per axis the smaller step to a covered neighbour, so a
+ * surface's edge, where one neighbour is another surface, reads the slope of the surface itself. */
+static float surface_slope(const remaster_target *t, int x, int y)
+{
+    const float *z = t->line_ref_z;
+    const long i = (long)y * t->w + x;
+    const float c = z[i];
+    float g[2] = { 1e30f, 1e30f };
+    for (int axis = 0; axis < 2; axis++)
+        for (int s = -1; s <= 1; s += 2) {
+            const int nx = x + (axis == 0 ? s : 0), ny = y + (axis == 1 ? s : 0);
+            if (nx < 0 || ny < 0 || nx >= t->w || ny >= t->h) continue;
+            const float n = z[(long)ny * t->w + nx];
+            if (n <= 0.0f) continue;
+            const float d = fabsf(n - c);
+            if (d < g[axis]) g[axis] = d;
+        }
+    return (g[0] < 1e29f ? g[0] : 0.0f) + (g[1] < 1e29f ? g[1] : 0.0f);
+}
+
 static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
 {
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
@@ -81,7 +101,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
-            if (iz < *d * 0.9999f) continue;
+            if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
             *d = iz;
             t->color[(long)y * t->w + x] = color;
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;

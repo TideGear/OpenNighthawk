@@ -341,7 +341,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         }
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
-            if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_bias = 50.0; }
+            if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_bias = 1.01; t->line_slope = 2.0; t->line_ref_z = z0; }
             else t->line_bias = 0.0;
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
@@ -358,7 +358,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             }
             t->color = c0; t->inv_z = z0;
         }
-        t->line_bias = 0.0;
+        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL;
         if (!any_bright) memcpy(t->line_strong, t->color, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     g_tm_lines += now_ms() - tq3;
@@ -378,7 +378,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
-    t.line_bias = 0.0; t.line_strong = NULL; t.line_tmp_z = NULL;
+    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);
@@ -463,7 +463,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.color = (uint32_t *)pool[0].p;
     t.inv_z = (float *)pool[1].p;
     t.index = (uint16_t *)pool[2].p;
-    t.line_bias = 0.0;
+    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL;
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
     const double tm0 = now_ms();
