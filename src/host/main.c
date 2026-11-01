@@ -2111,6 +2111,14 @@ int main(int argc, char **argv)
                     fprintf(sf, "P6\n%d %d\n255\n", w, h);
                     for (int k = 0; k < w * h; k++) { const uint8_t rgb[3] = { (uint8_t)(px[k] >> 16), (uint8_t)(px[k] >> 8), (uint8_t)px[k] }; fwrite(rgb, 1, 3, sf); }
                     fclose(sf); left--;
+                    if (getenv("F117_SHOT_TAGS") && g_live.shown_tag && g_scale > 0) {     /* diagnostic: the origin tags of the map's pixels in this picture */
+                        unsigned long cnt[64] = { 0 };
+                        const int sc = g_scale, W = 320 * sc;
+                        for (int y = 111 * sc; y < 169 * sc; y++) for (int x = 76 * sc; x < 149 * sc; x++) cnt[g_live.shown_tag[(size_t)y * W + x] & 63]++;
+                        fprintf(stderr, "[tags] clock %llu map pixels by origin tag:", (unsigned long long)H.m.cpu.icount);
+                        for (int k = 0; k < 64; k++) if (cnt[k]) fprintf(stderr, " %d:%lu", k, cnt[k]);
+                        fprintf(stderr, " (kind %d)\n", g_live.diag_kind);
+                    }
                 }
             }
         }
