@@ -266,16 +266,16 @@
       {
         "item": "Hybrid sound: Roland music with AdLib effects from a second driver",
         "weight": 1.2,
-        "done": 0.8,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. src/host/sidecar.c stages ASOUND.117 in a bare machine, calls its five entries and mixes its own OPL chip with Roland's output; on by default with --sound roland (owner decision), --no-adlib-effects, ini key and menu row; in a recorded takeoff 262 effect requests, 0 failed, the audio differs from plain Roland only at the cannon burst; gated at 59cf216. Not done: nobody has heard it, only AdLib beside Roland is staged."
+        "evidence": "31 Oct 2026. src/host/sidecar.c stages ASOUND.117 in a bare machine, calls its five entries and mixes its own OPL chip with Roland's output; on by default with --sound roland (owner decision), --no-adlib-effects, ini key and menu row; in a recorded takeoff 262 effect requests, 0 failed, the audio differs from plain Roland only at the cannon burst; gated at 59cf216. 1 Nov 2026: widened from the flight effects to every effect id (see the START and END item), with a measurement behind it (all 43 sounds rendered on both drivers; Roland through Munt is a median 6.2 dB quieter than AdLib over 36 sounds). Not done: nobody has heard it, only AdLib beside Roland is staged."
       },
       {
         "item": "Hybrid sound: START and END sounds",
         "weight": 0.5,
-        "done": 0.5,
+        "done": 0.75,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. Their sound thunks are hooked and START's own ids reach the host; none of their ids has a Mac recording mapped, so nothing is taken from them yet."
+        "evidence": "31 Oct 2026. Their sound thunks are hooked and START's own ids reach the host. 1 Nov 2026: with Roland every effect id (4 to 35, the front end's picks and marks included) is played by the AdLib driver beside it, the busy-poll (2), music (3, 36 to 39), release (40) and speech (41 to 45) stay with the loaded driver, and stop (0) reaches both; a request the host takes answers AX = 0 as the driver does (proved from the code: the only call sites that read the answer are the three id 2 polls in START, END and PLAYER, `docs/sound-id-table.md`, `tools/sound_dos_calls.py`, `tools/sound_call_returns.py`). Replay of the owner's session on this routing: START ran through its fades with no freeze (swallowing id 2 once froze it) and the sidecar took 40 requests with none failed. Mac recordings are mapped for ids 29 (323) and 30 (325) and 3 (200). Not done: nobody has listened (the owner has not yet), the Mac hangar door and engine loop have no DOS id matched, END's ids have no Mac mapping."
       },
       {
         "item": "Hybrid sound: the owner has listened and approved",
