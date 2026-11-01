@@ -2000,6 +2000,27 @@ int main(int argc, char **argv)
                     if (cleared) fflush(audio_queue_log);
                 }
             }
+            {   /* F117_POKE=CLOCK:PHYSADDR:HEXBYTES[,...] (diagnostic): write bytes into the machine's memory once, when the clock reaches CLOCK;
+                 * for testing a guess about the game's state (the machine is not otherwise touched) */
+                static const char *pk; static int pinit; static uint64_t pat;
+                if (!pinit) { pinit = 1; pk = getenv("F117_POKE"); if (pk) pat = strtoull(pk, NULL, 0); }
+                if (pk && pat && H.m.cpu.icount >= pat) {
+                    pat = 0;
+                    const char *q = strchr(pk, ':');
+                    while (q) {
+                        const unsigned long long addr = strtoull(q + 1, NULL, 16);
+                        const char *hex = strchr(q + 1, ':');
+                        if (!hex) break;
+                        unsigned long long k = 0;
+                        for (hex++; hex[0] && hex[1] && hex[0] != ',' ; hex += 2, k++) {
+                            char b2[3] = { hex[0], hex[1], 0 };
+                            H.m.mem[(addr + k) & 0xFFFFF] = (uint8_t)strtoul(b2, NULL, 16);
+                        }
+                        fprintf(stderr, "poked %llu bytes at %05llX, clock %llu\n", k, addr, (unsigned long long)H.m.cpu.icount);
+                        q = strchr(hex, ',');
+                    }
+                }
+            }
             {   /* F117_DUMP_RAM=CLOCK:FILE (diagnostic): the machine's 1 MB of memory once, when the clock reaches CLOCK */
                 static const char *spec; static int init; static uint64_t at;
                 if (!init) { init = 1; spec = getenv("F117_DUMP_RAM"); if (spec) at = strtoull(spec, NULL, 0); }
