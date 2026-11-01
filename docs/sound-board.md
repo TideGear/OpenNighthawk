@@ -161,3 +161,28 @@ Known limits:
 
 **Assets.** The Mac WAVs and the MT-32 ROMs are the owner's; the plan for importing them into one library folder is in
 [p3-handoff.md](p3-handoff.md). Nothing from the Mac release goes into the repository.
+
+## Second driver: design (31 October 2026, not built)
+
+The earlier plan (a hidden copy of the whole machine receiving the same trap) is more than the job needs. The driver is four calls
+that the game makes (entry 0 init, 1 raise an id, 2 resync the clock, 3 sequencer tick, 4 noise step) and it hooks no
+interrupt, so a **sidecar** is enough: a bare `machine_t` that holds only the second driver's overlay, driven by the host.
+
+- **Precedent:** `tests/check_drivers.c` already stages `ASOUND.117` and `RSOUND.117` in a bare machine
+  (`recomp_module_load(..., MODLOAD_OVERLAY, LOAD, 0)`, the image after the MZ header copied to `LOAD:0`, CS = LOAD + `0x01B6`
+  for AdLib, DS = SS = LOAD) and steps their original instructions in the interpreter.
+- **Plan:** `src/host/sidecar.c`: `sidecar_new(driver_file, kind)` stages the driver, runs entry 0; `sidecar_request(id)` runs
+  entry 1 with the id on the stack; `sidecar_tick()` runs entry 3 on six ticks in seven and entry 4 every tick, at the game's
+  timer rate (`icount` of the main machine divided by its clocks per tick, so replays stay deterministic). Its `hooks.opl_write`
+  feeds its own `audio_t` (`audio_create_backend`, a second OPL chip, `audio_take` mixed beside the main machine's, as the Mac
+  player's mixer already is).
+- **Routing, in the existing exec hook (`on_exec_hook`):** with Roland loaded as the main driver, the music (ids 3 and 36-39)
+  stays with it, and the effects (kind `SP_SOUND`) the policy gives to AdLib go to the sidecar instead of the main driver;
+  Mac-recorded ids still go to the Mac player first. The MT-32 effect channels need no muting then, because the main driver
+  never receives the effects.
+- **Open question that blocks the first line of code:** how the game locates the driver's five entry points (the stub at
+  VGAME `1E42:0313` is a far jump slot the loader patches; where the loader reads the entry table from in the
+  `ASOUND.117` image is not yet read). Read VGAME's driver-install routine first, then stage the entries in a unit test that
+  compares the sidecar's OPL register writes for one id with the main machine's, as `snd_check` did in September.
+- **Not covered:** speech (stays with the loaded driver), a Roland effect with no AdLib equivalent, and START and END, which
+  need their own sidecar request path only if their ids gain recordings or AdLib routing.
