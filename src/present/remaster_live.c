@@ -341,7 +341,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         }
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
-            if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_bias = 1.01; t->line_slope = 2.0; t->line_ref_z = z0; }
+            if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
             else t->line_bias = 0.0;
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
@@ -353,6 +353,18 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 word_style(p->colour_word, p->darken, &idx);
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
+                /* Whole lines (the doors' yellow) lie at a building's foot and the original draws them over the terrain in front of it,
+                 * so they take a huge bias. Lights (points) are hidden by anything nearer that is flat, as by the hangar they stand behind:
+                 * a bias of 1.01 and an allowance for the slope of a ground surface (remaster_raster.h, line_slope). */
+                if (pass == 0) {
+                    int point = p->kind == SCENE_DOTS;               /* a light is a line from a point to itself */
+                    if (p->kind == SCENE_LINES) {
+                        point = 1;
+                        for (int k = 1; k < p->n && point; k++) point = p->v[k].x == p->v[0].x && p->v[k].y == p->v[0].y && p->v[k].z == p->v[0].z;
+                    }
+                    if (!point) { t->line_bias = 50.0; t->line_slope = 0.0; }
+                    else { t->line_bias = 1.01; t->line_slope = 1.0 + (ux > 1.0 ? ux : 1.0); }
+                }
                 if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
                 else for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
             }

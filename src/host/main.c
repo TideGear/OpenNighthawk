@@ -94,6 +94,12 @@ typedef struct {
 static host_t H;
 
 /* --present replay */
+static int g_loop_timing;                 /* F117_LOOP_TIMING */
+static uint64_t g_lt_run, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
+static unsigned g_lt_iter;
+static uint64_t g_lt_hook[3], g_lt_calls[3];   /* ticks and calls: OPL writes, speaker toggles, vsyncs */
+static struct { uint32_t lin; uint16_t cs, ip; unsigned n; } g_lt_slow[64];   /* where the machine was when a slice ran slow */
+static int g_lt_nslow;
 static int g_replay;                  /* 1 replay, 2 interp (with g_rerun: in-between pictures drawn by the original on a copy) */
 static int g_rerun;
 static drawfeed g_feed;
@@ -428,13 +434,18 @@ static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, 
 static void on_opl(void *u, uint64_t icount, uint8_t reg, uint8_t val)
 {
     (void)u;
+    const uint64_t t0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
     if (H.audio) audio_opl_write(H.audio, icount, reg, val);
+    if (g_loop_timing) { g_lt_hook[0] += SDL_GetPerformanceCounter() - t0; g_lt_calls[0]++; }
 }
 
 static void on_speaker(void *u, uint64_t icount)
 {
     (void)u;
+    const uint64_t t0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
+    if (g_loop_timing) g_lt_calls[1]++;
     if (H.audio) audio_speaker(H.audio, &H.m, icount);
+    if (g_loop_timing) g_lt_hook[1] += SDL_GetPerformanceCounter() - t0;
     if (g_sub.ready) {          /* the radio calls as text: the counts written to PIT counter 2 in mode 0 */
         const uint8_t p61 = H.m.port61 & 3;
         if (p61 != g_sub_p61) g_sub_p61 = p61;
@@ -455,7 +466,10 @@ static void on_input(void *u, const machine_input *in)
 static void on_vsync(void *u, uint64_t icount)
 {
     (void)u; (void)icount;
+    const uint64_t t0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
+    if (g_loop_timing) g_lt_calls[2]++;
     present_capture(&H.m, &H.frame);
+    if (g_loop_timing && g_replay != 1) g_lt_hook[2] += SDL_GetPerformanceCounter() - t0;
     if (g_replay == 1) {                  /* interp is drawn when the host presents */
         drawlive_update(&g_live, &g_feed);
         g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
@@ -1491,6 +1505,7 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
+    g_loop_timing = getenv("F117_LOOP_TIMING") != NULL;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
     if (getenv("F117_REPLAY_START_X4")) replay_x4 = atoi(getenv("F117_REPLAY_START_X4"));   /* diagnostic: start a replay fast */
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
@@ -1843,11 +1858,20 @@ int main(int argc, char **argv)
                     fprintf(stderr, "replay seek done at clock %llu, wall %llu ms\n", (unsigned long long)H.m.cpu.icount, (unsigned long long)SDL_GetTicks());
                 } else target = H.m.cpu.icount + ips / 5 < seek_target ? H.m.cpu.icount + ips / 5 : seek_target;
             }
+            const uint64_t lt_run0 = SDL_GetTicksNS();
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
                 if (until > target) until = target;
                 inputlog_feed(player, &H.m, until + ips);
+                const uint64_t sl0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
                 int rc = machine_run(&H.m, until);
+                if (g_loop_timing && (SDL_GetPerformanceCounter() - sl0) * 1250 > SDL_GetPerformanceFrequency()) {   /* a 1 ms slice that took over 0.8 ms (normally about 0.3) */
+                    const uint32_t lin = ((uint32_t)H.m.cpu.seg[S_CS] << 4) + H.m.cpu.ip;
+                    int k = 0;
+                    while (k < g_lt_nslow && g_lt_slow[k].lin != lin) k++;
+                    if (k == g_lt_nslow && k < 64) { g_lt_slow[k].lin = lin; g_lt_slow[k].cs = H.m.cpu.seg[S_CS]; g_lt_slow[k].ip = H.m.cpu.ip; g_lt_slow[k].n = 0; g_lt_nslow++; }
+                    if (k < g_lt_nslow) g_lt_slow[k].n++;
+                }
                 if (g_replay == 2) {
                     if (g_pw.thread) drawlive_collect(&g_live, &g_feed);
                     else drawlive_update(&g_live, &g_feed);
@@ -1859,6 +1883,7 @@ int main(int argc, char **argv)
                     break;
                 }
             }
+            g_lt_run += SDL_GetTicksNS() - lt_run0;
             mouse_follow_game(win, ren, aspect, replay != NULL || g_set.open);
             if (H.audio) {
                 audio_advance(H.audio, H.m.cpu.icount);
@@ -2078,7 +2103,32 @@ int main(int argc, char **argv)
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }
+        const uint64_t lt_pr0 = SDL_GetTicksNS();
         SDL_RenderPresent(ren);
+        g_lt_present += SDL_GetTicksNS() - lt_pr0;
+        if (g_loop_timing) {                                  /* F117_LOOP_TIMING: where the loop's wall time goes, every 2 s */
+            const uint64_t now = SDL_GetTicksNS();
+            if (!g_lt_last) { g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; }
+            if (now - g_lt_last >= 2000000000ull) {
+                fprintf(stderr, "[loop] wall %.1f s: icount +%.0fM (discarded +%.0fM); run %.0f ms, present %.0f ms, other %.0f ms, %u iterations; hooks: opl %.0f ms (%llu), speaker %.0f ms (%llu), vsync %.0f ms (%llu)\n",
+                        (double)(now - start_ns) / 1e9, (double)(H.m.cpu.icount - g_lt_icount) / 1e6, (double)(discarded_clocks - g_lt_disc) / 1e6,
+                        (double)g_lt_run / 1e6, (double)g_lt_present / 1e6, (double)(now - g_lt_last - g_lt_run - g_lt_present) / 1e6, g_lt_iter,
+                        1e3 * (double)g_lt_hook[0] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[0],
+                        1e3 * (double)g_lt_hook[1] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[1],
+                        1e3 * (double)g_lt_hook[2] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[2]);
+                memset(g_lt_hook, 0, sizeof g_lt_hook); memset(g_lt_calls, 0, sizeof g_lt_calls);
+                for (int pass = 0; pass < 4 && g_lt_nslow; pass++) {          /* the places slow slices ended, most first */
+                    int best = 0;
+                    for (int k = 1; k < g_lt_nslow; k++) if (g_lt_slow[k].n > g_lt_slow[best].n) best = k;
+                    if (!g_lt_slow[best].n) break;
+                    fprintf(stderr, "[loop]   slow slices ended at %04X:%04X (%05X) x%u\n", g_lt_slow[best].cs, g_lt_slow[best].ip, g_lt_slow[best].lin, g_lt_slow[best].n);
+                    g_lt_slow[best].n = 0;
+                }
+                g_lt_nslow = 0;
+                g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; g_lt_run = g_lt_present = 0; g_lt_iter = 0;
+            }
+            g_lt_iter++;
+        }
         if (g_present_log && !display_logged) {
             int width = 0, height = 0, vsync = 0;
             const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
