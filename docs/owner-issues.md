@@ -27,7 +27,7 @@ checked), EXPLAINED (not a defect: the reason is written down).
 
 | # | What the owner saw | Status | Known so far |
 |---|---|---|---|
-| M1 | In DOS the game can move the mouse cursor (like a button); moving the mouse then continues from there. Here the in-game cursor jumps to where the Windows cursor is | FIXED, awaiting the owner | The host sends absolute positions; the game's INT 33h set-position moved the driver's cursor but not the (hidden) Windows cursor. Now `mouse_follow_game` warps the Windows cursor to the game's whenever the game moves its cursor with no mouse input of ours pending (app only; not in a replay or the settings menu; through the wide view too). Not tried with a real mouse (headless build only). |
+| M1 | In DOS the game can move the mouse cursor (like a button); moving the mouse then continues from there. Here the in-game cursor jumps to where the Windows cursor is | FIXED, owner confirms better (1 Nov 01:06) | The host sends absolute positions; the game's INT 33h set-position moved the driver's cursor but not the (hidden) Windows cursor. Now `mouse_follow_game` warps the Windows cursor to the game's whenever the game moves its cursor with no mouse input of ours pending (app only; not in a replay or the settings menu; through the wide view too). Not tried with a real mouse (headless build only). |
 
 ## Sound
 
