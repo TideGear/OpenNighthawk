@@ -34,7 +34,7 @@ struct remaster_live {
     unsigned requests, added, refused, overwritten, ortho_skipped;
     /* F117_REMASTER_VALIDATE: per model, how many vertices' projections match the game's own (the 8-byte records at
      * DS:D6B4 + 8 * id, signed pixel offsets from the origin) and how many do not */
-    struct { uint16_t model; unsigned seen, match, differ, behind_mine, behind_game; } check[256];
+    struct { uint16_t model; unsigned seen, match, differ, behind_mine, behind_game, off1, off8, far; } check[256];
     unsigned nchecks;
     int32_t band_rec[BAND_REC_BASE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
     int have_band;
@@ -429,6 +429,8 @@ static void validate_model(remaster_live *r, const machine_t *m)
         r->check[slot].model = r->model;
         r->nchecks++;
     }
+    const unsigned differ_before = r->check[slot].differ;
+    int first_id = -1, first_mine[2] = { 0, 0 }, first_game[2] = { 0, 0 };
     for (unsigned id = 0; id < SCENE_VERTICES; id++) {
         if (!g->present[id]) continue;
         const uint16_t at = (uint16_t)(0xD6B4 + 8 * id);
@@ -457,7 +459,25 @@ static void validate_model(remaster_live *r, const machine_t *m)
         r->check[slot].seen++;
         if (!mine_x) { r->check[slot].behind_mine++; if (game_behind) { r->check[slot].match++; continue; } r->check[slot].differ++; continue; }
         if (game_behind) { r->check[slot].behind_game++; r->check[slot].differ++; continue; }
-        if (mine_y && (int32_t)gx == px && (int32_t)gy == py) r->check[slot].match++; else r->check[slot].differ++;
+        if (mine_y && (int32_t)gx == px && (int32_t)gy == py) r->check[slot].match++;
+        else {
+            r->check[slot].differ++;
+            if (first_id < 0) { first_id = (int)id; first_mine[0] = px; first_mine[1] = py; first_game[0] = (int)gx; first_game[1] = (int)gy; }
+            if (mine_y) {                       /* both in front: how far apart, in pixels of the 320 x 200 picture */
+                const long dx = labs((long)(int32_t)gx - (long)px), dy = labs((long)(int32_t)gy - (long)py);
+                if (dx <= 1 && dy <= 1) r->check[slot].off1++; else if (dx <= 8 && dy <= 8) r->check[slot].off8++; else r->check[slot].far++;
+            }
+        }
+    }
+    {   /* F117_REMASTER_VALIDATE=2: one line per instance of a model with a mismatch (the first thirty) */
+        static int shown_inst;
+        const char *level = getenv("F117_REMASTER_VALIDATE");
+        if (level && level[0] == '2' && r->check[slot].differ > differ_before && shown_inst < 30) {
+            shown_inst++;
+            fprintf(stderr, "[inst] model %u at %d %d %d (origin %d %d, bank %u): %u differ; first id %d (camera z %d) mine %d,%d game %d,%d\n",
+                    (unsigned)r->model, r->position[0], r->position[1], r->position[2], r->origin[0], r->origin[1], (unsigned)r->bank,
+                    r->check[slot].differ - differ_before, first_id, first_id >= 0 ? g->camera[first_id][2] : 0, first_mine[0], first_mine[1], first_game[0], first_game[1]);
+        }
     }
 }
 
@@ -466,8 +486,8 @@ static void report_validation(const remaster_live *r)
     fprintf(stderr, "[validate] model: vertices matching the game's own projection / differing (behind the eye here / there)\n");
     for (unsigned i = 0; i < r->nchecks; i++)
         if (r->check[i].differ)
-            fprintf(stderr, "[validate] model %u: %u match, %u differ (%u behind here, %u behind there) of %u\n", (unsigned)r->check[i].model, r->check[i].match, r->check[i].differ, r->check[i].behind_mine,
-                    r->check[i].behind_game, r->check[i].seen);
+            fprintf(stderr, "[validate] model %u: %u match, %u differ (%u behind here, %u behind there; both in front: %u within 1 px, %u within 8, %u farther) of %u\n", (unsigned)r->check[i].model, r->check[i].match, r->check[i].differ, r->check[i].behind_mine,
+                    r->check[i].behind_game, r->check[i].off1, r->check[i].off8, r->check[i].far, r->check[i].seen);
     unsigned total = 0, bad = 0;
     for (unsigned i = 0; i < r->nchecks; i++) { total += r->check[i].seen; bad += r->check[i].differ; }
     fprintf(stderr, "[validate] %u models, %u vertices, %u differ\n", r->nchecks, total, bad);

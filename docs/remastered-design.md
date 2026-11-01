@@ -261,8 +261,7 @@ To check: run the takeoff replay (`--replay` of a recorded takeoff, `--presentat
 `F117_PRESENT_SHOTS`) and the Enhanced baseline, then `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`. The hangar and
 sea regions should shrink or vanish. Only then refresh the screenshot on the owner's Desktop.
 
-Still open: validator mismatches (`F117_REMASTER_VALIDATE`; models 3, 30, 51, 50 have vertices that differ from the game's own
-projection, unexplained); a full in-order read of the original render path (120A:00CF through 0C76, 130D clipper, 1377 fills,
+Validator mismatches (`F117_REMASTER_VALIDATE`; models 3, 30, 51, 50) are **explained (31 October 2026): a validator artifact, not a placement error**. `F117_REMASTER_VALIDATE=2` adds a line per mismatching instance and the report buckets the differences (within 1 px, within 8, farther). On the recorded takeoff 2,224 of 24,799 vertices differ, always 4 to 13 vertices of an instance, always far from the game's number, and the game's number does not move with the instance: three instances of model 51 at x = 382, 638 and 894 give the same record for vertex 11 (`93,0`) while this renderer's value moves (-91, -143, -196). The game projects a vertex lazily, only when a face it draws uses it, so the record at `DS:D6B4 + 8 * id` of an unused vertex is left from an earlier draw. The comparison is only valid for vertices a drawn face uses; the other 91% match exactly. Do not chase these as pose errors; a full in-order read of the original render path (120A:00CF through 0C76, 130D clipper, 1377 fills,
 0FB2 span rasteriser, scene dispatch/walk/finish) with notes here; a per-model polygon-accounting check (original fills against
 this renderer's) as a second net for missed objects; face shade [7D8A] in colours; interpolation between logic steps; widescreen.
 The branch has debug blocks ([tags], [pixel], [col], [blue], [raw], [validate]) worth trimming. P2 work is resuming: keep to
