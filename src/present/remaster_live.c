@@ -233,6 +233,32 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             for (long i = 0; i < (long)t->w * t->h; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
     }
+    {   /* F117_REMASTER_PROBE=X,Y (game pixels): every primitive of one frame (the 700th drawn) whose screen box holds that point, and
+         * how many primitives the frame has, to see why Remastered draws nothing where the original drew something */
+        static int calls;
+        const char *probe = getenv("F117_REMASTER_PROBE");
+        double px = 0, py = 0;
+        if (probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && ++calls == 700) {
+            fprintf(stderr, "[probe] frame of %zu primitives, point %.1f,%.1f, clock %llu\n", fr->n, px, py, (unsigned long long)m->cpu.icount);
+            for (size_t i = 0; i < fr->n; i++) {
+                const remaster_prim *p = &fr->prim[i];
+                double x0b = 1e9, x1b = -1e9, y0b = 1e9, y1b = -1e9;
+                int front = 0;
+                for (int k = 0; k < p->n; k++) {
+                    if (p->v[k].z <= 0) continue;
+                    const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
+                    if (sx < x0b) x0b = sx; if (sx > x1b) x1b = sx; if (sy < y0b) y0b = sy; if (sy > y1b) y1b = sy;
+                    front++;
+                }
+                if (front < p->n) { x0b = -1e9; x1b = 1e9; }      /* partly behind the eye: its box is unknown, show it */
+                if (!front || px < x0b - 1.5 || px > x1b + 1.5 || py < y0b - 1.5 || py > y1b + 1.5) continue;
+                uint32_t colour = 0;
+                word_colour(m, p->colour_word, p->darken, &colour);
+                fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d\n",
+                        i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0);
+            }
+        }
+    }
     for (size_t i = 0; i < fr->n; i++) {
         const remaster_prim *p = &fr->prim[i];
         uint32_t colour;
@@ -240,25 +266,6 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         unsigned idx = 0;
         const int style = word_style(p->colour_word, p->darken, &idx);
         const double line_w = ux > 1.0 ? ux : 1.0;                    /* one of the original's pixels, at least one of ours */
-        {   /* F117_REMASTER_YELLOW=1: every primitive touching the hangar door's screen region (game pixels x 280..310, y 45..60) of the
-             * frame drawn near machine clock 2601565275 (the owner's zoom), to see what draws the door markings */
-            static int shown;
-            if (shown < 120 && getenv("F117_REMASTER_YELLOW") && m->cpu.icount > 2601400000ull && m->cpu.icount < 2601700000ull) {
-                int touch = 0;
-                for (int k = 0; k < p->n && k < 8; k++)
-                    if (p->v[k].z > 0) {
-                        const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
-                        if (sx > 280 && sx < 310 && sy > 45 && sy < 60) touch = 1;
-                    }
-                if (touch) {
-                    shown++;
-                    fprintf(stderr, "[door] clock %llu prim %zu model %u kind %d n %d word %04X colour %06X:", (unsigned long long)m->cpu.icount, i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF));
-                    for (int k = 0; k < p->n && k < 6; k++)
-                        if (p->v[k].z > 0) fprintf(stderr, " (%.1f,%.1f z %d)", origin[0] + 256.0 * p->v[k].x / p->v[k].z, origin[1] + 256.0 * p->v[k].y / p->v[k].z, (int)p->v[k].z);
-                    fprintf(stderr, "\n");
-                }
-            }
-        }
         if (p->kind == SCENE_POLYGON && p->n >= 3 && style >= 1) {     /* AND, OR, stipple: combine with what is under it */
             remaster_polygon_logic(t, p->v, p->n, style == 1 ? REMASTER_AND : style == 2 ? REMASTER_OR : REMASTER_STIPPLE, idx);
             continue;
@@ -457,23 +464,7 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
             fprintf(stderr, "[tags] scene range %d..%d, span tags %d and %d..%d\n", DT_MODEL_SOLID, DT_SPAN_SHADE, DT_SPANPOLY_FINE, DT_SPAN_NOT_POLY, DT_SPAN_SHADE);
         }
     }
-    if (getenv("F117_REMASTER_YELLOW") && m->cpu.icount > 2601400000ull && m->cpu.icount < 2601700000ull && n == 3) {
-        static int said_tags;                      /* the origin tag of the original's yellow pixels at the hangar door (fine x 850..930, y 140..175) */
-        if (said_tags < 6) {
-            said_tags++;
-            long hist[64] = {0}, kept[64] = {0};
-            for (int y = 140; y < 175; y++)
-                for (int x = 850; x < 930; x++) {
-                    const long i = (long)y * w + x;
-                    const unsigned c = src[i];
-                    if ((int)dac[c * 3] * 4 > 170 && (int)dac[c * 3 + 1] * 4 > 150 && (int)dac[c * 3 + 2] * 4 < 110) {
-                        hist[tag[i] & 63]++;
-                        if (!(is_scene_tag(tag[i]) && (t.inv_z[i] > 0.0f || is_span_tag(tag[i])))) kept[tag[i] & 63]++;
-                    }
-                }
-            for (int k = 0; k < 64; k++) if (hist[k]) fprintf(stderr, "[yel-tag] clock %llu tag %d: %ld yellow pixels, %ld kept as the original's\n", (unsigned long long)m->cpu.icount, k, hist[k], kept[k]);
-        }
-    }
+    long kept_hist[64] = { 0 };
     for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
         for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
             const long i = (long)y * w + x;
@@ -498,8 +489,37 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
                 dst[i] = nearest_index(dac, col);       /* the palette index, for anything that wants one */
                 if (rgb && mask) { rgb[i] = col; mask[i] = 1; }   /* and the true colour, which is what is shown */
                 replaced++;
+            } else kept_hist[tag[i] & 63]++;
+        }
+    {   /* F117_REMASTER_KEPT=1: the pixels of the 3D window left as the original drew them, by origin tag, every 120th composite.
+         * A tag of the model range (1 to 20) or the outline tags kept in quantity is a primitive Remastered does not draw (or a
+         * line drawn twice, as the hangar doors once were); the HUD, text, sprite and blit tags are the original's by design. */
+        static int calls;
+        if (getenv("F117_REMASTER_KEPT") && ++calls % 120 == 1) {
+            fprintf(stderr, "[kept] clock %llu, original pixels kept in the 3D window:", (unsigned long long)m->cpu.icount);
+            for (int k = 0; k < 64; k++) if (kept_hist[k]) fprintf(stderr, " tag %d%s: %ld;", k, (k >= DT_MODEL_SOLID && k <= DT_SPAN_SHADE) || k == DT_OUTLINE_FINE || k == DT_OUTLINE_COARSE ? "!" : "", kept_hist[k]);
+            fprintf(stderr, "\n");
+            if (getenv("F117_REMASTER_KEPT")[0] == '2') {       /* =2: the picture, the kept model pixels in magenta, the rest dimmed */
+                char path[64];
+                snprintf(path, sizeof path, "kept-%llu.ppm", (unsigned long long)m->cpu.icount);
+                FILE *kf = fopen(path, "wb");
+                if (kf) {
+                    fprintf(kf, "P6\n%d %d\n255\n", w, h);
+                    for (long i = 0; i < (long)w * h; i++) {
+                        const unsigned c = dst[i];
+                        const int in_window = (i % w) >= x0 && (i % w) < x1 && (i / w) >= y0 && (i / w) < y1;
+                        const int model = (tag[i] >= DT_MODEL_SOLID && tag[i] <= DT_SPAN_SHADE) || tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
+                        const int was_kept = in_window && model && !(rgb && mask && mask[i]);
+                        unsigned char px[3];
+                        if (was_kept) { px[0] = 255; px[1] = 0; px[2] = 255; }
+                        else { px[0] = (unsigned char)((dac[c * 3] << 2) / 2); px[1] = (unsigned char)((dac[c * 3 + 1] << 2) / 2); px[2] = (unsigned char)((dac[c * 3 + 2] << 2) / 2); }
+                        fwrite(px, 1, 3, kf);
+                    }
+                    fclose(kf);
+                }
             }
         }
+    }
     free(t.color);
     free(t.inv_z);
     free(t.index);

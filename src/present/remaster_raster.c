@@ -131,11 +131,13 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
                 const uint32_t o = t->color[i], p = t->palette ? t->palette[value & 255] : o;
                 t->color[i] = 0xFF000000u | ((((o >> 16 & 255) + (p >> 16 & 255)) / 2) << 16) | ((((o >> 8 & 255) + (p >> 8 & 255)) / 2) << 8) | (((o & 255) + (p & 255)) / 2);
                 if (t->index) t->index[i] = REMASTER_NO_INDEX;
+                if (t->inv_z[i] <= 0.0f) t->inv_z[i] = 1e-15f;     /* drawn: a hair of depth, so a composite sees something here (the bands sit at none) */
                 written++;
             } else if (t->index && t->palette && t->index[i] != REMASTER_NO_INDEX) {
                 const unsigned ni = op == REMASTER_AND ? (t->index[i] & value) : (t->index[i] | value);
                 t->index[i] = (uint16_t)(ni & 255);
                 t->color[i] = t->palette[ni & 255];
+                if (t->inv_z[i] <= 0.0f) t->inv_z[i] = 1e-15f;     /* as above */
                 written++;
             }
         }

@@ -404,3 +404,15 @@ drawn after its polygons twice (`remaster_target.line_strong`, huge bias, every 
 the original shows a line, and the depth-tested pixel elsewhere. Result: one stem, a full-width bar and no stray lines
 (`Desktop/ONShots/20261031-223058-hangar-door-*`). Lesson recorded in handoff.md: check lines and dots, not only polygons, and
 look at zoomed crops of the 3D view, not whole frames.
+
+## What Remastered still leaves to the original (31 October 2026): the kept-pixel report
+
+`F117_REMASTER_KEPT=1` prints, every 120th composite, the pixels of the 3D window left as the original drew them, by origin tag
+(model tags 1 to 20 and the outline tags are marked `!`: a primitive Remastered does not draw); `=2` also writes `kept-<clock>.ppm`,
+the frame with those pixels in magenta. `F117_REMASTER_PROBE=X,Y` lists the primitives whose screen box holds a point.
+First run on the moving takeoff: tags 1 and 3 kept 1,200 to 1,900 and 1,600 to 2,700 pixels a frame (about 2% of the 3D view), as
+a strip along the horizon (the sea and far ground), the distant aircraft and the dotted taxiway edges. The probe showed the strip
+is model 1, 3 and 29 polygons with fill word `FD80` (OR): Remastered applies a logic fill to the bands under it, but the bands
+sit at no depth and the composite takes 'no depth' for 'no Remastered geometry'. Fix: a pixel a logic fill changes gets a hair of
+depth (`remaster_polygon_logic`). Now 350 to 460 and 160 to 390 pixels a frame, outlines about 300: thin lines where Remastered has
+nothing under them, mostly around the distant aircraft and the taxiway edges. Still open.
