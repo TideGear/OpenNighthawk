@@ -164,6 +164,7 @@ static void remaster_true_colour(uint32_t *pixels, size_t count)
 static SDL_Texture *g_wtex;
 static uint32_t *g_wpix;
 static int g_ww, g_wh;
+static int g_wide_shown;              /* the last presented picture was the wide one: the mouse maps through it */
 static int wide_make(SDL_Renderer *ren, int aspect)
 {
     if (!g_remaster || !g_rlive || !g_rtrue || !g_rmask || !g_rbuf || !aspect || g_scale < 1) return 0;
@@ -484,6 +485,15 @@ static void window_to_guest(SDL_Renderer *ren, int aspect, float wx, float wy, i
     float rx = wx, ry = wy;
     SDL_RenderCoordinatesFromWindow(ren, wx, wy, &rx, &ry);
     SDL_FRect r = output_rect(ren, aspect);
+    if (g_wide_shown && g_ww > 0 && g_wh > 0) {          /* the wide Remastered view: the game's picture sits in the middle at its own size */
+        int ow = 0, oh = 0;
+        SDL_GetRenderOutputSize(ren, &ow, &oh);
+        const float n = (float)g_wh / 200.0f, tx = ow > 0 ? rx / (float)ow * (float)g_ww : 0.0f, ty = oh > 0 ? ry / (float)oh * 200.0f : 0.0f;
+        float gxf = (tx - (float)(g_ww - 320 * (int)n) / 2.0f) / n;
+        *gx = gxf < 0 ? 0 : gxf > 319.0f ? 319 : (int)gxf;
+        *gy = ty < 0 ? 0 : ty > 199.0f ? 199 : (int)ty;
+        return;
+    }
     float u = (rx - r.x) / r.w, v = (ry - r.y) / r.h;
     if (u < 0) u = 0;
     if (u > 0.9999f) u = 0.9999f;
@@ -1882,6 +1892,7 @@ int main(int argc, char **argv)
             }
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
+        g_wide_shown = wide;
         SDL_FRect dst = output_rect(ren, aspect);
         SDL_FRect dstv = dst;                                   /* the picture; dst stays the 4:3 shape the overlays use */
         if (wide) { int ow = 0, oh = 0; SDL_GetRenderOutputSize(ren, &ow, &oh); dstv.x = 0; dstv.y = 0; dstv.w = (float)ow; dstv.h = (float)oh; }

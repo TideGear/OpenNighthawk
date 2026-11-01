@@ -376,6 +376,6 @@ lines and the cockpit are whole, and the crosshair is at x = 958 of 1920.
 
 Known limits: the game culls whole models by its own 320-pixel view before asking for them, so an object that is entirely
 outside the original's field of view is not drawn in the margins (it pops in as it enters the middle); the terrain polygons
-that are not model requests yet stay as the original drew them inside the middle; the mouse position is mapped to the 4:3
-picture, so in a wide flight view the mouse is off (the front end, which is not wide, is unaffected); the cockpit's own
+that are not model requests yet stay as the original drew them inside the middle; the mouse maps through the wide picture (`window_to_guest`, `g_wide_shown`: the window's centre is the game's (160, 100); worked out, not yet tried with a real mouse);
+the cockpit's own
 sides are not extended, the world shows around it.
