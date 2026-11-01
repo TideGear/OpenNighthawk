@@ -416,3 +416,34 @@ is model 1, 3 and 29 polygons with fill word `FD80` (OR): Remastered applies a l
 sit at no depth and the composite takes 'no depth' for 'no Remastered geometry'. Fix: a pixel a logic fill changes gets a hair of
 depth (`remaster_polygon_logic`). Now 350 to 460 and 160 to 390 pixels a frame, outlines about 300: thin lines where Remastered has
 nothing under them, mostly around the distant aircraft and the taxiway edges. Still open.
+
+## Plan: Remastered from the rerun copy (interpolation, the second image, the margins, longer reach) - 31 October 2026
+
+**The owner's choice (31 Oct): the safe route.** The live machine is never changed. Remastered's model requests for a picture come from
+the same throwaway machine copy that `--present rerun` already runs for every in-between picture (docs/presentation.md, "The rerun
+mode"), with a wider view for the margins.
+
+**Why the copy.** Today Remastered fills from the live machine's last completed frame (`remaster_live.done`) but takes its mask from the
+Enhanced picture, which is the copy's in-between picture. The two are different moments: the second image that lags when moving, and the
+lag between the original's lines and Remastered's. The copy already runs the original's own drawing at exactly the picture's moment (nudged
+pose, computer-flown aircraft and weapons), so collecting the model requests in the same run gives geometry, mask and tags from one instant.
+
+**Steps** (each checked before the next):
+1. `rerun.c` runs the copy with its hooks cleared (`memset(&s->hooks, 0, ...)`); the snapshot keeps `exec_hook[]` (copied with the machine).
+   Add `rerun_set_collector(begin, exec, end, user)`: the copy gets `hooks.exec = exec`, and `begin`/`end` run around `machine_run`. The
+   collector is a second `remaster_live` (its own scene, frame and band state; the live one is untouched). The sound hook (index 0) is not
+   called in the copy. `end` finishes the frame (the copy's `frame` becomes its `done`, with the band state captured at its frame start).
+2. Check: at t = 0 the copy's frame equals the live frame of the same step (primitive count and vertices), over the recorded takeoff.
+3. `drawfeed.c`: `drawlive_render` marks `shown_copy` when the picture came from a copy; `remaster_apply` composites with the copy's frame when
+   set, else the live one (the picture of a logic step, t = 0 or 1, which the live frame matches). The single-slot hazard is the same as
+   `inter_hi`'s and is resolved the same way: in the threaded loop the picture is composited after the worker joins and before the next
+   `drawlive_prepare_rerun`.
+4. Widescreen margins and R6: before the copy runs, widen the view it sees (the view window words DS:85FA..8600 and whatever the walk's
+   out-of-view test, VGAME E3AC with D9E7, reads; to be read in `matched.c`, `vgame_scene_walk` and its callees). The extra model requests
+   exist only in the copy; the live machine and its clock are untouched. Isolation is checked by the existing `f117run` copy checks
+   (real machine, all 1 MiB and the fixes' state equal before and after).
+5. Cost: the copy already runs once per displayed in-between picture; the collector adds the scene decode and the render, nothing more to run.
+   Measure instructions and microseconds of a widened copy against an ordinary one (the `draw-rerun-probe` experiment's harness did this
+   for the ordinary copy: `D:/f117-archive/orphans-20261031.bundle`, `8849ce4`).
+
+**Not changed by this plan:** the Enhanced and original presentations, the live machine's timing, recordings and replays.
