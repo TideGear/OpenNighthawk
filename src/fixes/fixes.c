@@ -1156,7 +1156,9 @@ static const struct { const char *id, *what; } FIXES[] = {
 static int g_on[NFIXES];
 
 /* Options are not repairs: `all` never switches one on, so they are named explicitly (--fix QUIZ); `none` clears them. */
-static int is_option(const char *id) { return !strcmp(id, "QUIZ"); }
+/* Q11 is opt-in: the original places two aircraft parked beside the Siconella tower through the 16-bit wrap this fix removes, so
+ * the fix culls content the original draws (docs/owner-issues.md R7). */
+static int is_option(const char *id) { return !strcmp(id, "QUIZ") || !strcmp(id, "Q11"); }
 
 void fixes_register(void)
 {
