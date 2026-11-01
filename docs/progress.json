@@ -154,9 +154,9 @@
       {
         "item": "Two settings, Presentation (Original / Enhanced / Remastered) and Fixes (Original / Recommended / Custom), expanded to explicit options; saves tagged with their fix set",
         "weight": 2.0,
-        "done": 0.5,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "30 Oct 2026, branch p3-settings-menu. Fixes: Original, Recommended and Custom all work: --fixes original|recommended|custom (a custom set starts from none and takes the --fix IDs, in either order in the file; checked with --list-fixes), and the settings menu's Choose fixes screen lists every fix with its description and a switch, then writes fixes = custom and the fix = list to f117a.ini (run in the real app with scripted keys: one fix switched off gave a 33-fix ini, and a fresh run with it has exactly 33 on). Presentation: Original and Enhanced (--presentation, in the menu). Saves tagged with their fix set (commit ab4256b). Not done: the Remastered presentation, which stays refused; the owner has not looked at the picker."
+        "evidence": "30 Oct 2026, branch p3-settings-menu. Fixes: Original, Recommended and Custom all work: --fixes original|recommended|custom (a custom set starts from none and takes the --fix IDs, in either order in the file; checked with --list-fixes), and the settings menu's Choose fixes screen lists every fix with its description and a switch, then writes fixes = custom and the fix = list to f117a.ini (run in the real app with scripted keys: one fix switched off gave a 33-fix ini, and a fresh run with it has exactly 33 on). Presentation: Original and Enhanced (--presentation, in the menu). Saves tagged with their fix set (commit ab4256b). 1 Nov 2026: Remastered is no longer refused: the Presentation row cycles original, enhanced, remastered (src/host/settings.c C_PRESENTATION), the choice is written to f117a.ini as presentation = remastered and read back (tests/test_settings.c lines 39 to 119 check the cycle and the ini round trip), and a run with only that ini line started the app. Not done: the owner has not looked at the picker; the presentation scale and the picture age are not menu rows."
       },
       {
         "item": "Fan-community patches in the Recommended fix set, credited",
