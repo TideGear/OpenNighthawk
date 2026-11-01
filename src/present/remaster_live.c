@@ -7,6 +7,7 @@
 #include "band_state.h"
 #include "diagtag.h"
 #include "remaster_project.h"
+#include "tls.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -203,19 +204,23 @@ static uint32_t mean_colour(uint32_t a, uint32_t b)
  * per pixel of the game's 320 x 200 picture across and down: h/240 and h/200 for a picture at the 4:3 shape, N and N for the
  * picture N times finer that the Enhanced presentation keeps (320N x 200N, stretched to 4:3 later). */
 static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
-                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide);
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage);
 static void draw_scene(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
                        int have_band, const int origin[2], const int window[4], double ux, double uy)
 {
-    draw_scene_ex(m, t, fr, band_rec, have_band, origin, window, ux, uy, 0.0, 0);
+    draw_scene_ex(m, t, fr, band_rec, have_band, origin, window, ux, uy, 0.0, 0, 0);
 }
 
 /* xoff is the target pixel at which the game's own 320-pixel-wide picture starts, and wide asks for the world to fill the
- * target: the bands run off every side and nothing is cut at the game's clip window. */
+ * target: the bands run off every side and nothing is cut at the game's clip window. stage 0 draws everything; when workers share
+ * the rows, stages 1, 2 and 3 are run one after another, each on every worker (the lights' depth test reads the rows above and
+ * below, so a stage must be finished everywhere before the next starts): 1 the clear, the bands and the polygons, 2 the whole-line
+ * pass, 3 the ordinary line pass and the mask outside the game's window. */
 static double g_tm_clear, g_tm_bands, g_tm_prims, g_tm_lines;       /* F117_REMASTER_TIMING: milliseconds spent in each part of draw_scene_ex */
 static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
-                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide)
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage)
 {
+    const int do1 = stage == 0 || stage == 1, do2 = stage == 0 || stage == 2, do3 = stage == 0 || stage == 3;
     double tq0 = now_ms();
     t->cx = origin[0] * ux + xoff; t->cy = origin[1] * uy;           /* the game's origin, in its 320 x 200 pixels */
     t->sx = 256.0 * ux; t->sy = 256.0 * uy;
@@ -224,10 +229,10 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     for (unsigned i = 0; i < 256; i++) palette[i] = dac_colour(m, i);
     t->palette = palette;
     t->paint_index = REMASTER_NO_INDEX;
-    remaster_clear(t, 0xFF000000u);
+    if (do1) remaster_clear(t, 0xFF000000u);
     double tq1 = now_ms();
     g_tm_clear += tq1 - tq0;
-    if (have_band) {                            /* the sky and ground bands, as far as anything: the game's own state model */
+    if (do1 && have_band) {                     /* the sky and ground bands, as far as anything: the game's own state model */
         band_state st;
         band_exact_list ex;
         band_fine_list fine;
@@ -274,7 +279,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 t->paint_index = fine.q[q].colour;      /* the flat band's palette index stands under the smooth colour */
                 remaster_polygon_shaded(t, v, cols, 4);
             }
-            for (long i = 0; i < (long)t->w * t->h; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
+            for (long i = (long)remaster_row_lo(t) * t->w; i < (long)remaster_row_hi(t) * t->w; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
     }
     {   /* F117_REMASTER_PROBE=X,Y (game pixels): every primitive of one frame (the 700th drawn) whose screen box holds that point, and
@@ -282,7 +287,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         static int calls;
         const char *probe = getenv("F117_REMASTER_PROBE");
         double px = 0, py = 0;
-        if (probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && ++calls == 700) {
+        if (do1 && probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && ++calls == 700) {
             fprintf(stderr, "[probe] frame of %zu primitives, point %.1f,%.1f, clock %llu\n", fr->n, px, py, (unsigned long long)m->cpu.icount);
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
@@ -305,7 +310,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     }
     double tq2 = now_ms();
     g_tm_bands += tq2 - tq1;
-    for (size_t i = 0; i < fr->n; i++) {
+    for (size_t i = 0; do1 && i < fr->n; i++) {
         const remaster_prim *p = &fr->prim[i];
         uint32_t colour;
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
@@ -327,7 +332,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     double tq3 = now_ms();
     g_tm_prims += tq3 - tq2;
     if (t->line_strong) {                       /* the lines, after the polygons: whole (huge bias) into line_strong, then as the depth allows */
-        const size_t px = (size_t)t->w * t->h;
+        const size_t px = (size_t)(remaster_row_hi(t) - remaster_row_lo(t)) * t->w, off = (size_t)remaster_row_lo(t) * t->w;   /* this call's rows */
         int any_bright = 0;                     /* only bright lines are ever taken whole (the composite checks): skip the pass without any */
         for (size_t i = 0; i < fr->n && !any_bright; i++) {
             const remaster_prim *p = &fr->prim[i];
@@ -335,14 +340,15 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             if ((p->kind == SCENE_LINES || p->kind == SCENE_DOTS) && word_colour(m, p->colour_word, p->darken, &c))
                 any_bright = (int)(c >> 16 & 255) + (int)(c >> 8 & 255) + (int)(c & 255) > 200;
         }
-        if (any_bright) {                                /* the whole-line copy starts as the polygons alone */
-            memcpy(t->line_strong, t->color, px * 4);
-            memcpy(t->line_tmp_z, t->inv_z, px * 4);
+        if (any_bright && do2) {                         /* the whole-line copy starts as the polygons alone */
+            memcpy(t->line_strong + off, t->color + off, px * 4);
+            memcpy(t->line_tmp_z + off, t->inv_z + off, px * 4);
         }
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
+            if (pass == 0 ? !do2 : !do3) continue;
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
             if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
-            else t->line_bias = 0.0;
+            else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; }   /* the ordinary pass has no slope allowance */
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
                 uint32_t colour;
@@ -371,13 +377,13 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             t->color = c0; t->inv_z = z0;
         }
         t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL;
-        if (!any_bright) memcpy(t->line_strong, t->color, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
+        if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     g_tm_lines += now_ms() - tq3;
-    if (!wide) {                                /* nothing outside the game's clip window */
+    if (!wide && do3) {                         /* nothing outside the game's clip window */
         const int x0 = (int)(window[0] * ux), x1 = (int)((window[2] + 1) * ux);
         const int y0 = (int)(window[1] * uy), y1 = (int)((window[3] + 1) * uy);
-        for (int y = 0; y < t->h; y++)
+        for (int y = remaster_row_lo(t); y < remaster_row_hi(t); y++)
             for (int x = 0; x < t->w; x++)
                 if (x < x0 || x >= x1 || y < y0 || y >= y1) t->color[(long)y * t->w + x] = 0xFF000000u;
     }
@@ -435,11 +441,22 @@ static int is_scene_tag(uint8_t tag) { return (tag >= DT_MODEL_SOLID && tag <= D
 static int is_span_tag(uint8_t tag) { return tag == DT_SPANPOLY_FINE || tag == DT_BAND_STATE || (tag >= DT_SPAN_NOT_POLY && tag <= DT_SPAN_SHADE); }
 
 /* The nearest of the 256 palette entries (six-bit channels) to an 0xAARRGGBB colour, with a small cache. */
+/* The cache is keyed by the palette's contents (a hash of its 768 bytes, made when a worker starts its share), not its address: the same
+ * buffer holds a different palette every few pictures, and a stale answer would depend on what was asked before. */
+static F117_TLS const uint8_t *g_np_dac;
+static F117_TLS uint64_t g_np_key;
+static void nearest_reset(void) { g_np_dac = NULL; }
 static uint8_t nearest_index(const uint8_t *dac, uint32_t c)
 {
-    static struct { uint32_t colour; uint8_t index; uint8_t valid; const uint8_t *dac; } cache[4096];
+    static F117_TLS struct { uint32_t colour; uint8_t index; uint8_t valid; uint64_t palette; } cache[4096];
+    if (g_np_dac != dac) {
+        uint64_t h = 1469598103934665603ull;
+        for (int i = 0; i < 768; i++) h = (h ^ dac[i]) * 1099511628211ull;
+        g_np_key = h | 1;
+        g_np_dac = dac;
+    }
     const unsigned slot = (c * 2654435761u) >> 20 & 4095;
-    if (cache[slot].valid && cache[slot].colour == c && cache[slot].dac == dac) return cache[slot].index;
+    if (cache[slot].valid && cache[slot].colour == c && cache[slot].palette == g_np_key) return cache[slot].index;
     const int cr = (int)(c >> 16 & 255), cg = (int)(c >> 8 & 255), cb = (int)(c & 255);
     unsigned best = 0;
     long bestd = -1;
@@ -448,8 +465,129 @@ static uint8_t nearest_index(const uint8_t *dac, uint32_t c)
         const long d = (long)(r - cr) * (r - cr) + (long)(g - cg) * (g - cg) + (long)(b - cb) * (b - cb);
         if (bestd < 0 || d < bestd) { bestd = d; best = i; }
     }
-    cache[slot].colour = c; cache[slot].index = (uint8_t)best; cache[slot].valid = 1; cache[slot].dac = dac;
+    cache[slot].colour = c; cache[slot].index = (uint8_t)best; cache[slot].valid = 1; cache[slot].palette = g_np_key;
     return (uint8_t)best;
+}
+
+/* The picture's rows are shared among workers when the host offers them (remaster_live_set_parallel). */
+static void (*g_par)(void (*fn)(void *, int), void *arg, int parts);
+static int g_par_parts = 1;
+void remaster_live_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts)
+{
+    g_par = run;
+    g_par_parts = !run || parts < 1 ? 1 : parts > REMASTER_PARTS ? REMASTER_PARTS : parts;
+}
+
+typedef struct {
+    const machine_t *m;
+    remaster_target base;
+    const remaster_frame *fr;
+    const int32_t *band;
+    int have_band, wide, parts, stage;
+    const int *origin, *window;
+    double n, xoff;
+} scene_job;
+
+static void scene_rows_part(void *arg, int part)
+{
+    const scene_job *j = (const scene_job *)arg;
+    remaster_target t = j->base;
+    if (j->parts > 1) { t.y_lo = t.h * part / j->parts; t.y_hi = t.h * (part + 1) / j->parts; }
+    draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage);
+}
+
+static void run_parts(void (*fn)(void *, int), void *arg, int parts)
+{
+    if (parts > 1 && g_par) g_par(fn, arg, parts);
+    else fn(arg, 0);
+}
+
+typedef struct {
+    const uint8_t *src, *tag, *dac;
+    uint8_t *dst, *mask;
+    uint32_t *rgb, *wide_out;
+    const remaster_target *t;
+    int w, h, tw, xoff, wide, x0, x1, y0, y1, parts;
+    long replaced[REMASTER_PARTS], kept[REMASTER_PARTS][64];
+} replace_job;
+
+/* One worker's rows of the replace loop (and of the wide picture): every pixel depends only on its own row and on read-only buffers. */
+static void replace_part(void *arg, int part)
+{
+    replace_job *j = (replace_job *)arg;
+    nearest_reset();
+    const uint8_t *src = j->src, *tag = j->tag, *dac = j->dac;
+    uint8_t *dst = j->dst, *mask = j->mask;
+    uint32_t *rgb = j->rgb, *wide_out = j->wide_out;
+    const remaster_target t = *j->t;
+    const int w = j->w, h = j->h, tw = j->tw, xoff = j->xoff, wide = j->wide, x0 = j->x0, x1 = j->x1, y0 = j->y0, y1 = j->y1;
+    const int rlo = h * part / j->parts, rhi = h * (part + 1) / j->parts;
+    int ry0 = y0 < 0 ? 0 : y0, ry1 = y1 < h ? y1 : h;
+    if (ry0 < rlo) ry0 = rlo;
+    if (ry1 > rhi) ry1 = rhi;
+    long kept_hist[64] = { 0 };
+    long replaced = 0;
+    for (int y = ry0; y < ry1; y++)
+        for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
+            const long i = (long)y * w + x, ti = (long)y * tw + x + xoff;     /* i: the game's picture; ti: the same pixel on the canvas */
+            /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
+             * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
+            /* The original's model lines (outline edges, DT_OUTLINE_FINE and its coarse twin) are replaced too where Remastered has
+             * geometry: it draws its own lines, and keeping the original's as well drew every hangar door twice. */
+            const int outline = tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
+            if ((is_scene_tag(tag[i]) || outline) && (t.inv_z[ti] > 0.0f || is_span_tag(tag[i]))) {
+                uint32_t col = t.color[ti];
+                /* Only bright lines (the doors' yellow, the lights, the runway markings): the dark dots and lines the original draws
+                 * behind a door must stay behind it. */
+                const uint32_t ls = t.line_strong[ti];
+                const int bright = (int)(ls >> 16 & 255) + (int)(ls >> 8 & 255) + (int)(ls & 255) > 200;
+                if (bright && ls != col) {          /* a line pixel the depth test shortened: whole where the original drew a line next to it */
+                    int near_line = 0;
+                    /* The original's lines and lights can lag one logic step behind the polygons (stale projection records): up to
+                     * about four of its pixels, twelve of ours, from where Remastered draws them. */
+                    for (int dy = -12; dy <= 12 && !near_line; dy++)
+                        for (int dx = -12; dx <= 12; dx++) {
+                            const int yy = y + dy, xx = x + dx;
+                            if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+                            const long ni = (long)yy * w + xx;
+                            const uint8_t tg = tag[ni];
+                            if (tg != DT_OUTLINE_FINE && tg != DT_OUTLINE_COARSE) continue;
+                            /* the original's line pixel must be this line's colour (the doors' yellow beside the doors' yellow, a
+                             * light beside its light), or a line the original hides would show */
+                            const unsigned oc = src[ni];
+                            const int dr = (int)(dac[oc * 3] << 2) - (int)(ls >> 16 & 255), dg = (int)(dac[oc * 3 + 1] << 2) - (int)(ls >> 8 & 255),
+                                      db = (int)(dac[oc * 3 + 2] << 2) - (int)(ls & 255);
+                            if (abs(dr) + abs(dg) + abs(db) < 96) { near_line = 1; break; }
+                        }
+                    if (near_line) col = ls;
+                }
+                dst[i] = nearest_index(dac, col);       /* the palette index, for anything that wants one */
+                if (rgb && mask) { rgb[i] = col; mask[i] = 1; }   /* and the true colour, which is what is shown */
+                replaced++;
+            } else kept_hist[tag[i] & 63]++;
+        }
+    if (wide) {                                 /* the wide picture: the margins from the canvas, the middle from the composite */
+        for (int y = rlo; y < rhi; y++) {
+            uint32_t *row = wide_out + (long)y * tw;
+            const uint32_t *col = t.color + (long)y * tw, *ls = t.line_strong + (long)y * tw;
+            for (int x = 0; x < tw; x++) {
+                /* The margins have no original picture to say where a line is visible, so a bright line (the doors' yellow, the lights)
+                 * is taken whole there, as beside an original line in the middle; the rest is the depth-tested render. */
+                const uint32_t c = ls[x];
+                const int bright = (int)(c >> 16 & 255) + (int)(c >> 8 & 255) + (int)(c & 255) > 200;
+                row[x] = bright && c != col[x] ? c : col[x];
+            }
+            for (int x = 0; x < w; x++) {       /* the game's own picture, centred: Remastered's pixel where it replaced one, the original's elsewhere */
+                const long i = (long)y * w + x;
+                if (mask[i]) { row[xoff + x] = rgb[i]; continue; }
+                const unsigned c = src[i];
+                const unsigned cr = dac[c * 3], cg = dac[c * 3 + 1], cb = dac[c * 3 + 2];
+                row[xoff + x] = 0xFF000000u | (cr << 2 | cr >> 4) << 16 | (cg << 2 | cg >> 4) << 8 | (cb << 2 | cb >> 4);
+            }
+        }
+    }
+    j->replaced[part] = replaced;
+    memcpy(j->kept[part], kept_hist, sizeof kept_hist);
 }
 
 int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
@@ -479,7 +617,13 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
     const double tm0 = now_ms();
-    draw_scene_ex(m, &t, &r->done, r->done_band, r->done_have_band, r->done_origin, r->done_window, n, n, (double)xoff, wide);
+    const int parts = g_par ? g_par_parts : 1;
+    t.y_lo = t.y_hi = 0;
+    {
+        scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, parts, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+        if (parts > 1) for (sj.stage = 1; sj.stage <= 3; sj.stage++) run_parts(scene_rows_part, &sj, parts);       /* a barrier between the stages */
+        else run_parts(scene_rows_part, &sj, 1);
+    }
     const double tm1 = now_ms();
     {                                           /* F117_REMASTER_DUMP=FILE.ppm: the render itself, once, for a look */
         static int dumped; const char *path = getenv("F117_REMASTER_DUMP");
@@ -549,45 +693,17 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         }
     }
     long kept_hist[64] = { 0 };
-    for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; y++)
-        for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
-            const long i = (long)y * w + x, ti = (long)y * tw + x + xoff;     /* i: the game's picture; ti: the same pixel on the canvas */
-            /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
-             * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
-            /* The original's model lines (outline edges, DT_OUTLINE_FINE and its coarse twin) are replaced too where Remastered has
-             * geometry: it draws its own lines, and keeping the original's as well drew every hangar door twice. */
-            const int outline = tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
-            if ((is_scene_tag(tag[i]) || outline) && (t.inv_z[ti] > 0.0f || is_span_tag(tag[i]))) {
-                uint32_t col = t.color[ti];
-                /* Only bright lines (the doors' yellow, the lights, the runway markings): the dark dots and lines the original draws
-                 * behind a door must stay behind it. */
-                const uint32_t ls = t.line_strong[ti];
-                const int bright = (int)(ls >> 16 & 255) + (int)(ls >> 8 & 255) + (int)(ls & 255) > 200;
-                if (bright && ls != col) {          /* a line pixel the depth test shortened: whole where the original drew a line next to it */
-                    int near_line = 0;
-                    /* The original's lines and lights can lag one logic step behind the polygons (stale projection records): up to
-                     * about four of its pixels, twelve of ours, from where Remastered draws them. */
-                    for (int dy = -12; dy <= 12 && !near_line; dy++)
-                        for (int dx = -12; dx <= 12; dx++) {
-                            const int yy = y + dy, xx = x + dx;
-                            if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
-                            const long ni = (long)yy * w + xx;
-                            const uint8_t tg = tag[ni];
-                            if (tg != DT_OUTLINE_FINE && tg != DT_OUTLINE_COARSE) continue;
-                            /* the original's line pixel must be this line's colour (the doors' yellow beside the doors' yellow, a
-                             * light beside its light), or a line the original hides would show */
-                            const unsigned oc = src[ni];
-                            const int dr = (int)(dac[oc * 3] << 2) - (int)(ls >> 16 & 255), dg = (int)(dac[oc * 3 + 1] << 2) - (int)(ls >> 8 & 255),
-                                      db = (int)(dac[oc * 3 + 2] << 2) - (int)(ls & 255);
-                            if (abs(dr) + abs(dg) + abs(db) < 96) { near_line = 1; break; }
-                        }
-                    if (near_line) col = ls;
-                }
-                dst[i] = nearest_index(dac, col);       /* the palette index, for anything that wants one */
-                if (rgb && mask) { rgb[i] = col; mask[i] = 1; }   /* and the true colour, which is what is shown */
-                replaced++;
-            } else kept_hist[tag[i] & 63]++;
+    {
+        replace_job rj;
+        memset(&rj, 0, sizeof rj);
+        rj.src = src; rj.tag = tag; rj.dac = dac; rj.dst = dst; rj.mask = mask; rj.rgb = rgb; rj.wide_out = wide_out; rj.t = &t;
+        rj.w = w; rj.h = h; rj.tw = tw; rj.xoff = xoff; rj.wide = wide; rj.x0 = x0; rj.x1 = x1; rj.y0 = y0; rj.y1 = y1; rj.parts = parts;
+        run_parts(replace_part, &rj, parts);
+        for (int k = 0; k < parts; k++) {
+            replaced += rj.replaced[k];
+            for (int g = 0; g < 64; g++) kept_hist[g] += rj.kept[k][g];
         }
+    }
     {   /* F117_REMASTER_KEPT=1: the pixels of the 3D window left as the original drew them, by origin tag, every 120th composite.
          * A tag of the model range (1 to 20) or the outline tags kept in quantity is a primitive Remastered does not draw (or a
          * line drawn twice, as the hangar doors once were); the HUD, text, sprite and blit tags are the original's by design. */
@@ -617,25 +733,65 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             }
         }
     }
-    if (wide) {                                 /* the wide picture: the margins from the canvas, the middle from the composite */
-        for (int y = 0; y < h; y++) {
-            uint32_t *row = wide_out + (long)y * tw;
-            const uint32_t *col = t.color + (long)y * tw, *ls = t.line_strong + (long)y * tw;
-            for (int x = 0; x < tw; x++) {
-                /* The margins have no original picture to say where a line is visible, so a bright line (the doors' yellow, the lights)
-                 * is taken whole there, as beside an original line in the middle; the rest is the depth-tested render. */
-                const uint32_t c = ls[x];
-                const int bright = (int)(c >> 16 & 255) + (int)(c >> 8 & 255) + (int)(c & 255) > 200;
-                row[x] = bright && c != col[x] ? c : col[x];
+    if (parts > 1 && getenv("F117_REMASTER_THREADCHECK")) {   /* diagnostic: the same picture again on one thread, every output pixel compared */
+        const size_t npx = (size_t)w * h, nwide = (size_t)tw * h;
+        uint8_t *c_dst = (uint8_t *)malloc(npx), *c_mask = (uint8_t *)malloc(npx);
+        uint32_t *c_rgb = (uint32_t *)malloc(npx * 4), *c_wide = wide ? (uint32_t *)malloc(nwide * 4) : NULL;
+        if (c_dst && c_mask && c_rgb && (c_wide || !wide)) {
+            memcpy(c_dst, dst, npx); memcpy(c_mask, mask, npx); memcpy(c_rgb, rgb, npx * 4);
+            const size_t nsc = (size_t)tw * h;
+            uint32_t *sc_col = (uint32_t *)malloc(nsc * 4), *sc_str = (uint32_t *)malloc(nsc * 4);
+            float *sc_z = (float *)malloc(nsc * 4);
+            if (sc_col && sc_str && sc_z) { memcpy(sc_col, t.color, nsc * 4); memcpy(sc_str, t.line_strong, nsc * 4); memcpy(sc_z, t.inv_z, nsc * 4); }
+            if (wide) memcpy(c_wide, wide_out, nwide * 4);
+            t.y_lo = t.y_hi = 0;
+            scene_job sj1 = { m, t, &r->done, r->done_band, r->done_have_band, wide, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+            run_parts(scene_rows_part, &sj1, 1);
+            memcpy(dst, src, npx);
+            memset(mask, 0, npx);
+            replace_job rj1;
+            memset(&rj1, 0, sizeof rj1);
+            rj1.src = src; rj1.tag = tag; rj1.dac = dac; rj1.dst = dst; rj1.mask = mask; rj1.rgb = rgb; rj1.wide_out = wide_out; rj1.t = &t;
+            rj1.w = w; rj1.h = h; rj1.tw = tw; rj1.xoff = xoff; rj1.wide = wide; rj1.x0 = x0; rj1.x1 = x1; rj1.y0 = y0; rj1.y1 = y1; rj1.parts = 1;
+            run_parts(replace_part, &rj1, 1);
+            if (sc_col && sc_str && sc_z && getenv("F117_REMASTER_THREADCHECK")[0] == '2') {
+                size_t dc = 0, ds = 0, dz = 0; int fy_c = -1, fy_s = -1, fy_z = -1, ly = -1;
+                for (size_t i = 0; i < nsc; i++) {
+                    const int y = (int)(i / (size_t)tw);
+                    if (sc_col[i] != t.color[i]) { dc++; if (fy_c < 0) fy_c = y; ly = y; }
+                    if (sc_str[i] != t.line_strong[i]) { ds++; if (fy_s < 0) fy_s = y; }
+                    if (sc_z[i] != t.inv_z[i]) { dz++; if (fy_z < 0) fy_z = y; }
+                }
+                if (dc || ds || dz) fprintf(stderr, "[threadcheck] scene: colour %zu (from row %d to %d), whole-line layer %zu (from row %d), depth %zu (from row %d)\n", dc, fy_c, ly, ds, fy_s, dz, fy_z);
             }
-            for (int x = 0; x < w; x++) {       /* the game's own picture, centred: Remastered's pixel where it replaced one, the original's elsewhere */
-                const long i = (long)y * w + x;
-                if (mask[i]) { row[xoff + x] = rgb[i]; continue; }
-                const unsigned c = src[i];
-                const unsigned cr = dac[c * 3], cg = dac[c * 3 + 1], cb = dac[c * 3 + 2];
-                row[xoff + x] = 0xFF000000u | (cr << 2 | cr >> 4) << 16 | (cg << 2 | cg >> 4) << 8 | (cb << 2 | cb >> 4);
+            free(sc_col); free(sc_str); free(sc_z);
+            size_t bad = 0, bad_narrow = 0;
+            int first_y = -1, last_y = -1;
+            for (size_t i = 0; i < npx; i++) {
+                const int diff = dst[i] != c_dst[i] || mask[i] != c_mask[i] || (mask[i] && rgb[i] != c_rgb[i]);
+                bad += diff; bad_narrow += diff;
+                if (diff) {
+                    if (first_y < 0) first_y = (int)(i / (size_t)w);
+                    last_y = (int)(i / (size_t)w);
+                    static int shown_diffs;
+                    if (shown_diffs++ < 4 && getenv("F117_REMASTER_THREADCHECK")[0] == '2')
+                        fprintf(stderr, "[threadcheck] pixel %zu,%zu: threaded dst %u mask %u rgb %06X, one thread dst %u mask %u rgb %06X; tag %u inv_z %g line_strong %06X colour %06X\n",
+                                i % (size_t)w, i / (size_t)w, c_dst[i], c_mask[i], c_rgb[i] & 0xFFFFFF, dst[i], mask[i], rgb[i] & 0xFFFFFF, tag[i],
+                                (double)t.inv_z[(i / (size_t)w) * (size_t)tw + i % (size_t)w + (size_t)xoff], t.line_strong[(i / (size_t)w) * (size_t)tw + i % (size_t)w + (size_t)xoff] & 0xFFFFFF,
+                                t.color[(i / (size_t)w) * (size_t)tw + i % (size_t)w + (size_t)xoff] & 0xFFFFFF);
+                }
             }
+            if (wide) for (size_t i = 0; i < nwide; i++) {
+                const int diff = wide_out[i] != c_wide[i];
+                bad += diff;
+                if (diff) { if (first_y < 0) first_y = (int)(i / (size_t)tw); last_y = (int)(i / (size_t)tw); }
+            }
+            if (bad && getenv("F117_REMASTER_THREADCHECK")[0] == '2') fprintf(stderr, "[threadcheck] differing rows %d..%d of %d (%zu in the game's picture)\n", first_y, last_y, h, bad_narrow);
+            static unsigned checks, mismatches;
+            checks++; mismatches += bad != 0;
+            if (checks % 60 == 1 || bad) fprintf(stderr, "[threadcheck] %u pictures checked on %d threads against one, %u differ (this one: %zu pixels)\n", checks, parts, mismatches, bad);
         }
+        free(c_dst); free(c_mask); free(c_rgb); free(c_wide);
     }
     if (getenv("F117_REMASTER_TIMING")) {
         static double s_scene, s_loop; static unsigned s_n;

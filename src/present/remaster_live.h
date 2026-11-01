@@ -43,6 +43,12 @@ int remaster_live_composite(remaster_live *r, const machine_t *m, int n, const u
 /* rgb and mask (320n x 200n, may be NULL) receive the true colour of every replaced pixel and a 1 in mask for it; the
  * display shows those instead of the palette entry of dst, which is how a smooth gradient avoids the palette's steps. */
 
+#define REMASTER_PARTS 8
+
+/* Let the composite share a picture's rows among workers: run(fn, arg, parts) must call fn(arg, 0) to fn(arg, parts - 1), in any
+ * order or at once, and return when all are done. Without it (or parts 1) everything runs on the calling thread. */
+void remaster_live_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts);
+
 /* The composite, and with wide_w > 320n the widescreen picture too (the fit rule, docs/remastered-design.md): the world is drawn once
  * across a canvas wide_w pixels wide and 200n tall at the game's own projection scale, with its origin shifted to keep the crosshair at
  * the centre; the bands run off every side and nothing is cut at the clip window. The game's own picture is laid in the middle at its own

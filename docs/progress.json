@@ -203,9 +203,9 @@
       {
         "item": "Remastered: interpolation between logic steps",
         "weight": 0.5,
-        "done": 0.4,
+        "done": 0.6,
         "kind": "estimate",
-        "evidence": "1 Nov 2026: the Remastered picture is made for every in-between picture, not every logic step: it takes its frame from the throwaway machine copy that drew that picture (the same moment as the picture it replaces pixels of). Measured on the owner's takeoff roll with --present-log (1920 x 1080, scale 3, 7.0 G to 7.3 G): 44.6 distinct pictures a second against 15 logic steps (Enhanced about 56, held to the display's rate), none repeated. A moving takeoff at about 80 knots shows no misalignment between the composite's mask and its fill; the owner's report of a second image lagging behind (R5) was reduced by about a third by this change but not shown gone. Not done: 60 a second (a picture costs about 9.5 ms to compose plus 6 ms of other work plus 6 ms to present; composing on a second thread is the next step), fast turning flight, the owner's look."
+        "evidence": "1 Nov 2026: the Remastered picture is made for every in-between picture, not every logic step: it takes its frame from the throwaway machine copy that drew that picture (the same moment as the picture it replaces pixels of). Measured on the owner's takeoff roll with --present-log (1920 x 1080, scale 3, 7.0 G to 7.3 G): 44.6 distinct pictures a second against 15 logic steps (Enhanced about 56, held to the display's rate), none repeated. A moving takeoff at about 80 knots shows no misalignment between the composite's mask and its fill; the owner's report of a second image lagging behind (R5) was reduced by about a third by this change but not shown gone. The composite now runs on four threads (rows shared; the scene in three barrier stages; checked against one thread on 1,681 pictures of the roll with 0 differing pixels): 60.2 pictures a second at 1920 x 1080 on the owner's takeoff roll, against 48.1 on one thread (one run at a time, --present-log). Not done: the owner's look (R5, the second lagging image, is not confirmed gone), fast turning flight at 60 a second, the picture's cost at 4K."
       },
       {
         "item": "Remastered: the owner has looked and approved",

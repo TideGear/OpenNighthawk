@@ -239,6 +239,32 @@ int main(void)
         CHECK(green >= 6);
         free(ref); free(t.color); free(t.inv_z);
     }
+    /* 4. rows shared among workers: drawing the same scene in row bands (y_lo, y_hi) gives exactly the picture drawn whole */
+    {
+        remaster_target whole = make(64, 48), banded = make(64, 48);
+        remaster_v3 far_q[4], near_q[4];
+        quad(far_q, 0x08000000, 20, 3);
+        quad(near_q, 0x03000000, 9, -6);
+        const remaster_v3 slanted[4] = { { -0x300000, 0x40000, 0x300000 }, { 0x300000, 0x40000, 0x300000 }, { 0x300000, 0x40000, 0x4000000 }, { -0x300000, 0x40000, 0x4000000 } };
+        const uint32_t cols[4] = { 0xFF204060u, 0xFF4060A0u, 0xFFA0C0E0u, 0xFF102030u };
+        remaster_target *both[2] = { &whole, &banded };
+        for (int k = 0; k < 2; k++) {
+            const int bands = k == 0 ? 1 : 4;
+            for (int b = 0; b < bands; b++) {
+                remaster_target *t = both[k];
+                t->y_lo = t->h * b / bands; t->y_hi = t->h * (b + 1) / bands;
+                if (bands == 1) t->y_lo = t->y_hi = 0;
+                remaster_clear(t, 0xFF000000u);
+                remaster_polygon(t, far_q, 4, RED);
+                remaster_polygon(t, near_q, 4, GREEN);
+                remaster_polygon_shaded(t, far_q, cols, 4);
+                remaster_polygon(t, slanted, 4, BLUE);
+                remaster_line(t, (remaster_v3){ -0x400000, 0x20000, 0x1000000 }, (remaster_v3){ 0x400000, -0x10000, 0x2000000 }, 3.0, 0xFFFFFF00u);
+            }
+        }
+        CHECK(!memcmp(whole.color, banded.color, (size_t)64 * 48 * 4) && !memcmp(whole.inv_z, banded.inv_z, (size_t)64 * 48 * 4));
+        free(whole.color); free(whole.inv_z); free(banded.color); free(banded.inv_z);
+    }
     puts("remaster raster passes");
     return 0;
 }

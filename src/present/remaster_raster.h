@@ -36,6 +36,9 @@ typedef struct {
      * polygons twice: with a huge bias into line_strong (every line whole), and with the default into color; the caller
      * picks per pixel, using the original's own picture to say where a line really is visible. */
     double line_bias;
+    /* The rows a call may touch, [y_lo, y_hi): one worker's share when a picture is drawn by several at once (the rows are
+     * independent). y_hi 0 means every row. */
+    int y_lo, y_hi;
     /* The whole-line pass: a line passes the depth test where it is no farther than the surface under it by more than that
      * surface's own depth slope times line_slope (a ground polygon seen at a grazing angle changes depth a lot from one pixel to the
      * next, so its markings pass; a hangar's face is nearly flat, so a light behind it does not). line_ref_z is the polygons' depth
@@ -45,6 +48,9 @@ typedef struct {
     uint32_t *line_strong;
     float *line_tmp_z;
 } remaster_target;
+
+static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }
+static inline int remaster_row_hi(const remaster_target *t) { return t->y_hi > 0 ? t->y_hi : t->h; }
 
 #define REMASTER_NO_INDEX 0xFFFFu
 

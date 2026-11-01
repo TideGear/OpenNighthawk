@@ -407,6 +407,44 @@ static int pal_helper_main(void *u)
     return 0;
 }
 
+/* Helpers for the Remastered composite: a picture's rows are shared among them and the calling thread (remaster_live_set_parallel). */
+#define PAR_HELPERS 3
+typedef struct {
+    SDL_Thread *thread;
+    SDL_Semaphore *go, *done;
+    void (*fn)(void *, int);
+    void *arg;
+    int part, quit;
+} par_helper;
+static par_helper g_par[PAR_HELPERS];
+
+static int par_helper_main(void *u)
+{
+    par_helper *p = (par_helper *)u;
+    for (;;) {
+        SDL_WaitSemaphore(p->go);
+        if (p->quit) break;
+        p->fn(p->arg, p->part);
+        SDL_SignalSemaphore(p->done);
+    }
+    return 0;
+}
+
+static void par_run(void (*fn)(void *, int), void *arg, int parts)
+{
+    int used = 0;
+    for (int h = 0; h < PAR_HELPERS && h + 1 < parts; h++) {
+        par_helper *p = &g_par[h];
+        if (!p->thread) { fn(arg, h + 1); continue; }          /* no helper: this share is done here */
+        p->fn = fn; p->arg = arg; p->part = h + 1;
+        SDL_SignalSemaphore(p->go);
+        used |= 1 << h;
+    }
+    fn(arg, 0);
+    for (int h = 0; h < PAR_HELPERS; h++)
+        if (used & (1 << h)) SDL_WaitSemaphore(g_par[h].done);
+}
+
 /* The fine picture through the frame's palette, in bands on the helpers. */
 static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, size_t n)
 {
@@ -1509,6 +1547,15 @@ int main(int argc, char **argv)
                 if (g_pal[k].go && g_pal[k].done)
                     g_pal[k].thread = SDL_CreateThread(pal_helper_main, "present-palette", &g_pal[k]);
             }
+            if (!getenv("F117_REMASTER_THREADS_OFF")) {                  /* the Remastered composite on four threads */
+                int made = 0;
+                for (int k = 0; k < PAR_HELPERS; k++) {
+                    g_par[k].go = SDL_CreateSemaphore(0);
+                    g_par[k].done = SDL_CreateSemaphore(0);
+                    if (g_par[k].go && g_par[k].done) { g_par[k].thread = SDL_CreateThread(par_helper_main, "remaster-rows", &g_par[k]); made += g_par[k].thread != NULL; }
+                }
+                if (made == PAR_HELPERS) remaster_live_set_parallel(par_run, 1 + PAR_HELPERS);
+            }
         }
     }
     const uint64_t start_ns = SDL_GetTicksNS();
@@ -2182,6 +2229,12 @@ int main(int argc, char **argv)
             g_pal[k].quit = 1;
             SDL_SignalSemaphore(g_pal[k].go);
             SDL_WaitThread(g_pal[k].thread, NULL);
+        }
+    for (int k = 0; k < PAR_HELPERS; k++)
+        if (g_par[k].thread) {
+            g_par[k].quit = 1;
+            SDL_SignalSemaphore(g_par[k].go);
+            SDL_WaitThread(g_par[k].thread, NULL);
         }
     if (H.record) fclose(H.record);
     if (g_present_log) fclose(g_present_log);

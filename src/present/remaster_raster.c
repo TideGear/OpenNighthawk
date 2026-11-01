@@ -10,8 +10,9 @@ typedef struct { double x, y, z; } dv3;
 
 void remaster_clear(remaster_target *t, uint32_t color)
 {
-    for (long i = 0; i < (long)t->w * t->h; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
-    if (t->index) for (long i = 0; i < (long)t->w * t->h; i++) t->index[i] = REMASTER_NO_INDEX;
+    const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
+    for (long i = from; i < to; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
+    if (t->index) for (long i = from; i < to; i++) t->index[i] = REMASTER_NO_INDEX;
 }
 
 /* clip the polygon against z >= near (Sutherland-Hodgman on the one plane) */
@@ -84,6 +85,8 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     if (y0 < 0) y0 = 0;
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
+    if (y0 < remaster_row_lo(t)) y0 = remaster_row_lo(t);
+    if (y1 > remaster_row_hi(t) - 1) y1 = remaster_row_hi(t) - 1;
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
@@ -122,6 +125,8 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     if (y0 < 0) y0 = 0;
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
+    if (y0 < remaster_row_lo(t)) y0 = remaster_row_lo(t);
+    if (y1 > remaster_row_hi(t) - 1) y1 = remaster_row_hi(t) - 1;
     /* The weights l1 and l2 (l3 = 1 - l1 - l2) are linear in the pixel's position, so a row steps them by a constant instead of
      * dividing at every pixel; the depth and the three colour channels are linear in them. */
     const double a1 = (b.y - c.y) / den, b1 = (c.x - b.x) / den, a2 = (c.y - a.y) / den, b2 = (a.x - c.x) / den;
@@ -172,6 +177,8 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
     if (y0 < 0) y0 = 0;
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
+    if (y0 < remaster_row_lo(t)) y0 = remaster_row_lo(t);
+    if (y1 > remaster_row_hi(t) - 1) y1 = remaster_row_hi(t) - 1;
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
