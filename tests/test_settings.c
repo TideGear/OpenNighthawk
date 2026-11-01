@@ -34,6 +34,15 @@ int main(void)
         settings_load(&s, "");
         CHECK(!strcmp(settings_value(&s, cb), "off"));
     }
+    /* the picture detail and the machine clock are rows too, with the game's own defaults when the file leaves them out */
+    {
+        const int ps = find("present-scale"), ips = find("ips");
+        CHECK(ps >= 0 && ips >= 0);
+        settings_load(&s, "");
+        CHECK(!strcmp(settings_value(&s, ps), "auto") && !strcmp(settings_value(&s, ips), "60000000"));
+        settings_load(&s, "present-scale = 6\nips = 9000000\n");
+        CHECK(!strcmp(settings_value(&s, ps), "6") && !strcmp(settings_value(&s, ips), "9000000"));
+    }
 
     /* values come from the file; absent keys take the game's defaults */
     settings_load(&s, "; mine\npresentation = Enhanced\nfullscreen = true\nscale = 4\n");

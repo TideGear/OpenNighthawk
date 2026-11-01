@@ -22,6 +22,8 @@ static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
 static const char *const C_AGE[] = { "interp", "extrapolate", NULL };
 static const char *const C_DEAD[] = { "0", "5", "10", "15", "20", "25", "30", NULL };
 static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
+static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9", NULL };
+static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* Fullscreen is live (Alt+Enter does the same); the rest are read when the game starts. */
@@ -32,6 +34,7 @@ static const setting_def DEFS[] = {
     { "fullscreen",   "Fullscreen",       C_YESNO,        0, 1 },
     { "speaker",      "Speaker speech",   C_SPEAKER,      0, 0 },
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
+    { "ips",          "Machine clock /s", C_IPS,          3, 0 },     /* instructions a second: the game runs at 60 million, GOG's DOSBox at 9 */
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
     { "colourblind",  "Colour-blind aid", C_COLOURBLIND,  0, 0 },
     { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
@@ -41,6 +44,7 @@ static const setting_def DEFS[] = {
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
+    { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
     { "present-age",  "Picture delay",    C_AGE,          0, 0 },
     { "pad-deadzone", "Stick dead zone %", C_DEAD,        0, 0 },

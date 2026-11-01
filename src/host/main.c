@@ -1124,6 +1124,7 @@ int main(int argc, char **argv)
             else { fprintf(stderr, "--fixes takes original, recommended or custom\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--present-scale") && v && !strcmp(v, "auto")) i++;      /* the settings menu's choice: as fine as the display allows */
         else if (!strcmp(a, "--present-scale") && v) {
             g_fit_scale = 0;
             g_scale = atoi(v);
