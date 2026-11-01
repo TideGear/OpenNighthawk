@@ -35,6 +35,7 @@ static const setting_def DEFS[] = {
     { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
     { "sound",        "Sound driver",     C_SOUND,        0, 0 },
     { "roland",       "Roland output",    C_ROLAND,       2, 0 },
+    { "adlib-effects", "AdLib effects",   C_YESNO,        0, 0 },
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
