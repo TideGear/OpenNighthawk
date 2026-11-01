@@ -259,9 +259,9 @@
       {
         "item": "Hybrid sound: Mac recordings over the DOS driver, source policy and the machine hook",
         "weight": 1.0,
-        "done": 0.9,
+        "done": 0.95,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. Source policy (Mac, then Roland or AdLib), Mac recording player and mixer, the machine-layer exec hook; a real recorded flight's cannon request (id 6) was taken for its recording (Mac 306), and the START and END thunks are hooked; gated at 59cf216. The extracted WAVs must be renamed NNN.wav (the import wizard's job). Not done: the owner has not heard it."
+        "evidence": "31 Oct 2026. Source policy (Mac, then Roland or AdLib), Mac recording player and mixer, the machine-layer exec hook; a real recorded flight's cannon request (id 6) was taken for its recording (Mac 306), and the START and END thunks are hooked; gated at 59cf216. The extracted WAVs must be renamed NNN.wav (the import wizard's job). 1 Nov 2026: the radio calls (ids 41 to 45) now play from the Mac's nine words (1000 to 1008) when a recordings folder is given, in the order the PC speaker driver's own lists give (docs/sound-code-proof.md: the lists are stretches of SPEECH.117 whose edges are the words' edges; tests/test_macsound.c), and the Mac recordings now stop on the game's stop request (a skipped cutscene's music kept playing before). Not done: the owner has not heard it; the Roland and AdLib drivers' own lists for 41 to 45 were not read; the Mac hangar door (324) and engine loop (500) have no DOS id matched."
       },
       {
         "item": "Hybrid sound: Roland music with AdLib effects from a second driver",
