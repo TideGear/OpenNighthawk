@@ -43,6 +43,15 @@ int main(void)
         settings_load(&s, "present-scale = 6\nips = 9000000\n");
         CHECK(!strcmp(settings_value(&s, ps), "6") && !strcmp(settings_value(&s, ips), "9000000"));
     }
+    /* the controller's two fire buttons are rows, south and east as the old fixed mapping had them */
+    {
+        const int f1 = find("pad-fire1"), f2 = find("pad-fire2");
+        CHECK(f1 >= 0 && f2 >= 0);
+        settings_load(&s, "");
+        CHECK(!strcmp(settings_value(&s, f1), "0") && !strcmp(settings_value(&s, f2), "1"));
+        settings_load(&s, "pad-fire1 = 3\npad-fire2 = 2\n");
+        CHECK(!strcmp(settings_value(&s, f1), "3") && !strcmp(settings_value(&s, f2), "2"));
+    }
 
     /* values come from the file; absent keys take the game's defaults */
     settings_load(&s, "; mine\npresentation = Enhanced\nfullscreen = true\nscale = 4\n");

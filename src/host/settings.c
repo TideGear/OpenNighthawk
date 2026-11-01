@@ -21,6 +21,7 @@ static const char *const C_OPL[] = { "dbopl", "nuked", NULL };
 static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
 static const char *const C_AGE[] = { "interp", "extrapolate", NULL };
 static const char *const C_DEAD[] = { "0", "5", "10", "15", "20", "25", "30", NULL };
+static const char *const C_BUTTON[] = { "0", "1", "2", "3", "4", "5", "6", "7", NULL };   /* SDL gamepad order: 0 south, 1 east, 2 west, 3 north */
 static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
 static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9", NULL };
 static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
@@ -48,6 +49,8 @@ static const setting_def DEFS[] = {
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
     { "present-age",  "Picture delay",    C_AGE,          0, 0 },
     { "pad-deadzone", "Stick dead zone %", C_DEAD,        0, 0 },
+    { "pad-fire1",    "Fire 1 button",    C_BUTTON,       0, 0 },     /* the cannon (the game port's first button) */
+    { "pad-fire2",    "Fire 2 button",    C_BUTTON,       1, 0 },     /* the weapon */
     { "pad-invert-x", "Invert stick X",   C_YESNO,        0, 0 },
     { "pad-invert-y", "Invert stick Y",   C_YESNO,        0, 0 },
     { "engine",       "CPU engine",       C_ENGINE,       0, 0 },
