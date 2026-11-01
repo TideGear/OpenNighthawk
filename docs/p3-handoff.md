@@ -107,8 +107,12 @@ this game. Start after hybrid sound is proven.
 
 ## Blocked or waiting
 
-- **Hybrid sound:** a flight that fires a recorded sound (the cannon, id 6, Mac 306) to prove the hook plays the WAV;
-  the second driver for the Roland/AdLib split; the full gate.
+- **Hybrid sound:** done 31 Oct 2026: a real flight fires a recorded sound. The recorded takeoff of the Remastered check
+  (handoff.md, item 1) with two cannon bursts added (`K 2500000000 0E` ... `8E`, Backspace), replayed with
+  `--mac-sounds DIR` (DIR holds plain `NNN.wav`; the extracted files are named `306_CANNON.8.wav`, so copy them to
+  numeric names, which the import wizard must do) and `F117_SOUND_LOG=1`: `[sound] id 6 (has recording)` once, the policy chose the
+  Mac source and `macsound_play` started the voice (mixing itself is unit-tested; the run used the dummy audio device, so
+  nobody has heard it). Still to do: the second driver for the Roland/AdLib split; START and END sound thunks; the full gate.
 - **SETUP answers by injection at the DOS key reads, and the joystick answer:** [setup-autoanswer.md](setup-autoanswer.md);
   changes `src/machine/dos_files.c` (P2 gate territory), after the P2 integration.
 - **Subtitles under AdLib:** the speech is OPL writes there; the detector (`src/host/subtitles.c`, from the speaker counts)
