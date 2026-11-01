@@ -6,6 +6,7 @@
 
 #include "tls.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -220,10 +221,25 @@ static void overlay_apply(const drawlist *d, uint16_t seg, int32_t sx, int32_t s
 {
     if (!p->hi || p->n <= 1 || w <= 0 || w > 320 || h <= 0 || h > 200 ||
         dx < 0 || dy < 0 || dx > 320 - w || dy > 200 - h) return;
+    /* F117_MAP_DIAG: how often a kept rectangle came back with its fine rows, how often it was refused because the coarse bytes had
+     * changed (the picture then shows the coarse bytes), and how often there was none; a line every 600 blits back */
+    static int diag = -1;
+    static unsigned long hit, refused, none, map_hit, map_none;
+    if (diag < 0) diag = getenv("F117_MAP_DIAG") != NULL;
+    #define MAP_DIAG_SAY() do { if (diag && (hit + refused + none) % 600 == 0) fprintf(stderr, "[mapdiag] blits back: %lu with fine rows, %lu refused (coarse bytes changed), %lu with no kept rectangle; the 77 x 60 map: %lu with, %lu without\n", hit, refused, none, map_hit, map_none); } while (0)
     for (int k = 0; k < d->noverlay; k++) {
         const drawlist_overlay *o = &d->overlay[k];
         if (!o->b || o->seg != seg || o->x != sx || o->y != sy || o->w != w || o->h != h || o->n != p->n) continue;
-        if (memcmp(o->b, logged, (size_t)w * h)) return;
+        if (memcmp(o->b, logged, (size_t)w * h)) {
+            refused++; MAP_DIAG_SAY();
+            if (diag && refused <= 8) {
+                size_t bad = 0;
+                for (size_t i = 0; i < (size_t)w * h; i++) bad += o->b[i] != logged[i];
+                fprintf(stderr, "[mapdiag] refused rect %d,%d %dx%d: %zu of %d coarse bytes differ\n", sx, sy, w, h, bad, w * h);
+            }
+            return;
+        }
+        hit++; if (w == 77 && h == 60) map_hit++; MAP_DIAG_SAY();
         const int n = p->n;
         const size_t W = (size_t)320 * n;
         for (int32_t y = 0; y < h; y++) {
@@ -243,6 +259,12 @@ static void overlay_apply(const drawlist *d, uint16_t seg, int32_t sx, int32_t s
             }
         }
         return;
+    }
+    none++; if (w == 77 && h == 60) map_none++; MAP_DIAG_SAY();
+    if (diag && none <= 12) {                           /* what was asked for, and what is kept */
+        fprintf(stderr, "[mapdiag] no kept rectangle for seg %04X rect %d,%d %dx%d; kept:", seg, sx, sy, w, h);
+        for (int k = 0; k < d->noverlay; k++) fprintf(stderr, " [seg %04X %d,%d %dx%d]", d->overlay[k].seg, d->overlay[k].x, d->overlay[k].y, d->overlay[k].w, d->overlay[k].h);
+        fprintf(stderr, "\n");
     }
 }
 

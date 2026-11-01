@@ -286,7 +286,10 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
          * how many primitives the frame has, to see why Remastered draws nothing where the original drew something */
         static int calls;
         const char *probe = getenv("F117_REMASTER_PROBE");
-        double px = 0, py = 0;
+        double px = 0, py = 0, bx0 = 0, by0 = 0, bx1 = 0, by1 = 0;
+        const char *pbox = getenv("F117_REMASTER_PROBE_BOX");     /* X0,Y0,X1,Y1: every primitive whose box overlaps this rectangle, not one point */
+        const int use_box = pbox && sscanf(pbox, "%lf,%lf,%lf,%lf", &bx0, &by0, &bx1, &by1) == 4;
+        if (use_box && !probe) probe = "0,0";
         if (do1 && probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && ++calls == 700) {
             fprintf(stderr, "[probe] frame of %zu primitives, point %.1f,%.1f, clock %llu\n", fr->n, px, py, (unsigned long long)m->cpu.icount);
             for (size_t i = 0; i < fr->n; i++) {
@@ -300,7 +303,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                     front++;
                 }
                 if (front < p->n) { x0b = -1e9; x1b = 1e9; }      /* partly behind the eye: its box is unknown, show it */
-                if (!front || px < x0b - 1.5 || px > x1b + 1.5 || py < y0b - 1.5 || py > y1b + 1.5) continue;
+                if (use_box ? (!front || x1b < bx0 || x0b > bx1 || y1b < by0 || y0b > by1)
+                            : (!front || px < x0b - 1.5 || px > x1b + 1.5 || py < y0b - 1.5 || py > y1b + 1.5)) continue;
                 uint32_t colour = 0;
                 word_colour(m, p->colour_word, p->darken, &colour);
                 fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d\n",

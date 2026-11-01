@@ -2000,6 +2000,16 @@ int main(int argc, char **argv)
                     if (cleared) fflush(audio_queue_log);
                 }
             }
+            {   /* F117_DUMP_RAM=CLOCK:FILE (diagnostic): the machine's 1 MB of memory once, when the clock reaches CLOCK */
+                static const char *spec; static int init; static uint64_t at;
+                if (!init) { init = 1; spec = getenv("F117_DUMP_RAM"); if (spec) at = strtoull(spec, NULL, 0); }
+                if (spec && at && H.m.cpu.icount >= at) {
+                    at = 0;
+                    const char *colon = strchr(spec, ':');
+                    FILE *df = colon ? fopen(colon + 1, "wb") : NULL;
+                    if (df) { fwrite(H.m.mem, 1, 0x100000, df); fclose(df); fprintf(stderr, "memory dumped at clock %llu\n", (unsigned long long)H.m.cpu.icount); }
+                }
+            }
             if (H.audio_failed || (exit_after && H.m.cpu.icount >= exit_after)) running = 0;
         }
 

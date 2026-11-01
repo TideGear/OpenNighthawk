@@ -632,6 +632,11 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
         }
         if (r->rerun && !plan->extrapolate) {
             const uint8_t *p = plan->rerun_ready ? draw_copy(r, a) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
+            {   /* F117_RERUN_FALLBACK_AT=N (diagnostic): the Nth picture made on a copy is treated as late, as a slow machine would */
+                static long forced = -2, n;
+                if (forced == -2) { const char *e = getenv("F117_RERUN_FALLBACK_AT"); forced = e ? atol(e) : -1; }
+                if (p && forced >= 0 && ++n == forced) p = NULL;
+            }
             if (p) {
                 memcpy(f->vram, p, 64000);
                 if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }

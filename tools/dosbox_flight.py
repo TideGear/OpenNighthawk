@@ -333,6 +333,8 @@ def main():
     parser.add_argument("--pilot", choices=("recon",), help="adaptively fly both photos and return on the reference")
     parser.add_argument("--acquisition", choices=("nose", "level"), default="nose",
                         help="normal designation approach used by the recon pilot")
+    parser.add_argument("--dump-seconds", help="with --replay-input: comma-separated seconds after the replay's start at which to write the guest's 1 MB of memory to --out/ram_<second>.bin (read-only, as the rest of this tool)")
+    parser.add_argument("--shot-seconds", help="with --replay-input: comma-separated seconds after the replay's start at which to press DOSBox's screenshot key (Ctrl+F5); the PNGs land in --out")
     parser.add_argument("--replay-input", type=Path, help="replay a recorded normal keyboard/mouse input log")
     parser.add_argument("--set-clock-from-log", action="store_true",
                         help="seed DOS date, BIOS ticks and RTC responses from the input header")
@@ -364,7 +366,7 @@ def main():
     si = subprocess.STARTUPINFO(); si.dwFlags = subprocess.STARTF_USESHOWWINDOW; si.wShowWindow = 7
     proc = subprocess.Popen([str(Path(args.data) / "DOSBOX" / "DOSBox.exe"), "-conf",
         str(Path(args.data) / "dosboxF117A.conf"), "-conf", str(conf.resolve()), "-noconsole"],
-        env=dict(os.environ, SDL_VIDEODRIVER="windib"), startupinfo=si, cwd=out.resolve())
+        env=dict(os.environ, SDL_VIDEODRIVER="windib", SDL_AUDIODRIVER="dummy"), startupinfo=si, cwd=out.resolve())
     memory = None
     timer_api = None
     if replay_events:
@@ -454,6 +456,8 @@ def main():
         audio_capture_started = False
         last_sample = 0.0
         replay_error = None
+        dump_times = sorted(float(t) for t in args.dump_seconds.split(",")) if args.dump_seconds else []
+        shot_times = sorted(float(t) for t in args.shot_seconds.split(",")) if args.shot_seconds else []
         queued_keys = []
         pilot_tick = 0
         pilot_initialized = False
@@ -515,6 +519,13 @@ def main():
                     replay_error = "SETUP program never appeared for the input replay"
                     break
                 if replay_origin is not None:
+                    while dump_times and now - replay_origin >= dump_times[0]:
+                        t = dump_times.pop(0)
+                        memory.refresh()
+                        (out / ("ram_%d.bin" % round(t))).write_bytes(bytes(memory.ram))
+                    while shot_times and now - replay_origin >= shot_times[0]:      # a screenshot, as the player would take one
+                        shot_times.pop(0)
+                        key(wc.VK_CONTROL, True); key(wc.VK_F5, True); time.sleep(.1); key(wc.VK_F5, False); key(wc.VK_CONTROL, False)
                     while replay_position < len(replay_events):
                         event = replay_events[replay_position]
                         if replay_origin + event[0] / replay_ips > now:
