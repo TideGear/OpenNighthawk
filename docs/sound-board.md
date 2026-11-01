@@ -155,7 +155,7 @@ Known limits:
 - **One DOS driver at a time.** The loaded driver is the one chosen at SETUP; Roland music with AdLib effects together
   needs a second driver fed the same requests (a hidden driver on a machine copy receiving the same trap, with the
   MT-32's effect channels muted). Sounds with no Mac recording are played by whichever driver is loaded.
-- **START and END** call their own thunks, so their sounds are not taken yet.
+- **START and END** call their own thunks (START `0A95:6BB1`, END `05FA:25F3`, far jump slots like VGAME's). Since 31 Oct 2026 `app_module_load` points the hook at the loaded program's slot, so the host sees their requests too (a replay of the recorded boot logged START's ids 2, 26, 28, 31 and 33). None of those ids has a Mac recording in the current mapping, so nothing is taken from START yet; END was not reached by that route and is untested.
 - **Speech** stays with the DOS driver: the Mac has the words, not the phrases.
 - The machine change (the execution hook table) passed the full gate on 30 October 2026 (`d9fc8b8`; see [p3-handoff.md](p3-handoff.md)).
 

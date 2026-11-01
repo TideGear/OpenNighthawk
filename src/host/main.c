@@ -561,10 +561,16 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
-        if (g_mac && !SDL_strcasecmp(name, "VGAME.EXE")) {      /* the game's sound stub: a far jump slot at load+1E42:0313 */
-            m->exec_hook[0].cs = (uint16_t)(load_seg + 0x1E42);
-            m->exec_hook[0].ip = 0x0313;
-            m->exec_hook_n = 1;
+        if (g_mac) {                                            /* each program's sound stub: a far jump slot the driver patches */
+            static const struct { const char *name; uint16_t seg, ip; } slot[] = {
+                { "VGAME.EXE", 0x1E42, 0x0313 }, { "START.EXE", 0x0A95, 0x6BB1 }, { "END.EXE", 0x05FA, 0x25F3 },
+            };
+            for (unsigned k = 0; k < sizeof slot / sizeof slot[0]; k++)
+                if (!SDL_strcasecmp(name, slot[k].name)) {
+                    m->exec_hook[0].cs = (uint16_t)(load_seg + slot[k].seg);
+                    m->exec_hook[0].ip = slot[k].ip;
+                    m->exec_hook_n = 1;
+                }
         }
         if (!SDL_strcasecmp(name, "VGAME.EXE")) {
             const char *spec = getenv("F117_REMASTER_FRAME");       /* N:FILE.ppm: write the Nth frame's geometry as a picture */
