@@ -74,7 +74,7 @@ is in the private `mac-extract/dis`, not in the repository):
 - **Mac 500:** the engine loop the player starts for request 311 (spool up) and stops for 312.
 - **Music:** Mac 322, 321 and 200 are DOS 36, 37 and 38 (by ear). The Mac asks for its own ids 27 and 28 with no recording
   among those extracted. DOS 34 (refusal) has no Mac counterpart found.
-- **Speech:** the Mac has the nine words as separate recordings (1000 to 1008), not the DOS phrases.
+- **Speech:** the Mac has the nine words as separate recordings (1000 to 1008). The DOS phrases (ids 41 to 45) are lists of stretches of SPEECH.117 whose edges are those words' edges (docs/sound-code-proof.md), so the host plays the words of each call in order when a Mac recording directory is given.
 
 The Amiga has five 8SVX samples (front-end and intro sounds) and a 54 KB chip-memory block in its flight program that is
 probably more sound data, not decoded. The owner judged the Amiga sounds not worth using. Detail and sources:

@@ -20,11 +20,20 @@ void macsound_free(macsound *s);
  * way; 322, 321 and 200 for the music ids 36, 37 and 38 (matched by ear, docs/sound-board.md). */
 int macsound_resource(int id);
 
-/* Is there a recording for DOS sound id `id`? */
+/* The radio calls, ids 41 to 45, from the driver's own code (ISOUND.117, `docs/sound-code-proof.md`): each is a list of sample ranges of
+ * SPEECH.117, and the ranges' edges are the edges of the nine words the Mac has as 1000 to 1008. The words, in order of the file:
+ * 0 primary, 1 target, 2 hit, 3 good, 4 nice, 5 landing, 6 cleared, 7 for take off, 8 to land. Fills words (at most 3) and returns how
+ * many; 0 for an id that is not speech. Id 43 is "good landing" or "nice landing": the driver chooses by bit 0 of a tick counter it
+ * keeps (cs:[2], counted in its timer interrupt), so `tick` is any counter that moves; its bit 0 picks. */
+int macsound_speech_words(int id, unsigned tick, int words[3]);
+
+/* Is there a recording for DOS sound id `id`? (for speech: all of its words) */
 int macsound_has(const macsound *s, int id);
 
-/* Start the recording for `id` (restarting it if it is playing). Returns 0 if there is none. */
+/* Start the recording for `id` (restarting it if it is playing). Returns 0 if there is none. A radio call (41 to 45) plays its words
+ * one after another, as the driver does. */
 int macsound_play(macsound *s, int id);
+int macsound_play_tick(macsound *s, int id, unsigned tick);
 void macsound_stop_all(macsound *s);
 
 /* Add up to `frames` stereo frames of what is playing into out (which already holds the other sources). */

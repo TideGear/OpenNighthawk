@@ -53,6 +53,38 @@ int main(int argc, char **argv)
     macsound_mix(s, out, 100);
     CHECK(out[0] == 0);
     macsound_free(s);
+
+    /* the radio calls: the words of each, from the driver's own lists (macsound.c), played one after another */
+    {
+        int w[3];
+        CHECK(macsound_speech_words(41, 0, w) == 3 && w[0] == 0 && w[1] == 1 && w[2] == 2);       /* primary target hit */
+        CHECK(macsound_speech_words(42, 0, w) == 2 && w[0] == 1 && w[1] == 2);                    /* target hit */
+        CHECK(macsound_speech_words(43, 1, w) == 2 && w[0] == 3 && w[1] == 5);                    /* good landing (odd tick) */
+        CHECK(macsound_speech_words(43, 2, w) == 2 && w[0] == 4 && w[1] == 5);                    /* nice landing (even tick) */
+        CHECK(macsound_speech_words(44, 0, w) == 2 && w[0] == 6 && w[1] == 7);                    /* cleared for take off */
+        CHECK(macsound_speech_words(45, 0, w) == 2 && w[0] == 6 && w[1] == 8);                    /* cleared to land */
+        CHECK(macsound_speech_words(40, 0, w) == 0 && macsound_speech_words(46, 0, w) == 0 && macsound_speech_words(3, 0, w) == 0);
+        /* nine words of different lengths and levels at 8 kHz resampled to 44.1 kHz: word k is 100 + 10k samples at level 128 + 8 (k + 1) */
+        for (int k = 0; k < 9; k++) { snprintf(path, sizeof path, "%s/%d.wav", dir, 1000 + k); write_wav(path, 100 + 10 * (unsigned)k, 44100, 128 + 8 * (k + 1)); }
+        macsound *sp = macsound_load(dir, 44100);
+        CHECK(sp && macsound_has(sp, 41) && macsound_has(sp, 43) && macsound_has(sp, 45) && !macsound_has(sp, 46));
+        static int16_t o[1000 * 2];
+        memset(o, 0, sizeof o);
+        CHECK(macsound_play_tick(sp, 43, 1));                                                     /* good (word 3, 130 samples) then landing (word 5, 150) */
+        macsound_mix(sp, o, 1000);
+        CHECK(o[0] == 8 * 4 * 256 && o[129 * 2] == 8 * 4 * 256);                                   /* word 3's level to its last sample ... */
+        CHECK(o[130 * 2] == 8 * 6 * 256 && o[279 * 2] == 8 * 6 * 256 && o[280 * 2] == 0);          /* ... word 5's straight after, then the end */
+        memset(o, 0, sizeof o);
+        CHECK(macsound_play_tick(sp, 43, 2));                                                     /* nice (word 4, 140) then landing */
+        macsound_mix(sp, o, 1000);
+        CHECK(o[0] == 8 * 5 * 256 && o[139 * 2] == 8 * 5 * 256 && o[140 * 2] == 8 * 6 * 256 && o[289 * 2] == 8 * 6 * 256 && o[290 * 2] == 0);
+        CHECK(macsound_play_tick(sp, 41, 0) && macsound_play_tick(sp, 44, 0));                      /* two calls at once do not disturb each other */
+        macsound_stop_all(sp);
+        memset(o, 0, sizeof o);
+        macsound_mix(sp, o, 100);
+        CHECK(o[0] == 0);
+        macsound_free(sp);
+    }
     puts("mac sound passes");
     return 0;
 }

@@ -286,6 +286,7 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
     if (log_requests) fprintf(stderr, "[sound] id %u%s at clock %llu\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "", (unsigned long long)m->cpu.icount);
+    if (id == 0 && g_mac) macsound_stop_all(g_mac);              /* stop: the DOS drivers silence everything, so do the recordings (a skipped cutscene's music) */
     const uint16_t mid = id == 31 && g_hook_flight ? 331 : id;     /* the Mac id of the bay-door sound (see macsound_resource) */
     const int has_mac = g_mac && macsound_has(g_mac, mid);
     if (!has_mac && !g_side) return 0;
@@ -297,7 +298,7 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
     /* A request the host takes answers as the driver does: the driver's entry 1 returns its handler's result in AX, and the one
      * caller that reads it is the busy-poll (id 2: START, END and PLAYER loop `or ax, ax; jne` until the driver says 0), which is
      * never taken here. Every other call site ignores AX (checked over all of them, docs/sound-code-proof.md), so 0 is right. */
-    if (use == SP_MAC) { const int played = macsound_play(g_mac, mid); if (played) m->cpu.r[R_AX] = 0; return played; }
+    if (use == SP_MAC) { const int played = macsound_play_tick(g_mac, mid, m->mem[0x46C]); if (played) m->cpu.r[R_AX] = 0; return played; }
     /* The hybrid rule (owner): sound effects are AdLib's, music is Roland's. Ids 4 to 35 are the effects (flight, the front end's picks
      * and marks, the weapons page); id 0 (stop) reaches both drivers; the busy-poll (2), the music (3, 36 to 39), the release (40) and
      * the speech (41 to 45) stay with the driver that is loaded. */
