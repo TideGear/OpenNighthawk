@@ -122,19 +122,24 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     if (y0 < 0) y0 = 0;
     if (x1 > t->w - 1) x1 = t->w - 1;
     if (y1 > t->h - 1) y1 = t->h - 1;
+    /* The weights l1 and l2 (l3 = 1 - l1 - l2) are linear in the pixel's position, so a row steps them by a constant instead of
+     * dividing at every pixel; the depth and the three colour channels are linear in them. */
+    const double a1 = (b.y - c.y) / den, b1 = (c.x - b.x) / den, a2 = (c.y - a.y) / den, b2 = (a.x - c.x) / den;
+    const double diz1 = a.iz - c.iz, diz2 = b.iz - c.iz;
+    double dc1[3], dc2[3];
+    for (int k = 0; k < 3; k++) { dc1[k] = ca[k] - cc[k]; dc2[k] = cb[k] - cc[k]; }
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
         if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
         if (xs < x0) xs = x0;
         if (xe > x1) xe = x1;
-        for (int x = xs; x <= xe; x++) {
-            const double px = x + 0.5, py = y + 0.5;
-            const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
-            const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
+        const double py = y + 0.5;
+        double l1 = a1 * (xs + 0.5 - c.x) + b1 * (py - c.y), l2 = a2 * (xs + 0.5 - c.x) + b2 * (py - c.y);
+        for (int x = xs; x <= xe; x++, l1 += a1, l2 += a2) {
             const double l3 = 1.0 - l1 - l2;
             if (l1 < 0 || l2 < 0 || l3 < 0) continue;
-            const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
+            const float iz = (float)(c.iz + l1 * diz1 + l2 * diz2);
             float *d = &t->inv_z[(long)y * t->w + x];
             if (iz < *d * 0.9999f) continue;
             *d = iz;
@@ -143,7 +148,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
             const double noise = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16.0 - 0.5;
             uint32_t out = 0xFF000000u;
             for (int k = 0; k < 3; k++) {
-                double v = l1 * ca[k] + l2 * cb[k] + l3 * cc[k] + noise + 0.5;
+                double v = cc[k] + l1 * dc1[k] + l2 * dc2[k] + noise + 0.5;
                 if (v < 0) v = 0;
                 if (v > 255) v = 255;
                 out |= (uint32_t)v << (16 - 8 * k);
