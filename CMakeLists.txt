@@ -2038,6 +2038,14 @@ if(F117R_BUILD_TESTS)
       --only ISOUND.117:7E9)
     add_test(NAME matched_setup_open_create_close_request COMMAND func_lockstep --states 5000
       --only SETUP.EXE:CB2)
+    add_test(NAME matched_asound_117_sound_effect_restore_tail COMMAND func_lockstep --states 5000
+      --only ASOUND.117:A48)
+    add_test(NAME matched_asound_117_adlib_pit_setup_prefix COMMAND func_lockstep --states 5000
+      --only ASOUND.117:A5B)
+    add_test(NAME matched_asound_117_program_counter2_sequence COMMAND func_lockstep --states 5000
+      --only ASOUND.117:B01)
+    add_test(NAME matched_asound_log_uninstall_timer_prefix COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:8A)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

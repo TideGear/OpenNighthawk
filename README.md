@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 96.81%, P3 93.03%, All 97.26%**. Work commit
+Progress: **P1 100.00%, P2 96.93%, P3 93.03%, All 97.30%**. Work commit
 titles start with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -68,12 +68,12 @@ titles start with the current figures (`py tools/progress.py --title`);
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 1,641 routines have named, explained C equivalents
-  proved against the original's instructions. They run 159,771 of the
+- **Named and matched:** 1,646 routines have named, explained C equivalents
+  proved against the original's instructions. They run 160,015 of the
   163,907 instruction bytes the scripted routes execute; with 2,631 bytes of
   reviewed code that stays original by design, that is the gameplay score,
-  99.08%. Across all 17 code files, named code covers 191,693 of 209,298
-  creditable bytes (91.59%). Reviewed references now account for 47,734 of
+  99.23%. Across all 17 code files, named code covers 191,937 of 209,298
+  creditable bytes (91.71%). Reviewed references now account for 47,734 of
   47,952 previous-scope bytes outside routes.
 - **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
   identical state under the reference interpreter and the recompiled code -

@@ -982,6 +982,10 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "ASOUND.LOG", 0x008A, 0x008A, 0x0037 },
+    { "ASOUND.117", 0x0B01, 0x0B01, 0x0056 },
+    { "ASOUND.117", 0x0A5B, 0x0A5B, 0x00A6 },
+    { "ASOUND.117", 0x0A48, 0x0A48, 0x0013 },
     { "SETUP.EXE", 0x0CB2, 0x0CB2, 0x0033 },
     { "ISOUND.117", 0x07E9, 0x07E9, 0x005B },
     { "ISOUND.117", 0x026C, 0x01B4, 0x0416 },
@@ -2709,6 +2713,10 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ISOUND.117", 0x019C, 0x026C, 0x0150, 111, 111, "PC-speaker overlay sequencer tick: count the tick in cs:[2], then for an active driver step the engine noise, the envelope countdown or the note (duration, repeat, vibrato or slide, next record) and send the noisy divisor to speaker counter 2" },
     { "ISOUND.117", 0x019C, 0x07E9, 0x005B, 40, 40, "Sound-effects driver: scale every byte of the volume table b -> (b>>1)*9/16+1, for the whole 64 KB segments cs:[0750h] and the last cs:[074Eh] bytes starting at segment DS:[197Bh]" },
     { "SETUP.EXE", 0x0000, 0x0CB2, 0x0033, 24, 24, "call the open, create and close request helpers, preserving their stack arguments and return values" },
+    { "ASOUND.117", 0x01B6, 0x0A48, 0x0013, 10, 10, "Sound-effect restore tail: restore speaker gate, program and zero PIT counter 2, enable interrupts, and return" },
+    { "ASOUND.117", 0x01B6, 0x0A5B, 0x0069, 46, 46, "AdLib OPL setup and PIT0 mode-control prefix; hand back after the wake at 0AC4" },
+    { "ASOUND.117", 0x01B6, 0x0B01, 0x0056, 46, 46, "AdLib overlay: stream a selected sequence through the PIT/OPL ports" },
+    { "ASOUND.LOG", 0x0000, 0x008A, 0x0022, 16, 16, "ASOUND.LOG timer-uninstall prefix: disable interrupts, restore the saved INT 8 vector from CS:[0048]/[004A] into IVT 0000:0020/0022, restore DS/CX/BX and write PIT counter-0 mode-3 control word 36h to port 43h; hand back at 00AC immediately after OUT, leaving the counter reload, status stores, POP AX, STI and RET to original code" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -55068,6 +55076,154 @@ if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x10B3) {
                 { const uint16_t v=(uint16_t[]){0,1,2,0xFFFF,0x3D,0x3C}[XPICK(6)]; XW16(seg[S_SS],r[R_SP]+2,v); small[1]=v; }
                 XW16(seg[S_SS],r[R_SP]+4,(uint16_t)XRAND());
                 XW16(seg[S_SS],r[R_SP]+6,(uint16_t)XRAND());
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+
+if (!strcmp(o->module, "ASOUND.117") && o->seg == 0x01B6 && o->ip == 0x0A5B) {
+    const uint16_t data_seg_ = 0x5000;
+    seg[S_DS] = data_seg_;
+    seg[S_SS] = (s & 4) ? 0x6000 : data_seg_;
+    r[R_SP] = 0xF000;
+    flags = (uint16_t)(flags & (uint16_t)~F_DF);
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_); XW8((s_),(o_),v__); XW8((s_),(o_)+1,v__>>8); } while(0)
+    uint32_t rng_ = (uint32_t)routine_seed(seed, o) + (uint32_t)s * 2654435761u;
+#define XRAND() (rng_ = rng_ * 1664525u + 1013904223u, rng_ >> 16)
+    for (unsigned j_ = 0; j_ < 0x200; ++j_)
+        XW8(seg[S_SS], (uint16_t)(r[R_SP] - 0x200 + j_), XRAND());
+    /* 036Bh reads this selector and writes each register's shadow byte here.
+     * Keep the card on the 388h path; zero and one are both below its threshold. */
+    XW16(data_seg_, 0x17F2, (uint16_t)(XRAND() & 1));
+    for (unsigned j_ = 0; j_ < 0xF0; ++j_)
+        XW8(data_seg_, (uint16_t)(0x1A06 + j_), (uint8_t)XRAND());
+    g_io_salt = ((uint64_t)XRAND() << 32) ^ ((uint64_t)XRAND() << 16) ^ XRAND();
+
+#undef XRAND
+#undef XW16
+#undef XW8
+    g_m.ips = MACHINE_APP_IPS; /* keep IO_SLACK and ISA write-delay probes nonzero */
+    if ((s & 0xFFu) == 1u) {
+        g_room_probe_n = 1;
+        g_room_probe_k[0] = 1208u; /* total guest clocks at the exact final-OUT room boundary */
+        g_room_probe_e[0] = 1207u;
+    }
+}
+            if (!strcmp(o->module, "ASOUND.117") && o->seg == 0x01B6 && o->ip == 0x0B01) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);const uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                const uint16_t cs_=cs;
+                const uint16_t bx_=0xF100;
+                const unsigned q_=XPICK(10);
+                const uint16_t data0_=q_<4?0x5000:q_<7?0x4400:0x5200;
+                const uint16_t data1_=q_<4?0x6100:q_<7?0x6200:0x6300;
+                const uint16_t ss_=XPICK(3)==0?data1_:0x7000+2*XPICK(0x100);
+                const uint16_t sp_=(uint16_t)(0x3000+2*XPICK(0x1000));
+                const uint16_t start_=(uint16_t)(0x0040+2*XPICK(8));
+                const uint16_t count_=(uint16_t)(1+XPICK(6));
+                const uint16_t end_=(uint16_t)(start_+count_);
+                const unsigned empty_=(XPICK(8)==0);
+                const uint16_t table_end_=empty_?0:(uint16_t)end_;
+                const uint16_t addend_=(uint16_t)XRAND();
+                const uint16_t axword_=(uint16_t)XRAND();
+                const uint16_t dsadd_=(uint16_t)(data1_-axword_);
+                seg[S_DS]=data0_;seg[S_SS]=ss_;r[R_SP]=sp_;
+                seg[S_ES]=(uint16_t)XRAND();
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(XPICK(2))flags|=F_IF;else flags=(uint16_t)(flags & ~F_IF);
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=bx_;r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                for(unsigned j=0;j<0x60;j++)XW8(ss_,(uint16_t)(sp_-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(ss_,(uint16_t)(sp_+2*j),small[j]);}
+                /* CS table: end/sentinel, source cursor, then a bias which selects the driver's data segment. */
+                XW16(cs_,bx_,table_end_);
+                XW16(cs_,(uint16_t)(bx_+2),start_);
+                XW16(cs_,(uint16_t)(bx_+4),axword_);
+                XW16(cs_,(uint16_t)(bx_+6),0); /* next source-sequence row is the zero sentinel */
+                /* All 64 lookup entries are live: input bytes are shifted right twice before indexing CS:+18h. */
+                for(unsigned j=0;j<64;j++)XW8(cs_,(uint16_t)(0x18+j),(uint8_t)(XRAND()^j));
+                XW16(data0_,0x17E2,dsadd_);
+                for(unsigned j=0;j<count_;j++)XW8(data1_,(uint16_t)(start_+j),(uint8_t)XRAND());
+                /* Every byte re-enters the counter-2 wait; script one terminating down-counter sequence per byte. */
+                g_port_script.port=0x42;
+                { unsigned script_n_=0;
+                  for(unsigned byte_=0;byte_<count_;byte_++){
+                    const uint8_t first_=(uint8_t)(0xF8+XPICK(8));
+                    g_port_script.v[script_n_++]=0xFF;
+                    g_port_script.v[script_n_++]=first_;
+                    g_port_script.v[script_n_++]=first_;
+                    g_port_script.v[script_n_++]=(uint8_t)(first_-1);
+                    g_port_script.v[script_n_++]=(uint8_t)(first_-2);
+                    g_port_script.v[script_n_++]=(uint8_t)(first_-5);
+                    g_port_script.v[script_n_++]=(uint8_t)(first_-4);
+                  }
+                  g_port_script.n=script_n_;
+                }
+                g_io_salt=XRAND();g_probe_tail=1;g_probe_sweep=1;g_decline_floor=1;
+                g_m.ips = MACHINE_APP_IPS; /* exercise the same IO_SLACK as the app */
+                if ((s & 0xFFu) == 1u) {
+                    g_room_probe_n = 1;
+                    g_room_probe_k[0] = 62u; /* four setup instructions, one clock short of XIO's 59-clock claim */
+                    g_room_probe_e[0] = 4u;
+                }
+#undef XW16
+#undef XW8
+#undef XPICK
+#undef XRAND
+            }
+            if (!strcmp(o->module,"ASOUND.LOG") && o->seg==0 && o->ip==0x008A) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                /* ASOUND.LOG 008A prefix: restore the timer vector and program the PIT control word, then hand back at 00AC. DS is a data segment of its own, now and then CS itself or 0 (the vector table
+                 * the routine rewrites); SS is DS, a separate segment or 0 with SP clear of the INT 8 vector at 0020h..0023h. The old
+                 * INT 8 vector in CS:[0048]/[004A] points at a one-byte IRET stub in CS (a tick taken right after the STI would
+                 * dispatch through it), the offset varying between two stubs so an offset/segment swap shows. CS:[004C] and CS:[004F]
+                 * hold random bytes so the store of AH and the clearing show. The registers and IF vary; the PIT and PIC ports answer
+                 * from the hash. */
+                { const unsigned dsel_=XPICK(8);
+                  seg[S_DS]=(dsel_<5)?(uint16_t)(0x4000+(XRAND()&0x1FF)):(dsel_<7)?cs:0; }
+                seg[S_ES]=(uint16_t)XRAND();
+                seg[S_SS]=(s&4)?0:((s&8)?((seg[S_DS]==0)?0x6000:seg[S_DS]):0x6000);
+                r[R_SP]=(seg[S_SS]==0)?(uint16_t)(0x0100+2*XPICK(5)):(uint16_t)(0x3000+2*XPICK(0x1000));
+                flags=(uint16_t)(flags & ~F_DF);
+                if(XPICK(2))flags|=F_IF;else flags=(uint16_t)(flags & ~F_IF);
+                if(XPICK(2))flags|=F_CF;else flags=(uint16_t)(flags & ~F_CF);
+                if(XPICK(2))flags|=F_ZF;else flags=(uint16_t)(flags & ~F_ZF);
+                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_BP]=(uint16_t)XRAND();
+                XW8(cs,0xF2F2,0xCF);                                  /* IRET stubs for the restored INT 8 vector */
+                XW8(cs,0xF2F4,0xCF);
+                XW16(cs,0x0048,XPICK(2)?0xF2F2:0xF2F4);XW16(cs,0x004A,cs);
+                XW8(cs,0x004C,(uint8_t)XRAND());
+                XW8(cs,0x004F,(uint8_t)(XPICK(2)?1+XPICK(255):0));
+                XW16(0,0x0020,XRAND());XW16(0,0x0022,XRAND());
+                for(unsigned j=0;j<0x40;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x40+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                g_io_salt=((uint64_t)XRAND()<<20)^((uint64_t)XRAND()<<4)^XRAND();
+                /* At the app rate IO_SLACK(1) is 58 clocks. Probe the 15-clock
+                 * prologue and the final OUT's 59-clock claim at one-short and exact limits. */
+                g_m.ips = MACHINE_APP_IPS;
+                g_room_probe_n = 5;
+                g_room_probe_k[0] = 14; g_room_probe_e[0] = 0;
+                g_room_probe_k[1] = 15; g_room_probe_e[1] = 15;
+                g_room_probe_k[2] = 16; g_room_probe_e[2] = 15;
+                g_room_probe_k[3] = 73; g_room_probe_e[3] = 15;
+                g_room_probe_k[4] = 74; g_room_probe_e[4] = 16;
+                g_decline_floor=15;
+                g_probe_tail=1;
+                {   static const unsigned lim_[]={3,8,13,14,15,16,17,18,19,20,21,22,23,24};
+                    const unsigned psel_=XPICK(4);
+                    if(psel_<2) g_probe_steps=1+lim_[XPICK(sizeof lim_/sizeof lim_[0])];
+                    else if(psel_<3) g_probe_steps=1+1+XPICK(26);
+                    else g_probe_steps=0; }
 #undef XPICK
 #undef XRAND
 #undef XW16

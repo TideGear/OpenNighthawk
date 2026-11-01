@@ -176,6 +176,18 @@ only: proof agents never gate. Scripts are in `D:/f117-gate/accept-kit/`.
    (auto-detected). Copy `audit_private.py` and `finalize.py` forward from the
    previous batch's directory, then run `audit_private.py` before the gate
    (`new_batch.py`'s own help still says afterwards).
+   Before paying for the gate, diff the `BASE_COMMIT` matched registry against
+   the routine rows in `PREV/named-cover`. If the registry has entries absent
+   from the last accepted packet (for example, a registration committed after
+   its base), generate named-cover rows for those entries from the exact
+   current lockstep executable with `--only` and at least three recorded
+   seeds. Save the cover, logs and a `base-refresh-*.json` manifest beside the
+   new packet's `named-cover`, including its registration/base commits and
+   source/executable hashes. Never edit or append to the previous accepted
+   `previous.cov`; the finalizer checks it byte-for-byte, validates that the
+   addenda exactly cover the registry delta, then combines rows in memory.
+   This cheap preflight prevents a missing historical row from rejecting a
+   batch only after its expensive gate.
 7. `py D:/f117-gate/affinity_launch.py py D:/f117-gate/p2-batch-LETTER-accept/accept.py`
    runs the gate, the presentation checks, the optimized seeds, the baseline
    group verdict and `finalize.py`'s credit audit. Read `final-gate-verdict.json`
@@ -191,16 +203,18 @@ only: proof agents never gate. Scripts are in `D:/f117-gate/accept-kit/`.
    "https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=2"`;
    there is no `gh` on this machine).
 
-**Cost.** The latest batch with new routines, bx (30 Oct), took 2,074.5 s
-through acceptance: 1,531.5 s for the fresh gate, then N=1 and boot presentation
-checks, the fresh sequential baseline audit and credit checks. Changed
-interpreter/game inputs required the sequential baseline; presentation started
-after the gate. It covered 1,638 matched routines, ran 823 tests and added 89
-named bytes. Evidence: `D:/f117-gate/p2-batch-bx-accept/`
-(`final-gate-verdict.json`). A batch's new
+**Cost.** The latest batch with new routines, `bz` (1 Nov), took 2,503.4 s
+through acceptance: 1,555.5 s for the full gate, 450.5 s for N=1 presentation
+checks and 80.9 s for boot presentation checks, with overlap/baseline,
+optimized-seed and credit checks included. It covered 1,646 matched routines,
+ran 831 tests and added 244 route-executed named bytes. P2 moved from 96.81%
+to 96.93%. The finalizer found one routine registered after the preceding
+accepted baseline; a separately hashed three-seed refresh fixed the stale
+coverage without changing the old packet or rerunning the gate. The successful
+acceptance duration is frozen across finalizer reruns. Evidence:
+`D:/f117-gate/p2-batch-bz-accept/` (`final-gate-verdict.json`). A batch's new
 optimized CTests take two to three seconds (batches at to ax: 1.82-2.80 s);
 the census refresh afterwards takes seconds.
-
 ### Pre-checks before a batch's gate
 
 Cheap checks that catch most failures before a half-hour gate; they replace
@@ -703,17 +717,72 @@ for the current key: after any `src/` change outside `matched.c`, run the gate
 first, or `py D:/f117-gate/accept-kit/prefill_cache.py ROUTE...` for the routes
 the proofs need.
 
-Fresh harness compiles take roughly 80-140 s per private project. Proof
-workers can use separate CPU sets at BelowNormal priority beside the gate,
-leaving desktop CPUs free (two isolated lanes, `000FFF` and `FFF000`,
-refreshed two pending proofs in 192.62 s on 17 Oct: optimized libraries, five
-seeds each, all 115 mutations, real-route and boot replays, source/coverage/
-mutation audits); keep each worker's mutation builds serial when sharing the
-machine.
+Fresh harness compiles historically took roughly 80-140 s per private
+project; the recent sound proofs took several minutes. A fixture or harness
+edit triggers that cost even when candidate-only edits rebuild in seconds.
+Proof workers may use separate CPU sets at BelowNormal priority during
+private preparation, with serial mutation builds per worker and at most
+three compilers machine-wide. Finish proof workers before the gate; the
+older experiment overlapping proofs with a gate is not current practice.
+
+### Order work to avoid repeated proof cycles (1 November 2026)
+
+1. **Review before compiling.** Check current branch and source/test snapshot
+   hashes, already-credited bytes, dossier bounds, return envelope, route,
+   callees and wake boundaries. Reuse Ghidra exports and check their image
+   base against raw bytes before starting a new import. Review body,
+   fixture and mutation catalog together: each mutation's old text must occur
+   exactly once. For I/O, read the actual lockstep callbacks as well as the
+   production device code. The harness stubs I/O without charging production
+   bus delays; a fixture testing `IO_SLACK` must set a nonzero instruction
+   rate and explicitly probe its room boundary. Do not infer clocks from
+   production port delays in this harness.
+2. **Compile one reviewed revision.** Settle helper paths, fixture inputs,
+   room probes and mutation edits first. An agent's interim hypothesis is
+   not enough to cancel a build or edit its inputs. Batch confirmed edits;
+   preserve the project so unchanged harness objects and libraries are reused.
+3. **Smoke-test the built revision.** Run `kit.py DIR lock --states 64`,
+   then the same command at each of the four kit seeds. These are additional
+   diagnostic runs, not acceptance evidence. Any skips, mismatches, zero
+   comparisons or unexpected stops return the candidate to diagnosis before
+   the full proof. A process exit of zero alone is insufficient: `lock` can
+   report equal states alongside thousands of skipped long runs. The kit
+   saves full output in `lock.log` and a states/seed-specific log; inspect it
+   before rerunning. Incomplete coverage at this small state count is not a
+   final coverage verdict.
+   Measured on 1 November: the current ASOUND.117 `0B01` failure was visible
+   in 0.41 s at 64 states (32 long-run skips); its earlier full run took
+   about 20 s and reported 3,461 skips. This speeds diagnosis only; passing
+   smoke runs still require every full proof check below.
+4. **Freeze inputs, then prove fully.** Run the unchanged 5,000-state
+   `lock --cover`, all five full seed runs and all mutations. Require positive
+   comparisons, zero skips/mismatches and complete named coverage. Any later
+   proof-input edit invalidates affected evidence; finish the complete
+   reproof. Build the runner for checkpoints only after these checks pass.
+5. **Bound an unproductive diagnosis.** After about 20 minutes of active
+   investigation or two failed repair revisions, require a concrete new
+   cause and a discriminating check before another repair build. Otherwise
+   save the failed evidence, current inputs, hypothesis and next check, and
+   work another candidate. This is a scheduling rule, not permission to
+   discard a failing test, classify code as excluded or grant credit.
+6. **Prepare acceptance while proofs finish.** Once interpreter inputs are
+   stable, calculate the exact route-cache key and fill missing references
+   before `finish_all.py`; do not discover a missing key at the end. Check
+   the key again if another worker changes source. Bundle independent small
+   proofs with other ready candidates. One difficult candidate must not hold
+   every ready proof indefinitely; choose the ready batch explicitly, then
+   run every existing checkpoint, precheck, optimized check and full gate.
+
+Record proof state separately from acceptance state: prepared, smoke passed,
+full seeds/coverage passed, mutations passed, checkpoints passed, integrated,
+prechecks passed, gate passed, committed/pushed. Give commit estimates from
+the unfinished stages and observed costs; do not give a minute-level estimate
+while a proof has an unresolved failure. These ordering changes remove no
+states, seeds, mutations, routes, fresh-reference verification or gate checks.
 
 | Step | Cost | Note |
 |---|---|---|
-| private build loop | initial 9.9 s, edits 2.6-3.6 s | a direct candidate matched object linked before frozen generated/core libraries; no generated sources recompile. /Od is development evidence only (it avoided a very large optimizer peak); integration needs the production options, optimized seeds and a full gate. Library hashes kept with the private project |
+| candidate-only private rebuild, unchanged harness | historical initial 9.9 s, edits 2.6-3.6 s | excludes a fresh or changed harness compile (minutes, above); a direct candidate matched object links before frozen generated/core libraries, without regenerating sources. /Od is development evidence only; integration needs production options, optimized seeds and a full gate. Library hashes stay with the private project |
 | private generation in a worktree | 21.9-30.7 s | from frozen coverage, its own generated directory; build with two workers and its own TEMP, after main's matched shards finish |
 | targeted seeds (`func_lockstep --only MODULE.EXE:IP --states 4000`) | 0.4-5 s per seed; 23.3 s for the 1,332-instruction mission generator | run every new body at four or five seeds: the default seed passed a body with a wrong resume point |
 | mutations | 37 edits about 8 min serially, 90 s four at a time | identical CAUGHT results; the kit never edits `body.c` |

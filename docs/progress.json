@@ -307,19 +307,19 @@
     "supplemental": {
       "basis": "census plus executed and reviewed static code in all 17 game code files",
       "bytes": 43750,
-      "credited": 30954,
+      "credited": 31198,
       "reviewed_static_bytes": 11601,
       "original_reviewed_bytes": 794,
       "by_module": {
         "ASOUND.117": {
           "bytes": 5846,
-          "credited": 5470,
+          "credited": 5680,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
         "ASOUND.LOG": {
           "bytes": 3760,
-          "credited": 3591,
+          "credited": 3625,
           "reviewed_static_bytes": 0,
           "original_reviewed_bytes": 0
         },
@@ -426,11 +426,11 @@
     "gameplay": {
       "basis": "every instruction byte a validated route capture executes in the 17 game code files",
       "denominator": 163907,
-      "matched_route_run": 159771,
+      "matched_route_run": 160015,
       "stays_original_reviewed": 2631,
-      "score": 0.9908179638453514,
+      "score": 0.9923066128963376,
       "fixture_only": 31857,
-      "remaining": 1505,
+      "remaining": 1261,
       "original_awaiting_review": 0,
       "reviewed_entries": 1897,
       "checklist": {
@@ -474,10 +474,10 @@
       "by_module": {
         "ASOUND.117": {
           "denominator": 5373,
-          "matched_route_run": 4997,
+          "matched_route_run": 5207,
           "stays_original_reviewed": 0,
           "fixture_only": 473,
-          "remaining": 376,
+          "remaining": 166,
           "original_awaiting_review": 0,
           "not_in_denominator": 473,
           "not_in_denominator_reviewed": 473,
@@ -485,10 +485,10 @@
         },
         "ASOUND.LOG": {
           "denominator": 2615,
-          "matched_route_run": 2446,
+          "matched_route_run": 2480,
           "stays_original_reviewed": 0,
           "fixture_only": 1145,
-          "remaining": 169,
+          "remaining": 135,
           "original_awaiting_review": 0,
           "not_in_denominator": 1145,
           "not_in_denominator_reviewed": 1145,

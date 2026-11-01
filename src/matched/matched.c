@@ -104748,7 +104748,386 @@ static int setup_open_create_close_request(machine_t *m)
 
 
 
+/* ASOUND.117 01B6:0A48 (near, no arguments; DS is the driver's data segment): finish the sound-effect
+ * restore tail. Restore the speaker gate from [17E1], program PIT counter 2 in mode B6h, write a zero
+ * count to counter 2, enable interrupts, then return to the caller. Each port write is at the original
+ * instruction clock. If the run budget ends between groups, hand back at that exact guest instruction. */
+static int asound_117_sound_effect_restore_tail(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+
+    if (!room(c, 2 + IO_SLACK(1))) return 0;
+    c->op_ip = 0x0A48;
+    set_r8(c, R_AL, ds_get8(c, 0x17E1));                                  /* 0A48: mov al,[17E1] */
+    c->icount += 1;
+    c->op_ip = 0x0A4B;
+    x86_out(c, 0x61, 0);                                                  /* 0A4B: out 61h,al */
+    c->icount += 1;
+
+    if (!room(c, 2 + IO_SLACK(1))) { c->ip = 0x0A4D; return 1; }
+    set_r8(c, R_AL, 0xB6);                                                /* 0A4D: mov al,B6h */
+    c->icount += 1;
+    c->op_ip = 0x0A4F;
+    x86_out(c, 0x43, 0);                                                  /* 0A4F: out 43h,al */
+    c->icount += 1;
+
+    if (!room(c, 4 + IO_SLACK(2))) { c->ip = 0x0A51; return 1; }
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);       /* 0A51: xor ax,ax */
+    c->icount += 1;
+    c->op_ip = 0x0A53;
+    x86_out(c, 0x42, 0);                                                  /* 0A53: out 42h,al */
+    c->icount += 1;
+    set_r8(c, R_AL, get_r8(c, R_AH));                                     /* 0A55: mov al,ah */
+    c->icount += 1;
+    c->op_ip = 0x0A57;
+    x86_out(c, 0x42, 0);                                                  /* 0A57: out 42h,al */
+    c->icount += 1;
+
+    if (!room(c, 2)) { c->ip = 0x0A59; return 1; }
+    x86_sti(c);                                                           /* 0A59: sti */
+    c->icount += 1;
+    near_ret(c);                                                          /* 0A5A: ret */
+    c->icount += 1;
+    return 1;
+}
+
+/* ASOUND.117 01B6:0A5B prefix: send the AdLib setup writes through the existing 036Bh OPL writer,
+ * disable interrupts, then program PIT counter 0's mode. OUT 43h,36h wakes the machine; return at
+ * 0AC4 and leave the reload, counter sampling loop, final OPL writes, STI and RET to original code. */
+static int asound_117_adlib_pit_setup_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OPL_WRITE = 0x036B };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(expr_) do { const uint64_t until_ = m->run_until;     if (m->run_until > c->stop_at) m->run_until = c->stop_at;     const int returned_ = (expr_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, OPL_WRITE, (ret_), 0)); } while (0)
+#define XIO(at_, code_) do { SM4_NEED(1 + IO_SLACK(1), (at_)); c->op_ip = (at_); code_; c->icount += 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 3)) return 0;
+    XB(1, 0x0A5B); set_r8(c, R_AH, 0x08);                    /* mov ah,8 */
+    XB(1, 0x0A5D); set_r8(c, R_AL, 0x20);                    /* mov al,20h */
+    XB(1, 0x0A5F); set_r8(c, R_BL, 0x23);                    /* mov bl,23h */
+    XCALL(0x0A61, 0x0A64);
+    XB(1, 0x0A64); set_r8(c, R_AL, 0x23);
+    XB(1, 0x0A66); set_r8(c, R_BL, 0x28);
+    XCALL(0x0A68, 0x0A6B);
+    XB(1, 0x0A6B); set_r8(c, R_AL, 0x40);
+    XB(1, 0x0A6D); set_r8(c, R_BL, 0x3F);
+    XCALL(0x0A6F, 0x0A72);
+    XB(1, 0x0A72); set_r8(c, R_AL, 0x43);
+    XB(1, 0x0A74); set_r8(c, R_BL, 0x3F);
+    XCALL(0x0A76, 0x0A79);
+    XB(1, 0x0A79); set_r8(c, R_AL, 0x60);
+    XB(1, 0x0A7B); set_r8(c, R_BL, 0xAF);
+    XCALL(0x0A7D, 0x0A80);
+    XB(1, 0x0A80); set_r8(c, R_AL, 0x63);
+    XB(1, 0x0A82); set_r8(c, R_BL, 0xAF);
+    XCALL(0x0A84, 0x0A87);
+    XB(1, 0x0A87); set_r8(c, R_AL, 0x80);
+    XB(1, 0x0A89); set_r8(c, R_BL, 0x0D);
+    XCALL(0x0A8B, 0x0A8E);
+    XB(1, 0x0A8E); set_r8(c, R_AL, 0x83);
+    XB(1, 0x0A90); set_r8(c, R_BL, 0x0F);
+    XCALL(0x0A92, 0x0A95);
+    XB(1, 0x0A95); set_r8(c, R_AL, 0xC0);
+    XB(1, 0x0A97); set_r8(c, R_BL, 0x05);
+    XCALL(0x0A99, 0x0A9C);
+    XB(1, 0x0A9C); set_r8(c, R_AL, 0xE0);
+    XB(1, 0x0A9E); set_r8(c, R_BL, 0x00);
+    XCALL(0x0AA0, 0x0AA3);
+    XB(1, 0x0AA3); set_r8(c, R_AL, 0xE3);
+    XB(1, 0x0AA5); set_r8(c, R_BL, 0x02);
+    XCALL(0x0AA7, 0x0AAA);
+    XB(1, 0x0AAA); set_r8(c, R_AL, 0xB0);
+    XB(1, 0x0AAC); set_r8(c, R_BL, 0x01);
+    XCALL(0x0AAE, 0x0AB1);
+    XB(1, 0x0AB1); set_r8(c, R_AL, 0xA0);
+    XB(1, 0x0AB3); set_r8(c, R_BL, 0x8F);
+    XCALL(0x0AB5, 0x0AB8);
+    XB(1, 0x0AB8); set_r8(c, R_AL, 0xB0);
+    XB(1, 0x0ABA); set_r8(c, R_BL, 0x2E);
+    XCALL(0x0ABC, 0x0ABF);
+
+    XB(1, 0x0ABF); x86_cli(c);
+    XB(1, 0x0AC0); set_r8(c, R_AL, 0x36);
+    XIO(0x0AC2, x86_out(c, 0x43, 0));
+    c->ip = 0x0AC4; /* next boundary after PIT0 control-word wake */
+    return 1;
+#undef XIO
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* ASOUND.117 01B6:0B01 (near, plain RET): send a sequence from the overlay tables to the OPL chip.
+ * It preserves AX and BX around the caller's code/data selection, selects the destination data segment from
+ * the table word plus DS:[17E2], and walks SI to DI. Each source byte selects a code-segment lookup byte,
+ * which is written to port 389h after the counter-2 control/read sequence. The first table word is a zero
+ * sentinel that exits without processing records. DX, SI, DI, DS, BX, AX, FLAGS, memory and I/O follow the
+ * original instruction order; the table address is caller-supplied in BX. The status delay is a fixed 30
+ * reads, and the counter-2 loop is scripted by the fixture to cover both continued and terminating reads. */
+static int asound_117_program_counter2_sequence(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XIO(at_, op_) do { if (!room(c, 1 + IO_SLACK(1))) { c->ip = (at_); return 1; } c->op_ip = (at_); op_; c->icount += 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 1)) return 0;
+    /* 0B01  ba8803         mov dx, 0x388 */
+L_0B01: if (!room(c, 1)) return 0; XB(1, 0x0B01);
+    c->r[R_DX] = 0x0388;
+goto L_0B04;
+    /* 0B04  b043           mov al, 0x43 */
+L_0B04: XB(1, 0x0B04);
+    set_r8(c, 0, 0x43);
+goto L_0B06;
+    /* 0B06  50             push ax */
+L_0B06: XB(1, 0x0B06);
+    x86_push_reg(c, R_AX);
+goto L_0B07;
+    /* 0B07  b91e00         mov cx, 0x1e */
+L_0B07: XB(1, 0x0B07);
+    c->r[R_CX] = 0x001E;
+goto L_0B0A;
+    /* 0B0A  ec             in al, dx */
+L_0B0A: XIO(0x0B0A, (x86_in(c, c->r[R_DX], 0)));
+goto L_0B0B;
+    /* 0B0B  e2fd           loop 0xb0a */
+L_0B0B: XB(1, 0x0B0B);
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+if (c->r[R_CX] != 0) goto L_0B0A; goto L_0B0D;
+    /* 0B0D  58             pop ax */
+L_0B0D: XB(1, 0x0B0D);
+    c->r[R_AX] = cpu_pop16(c);
+goto L_0B0E;
+    /* 0B0E  ee             out dx, al */
+L_0B0E: XIO(0x0B0E, (x86_out(c, c->r[R_DX], 0)));
+goto L_0B0F;
+    /* 0B0F  2e8b07         mov ax, word ptr cs:[bx] */
+L_0B0F: XB(1, 0x0B0F);
+    { const uint16_t s_ = c->seg[S_CS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+goto L_0B12;
+    /* 0B12  0bc0           or ax, ax */
+L_0B12: XB(1, 0x0B12);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+      c->r[R_AX] = (uint16_t)(r_);
+    }
+goto L_0B14;
+    /* 0B14  7440           je 0xb56 */
+L_0B14: XB(1, 0x0B14);
+if (x86_cond(c, 4)) goto L_0B56; goto L_0B16;
+    /* 0B16  8bf8           mov di, ax */
+L_0B16: XB(1, 0x0B16);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; c->r[R_DI] = (uint16_t)(c->r[R_AX]); }
+goto L_0B18;
+    /* 0B18  43             inc bx */
+L_0B18: XB(1, 0x0B18);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B19;
+    /* 0B19  43             inc bx */
+L_0B19: XB(1, 0x0B19);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B1A;
+    /* 0B1A  2e8b37         mov si, word ptr cs:[bx] */
+L_0B1A: XB(1, 0x0B1A);
+    { const uint16_t s_ = c->seg[S_CS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); c->r[R_SI] = (uint16_t)(seg_read16(c, s_, o_)); }
+goto L_0B1D;
+    /* 0B1D  43             inc bx */
+L_0B1D: XB(1, 0x0B1D);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B1E;
+    /* 0B1E  43             inc bx */
+L_0B1E: XB(1, 0x0B1E);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B1F;
+    /* 0B1F  2e8b07         mov ax, word ptr cs:[bx] */
+L_0B1F: XB(1, 0x0B1F);
+    { const uint16_t s_ = c->seg[S_CS]; const uint16_t o_ = (uint16_t)(c->r[R_BX]); c->r[R_AX] = (uint16_t)(seg_read16(c, s_, o_)); }
+goto L_0B22;
+    /* 0B22  43             inc bx */
+L_0B22: XB(1, 0x0B22);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B23;
+    /* 0B23  43             inc bx */
+L_0B23: XB(1, 0x0B23);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+goto L_0B24;
+    /* 0B24  53             push bx */
+L_0B24: XB(1, 0x0B24);
+    x86_push_reg(c, R_BX);
+goto L_0B25;
+    /* 0B25  1e             push ds */
+L_0B25: XB(1, 0x0B25);
+    cpu_push16(c, c->seg[S_DS]);
+goto L_0B26;
+    /* 0B26  0306e217       add ax, word ptr [0x17e2] */
+L_0B26: XB(1, 0x0B26);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(0x17E2);
+      const uint16_t r_ = (uint16_t)alu_op(c, 0, c->r[R_AX], seg_read16(c, s_, o_), 1);
+      c->r[R_AX] = (uint16_t)(r_);
+    }
+goto L_0B2A;
+    /* 0B2A  8ed8           mov ds, ax */
+L_0B2A: XB(1, 0x0B2A);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; const uint16_t v_ = c->r[R_AX];
+      c->seg[S_DS] = v_; }
+goto L_0B2C;
+    /* 0B2C  b4ff           mov ah, 0xff */
+L_0B2C: XB(1, 0x0B2C);
+    set_r8(c, 4, 0xFF);
+goto L_0B2E;
+    /* 0B2E  b080           mov al, 0x80 */
+L_0B2E: XB(1, 0x0B2E);
+    set_r8(c, 0, 0x80);
+goto L_0B30;
+    /* 0B30  e643           out 0x43, al */
+L_0B30: XIO(0x0B30, (x86_out(c, 0x43, 0)));
+goto L_0B32;
+    /* 0B32  eb00           jmp 0xb34 */
+L_0B32: XB(1, 0x0B32);
+goto L_0B34;
+    /* 0B34  e442           in al, 0x42 */
+L_0B34: XIO(0x0B34, (x86_in(c, 0x42, 0)));
+goto L_0B36;
+    /* 0B36  3ae0           cmp ah, al */
+L_0B36: XB(1, 0x0B36);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, get_r8(c, 4), get_r8(c, 0), 0);
+      (void)r_;
+    }
+goto L_0B38;
+    /* 0B38  8ae0           mov ah, al */
+L_0B38: XB(1, 0x0B38);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_; set_r8(c, 4, (uint8_t)(get_r8(c, 0))); }
+goto L_0B3A;
+    /* 0B3A  73f2           jae 0xb2e */
+L_0B3A: XB(1, 0x0B3A);
+if (x86_cond(c, 3)) goto L_0B2E; goto L_0B3C;
+    /* 0B3C  32ff           xor bh, bh */
+L_0B3C: XB(1, 0x0B3C);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 6, get_r8(c, 7), get_r8(c, 7), 0);
+      set_r8(c, 7, (uint8_t)(r_));
+    }
+goto L_0B3E;
+    /* 0B3E  8a1c           mov bl, byte ptr [si] */
+L_0B3E: XB(1, 0x0B3E);
+    { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_SI]); set_r8(c, 3, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+goto L_0B40;
+    /* 0B40  d1eb           shr bx, 1 */
+L_0B40: XB(1, 0x0B40);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 5, c->r[R_BX], 1, 1));
+    }
+goto L_0B42;
+    /* 0B42  d1eb           shr bx, 1 */
+L_0B42: XB(1, 0x0B42);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      c->r[R_BX] = (uint16_t)(x86_shift(c, 5, c->r[R_BX], 1, 1));
+    }
+goto L_0B44;
+    /* 0B44  2e8a871800     mov al, byte ptr cs:[bx + 0x18] */
+L_0B44: XB(1, 0x0B44);
+    { const uint16_t s_ = c->seg[S_CS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x0018); set_r8(c, 0, (uint8_t)(mem_read8(c, phys(s_, o_)))); }
+goto L_0B49;
+    /* 0B49  ba8903         mov dx, 0x389 */
+L_0B49: XB(1, 0x0B49);
+    c->r[R_DX] = 0x0389;
+goto L_0B4C;
+    /* 0B4C  ee             out dx, al */
+L_0B4C: XIO(0x0B4C, (x86_out(c, c->r[R_DX], 0)));
+goto L_0B4D;
+    /* 0B4D  46             inc si */
+L_0B4D: XB(1, 0x0B4D);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+goto L_0B4E;
+    /* 0B4E  3bf7           cmp si, di */
+L_0B4E: XB(1, 0x0B4E);
+    { const uint16_t s_ = 0, o_ = 0; (void)s_; (void)o_;
+      const uint16_t r_ = (uint16_t)alu_op(c, 7, c->r[R_SI], c->r[R_DI], 1);
+      (void)r_;
+    }
+goto L_0B50;
+    /* 0B50  75da           jne 0xb2c */
+L_0B50: XB(1, 0x0B50);
+if (x86_cond(c, 5)) goto L_0B2C; goto L_0B52;
+    /* 0B52  1f             pop ds */
+L_0B52: XB(1, 0x0B52);
+    c->seg[S_DS] = cpu_pop16(c);
+goto L_0B53;
+    /* 0B53  5b             pop bx */
+L_0B53: XB(1, 0x0B53);
+    c->r[R_BX] = cpu_pop16(c);
+goto L_0B54;
+    /* 0B54  ebb9           jmp 0xb0f */
+L_0B54: XB(1, 0x0B54);
+goto L_0B0F;
+    /* 0B56  c3             ret */
+L_0B56: XB(1, 0x0B56);
+    near_ret(c);
+    return 1;
+#undef XIO
+#undef XB
+}
+
+/* ASOUND.LOG 008A-00AC, near, no arguments: disable interrupts and restore
+ * the saved INT 8 vector. This prefix restores DS/CX/BX and sends PIT counter-0
+ * mode-3 control word 36h to port 43h, then hands back at IP 00AC. AX remains
+ * saved on the stack; original continuation code restores it at 00BE. The PIT
+ * reload bytes, CS status stores, STI and RET remain outside this proof window. */
+/* ASOUND.LOG 008A, near (no arguments, no result): the AdLib driver's timer uninstaller, the counterpart of the installer at
+ * 005A. With interrupts disabled it saves AX, BX, CX and DS, loads the old INT 8 vector saved in the driver's code segment
+ * (CS:[0048] offset, CS:[004A] segment), points DS at segment 0 (the real interrupt vector table) and writes the vector back
+ * to 0000:0020 / 0000:0022, restores DS, CX and BX, and reprograms PIT counter 0: control word 36h (counter 0, mode 3,
+ * 16-bit) to port 43h, then the reload 0000 as two bytes to port 40h (AL after XOR AX,AX, then AL = AH). It records that high
+ * byte at CS:[004C], clears the installed flag CS:[004F], restores AX, then STIs and returns.
+ * Each OUT is its own instruction, given its own room claim with I/O slack: the original stops right after any one of them that
+ * wakes the run loop (the control word, the reload), so the claim that follows it fails and the body hands back there. The
+ * named region ends at the STI (POPF_STOPS: ASOUND.LOG 008A -> 00C0); the RET at 00C0 is outside the named region and remains
+ * original continuation code. Every port access is made at the clock the original makes it. No callee. */
+static int asound_log_uninstall_timer_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->op_cs = c->seg[S_CS];
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 15)) return 0;
+    XB(15, 0x008A);
+    x86_cli(c);                                                   /* 008A cli */
+    x86_push_reg(c, R_AX);                                        /* 008B push ax */
+    x86_push_reg(c, R_BX);                                        /* 008C push bx */
+    x86_push_reg(c, R_CX);                                        /* 008D push cx */
+    cpu_push16(c, c->seg[S_DS]);                                  /* 008E push ds */
+    c->r[R_BX] = seg_read16(c, c->seg[S_CS], 0x0048);             /* 008F mov bx,cs:[0048]: the old INT 8 offset */
+    c->r[R_CX] = seg_read16(c, c->seg[S_CS], 0x004A);             /* 0094 mov cx,cs:[004A]: the old INT 8 segment */
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);   /* 0099 xor ax,ax */
+    c->seg[S_DS] = c->r[R_AX];                                    /* 009B mov ds,ax: the vector table */
+    ds_put(c, 0x0020, c->r[R_BX]);                                /* 009D mov [0020],bx */
+    ds_put(c, 0x0022, c->r[R_CX]);                                /* 00A1 mov [0022],cx */
+    c->seg[S_DS] = cpu_pop16(c);                                  /* 00A5 pop ds */
+    c->r[R_CX] = cpu_pop16(c);                                    /* 00A6 pop cx */
+    c->r[R_BX] = cpu_pop16(c);                                    /* 00A7 pop bx */
+    set_r8(c, R_AL, 0x36);                                        /* 00A8 mov al,36h */
+
+    SM4_NEED(1 + IO_SLACK(1), 0x00AA);                            /* 00AA out 43h,al: counter 0, mode 3 control word */
+    c->op_ip = 0x00AA;
+    x86_out(c, 0x43, 0);
+    c->icount += 1;
+
+    /* The PIT control-word OUT is the final instruction in this proved prefix.
+     * Resume the original routine at 00AC; its reload/store/restore/return tail
+     * remains outside this body's claim. */
+    c->ip = 0x00AC;
+    return 1;
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x008A, asound_log_uninstall_timer_prefix, "ASOUND.LOG timer-uninstall prefix: disable interrupts, restore the saved INT 8 vector from CS:[0048]/[004A] into IVT 0000:0020/0022, restore DS/CX/BX and write PIT counter-0 mode-3 control word 36h to port 43h; hand back at 00AC immediately after OUT, leaving the counter reload, status stores, POP AX, STI and RET to original code", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B01, asound_117_program_counter2_sequence, "AdLib overlay: stream a selected sequence through the PIT/OPL ports", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0A5B, asound_117_adlib_pit_setup_prefix, "AdLib OPL setup and PIT0 mode-control prefix; hand back after the wake at 0AC4", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0A48, asound_117_sound_effect_restore_tail, "Sound-effect restore tail: restore speaker gate, program and zero PIT counter 2, enable interrupts, and return", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0CB2, setup_open_create_close_request, "call the open, create and close request helpers, preserving their stack arguments and return values", 1 },
     { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x07E9, isound_117_volume_table_scale, "Sound-effects driver: scale every byte of the volume table b -> (b>>1)*9/16+1, for the whole 64 KB segments cs:[0750h] and the last cs:[074Eh] bytes starting at segment DS:[197Bh]", 1 },
     { "matched", "ISOUND.117", ISOUND_117_47304, 0x019C, 0x026C, isound_117_speaker_sequencer_tick, "PC-speaker overlay sequencer tick: count the tick in cs:[2], then for an active driver step the engine noise, the envelope countdown or the note (duration, repeat, vibrato or slide, next record) and send the noisy divisor to speaker counter 2", 1 },
