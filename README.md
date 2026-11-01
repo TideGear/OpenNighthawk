@@ -468,6 +468,9 @@ closed. Buy it; it is inexpensive and still available.
 - **SingleStepTests**, for the 8088 and 80286 hardware vectors.
 - **Capstone**, for the disassembly comments in the generated C and in the
   matched-routine drafts.
+- **Ghidra** (the NSA Research Directorate and the Ghidra contributors), the decompiler
+  used as a reading aid on the large routines; its output informs the reading only, and the
+  lockstep check decides correctness.
 - **debugcom** and **damsonn**, for the mission-generator and secret-airstrip analysis (debugcom) and the fan patch for it (packaged by damsonn) that the
   bug tracker cites.
 - **GOG** and **Steam**, for keeping the game on sale.
