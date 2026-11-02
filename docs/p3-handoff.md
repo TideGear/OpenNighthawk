@@ -334,3 +334,11 @@ this game. Start after hybrid sound is proven.
 3. R9 / 5. Draw distance: aircraft model reach doubled; scenery unchanged. `F117_WIDE_FAR=N` (rerun.c, off by default) writes the far plane `[48E6]` in the copy for the experiment; untested on airborne frames. The walker's ring sizes are code shifts and tile limits, not data.
 4. Tower spinner: fine.
 "What else might we be missing": unsurveyed: per-ring object lists `[E330+...]`, `compose_draw_model` range tests (0xBC0B/0xBC1B), other B5DC-style tests.
+
+## 2 Nov 11:40: scenery draw distance measured
+
+`F117_WIDE_FAR` (far plane in the copy: 24000 and 30000 against the game's 13332) on the owner's flight 235935 to clock 11.3 G: mean drawn values per rerun copy 253897 (default), 252950 (24000), 243299 (30000). A farther plane draws nothing more (30000 draws less), so the far plane is not what limits scenery. What limits it is the terrain walker `04E6`: the ring count and sizes are shifts in code of routine `0810` and tile-map limits `[0506+2*ring]`, not data. Raising scenery distance needs a longer walk in the render copy (a new walker, or extra rings visited from a copy's own call), which is work in `matched.c`/machine territory the P2 session owns: ask before touching. Not done.
+
+Culling by centre (2 Nov, owner asked): the object cull tests only the object's centre plus a per-detail-class side allowance (`[E56A]`, 18000 in the copy), not its extent; a near, wide object (hangar, tower) with its centre outside the limit can vanish while partly on screen (the owner saw one vanish taxiing close). A fix needs the model's extent (half-width) added to the allowance.
+
+Horizon line and flagpole (commit db91ae2): far lines (> 12000 long) never taken whole; dark lines drawn whole over earlier bright ones. Neither verified on the owner's exact moments; the grey bar across jets on the flight frames is the HUD's own horizon bar (also in front in the original).
