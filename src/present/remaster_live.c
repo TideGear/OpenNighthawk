@@ -373,14 +373,6 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 uint32_t colour;
                 if (p->kind != SCENE_LINES && p->kind != SCENE_DOTS) continue;
                 if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
-                if (pass == 0 && p->kind == SCENE_LINES) {       /* the horizon is a line tens of thousands of units long: far behind everything, never whole */
-                    int far_line = 0;
-                    for (int k = 0; k + 1 < p->n && !far_line; k++) {
-                        const double dx = p->v[k + 1].x - p->v[k].x, dz = p->v[k + 1].z - p->v[k].z, dy = p->v[k + 1].y - p->v[k].y;
-                        far_line = dx * dx + dy * dy + dz * dz > 12000.0 * 12000.0;
-                    }
-                    if (far_line) continue;
-                }
                 const int dark = (int)(colour >> 16 & 255) + (int)(colour >> 8 & 255) + (int)(colour & 255) <= 200;   /* dark: never taken whole, but drawn whole over an earlier bright line (a flag over its pole) as the original's order has it */
                 unsigned idx = 0;
                 word_style(p->colour_word, p->darken, &idx);

@@ -318,6 +318,16 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
             const uint16_t base = rd16(g_copy_mem, ds, 0xE56A);
             for (int md = 0; md < 8; md++) {
                 const uint16_t at = (uint16_t)(base + 2 * md);
+                /* The near plane tests an object's centre, so a hangar beside the taxiing jet vanished while its near half was still in
+                 * view. The game's own side allowance for the class (the table's first value) is its measure of how far the class
+                 * reaches from its centre: the near plane moves back by that much (F117_WIDE_NEAR=0 leaves it). */
+                static int near_on = -1;
+                if (near_on < 0) { const char *e = getenv("F117_WIDE_NEAR"); near_on = !(e && e[0] == '0'); }
+                if (near_on) {
+                    const int back = rd16(g_copy_mem, ds, at) > 12000 ? 12000 : (int)rd16(g_copy_mem, ds, at);
+                    const int v = (int16_t)rd16(g_copy_mem, ds, (uint16_t)(0x48F6 + 2 * md)) - back;
+                    wr16(g_copy_mem, ds, (uint16_t)(0x48F6 + 2 * md), (uint16_t)(int16_t)(v < -32000 ? -32000 : v));
+                }
                 if (rd16(g_copy_mem, ds, at) < allowance) wr16(g_copy_mem, ds, at, (uint16_t)allowance);
             }
             g_air_k = -1; g_air_done = 0; g_air_pct = pct;
