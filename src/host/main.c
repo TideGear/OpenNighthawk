@@ -191,7 +191,8 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     remaster_live *src = !no_copy && g_live.shown_copy && g_rlive_copy ? g_rlive_copy : g_rlive;
     if (getenv("F117_REMASTER_COPYCHECK")) {
         static unsigned calls;
-        if (++calls % 120 == 1) fprintf(stderr, "[copycheck] picture from %s: copy frame %zu primitives, live frame %zu\n", src == g_rlive_copy ? "a copy" : "the live machine", g_rlive_copy ? remaster_live_done_prims(g_rlive_copy) : 0, remaster_live_done_prims(g_rlive));
+        static unsigned every; if (!every) { const int e = atoi(getenv("F117_REMASTER_COPYCHECK")); every = e > 1 ? (unsigned)e : 120; }   /* =N: every Nth picture (a prime avoids the logic-step phase) */
+        if (++calls % every == 1) fprintf(stderr, "[copycheck] picture from %s: copy frame %zu primitives, live frame %zu\n", src == g_rlive_copy ? "a copy" : "the live machine", g_rlive_copy ? remaster_live_done_prims(g_rlive_copy) : 0, remaster_live_done_prims(g_rlive));
     }
     g_remaster_src = src;
     g_wide_filled = 0;
