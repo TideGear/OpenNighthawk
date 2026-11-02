@@ -308,6 +308,13 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                 allowance = far_ < 30000u ? 32000u - far_ : 2000u;
                 if (allowance > 18000u) allowance = 18000u;
             }
+            static int far_env = -1;
+            if (far_env < 0) { const char *e = getenv("F117_WIDE_FAR"); far_env = e ? atoi(e) : 0; }   /* F117_WIDE_FAR=UNITS (experiment, R9): the far plane [48E6] in the copy */
+            if (far_env > 0) {
+                wr16(g_copy_mem, ds, 0x48E6, (uint16_t)far_env);
+                allowance = far_env < 30000 ? (unsigned)(32000 - far_env) : 2000u;      /* |z'| + allowance must stay under 0x7FFF */
+                if (allowance > 18000u) allowance = 18000u;
+            }
             const uint16_t base = rd16(g_copy_mem, ds, 0xE56A);
             for (int md = 0; md < 8; md++) {
                 const uint16_t at = (uint16_t)(base + 2 * md);

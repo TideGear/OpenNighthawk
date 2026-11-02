@@ -326,3 +326,11 @@ this game. Start after hybrid sound is proven.
   session gates.
 - Window-less runs: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`; `--no-record`, a copy of the
   install.
+
+## 2 Nov 11:10 update: the five issues, honest state
+
+1. Jets in margins: fixed in code (R20), awaiting the owner's look.
+2. Grey line / flagpole: `line_behind_surface` added (R17 row); the flagpole tie (R18, grey pole line vs dark-red flag line meeting at one vertex) is NOT fixed. Next: a line-vs-line tie rule so the later-drawn flag wins.
+3. R9 / 5. Draw distance: aircraft model reach doubled; scenery unchanged. `F117_WIDE_FAR=N` (rerun.c, off by default) writes the far plane `[48E6]` in the copy for the experiment; untested on airborne frames. The walker's ring sizes are code shifts and tile limits, not data.
+4. Tower spinner: fine.
+"What else might we be missing": unsurveyed: per-ring object lists `[E330+...]`, `compose_draw_model` range tests (0xBC0B/0xBC1B), other B5DC-style tests.

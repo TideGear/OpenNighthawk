@@ -530,6 +530,20 @@ typedef struct {
     long replaced[REMASTER_PARTS], kept[REMASTER_PARTS][64];
 } replace_job;
 
+/* A whole line (the strong pass draws every line at any depth) is taken only where it is not clearly behind a nearer surface: a line that
+ * belongs to a surface (a door line on its wall, a marking on the ground) lies at about the surface's depth, but the horizon line is far
+ * behind a jet or a hangar and must not show through its thin parts (a tail, a wing). The weak pass left the surface's depth in inv_z where it
+ * rejected the line; the strong pass left the line's own depth in line_tmp_z. 1/z: the line is behind when its value is under 0.9 of the
+ * surface's. F117_WIDE_LINE_HIDE=0 (diagnostic) takes every whole line as before. */
+static int line_behind_surface(const remaster_target *t, long ti)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_WIDE_LINE_HIDE"); on = !(e && e[0] == '0'); }
+    if (!on || !t->line_tmp_z) return 0;
+    const float surface = t->inv_z[ti], line = t->line_tmp_z[ti];
+    return surface > 0.0f && line > 0.0f && line < surface * 0.9f;
+}
+
 /* One worker's rows of the replace loop (and of the wide picture): every pixel depends only on its own row and on read-only buffers. */
 static void replace_part(void *arg, int part)
 {
@@ -560,7 +574,7 @@ static void replace_part(void *arg, int part)
                  * behind a door must stay behind it. */
                 const uint32_t ls = t.line_strong[ti];
                 const int bright = (int)(ls >> 16 & 255) + (int)(ls >> 8 & 255) + (int)(ls & 255) > 200;
-                if (bright && ls != col) {          /* a line pixel the depth test shortened: whole where the original drew a line next to it */
+                if (bright && ls != col && !line_behind_surface(&t, ti)) {   /* a line pixel the depth test shortened: whole where the original drew a line next to it */
                     int near_line = 0;
                     /* The original's lines and lights can lag one logic step behind the polygons (stale projection records): up to
                      * about four of its pixels, twelve of ours, from where Remastered draws them. */
@@ -594,7 +608,7 @@ static void replace_part(void *arg, int part)
                  * is taken whole there, as beside an original line in the middle; the rest is the depth-tested render. */
                 const uint32_t c = ls[x];
                 const int bright = (int)(c >> 16 & 255) + (int)(c >> 8 & 255) + (int)(c & 255) > 200;
-                row[x] = bright && c != col[x] ? c : col[x];
+                row[x] = bright && c != col[x] && !line_behind_surface(&t, (long)y * tw + x) ? c : col[x];
             }
             for (int x = 0; x < w; x++) {       /* the game's own picture, centred: Remastered's pixel where it replaced one, the original's elsewhere */
                 const long i = (long)y * w + x;
