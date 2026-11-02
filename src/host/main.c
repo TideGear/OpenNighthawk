@@ -197,7 +197,7 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     g_wide_filled = 0;
     int ww = wide_width();
     if (ww && !wide_prepare(ww)) ww = 0;
-    rerun_set_wide(ww ? ww * 100 / (320 * g_scale) : 100);   /* the copies see as wide as the canvas shows (the cull's side planes, in the copy only) */
+    rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);   /* the copies see 30% wider than the canvas shows, so a big object (a hangar) is still asked for while part of it is in view (the cull tests the centre; the side planes, in the copy only) */
     const uint64_t t0 = SDL_GetPerformanceCounter();
     const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
     g_wide_filled = composed && ww;
@@ -1865,6 +1865,32 @@ int main(int argc, char **argv)
                     settings_open(&g_set);
                     SDL_StartTextInput(win);                              /* for the Folders screen; the other screens ignore typed text */
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
+                    {   /* the menu shows what is running: options given on the command line (a .bat) are not in the file, so mark them */
+                        char b[40];
+                        settings_mark_saved(&g_set, "presentation", g_remaster ? "remastered" : g_replay == 2 ? "enhanced" : "original");
+                        if (g_replay == 2 || g_remaster) {
+                            snprintf(b, sizeof b, "%d", g_scale);
+                            settings_mark_saved(&g_set, "present-scale", g_scale > 0 ? b : "auto");
+                        }
+                        if (g_setup_sound) settings_mark_saved(&g_set, "sound", g_setup_sound == '1' ? "speaker" : g_setup_sound == '2' ? "adlib" : "roland");
+                        settings_mark_saved(&g_set, "crt", g_crt ? "yes" : "no");
+                        settings_mark_saved(&g_set, "crt-mask", g_crt_mask ? "yes" : "no");
+                        settings_mark_saved(&g_set, "crt-glow", g_crt_glow ? "yes" : "no");
+                        settings_mark_saved(&g_set, "subtitles", g_subtitles ? "yes" : "no");
+                        settings_mark_saved(&g_set, "no-aspect", g_aspect_on ? "no" : "yes");
+                        settings_mark_saved(&g_set, "adlib-effects", g_adlib_effects > 0 ? "yes" : "no");
+                        snprintf(b, sizeof b, "%llu", (unsigned long long)ips);
+                        settings_mark_saved(&g_set, "ips", b);
+                        snprintf(b, sizeof b, "%d", g_pad.deadzone);
+                        settings_mark_saved(&g_set, "pad-deadzone", b);
+                        snprintf(b, sizeof b, "%d", g_pad.fire1);
+                        settings_mark_saved(&g_set, "pad-fire1", b);
+                        snprintf(b, sizeof b, "%d", g_pad.fire2);
+                        settings_mark_saved(&g_set, "pad-fire2", b);
+                        settings_mark_saved(&g_set, "pad-invert-x", g_pad.invert_x ? "yes" : "no");
+                        settings_mark_saved(&g_set, "pad-invert-y", g_pad.invert_y ? "yes" : "no");
+                        settings_mark_saved(&g_set, "engine", H.m.engine == ENGINE_INTERP ? "interp" : "recomp");
+                    }
                     fill_fix_picker(&g_set);
                     fill_flight_list(&g_set, save);
                     if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
