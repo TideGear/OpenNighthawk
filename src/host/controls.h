@@ -28,4 +28,9 @@ unsigned controls_axis(const controls_config *c, int raw, int invert);
  * (bit n = button n held). */
 unsigned controls_buttons(const controls_config *c, unsigned held_mask);
 
+/* Controller buttons that act as keyboard keys: "2:G,3:Left Shift" (button number, a colon, an SDL key name; commas between).
+ * Fills buttons[] and names[] and returns how many pairs (at most max), or -1 for a malformed list. A name's spaces stay. */
+#define CONTROLS_KEYNAME 32
+int controls_pad_keys(const char *spec, int *buttons, char names[][CONTROLS_KEYNAME], int max);
+
 #endif

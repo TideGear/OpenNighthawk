@@ -41,6 +41,32 @@ int controls_load(controls_config *c, const char *ini_text)
     return n;
 }
 
+int controls_pad_keys(const char *spec, int *buttons, char names[][CONTROLS_KEYNAME], int max)
+{
+    int n = 0;
+    const char *p = spec;
+    while (*p) {
+        while (*p == ' ' || *p == ',') p++;
+        if (!*p) break;
+        char *end;
+        const long b = strtol(p, &end, 10);
+        if (end == p || *end != ':' || b < 0 || b > 31) return -1;
+        p = end + 1;
+        int len = 0;
+        while (p[len] && p[len] != ',') len++;
+        while (len && p[len - 1] == ' ') len--;
+        if (len <= 0 || len >= CONTROLS_KEYNAME) return -1;
+        if (n == max) return -1;
+        buttons[n] = (int)b;
+        for (int i = 0; i < len; i++) names[n][i] = p[i];
+        names[n][len] = 0;
+        n++;
+        p += len;
+        while (*p == ' ') p++;
+    }
+    return n;
+}
+
 unsigned controls_axis(const controls_config *c, int raw, int invert)
 {
     if (raw < -32768) raw = -32768;

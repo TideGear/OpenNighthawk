@@ -331,6 +331,10 @@ static sp_source parse_source_option(const char *flag, const char *v)
 static int g_sub_p61;
 static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
 static int g_colourblind;             /* --colourblind: the colour-blind filter on the finished picture (colourblind.h) */
+/* controller buttons acting as keys (--pad-keys, controls.h): the button, the key it presses, and whether it is held now */
+#define PAD_KEYS_MAX 16
+static struct { int button; SDL_Scancode key; int held; } g_padkeys[PAD_KEYS_MAX];
+static int g_npadkeys;
 static controls_config g_pad;         /* controller mapping (controls.h), from the INI file */
 static uint32_t *g_crt_buf; static size_t g_crt_cap;
 
@@ -1076,6 +1080,17 @@ int main(int argc, char **argv)
             else if (!strcmp(a, "--pad-fire1") || !strcmp(a, "--pad-fire2")) {
                 if (n < 0 || n > 31) { fprintf(stderr, "%s takes a button number 0 to 31\n", a); return 2; }
                 if (!strcmp(a, "--pad-fire1")) g_pad.fire1 = (int)n; else g_pad.fire2 = (int)n;
+            }
+            else if (!strcmp(a, "--pad-keys")) {
+                int btn[PAD_KEYS_MAX]; char names[PAD_KEYS_MAX][CONTROLS_KEYNAME];
+                const int k = controls_pad_keys(v, btn, names, PAD_KEYS_MAX);
+                if (k < 0) { fprintf(stderr, "--pad-keys takes button:key pairs, e.g. 2:G,3:Left Shift (SDL key names)\n"); return 2; }
+                g_npadkeys = 0;
+                for (int j = 0; j < k; j++) {
+                    const SDL_Scancode sc = SDL_GetScancodeFromName(names[j]);
+                    if (sc == SDL_SCANCODE_UNKNOWN) { fprintf(stderr, "--pad-keys: no key named %s\n", names[j]); return 2; }
+                    g_padkeys[g_npadkeys].button = btn[j]; g_padkeys[g_npadkeys].key = sc; g_padkeys[g_npadkeys].held = 0; g_npadkeys++;
+                }
             }
             else if (!strcmp(a, "--pad-invert-x")) g_pad.invert_x = on;
             else if (!strcmp(a, "--pad-invert-y")) g_pad.invert_y = on;
@@ -1961,6 +1976,14 @@ int main(int argc, char **argv)
                 ry = SDL_GetJoystickAxis(joy, 1);
                 if (SDL_GetJoystickButton(joy, g_pad.fire1)) held |= 1u << g_pad.fire1;
                 if (SDL_GetJoystickButton(joy, g_pad.fire2)) held |= 1u << g_pad.fire2;
+            }
+            for (int j = 0; j < g_npadkeys; j++) {              /* buttons that act as keys: a press or release of the key */
+                const int now = pad ? SDL_GetGamepadButton(pad, (SDL_GamepadButton)g_padkeys[j].button)
+                                    : SDL_GetJoystickButton(joy, g_padkeys[j].button);
+                if (now != g_padkeys[j].held) {
+                    g_padkeys[j].held = now;
+                    if (!paused) key_event(g_padkeys[j].key, now);
+                }
             }
             const unsigned b = controls_buttons(&g_pad, held);
             unsigned axis[4] = { controls_axis(&g_pad, rx, g_pad.invert_x), controls_axis(&g_pad, ry, g_pad.invert_y), 0x100, 0x100 };
