@@ -64,7 +64,8 @@ int main(void)
         for (int y = 190; y < 210; y++) for (int x = 310; x < 330; x++) g[y * GW + x] = 0xFFFFFFFFu;
         crt_glow(g, o, GW, GH);
         CHECK(o[200 * GW + 320] == 0xFFFFFFFFu);                      /* the spot stays white */
-        CHECK((o[200 * GW + 333] & 255u) > 0x20u);                    /* its neighbourhood brightens */
+        CHECK((o[200 * GW + 331] & 255u) > 0x20u);                    /* its neighbourhood (two pixels at this width) brightens */
+        CHECK((o[200 * GW + 333] & 255u) == 0x20u);                   /* and only that far */
         CHECK(o[200 * GW + 600] == 0xFF202020u && o[20 * GW + 20] == 0xFF202020u);   /* far away does not */
         uint32_t *copy = (uint32_t *)malloc((size_t)GW * GH * 4);
         CHECK(copy);
