@@ -12,6 +12,7 @@ on:
       - 'docs/other-versions.md'
       - 'docs/parity-audit.md'
       - 'docs/presentation.md'
+      - 'docs/p3-handoff.md'
       - 'docs/progress.md'
       - 'docs/provenance.md'
       - 'docs/repeated-processes.md'

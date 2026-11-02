@@ -179,40 +179,6 @@ static const struct { const char *module; uint16_t seg, ip; } PATCHED_FAR_JUMPS[
     { "PLAYER.EXE", 0x02A3, 0x13C8 },
     { "SETUP.EXE", 0x024C, 0x0A72 },
     { "SETUP.EXE", 0x024C, 0x0A77 },
-    { "VGAME.EXE", 0x1E42, 0x011A },
-    { "VGAME.EXE", 0x1E42, 0x0156 },
-    { "VGAME.EXE", 0x1E42, 0x015B },
-    { "VGAME.EXE", 0x1E42, 0x0160 },
-    { "VGAME.EXE", 0x1E42, 0x0165 },
-    { "VGAME.EXE", 0x1E42, 0x016A },
-    { "VGAME.EXE", 0x1E42, 0x0192 },
-    { "VGAME.EXE", 0x1E42, 0x0197 },
-    { "VGAME.EXE", 0x1E42, 0x019C },
-    { "VGAME.EXE", 0x1E42, 0x01A1 },
-    { "VGAME.EXE", 0x1E42, 0x01AB },
-    { "VGAME.EXE", 0x1E42, 0x01FB },
-    { "VGAME.EXE", 0x1E42, 0x0200 },
-    { "VGAME.EXE", 0x1E42, 0x0214 },
-    { "VGAME.EXE", 0x1E42, 0x0219 },
-    { "VGAME.EXE", 0x1E42, 0x0223 },
-    { "VGAME.EXE", 0x1E42, 0x0232 },
-    { "VGAME.EXE", 0x1E42, 0x023C },
-    { "VGAME.EXE", 0x1E42, 0x0241 },
-    { "VGAME.EXE", 0x1E42, 0x0250 },
-    { "VGAME.EXE", 0x1E42, 0x0255 },
-    { "VGAME.EXE", 0x1E42, 0x025F },
-    { "VGAME.EXE", 0x1E42, 0x0273 },
-    { "VGAME.EXE", 0x1E42, 0x0278 },
-    { "VGAME.EXE", 0x1E42, 0x0291 },
-    { "VGAME.EXE", 0x1E42, 0x0296 },
-    { "VGAME.EXE", 0x1E42, 0x029B },
-    { "VGAME.EXE", 0x1E42, 0x02A0 },
-    { "VGAME.EXE", 0x1E42, 0x02A5 },
-    { "VGAME.EXE", 0x1E42, 0x02DC },
-    { "VGAME.EXE", 0x1E42, 0x02E1 },
-    { "VGAME.EXE", 0x1E42, 0x0313 },
-    { "VGAME.EXE", 0x1E42, 0x031D },
-    { "VGAME.EXE", 0x1E42, 0x0322 },
 };
 static int patched_far_jump_row(const char *module, uint16_t seg, uint16_t ip)
 {
@@ -1011,9 +977,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Spans of routines whose address is shared with another segment's routine: keyed by segment as well, and
  * applied after SPANS. */
 static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_SEG[] = {
-    { "VGAME.EXE", 0x1E42, 0x011A, 0x011A, 0x0005 },   /* patched far-jump table entry */
     { "VGAME.EXE", 0x1039, 0x011A, 0x011A, 0x0300 },   /* retain the original scene-detail window */
-    { "VGAME.EXE", 0x1E42, 0x0160, 0x0160, 0x0005 },   /* patched far-jump table entry */
     { "VGAME.EXE", 0x1058, 0x000A, 0x000A, 0x0004 },   /* far HUD pass entry (11D8:000A has its own span) */
     { "VGAME.EXE", 0x120A, 0x0815, 0x07C8, 0x00F0 },   /* model vertex transform: the part-switch escape 07C8-0812 lies below the entry, and a stack that aliases it rewrites the code the original then runs */
     { "PLAYER.EXE", 0x026B, 0x0244, 0x0244, 0x002E },  /* program the timer chip (0000:0244 is another routine with its own span) */
@@ -1021,40 +985,6 @@ static const struct { const char *module; uint16_t seg, ip, from, span; } SPANS_
 };
 
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
-    { "VGAME.EXE", 0x011A, 0x011A, 0x0005 },
-    { "VGAME.EXE", 0x0156, 0x0156, 0x0005 },
-    { "VGAME.EXE", 0x015B, 0x015B, 0x0005 },
-    { "VGAME.EXE", 0x0160, 0x0160, 0x0005 },
-    { "VGAME.EXE", 0x0165, 0x0165, 0x0005 },
-    { "VGAME.EXE", 0x016A, 0x016A, 0x0005 },
-    { "VGAME.EXE", 0x0192, 0x0192, 0x0005 },
-    { "VGAME.EXE", 0x0197, 0x0197, 0x0005 },
-    { "VGAME.EXE", 0x019C, 0x019C, 0x0005 },
-    { "VGAME.EXE", 0x01A1, 0x01A1, 0x0005 },
-    { "VGAME.EXE", 0x01AB, 0x01AB, 0x0005 },
-    { "VGAME.EXE", 0x01FB, 0x01FB, 0x0005 },
-    { "VGAME.EXE", 0x0200, 0x0200, 0x0005 },
-    { "VGAME.EXE", 0x0214, 0x0214, 0x0005 },
-    { "VGAME.EXE", 0x0219, 0x0219, 0x0005 },
-    { "VGAME.EXE", 0x0223, 0x0223, 0x0005 },
-    { "VGAME.EXE", 0x0232, 0x0232, 0x0005 },
-    { "VGAME.EXE", 0x023C, 0x023C, 0x0005 },
-    { "VGAME.EXE", 0x0241, 0x0241, 0x0005 },
-    { "VGAME.EXE", 0x0250, 0x0250, 0x0005 },
-    { "VGAME.EXE", 0x0255, 0x0255, 0x0005 },
-    { "VGAME.EXE", 0x025F, 0x025F, 0x0005 },
-    { "VGAME.EXE", 0x0273, 0x0273, 0x0005 },
-    { "VGAME.EXE", 0x0278, 0x0278, 0x0005 },
-    { "VGAME.EXE", 0x0291, 0x0291, 0x0005 },
-    { "VGAME.EXE", 0x0296, 0x0296, 0x0005 },
-    { "VGAME.EXE", 0x029B, 0x029B, 0x0005 },
-    { "VGAME.EXE", 0x02A0, 0x02A0, 0x0005 },
-    { "VGAME.EXE", 0x02A5, 0x02A5, 0x0005 },
-    { "VGAME.EXE", 0x02DC, 0x02DC, 0x0005 },
-    { "VGAME.EXE", 0x02E1, 0x02E1, 0x0005 },
-    { "VGAME.EXE", 0x0313, 0x0313, 0x0005 },
-    { "VGAME.EXE", 0x031D, 0x031D, 0x0005 },
-    { "VGAME.EXE", 0x0322, 0x0322, 0x0005 },
     { "ASOUND.LOG", 0x00B4, 0x00B4, 0x000D },
     { "ASOUND.LOG", 0x00AC, 0x00AC, 0x0015 },
     { "ASOUND.117", 0x0AC4, 0x0AC4, 0x003D },
@@ -2813,40 +2743,6 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "ASOUND.117", 0x01B6, 0x0AC4, 0x0009, 4, 4, "ASOUND.117 counter-0 low/high reload continuation through the high-byte PIT wake at 0ACD" },
     { "ASOUND.LOG", 0x0000, 0x00AC, 0x0008, 4, 4, "ASOUND.LOG counter-0 low/high reload continuation through the high-byte PIT wake at 00B4", 0x00B4, 4 },
     { "ASOUND.LOG", 0x0000, 0x00B4, 0x000C, 4, 4, "ASOUND.LOG stores the PIT reload status, restores AX and reaches STI at 00C0", 0x00C0, 4 },
-    { "VGAME.EXE", 0x1E42, 0x011A, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0156, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x015B, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0160, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0165, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x016A, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0192, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0197, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x019C, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x01A1, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x01AB, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x01FB, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0200, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0214, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0219, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0223, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0232, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x023C, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0241, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0250, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0255, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x025F, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0273, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0278, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0291, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0296, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x029B, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x02A0, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x02A5, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x02DC, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x02E1, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0313, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x031D, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
-    { "VGAME.EXE", 0x1E42, 0x0322, 0x0005, 1, 1, "jump-table entry: far jump through the operand the loader patched in" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -55723,47 +55619,7 @@ if (!strcmp(o->module, "ASOUND.LOG") && o->seg == 0x0000 && o->ip == 0x00B4) {
 #undef XW16
 #undef XW8
 }
-            if (!strcmp(o->module,"VGAME.EXE") && patched_far_jump_row(o->module, o->seg, o->ip)) {
-                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
-#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
-#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
-#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
-                const uint16_t dg=(XRAND()&1)?0x5000:0x4800;
-                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
-                r[R_SP]=(XRAND()&1)?0xE000:(uint16_t)(0xC000+(XRAND()&0x1FFE));
-                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
-                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
-                r[R_AX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();
-                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
-                for(unsigned j=0;j<4;j++){ small[j]=(uint16_t)XRAND(); XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]); }
-                /* The loader's work: the table's neighbours (the thunks before and after) hold operands of their own
-                 * and stubs of their own at those destinations, so a read of the wrong entry's operand lands in code
-                 * that differs; then this thunk's own operand: a driver entry at a segment and offset of its own (a
-                 * quarter of the states keep it in the thunk's own segment, above the code). The destination is a stub
-                 * (a flag-setting ALU instruction, then RETF) that the thunk's callers would reach; an operand still
-                 * zero or wrong runs elsewhere and the comparison fails. */
-                {
-                    for(unsigned nb=0;nb<4;nb++){
-                        static const int dn_[4]={-10,-5,5,10};
-                        const uint16_t nip=(uint16_t)(o->ip+dn_[nb]);
-                        const uint16_t nseg=(uint16_t)(0x7000+(XRAND()&0x0FFF)),noff=(uint16_t)(0x0100+(XRAND()&0xFFE0));
-                        XW8(cs,nip,0xEA);XW16(cs,nip+1,noff);XW16(cs,nip+3,nseg);
-                        XW8(nseg,noff,0x2B);XW8(nseg,(uint16_t)(noff+1),0xC3);XW8(nseg,(uint16_t)(noff+2),0xCB);
-                    }
-                    const unsigned pick=(unsigned)(XRAND()&3);
-                    const uint16_t tseg=pick==0?cs:(uint16_t)(0x2000+(XRAND()&0x1FFF));
-                    const uint16_t toff=pick==0?(uint16_t)(0xF200+16*(XRAND()&0x3F)):(uint16_t)(0x0200+(XRAND()&0xFDF0));
-                    XW8(cs,o->ip,0xEA);
-                    XW16(cs,o->ip+1,toff);
-                    XW16(cs,o->ip+3,tseg);
-                    if(XRAND()&1){XW8(tseg,toff,0x03);XW8(tseg,(uint16_t)(toff+1),0xC3);}          /* ADD AX,BX */
-                    else         {XW8(tseg,toff,0x33);XW8(tseg,(uint16_t)(toff+1),0xC1);}          /* XOR AX,CX */
-                    XW8(tseg,(uint16_t)(toff+2),0xCB);                                               /* RETF */
-                }
-#undef XW16
-#undef XW8
-#undef XRAND
-            }
+
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));

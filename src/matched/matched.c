@@ -105506,65 +105506,9 @@ static int asound_log_reload_status_and_sti(machine_t *m)
 #undef XB
 }
 
-/* VGAME.EXE 1E42:011A and 52 more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
- * at 1E42:011A..0322 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
- * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
- * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
- * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
- * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
- * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
- * code or its own matched body) and returns to the caller with its own RETF.
- *
- * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
- * state whose limit falls before it declines (returns 0) with the machine untouched. */
-static int vgame_patched_far_jump_thunk(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    const uint16_t entry = c->ip;
-    if (!room(c, 1)) return 0;
-    c->icount += 1;
-    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
-    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
-    c->ip = off;
-    c->seg[S_CS] = seg;
-    return 1;
-}
+
 
 static const recomp_override MATCHED[] = {
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x011A, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0156, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x015B, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0160, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0165, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x016A, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0192, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0197, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x019C, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01A1, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01AB, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01FB, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0200, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0214, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0219, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0223, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0232, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x023C, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0241, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0250, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0255, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x025F, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0273, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0278, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0291, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0296, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x029B, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02A0, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02A5, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02DC, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02E1, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0313, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x031D, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0322, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00B4, asound_log_reload_status_and_sti, "ASOUND.LOG stores the PIT reload status, restores AX and reaches STI at 00C0", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00AC, asound_log_pit0_reload_prefix, "ASOUND.LOG counter-0 low/high reload continuation through the high-byte PIT wake at 00B4", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0AC4, asound_117_pit0_reload_prefix, "ASOUND.117 counter-0 low/high reload continuation through the high-byte PIT wake at 0ACD", 1 },
