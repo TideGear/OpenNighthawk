@@ -266,7 +266,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
             wr16(g_copy_mem, ds, 0x48E6, (uint16_t)(far > 0x7FFFu ? 0x7FFFu : far));
             for (uint16_t at = 0x4906; at < 0x4986; at += 2) {
                 const uint32_t v = (uint32_t)rd16(g_copy_mem, ds, at) * (uint32_t)side_mult;
-                wr16(g_copy_mem, ds, at, (uint16_t)(v > 0x7FFFu ? 0x7FFFu : v));
+                wr16(g_copy_mem, ds, at, (uint16_t)(v > 0x4A00u && v > rd16(g_copy_mem, ds, at) ? (rd16(g_copy_mem, ds, at) > 0x4A00u ? rd16(g_copy_mem, ds, at) : 0x4A00u) : v));   /* below 0x4A00: |z| + table must not overflow 16 bits (the cull adds them) */
             }
         }
     }
