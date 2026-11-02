@@ -1181,6 +1181,22 @@ recordings and raw logs stay outside git.
   Remastered presentation's depth-correct drawing
   ([roadmap.md](roadmap.md)); the sort key itself has not been examined.
 
+## What a fix needs (rule, 1 Nov 2026)
+
+Q11 was "Confirmed" by reading the code and by staged unit cases, and it stayed on in every flight for a week while it hid two
+aircraft the original draws. Neither the gate (which compares the machine with itself and runs its routes with fixes off) nor the
+fidelity checks (also with fixes off) could see it. So:
+
+1. A fix is **Confirmed** only with a symptom shown in the original: a picture, a trace or a state difference from a running original
+   (GOG's DOSBox through `tools/dosbox_flight.py`, 86Box, or a report from a flight). A defect found only by reading code is
+   **Suspected**: it stays out of the default set and is an option (`--fix ID`, like QUIZ) until a symptom is shown.
+2. A fix that changes a recorded flight is held against the original before it is added: add the flight to
+   `docs/flight-reference.json` (the fixes whose removal changes it, and any state the original shows).
+3. `tools/verify_flights.py` runs that file's flights with the default fix set and with each fix removed. It fails when the state
+   differs from the original's, or when the set of fixes that change a flight differs from the reviewed list. Run it whenever the fix
+   code or tables change and before a release (about 25 minutes at four jobs; it is not in the default gate, so it does not slow the
+   matched-routine batches). The sessions hold game data and are read from a local folder, never the repository.
+
 ## Fix audit (1 Nov 2026)
 
 `tools/fix_audit.py` replays a recorded session once with the full fix set and once per fix with just that fix removed from the log's

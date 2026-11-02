@@ -35,6 +35,7 @@ def run(args, name, log_text):
     save = work / "save"
     shutil.copytree(args.session / "save-start", save)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SDL_RENDER_DRIVER="software")
+    env.update(getattr(args, "extra_env", {}).get(name, {}))        # per-run extras (verify_flights: a RAM dump)
     cmd = [str(args.app), "--data", str(args.data), "--save", str(save), "--replay", str(log), "--presentation", "original",
            "--sound", "adlib", "--exit-after", str(args.exit_after), "--log", str(work / "run.log")]
     subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=args.timeout)

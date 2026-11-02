@@ -1,0 +1,22 @@
+{
+  "about": "Reference results for tools/verify_flights.py. 'effects' are the fixes whose removal changes the flight's final machine hash (reviewed: docs/bugs.md, Fix audit). 'state' are values read from the flight program's data segment at a clock, taken from GOG's own DOSBox replaying the same log (tools/dosbox_flight.py) so that the default fix set is held against the original.",
+  "sessions": [
+    {
+      "id": "session-20261031-230426",
+      "what": "Siconella training takeoff, owner's second test",
+      "exit_after": 5110000000,
+      "state": [
+        { "what": "objects placed in the frame (the two parked jets beside the tower make it 11; 9 without them)", "ds_offset": "0x49F4", "clock": 5100000000, "expect": 11 },
+        { "what": "aircraft in the table", "ds_offset": "0xDEFC", "clock": 5100000000, "expect": 11 }
+      ],
+      "effects": ["D101", "D1REAL", "D4"]
+    },
+    {
+      "id": "session-20261101-004513",
+      "what": "second takeoff of the owner's test",
+      "exit_after": 3700000000,
+      "state": [],
+      "effects": ["D1REAL", "D4", "Q16"]
+    }
+  ]
+}
