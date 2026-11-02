@@ -15,6 +15,7 @@ static const char *const C_YESNO[] = { "no", "yes", NULL };
 static const char *const C_SPEAKER[] = { "realsound", "pwm", NULL };
 static const char *const C_TIMING[] = { "dosbox", "386", NULL };
 static const char *const C_SOUND[] = { "ask", "adlib", "roland", "speaker", NULL };
+static const char *const C_SOURCE[] = { "default", "mac", "dos", NULL };      /* the hybrid sound policy: the Mac recordings where there are any, or only the DOS drivers */
 static const char *const C_ROLAND[] = { "munt", "windows", "off", NULL };
 static const char *const C_HZ[] = { "8", "15", NULL };
 static const char *const C_OPL[] = { "dbopl", "nuked", NULL };
@@ -47,6 +48,8 @@ static const setting_def DEFS[] = {
     { "colourblind",  "Colour-blind aid", C_COLOURBLIND,  0, 0 },
     { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
     { "sound",        "Sound driver",     C_SOUND,        0, 0 },
+    { "music-source", "Music from",       C_SOURCE,       0, 0 },
+    { "sound-source", "Effects from",     C_SOURCE,       0, 0 },
     { "roland",       "Roland output",    C_ROLAND,       2, 0 },
     { "adlib-effects", "AdLib effects",   C_YESNO,        1, 0 },     /* on unless the file says no: the default with Roland */
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
