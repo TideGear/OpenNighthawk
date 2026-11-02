@@ -1,4 +1,46 @@
-# Phase 3 handoff (updated 1 November 2026; the table and the branch notes below are from 30 October)
+# Phase 3 handoff (updated night of 1 November 2026; the table and the branch notes further down are from 30 October)
+
+## Where this stopped (night of 1 November 2026): start here
+
+**Read first:** [owner-issues.md](owner-issues.md) (every owner report with status and evidence, the owner decisions, the gates) and
+[bugs.md](bugs.md) ("What a fix needs", "Fix audit"). P3 is 93.84% (`py tools/progress.py --title`); what is left needs the owner's look, ears
+or hardware, or recordings (below). `master` is pushed. The last full gate (11, the owner's limit for 1 Nov) passed on a branch of the P3
+commits (`p3-gate` in the `gate-master` worktree, without the P2 session's staged `5cd50d8`); later host-only commits were checked with the
+unit tests only (832 of 832).
+
+**Done and confirmed by the owner:** R7 (the parked jets: the Q11 fix culled them, Q11 retired), R10 (cutscene lag: the driver wait loops run as
+one step in `machine_run`), R13 (map: kept rectangles survive a reset), the speech stall S9 (same kind of fix), sound level.
+**Fixed in code, awaiting the owner:** R16 (hangars and aircraft vanishing in the widescreen margins: the rerun copy's side allowance at
+`[E56A]` raised to 18,000, `rerun.c`), R15 (the menu shows what is running), T1 (tilde opens the menu everywhere; the README is the key
+documentation: never put documentation in the owner's .bat files). **Open:** R17 (grey horizon line in front of the jets), R18 (flagpole
+z-fighting: candidate in the line layer's depth bias, check the original's picture first), R19 (green patch, probably R16), R14 (older margin
+report, probably R16), R9 (draw distance: the far plane was ruled out on the takeoff; needs a high-altitude flight over distant targets, the
+owner offered their recent flight `session-20261101-224822`), the Remastered depth-correct, interpolation and widescreen-HUD rows, controllers on
+real hardware.
+
+**Owner decisions (1 Nov):** the 22 repairs that reach no route stay on by default; Esc stays the game's (it cancels the flight's Alt+Q dialog,
+skips PLAYER's animation, cancels START text entry); the menu is the tilde key; no more full gates without approval (they authorised one more
+after the R16 to R19 fixes "if you deem it necessary"); no AI attribution in commits.
+
+**Tools made tonight:** `tools/fix_audit.py`, `tools/verify_flights.py` (with `docs/flight-reference.json`), `tools/audit_routes.py`; app
+diagnostics `F117_PRESENT_SHOTS=PREFIX` with `_FROM`, `_COUNT`, `_STEP`; `F117_WINDOW=1920x1080` (a wide window under the dummy driver);
+`F117_REMASTER_LEFT=1`, `F117_MODEL_LOG=MODEL,CLOCK`, `F117_REMASTER_COPYCHECK=N`, `F117_WIDE_VIEW=100` (off), `F117_LOOP_TIMING=1`,
+`F117_DUMP_RAM=CLOCK:FILE`, `F117_ESC_AUTOTEST` with `F117_ESC_ANYWHERE`, `--replay-fixes cli`. A replay applies the fix list in its log header
+(edit the header to compare fixes). The owner's flights are in `%APPDATA%\F117Recomp\F-117A\sessions`; replay one with
+`f117a.exe --data D:/GOG/F-117A --save COPY_OF_save-start --replay SESSION/input.log --presentation remastered --present-scale 3 --sound adlib`
+under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`, and look at the pictures yourself (the owner asked to have
+these issues caught rather than be told). Evidence frame sets are in `D:\f117-gate\remaster-flight-20261031\` (`dense*`, `tl1`).
+
+**Pitfalls met tonight:** build from PowerShell with `cmd /c C:\Users\Tideg\f117-recomp-local\build-targets.bat TARGETS` (a `cmd //c` build from
+bash silently does nothing, and a test then "passes" on a stale binary: check the exe's time); a `\n` in a C string written through a Python edit
+comes out as a real newline (use the Edit tool, or build the backslash with `chr(92)`); `tools/build_recomp.py` compiles the main tree, so use the
+`gate-master` worktree (the `gate-gatemasterN.ps1` pattern); never stop `f117a` by name (the owner tests from `Desktop\ONTests`) and do not touch
+`ONTests` while it runs; the P2 session's `5cd50d8` makes `code_overrides` fail and the GitHub runs red (`docs/p2-brief-ci-failure.md`).
+
+**Next, in order:** (1) the owner's look at R16, T1 and R15 in the refreshed `ONTests`; (2) reproduce R17 and R18 on their flight (frames near
+the jets at the runway's far end, and close to a hangar with its pole; compare `--presentation original`); (3) R9 on the recent flight at high
+altitude; (4) the Remastered depth-correct and interpolation rows from crowded and fast-turning frames; (5) flights that reach the 22 untested
+repairs.
 
 ## State on 1 November 2026
 
