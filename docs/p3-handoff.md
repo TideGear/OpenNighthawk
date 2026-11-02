@@ -366,3 +366,10 @@ ONTests exe hash EA7C38B1F1BA... (clean P3 branch, 832/832).
 - Grey line: the bar between the two "00" marks is the HUD's, in front in the original too (ONShots `20261102-1200-horizon-bar-original-top-remastered-bottom.png`). The owner says theirs is not the HUD: needs its clock. The bluish strip by a taxiing jet is likely the sea band at the horizon; not reproduced.
 - Hangar "glitches" (the owner's picture: yellow T shapes at the doors): the original draws the door's yellow vertical and its foot line too; compare at the owner's clock before changing.
 - Scenery distance: a second terrain walk in the copy (nested run from an exec hook at 04E6, sector table moved 3 cells ahead, rings 1-3 off) was built and REMOVED: it drew no more (mean values 254241 vs 254720) and 45 nested runs did not return within their slice. Pop-in is still open.
+
+## 2 Nov 12:25: ONTests 5978ECAD5FE6 (clean P3 branch, 832/832), awaiting the owner's Ctrl+Alt+C shots
+
+- New host key Ctrl+Alt+C: `screenshots/<session>-clock<icount>.bmp` beside `sessions`; replay that session to the clock to reproduce.
+- The grey line is scene geometry at the horizon toward the runway's end (owner's GOG shots: behind the jet), not the HUD. Whole lines now follow the original's painting order (`line_by_seq`, `seq` buffer in remaster_raster): over polygons painted before them, behind nearer polygons painted after them. Not yet seen on the owner's moment.
+- HUD pass order measured (`F117_HUD_ORDER`): every model of a frame is asked for before the HUD pass.
+- Draw distance: unchanged; `F117_WIDE_SCENERY=N` (second walk, uncapped nested run, far plane 30000 for it) is an experiment, off by default.
