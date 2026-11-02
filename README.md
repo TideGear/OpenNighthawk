@@ -57,6 +57,8 @@ titles start with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
 
+**The Enhanced and Remastered presentations are experimental** (see [Presentation](#presentation)); the original picture is the verified one.
+
 - **The whole game loop runs**: SETUP, the MicroProse logo, the intro, the
   front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
   the debriefing (END) and back to the front end. All three sound drivers
@@ -266,6 +268,12 @@ command line still wins (any Roland option there replaces all of the file's).
 `--config FILE` reads another file; `--no-config` ignores it.
 
 ### Presentation
+
+**Enhanced and Remastered are experimental.** *Original* (`--presentation original`) is the verified picture, exactly what the
+emulated VGA scans out. *Enhanced* (a finer, smoother redraw of the same picture) and *Remastered* (the 3-D view redrawn at full
+resolution, with a widescreen view that shows more at the sides) are still being developed: expect objects that appear or vanish at the
+edges of the view, depth and drawing glitches, and a draw distance no longer than the original's. They never change the game itself, and
+reports of what looks wrong are welcome.
 
 By default (`--present scan`) you see exactly what the emulated VGA scanned
 out, at 320x200. The other modes are optional and never change the game
