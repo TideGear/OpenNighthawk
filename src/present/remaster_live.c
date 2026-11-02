@@ -926,6 +926,12 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->window[2] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FE);
         r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
+        {   /* F117_MODEL_LOG=MODEL,FROM (diagnostic): every request for that model, its position, and whether its faces follow (see k == 1) */
+            static int want = -2; static unsigned long long from;
+            if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -1; const char *c = e ? strchr(e, ',') : NULL; from = c ? strtoull(c + 1, NULL, 0) : 0; }
+            if (want >= 0 && r->model == (unsigned)want && m->cpu.icount >= from)
+                fprintf(stderr, "[req] clock %llu model %u pos %d %d %d\n", (unsigned long long)m->cpu.icount, (unsigned)r->model, r->position[0], r->position[1], r->position[2]);
+        }
     } else if (k == 1) {                                    /* the model's faces are about to be drawn: the pose is prepared */
         if (r->pending && m->mem[(((uint32_t)m->cpu.seg[S_DS] << 4) + 0x7D8E) & 0xFFFFF]) {
             r->pending = 0;                                 /* orthographic ([7D8E] not zero): a map tile, not part of the 3D view */
@@ -935,6 +941,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
             if (n < 0) r->refused++; else r->added++;
             if (n >= 0 && validate_on()) validate_model(r, m);
+            {   static int want = -2;
+                if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -1; }
+                if (want >= 0 && r->model == (unsigned)want) fprintf(stderr, "[faces] model %u added %d\n", (unsigned)r->model, n);
+            }
         }
     } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
         if (validate_on() && r->frames == 40) report_validation(r);
