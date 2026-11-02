@@ -240,7 +240,10 @@ static int wide_exec(void *user, machine_t *m, unsigned k)
     const uint32_t az = (uint32_t)(z < 0 ? -z : z);
     const uint16_t at = (uint16_t)(rd16(m->mem, ds, 0xE56A) + 2u * rd16(m->mem, ds, 0x49AA));
     const uint32_t T = rd16(m->mem, ds, at);
-    uint32_t T2 = 3u * T + (uint32_t)(g_wide_factor - 100) * az / 100u;     /* three times the allowance: the cull tests an object's centre, and a hangar is wide */
+    /* The cull keeps an object while its centre is within 1.25 x ((|z| + T) >> cl) of the axis; T (344 in mode 3) is all it allows for the
+     * object's own size, so a hangar is dropped while part of it shows. Here: the cone widened by f, and a flat allowance of 4096 view
+     * units besides (about 1,280 after the shift and the 1.25: far larger than any object, and what lies outside the canvas is clipped). */
+    uint32_t T2 = T + 4096u + (uint32_t)(g_wide_factor - 100) * az / 100u;
     if (T2 + az > 0x7FFFu) T2 = az < 0x7FFFu ? 0x7FFFu - az : 0;
     if (T2 <= T) return 0;
     g_wide_at = ((uint32_t)ds << 4) + at; g_wide_saved = (uint16_t)T; g_wide_dirty = 1;
