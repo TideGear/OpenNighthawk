@@ -1670,7 +1670,7 @@ int main(int argc, char **argv)
             if (getenv("F117_ESC_AUTOTEST")) {
                 ++esc_frame;
                 if (esc_frame % 10 == 0 && esc_frame >= 10 && esc_frame <= 50) {
-                    static const SDL_Scancode seq[5] = { SDL_SCANCODE_ESCAPE, SDL_SCANCODE_TAB, SDL_SCANCODE_TAB, SDL_SCANCODE_ESCAPE, SDL_SCANCODE_ESCAPE };
+                    static const SDL_Scancode seq[5] = { SDL_SCANCODE_GRAVE, SDL_SCANCODE_TAB, SDL_SCANCODE_TAB, SDL_SCANCODE_ESCAPE, SDL_SCANCODE_ESCAPE };   /* the last Esc, with the menu closed, belongs to the game */
                     SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_KEY_DOWN; e.key.scancode = seq[esc_frame / 10 - 1];
                     SDL_PushEvent(&e);
                 }
@@ -1873,10 +1873,18 @@ int main(int argc, char **argv)
                     SDL_SetWindowFullscreen(win, fullscreen);
                     break;
                 }
-                if (down && ev.key.scancode == SDL_SCANCODE_ESCAPE && (g_set.open || ref_open)) esc_swallow = 1;   /* an Esc the menu takes is not the game's */
-                if (!down && ev.key.scancode == SDL_SCANCODE_ESCAPE && esc_swallow) { esc_swallow = 0; break; }   /* the key-up of the Esc that opened or closed the menu */
-                if (down && ev.key.scancode == SDL_SCANCODE_ESCAPE && live && (g_hook_flight || getenv("F117_ESC_ANYWHERE")) && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
-                    tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* Esc in flight: the menu, on its Settings tab */
+                if (down && (ev.key.scancode == SDL_SCANCODE_ESCAPE || ev.key.scancode == SDL_SCANCODE_GRAVE) && (g_set.open || ref_open)) esc_swallow = 1;   /* an Esc the menu takes is not the game's */
+                if (!down && (ev.key.scancode == SDL_SCANCODE_ESCAPE || ev.key.scancode == SDL_SCANCODE_GRAVE) && esc_swallow) { esc_swallow = 0; break; }   /* the key-up of the Esc that opened or closed the menu */
+                if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && tabs_on && (g_set.open || ref_open) && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
+                    SDL_Event back; SDL_zero(back); back.type = SDL_EVENT_KEY_DOWN; back.key.scancode = SDL_SCANCODE_ESCAPE;   /* the ` key closes the menu as Esc does (one level back) */
+                    SDL_PushEvent(&back);
+                    break;
+                }
+                /* The ` (tilde) key opens the menu in flight. Esc is NOT taken while the menu is closed: the game uses it (it cancels the flight's
+                 * Alt+Q quit dialog, tested with the quit route: Alt+Q, Esc, Y does not exit), PLAYER skips its title animation with it and
+                 * START's text entry cancels on it. In the menu itself Esc closes or backs out, as before. */
+                if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && live && (g_hook_flight || getenv("F117_ESC_ANYWHERE")) && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
+                    tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* ` in flight: the menu, on its Settings tab */
                 }
                 if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
                     if (g_set.open && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.remap_stage && !g_set.padkey_stage) {

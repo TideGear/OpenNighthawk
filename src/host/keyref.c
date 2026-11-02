@@ -77,12 +77,12 @@ static const keyref_row PAGE3[] = {
 };
 static const keyref_row PAGE4[] = {
     { NULL, "THIS PROGRAM" },
-    { "Menu (in flight)", "Esc" },
+    { "Menu (in flight)", "` (tilde)" },
     { "Other tab in the menu", "Tab" },
     { "Settings menu", "Ctrl+Alt+S" },
     { "This key list", "Ctrl+Alt+K" },
     { "Turn its pages", "left / right arrow" },
-    { "Close the list or menu", "Esc" },
+    { "Close the list or menu", "Esc  or  `" },
     { "Pause the game", "Ctrl+Alt+P" },
     { "Full screen on / off", "Alt+Enter" },
     { "Quit", "Ctrl+Alt+F12" },
