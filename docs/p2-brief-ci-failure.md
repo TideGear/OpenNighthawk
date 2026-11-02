@@ -16,3 +16,17 @@ not touch `matched.c` or the override tables, so this is the staged batch's, and
 placed, or place the fix at the routine's entry).
 
 The `munt` job's failure is probably the same test (it builds with the same tree); it was not separately reproduced.
+
+## Update, 2 Nov 2026 (11:00): the exact failing line
+
+Still red on every push (runs 655 to 665, jobs `windows` "CPU and machine tests" and `munt` "ROM-free Munt and audio checks"), same cause. On
+`master` at `f8807d5`, `build/test_overrides.exe` stops at `tests/test_overrides.c:535: recomp_override_duplicates(stdout, deliberate) == 0`.
+The duplicates it prints that are not marked `deliberate` are five observer hooks that now share an address with a matched routine
+(`jump-table entry: far jump through the operand the loader patched in`, staged in `5cd50d8`):
+
+    VGAME.EXE 1E42:0291, 1E42:0296, 1E42:029B, 1E42:02A0, 1E42:02A5: observe (graphics entry (observer)) after matched (jump-table entry ...)
+
+(The `D1REAL` and `D34` lines it also prints are "a fix in its place" notes and are not the failure.) Either the pairs are intended, and they go
+into the `deliberate` table of `tests/test_overrides.c` (the observer's order after a matched far jump must still let Remastered see the
+entry: check `F117_MODEL_LOG` or the model count with `--presentation remastered` before and after), or the placement changes. The owner
+chose (2 Nov) to leave this to the P2 session; the P3 session did not change the table or `matched.c`.
