@@ -1212,6 +1212,30 @@ and 3.7 G clocks; `D:/f117-gate/fix-audit-20261101/`, `-20261101b/`):
 | Q16 | the second | MT-32 driver data bytes (sound only) |
 | the other 27 | neither | No effect on these flights; they matter only on routes these flights do not take (their own checks in this file) |
 
+### The scripted routes (1 Nov 2026, `tools/audit_routes.py`)
+
+Every non-error route was run twice, with fixes off and with the repairs on (not the two timing options D1REAL and D1PROX, which move the
+clock of every run, nor the quiz). The final hash differs on 51 of the 53 comparable routes, so the hash alone says little; seven routes
+were then split per fix (the repairs minus one, against the full repair set). Results (`D:/f117-gate/audit-routes-bisect-20261101/`):
+
+| Route | Repairs that change it |
+|---|---|
+| quit_dialogs (front end) | D4 |
+| boot_to_flight | D2, D4 |
+| cargo | D2, D101 |
+| recon | D2, D4, D101 |
+| airair_type5 | D2, D101, D1SLOT, D1ACCEL, Q7 |
+| landing | D2, D4, D1SLOT, D1ACCEL, Q12b |
+| strike | D2, D4, D1SLOT, D1ACCEL, Q12b, Q17 |
+
+D4 is a data patch (the secret-airstrip missions), D2 the sampled-speech wait in the sound drivers, D101 START's transfer tick, D1SLOT and
+D1ACCEL the missile and launcher timing of the frame-rate family, Q7 and Q17 the zoomed-view range and the pitch ladder, Q12b the map
+marker. With the two takeoffs (D101, D4 and Q16) nine of the 31 repairs change anything we can run. **The other 22 change no route or
+flight we have**: Q23 D18 Q13b Q4 Q22 Q21 Q13a Q20 Q19 Q18 Q15 Q14 Q12 D1 D1TTL D11 D5 D12 D34 D8 D3 D6. By the rule above they are Suspected, not Confirmed: each has its staged check and no flight in which it matters, so they
+stay on (the owner's policy) until a flight shows what they do or they are retired as Q11 was. The next step is a flight that reaches each
+one, found by what it repairs (the cannon, the destroyed-object table, END's tally, the debrief), held against GOG's DOSBox
+(`tools/dosbox_flight.py`).
+
 A fix with no effect here is not thereby proved useless: it needs its own route (for example the cannon, a destroyed-object table
 or END's tally). The audit's use is the other direction: a fix that does change a flight is the one to hold against the original
 (GOG's DOSBox through `tools/dosbox_flight.py`), which is how Q11 was caught and retired.
