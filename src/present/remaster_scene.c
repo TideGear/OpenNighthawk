@@ -24,6 +24,7 @@ struct remaster_scene {
     unsigned next;                  /* the next slot to take when none matches */
     scene_pose pose;
     scene_geometry geometry;
+    uint32_t serial;                /* the requests added, numbering each object of a frame (remaster_prim.owner) */
 };
 
 void remaster_frame_clear(remaster_frame *f) { f->n = 0; }
@@ -78,6 +79,7 @@ typedef struct {
     uint8_t darken;
     int added;
     int ok;
+    uint32_t serial;
 } emit_ctx;
 
 static int grow(remaster_frame *f)
@@ -150,6 +152,7 @@ static int emit(void *user, const scene_material *c)
     p->darken = x->darken;
     p->face = c->face;
     p->model = x->model;
+    p->owner = x->serial << 12 | (c->face & 0xFFFu);
     if (c->kind == SCENE_LINES) {                             /* the items are edges, each its own segment (not one chain) */
         const remaster_prim head = *p;
         for (unsigned k = 0; k < c->count; k++) {
@@ -235,10 +238,11 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     const uint16_t depth = scene_model_depth(position, camera);
     const scene_mesh *mesh = lookup(s, bank, bank_signature(bank), model, depth);
     if (!mesh) return -1;
+    s->serial = (s->serial + 1) & 0xFFFFF;
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
     if (!scene_mesh_eval(mesh, &s->pose, &s->geometry)) return -1;
     const size_t frame_start = f->n;
-    emit_ctx ctx = { mesh, &s->geometry, f, model, dsp[0x48C4], 0, 1 };
+    emit_ctx ctx = { mesh, &s->geometry, f, model, dsp[0x48C4], 0, 1, s->serial };
     if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx)) {
         f->n = frame_start;
         return -1;

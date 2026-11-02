@@ -2,6 +2,8 @@
 #include "remaster_raster.h"
 
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MAX_POLY 16
@@ -13,7 +15,7 @@ void remaster_clear(remaster_target *t, uint32_t color)
     const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
     for (long i = from; i < to; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
     if (t->index) for (long i = from; i < to; i++) t->index[i] = REMASTER_NO_INDEX;
-    if (t->seq) for (long i = from; i < to; i++) t->seq[i] = 0;
+    if (t->owner) for (long i = from; i < to; i++) t->owner[i] = 0;
 }
 
 /* clip the polygon against z >= near (Sutherland-Hodgman on the one plane) */
@@ -105,11 +107,19 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
-            if (t->line_by_seq && t->seq) {
-                if (t->seq[(long)y * t->w + x] > t->paint_seq && iz < *d * 0.9999f) continue;
+            if (t->line_decal && t->owner) {
+                const uint32_t ow = t->owner[(long)y * t->w + x];
+                static float tol[3] = { -1.0f, 0.0f, 0.0f };     /* F117_DECAL_TOL=SAME,BEFORE,AFTER (diagnostic): the three margins */
+                if (tol[0] < 0.0f) {
+                    tol[0] = 0.99f; tol[1] = 0.0f; tol[2] = 0.97f;
+                    const char *e = getenv("F117_DECAL_TOL");
+                    if (e) sscanf(e, "%f,%f,%f", &tol[0], &tol[1], &tol[2]);
+                }
+                const uint32_t mine = t->paint_owner >> 12, theirs = ow >> 12;
+                if (ow != t->paint_owner && iz < *d * (theirs == mine ? tol[0] : theirs < mine ? tol[1] : tol[2])) continue;
             } else if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
             if (!t->line_order) *d = iz;
-            if (t->seq && !t->line_order) t->seq[(long)y * t->w + x] = t->paint_seq;
+            if (t->owner && !t->line_order) t->owner[(long)y * t->w + x] = t->paint_owner;
             t->color[(long)y * t->w + x] = color;
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;

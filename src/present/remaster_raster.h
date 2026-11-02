@@ -51,14 +51,16 @@ typedef struct {
      * polygons' depth only and leaves the depth buffer alone, so a later line covers an earlier one where they cross (a flag over
      * its pole), as the original's painter's order does. */
     int line_order;
-    /* The original paints in order, so a line covers what was painted before it and is covered by what comes after. seq (w * h,
-     * or NULL) is the sequence number of the polygon at each pixel (paint_seq as it was painted, 0 for the sky and ground);
-     * with line_by_seq set a line passes over a polygon painted before it at any depth, and over one painted after it only
-     * where the line is nearer: a hangar's door line lies over the ground in front of the hangar, and a far line (the runway's
-     * end at the horizon) stays behind a jet painted after it. */
-    uint32_t *seq;
-    uint32_t paint_seq;
-    int line_by_seq;
+    /* Lines and dots as decals on the face they belong to. owner (w * h, or NULL) is the object and face of the polygon at each
+     * pixel (paint_owner as it was painted, 0 for the sky and ground). With line_decal set a line or dot pixel is drawn over its
+     * own face always; over another face of its own object unless that face is nearer by more than a hundredth (the original's
+     * lines and dots keep one pixel's width at any distance, so they spill onto the faces beside theirs); over an object
+     * painted before theirs always (the original paints far to near, so what came before is behind, or is the ground a hangar
+     * stands on, which its door's foot line is painted over); over an object painted after theirs (a jet in front of a far line)
+     * unless it is nearer by more than three hundredths. */
+    uint32_t *owner;
+    uint32_t paint_owner;
+    int line_decal;
 } remaster_target;
 
 static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }

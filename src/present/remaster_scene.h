@@ -31,6 +31,7 @@ typedef struct {
     uint8_t darken;                         /* the object's byte at DS:48C4 (model_fill_begin darkens shaded colours by it) */
     uint16_t face;
     uint16_t model;
+    uint32_t owner;                         /* the object (one request of the frame) and face it belongs to: request << 12 | face */
 } remaster_prim;
 
 typedef struct {

@@ -346,7 +346,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         }
         if (t->line_strong && (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)) continue;      /* drawn after the polygons, below */
         t->paint_index = (uint16_t)idx;
-        t->paint_seq = (uint32_t)i + 1;                /* the original's painting order */
+        t->paint_owner = p->owner;                     /* the object and face the lines and dots on it belong to */
         if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(t, p->v, p->n, colour);
         else if (p->kind == SCENE_LINES)
             for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
@@ -373,7 +373,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             if (pass == 0 ? !do2 : !do3) continue;
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
             if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
-            else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_by_seq = 0; }   /* the ordinary pass has no slope allowance */
+            else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_decal = 0; }   /* the ordinary pass has no slope allowance */
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
                 uint32_t colour;
@@ -384,18 +384,20 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 word_style(p->colour_word, p->darken, &idx);
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
-                /* Whole lines follow the original's painting order (line_by_seq): the doors' yellow lies at a building's foot and is
-                 * painted over the ground in front of it, while a far line painted before a jet stays behind the jet. Lights (points) are hidden by anything nearer that is flat, as by the hangar they stand behind:
-                 * a bias of 1.01 and an allowance for the slope of a ground surface (remaster_raster.h, line_slope). */
-                if (pass == 0) {
+                /* Lines and dots are decals on the face they belong to (remaster_raster.h, line_decal): over their own face, over the
+                 * faces of their own object unless clearly nearer, and behind anything else that is nearer, in both passes.
+                 * F117_LINES=old (diagnostic) restores the earlier rules: whole lines with a 50x bias, lights by the ground's slope. */
+                static int decal = -1;
+                if (decal < 0) { const char *e = getenv("F117_LINES"); decal = !(e && !strcmp(e, "old")); }
+                t->paint_owner = p->owner;
+                if (decal) { t->line_decal = 1; t->line_bias = 1.0; t->line_slope = 0.0; }
+                else if (pass == 0) {
                     int point = p->kind == SCENE_DOTS;               /* a light is a line from a point to itself */
                     if (p->kind == SCENE_LINES) {
                         point = 1;
                         for (int k = 1; k < p->n && point; k++) point = p->v[k].x == p->v[0].x && p->v[k].y == p->v[0].y && p->v[k].z == p->v[0].z;
                     }
-                    t->paint_seq = (uint32_t)i + 1;
-                    t->line_by_seq = !point || dark;
-                    if (!point || dark) { t->line_bias = 0.0; t->line_slope = 0.0; }
+                    if (!point || dark) { t->line_bias = 50.0; t->line_slope = 0.0; }
                     else { t->line_bias = 1.01; t->line_slope = 1.0 + (ux > 1.0 ? ux : 1.0); }
                 }
                 if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
@@ -403,7 +405,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             }
             t->color = c0; t->inv_z = z0;
         }
-        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0; t->line_by_seq = 0;
+        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0; t->line_decal = 0;
         if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     g_tm_lines += now_ms() - tq3;
@@ -423,7 +425,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
-    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0; t.seq = NULL; t.paint_seq = 0; t.line_by_seq = 0;
+    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0; t.owner = NULL; t.paint_owner = 0; t.line_decal = 0;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);
@@ -658,7 +660,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
     t.line_order = 0;
-    t.seq = (uint32_t *)pool[5].p; t.paint_seq = 0; t.line_by_seq = 0;
+    t.owner = (uint32_t *)pool[5].p; t.paint_owner = 0; t.line_decal = 0;
     const double tm0 = now_ms();
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;
