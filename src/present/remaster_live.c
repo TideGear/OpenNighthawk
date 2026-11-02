@@ -373,7 +373,15 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 uint32_t colour;
                 if (p->kind != SCENE_LINES && p->kind != SCENE_DOTS) continue;
                 if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
-                if (pass == 0 && (int)(colour >> 16 & 255) + (int)(colour >> 8 & 255) + (int)(colour & 255) <= 200) continue;   /* dark: never taken whole */
+                if (pass == 0 && p->kind == SCENE_LINES) {       /* the horizon is a line tens of thousands of units long: far behind everything, never whole */
+                    int far_line = 0;
+                    for (int k = 0; k + 1 < p->n && !far_line; k++) {
+                        const double dx = p->v[k + 1].x - p->v[k].x, dz = p->v[k + 1].z - p->v[k].z, dy = p->v[k + 1].y - p->v[k].y;
+                        far_line = dx * dx + dy * dy + dz * dz > 12000.0 * 12000.0;
+                    }
+                    if (far_line) continue;
+                }
+                const int dark = (int)(colour >> 16 & 255) + (int)(colour >> 8 & 255) + (int)(colour & 255) <= 200;   /* dark: never taken whole, but drawn whole over an earlier bright line (a flag over its pole) as the original's order has it */
                 unsigned idx = 0;
                 word_style(p->colour_word, p->darken, &idx);
                 const double line_w = ux > 1.0 ? ux : 1.0;
@@ -387,7 +395,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                         point = 1;
                         for (int k = 1; k < p->n && point; k++) point = p->v[k].x == p->v[0].x && p->v[k].y == p->v[0].y && p->v[k].z == p->v[0].z;
                     }
-                    if (!point) { t->line_bias = 50.0; t->line_slope = 0.0; }
+                    if (!point || dark) { t->line_bias = 50.0; t->line_slope = 0.0; }
                     else { t->line_bias = 1.01; t->line_slope = 1.0 + (ux > 1.0 ? ux : 1.0); }
                 }
                 if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
