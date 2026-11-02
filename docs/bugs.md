@@ -1232,7 +1232,7 @@ D4 is a data patch (the secret-airstrip missions), D2 the sampled-speech wait in
 D1ACCEL the missile and launcher timing of the frame-rate family, Q7 and Q17 the zoomed-view range and the pitch ladder, Q12b the map
 marker. With the two takeoffs (D101, D4 and Q16) nine of the 31 repairs change anything we can run. **The other 22 change no route or
 flight we have**: Q23 D18 Q13b Q4 Q22 Q21 Q13a Q20 Q19 Q18 Q15 Q14 Q12 D1 D1TTL D11 D5 D12 D34 D8 D3 D6. By the rule above they are Suspected, not Confirmed: each has its staged check and no flight in which it matters, so they
-stay on (the owner's policy) until a flight shows what they do or they are retired as Q11 was. The next step is a flight that reaches each
+stay on (the owner's policy, confirmed on 1 Nov 2026 at 22:45 when asked whether to make them opt-in: keep them on) until a flight shows what they do or they are retired as Q11 was. The next step is a flight that reaches each
 one, found by what it repairs (the cannon, the destroyed-object table, END's tally, the debrief), held against GOG's DOSBox
 (`tools/dosbox_flight.py`).
 
