@@ -928,8 +928,8 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
         {   /* F117_MODEL_LOG=MODEL,FROM (diagnostic): every request for that model, its position, and whether its faces follow (see k == 1) */
             static int want = -2; static unsigned long long from;
-            if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -1; const char *c = e ? strchr(e, ',') : NULL; from = c ? strtoull(c + 1, NULL, 0) : 0; }
-            if (want >= 0 && r->model == (unsigned)want && m->cpu.icount >= from)
+            if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -2; const char *c = e ? strchr(e, ',') : NULL; from = c ? strtoull(c + 1, NULL, 0) : 0; }
+            if (want >= -1 && (want < 0 || r->model == (unsigned)want) && m->cpu.icount >= from)
                 fprintf(stderr, "[req] clock %llu model %u pos %d %d %d\n", (unsigned long long)m->cpu.icount, (unsigned)r->model, r->position[0], r->position[1], r->position[2]);
         }
     } else if (k == 1) {                                    /* the model's faces are about to be drawn: the pose is prepared */

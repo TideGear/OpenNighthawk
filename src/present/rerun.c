@@ -222,6 +222,27 @@ void rerun_set_collector(const rerun_collector *c)
 static int g_wide_pct = 100;
 void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 400 ? 400 : percent; }
 
+/* Aircraft (the parked jets, the other planes) are tested by their own routine, VGAME 0xB5DC, before any model is asked for: it puts the
+ * aircraft's position into view space with the matrix at DS:[B082..] (row a of it: the words at B082 + 2a, B088 + 2a, B08E + 2a) and keeps
+ * it while |x'| is within about |z'|, a 45-degree cone, so a jet in the wide margins is never drawn. The aircraft loop reaches 0xB5DC
+ * through the run loop, so an exec hook sees it: at the first call of a copy's frame it divides the x row by the view's width factor,
+ * which widens that cone by the same factor (the aircraft's own drawing does not read that row; its position on the 320-pixel screen,
+ * [4A10], is off in the copy, which only the margins see). */
+static int g_air_k = -1, g_air_done, g_air_pct = 100;
+static int wide_air_exec(void *user, machine_t *m, unsigned k)
+{
+    if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
+    if (g_air_done) return 0;
+    g_air_done = 1;
+    const uint16_t ds = m->cpu.seg[S_DS];
+    static const uint16_t row0[3] = { 0xB082, 0xB088, 0xB08E };
+    for (int i = 0; i < 3; i++) {
+        const int16_t w = (int16_t)rd16(m->mem, ds, row0[i]);
+        wr16(m->mem, ds, row0[i], (uint16_t)(int16_t)((int32_t)w * 100 / g_air_pct));
+    }
+    return 0;
+}
+
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
 {
     out->nvals = 0;
@@ -268,6 +289,18 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
             for (int md = 0; md < 8; md++) {
                 const uint16_t at = (uint16_t)(base + 2 * md);
                 if (rd16(g_copy_mem, ds, at) < 18000u) wr16(g_copy_mem, ds, at, 18000u);
+            }
+            g_air_k = -1; g_air_done = 0; g_air_pct = pct;
+            if (!getenv("F117_WIDE_NO_AIR") && s->exec_hook_n < EXEC_HOOKS_MAX) {      /* F117_WIDE_NO_AIR (diagnostic): the aircraft test left alone */
+                for (unsigned k = 0; k < s->exec_hook_n; k++)       /* VGAME's load segment: the per-frame draw routine's watch (0x1450) is at its relative 0 */
+                    if (s->exec_hook[k].ip == 0x1450) {
+                        g_air_k = (int)s->exec_hook_n;
+                        s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
+                        s->exec_hook[s->exec_hook_n].ip = 0xB5DC;
+                        s->exec_hook_n++;
+                        s->hooks.exec = wide_air_exec;
+                        break;
+                    }
             }
         }
     }
