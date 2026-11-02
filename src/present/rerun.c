@@ -3,6 +3,7 @@
 #include "observe.h"
 #include "../fixes/fixes.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -250,6 +251,25 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     s->trap_on = 0;
     const uint16_t ds = s->cpu.seg[S_DS];
     if (b && b->valid && t > 0) nudge(g_copy_mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
+    {   /* F117_WIDE_VIEW=FAR:SIDE (experiment, docs/remastered-design.md step 4): the copy's view cull (VGAME 0x0E3BF) widened: the
+         * far plane [48E6] times FAR, the side-plane tables [4906..4985] times SIDE; the live machine is untouched */
+        static int init, far_mult = 1, side_mult = 1;
+        if (!init) {
+            init = 1;
+            const char *e = getenv("F117_WIDE_VIEW");
+            if (e) { far_mult = atoi(e); const char *c = strchr(e, ':'); side_mult = c ? atoi(c + 1) : far_mult; }
+            if (far_mult < 1) far_mult = 1;
+            if (side_mult < 1) side_mult = 1;
+        }
+        if (far_mult > 1 || side_mult > 1) {
+            const uint32_t far = (uint32_t)rd16(g_copy_mem, ds, 0x48E6) * (uint32_t)far_mult;
+            wr16(g_copy_mem, ds, 0x48E6, (uint16_t)(far > 0x7FFFu ? 0x7FFFu : far));
+            for (uint16_t at = 0x4906; at < 0x4986; at += 2) {
+                const uint32_t v = (uint32_t)rd16(g_copy_mem, ds, at) * (uint32_t)side_mult;
+                wr16(g_copy_mem, ds, at, (uint16_t)(v > 0x7FFFu ? 0x7FFFu : v));
+            }
+        }
+    }
     /* run it under its own observer, the real one's pending state set aside */
     const f117_observer *real = g_f117_observer;
     observe_pending_save(g_pending);
@@ -265,6 +285,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     while (!g_done && s->cpu.icount < limit)
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
     if (g_collector.end) g_collector.end(g_collector.user);
+    if (getenv("F117_WIDE_VIEW_DIAG")) fprintf(stderr, "[wide] copy records %d, vertices-ish values %d\n", out->nrec, out->nvals);
     g_out = NULL;
     observe_set(real);
     observe_pending_restore(g_pending);
