@@ -88,6 +88,7 @@ static const keyref_row PAGE4[] = {
     { "Faster / slower", "+  and  -" },
     { "Normal speed", "0" },
     { "30 seconds on / back", "]  and  [" },
+    { "Go to a second", "G, digits, Enter" },
     { "Start it again", "Ctrl+Alt+R" },
 };
 static const char *const NOTES[KEYREF_PAGES] = {

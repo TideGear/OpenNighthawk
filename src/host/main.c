@@ -1590,6 +1590,8 @@ int main(int argc, char **argv)
     uint64_t discarded_clocks = 0;
     g_loop_timing = getenv("F117_LOOP_TIMING") != NULL;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
+    int jump_typing = 0;                            /* a replay: G pressed, the second to jump to being typed */
+    unsigned long jump_secs = 0;
     if (getenv("F117_REPLAY_START_X4")) replay_x4 = atoi(getenv("F117_REPLAY_START_X4"));   /* diagnostic: start a replay fast */
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
     uint64_t seek_target = player && seek_secs > 0 ? (uint64_t)(seek_secs * (double)ips) : 0;   /* a replay runs flat out to here */
@@ -1701,6 +1703,17 @@ int main(int argc, char **argv)
         /* F117_SEEK_AUTOTEST=1 (diagnostic, with --watch): at frame 100 press ], at frame 400 press [ (use
          * F117_RESTART_DRYRUN=1 to see the restart it asks for). */
         {
+            if (getenv("F117_JUMP_AUTOTEST")) {      /* diagnostic, with --watch: frames 100 to 103 type G 6 0 Enter (go to second 60) */
+                ++sk_frame;
+                static const SDL_Scancode typed[4] = { SDL_SCANCODE_G, SDL_SCANCODE_6, SDL_SCANCODE_0, SDL_SCANCODE_RETURN };
+                if (sk_frame >= 100 && sk_frame < 104) {
+                    SDL_Event e;
+                    SDL_zero(e);
+                    e.type = SDL_EVENT_KEY_DOWN;
+                    e.key.scancode = typed[sk_frame - 100];
+                    SDL_PushEvent(&e);
+                }
+            }
             if (getenv("F117_SEEK_AUTOTEST")) {
                 ++sk_frame;
                 if (sk_frame == 100 || sk_frame == 400) {
@@ -1727,7 +1740,36 @@ int main(int argc, char **argv)
                 if (down && !live) {                        /* a replay: speed keys, and Ctrl+Alt+R to start it again */
                     const SDL_Scancode rs = ev.key.scancode;
                     int changed = 1;
-                    if (rs == SDL_SCANCODE_EQUALS || rs == SDL_SCANCODE_KP_PLUS) { if (replay_x4 < 64) replay_x4 *= 2; }
+                    if (jump_typing) {                                   /* G, then the second to go to, then Enter (Esc gives up) */
+                        int digit = -1;
+                        if (rs >= SDL_SCANCODE_1 && rs <= SDL_SCANCODE_9) digit = rs - SDL_SCANCODE_1 + 1;
+                        else if (rs == SDL_SCANCODE_0 || rs == SDL_SCANCODE_KP_0) digit = 0;
+                        else if (rs >= SDL_SCANCODE_KP_1 && rs <= SDL_SCANCODE_KP_9) digit = rs - SDL_SCANCODE_KP_1 + 1;
+                        if (digit >= 0) { if (jump_secs < 100000) jump_secs = jump_secs * 10 + (unsigned)digit; }
+                        else if (rs == SDL_SCANCODE_BACKSPACE) jump_secs /= 10;
+                        else if (rs == SDL_SCANCODE_ESCAPE) jump_typing = 0;
+                        else if (rs == SDL_SCANCODE_RETURN || rs == SDL_SCANCODE_KP_ENTER) {
+                            jump_typing = 0;
+                            const double now_s = (double)H.m.cpu.icount / (double)ips;
+                            if ((double)jump_secs > now_s) {              /* on: flat out, muted, to there */
+                                seek_target = (uint64_t)jump_secs * ips;
+                                fprintf(stderr, "replay seek to second %lu (clock %llu)\n", jump_secs, (unsigned long long)seek_target);
+                            } else {                                      /* back: start again, flat out to there */
+                                char secs[32];
+                                snprintf(secs, sizeof secs, "%lu", jump_secs);
+                                restart_game(orig_argv, "--seek", secs);
+                                running = 0;
+                            }
+                        }
+                        if (jump_typing) {
+                            char title[96];
+                            snprintf(title, sizeof title, "F-117A - replay: go to second %lu_   (Enter goes, Esc cancels)", jump_secs);
+                            SDL_SetWindowTitle(win, title);
+                        } else SDL_SetWindowTitle(win, "F-117A - replay");
+                        break;
+                    }
+                    if (rs == SDL_SCANCODE_G && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) { jump_typing = 1; jump_secs = 0; changed = 0; SDL_SetWindowTitle(win, "F-117A - replay: go to second _   (Enter goes, Esc cancels)"); }
+                    else if (rs == SDL_SCANCODE_EQUALS || rs == SDL_SCANCODE_KP_PLUS) { if (replay_x4 < 64) replay_x4 *= 2; }
                     else if (rs == SDL_SCANCODE_MINUS || rs == SDL_SCANCODE_KP_MINUS) { if (replay_x4 > 1) replay_x4 /= 2; }
                     else if (rs == SDL_SCANCODE_0 || rs == SDL_SCANCODE_KP_0) replay_x4 = 4;
                     else if (rs == SDL_SCANCODE_RIGHTBRACKET) {          /* ] jumps 30 seconds on: flat out, muted */
