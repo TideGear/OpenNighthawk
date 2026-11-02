@@ -1893,6 +1893,12 @@ int main(int argc, char **argv)
                 if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && live && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
                     tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* ` in flight: the menu, on its Settings tab */
                 }
+                /* Tab with the menu closed: a screenshot (as Ctrl+Alt+C). The game never sees it; in flight it has no use for Tab (the
+                 * key dispatcher's chain, VGAME CE65, goes from 0E08h Backspace to 1100h Alt+W, so 0F09h takes no arm). */
+                if (ev.key.scancode == SDL_SCANCODE_TAB && live && !g_set.open && !ref_open && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
+                    if (down && !ev.key.repeat) g_shot_now = 1;
+                    break;
+                }
                 if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
                     if (g_set.open && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.remap_stage && !g_set.padkey_stage) {
                         settings_key_event(&g_set, SKEY_ESC);                              /* close Settings without saving, keep the pause */

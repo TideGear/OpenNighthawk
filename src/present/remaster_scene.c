@@ -247,5 +247,28 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
         f->n = frame_start;
         return -1;
     }
+    {   /* a ground object (the runway, an apron): every polygon of it lies level. The world's up axis in camera space is that
+         * axis's three matrix words (axis 1: measured, the runway and the jets' wings come out level with it). */
+        static int axis = -1;
+        if (axis < 0) { const char *e = getenv("F117_FLAT_AXIS"); axis = e ? atoi(e) : 1; }
+        int all_level = 0, polygons = 0;
+        const double ux = camera[3 * axis], uy = camera[3 * axis + 1], uz = camera[3 * axis + 2];
+        const double ul = sqrt(ux * ux + uy * uy + uz * uz);
+        for (size_t i = frame_start; i < f->n; i++) {
+            remaster_prim *p = &f->prim[i];
+            if (p->kind != SCENE_POLYGON || p->n < 3 || ul <= 0.0) continue;
+            const double ax = (double)p->v[1].x - p->v[0].x, ay = (double)p->v[1].y - p->v[0].y, az = (double)p->v[1].z - p->v[0].z;
+            const double bx = (double)p->v[2].x - p->v[0].x, by = (double)p->v[2].y - p->v[0].y, bz = (double)p->v[2].z - p->v[0].z;
+            const double nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+            const double nl = sqrt(nx * nx + ny * ny + nz * nz);
+            polygons++;
+            if (nl > 0.0 && fabs(nx * ux + ny * uy + nz * uz) > 0.9 * nl * ul) all_level++;
+        }
+        const uint8_t ground = polygons > 0 && all_level == polygons;
+        for (size_t i = frame_start; i < f->n; i++) {
+            f->prim[i].flat = ground;
+            if (ground) f->prim[i].owner |= 0x800u;
+        }
+    }
     return ctx.added;
 }

@@ -107,16 +107,28 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
-            if (t->line_decal && t->owner) {
-                const uint32_t ow = t->owner[(long)y * t->w + x];
-                static float tol[3] = { -1.0f, 0.0f, 0.0f };     /* F117_DECAL_TOL=SAME,BEFORE,AFTER (diagnostic): the three margins */
+            if (t->owner && (t->line_decal || !t->line_order)) {
+                /* Lines, dots and polygons by what is already at the pixel (remaster_raster.h, owner): a ground object (bit 11:
+                 * the runway, an apron) never hides another object's lines or polygons, since the original paints what stands on
+                 * the ground over it; a line or dot is drawn over its own face always and over the rest of its own object unless
+                 * clearly nearer (its fixed width spills onto the faces beside); otherwise the depth decides. */
+                static float tol[2] = { -1.0f, 0.0f };     /* F117_DECAL_TOL=SAME,OTHER (diagnostic): the line margins */
                 if (tol[0] < 0.0f) {
-                    tol[0] = 0.99f; tol[1] = 0.0f; tol[2] = 0.97f;
+                    tol[0] = 0.99f; tol[1] = 0.97f;
                     const char *e = getenv("F117_DECAL_TOL");
-                    if (e) sscanf(e, "%f,%f,%f", &tol[0], &tol[1], &tol[2]);
+                    if (e) sscanf(e, "%f,%f", &tol[0], &tol[1]);
                 }
-                const uint32_t mine = t->paint_owner >> 12, theirs = ow >> 12;
-                if (ow != t->paint_owner && iz < *d * (theirs == mine ? tol[0] : theirs < mine ? tol[1] : tol[2])) continue;
+                const uint32_t ow = t->owner[(long)y * t->w + x];
+                const int same = ow >> 12 == t->paint_owner >> 12, on_ground = ow && (ow & 0x800u) && !same;
+                if (t->line_decal) {
+                    if (ow != t->paint_owner && !on_ground && iz < *d * (same ? tol[0] : tol[1])) continue;
+                } else {
+                    const int me_ground = (t->paint_owner & 0x800u) != 0;
+                    float k = 0.9999f;                          /* the same object: the depth, later winning a tie */
+                    if (on_ground) k = me_ground ? 0.97f : 0.0f;  /* over the ground: always, or (ground on ground) unless clearly nearer */
+                    else if (me_ground && ow && !same) k = 1.03f; /* the ground over what stands on it: only where clearly in front */
+                    if (iz < *d * k) continue;
+                }
             } else if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
             if (!t->line_order) *d = iz;
             if (t->owner && !t->line_order) t->owner[(long)y * t->w + x] = t->paint_owner;

@@ -304,9 +304,9 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         for (int c = 0; c < 3; c++) {
             const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
             const int64_t w = (int16_t)rd16(m->mem, ds, at);
-            /* the cone a half again wider than the canvas: the test is on the aircraft's centre, and a near jet whose centre has
+            /* the cone three times as wide as the canvas: the test is on the aircraft's centre, and a near jet whose centre has
              * left the margin still shows its nose or tail there */
-            const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 / 2 : 100);       /* in 1/10000 */
+            const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
             wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
         }
     return 0;

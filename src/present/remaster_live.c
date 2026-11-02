@@ -347,6 +347,10 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         if (t->line_strong && (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)) continue;      /* drawn after the polygons, below */
         t->paint_index = (uint16_t)idx;
         t->paint_owner = p->owner;                     /* the object and face the lines and dots on it belong to */
+        {   static int show = -1;                       /* F117_FLAT_SHOW=1 (diagnostic): the level polygons in magenta */
+            if (show < 0) show = getenv("F117_FLAT_SHOW") != NULL;
+            if (show && p->flat) colour = 0xFFFF00FFu;
+        }
         if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(t, p->v, p->n, colour);
         else if (p->kind == SCENE_LINES)
             for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
