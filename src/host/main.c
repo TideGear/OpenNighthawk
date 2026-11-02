@@ -1004,9 +1004,12 @@ int main(int argc, char **argv)
      * Recorded sessions keep their
      * recorded fix set (old logs without a fix header mean the original).
      * Explicit --fix options can still add fixes to a diagnostic replay. */
-    int replay_requested = 0, fixes_custom = 0;
+    int replay_requested = 0, fixes_custom = 0, cli_fix_flags = 0, replay_fixes_cli = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--replay")) replay_requested = 1;
+        if (!strcmp(argv[i], "--fix") || !strcmp(argv[i], "--fixes")) cli_fix_flags = 1;
+        /* --replay-fixes cli: run the replay with the fixes the command line names, not the ones its log header records */
+        if (!strcmp(argv[i], "--replay-fixes") && i + 1 < argc && !strcmp(argv[i + 1], "cli")) replay_fixes_cli = 1;
         /* --fixes custom (a Custom fix set): start from none, so the --fix IDs given add to nothing, wherever they
          * come relative to it in the file */
         if (!strcmp(argv[i], "--fixes") && i + 1 < argc && !strcmp(argv[i + 1], "custom")) fixes_custom = 1;
@@ -1128,6 +1131,10 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--fix") && v) {
             if (!strcmp(v, "none")) fixes_enable("all", 0);
             else if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--replay-fixes") && v) {
+            if (strcmp(v, "log") && strcmp(v, "cli")) { fprintf(stderr, "--replay-fixes takes log or cli\n"); return 2; }
             i++;
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
@@ -1381,9 +1388,20 @@ int main(int argc, char **argv)
         }
         char ids[256];
         inputlog_read_fixes(replay, ids, sizeof ids);
-        if (!fixes_enable_list(ids)) {
-            fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids);
-            SDL_Quit(); return 2;
+        if (replay_fixes_cli) {
+            fprintf(stderr, "replay fixes: the command line's set, not the log's (%s)\n", ids[0] ? ids : "none");
+        } else {
+            char before[256], after[256];
+            fixes_enabled(before, sizeof before);
+            if (!fixes_enable_list(ids)) {
+                fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids);
+                SDL_Quit(); return 2;
+            }
+            fixes_enabled(after, sizeof after);
+            /* a replay runs the fixes its log records so that it reproduces the session; --fix and --fixes only add to them */
+            if (cli_fix_flags && strcmp(before, after))
+                fprintf(stderr, "replay fixes: %s records [%s], which are on whatever --fix/--fixes say; "
+                        "--replay-fixes cli runs only the command line's set\n", replay, ids);
         }
     }
     H.audio = audio_create_backend(ips, opl_backend);

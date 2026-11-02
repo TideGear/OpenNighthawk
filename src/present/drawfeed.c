@@ -364,7 +364,7 @@ static void check_pair(drawlive *r)
 static void replay_available(drawlive *r, const drawfeed_frame *fr)
 {
     if (!r->pending_active || r->pending_seq != fr->seq) {
-        if (fr->seq != r->next_seq || r->pending_active) drawlist_reset(&r->list);
+        if (fr->seq != r->next_seq || r->pending_active) drawlist_reset_keep_overlays(&r->list);
         if (r->interp) {
             drawlist_copy(&r->pending_start, &r->list);
             if (r->scale) memcpy(r->pending_hires, r->hr, sizeof *r->hr);
@@ -410,8 +410,9 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
     if (!r->list.have_seg || !disp || disp->size < 64000) { r->unseeded++; return; }
     if (memcmp(disp->b, fr->display, 64000)) {
         r->inexact++;
+        if (getenv("F117_MAP_DIAG")) fprintf(stderr, "[mapdiag] frame %llu not equal to the display: list reset, kept rectangles lost (%d kept)\n", (unsigned long long)fr->seq, r->list.noverlay);
         r->queue[r->nqueue++] = -1;                    /* nothing is shown until the next exact frame */
-        drawlist_reset(&r->list);
+        drawlist_reset_keep_overlays(&r->list);
         if (r->scale) hires_init(r->hr, r->scale);
         drawfeed_reseed(f);
         return;

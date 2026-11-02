@@ -26,7 +26,7 @@
 #include <stdint.h>
 
 #define DRAWLIST_PAGES 4
-#define DRAWLIST_OVERLAYS 8       /* fine rectangles kept for pages the replay does not hold */
+#define DRAWLIST_OVERLAYS 24      /* fine rectangles kept for pages the replay does not hold */
 
 typedef struct {
     uint16_t seg;
@@ -89,6 +89,7 @@ void drawlist_set_scale(drawlist *d, int n);
 void drawlist_set_line_width(drawlist *d, int width);
 void drawlist_free(drawlist *d);
 void drawlist_reset(drawlist *d);
+void drawlist_reset_keep_overlays(drawlist *d);   /* a reset that keeps the kept fine rectangles */
 void drawlist_copy(drawlist *dst, const drawlist *src);
 
 /* Give the replay a page as it stands: 'Z' the work page at a phase's start

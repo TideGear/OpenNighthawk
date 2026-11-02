@@ -66,6 +66,20 @@ void drawlist_reset(drawlist *d)
     d->prefer_logged = logged;
 }
 
+/* A reset for a skipped or inexact frame: the pages go, the kept fine rectangles stay. A rectangle only comes back when the coarse
+ * bytes of the blit match what was kept, so a stale one is refused, but dropping it left the MFD map coarse until the game next
+ * redrew it (a skipped frame under load is enough). */
+void drawlist_reset_keep_overlays(drawlist *d)
+{
+    drawlist_overlay keep[DRAWLIST_OVERLAYS];
+    const int n = d->noverlay, next = d->overlay_next;
+    memcpy(keep, d->overlay, sizeof keep);
+    memset(d->overlay, 0, sizeof d->overlay);          /* so the reset frees none of them */
+    drawlist_reset(d);
+    memcpy(d->overlay, keep, sizeof keep);
+    d->noverlay = n; d->overlay_next = next;
+}
+
 void drawlist_copy(drawlist *dst, const drawlist *src)
 {
     uint8_t *keep[DRAWLIST_PAGES],*tags[DRAWLIST_PAGES];
@@ -183,7 +197,12 @@ static void overlay_store(drawlist *d, uint16_t seg, int32_t dx, int32_t dy, int
     }
     if (k == d->noverlay) {
         if (d->noverlay < DRAWLIST_OVERLAYS) d->noverlay++;
-        else k = d->overlay_next++ % DRAWLIST_OVERLAYS;
+        else {                                         /* full: the smallest rectangle goes, so small sprites that move about (4 x 7 at
+                                                        * changing places) cannot push out the 77 x 60 map, which then came back coarse */
+            k = 0;
+            for (int j = 1; j < DRAWLIST_OVERLAYS; j++)
+                if (d->overlay[j].w * d->overlay[j].h < d->overlay[k].w * d->overlay[k].h) k = j;
+        }
     }
     drawlist_overlay *o = &d->overlay[k];
     const int n = src->n;
