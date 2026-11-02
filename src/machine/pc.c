@@ -1174,6 +1174,26 @@ static int override_at(machine_t *m)
     return RUN_SLICE;
 }
 
+/* The DOS-call overhead stub's `LOOP $` (src/machine/dos.c STUB_OVERHEAD + 4, CX = 140h on every INT 21h poll) run as one step:
+ * as many of its executions as fit before the next event, each one clock, leaving exactly what that many single steps leave (CX, IP,
+ * the clock, the last instruction's address). The interpreter step it replaces cost about five times a normal instruction on the
+ * host, 320 times a poll, which made the intro and the launch run slower than the clock they are timed by (R10). */
+static int overhead_loop_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->t386 || (c->flags & F_TF) || c->seg[S_CS] != m->iret_seg || c->ip != 0xC4 || c->stop_at <= c->icount) return 0;
+    const uint16_t at = c->ip;
+    if (mem_read8(c, phys(c->seg[S_CS], at)) != 0xE2 || mem_read8(c, phys(c->seg[S_CS], (uint16_t)(at + 1))) != 0xFE) return 0;
+    uint32_t n = c->r[R_CX] ? c->r[R_CX] : 0x10000u;       /* LOOP with CX = 0 runs 65536 times */
+    const uint64_t room = c->stop_at - c->icount;
+    const uint32_t k = n < room ? n : (uint32_t)room;
+    c->r[R_CX] = (uint16_t)(c->r[R_CX] - k);
+    c->icount += k;
+    c->op_cs = c->seg[S_CS]; c->op_ip = at;
+    c->ip = c->r[R_CX] ? at : (uint16_t)(at + 2);
+    return 1;
+}
+
 int machine_run(machine_t *m, uint64_t until)
 {
     cpu_t *c = &m->cpu;
@@ -1227,6 +1247,7 @@ int machine_run(machine_t *m, uint64_t until)
                         continue;
                     }
                 }
+                if (overhead_loop_step(m)) continue;
                 if (recomp_run(m)) continue;
                 recomp_note_interp(m);
                 int rc = interp_step(m);
@@ -1259,6 +1280,7 @@ int machine_run(machine_t *m, uint64_t until)
                         continue;
                     }
                 }
+                if (overhead_loop_step(m)) continue;
                 recomp_note_interp(m);
                 int rc = interp_step(m);
                 if (rc != RUN_SLICE) return rc;
