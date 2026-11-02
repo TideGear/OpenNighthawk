@@ -34,10 +34,11 @@ static double now_ms(void)
 /* the watched entries, as {segment relative to the load segment, offset}: k = 0 the model request, 1 model_faces (VGAME
  * 120A:0C76, the faces of a model that is visible: run after the pose is fully prepared, so the part matrices, planes and
  * vertices are where remaster_scene_add reads them), 2 the per-frame draw routine */
-static const struct { uint16_t seg, ip; } WATCH[3] = {
+static const struct { uint16_t seg, ip; } WATCH[4] = {
     { 0x120A, 0x00CF },
     { 0x120A, 0x0C76 },
     { 0x0000, 0x1450 },
+    { 0x1058, 0x000A },                 /* the HUD pass's far entry: the models asked for after it are drawn over the HUD */
 };
 
 struct remaster_live {
@@ -60,6 +61,7 @@ struct remaster_live {
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
     int32_t done_band[BAND_REC_BASE];
     int done_have_band, have_done, done_origin[2], done_window[4];
+    long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
 };
 
@@ -68,6 +70,7 @@ remaster_live *remaster_live_new(int w, int h, unsigned frame, const char *out_p
     remaster_live *r = (remaster_live *)calloc(1, sizeof *r);
     if (!r) return NULL;
     r->scene = remaster_scene_new();
+    r->hud_at = r->done_hud_at = -1;
     r->w = w; r->h = h; r->want_frame = frame;
     if (out_path) {
         r->out_path = (char *)malloc(strlen(out_path) + 1);
@@ -94,13 +97,14 @@ void remaster_live_copy_begin(remaster_live *r)
     r->have_band = 0;
     r->have_done = 0;
     r->done.n = 0;
+    r->hud_at = r->done_hud_at = -1;
 }
 
 unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
 {
     (void)r;
     const unsigned base = m->exec_hook_n;
-    for (unsigned k = 0; k < 3 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
+    for (unsigned k = 0; k < 4 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
         m->exec_hook[m->exec_hook_n].cs = (uint16_t)(load_seg + WATCH[k].seg);
         m->exec_hook[m->exec_hook_n].ip = WATCH[k].ip;
         m->exec_hook_n++;
@@ -342,6 +346,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         }
         if (t->line_strong && (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)) continue;      /* drawn after the polygons, below */
         t->paint_index = (uint16_t)idx;
+        t->paint_seq = (uint32_t)i + 1;                /* the original's painting order */
         if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(t, p->v, p->n, colour);
         else if (p->kind == SCENE_LINES)
             for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
@@ -368,7 +373,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             if (pass == 0 ? !do2 : !do3) continue;
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
             if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
-            else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; }   /* the ordinary pass has no slope allowance */
+            else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_by_seq = 0; }   /* the ordinary pass has no slope allowance */
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
                 uint32_t colour;
@@ -379,8 +384,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 word_style(p->colour_word, p->darken, &idx);
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
-                /* Whole lines (the doors' yellow) lie at a building's foot and the original draws them over the terrain in front of it,
-                 * so they take a huge bias. Lights (points) are hidden by anything nearer that is flat, as by the hangar they stand behind:
+                /* Whole lines follow the original's painting order (line_by_seq): the doors' yellow lies at a building's foot and is
+                 * painted over the ground in front of it, while a far line painted before a jet stays behind the jet. Lights (points) are hidden by anything nearer that is flat, as by the hangar they stand behind:
                  * a bias of 1.01 and an allowance for the slope of a ground surface (remaster_raster.h, line_slope). */
                 if (pass == 0) {
                     int point = p->kind == SCENE_DOTS;               /* a light is a line from a point to itself */
@@ -388,7 +393,9 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                         point = 1;
                         for (int k = 1; k < p->n && point; k++) point = p->v[k].x == p->v[0].x && p->v[k].y == p->v[0].y && p->v[k].z == p->v[0].z;
                     }
-                    if (!point || dark) { t->line_bias = 50.0; t->line_slope = 0.0; }
+                    t->paint_seq = (uint32_t)i + 1;
+                    t->line_by_seq = !point || dark;
+                    if (!point || dark) { t->line_bias = 0.0; t->line_slope = 0.0; }
                     else { t->line_bias = 1.01; t->line_slope = 1.0 + (ux > 1.0 ? ux : 1.0); }
                 }
                 if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
@@ -396,7 +403,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             }
             t->color = c0; t->inv_z = z0;
         }
-        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0;
+        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0; t->line_by_seq = 0;
         if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     g_tm_lines += now_ms() - tq3;
@@ -416,7 +423,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
-    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0;
+    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0; t.seq = NULL; t.paint_seq = 0; t.line_by_seq = 0;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);
@@ -636,9 +643,9 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.w = tw; t.h = h;
     /* The buffers are kept between pictures (grown, never freed): allocating and freeing about 13 MB every picture made the
      * system zero them every time. */
-    static struct { void *p; size_t cap; } pool[5];
-    const size_t need[5] = { (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 2, (size_t)tw * h * 4, (size_t)tw * h * 4 };
-    for (int k = 0; k < 5; k++)
+    static struct { void *p; size_t cap; } pool[6];
+    const size_t need[6] = { (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 2, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4 };
+    for (int k = 0; k < 6; k++)
         if (pool[k].cap < need[k]) {
             void *q = realloc(pool[k].p, need[k]);
             if (!q) return 0;
@@ -651,6 +658,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
     t.line_order = 0;
+    t.seq = (uint32_t *)pool[5].p; t.paint_seq = 0; t.line_by_seq = 0;
     const double tm0 = now_ms();
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;
@@ -965,7 +973,14 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 if (want >= 0 && r->model == (unsigned)want) fprintf(stderr, "[faces] model %u added %d\n", (unsigned)r->model, n);
             }
         }
+    } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
+        if (r->hud_at < 0) r->hud_at = (long)r->frame.n;
     } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
+        {   static int diag = -1;
+            if (diag < 0) diag = getenv("F117_HUD_ORDER") != NULL;
+            if (diag) fprintf(stderr, "[hud-order] clock %llu: %zu primitives, HUD pass after %ld\n", (unsigned long long)m->cpu.icount, r->frame.n, r->hud_at);
+        }
+        r->done_hud_at = r->hud_at; r->hud_at = -1;
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
         {                                       /* the completed frame becomes the one a composite uses */

@@ -228,9 +228,68 @@ void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 
  * through the run loop, so an exec hook sees it: at the first call of a copy's frame it divides the x row by the view's width factor,
  * which widens that cone by the same factor (the aircraft's own drawing does not read that row; its position on the 320-pixel screen,
  * [4A10], is off in the copy, which only the margins see). */
+/* Scenery distance: the terrain walk (VGAME 04E6) visits, on each of four rings, only the nine cells around the viewer's own cell (the sector
+ * table at [034C]: offsets -1..2), so the coarsest ring, the last to reach out, ends about two of its cells away. In the copy, a second walk
+ * runs first with the coarsest ring alone (the other rings' enable words [04FA + 2 ring] cleared) and every cell of a sector moved on along
+ * the sector's heading: row r of the table is the X offsets of sector r and the Y offsets of sector r - 2, so adding D(r) = n sin(45 r) to
+ * every entry of row r moves sector r by (D(r), D(r + 2)), a direction turning with the sector. For that walk the far plane [48E6] is raised
+ * and the side allowances lowered so their sum with the depth stays under 7FFFh. F117_WIDE_SCENERY=N (experiment) turns it on, N the
+ * cells moved (off by default: it drew no more on the owner's flight); F117_WIDE_SCENERY_FAR the far plane (default 30000). */
+static int g_walk_k = -1, g_walk_busy, g_walk_cells = 3;
+static int walk_second(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    const uint16_t heading = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 2)), pitch = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 4));
+    static const int dir10[8] = { 0, 7, 10, 7, 0, -7, -10, -7 };       /* 10 sin(45 r), rounded */
+    static int far = -1;
+    if (far < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far = e ? atoi(e) : 30000; if (far > 32000) far = 32000; }
+    uint16_t table[72], enable[5], allow[8], far_was;
+    const uint16_t base = rd16(m->mem, ds, 0xE56A);
+    for (int i = 0; i < 72; i++) table[i] = rd16(m->mem, ds, (uint16_t)(0x034C + 2 * i));
+    for (int r = 1; r <= 4; r++) enable[r] = rd16(m->mem, ds, (uint16_t)(0x04FA + 2 * r));
+    for (int md = 0; md < 8; md++) allow[md] = rd16(m->mem, ds, (uint16_t)(base + 2 * md));
+    far_was = rd16(m->mem, ds, 0x48E6);
+    for (int r = 0; r < 8; r++) {
+        const int d = (dir10[r] * g_walk_cells + (dir10[r] < 0 ? -5 : 5)) / 10;
+        for (int i = 0; i < 9; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (r * 9 + i)), (uint16_t)(table[r * 9 + i] + d));
+    }
+    for (int r = 1; r <= 3; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), 0);
+    wr16(m->mem, ds, 0x48E6, (uint16_t)far);
+    for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far) wr16(m->mem, ds, (uint16_t)(base + 2 * md), (uint16_t)(32600 - far));
+    uint16_t sv_r[8], sv_seg[4];
+    for (int i = 0; i < 8; i++) sv_r[i] = c->r[i];
+    for (int i = 0; i < 4; i++) sv_seg[i] = c->seg[i];
+    const uint16_t sv_ip = c->ip, sv_fl = c->flags;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    const uint64_t until = m->run_until, stop = c->stop_at;
+    cpu_push16(c, pitch);
+    cpu_push16(c, heading);
+    cpu_push16(c, 0x04E6);                                              /* the return address: never run, the trap stops at it */
+    c->ip = 0x04E6;
+    m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x04E6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    g_walk_busy = 1;
+    int rc = RUN_SLICE;
+    const uint64_t limit = c->icount + 200000000ull;                   /* a throwaway copy: no slice to keep, only a bound */
+    while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
+    g_walk_busy = 0;
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
+    for (int i = 0; i < 72; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * i), table[i]);
+    for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), enable[r]);
+    for (int md = 0; md < 8; md++) wr16(m->mem, ds, (uint16_t)(base + 2 * md), allow[md]);
+    wr16(m->mem, ds, 0x48E6, far_was);
+    if (rc != RUN_TRAP) fprintf(stderr, "[wide] the second terrain walk did not return (rc %d)\n", rc);
+    for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
+    for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
+    c->ip = sv_ip; c->flags = sv_fl;
+    return 0;
+}
+
 static int g_air_k = -1, g_air_done, g_air_pct = 100;
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
+    if ((int)k == g_walk_k) return g_walk_busy ? 0 : walk_second(m);
     if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
     if (g_air_done) return 0;
     g_air_done = 1;
@@ -343,6 +402,21 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                         s->hooks.exec = wide_air_exec;
                         break;
                     }
+            }
+            g_walk_k = -1;
+            {   static int cells = -1;
+                if (cells < 0) { const char *e = getenv("F117_WIDE_SCENERY"); cells = e ? atoi(e) : 0; }
+                g_walk_cells = cells;
+                if (cells > 0 && s->exec_hook_n < EXEC_HOOKS_MAX)
+                    for (unsigned k = 0; k < s->exec_hook_n; k++)
+                        if (s->exec_hook[k].ip == 0x1450) {
+                            g_walk_k = (int)s->exec_hook_n;
+                            s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
+                            s->exec_hook[s->exec_hook_n].ip = 0x04E6;
+                            s->exec_hook_n++;
+                            s->hooks.exec = wide_air_exec;
+                            break;
+                        }
             }
         }
     }

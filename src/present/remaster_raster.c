@@ -13,6 +13,7 @@ void remaster_clear(remaster_target *t, uint32_t color)
     const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
     for (long i = from; i < to; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
     if (t->index) for (long i = from; i < to; i++) t->index[i] = REMASTER_NO_INDEX;
+    if (t->seq) for (long i = from; i < to; i++) t->seq[i] = 0;
 }
 
 /* clip the polygon against z >= near (Sutherland-Hodgman on the one plane) */
@@ -104,8 +105,11 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
-            if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
+            if (t->line_by_seq && t->seq) {
+                if (t->seq[(long)y * t->w + x] > t->paint_seq && iz < *d * 0.9999f) continue;
+            } else if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
             if (!t->line_order) *d = iz;
+            if (t->seq && !t->line_order) t->seq[(long)y * t->w + x] = t->paint_seq;
             t->color[(long)y * t->w + x] = color;
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;

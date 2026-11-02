@@ -51,6 +51,14 @@ typedef struct {
      * polygons' depth only and leaves the depth buffer alone, so a later line covers an earlier one where they cross (a flag over
      * its pole), as the original's painter's order does. */
     int line_order;
+    /* The original paints in order, so a line covers what was painted before it and is covered by what comes after. seq (w * h,
+     * or NULL) is the sequence number of the polygon at each pixel (paint_seq as it was painted, 0 for the sky and ground);
+     * with line_by_seq set a line passes over a polygon painted before it at any depth, and over one painted after it only
+     * where the line is nearer: a hangar's door line lies over the ground in front of the hangar, and a far line (the runway's
+     * end at the horizon) stays behind a jet painted after it. */
+    uint32_t *seq;
+    uint32_t paint_seq;
+    int line_by_seq;
 } remaster_target;
 
 static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }

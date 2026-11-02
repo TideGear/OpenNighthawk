@@ -97,6 +97,10 @@ static host_t H;
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
 static uint64_t g_lt_run, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
+/* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
+ * session names the flight, the clock the moment a replay of it jumps to */
+static char g_shots_dir[800], g_session_name[64];
+static int g_shot_now;
 static unsigned g_lt_iter;
 static uint64_t g_lt_hook[3], g_lt_calls[3];   /* ticks and calls: OPL writes, speaker toggles, vsyncs */
 static struct { uint32_t lin; uint16_t cs, ip; unsigned n; } g_lt_slow[64];   /* where the machine was when a slice ran slow */
@@ -1545,6 +1549,8 @@ int main(int argc, char **argv)
                  lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0, lt ? lt->tm_sec : 0);
         snprintf(start_dir, sizeof start_dir, "%s/save-start", dir);
         SDL_CreateDirectory(start_dir);
+        snprintf(g_shots_dir, sizeof g_shots_dir, "%s/../screenshots", save);
+        { const char *b = strrchr(dir, '/'); snprintf(g_session_name, sizeof g_session_name, "%s", b ? b + 1 : dir); }
         int n = 0;
         char **names = SDL_GlobDirectory(save, NULL, 0, &n);
         for (int k = 0; names && k < n; k++) {
@@ -2055,6 +2061,7 @@ int main(int argc, char **argv)
                 }
                 if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT)) {
                     if (ev.key.scancode == SDL_SCANCODE_F12) { running = 0; break; }
+                    if (ev.key.scancode == SDL_SCANCODE_C) { g_shot_now = 1; break; }
                     if (ev.key.scancode == SDL_SCANCODE_P) {
                         paused = !paused;
                         if (paused) pause_began = SDL_GetTicksNS();
@@ -2355,6 +2362,17 @@ int main(int argc, char **argv)
                     }
                 }
             }
+        }
+        if (g_shot_now) {
+            g_shot_now = 0;
+            char path[1000];
+            if (g_shots_dir[0]) SDL_CreateDirectory(g_shots_dir);
+            snprintf(path, sizeof path, "%s/%s-clock%llu.bmp", g_shots_dir[0] ? g_shots_dir : ".", g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount);
+            const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
+            const int ok = sf && SDL_SaveBMP(sf, path);
+            if (sf) SDL_DestroySurface(sf);
+            fprintf(stderr, ok ? "[shot] %s\n" : "[shot] could not write %s\n", path);
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
         g_wide_shown = wide;
