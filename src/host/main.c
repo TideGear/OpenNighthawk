@@ -100,7 +100,9 @@ static uint64_t g_lt_run, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
  * session names the flight, the clock the moment a replay of it jumps to */
 static char g_shots_dir[800], g_session_name[64];
-static int g_shot_now;
+static unsigned g_shot_now;
+static uint64_t g_shot_note_until;
+static const char *g_shot_note;
 static unsigned g_lt_iter;
 static uint64_t g_lt_hook[3], g_lt_calls[3];   /* ticks and calls: OPL writes, speaker toggles, vsyncs */
 static struct { uint32_t lin; uint16_t cs, ip; unsigned n; } g_lt_slow[64];   /* where the machine was when a slice ran slow */
@@ -1324,6 +1326,7 @@ int main(int argc, char **argv)
         snprintf(save_buf, sizeof save_buf, "%ssave", base ? base : "./");
         save = save_buf;
     }
+    snprintf(g_shots_dir, sizeof g_shots_dir, "%s/../screenshots", save);
     /* --watch latest|SESSION: replay a recorded flight (sessions/session-<time>/ beside the save folder) from
      * a scratch copy of the save it started with, so the player's own saves are never touched. */
     char watch_log[900], watch_save[900];
@@ -1794,6 +1797,20 @@ int main(int argc, char **argv)
                 }
             }
         }
+        /* Exercise screenshot keys through the real event loop in a headless check. */
+        if (getenv("F117_SHOT_AUTOTEST")) {
+            static unsigned shot_frame;
+            ++shot_frame;
+            if (shot_frame >= 4 && shot_frame <= 8) {
+                SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_KEY_DOWN;
+                e.key.scancode = shot_frame == 4 ? SDL_SCANCODE_P : shot_frame == 7 ? SDL_SCANCODE_C : SDL_SCANCODE_TAB;
+                if (shot_frame == 4 || shot_frame == 7) e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT);
+                e.key.repeat = shot_frame == 8;
+                SDL_PushEvent(&e);
+                if (shot_frame == 5) SDL_PushEvent(&e);  /* two taps before the next presentation */
+            }
+            if (shot_frame == 10) { SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_QUIT; SDL_PushEvent(&e); }
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
@@ -1815,6 +1832,13 @@ int main(int argc, char **argv)
             case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: {
                 const int down = ev.type == SDL_EVENT_KEY_DOWN;
                 const SDL_Keymod mod = ev.key.mod;
+                /* Screenshots precede replay dispatch so both shortcuts work there too. */
+                if ((ev.key.scancode == SDL_SCANCODE_TAB && !g_set.open && !ref_open &&
+                     !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) ||
+                    (ev.key.scancode == SDL_SCANCODE_C && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT))) {
+                    if (down && !ev.key.repeat) ++g_shot_now;
+                    break;
+                }
                 if (down && !live) {                        /* a replay: speed keys, and Ctrl+Alt+R to start it again */
                     const SDL_Scancode rs = ev.key.scancode;
                     int changed = 1;
@@ -1892,12 +1916,6 @@ int main(int argc, char **argv)
                  * START's text entry cancels on it. In the menu itself Esc closes or backs out, as before. */
                 if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && live && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
                     tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* ` in flight: the menu, on its Settings tab */
-                }
-                /* Tab with the menu closed: a screenshot (as Ctrl+Alt+C). The game never sees it; in flight it has no use for Tab (the
-                 * key dispatcher's chain, VGAME CE65, goes from 0E08h Backspace to 1100h Alt+W, so 0F09h takes no arm). */
-                if (ev.key.scancode == SDL_SCANCODE_TAB && live && !g_set.open && !ref_open && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
-                    if (down && !ev.key.repeat) g_shot_now = 1;
-                    break;
                 }
                 if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
                     if (g_set.open && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.remap_stage && !g_set.padkey_stage) {
@@ -2067,7 +2085,6 @@ int main(int argc, char **argv)
                 }
                 if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT)) {
                     if (ev.key.scancode == SDL_SCANCODE_F12) { running = 0; break; }
-                    if (ev.key.scancode == SDL_SCANCODE_C) { g_shot_now = 1; break; }
                     if (ev.key.scancode == SDL_SCANCODE_P) {
                         paused = !paused;
                         if (paused) pause_began = SDL_GetTicksNS();
@@ -2369,16 +2386,22 @@ int main(int argc, char **argv)
                 }
             }
         }
-        if (g_shot_now) {
-            g_shot_now = 0;
+        while (g_shot_now) {
+            --g_shot_now;
             char path[1000];
             if (g_shots_dir[0]) SDL_CreateDirectory(g_shots_dir);
             snprintf(path, sizeof path, "%s/%s-clock%llu.bmp", g_shots_dir[0] ? g_shots_dir : ".", g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount);
+            SDL_PathInfo info;
+            for (unsigned suffix = 1; SDL_GetPathInfo(path, &info); ++suffix)
+                snprintf(path, sizeof path, "%s/%s-clock%llu-%u.bmp", g_shots_dir, g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount, suffix);
             const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
             SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
             const int ok = sf && SDL_SaveBMP(sf, path);
             if (sf) SDL_DestroySurface(sf);
-            fprintf(stderr, ok ? "[shot] %s\n" : "[shot] could not write %s\n", path);
+            fprintf(stderr, "[shot] %s%s\n", ok ? "" : "could not write ", path);
+            if (!ok) fprintf(stderr, "[shot] %s\n", SDL_GetError());
+            g_shot_note = ok ? "Screenshot saved" : "Screenshot failed - see console";
+            g_shot_note_until = SDL_GetTicks() + 2500;
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
         g_wide_shown = wide;
@@ -2452,6 +2475,12 @@ int main(int argc, char **argv)
                     fclose(sf);
                 }
             }
+            SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
+            SDL_RenderTexture(ren, tex_menu, NULL, &dst);
+        }
+        if (g_shot_note && SDL_GetTicks() < g_shot_note_until && tex_menu) {
+            memset(menu_pixels, 0, sizeof menu_pixels);
+            draw_subtitle(menu_pixels, g_shot_note);
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }

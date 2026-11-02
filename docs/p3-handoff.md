@@ -1,5 +1,20 @@
 # Phase 3 handoff (updated night of 1 November 2026; the table and the branch notes further down are from 30 October)
 
+## Start here: 2 November 2026 stopping point
+
+The owner requested a handoff, commit, push and stop. Renderer work is at a tested, deployed stopping point; there are no renderer jobs to resume. Read this section before the older chronological notes below, several of which describe defects fixed later.
+
+**Installed:** Desktop/ONTests/f117a.exe is the current build, SHA-256 `6C243D476FEF9690DA73FA17734D6214638151F55DD37F34D5732C1F9E4929E9`. Use the owner's usual ON-roland.bat. This session fixed screenshot dispatch/naming/feedback, mixed native depth units (gray geometry through aircraft/buildings and parked-jet/tower ordering), rear yellow hangar strips, attached-light depth/compositing stripes, finite stroke endpoints at flag/pole junctions, and tilde-menu top-bar overflow. The owner said the depth/yellow-strip build was much better; the latest light, flag and menu build still awaits their visual check. Do not record these latest fixes as owner-confirmed.
+
+**Evidence and checks:** the bottom two renderer sections explain the causes and tests. Eight focused menu/presentation CTests pass; the deployed executable matches build/f117a.exe. Seven owner screenshot clocks, moving hangar/transport sequences, and Original flag comparisons are saved. Four-thread vs single-thread checking reported zero differing pictures (at least 121 checked). No full machine gate was run for this host/presentation work; the historical full-gate notes do not cover these edits. Galleries: `C:/Users/Tideg/Desktop/ONShots/20261102-depth-order/index.html` and `C:/Users/Tideg/Desktop/ONShots/20261102-lights-and-flags/index.html`. Scratch/evidence: `D:/f117-gate/depth-20261102/` and `D:/f117-gate/lights-20261102/` (the installed candidate there is caps.exe; earlier candidate/final variants are superseded).
+
+**Next conversation:** first incorporate the owner's visual feedback on the latest build. Remaining renderer scope: scenery draw distance/pop-in (the extra walker experiment is off, not a finished solution), general object-size-aware visibility beyond the initial aircraft change, close-margin visibility confirmation, road/coastline jitter and motion/interpolation validation, and the unresolved/unconfirmed dark hangar band, green overlap patch and trailing-image reports. Broader mission/viewpoint checks and new performance measurements remain. Do not infer all renderer work is complete from the local regressions passing.
+
+**Reproduction:** user's screenshots and recordings are under `C:/Users/Tideg/AppData/Roaming/F117Recomp/F-117A/`; replay session 20261102-141108 with `--adlib-effects` to match the Roland bat or the replay diverges. Use a private save-start copy. For comparison captures use `F117_PRESENT_THREADS_OFF=1`; remove it when checking actual multi-thread composition with `F117_REMASTER_THREADCHECK=1`. Build through `C:/Users/Tideg/f117-recomp-local/build-targets.bat`. Focused check: `ctest --test-dir build -R "presentation_(remaster|scene|rerun)|host_key_reference|host_settings_menu" --output-on-failure`. Check ONTests is closed before replacing its executable. Respect the owner's existing limit on further full gates; do not launch one merely to hand off.
+
+**Preserved unrelated work:** tools/sound_board_page.py and tools/sound_board_template.html were already modified and are excluded from this renderer commit. Untracked `.ppm`, `100`, `4k60.bat`, `docs/p2-completion-plan.md`, `original-fixed.bat`, and `x.slice(0` are left in place. Do not clean or stage them indiscriminately.
+
+
 ## Where this stopped (night of 1 November 2026): start here
 
 **Read first:** [owner-issues.md](owner-issues.md) (every owner report with status and evidence, the owner decisions, the gates) and
@@ -394,3 +409,37 @@ ONTests exe hash EA7C38B1F1BA... (clean P3 branch, 832/832).
 7. The owner asked whether Remastered is too faithful to the original's renderer hacks: agreed direction is own depth tests with decal lines (done), and object-size-aware visibility (aircraft started; scenery objects still centre-based with the per-class near plane).
 
 Owner preference this session: take screenshots in the replay at the owner's clocks and compare before claiming a fix; send comparison images (ONShots) with the claim.
+
+## 2 Nov: screenshot reliability
+
+Fixed host screenshot dispatch in `src/host/main.c`: Tab and Ctrl+Alt+C work during replay as well as live play; the screenshots folder is initialized even with explicit recording, replay or --no-record. Previously these modes could save in the working directory, and replay Tab was ignored. Each non-repeat key press is queued; paused captures at the same clock receive numbered suffixes instead of overwriting. A 2.5-second overlay confirms success or failure, with the SDL error in the console on failure.
+
+Validation: f117a rebuilt successfully; `F117_SHOT_AUTOTEST=1` under SDL dummy video/audio exercised two Tab presses in one frame, another Tab, Ctrl+Alt+C, and a held-key repeat while paused. Both live --no-record and a replay of session-20261102-135147 produced four distinct 768,054-byte BMPs at one clock, ignored the repeat, and exited 0. host_settings_menu passed. No full machine gate run for this host-only change.
+
+## 2 Nov: R17/R21/R22 depth ordering, owner's screenshots from session 141108
+
+The gray line through the transport (`3966919746`), tower and parked jets (`4878976848`, `5045987490`), and blue buildings (`7289133048`) had a common depth-unit defect. `remaster_live.c` now observes `compose_emit_object` (`E2B6`) read-only, retaining each placement's terrain ring and the native scale shift of `compose_draw_model` (caller return `BC59`, adjusted BP+16h). Its model/bank/relative position identifies the later geometry request, including deferred objects. Inverse depth is multiplied by `2^(2*(4-ring)+model_shift)`; screen coordinates and guest state are unchanged. Solid, logical, shaded and line raster paths all use common inverse depth.
+
+The yellow lines from behind the hangars required a separate compositor fix: original outline tags were kept over ground where the new scene had no polygon depth, resurrecting the old, displaced line after Remastered correctly hid it. Outline tags are now replaced throughout the 3D window. A finite-width hidden line's fringe is also checked at its centre and against nearby coverage of its own object, only for uncovered stroke pixels. Same-face ownership no longer exempts a clearly farther line from depth testing.
+
+Evidence: `D:/f117-gate/depth-20261102/` and `Desktop/ONShots/20261102-depth-order/`. The rear hangar-base regions at clocks `10452330792` and `11055367032` contained 152 and 192 yellow pixels before, zero after; the visible front door markings remain at `3522889584`. The transport's crossing gray line is gone and the overlapping parked jet draws in front of the tower base. All seven owner clocks were replayed. Use `--adlib-effects` for these recordings from ON-roland.bat: without its hybrid sound routing the replay diverges in the front end. Controlled comparison captures use `F117_PRESENT_THREADS_OFF=1` to avoid the asynchronous presenter's frame latency.
+
+Validation: f117a and the six focused presentation test targets built; `ctest -R presentation_(remaster|scene|rerun)` passed 6/6. Added regressions for mixed native depth units, same-face hidden lines, and hidden stroke fringes with visible front strokes preserved. No full machine gate for these presentation-only changes. R17, R21 and R22 await the owner's check; do not call them owner-confirmed.
+ONTests refreshed after checking it was closed: SHA-256 `92D84AE3BE88B3E62404946A0126EA675B3D90A5E804EB552C101680B5613064`. The seven before/after image pairs are in `C:/Users/Tideg/Desktop/ONShots/20261102-depth-order/index.html`.
+
+
+## 2 Nov: light flicker, flag junctions and menu overflow
+
+The earlier point/edge depth work alone left the visible roof-light stripe. Raw scene and final-frame comparison at 3522889584 exposed the second cause: lines keep polygon depth read-only, and the composite required polygon depth when replacing original model pixels. An original polygon row therefore survived through a correctly drawn light above the new roof silhouette. Stroke coverage now also authorizes replacement of scene pixels; HUD and cockpit tags retain their existing rules.
+
+Point decorations test their centre against their own surface, reconstructing screen-space inverse depth from same-face neighbours. This keeps a billboard whole on a sloping roof or fin, while truly hidden points remain hidden. Optional stroke buffers resolve same-object point/edge competition at the point centre; ordinary finite strokes retain painter order. Ground marking exceptions are retained. Tests cover both stroke orders, steep slopes through sub-pixel motion, and opaque occluders.
+
+Finite strokes now include square endpoint caps, matching the original line routine's inclusive endpoint pixels. This fixes short flag/pole junctions generally, with no model-specific flag rule. Inverse depth extends linearly through the caps, preserving depth at the original vertices. A regression checks the joined strokes through 16 sub-pixel phases.
+
+All seven owner screenshot clocks replayed with the final candidate; the rear yellow lines remain absent at 10452330792 and 11055367032, and visible front door markings remain. Two moving sequences (hangars and transport) and two frames from session 144914 checked. Four-thread replay comparison logged at least 121 pictures with zero differing pictures against one thread. Eight focused presentation/menu tests pass. No full machine gate run for these presentation/host changes.
+
+The tilde menu top bar is now 560 pixels wide, matching the key panel; shortcut text is aligned to its right inset rather than overflowing a 400-pixel strip.
+
+Evidence: D:/f117-gate/lights-20261102/. Owner gallery: C:/Users/Tideg/Desktop/ONShots/20261102-lights-and-flags/index.html. The gallery includes Original/Remastered flag crops, seven before/after views, and moving comparisons. These fixes await the owner's visual check.
+
+ONTests updated after confirming it was closed: SHA-256 6C243D476FEF9690DA73FA17734D6214638151F55DD37F34D5732C1F9E4929E9. The previous executable is preserved in D:/f117-gate/lights-20261102/installed-before-update.exe.

@@ -47,20 +47,27 @@ typedef struct {
     const float *line_ref_z;
     uint32_t *line_strong;
     float *line_tmp_z;
-    /* Lines among themselves follow the original's draw order, not depth: with line_order set a line is tested against the
-     * polygons' depth only and leaves the depth buffer alone, so a later line covers an earlier one where they cross (a flag over
-     * its pole), as the original's painter's order does. */
+    /* With line_order set, polygon depth stays read-only. Optional stroke buffers
+     * resolve point/edge competition within an object at the point centre.
+     * Other strokes retain painter order (flag over pole, ground markings). */
     int line_order;
+    float *stroke_z;
+    float *stroke_aux_x, *stroke_aux_y; /* edge depth gradient, or a point decoration's screen centre */
+    uint32_t *stroke_owner;    /* object serial in bits 0..19, point marker in bit 20 */
+    int line_point;
+    int point_self_hidden;
+    double line_depth_dx, line_depth_dy;
     /* Lines and dots as decals on the face they belong to. owner (w * h, or NULL) is the object and face of the polygon at each
      * pixel (paint_owner as it was painted, 0 for the sky and ground). With line_decal set a line or dot pixel is drawn over its
-     * own face always; over another face of its own object unless that face is nearer by more than a hundredth (the original's
-     * lines and dots keep one pixel's width at any distance, so they spill onto the faces beside theirs); over an object
-     * painted before theirs always (the original paints far to near, so what came before is behind, or is the ground a hangar
-     * stands on, which its door's foot line is painted over); over an object painted after theirs (a jet in front of a far line)
-     * unless it is nearer by more than three hundredths. */
+     * own face or another face of its own object unless that face is nearer by more than a hundredth (the original's
+     * lines and dots keep one pixel's width at any distance, so they spill onto the faces beside theirs); over the ground
+     * a hangar stands on; and over another object only unless it is nearer by more than three hundredths. */
     uint32_t *owner;
     uint32_t paint_owner;
     int line_decal;
+    double inv_depth_scale;    /* convert native model inverse depth to common world units; 0 means 1 */
+    double line_screen[4];     /* centre segment for conservative decal stroke coverage */
+    int line_radius;
 } remaster_target;
 
 static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }

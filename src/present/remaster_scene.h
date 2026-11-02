@@ -33,6 +33,7 @@ typedef struct {
     uint16_t model;
     uint32_t owner;                         /* the object (one request of the frame) and face it belongs to: request << 12 | face */
     uint8_t flat;                           /* part of a ground object (every polygon of it level: the runway, an apron); also bit 11 of owner */
+    double inv_depth_scale;                 /* native inverse depth to common world units (0: 1) */
 } remaster_prim;
 
 typedef struct {

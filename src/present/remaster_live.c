@@ -33,12 +33,13 @@ static double now_ms(void)
 
 /* the watched entries, as {segment relative to the load segment, offset}: k = 0 the model request, 1 model_faces (VGAME
  * 120A:0C76, the faces of a model that is visible: run after the pose is fully prepared, so the part matrices, planes and
- * vertices are where remaster_scene_add reads them), 2 the per-frame draw routine */
-static const struct { uint16_t seg, ip; } WATCH[4] = {
+ * vertices are where remaster_scene_add reads them), 2 the per-frame draw routine, 3 the HUD pass, 4 object placement */
+static const struct { uint16_t seg, ip; } WATCH[5] = {
     { 0x120A, 0x00CF },
     { 0x120A, 0x0C76 },
     { 0x0000, 0x1450 },
     { 0x1058, 0x000A },                 /* the HUD pass's far entry: the models asked for after it are drawn over the HUD */
+    { 0x0000, 0xE2B6 },                 /* placement: capture native units before deferral */
 };
 
 struct remaster_live {
@@ -47,6 +48,9 @@ struct remaster_live {
     int pending;
     uint16_t model, bank;
     int16_t position[3];
+    double pending_inv_depth;
+    struct { uint16_t bank, model; int16_t position[3]; double inv_depth; } units[512];
+    unsigned nunits;
     unsigned frames, want_frame;
     int w, h;
     char *out_path;
@@ -94,6 +98,7 @@ void remaster_live_copy_begin(remaster_live *r)
 {
     remaster_frame_clear(&r->frame);
     r->pending = 0;
+    r->nunits = 0;
     r->have_band = 0;
     r->have_done = 0;
     r->done.n = 0;
@@ -104,7 +109,7 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
 {
     (void)r;
     const unsigned base = m->exec_hook_n;
-    for (unsigned k = 0; k < 4 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
+    for (unsigned k = 0; k < 5 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
         m->exec_hook[m->exec_hook_n].cs = (uint16_t)(load_seg + WATCH[k].seg);
         m->exec_hook[m->exec_hook_n].ip = WATCH[k].ip;
         m->exec_hook_n++;
@@ -309,7 +314,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         static unsigned long long probe_from; static int probe_done, probe_init;
         if (!probe_init) { probe_init = 1; const char *f = getenv("F117_REMASTER_PROBE_FROM"); probe_from = f ? strtoull(f, NULL, 0) : 0; }   /* the first frame from this clock, else the 700th */
         const int probe_now = probe_from ? (!probe_done && m->cpu.icount >= probe_from && (probe_done = 1)) : ++calls == 700;
-        if (do1 && probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && probe_now) {
+        if (do1 && probe && sscanf(probe, "%lf,%lf", &px, &py) == 2 && probe_now) {
             fprintf(stderr, "[probe] frame of %zu primitives, point %.1f,%.1f, clock %llu\n", fr->n, px, py, (unsigned long long)m->cpu.icount);
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
@@ -326,8 +331,11 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                             : (!front || px < x0b - 1.5 || px > x1b + 1.5 || py < y0b - 1.5 || py > y1b + 1.5)) continue;
                 uint32_t colour = 0;
                 word_colour(m, p->colour_word, p->darken, &colour);
-                fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d\n",
-                        i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0);
+                fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d owner %08X flat %u\n",
+                        i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0, p->owner, (unsigned)p->flat);
+                if (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)
+                    for (int k = 0; k < p->n; ++k)
+                        fprintf(stderr, "[probe]   vertex %d: %d,%d,%d\n", k, p->v[k].x, p->v[k].y, p->v[k].z);
             }
         }
     }
@@ -335,6 +343,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     g_tm_bands += tq2 - tq1;
     for (size_t i = 0; do1 && i < fr->n; i++) {
         const remaster_prim *p = &fr->prim[i];
+        t->inv_depth_scale = p->inv_depth_scale;
         uint32_t colour;
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
         unsigned idx = 0;
@@ -375,6 +384,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         t->line_order = 1;
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
             if (pass == 0 ? !do2 : !do3) continue;
+            if (t->stroke_z) memset(t->stroke_z + off, 0, px * sizeof *t->stroke_z);
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
             if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
             else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_decal = 0; }   /* the ordinary pass has no slope allowance */
@@ -388,6 +398,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 word_style(p->colour_word, p->darken, &idx);
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
+                t->inv_depth_scale = p->inv_depth_scale;
                 /* Lines and dots are decals on the face they belong to (remaster_raster.h, line_decal): over their own face, over the
                  * faces of their own object unless clearly nearer, and behind anything else that is nearer, in both passes.
                  * F117_LINES=old (diagnostic) restores the earlier rules: whole lines with a 50x bias, lights by the ground's slope. */
@@ -429,6 +440,8 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
+    t.stroke_z = NULL; t.stroke_aux_x = t.stroke_aux_y = NULL; t.stroke_owner = NULL; t.line_point = 0;
+    t.inv_depth_scale = 1.0;
     t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0; t.owner = NULL; t.paint_owner = 0; t.line_decal = 0;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
@@ -579,10 +592,16 @@ static void replace_part(void *arg, int part)
             const long i = (long)y * w + x, ti = (long)y * tw + x + xoff;     /* i: the game's picture; ti: the same pixel on the canvas */
             /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
              * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
-            /* The original's model lines (outline edges, DT_OUTLINE_FINE and its coarse twin) are replaced too where Remastered has
-             * geometry: it draws its own lines, and keeping the original's as well drew every hangar door twice. */
+            /* Remastered owns model outlines even where its depth test removed the line.
+             * Requiring geometry here resurrects the original's stale door strips on
+             * the ground just outside the hangar's new silhouette. */
             const int outline = tag[i] == DT_OUTLINE_FINE || tag[i] == DT_OUTLINE_COARSE;
-            if ((is_scene_tag(tag[i]) || outline) && (t.inv_z[ti] > 0.0f || is_span_tag(tag[i]))) {
+            /* Strokes keep polygon depth read-only. Their own coverage must
+             * still replace original model pixels where a light or pole
+             * extends beyond the new polygon silhouette. Otherwise an old
+             * polygon row cuts a stripe through the correctly drawn light. */
+            if ((is_scene_tag(tag[i]) || outline) &&
+                (outline || t.inv_z[ti] > 0.0f || (t.stroke_z && t.stroke_z[ti] > 0.0f) || is_span_tag(tag[i]))) {
                 uint32_t col = t.color[ti];
                 /* Only bright lines (the doors' yellow, the lights, the runway markings): the dark dots and lines the original draws
                  * behind a door must stay behind it. */
@@ -649,9 +668,9 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.w = tw; t.h = h;
     /* The buffers are kept between pictures (grown, never freed): allocating and freeing about 13 MB every picture made the
      * system zero them every time. */
-    static struct { void *p; size_t cap; } pool[6];
-    const size_t need[6] = { (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 2, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4 };
-    for (int k = 0; k < 6; k++)
+    static struct { void *p; size_t cap; } pool[10];
+    const size_t need[10] = { (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 2, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4, (size_t)tw * h * 4 };
+    for (int k = 0; k < 10; k++)
         if (pool[k].cap < need[k]) {
             void *q = realloc(pool[k].p, need[k]);
             if (!q) return 0;
@@ -660,10 +679,14 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.color = (uint32_t *)pool[0].p;
     t.inv_z = (float *)pool[1].p;
     t.index = (uint16_t *)pool[2].p;
+    t.stroke_z = NULL; t.stroke_aux_x = t.stroke_aux_y = NULL; t.stroke_owner = NULL; t.line_point = 0;
+    t.inv_depth_scale = 1.0;
     t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL;
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
     t.line_order = 0;
+    t.stroke_aux_x = (float *)pool[8].p; t.stroke_aux_y = (float *)pool[9].p;
+    t.stroke_z = (float *)pool[6].p; t.stroke_owner = (uint32_t *)pool[7].p;
     t.owner = (uint32_t *)pool[5].p; t.paint_owner = 0; t.line_decal = 0;
     const double tm0 = now_ms();
     const int parts = g_par ? g_par_parts : 1;
@@ -676,12 +699,21 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     const double tm1 = now_ms();
     {                                           /* F117_REMASTER_DUMP=FILE.ppm: the render itself, once, for a look */
         static int dumped; const char *path = getenv("F117_REMASTER_DUMP");
-        if (path && !dumped && r->done.n > 50 && !wide) {
+        const char *from = getenv("F117_REMASTER_DUMP_FROM");
+        if (path && !dumped && r->done.n > 50 && (!from || m->cpu.icount >= strtoull(from, NULL, 0))) {
             FILE *f = fopen(path, "wb");
             if (f) {
-                fprintf(f, "P6\n%d %d\n255\n", w, h);
-                for (long i = 0; i < (long)w * h; i++) { const uint32_t c = t.color[i]; const unsigned char px[3] = { (unsigned char)(c >> 16), (unsigned char)(c >> 8), (unsigned char)c }; fwrite(px, 1, 3, f); }
+                fprintf(f, "P6\n%d %d\n255\n", tw, h);
+                for (long i = 0; i < (long)tw * h; i++) { const uint32_t c = t.color[i]; const unsigned char px[3] = { (unsigned char)(c >> 16), (unsigned char)(c >> 8), (unsigned char)c }; fwrite(px, 1, 3, f); }
                 fclose(f); dumped = 1;
+                char tags_path[1024];
+                snprintf(tags_path, sizeof tags_path, "%s.tags.pgm", path);
+                f = fopen(tags_path, "wb");
+                if (f) {
+                    fprintf(f, "P5\n%d %d\n255\n", w, h);
+                    fwrite(tag, 1, (size_t)w * h, f);
+                    fclose(f);
+                }
                 fprintf(stderr, "[remaster] dumped %d x %d, %zu primitives; frames %u requests %u read %u refused %u overwritten %u dropped %u/%u/%u\n", w, h, r->done.n, r->frames, r->requests, r->added, r->refused, r->overwritten, remaster_scene_dropped[0], remaster_scene_dropped[1], remaster_scene_dropped[2]);
             }
         }
@@ -959,6 +991,14 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->window[2] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FE);
         r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
+        r->pending_inv_depth = 1.0;
+        for (unsigned u = r->nunits; u > 0; --u) {
+            if (r->units[u - 1].bank == r->bank && r->units[u - 1].model == r->model &&
+                !memcmp(r->units[u - 1].position, r->position, sizeof r->position)) {
+                r->pending_inv_depth = r->units[u - 1].inv_depth;
+                break;
+            }
+        }
         {   /* F117_MODEL_LOG=MODEL,FROM (diagnostic): every request for that model, its position, and whether its faces follow (see k == 1) */
             static int want = -2; static unsigned long long from;
             if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -2; const char *c = e ? strchr(e, ',') : NULL; from = c ? strtoull(c + 1, NULL, 0) : 0; }
@@ -971,7 +1011,9 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             r->ortho_skipped++;
         } else if (r->pending) {
             r->pending = 0;
+            const size_t first = r->frame.n;
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
+            for (size_t i = first; i < r->frame.n; ++i) r->frame.prim[i].inv_depth_scale = r->pending_inv_depth;
             if (n < 0) r->refused++; else r->added++;
             if (n >= 0 && validate_on()) validate_model(r, m);
             {   static int want = -2;
@@ -979,9 +1021,30 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 if (want >= 0 && r->model == (unsigned)want) fprintf(stderr, "[faces] model %u added %d\n", (unsigned)r->model, n);
             }
         }
+    } else if (k == 4) {
+        /* compose_emit_object's positions use the current terrain ring's units. Dynamic
+         * models additionally shift world positions by their native model scale (BB0D).
+         * Remember this at placement: E328 no longer describes a deferred object when
+         * its geometry is eventually drawn. Read only; the guest is unchanged. */
+        const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP], ds = m->cpu.seg[S_DS];
+        const unsigned ring = peek16(m, ds, 0xE328);
+        int shift = ring >= 1 && ring <= 4 ? 2 * (4 - (int)ring) : 0;
+        if (peek16(m, ss, sp) == 0xBC59)
+            shift += (int16_t)peek16(m, ss, (uint16_t)(m->cpu.r[R_BP] + 0x16));
+        const uint16_t type = peek16(m, ss, (uint16_t)(sp + 2)) & 0x7FFF;
+        if (shift >= -16 && shift <= 16 && r->nunits < 512) {
+            const unsigned u = r->nunits++;
+            r->units[u].bank = peek16(m, ds, (uint16_t)(0xB78A + 2 * (type >> 8)));
+            r->units[u].model = type & 0x7F;
+            r->units[u].position[0] = (int16_t)(peek16(m, ss, sp + 10) - peek16(m, ds, 0x49AC));
+            r->units[u].position[1] = (int16_t)(peek16(m, ss, sp + 14) - peek16(m, ds, 0x49B0));
+            r->units[u].position[2] = (int16_t)(peek16(m, ds, 0x49AE) - peek16(m, ss, sp + 12));
+            r->units[u].inv_depth = ldexp(1.0, shift);
+        }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
         if (r->hud_at < 0) r->hud_at = (long)r->frame.n;
     } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
+        r->nunits = 0;
         {   static int diag = -1;
             if (diag < 0) diag = getenv("F117_HUD_ORDER") != NULL;
             if (diag) fprintf(stderr, "[hud-order] clock %llu: %zu primitives, HUD pass after %ld\n", (unsigned long long)m->cpu.icount, r->frame.n, r->hud_at);

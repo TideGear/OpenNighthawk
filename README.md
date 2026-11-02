@@ -235,7 +235,7 @@ Host keys (chosen so as not to collide with the game's):
 | ` (tilde) | the menu: two tabs, Settings and Keys; pauses the game. Tab switches tab, ` or Esc closes it |
 | Alt+Enter | toggle fullscreen |
 | Ctrl+Alt+P | pause / resume |
-| Tab or Ctrl+Alt+C | screenshot: saved in `screenshots` (beside `sessions`) as `<session>-clock<flight clock>.bmp`; the session names the flight and the clock the moment, so the flight can be replayed to it |
+| Tab or Ctrl+Alt+C | screenshot in live play or replay (Tab with the menu closed): saved in `screenshots` beside `sessions`, with a brief on-screen confirmation; `<session>-clock<flight clock>.bmp` names the flight and moment, with a numbered suffix for repeated captures at the same clock |
 | G, digits, Enter (watching a replay) | jump to that second |
 | + / - / 0 (watching a replay) | faster / slower / normal speed |
 | ] / [ (watching a replay) | jump 30 seconds on / back |

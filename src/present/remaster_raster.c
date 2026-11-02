@@ -10,6 +10,77 @@
 
 typedef struct { double x, y, z; } dv3;
 
+static double inverse_depth(const remaster_target *t, double z)
+{
+    return (t->inv_depth_scale > 0.0 ? t->inv_depth_scale : 1.0) / z;
+}
+
+static int decal_hidden(const remaster_target *t, long i, float iz)
+{
+    static float tol[2] = { -1.0f, 0.0f };
+    if (tol[0] < 0.0f) {
+        tol[0] = 0.99f; tol[1] = 0.97f;
+        const char *e = getenv("F117_DECAL_TOL");
+        if (e) sscanf(e, "%f,%f", &tol[0], &tol[1]);
+    }
+    const uint32_t ow = t->owner[i];
+    const int same = ow >> 12 == t->paint_owner >> 12;
+    const int on_ground = ow && (ow & 0x800u) && !same;
+    if (same && t->line_point) return t->point_self_hidden;
+    return !on_ground && iz < t->inv_z[i] * (same ? tol[0] : tol[1]);
+}
+
+/* Point decorations are billboards: test their centre against their own
+ * surface, rather than clipping their footprint against a steep roof/fin.
+ * Inverse depth is planar in screen space, so same-face neighbours recover
+ * its value at the sub-pixel centre without increasing the depth bias. */
+static int point_behind_own_surface(const remaster_target *t, double cx, double cy, float iz)
+{
+    if (!t->owner || cx < 0.0 || cy < 0.0 || cx >= t->w || cy >= t->h) return 0;
+    const int x = (int)cx, y = (int)cy;
+    const long i = (long)y * t->w + x;
+    const uint32_t own = t->owner[i];
+    if (!own || (own & 0x800u) || own >> 12 != t->paint_owner >> 12) return 0;
+    double surface = t->inv_z[i];
+    for (int axis = 0; axis < 2; ++axis) {
+        double slope = 0.0; int samples = 0;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const int nx = x + (axis == 0 ? sign : 0), ny = y + (axis == 1 ? sign : 0);
+            if (nx < 0 || ny < 0 || nx >= t->w || ny >= t->h) continue;
+            const long ni = (long)ny * t->w + nx;
+            if (t->owner[ni] == own) { slope += (t->inv_z[ni] - t->inv_z[i]) * sign; ++samples; }
+        }
+        if (samples) surface += slope / samples * (axis == 0 ? cx - x - 0.5 : cy - y - 0.5);
+    }
+    return iz < surface * 0.99;
+}
+
+/* A hidden line must not reappear as a fringe outside its own object's
+ * raster silhouette. Only the stroke's uncovered pixels need this check. */
+static int decal_stroke_hidden(const remaster_target *t, double px, double py, float iz)
+{
+    const double dx = t->line_screen[2] - t->line_screen[0], dy = t->line_screen[3] - t->line_screen[1];
+    const double ll = dx * dx + dy * dy;
+    double u = ll > 0.0 ? ((px - t->line_screen[0]) * dx + (py - t->line_screen[1]) * dy) / ll : 0.0;
+    if (u < 0.0) u = 0.0;
+    if (u > 1.0) u = 1.0;
+    const double cx = t->line_screen[0] + u * dx, cy = t->line_screen[1] + u * dy;
+    if (cx >= 0.0 && cy >= 0.0 && cx < t->w && cy < t->h) {
+        const long i = (long)(int)cy * t->w + (int)cx;
+        if (decal_hidden(t, i, iz)) return 1;
+        if (t->owner[i] >> 12 == t->paint_owner >> 12) return 0;
+    }
+    if (ll <= 0.0) return 0;
+    for (int y = -t->line_radius; y <= t->line_radius; ++y)
+        for (int x = -t->line_radius; x <= t->line_radius; ++x) {
+            const double qx = cx + x, qy = cy + y;
+            if (qx < 0.0 || qy < 0.0 || qx >= t->w || qy >= t->h) continue;
+            const long i = (long)(int)qy * t->w + (int)qx;
+            if (t->owner[i] && t->owner[i] >> 12 == t->paint_owner >> 12 && decal_hidden(t, i, iz)) return 1;
+        }
+    return 0;
+}
+
 void remaster_clear(remaster_target *t, uint32_t color)
 {
     const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
@@ -110,18 +181,13 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             if (t->owner && (t->line_decal || !t->line_order)) {
                 /* Lines, dots and polygons by what is already at the pixel (remaster_raster.h, owner): a ground object (bit 11:
                  * the runway, an apron) never hides another object's lines or polygons, since the original paints what stands on
-                 * the ground over it; a line or dot is drawn over its own face always and over the rest of its own object unless
+                 * the ground over it; a line or dot is drawn over its own face and the rest of its own object unless
                  * clearly nearer (its fixed width spills onto the faces beside); otherwise the depth decides. */
-                static float tol[2] = { -1.0f, 0.0f };     /* F117_DECAL_TOL=SAME,OTHER (diagnostic): the line margins */
-                if (tol[0] < 0.0f) {
-                    tol[0] = 0.99f; tol[1] = 0.97f;
-                    const char *e = getenv("F117_DECAL_TOL");
-                    if (e) sscanf(e, "%f,%f", &tol[0], &tol[1]);
-                }
                 const uint32_t ow = t->owner[(long)y * t->w + x];
                 const int same = ow >> 12 == t->paint_owner >> 12, on_ground = ow && (ow & 0x800u) && !same;
                 if (t->line_decal) {
-                    if (ow != t->paint_owner && !on_ground && iz < *d * (same ? tol[0] : tol[1])) continue;
+                    if (decal_hidden(t, (long)y * t->w + x, iz)) continue;
+                    if (!same && decal_stroke_hidden(t, px, py, iz)) continue;
                 } else {
                     const int me_ground = (t->paint_owner & 0x800u) != 0;
                     float k = 0.9999f;                          /* the same object: the depth, later winning a tie */
@@ -130,6 +196,33 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
                     if (iz < *d * k) continue;
                 }
             } else if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
+            if (t->line_order && t->stroke_z && t->stroke_owner) {
+                const long i = (long)y * t->w + x;
+                const float old_z = t->stroke_z[i];
+                const uint32_t object = t->paint_owner >> 12, old = old_z > 0.0f ? t->stroke_owner[i] : 0;
+                const int old_point = (old & 0x100000u) != 0;
+                /* Compare a point at its centre, not at an arbitrary covered pixel.
+                 * A thick edge's depth varies across its footprint near a grazing
+                 * surface; sampling there made an attached light alternate with it. */
+                float point_z = t->line_point ? iz : old_z;
+                float edge_z = t->line_point ? old_z : iz;
+                if (old_z > 0.0f && old_point != t->line_point && t->stroke_aux_x && t->stroke_aux_y) {
+                    if (t->line_point)
+                        edge_z += (float)(t->stroke_aux_x[i] * (t->line_screen[0] - px) + t->stroke_aux_y[i] * (t->line_screen[1] - py));
+                    else
+                        edge_z += (float)(t->line_depth_dx * (t->stroke_aux_x[i] - px) + t->line_depth_dy * (t->stroke_aux_y[i] - py));
+                }
+                const int point_tie = old_z > 0.0f && object && object == (old & 0xFFFFFu) &&
+                    old_point != t->line_point && ((t->paint_owner & 0x800u) || (point_z >= edge_z * 0.99f && edge_z >= point_z * 0.99f));
+                const int same_object_pair = object && object == (old & 0xFFFFFu) && old_point != t->line_point;
+                if (same_object_pair && (point_tie ? !t->line_point : iz < old_z * 0.9999f)) continue;
+                t->stroke_z[i] = iz;
+                if (t->stroke_aux_x && t->stroke_aux_y) {
+                    t->stroke_aux_x[i] = (float)(t->line_point ? t->line_screen[0] : t->line_depth_dx);
+                    t->stroke_aux_y[i] = (float)(t->line_point ? t->line_screen[1] : t->line_depth_dy);
+                }
+                t->stroke_owner[i] = object | (t->line_point ? 0x100000u : 0);
+            }
             if (!t->line_order) *d = iz;
             if (t->owner && !t->line_order) t->owner[(long)y * t->w + x] = t->paint_owner;
             t->color[(long)y * t->w + x] = color;
@@ -248,7 +341,7 @@ long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int
     for (int i = 0; i < m; i++) {
         s[i].x = t->cx + t->sx * c[i].x / c[i].z;
         s[i].y = t->cy + t->sy * c[i].y / c[i].z;
-        s[i].iz = 1.0 / c[i].z;
+        s[i].iz = inverse_depth(t, c[i].z);
     }
     long written = 0;
     for (int i = 1; i + 1 < m; i++) written += fill_triangle_logic(t, s[0], s[i], s[i + 1], op, value);
@@ -264,7 +357,7 @@ long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uin
         if (v[i].z < t->near_z) return 0;
         s[i].x = t->cx + t->sx * (double)v[i].x / v[i].z;
         s[i].y = t->cy + t->sy * (double)v[i].y / v[i].z;
-        s[i].iz = 1.0 / (double)v[i].z;
+        s[i].iz = inverse_depth(t, (double)v[i].z);
         rgb[i][0] = colors[i] >> 16 & 255; rgb[i][1] = colors[i] >> 8 & 255; rgb[i][2] = colors[i] & 255;
     }
     long written = 0;
@@ -274,6 +367,7 @@ long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uin
 
 long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color)
 {
+    t->line_point = a.x == b.x && a.y == b.y && a.z == b.z;
     const double near_z = (double)t->near_z;
     double ax = a.x, ay = a.y, az = a.z, bx = b.x, by = b.y, bz = b.z;
     if (az < near_z && bz < near_z) return 0;
@@ -287,16 +381,29 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
     /* A line lies on the surface it marks (a hangar's door markings, a runway's edge), at the same depth as the polygon under
      * it: a small bias toward the eye keeps it on top, as the original's draw order does, instead of z-fighting with it. */
     const double bias = t->line_bias > 0.0 ? t->line_bias : 1.5;     /* near the horizon one pixel of height is a big step in depth: the ground just below a line is "nearer" than the line */
-    const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, bias / az };
-    const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, bias / bz };
+    const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, bias * inverse_depth(t, az) };
+    const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, bias * inverse_depth(t, bz) };
+    t->point_self_hidden = t->line_point && t->line_decal && point_behind_own_surface(t, sa.x, sa.y, (float)sa.iz);
+    if (t->point_self_hidden) return 0;
+    t->line_screen[0] = sa.x; t->line_screen[1] = sa.y;
+    t->line_screen[2] = sb.x; t->line_screen[3] = sb.y;
+    t->line_radius = (int)ceil(width_px / 2.0);
+    if (t->line_radius > 4) t->line_radius = 4;
     double dx = sb.x - sa.x, dy = sb.y - sa.y;
     const double len = sqrt(dx * dx + dy * dy);
+    const double dz = len > 1e-9 ? (sb.iz - sa.iz) / (len * len) : 0.0;
+    t->line_depth_dx = dz * dx; t->line_depth_dy = dz * dy;
     if (len < 1e-9) { dx = 1.0; dy = 0.0; } else { dx /= len; dy /= len; }
     const double h = width_px / 2.0;
     const double px = -dy * h, py = dx * h;                  /* half the width, across the line */
-    const double ex = (len < 1e-9) ? dx * h : 0.0, ey = (len < 1e-9) ? dy * h : 0.0;   /* a point gets a square */
-    const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz };
-    const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz };
+    /* The original includes both endpoint pixels. Square caps preserve that
+     * footprint at any angle, including a short flag meeting its pole.
+     * Continue the inverse-depth plane through the caps so the segment's
+     * original vertices retain their depths and attached points still tie. */
+    const double ex = dx * h, ey = dy * h;
+    const double cap_z = t->line_depth_dx * ex + t->line_depth_dy * ey;
+    const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz - cap_z }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz - cap_z };
+    const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz + cap_z }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz + cap_z };
     return fill_triangle(t, q0, q1, q2, color) + fill_triangle(t, q0, q2, q3, color);
 }
 
@@ -310,7 +417,7 @@ long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t 
     for (int i = 0; i < m; i++) {
         s[i].x = t->cx + t->sx * c[i].x / c[i].z;
         s[i].y = t->cy + t->sy * c[i].y / c[i].z;
-        s[i].iz = 1.0 / c[i].z;
+        s[i].iz = inverse_depth(t, c[i].z);
     }
     long written = 0;
     for (int i = 1; i + 1 < m; i++) written += fill_triangle(t, s[0], s[i], s[i + 1], color);

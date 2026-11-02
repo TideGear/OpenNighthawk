@@ -168,13 +168,14 @@ void keyref_render(int page, uint32_t *px, int w, int h)
 void keyref_tabs(int active, uint32_t *px, int w, int h)
 {
     static const char *const NAME[2] = { "SETTINGS", "KEYS" };
-    const int x0 = (w - 400) / 2;
+    static const char hint[] = "Tab: switch   `: close";
+    const int pw = 560, x0 = (w - pw) / 2;
     for (int y = 6; y < 30 && y < h; y++)
-        for (int x = x0; x < x0 + 400 && x < w; x++) px[y * w + x] = 0xF0101820u;
+        for (int x = x0; x < x0 + pw && x < w; x++) px[y * w + x] = 0xF0101820u;
     for (int i = 0; i < 2; i++) {
         const int x = x0 + 16 + i * 120;
         if (i == active) for (int y = 26; y < 29; y++) for (int xx = x - 6; xx < x + 100; xx++) px[y * w + xx] = 0xFFFFE060u;
         put_text(px, w, h, x, 10, NAME[i], i == active ? 0xFFFFE060u : 0xFF909090u);
     }
-    put_text(px, w, h, x0 + 250, 10, "Tab: switch   `: close", 0xFF707070u);
+    put_text(px, w, h, x0 + pw - 16 - 8 * (int)strlen(hint), 10, hint, 0xFF707070u);
 }

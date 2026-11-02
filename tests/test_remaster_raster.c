@@ -265,6 +265,171 @@ int main(void)
         CHECK(!memcmp(whole.color, banded.color, (size_t)64 * 48 * 4) && !memcmp(whole.inv_z, banded.inv_z, (size_t)64 * 48 * 4));
         free(whole.color); free(whole.inv_z); free(banded.color); free(banded.inv_z);
     }
+    /* Native coordinates from two terrain rings (or an aircraft's model scale)
+     * cannot be compared directly. Keep their projection, compare world depth. */
+    {
+        remaster_target t = make(64, 48);
+        remaster_v3 far_q[4], near_q[4];
+        quad(far_q, 0x02000000, 14, 0);
+        quad(near_q, 0x03000000, 8, 0);
+        t.inv_depth_scale = 1.0;
+        remaster_polygon(&t, far_q, 4, RED);
+        t.inv_depth_scale = 2.0;
+        remaster_polygon(&t, near_q, 4, GREEN);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        t.inv_depth_scale = 1.0;
+        remaster_polygon(&t, far_q, 4, RED);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        /* A line at a smaller native z is still behind the nearer object. */
+        t.line_bias = 1.0;
+        remaster_line(&t, (remaster_v3){-0x100000, 0, 0x02000000},
+                          (remaster_v3){0x100000, 0, 0x02000000}, 3.0, BLUE);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        const uint32_t colors[4] = { RED, RED, RED, RED };
+        remaster_polygon_shaded(&t, far_q, colors, 4);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        t.inv_depth_scale = 4.0;
+        remaster_line(&t, (remaster_v3){0, 0, 0x02000000},
+                          (remaster_v3){0, 0, 0x02000000}, 3.0, BLUE);
+        CHECK(t.color[24 * 64 + 32] == BLUE);
+        free(t.color); free(t.inv_z);
+    }
+    /* A material face can contain both front and rear door edges. Sharing its
+     * owner is not permission for a rear marking to shine through a hangar. */
+    {
+        remaster_target t = make(64, 48);
+        t.owner = (uint32_t *)calloc(64 * 48, sizeof *t.owner);
+        t.paint_owner = 0x1001;
+        remaster_v3 wall[4];
+        quad(wall, 0x02000000, 14, 0);
+        remaster_polygon(&t, wall, 4, RED);
+        t.line_decal = 1; t.line_order = 1; t.line_bias = 1.0;
+        remaster_line(&t, (remaster_v3){-0x100000, 0, 0x04000000},
+                          (remaster_v3){0x100000, 0, 0x04000000}, 3.0, GREEN);
+        CHECK(t.color[24 * 64 + 32] == RED);
+        remaster_line(&t, (remaster_v3){-0x100000, 0, 0x02000000},
+                          (remaster_v3){0x100000, 0, 0x02000000}, 3.0, GREEN);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        /* The rear stroke also stays hidden where its width extends below the
+         * wall's raster coverage. A front stroke retains that same footprint. */
+        t.line_decal = 0; t.line_order = 0;
+        remaster_clear(&t, BG);
+        remaster_polygon(&t, wall, 4, RED);
+        t.line_decal = 1; t.line_order = 1;
+        const int32_t far_y = (int32_t)(13.25 * 0x04000000 / 256.0);
+        remaster_line(&t, (remaster_v3){-0x100000, far_y, 0x04000000},
+                          (remaster_v3){0x100000, far_y, 0x04000000}, 4.0, GREEN);
+        CHECK(t.color[38 * 64 + 32] == BG);
+        remaster_line(&t, (remaster_v3){-0x100000, far_y / 2, 0x02000000},
+                          (remaster_v3){0x100000, far_y / 2, 0x02000000}, 4.0, GREEN);
+        CHECK(t.color[38 * 64 + 32] == GREEN);
+        free(t.color); free(t.inv_z); free(t.owner);
+    }
+    /* Point decorations on a stroke stay visible independent of material order.
+     * Depth still hides a light behind another object or a clearly nearer stroke. */
+    {
+        remaster_target t = make(64, 48);
+        t.owner = (uint32_t *)calloc(64 * 48, sizeof *t.owner);
+        t.stroke_z = (float *)calloc(64 * 48, sizeof *t.stroke_z);
+        t.stroke_aux_x = (float *)calloc(64 * 48, sizeof *t.stroke_aux_x);
+        t.stroke_aux_y = (float *)calloc(64 * 48, sizeof *t.stroke_aux_y);
+        t.stroke_owner = (uint32_t *)calloc(64 * 48, sizeof *t.stroke_owner);
+        const remaster_v3 light = { 0, 0, 0x02000000 };
+        const remaster_v3 a = { -0x100000, 0, 0x02000000 }, b = { 0x100000, 0, 0x02000000 };
+        const uint32_t cream = 0xFFFFFFAAu;
+        /* A steep edge shares the light's vertex. Its finite-width sample can
+         * be over 1% nearer than that endpoint; ownership plus the shared
+         * endpoint, rather than a larger depth bias, preserves the light. */
+        for (int reverse = 0; reverse < 2; ++reverse) {
+            remaster_clear(&t, BG);
+            memset(t.stroke_z, 0, 64 * 48 * sizeof *t.stroke_z);
+            t.line_decal = 1; t.line_order = 1; t.line_bias = 1.0; t.paint_owner = 0x1001;
+            if (!reverse) remaster_line(&t, light, light, 4.0, cream);
+            remaster_line(&t, light, (remaster_v3){0x20000, 0, 0x01000000}, 2.0, RED);
+            if (reverse) remaster_line(&t, light, light, 4.0, cream);
+            CHECK(t.color[24 * 64 + 32] == cream);
+        }
+        for (int reverse = 0; reverse < 2; ++reverse) {
+            remaster_clear(&t, BG);
+            memset(t.stroke_z, 0, 64 * 48 * sizeof *t.stroke_z);
+            t.line_decal = 1; t.line_order = 1; t.line_bias = 1.0; t.paint_owner = 0x1001;
+            if (!reverse) remaster_line(&t, light, light, 4.0, cream);
+            remaster_line(&t, a, b, 2.0, RED);
+            if (reverse) remaster_line(&t, light, light, 4.0, cream);
+            CHECK(t.color[24 * 64 + 32] == cream);
+        }
+        /* A same-object stroke sufficiently in front also wins. */
+        memset(t.stroke_z, 0, 64 * 48 * sizeof *t.stroke_z);
+        remaster_line(&t, light, light, 4.0, cream);
+        remaster_line(&t, (remaster_v3){a.x, 0, 0x01000000}, (remaster_v3){b.x, 0, 0x01000000}, 2.0, GREEN);
+        CHECK(t.color[24 * 64 + 32] == GREEN);
+        /* Ordinary strokes retain their existing order at equal depth. */
+        remaster_line(&t, (remaster_v3){a.x, 0, 0x01000000}, (remaster_v3){b.x, 0, 0x01000000}, 2.0, RED);
+        CHECK(t.color[24 * 64 + 32] == RED);
+        /* Opaque occluders still hide lights, including another face of the
+         * same object. The point priority applies only after polygon culling. */
+        for (int self = 0; self < 2; ++self) {
+            t.line_decal = 0; t.line_order = 0; t.paint_owner = self ? 0x1001 : 0x2001;
+            remaster_v3 wall[4]; quad(wall, 0x01000000, 12, 0);
+            remaster_polygon(&t, wall, 4, BLUE);
+            t.line_decal = 1; t.line_order = 1; t.paint_owner = 0x1001;
+            remaster_line(&t, light, light, 4.0, cream);
+            CHECK(t.color[24 * 64 + 32] == BLUE);
+        }
+        free(t.color); free(t.inv_z); free(t.owner); free(t.stroke_z); free(t.stroke_aux_x); free(t.stroke_aux_y); free(t.stroke_owner);
+    }
+    /* An attached light remains a whole billboard on a steep roof/fin through
+     * sub-pixel camera motion. Per-pixel depth used to carve a moving stripe. */
+    {
+        remaster_target t = make(64, 48), reference = make(64, 48);
+        t.owner = (uint32_t *)calloc(64 * 48, sizeof *t.owner);
+        const remaster_v3 roof[4] = { {-0x300000,0x40000,0x300000}, {0x300000,0x40000,0x300000},
+                                      {0x300000,0x40000,0x4000000}, {-0x300000,0x40000,0x4000000} };
+        const remaster_v3 light = {0,0x40000,0x2000000};
+        for (int phase = 0; phase < 16; ++phase) {
+            t.cy = 24.0 + phase / 16.0;
+            t.line_order = 0; t.line_decal = 0; t.paint_owner = 0x1001;
+            remaster_clear(&t, BG);
+            remaster_polygon(&t, roof, 4, RED);
+            t.line_order = 1; t.line_decal = 1; t.line_bias = 1.0;
+            remaster_line(&t, light, light, 4.0, GREEN);
+            reference.cy = t.cy;
+            remaster_clear(&reference, BG);
+            remaster_line(&reference, light, light, 4.0, GREEN);
+            for (int i = 0; i < 64 * 48; ++i)
+                CHECK((t.color[i] == GREEN) == (reference.color[i] == GREEN));
+            /* The same projection, but genuinely behind that roof. */
+            remaster_clear(&t, BG);
+            t.line_order = 0; t.line_decal = 0;
+            remaster_polygon(&t, roof, 4, RED);
+            t.line_order = 1; t.line_decal = 1;
+            remaster_line(&t, (remaster_v3){0,0x80000,0x4000000}, (remaster_v3){0,0x80000,0x4000000}, 4.0, BLUE);
+            for (int i = 0; i < 64 * 48; ++i) CHECK(t.color[i] != BLUE);
+        }
+        free(t.color); free(t.inv_z); free(t.owner); free(reference.color); free(reference.inv_z);
+    }
+    /* Finite strokes include their endpoint footprint, just like point
+     * decorations. A short cross-stroke covers the shared pole endpoint
+     * through sub-pixel motion rather than exposing a grey sliver there. */
+    {
+        remaster_target t = make(64, 48);
+        t.line_order = 1; t.line_bias = 1.0;
+        const remaster_v3 join = {0, 0, 0x02000000};
+        const remaster_v3 pole = {0, 0x100000, 0x02000000};
+        const remaster_v3 flag = {0x20000, 0, 0x02000000};
+        for (int phase = 0; phase < 16; ++phase) {
+            t.cx = 32.0 + phase / 16.0;
+            t.cy = 24.0 + phase / 16.0;
+            remaster_clear(&t, BG);
+            remaster_line(&t, join, pole, 4.0, GREEN);
+            remaster_line(&t, join, flag, 4.0, RED);
+            for (int y = 0; y < 48; ++y)
+                for (int x = 0; x < 64; ++x)
+                    if (fabs(x + 0.5 - t.cx) < 1.9 && fabs(y + 0.5 - t.cy) < 1.9)
+                        CHECK(t.color[y * 64 + x] == RED);
+        }
+        free(t.color); free(t.inv_z);
+    }
     puts("remaster raster passes");
     return 0;
 }
