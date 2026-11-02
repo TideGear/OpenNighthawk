@@ -1190,6 +1190,25 @@ recordings and raw logs stay outside git.
   Remastered presentation's depth-correct drawing
   ([roadmap.md](roadmap.md)); the sort key itself has not been examined.
 
+## Fix audit (1 Nov 2026)
+
+`tools/fix_audit.py` replays a recorded session once with the full fix set and once per fix with just that fix removed from the log's
+header, and compares the final machine state hash. Results for the owner's two takeoff sessions (Siconella training, to 5.1 G clocks
+and 3.7 G clocks; `D:/f117-gate/fix-audit-20261101/`, `-20261101b/`):
+
+| Fix | Changes the flight | Judgement |
+|---|---|---|
+| Q11 | both | **Removed original content** (the two parked jets by the tower): now opt-in (R7) |
+| D4 | both | Data patch that enables the secret-airstrip missions (new content by design) |
+| D1REAL | both | Timing option (the real-time simulation clock) |
+| D101 | the first | START's transfer tick erase (visible pixels in START, not the flight) |
+| Q16 | the second | MT-32 driver data bytes (sound only) |
+| the other 27 | neither | No effect on these flights; they matter only on routes these flights do not take (their own checks in this file) |
+
+A fix with no effect here is not thereby proved useless: it needs its own route (for example the cannon, a destroyed-object table
+or END's tally). The audit's use is the other direction: a fix that does change a flight is the one to hold against the original
+(GOG's DOSBox through `tools/dosbox_flight.py`), which is how Q11 was caught.
+
 ## How a fix attaches
 
 The recompilation keeps the original's behaviour as the reference, and every
