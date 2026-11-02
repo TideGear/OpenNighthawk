@@ -1197,6 +1197,11 @@ fix is optional, so a player can always choose 1:1. All three mechanisms are
 implemented in `src/fixes/fixes.c`; the run-time side is in
 [architecture.md](architecture.md#the-run-time).
 
+A replay runs the fixes its log header records (`# f117r-fixes ...`), so that it reproduces the session; `--fix` and
+`--fixes` on the command line only add to them, and the app says so when they would have differed. To replay with the
+command line's set instead (for example `--fix none` to see the original), add `--replay-fixes cli`. To compare one fix, edit it out
+of a copy of the log's header line.
+
 1. **Data patches** (D4's world half): bytes corrected as the file is read,
    through the machine's `file_data` hook, each pinned by file name, size
    and the byte it replaces. The code is untouched.
