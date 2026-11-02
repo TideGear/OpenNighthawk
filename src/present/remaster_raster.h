@@ -47,6 +47,10 @@ typedef struct {
     const float *line_ref_z;
     uint32_t *line_strong;
     float *line_tmp_z;
+    /* Lines among themselves follow the original's draw order, not depth: with line_order set a line is tested against the
+     * polygons' depth only and leaves the depth buffer alone, so a later line covers an earlier one where they cross (a flag over
+     * its pole), as the original's painter's order does. */
+    int line_order;
 } remaster_target;
 
 static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }

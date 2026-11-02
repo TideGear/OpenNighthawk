@@ -363,6 +363,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             memcpy(t->line_strong + off, t->color + off, px * 4);
             memcpy(t->line_tmp_z + off, t->inv_z + off, px * 4);
         }
+        t->line_order = 1;
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
             if (pass == 0 ? !do2 : !do3) continue;
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
@@ -395,7 +396,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             }
             t->color = c0; t->inv_z = z0;
         }
-        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL;
+        t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0;
         if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     g_tm_lines += now_ms() - tq3;
@@ -415,7 +416,7 @@ static void write_frame(remaster_live *r, const machine_t *m)
     t.color = (uint32_t *)malloc((size_t)r->w * r->h * 4);
     t.inv_z = (float *)malloc((size_t)r->w * r->h * 4);
     t.index = (uint16_t *)malloc((size_t)r->w * r->h * 2);
-    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL;
+    t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL; t.line_strong = NULL; t.line_tmp_z = NULL; t.line_order = 0;
     if (!t.color || !t.inv_z || !t.index) { free(t.color); free(t.inv_z); free(t.index); return; }
     if (getenv("F117_REMASTER_DEBUG")) {
         debug_colours(r, m);
@@ -649,6 +650,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.line_bias = 0.0; t.line_slope = 0.0; t.line_ref_z = NULL;
     t.line_strong = (uint32_t *)pool[3].p;
     t.line_tmp_z = (float *)pool[4].p;
+    t.line_order = 0;
     const double tm0 = now_ms();
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;

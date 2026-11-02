@@ -105,7 +105,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
             if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;
-            *d = iz;
+            if (!t->line_order) *d = iz;
             t->color[(long)y * t->w + x] = color;
             if (t->index) t->index[(long)y * t->w + x] = t->paint_index;
             written++;
