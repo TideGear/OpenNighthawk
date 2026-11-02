@@ -212,10 +212,37 @@ def build_digest(path):
     return hashlib.sha256("\n".join(kept).encode()).hexdigest()
 
 
-def interpreter_key(data):
+TEXT_SOURCE_SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".inc", ".s", ".asm", ".py", ".txt", ".json", ".cmake", ".def", ".rc"}
+
+
+def normalized_source_digest(root, skip=()):
+    """Hash source trees after normalizing text line endings, for cross-worktree validation."""
+    h = hashlib.sha256()
+    for base, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, root)
+            if rel in skip or "__pycache__" in rel:
+                continue
+            with open(full, "rb") as source:
+                content = source.read()
+            if os.path.splitext(name)[1].lower() in TEXT_SOURCE_SUFFIXES:
+                content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            h.update(rel.encode() + b"|" + hashlib.sha256(content).hexdigest().encode() + b";")
+    return h.hexdigest()
+
+
+def interpreter_key(data, cache_source=None):
     """What every interpreter result depends on, apart from the route itself."""
     h = hashlib.sha256()
-    h.update(tree_digest(os.path.join(ROOT, "src"), {os.path.relpath(os.path.join(ROOT, s), os.path.join(ROOT, "src")) for s in INTERP_INDEPENDENT}).encode())
+    source_path = os.path.join(ROOT, "src")
+    skip = {os.path.relpath(os.path.join(ROOT, s), source_path) for s in INTERP_INDEPENDENT}
+    if cache_source:
+        if normalized_source_digest(source_path, skip) != normalized_source_digest(cache_source, skip):
+            raise ValueError("interpreter cache source reference differs beyond line endings and excluded files")
+        source_path = cache_source
+    h.update(tree_digest(source_path, skip).encode())
     h.update(build_digest(os.path.join(ROOT, "CMakeLists.txt")).encode())
     h.update(tree_digest(data).encode())
     return h.hexdigest()
@@ -477,6 +504,9 @@ def main():
                          "translation is already complete and the second build can be skipped")
     ap.add_argument("--interp-cache", metavar="DIR", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local", "interp-cache"),
                     help="reuse interpreter results while the interpreter's inputs are unchanged ('' turns it off)")
+    ap.add_argument("--interp-cache-source", metavar="DIR",
+                    help="use a same-base src tree for cache lookup only when it matches the current src tree after "
+                         "text line-ending normalization, excluding matched.c")
     ap.add_argument("--verify-interp-cache", action="store_true",
                     help="run every interpreter route fresh and require it to equal the cached result")
     ap.add_argument("--no-parity", action="store_true")
@@ -485,6 +515,8 @@ def main():
                     help="where a finished coverage pass leaves its key, so an identical later gate skips the pass "
                          "('' turns the skip off)")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
+    ap.add_argument("--no-lockstep", action="store_true",
+                    help="with --parity-only, reuse separately verified same-base instruction and routine locksteps")
     ap.add_argument("--overlap-jobs", type=int, default=8,
                     help="interpreter parity runs started during coverage, from a private copy of the first build's "
                          "runner (0 = wait for the parity step, as before); same runs, same comparisons")
@@ -499,6 +531,10 @@ def main():
     route_damage.set_master(a.data)
     if a.parity_only and a.no_parity:
         ap.error("--parity-only and --no-parity cannot be combined")
+    if a.no_lockstep and not a.parity_only:
+        ap.error("--no-lockstep requires --parity-only")
+    if a.interp_cache_source and not a.interp_cache:
+        ap.error("--interp-cache-source requires --interp-cache")
 
     gen = os.path.join(a.work, "gen")
     covdir = os.path.join(a.work, "coverage")
@@ -534,7 +570,7 @@ def main():
         if skip_coverage:
             print("3. coverage: skipped - the same inputs and generated code already gave a pass that added nothing")
     leads = [g[0] for g in groups]
-    base_key = interpreter_key(a.data) if (a.interp_cache and not a.no_parity) else None
+    base_key = interpreter_key(a.data, a.interp_cache_source) if (a.interp_cache and not a.no_parity) else None
     cache_stats = {"hit": 0, "miss": 0}
     stats_lock = threading.Lock()
 
@@ -577,7 +613,7 @@ def main():
     if not a.parity_only:
         unit_tests(a.unit_jobs)
         lap("translate and build")
-    if not a.no_parity:
+    if not a.no_parity and not a.no_lockstep:
         lockstep.update(start_locksteps(a.work))
     if not a.no_coverage and not a.parity_only and not skip_coverage:
         print("3. coverage")
@@ -606,7 +642,7 @@ def main():
             # The locksteps ran the first build; the rebuild replaces their executables.
             stop_locksteps(lockstep)
             build(gen, a.unit_jobs)
-            if not a.no_parity:
+            if not a.no_parity and not a.no_lockstep:
                 lockstep.update(start_locksteps(a.work))
         else:
             print("  the coverage added no translated code: the generated files are byte-identical, "
@@ -671,7 +707,7 @@ def main():
         lap("parity")
         if bad:
             sys.exit("%d route(s) differ between the engines" % bad)
-        for number, key, what, message in (
+        lockstep_checks = () if a.no_lockstep else (
                 (6, "insn", "every translated instruction against the interpreter",
                  "translated instructions differ from the interpreter"),
                 ("6b", "insn386", "every translated instruction under the 386 timing profile",
@@ -681,7 +717,8 @@ def main():
                 ("7b", "func2", "every matched routine at seed 0xC0FFEE",
                  "matched routines differ from the original at seed 0xC0FFEE"),
                 ("7c", "func3", "every matched routine at this commit's seed %s" % LOCKSTEPS[4][3][2],
-                 "matched routines differ from the original at seed %s" % LOCKSTEPS[4][3][2])):
+                 "matched routines differ from the original at seed %s" % LOCKSTEPS[4][3][2]))
+        for number, key, what, message in lockstep_checks:
             print("%s. %s" % (number, what))
             proc, log = lockstep[key]
             proc.wait()
@@ -695,14 +732,17 @@ def main():
             lap(what)
             if key == "func":
                 func_out = out
-        print("8. every routes-only matched routine runs on a route")
-        unrun = routes_only_unrun(func_out, os.path.join(a.work, "runs"))
-        if unrun:
-            for name in unrun:
-                print("  NOT RUN: " + name)
-            sys.exit("%d matched routine(s) have no evidence: the lockstep cannot test them and no route runs them"
-                     % len(unrun))
-        print("  every routes-only routine ran on at least one route")
+        if a.no_lockstep:
+            print("6-8. lockstep and routes-only checks reused from the verified same-base gate")
+        else:
+            print("8. every routes-only matched routine runs on a route")
+            unrun = routes_only_unrun(func_out, os.path.join(a.work, "runs"))
+            if unrun:
+                for name in unrun:
+                    print("  NOT RUN: " + name)
+                sys.exit("%d matched routine(s) have no evidence: the lockstep cannot test them and no route runs them"
+                         % len(unrun))
+            print("  every routes-only routine ran on at least one route")
         print("9. no matched routine runs past its event limit on a route")
         over = overruns(os.path.join(a.work, "runs"))
         if over:

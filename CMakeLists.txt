@@ -2044,6 +2044,30 @@ if(F117R_BUILD_TESTS)
       --only ASOUND.117:B01)
     add_test(NAME matched_asound_log_uninstall_timer_prefix COMMAND func_lockstep --states 5000
       --only ASOUND.LOG:8A)
+    add_test(NAME matched_asound_117_pit0_wait_and_opl_setup COMMAND func_lockstep --states 5000
+      --only ASOUND.117:ACD)
+    add_test(NAME matched_setup_open_read_close_far COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:CE5)
+    add_test(NAME matched_setup_create_write_close COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:D1B)
+    add_test(NAME matched_setup_open_path_mode COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:D53)
+    add_test(NAME matched_setup_create_path_attr COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:D65)
+    add_test(NAME matched_setup_close_handle COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:D77)
+    add_test(NAME matched_setup_read_handle_far COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:D98)
+    add_test(NAME matched_setup_write_handle_far5 COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:DAE)
+    add_test(NAME matched_asound_117_pit0_reload_prefix COMMAND func_lockstep --states 5000
+      --only ASOUND.117:AC4)
+    add_test(NAME matched_asound_log_pit0_reload_prefix COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:AC)
+    add_test(NAME matched_asound_log_reload_status_and_sti COMMAND func_lockstep --states 5000
+      --only ASOUND.LOG:B4)
+    add_test(NAME matched_vgame_patched_far_jump_thunk COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:11A,VGAME.EXE:156,VGAME.EXE:15B,VGAME.EXE:160,VGAME.EXE:165,VGAME.EXE:16A,VGAME.EXE:192,VGAME.EXE:197,VGAME.EXE:19C,VGAME.EXE:1A1,VGAME.EXE:1AB,VGAME.EXE:1FB,VGAME.EXE:200,VGAME.EXE:214,VGAME.EXE:219,VGAME.EXE:223,VGAME.EXE:232,VGAME.EXE:23C,VGAME.EXE:241,VGAME.EXE:250,VGAME.EXE:255,VGAME.EXE:25F,VGAME.EXE:273,VGAME.EXE:278,VGAME.EXE:291,VGAME.EXE:296,VGAME.EXE:29B,VGAME.EXE:2A0,VGAME.EXE:2A5,VGAME.EXE:2DC,VGAME.EXE:2E1,VGAME.EXE:313,VGAME.EXE:31D,VGAME.EXE:322)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

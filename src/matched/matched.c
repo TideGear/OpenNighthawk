@@ -105123,7 +105123,459 @@ static int asound_log_uninstall_timer_prefix(machine_t *m)
 #undef XB
 }
 
+/* ASOUND.117 01B6:0ACD samples PIT counter 0 until the elapsed count reaches
+ * 0988h, calling the existing 036Bh OPL writer for A0h and B0h setup writes.
+ * The loop preserves its counter subtraction and unsigned branch, then STI
+ * stops at 0B00; the original RET remains in the surrounding span. */
+static int asound_117_pit0_wait_and_opl_setup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XIO(at_, code_) do { SM4_NEED(1 + IO_SLACK(1), (at_)); c->op_ip = (at_); code_; c->icount += 1; } while (0)
+#define RUN(expr_) do { const uint64_t until_ = m->run_until; if (m->run_until > c->stop_at) m->run_until = c->stop_at; const int returned_ = (expr_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, ret_) do { SM4_NEED(1, (at_)); RUN(guest_call_pop(m, 0x036B, (ret_), 0)); } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 6)) return 0;
+    XB(1, 0x0ACD); set_r8(c, R_AL, 0x00);
+    XIO(0x0ACF, x86_out(c, 0x43, 0));
+    XIO(0x0AD1, x86_in(c, 0x40, 0));
+    XB(1, 0x0AD3); set_r8(c, R_BL, get_r8(c, R_AL));
+    XIO(0x0AD5, x86_in(c, 0x40, 0));
+    XB(1, 0x0AD7); set_r8(c, R_BH, get_r8(c, R_AL));
+    for (;;) {
+        SM4_NEED(10 + IO_SLACK(3), 0x0AD9);
+        XB(1, 0x0AD9); set_r8(c, R_AL, 0x00);
+        XIO(0x0ADB, x86_out(c, 0x43, 0));
+        XIO(0x0ADD, x86_in(c, 0x40, 0));
+        XB(1, 0x0ADF); set_r8(c, R_CL, get_r8(c, R_AL));
+        XIO(0x0AE1, x86_in(c, 0x40, 0));
+        XB(1, 0x0AE3); set_r8(c, R_CH, get_r8(c, R_AL));
+        XB(1, 0x0AE5); c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+        XB(1, 0x0AE7); c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_BX], 1);
+        XB(1, 0x0AE9); (void)alu_op(c, 7, c->r[R_CX], 0x0988, 1);
+        XB(1, 0x0AED);
+        if (x86_cond(c, 2)) continue;
+        break;
+    }
+    XB(3, 0x0AEF);
+    set_r8(c, R_AH, 0x08);
+    set_r8(c, R_AL, 0xA0);
+    set_r8(c, R_BL, 0x00);
+    XCALL(0x0AF5, 0x0AF8);
+    XB(2, 0x0AF8);
+    set_r8(c, R_AL, 0xB0);
+    set_r8(c, R_BL, 0x20);
+    XCALL(0x0AFC, 0x0AFF);
+    SM4_NEED(1, 0x0AFF); x86_sti(c); c->icount += 1;
+    c->ip = 0x0B00;
+    return 1;
+#undef XCALL
+#undef RUN
+#undef XIO
+#undef XB
+}
+
+/* Open a path, read up to the far-buffer limit into the caller buffer, then close it. */
+static int setup_open_read_close_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 10)) return 0;
+    c->icount += 10;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 4, 1);
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    c->r[R_AX] = 0xFFFF;
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0CFB, 0x0D53, 0x0CFE);
+    XB(1, 0x0CFE);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0CFF);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D00);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
+    XB(1, 0x0D03);
+    x86_push_reg(c, R_AX);
+    XCALL(0x0D04, 0x0D98, 0x0D07);
+    XB(1, 0x0D07);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 8, 1);
+    XB(1, 0x0D0A);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    XB(1, 0x0D0D);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));
+    XCALL(0x0D10, 0x0D77, 0x0D13);
+    XB(1, 0x0D13);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D14);
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    XB(1, 0x0D17);
+    c->r[R_SP] = c->r[R_BP];
+    XB(1, 0x0D19);
+    c->r[R_BP] = cpu_pop16(c);
+    XB(1, 0x0D1A);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* Create a path, write the caller's far-buffer slice, then close the handle. */
+static int setup_create_write_close(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 10)) return 0;
+    c->icount += 10;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 4, 1);
+    cpu_push16(c, bp_get(c, 0x0A));
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 0x0C));
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0D33, 0x0D65, 0x0D36);
+    XB(1, 0x0D36);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D37);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D38);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_AX]);
+    XB(1, 0x0D3B);
+    x86_push_reg(c, R_AX);
+    XCALL(0x0D3C, 0x0DAE, 0x0D3F);
+    XB(1, 0x0D3F);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0A, 1);
+    XB(1, 0x0D42);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    XB(1, 0x0D45);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));
+    XCALL(0x0D48, 0x0D77, 0x0D4B);
+    XB(1, 0x0D4B);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D4C);
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2));
+    XB(1, 0x0D4F);
+    c->r[R_SP] = c->r[R_BP];
+    XB(1, 0x0D51);
+    c->r[R_BP] = cpu_pop16(c);
+    XB(1, 0x0D52);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* setup_open_path_mode: forward the caller's arguments to the SETUP DOS helper. The helper
+ * performs the DOS request and returns its AX result; this thunk restores BP and
+ * returns without changing the result. */
+static int setup_open_path_mode(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    c->icount += 4;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0D5C, 0x0DC7, 0x0D5F);
+    XB(1, 0x0D5F);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D60);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D61);
+    c->r[R_SP] = c->r[R_BP];
+    XB(1, 0x0D63);
+    c->r[R_BP] = cpu_pop16(c);
+    XB(1, 0x0D64);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* setup_create_path_attr: forward the caller's arguments to the SETUP DOS helper. The helper
+ * performs the DOS request and returns its AX result; this thunk restores BP and
+ * returns without changing the result. */
+static int setup_create_path_attr(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 4)) return 0;
+    c->icount += 4;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0D6E, 0x0E1E, 0x0D71);
+    XB(1, 0x0D71);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D72);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D73);
+    c->r[R_SP] = c->r[R_BP];
+    XB(1, 0x0D75);
+    c->r[R_BP] = cpu_pop16(c);
+    XB(1, 0x0D76);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* Close the caller's DOS file handle through the SETUP close wrapper. */
+static int setup_close_handle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 3)) return 0;
+    c->icount += 3;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0D7D, 0x0E75, 0x0D80);
+    XB(1, 0x0D80);
+    c->r[R_BX] = cpu_pop16(c);
+    XB(1, 0x0D81);
+    c->r[R_SP] = c->r[R_BP];
+    XB(1, 0x0D83);
+    c->r[R_BP] = cpu_pop16(c);
+    XB(1, 0x0D84);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* Forward handle, count and a far buffer to the DOS read helper. The four
+ * caller words are pushed in reverse order, the helper result in AX is left
+ * intact, and the original BP frame and return address are restored. */
+static int setup_read_handle_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 6)) return 0;
+    c->icount += 6;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 0x0A));
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0DA7, 0x0EC2, 0x0DAA);
+    XB(3, 0x0DAA);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* Forward the caller's five words to the SETUP DOS write helper. The words
+ * are pushed in reverse stack order, the helper result in AX is preserved,
+ * and the original BP frame and return address are restored. */
+static int setup_write_handle_far5(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; \
+    if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    c->icount += 7;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, bp_get(c, 0x0C));
+    cpu_push16(c, bp_get(c, 0x0A));
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    cpu_push16(c, bp_get(c, 4));
+    XCALL(0x0DC0, 0x0F52, 0x0DC3);
+    XB(3, 0x0DC3);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+#undef XCALL
+#undef XRUN
+#undef XB
+    return 1;
+}
+
+/* ASOUND.117 01B6:0AC4 finishes the counter-0 reload begun by the previous
+ * prefix. It loads 4C90h in AX, writes the low and high bytes to port 40h,
+ * and hands control back at 0ACD after the high-byte reload wakes the PIT. */
+static int asound_117_pit0_reload_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XIO(at_, code_) do { SM4_NEED(1 + IO_SLACK(1), (at_)); c->op_ip = (at_); code_; c->icount += 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4)) return 0;
+    XB(1, 0x0AC4); c->r[R_AX] = 0x4C90;
+    XIO(0x0AC7, x86_out(c, 0x40, 0));
+    XB(1, 0x0AC9); set_r8(c, R_AL, get_r8(c, R_AH));
+    XIO(0x0ACB, x86_out(c, 0x40, 0));
+    c->ip = 0x0ACD;
+    return 1;
+#undef XIO
+#undef XB
+}
+
+/* ASOUND.LOG 0000:00AC completes the counter-0 reload by writing AX=0 to
+ * port 40h as low then high byte. The high-byte write wakes the PIT, so the
+ * prefix hands control back at 00B4 before the original status stores. */
+static int asound_log_pit0_reload_prefix(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XIO(at_, code_) do { SM4_NEED(1 + IO_SLACK(1), (at_)); c->op_ip = (at_); code_; c->icount += 1; } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4)) return 0;
+    XB(1, 0x00AC); c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    XIO(0x00AE, x86_out(c, 0x40, 0));
+    XB(1, 0x00B0); set_r8(c, R_AL, get_r8(c, R_AH));
+    XIO(0x00B2, x86_out(c, 0x40, 0));
+    c->ip = 0x00B4;
+    return 1;
+#undef XIO
+#undef XB
+}
+
+/* ASOUND.LOG 0000:00B4 stores the high byte read from PIT counter 0 at
+ * CS:[004C], clears CS:[004F], restores AX from the stack, and executes STI.
+ * STI stops execution at 00C0; the original RET remains in the enclosing span. */
+static int asound_log_reload_status_and_sti(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    c->op_cs = c->seg[S_CS];
+    if (!room(c, 4)) return 0;
+    XB(1, 0x00B4); mem_write8(c, phys(c->seg[S_CS], 0x004C), get_r8(c, R_AL));
+    XB(1, 0x00B8); mem_write8(c, phys(c->seg[S_CS], 0x004F), 0x00);
+    XB(1, 0x00BE); c->r[R_AX] = cpu_pop16(c);
+    SM4_NEED(1, 0x00BF); x86_sti(c); c->icount += 1;
+    c->ip = 0x00C0;
+    return 1;
+#undef XB
+}
+
+/* VGAME.EXE 1E42:011A and 52 more, far: a five-byte JMP FAR thunk (EA, offset, segment) in the jump table
+ * at 1E42:011A..0322 that the program calls with CALL FAR (or reaches by JMP FAR) to enter a library routine.
+ * The table is filled at run time: the EXE ships every entry as EA 0000:0000, a loader step writes each
+ * entry's offset word (at entry+1) and the segment word (at entry+3, relocated by the DOS loader), so the offset
+ * and segment are read from the code at the entry, never fixed here. One body serves every thunk of the table:
+ * the entry is where the machine stands (c->ip) when the body is called, and the operand sits one and three
+ * bytes above it. The thunk touches nothing but the program counter: the routine it names runs next (original
+ * code or its own matched body) and returns to the caller with its own RETF.
+ *
+ * A thunk is one instruction (JMP FAR): one clock. The body claims room for it before doing anything, and a
+ * state whose limit falls before it declines (returns 0) with the machine untouched. */
+static int vgame_patched_far_jump_thunk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = c->ip;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    const uint16_t off = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 1));
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 3));
+    c->ip = off;
+    c->seg[S_CS] = seg;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x011A, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0156, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x015B, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0160, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0165, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x016A, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0192, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0197, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x019C, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01A1, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01AB, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01FB, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0200, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0214, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0219, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0223, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0232, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x023C, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0241, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0250, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0255, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x025F, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0273, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0278, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0291, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0296, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x029B, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02A0, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02A5, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02DC, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02E1, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0313, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x031D, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0322, vgame_patched_far_jump_thunk, "jump-table entry: far jump through the operand the loader patched in", 2 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00B4, asound_log_reload_status_and_sti, "ASOUND.LOG stores the PIT reload status, restores AX and reaches STI at 00C0", 1 },
+    { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x00AC, asound_log_pit0_reload_prefix, "ASOUND.LOG counter-0 low/high reload continuation through the high-byte PIT wake at 00B4", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0AC4, asound_117_pit0_reload_prefix, "ASOUND.117 counter-0 low/high reload continuation through the high-byte PIT wake at 0ACD", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0DAE, setup_write_handle_far5, "Forward five caller words to the SETUP DOS write helper.", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0D98, setup_read_handle_far, "Forward handle, count and far-buffer arguments to the DOS read helper.", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0D77, setup_close_handle, "forward the caller's file handle to the DOS close helper", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0D65, setup_create_path_attr, "forward path and attributes to the DOS create helper", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0D53, setup_open_path_mode, "forward path and mode to the DOS open helper", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0D1B, setup_create_write_close, "create a path, write the caller's far-buffer slice, and close the handle", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0CE5, setup_open_read_close_far, "open a path, read into the caller's far buffer, and close the handle", 1 },
+    { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0ACD, asound_117_pit0_wait_and_opl_setup, "ASOUND.117 counter-0 elapsed-count wait and two OPL setup writes through STI at 0B00", 1 },
     { "matched", "ASOUND.LOG", ASOUND_LOG_47304, 0x0000, 0x008A, asound_log_uninstall_timer_prefix, "ASOUND.LOG timer-uninstall prefix: disable interrupts, restore the saved INT 8 vector from CS:[0048]/[004A] into IVT 0000:0020/0022, restore DS/CX/BX and write PIT counter-0 mode-3 control word 36h to port 43h; hand back at 00AC immediately after OUT, leaving the counter reload, status stores, POP AX, STI and RET to original code", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0B01, asound_117_program_counter2_sequence, "AdLib overlay: stream a selected sequence through the PIT/OPL ports", 1 },
     { "matched", "ASOUND.117", ASOUND_117_47304, 0x01B6, 0x0A5B, asound_117_adlib_pit_setup_prefix, "AdLib OPL setup and PIT0 mode-control prefix; hand back after the wake at 0AC4", 1 },
