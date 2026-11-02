@@ -77,6 +77,8 @@ static const keyref_row PAGE3[] = {
 };
 static const keyref_row PAGE4[] = {
     { NULL, "THIS PROGRAM" },
+    { "Menu (in flight)", "Esc" },
+    { "Other tab in the menu", "Tab" },
     { "Settings menu", "Ctrl+Alt+S" },
     { "This key list", "Ctrl+Alt+K" },
     { "Turn its pages", "left / right arrow" },
@@ -161,4 +163,18 @@ void keyref_render(int page, uint32_t *px, int w, int h)
         while (*note == ' ') note++;
     }
     put_text(px, w, h, x0 + 16, y0 + ph - 22, "Left/Right: page   Esc: close   (the manual's Key Controls Summary)", 0xFF909090u);
+}
+
+void keyref_tabs(int active, uint32_t *px, int w, int h)
+{
+    static const char *const NAME[2] = { "SETTINGS", "KEYS" };
+    const int x0 = (w - 400) / 2;
+    for (int y = 6; y < 30 && y < h; y++)
+        for (int x = x0; x < x0 + 400 && x < w; x++) px[y * w + x] = 0xF0101820u;
+    for (int i = 0; i < 2; i++) {
+        const int x = x0 + 16 + i * 120;
+        if (i == active) for (int y = 26; y < 29; y++) for (int xx = x - 6; xx < x + 100; xx++) px[y * w + xx] = 0xFFFFE060u;
+        put_text(px, w, h, x, 10, NAME[i], i == active ? 0xFFFFE060u : 0xFF909090u);
+    }
+    put_text(px, w, h, x0 + 250, 10, "Tab: switch   Esc: close", 0xFF707070u);
 }

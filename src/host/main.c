@@ -1641,6 +1641,7 @@ int main(int argc, char **argv)
     if (getenv("F117_REPLAY_START_X4")) replay_x4 = atoi(getenv("F117_REPLAY_START_X4"));   /* diagnostic: start a replay fast */
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
     uint64_t seek_target = player && seek_secs > 0 ? (uint64_t)(seek_secs * (double)ips) : 0;   /* a replay runs flat out to here */
+    int tabs_on = 0, esc_swallow = 0, switch_to_settings = 0;      /* the Esc menu: settings and keys as two tabs (a flight only: the original does nothing with Esc there) */
     int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0, sk_frame = 0;
     int mouse_buttons = 0;
 
@@ -1661,6 +1662,21 @@ int main(int argc, char **argv)
             e.key.scancode = k == 0 ? SDL_SCANCODE_S : k == 4 ? SDL_SCANCODE_RIGHT : k == diag_steps - 1 ? SDL_SCANCODE_RETURN : SDL_SCANCODE_DOWN;
             e.key.mod = k == 0 ? (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT) : 0;
             SDL_PushEvent(&e);
+        }
+        /* F117_ESC_AUTOTEST=1 (diagnostic, with F117_ESC_ANYWHERE=1): Esc, Tab, Tab, Esc one every 10 frames from frame 10, and a line of
+         * state after each ([esc] settings open, keys open, tab strip, paused). */
+        {
+            static int esc_frame;
+            if (getenv("F117_ESC_AUTOTEST")) {
+                ++esc_frame;
+                if (esc_frame % 10 == 0 && esc_frame >= 10 && esc_frame <= 50) {
+                    static const SDL_Scancode seq[5] = { SDL_SCANCODE_ESCAPE, SDL_SCANCODE_TAB, SDL_SCANCODE_TAB, SDL_SCANCODE_ESCAPE, SDL_SCANCODE_ESCAPE };
+                    SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_KEY_DOWN; e.key.scancode = seq[esc_frame / 10 - 1];
+                    SDL_PushEvent(&e);
+                }
+                if (esc_frame % 10 == 5 && esc_frame <= 55)
+                    fprintf(stderr, "[esc] after key %d: settings %d, keys %d, strip %d, paused %d\n", esc_frame / 10, g_set.open, ref_open, tabs_on, paused);
+            }
         }
         /* F117_REF_AUTOTEST=1 (diagnostic): press Ctrl+Alt+K, then Right twice, so the key reference's third page is
          * up; F117_MENU_SHOT=FILE.ppm saves its picture. */
@@ -1857,8 +1873,29 @@ int main(int argc, char **argv)
                     SDL_SetWindowFullscreen(win, fullscreen);
                     break;
                 }
-                if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_S &&
-                    live && settings_path[0] && !g_set.open && !ref_open && tex_menu) {
+                if (down && ev.key.scancode == SDL_SCANCODE_ESCAPE && (g_set.open || ref_open)) esc_swallow = 1;   /* an Esc the menu takes is not the game's */
+                if (!down && ev.key.scancode == SDL_SCANCODE_ESCAPE && esc_swallow) { esc_swallow = 0; break; }   /* the key-up of the Esc that opened or closed the menu */
+                if (down && ev.key.scancode == SDL_SCANCODE_ESCAPE && live && (g_hook_flight || getenv("F117_ESC_ANYWHERE")) && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
+                    tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* Esc in flight: the menu, on its Settings tab */
+                }
+                if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
+                    if (g_set.open && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.remap_stage && !g_set.padkey_stage) {
+                        settings_key_event(&g_set, SKEY_ESC);                              /* close Settings without saving, keep the pause */
+                        SDL_StopTextInput(win);
+                        if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
+                        ref_open = 1; ref_page = 0;
+                        if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); ref_paused = 1; }
+                    } else if (ref_open) {
+                        ref_open = 0;
+                        if (ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
+                        switch_to_settings = 1;
+                    }
+                    if (!switch_to_settings) break;
+                }
+                if ((down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_S &&
+                    live && settings_path[0] && !g_set.open && !ref_open && tex_menu) ||
+                    (switch_to_settings && live && settings_path[0] && !g_set.open && !ref_open && tex_menu)) {
+                    switch_to_settings = 0;
                     char *text = config_read_file(settings_path);          /* NULL if the file is not there yet */
                     settings_load(&g_set, text);
                     free(text);
@@ -2317,9 +2354,11 @@ int main(int argc, char **argv)
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, show, &srcf, &dstv);
+        if (!g_set.open && !ref_open) tabs_on = 0;
         if (g_set.open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);
             settings_render(&g_set, menu_pixels, 640, 400);
+            if (tabs_on) keyref_tabs(0, menu_pixels, 640, 400);
             const char *shot = getenv("F117_MENU_SHOT");
             if (shot) {
                 FILE *sf = fopen(shot, "wb");
@@ -2366,6 +2405,7 @@ int main(int argc, char **argv)
         if (ref_open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);
             keyref_render(ref_page, menu_pixels, 640, 400);
+            if (tabs_on) keyref_tabs(1, menu_pixels, 640, 400);
             const char *rshot = getenv("F117_MENU_SHOT");
             if (rshot && getenv("F117_REF_AUTOTEST")) {
                 FILE *sf = fopen(rshot, "wb");

@@ -19,5 +19,7 @@ const keyref_row *keyref_rows(int page, int *count);
 
 /* Draw page into an ARGB buffer (w*h, w >= 640, h >= 400) over whatever it holds. */
 void keyref_render(int page, uint32_t *pixels, int w, int h);
+/* The tab strip across the top of the Esc menu: tab 0 Settings, 1 Keys, the active one lit; Tab switches, Esc closes. */
+void keyref_tabs(int active, uint32_t *pixels, int w, int h);
 
 #endif
