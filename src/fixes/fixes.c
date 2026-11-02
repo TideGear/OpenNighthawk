@@ -659,27 +659,6 @@ static int fix_q7_range(machine_t *m)
     return 0;
 }
 
-/* Q11. The original abs helper reads only the low word of each scaled
- * 32-bit coordinate. Keep its register/flag results and replace only a JGE
- * whose decision differs from the full-width magnitude test. Unsigned
- * negation also handles INT32_MIN without signed overflow. */
-static int q11_range_branch(machine_t *m, uint16_t local, uint16_t next)
-{
-    cpu_t *c = &m->cpu;
-    const uint16_t at = (uint16_t)(c->r[R_BP] - local);
-    const uint32_t value = (uint32_t)seg_read16(c, c->seg[S_SS], at)
-        | (uint32_t)seg_read16(c, c->seg[S_SS], (uint16_t)(at + 2)) << 16;
-    const uint32_t magnitude = value & 0x80000000u ? 0u - value : value;
-    const int reject = magnitude >= 0x7FFFu;
-    if (reject == x86_cond(c, 13)) return 0;
-    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
-    c->ip = reject ? 0xBC5C : next;
-    c->icount++;
-    return 1;
-}
-static int fix_q11_x(machine_t *m) { return q11_range_branch(m, 8, 0xBC10); }
-static int fix_q11_y(machine_t *m) { return q11_range_branch(m, 12, 0xBC20); }
-
 /* Q12. The display pass calls the ground-impact eligibility test (0x792E)
  * with nothing pushed, so the callee reads whatever word is on top of the
  * stack for the unit hit; its other caller pushes the unit. Push [bp-0Ah]
@@ -1065,8 +1044,6 @@ static const recomp_override OVERRIDES[] = {
     { "Q14", "VGAME.EXE", VGAME_47304, 0x0000, 0x969C, fix_q14_overdue, "overdue objective text goes to the displayed line" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA153, fix_q12_call, "cannon ground test is given the unit hit" },
     { "Q12", "VGAME.EXE", VGAME_47304, 0x0000, 0xA154, fix_q12_return, "cannon ground test: drop the argument" },
-    { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC0E, fix_q11_x, "full-width model x range" },
-    { "Q11", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC1E, fix_q11_y, "full-width model y range" },
     { "Q7", "VGAME.EXE", VGAME_47304, 0x0000, 0xE4AC, fix_q7_range, "zoomed-view range uses absolute camera coordinates" },
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
@@ -1132,7 +1109,6 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "Q16", "MT-32 volume and pan modulation saturate at 0 and 7Fh instead of running into status bytes" },
     { "Q14", "an overdue objective shows \"Time expired\" instead of the stale deadline" },
     { "Q12", "the cannon's ground test is given the unit it hit, not a stale stack word" },
-    { "Q11", "model range checks use the full 32-bit coordinates, rejecting distant objects before they wrap nearby" },
     { "Q7", "zoomed views use object distance instead of the frustum limit for detail and far clipping" },
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
@@ -1156,9 +1132,12 @@ static const struct { const char *id, *what; } FIXES[] = {
 static int g_on[NFIXES];
 
 /* Options are not repairs: `all` never switches one on, so they are named explicitly (--fix QUIZ); `none` clears them. */
-/* Q11 is opt-in: the original places two aircraft parked beside the Siconella tower through the 16-bit wrap this fix removes, so
- * the fix culls content the original draws (docs/owner-issues.md R7). */
-static int is_option(const char *id) { return !strcmp(id, "QUIZ") || !strcmp(id, "Q11"); }
+static int is_option(const char *id) { return !strcmp(id, "QUIZ"); }
+
+/* Fixes that were retired: a session log recorded while they existed still names them, and --fix accepts them, both with no effect.
+ * Q11 (full-width model range) culled the two aircraft parked beside the Siconella tower, which the original draws through the
+ * 16-bit wrap it removed (docs/bugs.md, "Closed"; docs/owner-issues.md R7). */
+static int is_retired(const char *id) { return !strcmp(id, "Q11"); }
 
 void fixes_register(void)
 {
@@ -1178,6 +1157,7 @@ int fixes_enable(const char *id, int on)
 {
     fixes_register();
     int n = 0;
+    if (is_retired(id)) return 1;                  /* named by an old log or command line: accepted, nothing to switch */
     for (unsigned i = 0; i < NFIXES; i++) {
         if (strcmp(id, "all") && strcmp(id, FIXES[i].id)) continue;
         if (!strcmp(id, "all") && on && is_option(FIXES[i].id)) continue;   /* `all` never switches an option on (it still clears one) */

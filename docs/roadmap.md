@@ -148,7 +148,7 @@ not the recompilation:
       smaller-defects table that had no fix and no recorded reason were re-read
       against the DOS instructions and compared with Mac 2.3.2 and Amiga 3.01
       (verdicts: [bugs.md](bugs.md#smaller-defects-q-series)). Fixed: ten
-      defects (Q7, Q11, Q12, Q14-Q20), three with an owner-chosen behaviour
+      defects (Q7, Q12, Q14-Q20; Q11 retired 1 Nov 2026), three with an owner-chosen behaviour
       (Q13a, Q21, Q22) and the hardening group (Q4, Q13b, D18, Q23), merged at
       `95a5730` after a combined gate (`D:/f117-gate/bugfixes-20261025/`;
       [Windows CI passed](https://github.com/TideGear/OpenNighthawk/actions/runs/40252845423));
@@ -780,7 +780,7 @@ Each is fixed; the named regressions keep the failing seed or case.
 | [D12](bugs.md#d12-ends-hidden-rating-tally-mixes-signed-and-unsigned) | Signed rating tally |
 | [D34](bugs.md#d34-the-destroyed-object-table-has-no-end) | Bound destroyed-object table |
 | [Q7](bugs.md#q7-zoomed-view-distance-uses-the-view-limit) | Zoomed-view range |
-| [Q11](bugs.md#q11-far-model-positions-wrap-into-the-nearby-scene) | Full-width model-range cull |
+| [Q11](bugs.md#q11-retired-far-model-positions-wrap-into-the-nearby-scene) | Full-width model-range cull (retired: the original draws two parked aircraft through the wrap) |
 | [Q12](bugs.md#q12-the-cannons-ground-test-reads-a-stale-stack-word) | Pass the cannon ground-test unit |
 | [Q14](bugs.md#q14-an-overdue-objective-never-shows-time-expired) | Overdue objective text |
 | [Q15](bugs.md#q15-adlib-noise-take-over-reads-the-wrong-generators-count) | AdLib noise take-over count |

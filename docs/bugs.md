@@ -65,7 +65,7 @@ Status values:
 | D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
 | D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q7 | Confirmed | VGAME | Zoomed views use the frustum limit instead of object distance for detail and far clipping | `--fix Q7` |
-| Q11 | Confirmed | VGAME | Model range checks discard the high word of 32-bit offsets, admitting far objects at wrapped nearby coordinates | `--fix Q11` |
+| Q11 | Retired (1 Nov 2026): not a defect | VGAME | Model range checks keep the low word of 32-bit offsets; the original relies on it for the two jets parked beside the Siconella tower | - (see Closed) |
 | Q12 | Confirmed | VGAME | The cannon's ground test is called with no argument and reads a stale stack word instead of the unit hit | `--fix Q12` |
 | Q12b | Confirmed | VGAME | Projectile map marker size comes from saved SI instead of a fourth argument | `--fix Q12b` |
 | Q14 | Confirmed | VGAME | An overdue objective's "Time expired" is copied to a buffer that was already copied into the displayed line | `--fix Q14` |
@@ -692,7 +692,7 @@ passed combined acceptance with batch be:
 
 ### Defects to fix
 
-The ten real defects of the re-verification (Q7, Q11, Q12, Q14 to Q20),
+The real defects of the re-verification (Q7, Q12, Q14 to Q20; Q11 was retired),
 Q12's marker sibling Q12b, and D101.
 
 #### Q7. Zoomed-view distance uses the view limit
@@ -716,30 +716,20 @@ Q12's marker sibling Q12b, and D101.
   Acceptance (full gate, two pre-check seeds, presentation checks):
   `D:/f117-gate/q7-20261025/`.
 
-#### Q11. Far model positions wrap into the nearby scene
+#### Q11. Retired: far model positions wrap into the nearby scene
 
-- **What happens.** VGAME's model-placement routine keeps scaled x/y offsets
-  as 32-bit values but calls the 16-bit absolute-value helper at `0x0EE0C`.
-  Its signed comparisons admit a low word of 8000h and far coordinates whose
-  low words look nearby. For example, x=65536 passes as x=0, and can reach
-  the model draw at the wrapped coordinate. No normal route is known to
-  reach the faulty range. Macintosh has the same defect; Amiga is undetermined.
-- **Fix.** `--fix Q11` checks each coordinate's full-width magnitude against
-  7FFFh at the two branches (`0x0BC0E`, `0x0BC1E`). When the original already
-  makes the correct decision, the hook declines. A changed branch keeps
-  AX, BX, DX and the original flags and charges only the replaced jump.
-  The containing matched routine at `0x0BB0D` declines while Q11 is placed.
-- **Check.** `build/check_q11 path/to/VGAME.EXE` executes the original
-  placement routine and its abs/shift helpers with Q11 off and on in both
-  engines. Descriptor lookup and the drawing callees are returning test
-  stubs; reaching the model draw is observed. The staged cases cover both
-  axes, threshold boundaries, negative offsets, INT32_MIN, wrapped far
-  coordinates and scaling. Branch preservation and event limits are checked
-  separately. All 108 staged runs, eight branch-preservation checks and 358
-  paired event limits pass. This proves the admission decision, not a flight
-  screenshot. Acceptance (with Q7 regression, defaults/replay, both
-  whole-table pre-check seeds, the full gate and presentation checks):
-  `D:/f117-gate/q11-20261025/`.
+Retired on 1 Nov 2026 (the owner agreed). Found by reading the code on 25 Oct: the placement routine at VGAME `0x0BB0D` keeps
+each scaled x/y offset as 32 bits but compares only the low word of its absolute value (the helper at `0x0EE0C`), so an object whose
+full offset exceeds 7FFFh can pass the range test and be drawn at the wrapped position. The fix rejected those objects. It was checked
+only with staged inputs (108 runs), never in a flight, and no normal route was known to reach the range.
+
+The owner then found that the original game draws two aircraft parked beside the control tower at the end of the Siconella runway
+(crashable, and drawn in GOG's DOSBox) and this build did not. Replaying the same takeoff with Q11 removed from the log's fix list
+restores them (`DS:49F4`, the frame's placed-object count, 9 with the fix and 11 without, as in DOSBox), so they are placed through
+exactly the wrap Q11 removed. Nothing else showed a wrong object because of the wrap. A version that kept the jets would have to tell
+them from objects that are wrongly placed, and there is no flight in which any object is. So the fix and its `check_q11` test are
+removed. A session log or command line that still names Q11 is accepted and ignored. The Macintosh release has the same code; the
+two parked aircraft are therefore likely original design or an accident the shipped game depends on. See the closed list below.
 
 #### Q12. The cannon's ground test reads a stale stack word
 
@@ -1109,7 +1099,7 @@ denominator ([progress.md](progress.md)), not in `docs/census-dead.tsv`.
 ## Closed historical reports
 
 Three historical reports were reviewed (12-13 October 2026) and closed as
-not reproduced or not established for DOS. They are not counted as fixed
+not reproduced or not established for DOS, and one fix (Q11, below) was retired. They are not counted as fixed
 bugs, and closing them does not claim that every historical machine was
 unaffected. Their reopening criteria are in their entries above (D10, D35, D36). No
 speculative game patch was added.
@@ -1119,6 +1109,7 @@ speculative game patch was added.
 | D10, mountain collision | MicroProse Macintosh 2.3.0 release notes, 22 July 1994, in the 2.3.1 update archive | The notes establish a Mac defect; no DOS equivalent is established. The static stack walk flags only five known C-runtime paths among 490 VGAME census entries; it cannot exclude stray writes. |
 | D35, fast-PC startup | [DOS Days troubleshooting](https://www.dosdays.co.uk/topics/Games/game_f117.php) | All 18 fresh probes reach START: three speeds, two engines, three sound choices. Intros are skipped with normal Enter inputs, so full movie playback on a real fast PC is not reproduced. |
 | D36, missing Roland engine | [DOS Days troubleshooting](https://www.dosdays.co.uk/topics/Games/game_f117.php) | All available MT-32 control ROMs produce engine audio in Munt, and their 128 PCM-table entries agree. Physical units and MT-100/CM-32L PCM ROMs remain untested. |
+| Q11, model range wrap | Code reading (25 Oct 2026), then GOG DOSBox on the owner's takeoff | **Retired as a fix** (1 Nov 2026): the wrap places two aircraft the original draws (R7); no wrong object was ever seen from it. Reopen only with a flight where the wrap draws something that should not be there. |
 
 ### Startup and stack checks
 
@@ -1198,7 +1189,7 @@ and 3.7 G clocks; `D:/f117-gate/fix-audit-20261101/`, `-20261101b/`):
 
 | Fix | Changes the flight | Judgement |
 |---|---|---|
-| Q11 | both | **Removed original content** (the two parked jets by the tower): now opt-in (R7) |
+| Q11 | both | **Removed original content** (the two parked jets by the tower): retired, no longer a fix (R7) |
 | D4 | both | Data patch that enables the secret-airstrip missions (new content by design) |
 | D1REAL | both | Timing option (the real-time simulation clock) |
 | D101 | the first | START's transfer tick erase (visible pixels in START, not the flight) |
@@ -1207,7 +1198,7 @@ and 3.7 G clocks; `D:/f117-gate/fix-audit-20261101/`, `-20261101b/`):
 
 A fix with no effect here is not thereby proved useless: it needs its own route (for example the cannon, a destroyed-object table
 or END's tally). The audit's use is the other direction: a fix that does change a flight is the one to hold against the original
-(GOG's DOSBox through `tools/dosbox_flight.py`), which is how Q11 was caught.
+(GOG's DOSBox through `tools/dosbox_flight.py`), which is how Q11 was caught and retired.
 
 ## How a fix attaches
 

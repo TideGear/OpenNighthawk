@@ -15,7 +15,7 @@ import unittest
 
 REPAIRS = {"D1", "D1TTL", "D1SLOT", "D1ACCEL", "D2", "D3", "D4", "D5", "D6", "D8", "D11", "D12", "D34", "Q7", "Q12", "Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "Q20", "Q13a", "Q21", "Q22", "Q4", "Q13b", "D18", "Q23", "D101", "Q12b"}
 OPTIONS = {"D1REAL", "D1PROX"}
-QUIZ = {"QUIZ", "Q11"}  # Q11 (it culls the original's parked jets) and START's copy-protection quiz: an option that no switch but its own name turns on
+QUIZ = {"QUIZ"}          # START's copy-protection quiz: an option that no switch but its own name turns on
 APP = RUNNER = None
 
 
@@ -80,10 +80,9 @@ class DefaultsTests(unittest.TestCase):
         self.assertEqual(enabled(RUNNER, ["--fix", "QUIZ"]), {"QUIZ"})
         self.assertEqual(enabled(APP, ["--fix", "QUIZ", "--fix", "all"], app=True), REPAIRS | OPTIONS | {"QUIZ"})
 
-    def test_q11_is_off_unless_named(self):
-        self.assertNotIn("Q11", enabled(APP, [], app=True))
-        self.assertNotIn("Q11", enabled(APP, ["--fix", "all"], app=True))
-        self.assertEqual(enabled(APP, ["--fix", "none", "--fix", "Q11"], app=True), {"Q11"})
+    def test_retired_q11_is_not_listed_but_still_accepted(self):
+        self.assertNotIn("Q11", enabled(APP, [], app=True))                      # not a fix any more (the listing check rejects an extra row)
+        self.assertEqual(enabled(APP, ["--fix", "none", "--fix", "Q11"], app=True), set())   # old command lines and logs still run, with no effect
 
     def test_original_mode_and_custom_subset_override_normal_defaults(self):
         self.assertEqual(enabled(APP, ["--fix", "none"], app=True), set())

@@ -7,7 +7,7 @@ this flight (it may still matter on a route the flight never took). Different ha
 game, so the difference is the thing to judge against the original (GOG's DOSBox, tools/dosbox_flight.py).
 
     py tools/fix_audit.py --app build/f117a.exe --data D:/GOG/F-117A --session SESSION_DIR --out OUT_DIR
-                          [--exit-after 5100000000] [--jobs 4] [--only Q11,D5]
+                          [--exit-after 5100000000] [--jobs 4] [--only D5,D12]
 """
 import argparse
 import concurrent.futures as cf
