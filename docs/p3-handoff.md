@@ -22,6 +22,18 @@ real hardware.
 skips PLAYER's animation, cancels START text entry); the menu is the tilde key; no more full gates without approval (they authorised one more
 after the R16 to R19 fixes "if you deem it necessary"); no AI attribution in commits.
 
+**Update, 2 November 2026 (morning), after the owner's second look at the build of 23:50:** R16 (hangars) is confirmed better by the owner;
+the tower's wind-measure is fine. Done in code since, all in the rerun copy only (`src/present/rerun.c`), awaiting the owner's look in `ONTests`
+(10:53 build, 832 of 832 unit tests, not full-gated): **R20** the jets near the tower no longer vanish in the margins (aircraft have their own
+visibility test, VGAME `0B5DC`, with a 45-degree cone: an exec hook at its entry divides the x row of its matrix by the view's width factor);
+**R9, aircraft part**: far aircraft become models at twice the distance (the same hook divides all three matrix rows by 2, so the size
+indicator `[DEBE]` is half and positions are unchanged; before, they were dots or absent until close). **Not done, and why:** R17 (grey horizon
+line in front of the jets) and R18 (flagpole z-fighting) are not reproduced in any of my frames of sessions `224822` and `235935`; for R18 the
+original shows the dark-red flag on top of the pole, as Remastered does at the moments I could check; both need a clock or a screenshot from the
+owner (details in their rows in owner-issues.md). R9 for scenery and ground objects: raising the detail value (`F117_WIDE_REACH=N`, ring sizes
+and far plane rewritten as `D4A5` does) changed nothing visible, so the terrain keeps the original's distance; a flight over distant targets would
+be the test. Newest owner flight to use: `session-20261101-235935` (aircraft in the sky at the start).
+
 **Tools made tonight:** `tools/fix_audit.py`, `tools/verify_flights.py` (with `docs/flight-reference.json`), `tools/audit_routes.py`; app
 diagnostics `F117_PRESENT_SHOTS=PREFIX` with `_FROM`, `_COUNT`, `_STEP`; `F117_WINDOW=1920x1080` (a wide window under the dummy driver);
 `F117_REMASTER_LEFT=1`, `F117_MODEL_LOG=MODEL,CLOCK`, `F117_REMASTER_COPYCHECK=N`, `F117_WIDE_VIEW=100` (off), `F117_LOOP_TIMING=1`,
