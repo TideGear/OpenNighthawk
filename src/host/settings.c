@@ -45,6 +45,8 @@ static const setting_def DEFS[] = {
     { "timing",       "Machine speed",    C_TIMING,       0, 0 },
     { "ips",          "Machine clock /s", C_IPS,          3, 0 },     /* instructions a second: the game runs at 60 million, GOG's DOSBox at 9 */
     { "crt",          "CRT scanlines",    C_YESNO,        0, 0 },
+    { "crt-mask",     "CRT phosphor mask", C_YESNO,       0, 0 },
+    { "crt-glow",     "CRT glow",         C_YESNO,        0, 0 },
     { "colourblind",  "Colour-blind aid", C_COLOURBLIND,  0, 0 },
     { "subtitles",    "Radio subtitles",  C_YESNO,        0, 0 },
     { "sound",        "Sound driver",     C_SOUND,        0, 0 },

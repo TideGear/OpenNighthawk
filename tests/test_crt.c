@@ -39,6 +39,40 @@ int main(void)
     for (int i = 0; i < W * 200; i++) src[i] = 0xFF000000u | (uint32_t)i;
     crt_scanlines(src, dst, W, 200);
     for (int i = 0; i < W * 200; i++) CHECK(dst[i] == src[i]);
+    /* the phosphor mask: each column keeps its own colour and dims the other two to three quarters; alpha stays */
+    {
+        enum { MW = 9, MH = 4 };
+        uint32_t m[MW * MH], o[MW * MH];
+        for (int i = 0; i < MW * MH; i++) m[i] = 0x80C8C8C8u;
+        crt_mask(m, o, MW, MH);
+        for (int x = 0; x < MW; x++) {
+            const uint32_t c = o[x];
+            const unsigned r = (c >> 16) & 255u, g = (c >> 8) & 255u, b = c & 255u;
+            CHECK((c >> 24) == 0x80);
+            CHECK(x % 3 == 0 ? (r == 200 && g == 150 && b == 150) : x % 3 == 1 ? (g == 200 && r == 150 && b == 150) : (b == 200 && r == 150 && g == 150));
+            CHECK(o[x] == o[x + MW * (MH - 1)]);
+        }
+    }
+    /* the glow: a dark picture is unchanged, a bright spot brightens its neighbours (never beyond 255), and it works in place */
+    {
+        enum { GW = 640, GH = 400 };
+        uint32_t *g = (uint32_t *)malloc((size_t)GW * GH * 4), *o = (uint32_t *)malloc((size_t)GW * GH * 4);
+        CHECK(g && o);
+        for (int i = 0; i < GW * GH; i++) g[i] = 0xFF202020u;
+        crt_glow(g, o, GW, GH);
+        CHECK(o[0] == 0xFF202020u && o[GW * GH / 2] == 0xFF202020u);
+        for (int y = 190; y < 210; y++) for (int x = 310; x < 330; x++) g[y * GW + x] = 0xFFFFFFFFu;
+        crt_glow(g, o, GW, GH);
+        CHECK(o[200 * GW + 320] == 0xFFFFFFFFu);                      /* the spot stays white */
+        CHECK((o[200 * GW + 333] & 255u) > 0x20u);                    /* its neighbourhood brightens */
+        CHECK(o[200 * GW + 600] == 0xFF202020u && o[20 * GW + 20] == 0xFF202020u);   /* far away does not */
+        uint32_t *copy = (uint32_t *)malloc((size_t)GW * GH * 4);
+        CHECK(copy);
+        for (int i = 0; i < GW * GH; i++) copy[i] = g[i];
+        crt_glow(g, g, GW, GH);                                       /* in place equals into a copy */
+        for (int i = 0; i < GW * GH; i++) CHECK(g[i] == o[i]);
+        free(copy); free(g); free(o);
+    }
     puts("crt filter passes");
     return 0;
 }

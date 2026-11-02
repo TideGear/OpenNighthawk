@@ -329,7 +329,7 @@ static sp_source parse_source_option(const char *flag, const char *v)
     return (sp_source)s;
 }
 static int g_sub_p61;
-static int g_crt;                     /* --crt: scanlines on the finished picture (crt.h) */
+static int g_crt, g_crt_mask, g_crt_glow;   /* --crt, --crt-mask, --crt-glow: scanlines, the phosphor mask, the glow on the finished picture (crt.h) */
 static int g_colourblind;             /* --colourblind: the colour-blind filter on the finished picture (colourblind.h) */
 /* controller buttons acting as keys (--pad-keys, controls.h): the button, the key it presses, and whether it is held now */
 #define PAD_KEYS_MAX 16
@@ -341,15 +341,18 @@ static uint32_t *g_crt_buf; static size_t g_crt_cap;
 /* The picture as the display should get it: with --crt, the scanline filter, and with --colourblind the colour filter, applied to a copy. */
 static const uint32_t *crt_view(const uint32_t *px, int w, int h)
 {
-    if (!g_crt && !g_colourblind) return px;
+    if (!g_crt && !g_crt_mask && !g_crt_glow && !g_colourblind) return px;
     if ((size_t)w * h > g_crt_cap) {
         free(g_crt_buf);
         g_crt_buf = (uint32_t *)malloc((size_t)w * h * 4);
         g_crt_cap = g_crt_buf ? (size_t)w * h : 0;
     }
     if (!g_crt_buf) return px;
-    if (g_crt) crt_scanlines(px, g_crt_buf, w, h);
-    if (g_colourblind) colourblind_apply(g_crt ? g_crt_buf : px, g_crt_buf, w, h, g_colourblind);
+    const uint32_t *cur = px;
+    if (g_crt_glow) { crt_glow(cur, g_crt_buf, w, h); cur = g_crt_buf; }
+    if (g_crt) { crt_scanlines(cur, g_crt_buf, w, h); cur = g_crt_buf; }
+    if (g_crt_mask) { crt_mask(cur, g_crt_buf, w, h); cur = g_crt_buf; }
+    if (g_colourblind) colourblind_apply(cur, g_crt_buf, w, h, g_colourblind);
     return g_crt_buf;
 }
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
@@ -1075,6 +1078,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
+        else if (!strcmp(a, "--crt-mask")) g_crt_mask = 1;
+        else if (!strcmp(a, "--crt-glow")) g_crt_glow = 1;
         else if (!strcmp(a, "--colourblind") && v) {
             g_colourblind = colourblind_parse(v);
             if (g_colourblind < 0) { fprintf(stderr, "--colourblind takes off, protanopia, deuteranopia or tritanopia\n"); return 2; }

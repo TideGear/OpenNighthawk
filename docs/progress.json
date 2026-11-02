@@ -238,9 +238,9 @@
       {
         "item": "Optional CRT filter for the 4:3 presentations",
         "weight": 1.0,
-        "done": 0.7,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "29 Oct 2026, branch p3-settings-menu. Scanline filter (src/host/crt.c, --crt / crt = yes / menu entry) applied to the displayed copy only, off by default; unit-tested (brightness only, bright first row, dimmer gap, in place equals copy); the app ran 20 s with --crt and the enhanced presentation without a fault. Not done: the owner has not looked at the picture, and there is no mask or bloom."
+        "evidence": "1 Nov 2026: a phosphor mask (columns repeat red, green, blue; each keeps its colour and dims the others to three quarters) and a glow (the bright parts blurred over about a game pixel and added back at three eighths), both on the displayed copy only, off by default (crt-mask and crt-glow in f117a.ini, --crt-mask, --crt-glow, two menu rows); unit-tested (tests/test_crt.c: the mask per column, alpha kept; the glow leaves a dark picture alone, brightens the neighbourhood of a bright spot, stays inside 255, in place equals a copy); the app ran Enhanced and Remastered at scale 3 with all three effects without a fault. Not done: the owner has not looked, and how they look at 4K is unjudged. Earlier: 29 Oct 2026, branch p3-settings-menu. Scanline filter (src/host/crt.c, --crt / crt = yes / menu entry) applied to the displayed copy only, off by default; unit-tested (brightness only, bright first row, dimmer gap, in place equals copy); the app ran 20 s with --crt and the enhanced presentation without a fault. Not done: the owner has not looked at the picture, and there is no mask or bloom."
       },
       {
         "item": "Flight replays: save a sortie and watch it back (other cameras in Remastered)",

@@ -13,4 +13,12 @@
  * A picture with a single row per game line is copied unchanged (there is no gap to draw). */
 void crt_scanlines(const uint32_t *src, uint32_t *dst, int w, int h);
 
+/* The phosphor mask: the columns repeat red, green, blue and each keeps its own colour at full strength and the other two at three
+ * quarters, as on a shadow-mask tube. Brightness-only per channel; alpha kept. dst may be src. */
+void crt_mask(const uint32_t *src, uint32_t *dst, int w, int h);
+
+/* The glow: the picture's bright parts (above 160 of 255 in a channel) blurred over about a game pixel's width and added back
+ * at about a third, clamped. Needs w x h scratch work done inside (a growing internal buffer). dst may be src. */
+void crt_glow(const uint32_t *src, uint32_t *dst, int w, int h);
+
 #endif
