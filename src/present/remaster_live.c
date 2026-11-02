@@ -302,7 +302,10 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         const char *pbox = getenv("F117_REMASTER_PROBE_BOX");     /* X0,Y0,X1,Y1: every primitive whose box overlaps this rectangle, not one point */
         const int use_box = pbox && sscanf(pbox, "%lf,%lf,%lf,%lf", &bx0, &by0, &bx1, &by1) == 4;
         if (use_box && !probe) probe = "0,0";
-        if (do1 && probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && ++calls == 700) {
+        static unsigned long long probe_from; static int probe_done, probe_init;
+        if (!probe_init) { probe_init = 1; const char *f = getenv("F117_REMASTER_PROBE_FROM"); probe_from = f ? strtoull(f, NULL, 0) : 0; }   /* the first frame from this clock, else the 700th */
+        const int probe_now = probe_from ? (!probe_done && m->cpu.icount >= probe_from && (probe_done = 1)) : ++calls == 700;
+        if (do1 && probe && !wide && sscanf(probe, "%lf,%lf", &px, &py) == 2 && probe_now) {
             fprintf(stderr, "[probe] frame of %zu primitives, point %.1f,%.1f, clock %llu\n", fr->n, px, py, (unsigned long long)m->cpu.icount);
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];

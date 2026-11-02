@@ -235,11 +235,19 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     if (g_air_done) return 0;
     g_air_done = 1;
     const uint16_t ds = m->cpu.seg[S_DS];
-    static const uint16_t row0[3] = { 0xB082, 0xB088, 0xB08E };
-    for (int i = 0; i < 3; i++) {
-        const int16_t w = (int16_t)rd16(m->mem, ds, row0[i]);
-        wr16(m->mem, ds, row0[i], (uint16_t)(int16_t)((int32_t)w * 100 / g_air_pct));
-    }
+    /* Row a of the matrix is the words at B082 + 2a, B088 + 2a and B08E + 2a (a = 0 x', 1 y', 2 z'). The x row is divided by the width factor
+     * (the cone), and all three rows by the reach: the aircraft's size indicator [DEBE] is z' >> 3 and the game draws a model only once it
+     * is big enough (else a dot), while every screen position is a ratio of the three and does not move, so dividing them all by 2
+     * makes an aircraft a model at twice the distance. F117_WIDE_AIR_REACH=PERCENT (diagnostic; 100: the game's own distance). */
+    static int reach = -1;
+    if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
+    for (int a = 0; a < 3; a++)
+        for (int c = 0; c < 3; c++) {
+            const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
+            const int64_t w = (int16_t)rd16(m->mem, ds, at);
+            const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct : 100);       /* in 1/10000 */
+            wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+        }
     return 0;
 }
 
@@ -285,10 +293,25 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
         if (env == -2) { const char *e = getenv("F117_WIDE_VIEW"); env = e ? atoi(e) : -1; }   /* F117_WIDE_VIEW=PERCENT (diagnostic; 100: off) overrides */
         const int pct = env >= 100 ? env : g_wide_pct;
         if (pct > 100) {
+            /* F117_WIDE_REACH=N (experiment, R9): the draw distance raised by N detail steps in the copy: D4A5 sets the six ring sizes
+             * [48D6 + 2i] = 0x20 << (i + d), [48E2] = [48DE] + [48E0] and the far plane [48E6] = (d + 1) x 0xD05 from the detail d = [990E];
+             * the same words are rewritten here for d + N. The side allowance then has to leave room: the cull adds it to |z'| in 16 bits. */
+            static int reach = -1;
+            if (reach < 0) { const char *e = getenv("F117_WIDE_REACH"); reach = e ? atoi(e) : 0; }
+            unsigned allowance = 18000u;
+            if (reach > 0) {
+                const unsigned d = (unsigned)rd16(g_copy_mem, ds, 0x990E) + (unsigned)reach;
+                for (unsigned i = 0; i < 6; i++) wr16(g_copy_mem, ds, (uint16_t)(0x48D6 + 2 * i), (uint16_t)(0x20u << (i + d)));
+                wr16(g_copy_mem, ds, 0x48E2, (uint16_t)(rd16(g_copy_mem, ds, 0x48DE) + rd16(g_copy_mem, ds, 0x48E0)));
+                const unsigned far_ = (d + 1u) * 0xD05u;
+                wr16(g_copy_mem, ds, 0x48E6, (uint16_t)far_);
+                allowance = far_ < 30000u ? 32000u - far_ : 2000u;
+                if (allowance > 18000u) allowance = 18000u;
+            }
             const uint16_t base = rd16(g_copy_mem, ds, 0xE56A);
             for (int md = 0; md < 8; md++) {
                 const uint16_t at = (uint16_t)(base + 2 * md);
-                if (rd16(g_copy_mem, ds, at) < 18000u) wr16(g_copy_mem, ds, at, 18000u);
+                if (rd16(g_copy_mem, ds, at) < allowance) wr16(g_copy_mem, ds, at, (uint16_t)allowance);
             }
             g_air_k = -1; g_air_done = 0; g_air_pct = pct;
             if (!getenv("F117_WIDE_NO_AIR") && s->exec_hook_n < EXEC_HOOKS_MAX) {      /* F117_WIDE_NO_AIR (diagnostic): the aircraft test left alone */
