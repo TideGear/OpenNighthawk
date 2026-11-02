@@ -219,6 +219,12 @@ void rerun_set_collector(const rerun_collector *c)
  * widens the cone's angle by f; capped so |z'| + T stays under 0x7FFF (the cull adds them in 16 bits). Only in the copy (its own
  * hook table); the live machine never has this hook. T is put back before each call, so every object sees the original table. */
 static int g_wide_pct = 100, g_wide_factor = 100, g_wide_k = -1, g_wide_dirty;
+/* The terrain walker (VGAME 0x04E6) picks one of eight 45-degree heading sectors, (0x1000 - heading) >> 13, and visits only the cells its
+ * table lists for that sector: a wider view than the sector's has cells (with their hangars and aircraft) that are never asked about at all,
+ * however wide the cull. In the copy, each walk is run twice more, with the heading turned a sector each way: the hooks sit on the
+ * instruction after the walker's call (two call sites), where its arguments are still on the stack, and send execution back to the call. */
+static int g_walk_k[2] = { -1, -1 }, g_walk_pass;
+static uint16_t g_walk_head;
 static uint32_t g_wide_at; static uint16_t g_wide_saved;
 void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 400 ? 400 : percent; }
 
@@ -229,6 +235,13 @@ static void wide_restore(machine_t *m)
 
 static int wide_exec(void *user, machine_t *m, unsigned k)
 {
+    if ((int)k == g_walk_k[0] || (int)k == g_walk_k[1]) {
+        const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        if (g_walk_pass == 0) { g_walk_head = rd16(m->mem, ss, sp); wr16(m->mem, ss, sp, (uint16_t)(g_walk_head + 0x2000)); g_walk_pass = 1; m->cpu.ip = (uint16_t)(m->cpu.ip - 3); }
+        else if (g_walk_pass == 1) { wr16(m->mem, ss, sp, (uint16_t)(g_walk_head - 0x2000)); g_walk_pass = 2; m->cpu.ip = (uint16_t)(m->cpu.ip - 3); }
+        else { wr16(m->mem, ss, sp, g_walk_head); g_walk_pass = 0; }
+        return 0;
+    }
     if ((int)k != g_wide_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
     wide_restore(m);
     const uint16_t ds = m->cpu.seg[S_DS], ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
@@ -238,6 +251,26 @@ static int wide_exec(void *user, machine_t *m, unsigned k)
     const int64_t sum = (int16_t)rd16(m->mem, ds, 0x49CE) * b + (int16_t)rd16(m->mem, ds, 0x49C8) * n + (int16_t)rd16(m->mem, ds, 0x49C2) * a;
     const int32_t z = (int16_t)(((uint32_t)sum << 1) >> 16);           /* view-space depth: the high word of twice the dot product */
     const uint32_t az = (uint32_t)(z < 0 ? -z : z);
+    {   /* F117_CULL_LOG=1 (diagnostic): the cull's view of every object on the left of the view: its view-space x, depth and the bound it is held to */
+        static unsigned long long log_from; static int logging = -1;
+        if (logging < 0) { const char *e = getenv("F117_CULL_LOG"); logging = e != NULL; log_from = e ? strtoull(e, NULL, 0) : 0; }   /* =CLOCK: from that clock on */
+        if (logging && m->cpu.icount >= log_from) {
+            const int64_t sx = (int16_t)rd16(m->mem, ds, 0x49CA) * b + (int16_t)rd16(m->mem, ds, 0x49C4) * n + (int16_t)rd16(m->mem, ds, 0x49BE) * a;
+            const int32_t xv = (int16_t)(((uint32_t)sx << 1) >> 16);
+            const uint16_t tat = (uint16_t)(rd16(m->mem, ds, 0xE56A) + 2u * rd16(m->mem, ds, 0x49AA));
+            if (getenv("F117_CULL_ALL") ? (int)rd16(m->mem, ds, 0x49AA) == atoi(getenv("F117_CULL_ALL")) : (xv < 0 && xv < -1500)) {   /* =MODE: every call at that detail mode (7 cells, 2 objects) */
+                const uint32_t T0 = rd16(m->mem, ds, tat), cl = (rd16(m->mem, ds, 0x294B) & 0xFF) ^ 1;
+                const int32_t far_ = (int16_t)rd16(m->mem, ds, 0x48E6), near_ = (int16_t)rd16(m->mem, ds, (uint16_t)(0x48F6 + 2 * rd16(m->mem, ds, 0x49AA)));
+                const uint32_t bound0 = (((az + T0) >> cl) * 5u) / 4u;
+                uint32_t T2 = T0 + 4096u + (uint32_t)(g_wide_factor - 100) * az / 100u;
+                if (T2 + az > 0x7FFFu) T2 = az < 0x7FFFu ? 0x7FFFu - az : 0;
+                const uint32_t bound2 = (((az + T2) >> cl) * 5u) / 4u;
+                fprintf(stderr, "[cull] clock %llu args %d %d %d x %d z %d mode %u near %d far %d side: |x| %u bound %u widened %u => %s\n", (unsigned long long)m->cpu.icount,
+                        (int)a, (int)b, (int)n, xv, z, (unsigned)rd16(m->mem, ds, 0x49AA), near_, far_, (unsigned)-xv, bound0, bound2,
+                        z > far_ ? "FAR" : z < near_ ? "NEAR" : (uint32_t)-xv > bound2 ? "SIDE(widened)" : (uint32_t)-xv > bound0 ? "kept by widening" : "kept");
+            }
+        }
+    }
     const uint16_t at = (uint16_t)(rd16(m->mem, ds, 0xE56A) + 2u * rd16(m->mem, ds, 0x49AA));
     const uint32_t T = rd16(m->mem, ds, at);
     /* The cull keeps an object while its centre is within 1.25 x ((|z| + T) >> cl) of the axis; T (344 in mode 3) is all it allows for the
@@ -305,6 +338,16 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                 }
         }
         g_wide_k = wide_k; g_wide_dirty = 0;
+        g_walk_k[0] = g_walk_k[1] = -1; g_walk_pass = 0;
+        if (wide_k >= 0 && s->exec_hook_n + 2 <= EXEC_HOOKS_MAX && !getenv("F117_WIDE_NO_WALK")) {   /* F117_WIDE_NO_WALK (diagnostic): the cull only */
+            static const uint16_t after_call[2] = { 0x04A2, 0xC254 };
+            for (int w = 0; w < 2; w++) {
+                g_walk_k[w] = (int)s->exec_hook_n;
+                s->exec_hook[s->exec_hook_n].cs = s->exec_hook[wide_k].cs;
+                s->exec_hook[s->exec_hook_n].ip = after_call[w];
+                s->exec_hook_n++;
+            }
+        }
         if (wide_k >= 0) s->hooks.exec = wide_exec;
     }
     /* run it under its own observer, the real one's pending state set aside */

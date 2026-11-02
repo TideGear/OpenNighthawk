@@ -282,6 +282,18 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             for (long i = (long)remaster_row_lo(t) * t->w; i < (long)remaster_row_hi(t) * t->w; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
     }
+    if (do1 && getenv("F117_REMASTER_LEFT")) {   /* diagnostic: how many primitives lie wholly left of the original's screen (the margin's), by model */
+        unsigned count[64] = { 0 }; size_t n_left = 0;
+        for (size_t i = 0; i < fr->n; i++) {
+            const remaster_prim *p = &fr->prim[i];
+            double x1b = -1e9; int front = 0;
+            for (int k = 0; k < p->n; k++) if (p->v[k].z > 0) { const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z; if (sx > x1b) x1b = sx; front++; }
+            if (front && x1b < 0) { n_left++; count[p->model & 63]++; }
+        }
+        fprintf(stderr, "[left] clock %llu: %zu of %zu primitives wholly left of the screen; by model:", (unsigned long long)m->cpu.icount, n_left, fr->n);
+        for (int k = 0; k < 64; k++) if (count[k]) fprintf(stderr, " %d:%u", k, count[k]);
+        fprintf(stderr, "\n");
+    }
     {   /* F117_REMASTER_PROBE=X,Y (game pixels): every primitive of one frame (the 700th drawn) whose screen box holds that point, and
          * how many primitives the frame has, to see why Remastered draws nothing where the original drew something */
         static int calls;

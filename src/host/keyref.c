@@ -77,12 +77,12 @@ static const keyref_row PAGE3[] = {
 };
 static const keyref_row PAGE4[] = {
     { NULL, "THIS PROGRAM" },
-    { "Menu (in flight)", "` (tilde)" },
+    { "Menu (anywhere)", "` (tilde)" },
     { "Other tab in the menu", "Tab" },
     { "Settings menu", "Ctrl+Alt+S" },
     { "This key list", "Ctrl+Alt+K" },
     { "Turn its pages", "left / right arrow" },
-    { "Close the list or menu", "Esc  or  `" },
+    { "Close the list or menu", "`" },
     { "Pause the game", "Ctrl+Alt+P" },
     { "Full screen on / off", "Alt+Enter" },
     { "Quit", "Ctrl+Alt+F12" },
@@ -162,7 +162,7 @@ void keyref_render(int page, uint32_t *px, int w, int h)
         note += len;
         while (*note == ' ') note++;
     }
-    put_text(px, w, h, x0 + 16, y0 + ph - 22, "Left/Right: page   Esc: close   (the manual's Key Controls Summary)", 0xFF909090u);
+    put_text(px, w, h, x0 + 16, y0 + ph - 22, "Left/Right: page   `: close   (the manual's Key Controls Summary)", 0xFF909090u);
 }
 
 void keyref_tabs(int active, uint32_t *px, int w, int h)
@@ -176,5 +176,5 @@ void keyref_tabs(int active, uint32_t *px, int w, int h)
         if (i == active) for (int y = 26; y < 29; y++) for (int xx = x - 6; xx < x + 100; xx++) px[y * w + xx] = 0xFFFFE060u;
         put_text(px, w, h, x, 10, NAME[i], i == active ? 0xFFFFE060u : 0xFF909090u);
     }
-    put_text(px, w, h, x0 + 250, 10, "Tab: switch   Esc: close", 0xFF707070u);
+    put_text(px, w, h, x0 + 250, 10, "Tab: switch   `: close", 0xFF707070u);
 }

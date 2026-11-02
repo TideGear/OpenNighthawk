@@ -1881,10 +1881,10 @@ int main(int argc, char **argv)
                     SDL_PushEvent(&back);
                     break;
                 }
-                /* The ` (tilde) key opens the menu in flight. Esc is NOT taken while the menu is closed: the game uses it (it cancels the flight's
+                /* The ` (tilde) key opens the menu, in a mission and in the front-end screens alike. Esc is NOT taken while the menu is closed: the game uses it (it cancels the flight's
                  * Alt+Q quit dialog, tested with the quit route: Alt+Q, Esc, Y does not exit), PLAYER skips its title animation with it and
                  * START's text entry cancels on it. In the menu itself Esc closes or backs out, as before. */
-                if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && live && (g_hook_flight || getenv("F117_ESC_ANYWHERE")) && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
+                if (down && ev.key.scancode == SDL_SCANCODE_GRAVE && live && settings_path[0] && !g_set.open && !ref_open && tex_menu && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT))) {
                     tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* ` in flight: the menu, on its Settings tab */
                 }
                 if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
@@ -2330,13 +2330,14 @@ int main(int argc, char **argv)
         /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
          * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
         {
-            static const char *shots; static uint64_t from, left; static int shots_init;
+            static const char *shots; static uint64_t from, left, step = 1, seen; static int shots_init;
             if (!shots_init) {
                 shots_init = 1; shots = getenv("F117_PRESENT_SHOTS");
                 const char *f = getenv("F117_PRESENT_SHOTS_FROM"), *c = getenv("F117_PRESENT_SHOTS_COUNT");
                 from = f ? strtoull(f, NULL, 0) : 0; left = c ? strtoull(c, NULL, 0) : 60;
+                { const char *st = getenv("F117_PRESENT_SHOTS_STEP"); if (st && atoi(st) > 1) step = (uint64_t)atoi(st); }   /* every Nth picture */
             }
-            if (shots && left && H.m.cpu.icount >= from) {
+            if (shots && left && H.m.cpu.icount >= from && (++seen % step) == 0) {
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {

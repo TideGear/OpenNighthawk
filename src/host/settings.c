@@ -420,5 +420,5 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
         return;
     }
     put_text(px, w, h, x0 + 16, fy, "Up/Down choose, Left/Right change,", 0xFF909090u);
-    put_text(px, w, h, x0 + 16, fy + 16, s->note[0] ? s->note : "* applies after restart. Esc closes.", 0xFF909090u);
+    put_text(px, w, h, x0 + 16, fy + 16, s->note[0] ? s->note : "* applies after restart. ` closes.", 0xFF909090u);
 }
