@@ -38,6 +38,9 @@ typedef struct {
     int remap_stage;               /* Remap a key was chosen: 1 waiting for the key to change, 2 for what it acts as */
     int remap_from;                /* the key chosen at stage 1 (an SDL scancode, set by the host) */
     int clear_remaps;              /* Clear key remaps was chosen: the host empties the list */
+    int padkey_stage;              /* Controller button as key was chosen: 1 waiting for a controller button, 2 for the key it acts as */
+    int padkey_button;             /* the button chosen at stage 1 (set by the host) */
+    int clear_padkeys;             /* Clear controller keys was chosen: the host empties the list */
     char note[64];                 /* a line the host shows under the list (the last remap made) */
     int picker;                    /* the fix picker is up (Choose fixes...) */
     int pick_cursor, pick_top, pick_count;

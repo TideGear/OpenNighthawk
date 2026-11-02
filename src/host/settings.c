@@ -232,7 +232,7 @@ int settings_key_event(settings_state *s, settings_key k)
         if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
         return 1;
     }
-    const int rows = NDEFS + 8;                    /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, the pickers, Close */
+    const int rows = NDEFS + 10;                   /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, the pickers, the controller keys, Close */
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -263,6 +263,10 @@ int settings_key_event(settings_state *s, settings_key k)
             if (s->flight_count) { s->flight_picker = 1; s->pick_cursor = 0; s->pick_top = 0; }
         } else if (s->cursor == NDEFS + 6) {       /* Folders: the typed entries */
             s->text_picker = 1; s->text_edit = -1; s->pick_cursor = 0;
+        } else if (s->cursor == NDEFS + 7) {       /* Controller button as key: the host takes a button, then a key */
+            s->padkey_stage = 1;
+        } else if (s->cursor == NDEFS + 8) {       /* Clear controller keys: the host empties the list at once */
+            s->clear_padkeys = 1;
         } else revert(s);                          /* Close, without saving */
         break;
     case SKEY_ESC:
@@ -317,7 +321,7 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
 
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
-    const int total = NDEFS + 8, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
+    const int total = NDEFS + 10, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
     const int pw = 400, ph = 24 + shown * 20 + 56;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
@@ -394,13 +398,19 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             put_text(px, w, h, x0 + 200, y, v, color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
-                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : i == NDEFS + 6 ? "Folders..." : "Close without saving", color);
+                  i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : i == NDEFS + 6 ? "Folders..." : i == NDEFS + 7 ? "Controller button as key..." :
+                  i == NDEFS + 8 ? "Clear controller keys" : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */
     const int fy = y0 + ph - 38;
     if (s->remap_stage) {
         put_text(px, w, h, x0 + 16, fy, s->remap_stage == 1 ? "Press the key to change (Esc: cancel)" : "Press the key it should act as", 0xFFFFE060u);
+        put_text(px, w, h, x0 + 16, fy + 16, s->note, 0xFF909090u);
+        return;
+    }
+    if (s->padkey_stage) {
+        put_text(px, w, h, x0 + 16, fy, s->padkey_stage == 1 ? "Press the controller button (Esc: cancel)" : "Press the key it should act as", 0xFFFFE060u);
         put_text(px, w, h, x0 + 16, fy + 16, s->note, 0xFF909090u);
         return;
     }

@@ -580,6 +580,31 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
  * 1991 AT keyboard does not have. (The Reimp's table, platform_sdl3.c.) */
 #include "host_keys.h"
 
+/* The controller-key list as f117a.ini holds it ("2:G,3:Left Shift"), written from the table; NULL clears the key. */
+static void padkeys_save(const char *settings_path)
+{
+    char list[PAD_KEYS_MAX * (CONTROLS_KEYNAME + 6)] = "";
+    for (int j = 0; j < g_npadkeys; j++) {
+        const size_t used = strlen(list);
+        snprintf(list + used, sizeof list - used, "%s%d:%s", used ? "," : "", g_padkeys[j].button, SDL_GetScancodeName(g_padkeys[j].key));
+    }
+    char *text = config_read_file(settings_path);
+    char *out = config_set(text ? text : "", "pad-keys", list[0] ? list : NULL);
+    FILE *f = out ? fopen(settings_path, "wb") : NULL;
+    if (f) { fputs(out, f); fclose(f); }
+    free(text);
+    free(out);
+}
+
+/* a controller button now acts as a key (a button already mapped is changed) */
+static void padkeys_set(int button, SDL_Scancode key)
+{
+    int j = 0;
+    while (j < g_npadkeys && g_padkeys[j].button != button) j++;
+    if (j == g_npadkeys) { if (g_npadkeys == PAD_KEYS_MAX) return; g_npadkeys++; }
+    g_padkeys[j].button = button; g_padkeys[j].key = key; g_padkeys[j].held = 0;
+}
+
 static void key_event(SDL_Scancode s, int down)
 {
     if (s == SDL_SCANCODE_PAUSE) {
@@ -1744,6 +1769,15 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
             case SDL_EVENT_QUIT: running = 0; break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN: case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+                if (g_set.open && g_set.padkey_stage == 1) {        /* Controller button as key: this is the button */
+                    g_set.padkey_button = ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? ev.gbutton.button : ev.jbutton.button;
+                    if (g_set.padkey_button >= 0 && g_set.padkey_button <= 31) {
+                        g_set.padkey_stage = 2;
+                        snprintf(g_set.note, sizeof g_set.note, "Button %d", g_set.padkey_button);
+                    }
+                }
+                break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
             case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
@@ -1852,6 +1886,17 @@ int main(int argc, char **argv)
                 }
                 if (g_set.open) {                           /* the menu has the keyboard */
                     if (down) {
+                        if (g_set.padkey_stage) {           /* Controller button as key: stage 1 waits for a button, stage 2 for this key */
+                            const SDL_Scancode psc = ev.key.scancode;
+                            if (psc == SDL_SCANCODE_ESCAPE) g_set.padkey_stage = 0;
+                            else if (g_set.padkey_stage == 2) {
+                                padkeys_set(g_set.padkey_button, psc);
+                                padkeys_save(settings_path);
+                                snprintf(g_set.note, sizeof g_set.note, "Button %d now presses %s", g_set.padkey_button, SDL_GetScancodeName(psc));
+                                g_set.padkey_stage = 0;
+                            }
+                            break;
+                        }
                         if (g_set.remap_stage) {            /* Remap a key: this press is one of its two keys */
                             const SDL_Scancode rsc = ev.key.scancode;
                             if (rsc == SDL_SCANCODE_ESCAPE) g_set.remap_stage = 0;
@@ -1885,6 +1930,12 @@ int main(int argc, char **argv)
                             if (clip) { settings_text_input(&g_set, clip); SDL_free(clip); }
                         } else if (k >= 0) settings_key_event(&g_set, (settings_key)k);
                         if (g_set.picks_changed && !g_set.picker) { g_set.picks_changed = 0; write_custom_fixes(&g_set, settings_path); }
+                        if (g_set.clear_padkeys) {          /* Clear controller keys: forget them now and in the file */
+                            g_set.clear_padkeys = 0;
+                            g_npadkeys = 0;
+                            padkeys_save(settings_path);
+                            snprintf(g_set.note, sizeof g_set.note, "Controller keys cleared");
+                        }
                         if (g_set.clear_remaps) {           /* Clear key remaps: forget them now and in the file */
                             g_set.clear_remaps = 0;
                             remap_clear();

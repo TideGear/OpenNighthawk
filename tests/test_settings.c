@@ -73,12 +73,21 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
-    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 7);   /* wraps to the last row */
-    CHECK(s.top == n + 8 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
-    for (int k = 0; k < n + 7; k++) settings_key_event(&s, SKEY_UP);
+    CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 9);   /* wraps to the last row */
+    CHECK(s.top == n + 10 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    for (int k = 0; k < n + 9; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
-    CHECK(s.cursor == n + 7);
+    CHECK(s.cursor == n + 9);
+    /* Controller button as key and Clear controller keys ask the host and keep the menu open */
+    s.cursor = n + 7;
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(s.open && s.padkey_stage == 1);
+    s.padkey_stage = 0;
+    s.cursor = n + 8;
+    settings_key_event(&s, SKEY_ENTER);
+    CHECK(s.open && s.clear_padkeys);
+    s.clear_padkeys = 0;
     /* Remap a key and Clear key remaps ask the host and keep the menu open */
     s.cursor = n + 2;
     settings_key_event(&s, SKEY_ENTER);
