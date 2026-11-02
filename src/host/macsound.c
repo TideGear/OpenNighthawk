@@ -108,14 +108,11 @@ int macsound_resource(int id)
     case 36: return 322;
     case 37: return 321;
     case 38: return 200;
-    /* Found by the Mac program's own calls (31 October 2026, docs/sound-board.md): the intro music is the Mac's title music
-     * (200); the weapons page's box choice (29) and placed weapon (30) are the Mac's 323 and 325 at the same moments; the
-     * flight program's bay-door key asks for 31, which main.c passes here as 331 (START's 31 is the launch animation). */
-    case 3: {                                    /* F117_MAC_INTRO=200|321|322 (diagnostic): which recording the intro music is, while it is settled by ear */
-        static int pick = -1;
-        if (pick < 0) { const char *e = getenv("F117_MAC_INTRO"); pick = e ? atoi(e) : 0; }
-        return pick == 321 || pick == 322 ? pick : 200;
-    }
+    /* Found by the Mac program's own calls (31 October 2026, docs/sound-board.md): the weapons page's box choice (29) and placed
+     * weapon (30) are the Mac's 323 and 325 at the same moments; the flight program's bay-door key asks for 31, which main.c passes
+     * here as 331 (START's 31 is the launch animation). The DOS intro music (3, PLAYER after the logo) has no Mac recording: the
+     * owner tried all three long ones (200, 321, 322) and none is that song (1 Nov 2026), so the DOS driver plays it. */
+    case 3: return 0;
     case 29: return 323;
     case 30: return 325;
     case 331: return 323;

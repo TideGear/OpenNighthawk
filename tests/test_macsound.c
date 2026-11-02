@@ -30,7 +30,7 @@ int main(int argc, char **argv)
     macsound *s = macsound_load(dir, 44100);
     CHECK(s);
     CHECK(macsound_resource(36) == 322 && macsound_resource(4) == 304 && macsound_resource(21) == 0);
-    CHECK(macsound_resource(3) == 200 && macsound_resource(29) == 323 && macsound_resource(30) == 325 && macsound_resource(331) == 323);
+    CHECK(macsound_resource(3) == 0 && macsound_resource(29) == 323 && macsound_resource(30) == 325 && macsound_resource(331) == 323);
     CHECK(macsound_resource(31) == 0 && macsound_resource(2) == 0 && macsound_resource(32) == 0);
     CHECK(macsound_has(s, 36) && macsound_has(s, 4) && !macsound_has(s, 5) && !macsound_has(s, 37));
     CHECK(!macsound_play(s, 5));

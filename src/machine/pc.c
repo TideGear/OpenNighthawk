@@ -1194,6 +1194,27 @@ static int overhead_loop_step(machine_t *m)
     return 1;
 }
 
+/* The sound drivers' sampled-speech wait: `cmp cl,0; je` back to itself (80 F9 00 74 FB), spun by the main routine while the timer
+ * interrupt (about 8,000 a second) writes the samples and sets CL when the sound ends (ISOUND and RSOUND at 0x2517 and 0x2D5D of their
+ * images, the AdLib driver the same loop). While CL is 0 nothing changes between two events: an interrupt is taken only at an event
+ * boundary, so as many whole iterations as fit before the next one run as one step, two clocks each, leaving what the single steps
+ * leave (the clock, the flags of `cmp cl,0`, IP back at the cmp, the last instruction's address). The interpreter ran the pair at
+ * about 36 M instructions a second against the 60 M the game needs, so a radio call stalled the machine (S9, the choppy "cleared for
+ * take off"). Not in the 386 profile, nor with TF set. */
+static int spin_wait_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->t386 || (c->flags & F_TF) || (c->r[R_CX] & 0xFF) || c->stop_at < c->icount + 2) return 0;
+    static const uint8_t pat[5] = { 0x80, 0xF9, 0x00, 0x74, 0xFB };
+    const uint32_t at = phys(c->seg[S_CS], c->ip);
+    for (int i = 0; i < 5; i++) if (mem_read8(c, at + (uint32_t)i) != pat[i]) return 0;
+    const uint64_t n = (c->stop_at - c->icount) / 2;
+    alu_sub(c, 0, 0, 0, 0);                                  /* the flags `cmp cl,0` leaves with CL = 0 */
+    c->icount += 2 * n;
+    c->op_cs = c->seg[S_CS]; c->op_ip = (uint16_t)(c->ip + 3);
+    return 1;
+}
+
 int machine_run(machine_t *m, uint64_t until)
 {
     cpu_t *c = &m->cpu;
@@ -1248,6 +1269,7 @@ int machine_run(machine_t *m, uint64_t until)
                     }
                 }
                 if (overhead_loop_step(m)) continue;
+                if (spin_wait_step(m)) continue;
                 if (recomp_run(m)) continue;
                 recomp_note_interp(m);
                 int rc = interp_step(m);
@@ -1281,6 +1303,7 @@ int machine_run(machine_t *m, uint64_t until)
                     }
                 }
                 if (overhead_loop_step(m)) continue;
+                if (spin_wait_step(m)) continue;
                 recomp_note_interp(m);
                 int rc = interp_step(m);
                 if (rc != RUN_SLICE) return rc;
