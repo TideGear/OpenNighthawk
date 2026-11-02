@@ -230,14 +230,26 @@ Host keys (chosen so as not to collide with the game's):
 
 | Keys | Action |
 |---|---|
+| ` (tilde) | the menu: two tabs, Settings and Keys; pauses the game. Tab switches tab, ` or Esc closes it |
 | Alt+Enter | toggle fullscreen |
-| Ctrl+Alt+S | settings menu (pauses the game) |
-| Ctrl+Alt+K | the game's key list, from its manual (pauses the game) |
 | Ctrl+Alt+P | pause / resume |
+| G, digits, Enter (watching a replay) | jump to that second |
 | + / - / 0 (watching a replay) | faster / slower / normal speed |
-| Ctrl+Alt+R (watching a replay) | start the replay again |
 | ] / [ (watching a replay) | jump 30 seconds on / back |
+| Ctrl+Alt+R (watching a replay) | start the replay again |
 | Ctrl+Alt+F12 | quit |
+
+Esc is the game's own (it cancels the Alt+Q quit dialog in flight, skips the title animation, cancels a text entry), so it
+only does anything in the menu while the menu is open. `Ctrl+Alt+S` and `Ctrl+Alt+K` still open the menu on the Settings and Keys tabs.
+
+**Changing keys.** Open the menu, go down the Settings tab to *Remap a key...*, press Enter, press the key to change, then the key it
+should act as (the line under the list confirms it). It is live at once and saved to `f117a.ini` as `remap = Q:W`; *Clear key remaps*
+removes them all. This maps one key to another: the game's own commands keep their keys, and the Keys tab lists the defaults.
+
+**Controllers and joysticks.** In the same menu: *Stick dead zone %*, *Invert stick X / Y*, *Fire 1 button* and *Fire 2 button* (0 south,
+1 east, 2 west, 3 north, in SDL's gamepad order), and *Controller button as key...* (press a controller button, then the key it should act
+as; *Clear controller keys* empties the list). The same in `f117a.ini`: `pad-deadzone`, `pad-invert-x`, `pad-invert-y`, `pad-fire1`,
+`pad-fire2`, `pad-keys = 2:G,3:Left Shift`.
 
 ### Settings file
 
