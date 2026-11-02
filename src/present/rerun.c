@@ -3,6 +3,7 @@
 #include "observe.h"
 #include "../fixes/fixes.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -291,24 +292,50 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
     if ((int)k == g_walk_k) return g_walk_busy ? 0 : walk_second(m);
     if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
-    if (g_air_done) return 0;
-    g_air_done = 1;
     const uint16_t ds = m->cpu.seg[S_DS];
-    /* Row a of the matrix is the words at B082 + 2a, B088 + 2a and B08E + 2a (a = 0 x', 1 y', 2 z'). The x row is divided by the width factor
-     * (the cone), and all three rows by the reach: the aircraft's size indicator [DEBE] is z' >> 3 and the game draws a model only once it
-     * is big enough (else a dot), while every screen position is a ratio of the three and does not move, so dividing them all by 2
-     * makes an aircraft a model at twice the distance. F117_WIDE_AIR_REACH=PERCENT (diagnostic; 100: the game's own distance). */
-    static int reach = -1;
-    if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
-    for (int a = 0; a < 3; a++)
-        for (int c = 0; c < 3; c++) {
-            const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
-            const int64_t w = (int16_t)rd16(m->mem, ds, at);
-            /* the cone three times as wide as the canvas: the test is on the aircraft's centre, and a near jet whose centre has
-             * left the margin still shows its nose or tail there */
-            const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
-            wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+    if (!g_air_done) {
+        g_air_done = 1;
+        /* Row a of the matrix is the words at B082 + 2a, B088 + 2a and B08E + 2a (a = 0 x', 1 y', 2 z'). The x row is divided by the width
+         * factor three times over (the cone; the test is on the centre), and all three rows by the reach: the aircraft's size indicator [DEBE]
+         * is z' >> 3 and the game draws a model only
+         * once it is big enough (else a dot), while every screen position is a ratio of the three and does not move, so dividing them all
+         * by 2 makes an aircraft a model at twice the distance. F117_WIDE_AIR_REACH=PERCENT (diagnostic; 100: the game's own distance). */
+        static int reach = -1;
+        if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
+        for (int a = 0; a < 3; a++)
+            for (int c = 0; c < 3; c++) {
+                const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
+                const int64_t w = (int16_t)rd16(m->mem, ds, at);
+                const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
+                wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+            }
+    }
+    /* The test is on the aircraft's centre, so a jet right beside the viewer, its centre level with the eye or just behind it, was dropped
+     * while its nose or tail was still in view. For the aircraft walk's call (the one returning to 9BDF) such a jet, its centre less than its
+     * size (F117_AIR_RADIUS, 0: off) behind the eye, is tested at a point moved forward along the view to just in front of the eye. A jet in
+     * front is left alone: the same depth also says how near it is ([DEBE], a model only when near), so moving every jet would turn near
+     * ones into dots. Only the copy's test sees the moved point (the arguments are the caller's copies, dropped after the call), and the model
+     * is drawn at its own position, Remastered clipping what is behind the eye. The offsets are x = C0D0 - x, y = y - C0DE and
+     * alt = (alt - 2DF4) >> 5, and B792 pairs the z' column's words with them as B082 + 4 with x, B088 + 4 with alt and B08E + 4 with y;
+     * z' is negative in front. */
+    const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+    static int radius = -1;
+    if (radius < 0) { const char *e = getenv("F117_AIR_RADIUS"); radius = e ? atoi(e) : 800; }
+    if (radius > 0 && rd16(m->mem, ss, sp) == 0x9BDF && !(m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80)) {
+        const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
+        const double l = sqrt(wx * wx + wa * wa + wy * wy);
+        const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), alt = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6));
+        const double ox = (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), oy = (int16_t)((uint16_t)y - rd16(m->mem, ds, 0xC0DE));
+        const double oa = (int16_t)((uint16_t)alt - rd16(m->mem, ds, 0x2DF4)) >> 5;
+        const double along = l > 0.0 ? (wx * ox + wy * oy + wa * oa) / l : -1.0;   /* the centre's distance behind the eye (negative: in front) */
+        if (along > -16.0 && along < radius) {
+            const double step = along + 16.0;                                           /* to 16 units in front */
+            const int sx = (int)lround(-step * wx / l), sy = (int)lround(-step * wy / l), sa = (int)lround(-step * wa / l);
+            wr16(m->mem, ss, (uint16_t)(sp + 2), (uint16_t)(x - sx));
+            wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(y + sy));
+            wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)(alt + 32 * sa));
         }
+    }
     return 0;
 }
 

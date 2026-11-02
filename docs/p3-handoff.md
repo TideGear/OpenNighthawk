@@ -373,3 +373,24 @@ ONTests exe hash EA7C38B1F1BA... (clean P3 branch, 832/832).
 - The grey line is scene geometry at the horizon toward the runway's end (owner's GOG shots: behind the jet), not the HUD. Whole lines now follow the original's painting order (`line_by_seq`, `seq` buffer in remaster_raster): over polygons painted before them, behind nearer polygons painted after them. Not yet seen on the owner's moment.
 - HUD pass order measured (`F117_HUD_ORDER`): every model of a frame is asked for before the HUD pass.
 - Draw distance: unchanged; `F117_WIDE_SCENERY=N` (second walk, uncapped nested run, far plane 30000 for it) is an experiment, off by default.
+
+## 2 Nov 13:05: handoff (start here for the next conversation)
+
+**State.** ONTests had B9FE1AAB25B6 at 12:58 (clean P3 branch `p3-gate` in `C:\Users\Tideg\f117-recomp-local\gate-master`, 832/832): decal lines, the ground rule, Tab screenshots, aircraft cone 3x. The aircraft-size change below is in master; check whether ONTests was refreshed after it (hash in the last commit message or `Get-FileHash`).
+
+**What changed today (Remastered only, all in `src/present`):**
+- Screenshots: Tab (menu closed) or Ctrl+Alt+C saves `screenshots/<session>-clock<icount>.bmp` beside `sessions`. Replay that session to the clock to reproduce (`F117_PRESENT_SHOTS=prefix F117_PRESENT_SHOTS_FROM=clock F117_PRESENT_SHOTS_COUNT=1`, `F117_WINDOW=1920x1080`, `--present-scale 3`).
+- Depth model (remaster_raster.c, `owner` buffer = request serial << 12 | face, bit 11 = ground object): lines and dots are decals on their own face (always over it; over their own object's other faces unless 1% nearer; behind other objects that are 3% nearer). Ground objects (every polygon level, world axis 1 up) never hide what stands on them and cover it only where 3% nearer. `F117_LINES=old` restores the old rules (50x bias); `F117_DECAL_TOL`, `F117_FLAT_AXIS`, `F117_FLAT_SHOW=1` (level polygons magenta) are diagnostics.
+- Aircraft (rerun.c `wide_air_exec`): cone three times the canvas. Size-aware test ON (`F117_AIR_RADIUS`, default 800 units, 0: off): for the aircraft walk's call to `B5DC` (return 9BDF), a jet whose centre is level with the eye or up to the radius behind it is tested at a point 16 units in front (offset pairing from B792: B082+4 with x = C0D0-x, B088+4 with alt = (alt-2DF4)>>5, B08E+4 with y = y-C0DE; z' negative in front). Jets in front are untouched, because the same depth picks model or dot ([DEBE] << cl > -32: model); moving every jet made near ones dots (first two attempts, ONShots `20261102-1305-jet-size-*`). Checked on session 20261102-122500 clocks 6.42-6.70 G: identical to off (that jet never vanished there). NOT yet seen on the owner's vanishing moment: needs their Tab shot of it. Next: the same size-aware test for every object (general cull E3AC/E3BF with each decoded model's radius), which the owner asked for.
+- Near plane per class moved back (R16), flags over poles, HUD-pass order diagnostic (`F117_HUD_ORDER`: every model is asked for before the HUD pass).
+
+**Owner's open items (2 Nov 13:00):**
+1. Jets vanish too early when very close in the margins: size-aware aircraft test in (see above), unconfirmed on the owner's moment. The owner wants size-aware visibility for all objects.
+2. Grey/green horizon line through jets: decals fixed the hangars (clock 2555000000); at 6172000000 the line runs above the jet's back in my replay; the owner still sees it crossing (their image at that moment). Compare original vs Remastered there.
+3. Lights "peeking through" a jet (same moment): likely the same question.
+4. Hangar door bottoms covered by the ground: ground rule, owner to check.
+5. Runway over a parked jet: owner's shot was not saved (maybe a replay: `replay-clock*.bmp` in the working folder); clock 6392270028 is a candidate.
+6. Draw distance (scenery pop-in): unchanged. The walker visits a 3x3 cell neighbourhood per ring; `F117_WIDE_SCENERY=N` (second walk) drew nothing more. Needs a new design.
+7. The owner asked whether Remastered is too faithful to the original's renderer hacks: agreed direction is own depth tests with decal lines (done), and object-size-aware visibility (aircraft started; scenery objects still centre-based with the per-class near plane).
+
+Owner preference this session: take screenshots in the replay at the owner's clocks and compare before claiming a fix; send comparison images (ONShots) with the claim.
