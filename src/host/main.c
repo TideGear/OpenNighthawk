@@ -197,6 +197,7 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     g_wide_filled = 0;
     int ww = wide_width();
     if (ww && !wide_prepare(ww)) ww = 0;
+    rerun_set_wide(ww ? ww * 100 / (320 * g_scale) : 100);   /* the copies see as wide as the canvas shows (the cull's side planes, in the copy only) */
     const uint64_t t0 = SDL_GetPerformanceCounter();
     const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
     g_wide_filled = composed && ww;
