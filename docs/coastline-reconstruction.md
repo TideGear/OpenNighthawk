@@ -49,35 +49,55 @@ agreement with any verified gameplay water boundary. Keep the existing depth,
 lights, hidden-door-line and margin-water regressions. Broader theatres and
 viewpoints still need coverage before calling a general correction complete.
 
-## 3 November stopping investigation
+## 3 November correction and verification
 
-Matched Phase 2 code was used as a guide and cross-checked against original
-decompressed VGAME instruction bytes and runtime observations. The terrain
-walker clamps eye height to at least two native units separately in each
-detail ring (07FD..0805: compare AX with 2, replace lower values with 2).
-At world eye height 24, rings 1/2 therefore see world height 24, ring 3 sees
-32, and ring 4 sees 128. Position rounding also differs by ring. This is a
-confirmed rendering discrepancy and a candidate contributor, not proof of
-the whole shoreline cause. The map-class bits remain unproven as water impact
-classification; no authoritative water collision boundary has been established.
+The matched Phase 2 walker was cross-checked against original VGAME bytes and
+runtime state. VGAME 07FD..0805 clamps each ring's eye height to two native
+units. At world height 24, rings 1/2 see height 24, ring 3 sees 32 and ring 4
+sees 128; X/Y also round per ring. Remastered now applies the inverse rounding
+translation after model evaluation, using the prepared view basis. Placement
+metadata follows deferred models. Dynamic placements receive no terrain offset.
+All rings share the finest ring's minimum height of two world units. Ground
+near clipping also scales with native units, so a coarse ring does not expose
+a larger hole directly beneath the camera. Native tests cover low heights,
+all four rings, both wide bottom corners and banked ground.
 
-A presentation-only ring-eye correction and independent projection tests were
-tried. The first comparison changed pixels but did not establish a stable
-coastline under the hangars. The experimental renderer/math source was removed
-from the final build and preserved with its tests in the local unfinished
-snapshot described in [p3-current-work.md](p3-current-work.md). Fine generic
-ground patches overwriting coarser water geometry remain another lead; verify
-geometry, transforms and classification before choosing a shared land/water
-edge. No simulation or collision changes are authorized for this visual fix.
+The earlier camera-only experiment appeared ineffective because the compositor
+kept native model pixels wherever the new picture had only background. A raw
+render placed the shore correctly, but the composite pasted the old blue strip
+back. A complete reconstructed scene now owns those cleared model footprints;
+HUD, artwork and text remain protected. Failed model decoding/dropped geometry
+or an unsupported background disable this broader replacement. A native live
+compositor test exercises complete, failed-model and low-detail captures.
 
-Local evidence: `private/settings-20261103/coast-diagnostic/process.log`,
-`original-ground-instructions.txt`, and `coast-captures/`. The capture run is
-partial/failed: one requested clock was sampled one instruction later and
-failed the script's exact-clock assertion. Do not describe it as a completed
-twelve-view validation. Saved experimental executable and images are research
-artifacts, not a deployment candidate. Original game binaries remain ignored.
+This fixes projection/composition rather than redefining terrain topology.
+Land and water retain the authored world-space edges and use the same camera.
+No authoritative water-impact boundary has been found, and no collision or
+simulation rule has changed. Original and Enhanced retain their prior behavior.
 
-The owner's additional report is ground not lining up in widescreen margins.
-This remains OPEN alongside shoreline motion; the earlier near-plane fix only
-addresses the false brown bottom strip. Check ground joins across center and
-side margins while banking, moving at ground level and crossing the coast.
+The installed build is SHA-256
+`A26310FF2A8DE6DB548B3E91395A05A937B699B444EA24FBBDC41B2F90A8B86E`.
+The reported twelve-view sequence was captured and visually reviewed: ground
+stays below the hangars, the shoreline no longer slides down their sides, and
+the subsequent water crossing fills the wide margins without the old cutoff.
+The new moving foreground-ground regression passes. Both diagnostic controls
+(native ring eye and native footprint retention) restore the faulty strip and
+fail that regression. All eleven host cases, nine focused native tests and 24
+Python tests pass. Identical full 1 MB RAM snapshots across Original, Enhanced,
+Remastered and the two controls demonstrate isolation at the sampled clock.
+This does not replace the unchanged full machine gates or owner visual review.
+
+Local evidence under `private/settings-20261103/`: `coast-final-twelve/`
+(sheet, all images, requested/actual clocks and executable hash),
+`coast-host-final/` (complete bound report and moving gallery), and
+`coast-isolation/` (five RAM comparisons and rejected visual controls).
+One twelve-view sample is one instruction later than requested; the report
+records it explicitly. This completed run supersedes the earlier failed exact-
+clock script, whose failure was a capture assertion rather than a game failure.
+`coast-geometry/render.png` and its composite show the stale-footprint cause;
+`coast-diagnostic/process.log` and `original-ground-instructions.txt` establish
+the original eye floor. Research binaries and original game data stay ignored.
+
+Owner confirmation remains pending. Continue broader theatre/mission coverage
+and fast turns, including centre/margin ground joins while banked and near the
+surface, before claiming every terrain/motion case is complete.

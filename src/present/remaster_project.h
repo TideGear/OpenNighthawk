@@ -28,4 +28,12 @@ int remaster_pixel_exact(int32_t v, int32_t z, int *pixel);
 /* The projected offset in pixels with its fraction, 256 v / z; 0 if z is not in front of the eye. */
 int remaster_project(int32_t v, int32_t z, double *offset);
 
+/* Presentation-only correction to a terrain ring's quantized camera.
+ * view is the original walk's world X, world Y and eye height. offset is
+ * in model-position axes (X, height, reversed world Y), in that ring's units.
+ * The original walker rounds X/Y and clamps eye height to two ring units;
+ * applying this translation restores one common world camera for all rings,
+ * retaining the finest ring's two-world-unit minimum eye height. */
+int remaster_ring_camera_offset(const uint32_t view[3], unsigned ring, double offset[3]);
+
 #endif

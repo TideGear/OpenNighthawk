@@ -49,8 +49,10 @@ struct remaster_live {
     uint16_t model, bank;
     int16_t position[3];
     double pending_inv_depth;
-    struct { uint16_t bank, model; int16_t position[3]; double inv_depth; } units[512];
+    double pending_camera_offset[3];
+    struct { uint16_t bank, model; int16_t position[3]; double inv_depth, camera_offset[3]; } units[512];
     unsigned nunits;
+    int frame_complete, done_complete;
     unsigned frames, want_frame;
     int w, h;
     char *out_path;
@@ -101,6 +103,7 @@ void remaster_live_copy_begin(remaster_live *r)
     r->nunits = 0;
     r->have_band = 0;
     r->have_done = 0;
+    r->frame_complete = r->done_complete = 0;
     r->done.n = 0;
     r->hud_at = r->done_hud_at = -1;
 }
@@ -347,7 +350,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         t->inv_depth_scale = p->inv_depth_scale;
         /* Ground can pass directly under the camera. Clipping it at the
          * model near plane exposes the background below it in tall margins. */
-        t->near_z = p->flat ? 0x1000 : 0x10000;
+        t->near_z = p->flat ? remaster_ground_near_z(p->inv_depth_scale) : 0x10000;
         uint32_t colour;
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
         unsigned idx = 0;
@@ -403,7 +406,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
                 t->inv_depth_scale = p->inv_depth_scale;
-                t->near_z = p->flat ? 0x1000 : 0x10000;
+                t->near_z = p->flat ? remaster_ground_near_z(p->inv_depth_scale) : 0x10000;
                 /* Lines and dots are decals on the face they belong to (remaster_raster.h, line_decal): over their own face, over the
                  * faces of their own object unless clearly nearer, and behind anything else that is nearer, in both passes.
                  * F117_LINES=old (diagnostic) restores the earlier rules: whole lines with a 50x bias, lights by the ground's slope. */
@@ -575,7 +578,7 @@ typedef struct {
     uint8_t *dst, *mask;
     uint32_t *rgb, *wide_out;
     const remaster_target *t;
-    int w, h, tw, xoff, wide, x0, x1, y0, y1, parts;
+    int w, h, tw, xoff, wide, x0, x1, y0, y1, parts, complete;
     long replaced[REMASTER_PARTS], kept[REMASTER_PARTS][64];
 } replace_job;
 
@@ -612,8 +615,11 @@ static void replace_part(void *arg, int part)
     for (int y = ry0; y < ry1; y++)
         for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; x++) {
             const long i = (long)y * w + x, ti = (long)y * tw + x + xoff;     /* i: the game's picture; ti: the same pixel on the canvas */
-            /* Where the Enhanced picture drew a model polygon (not a sky or ground strip) and Remastered has no model
-             * geometry (the terrain polygons, which are not model requests yet), the original pixel stays. */
+            /* A complete reconstructed scene owns its background as well as
+             * its surfaces. Retaining a native polygon where a corrected
+             * shoreline moved away would paste the old shore back over the
+             * new ground and make the centre disagree with the margins.
+             * Incomplete captures retain the older conservative fallback. */
             /* Remastered owns model outlines even where its depth test removed the line.
              * Requiring geometry here resurrects the original's stale door strips on
              * the ground just outside the hangar's new silhouette. */
@@ -623,7 +629,7 @@ static void replace_part(void *arg, int part)
              * extends beyond the new polygon silhouette. Otherwise an old
              * polygon row cuts a stripe through the correctly drawn light. */
             if ((is_scene_tag(tag[i]) || outline) &&
-                (outline || t.inv_z[ti] > 0.0f || (t.stroke_z && t.stroke_z[ti] > 0.0f) || is_span_tag(tag[i]))) {
+                (j->complete || outline || t.inv_z[ti] > 0.0f || (t.stroke_z && t.stroke_z[ti] > 0.0f) || is_span_tag(tag[i]))) {
                 uint32_t col = t.color[ti];
                 /* Only bright lines (the doors' yellow, the lights, the runway markings): the dark dots and lines the original draws
                  * behind a door must stay behind it. */
@@ -686,6 +692,14 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     /* A wide picture (wide_w > w) is drawn once, on a canvas wide_w across with the game's own picture xoff pixels in: the composite
      * reads its centre, and the margins and the centre together are the wide picture (wide_out). */
     const int tw = wide_w > w && mask && rgb && wide_out ? wide_w : w, xoff = (tw - w) / 2, wide = tw > w;
+    int complete = r->done_complete && r->done_have_band && !getenv("F117_REMASTER_NATIVE_FOOTPRINT");
+    if (complete) {
+        band_state background;
+        band_exact_list exact;
+        band_fine_list fine;
+        complete = band_state_load(r->done_band, BAND_REC_BASE, &background) &&
+            !band_exact(&background, &exact) && !band_fine(&background, &exact, &fine) && fine.n > 0;
+    }
     remaster_target t;
     t.w = tw; t.h = h;
     /* The buffers are kept between pictures (grown, never freed): allocating and freeing about 13 MB every picture made the
@@ -807,6 +821,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         memset(&rj, 0, sizeof rj);
         rj.src = src; rj.tag = tag; rj.dac = dac; rj.dst = dst; rj.mask = mask; rj.rgb = rgb; rj.wide_out = wide_out; rj.t = &t;
         rj.w = w; rj.h = h; rj.tw = tw; rj.xoff = xoff; rj.wide = wide; rj.x0 = x0; rj.x1 = x1; rj.y0 = y0; rj.y1 = y1; rj.parts = parts;
+        rj.complete = complete;
         run_parts(replace_part, &rj, parts);
         for (int k = 0; k < parts; k++) {
             replaced += rj.replaced[k];
@@ -864,6 +879,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             memset(&rj1, 0, sizeof rj1);
             rj1.src = src; rj1.tag = tag; rj1.dac = dac; rj1.dst = dst; rj1.mask = mask; rj1.rgb = rgb; rj1.wide_out = wide_out; rj1.t = &t;
             rj1.w = w; rj1.h = h; rj1.tw = tw; rj1.xoff = xoff; rj1.wide = wide; rj1.x0 = x0; rj1.x1 = x1; rj1.y0 = y0; rj1.y1 = y1; rj1.parts = 1;
+            rj1.complete = complete;
             run_parts(replace_part, &rj1, 1);
             if (sc_col && sc_str && sc_z && getenv("F117_REMASTER_THREADCHECK")[0] == '2') {
                 size_t dc = 0, ds = 0, dz = 0; int fy_c = -1, fy_s = -1, fy_z = -1, ly = -1;
@@ -1029,10 +1045,12 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
         r->pending_inv_depth = 1.0;
+        memset(r->pending_camera_offset, 0, sizeof r->pending_camera_offset);
         for (unsigned u = r->nunits; u > 0; --u) {
             if (r->units[u - 1].bank == r->bank && r->units[u - 1].model == r->model &&
                 !memcmp(r->units[u - 1].position, r->position, sizeof r->position)) {
                 r->pending_inv_depth = r->units[u - 1].inv_depth;
+                memcpy(r->pending_camera_offset, r->units[u - 1].camera_offset, sizeof r->pending_camera_offset);
                 break;
             }
         }
@@ -1049,8 +1067,34 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         } else if (r->pending) {
             r->pending = 0;
             const size_t first = r->frame.n;
+            unsigned dropped[3];
+            memcpy(dropped, remaster_scene_dropped, sizeof dropped);
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
-            for (size_t i = first; i < r->frame.n; ++i) r->frame.prim[i].inv_depth_scale = r->pending_inv_depth;
+            if (n < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
+            int32_t correction[3] = { 0, 0, 0 };
+            if (!getenv("F117_REMASTER_NATIVE_RING_EYE")) {
+                /* Use the prepared view basis, not an object's part rotation.
+                 * Geometry is already emitted, so facing/material rules and
+                 * original machine state remain untouched. */
+                for (int axis = 0; axis < 3; ++axis) {
+                    double value = 0.0;
+                    for (int world = 0; world < 3; ++world)
+                        value += r->pending_camera_offset[world] *
+                            (int16_t)peek16(m, m->cpu.seg[S_DS], (uint16_t)(0x7B28 + 2 * (3 * world + axis)));
+                    correction[axis] = (int32_t)llround(value);
+                }
+            }
+            for (size_t i = first; i < r->frame.n; ++i) {
+                remaster_prim *p = &r->frame.prim[i];
+                p->inv_depth_scale = r->pending_inv_depth;
+                for (int vertex = 0; vertex < p->n; ++vertex) {
+                    int32_t *coordinates[3] = { &p->v[vertex].x, &p->v[vertex].y, &p->v[vertex].z };
+                    for (int axis = 0; axis < 3; ++axis) {
+                        const uint32_t bits = (uint32_t)*coordinates[axis] + (uint32_t)correction[axis];
+                        *coordinates[axis] = bits <= INT32_MAX ? (int32_t)bits : -(int32_t)(UINT32_MAX - bits) - 1;
+                    }
+                }
+            }
             if (n < 0) r->refused++; else r->added++;
             if (n >= 0 && validate_on()) validate_model(r, m);
             {   static int want = -2;
@@ -1077,6 +1121,29 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             r->units[u].position[1] = (int16_t)(peek16(m, ss, sp + 14) - peek16(m, ds, 0x49B0));
             r->units[u].position[2] = (int16_t)(peek16(m, ds, 0x49AE) - peek16(m, ss, sp + 12));
             r->units[u].inv_depth = ldexp(1.0, shift);
+            memset(r->units[u].camera_offset, 0, sizeof r->units[u].camera_offset);
+            const unsigned caller = peek16(m, ss, sp);
+            uint32_t view[3] = { 0, 0, 0 };
+            if (caller == 0x06A6 || caller == 0x075E) {
+                const uint16_t bp = m->cpu.r[R_BP];
+                for (int axis = 0; axis < 3; ++axis) {
+                    const uint16_t at = (uint16_t)(bp + 8 + 4 * axis);
+                    view[axis] = peek16(m, ss, at) | (uint32_t)peek16(m, ss, (uint16_t)(at + 2)) << 16;
+                }
+                remaster_ring_camera_offset(view, ring, r->units[u].camera_offset);
+            }
+            /* Read-only diagnostic for terrain-ring camera quantization. */
+            const char *placement_from = getenv("F117_REMASTER_PLACEMENT_LOG_FROM");
+            static unsigned placements_logged[5];
+            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < 4 &&
+                (caller == 0x06A6 || caller == 0x075E) &&
+                m->cpu.icount >= strtoull(placement_from, NULL, 0)) {
+                fprintf(stderr, "[placement] clock %llu ring %u caller %04X model %u view %u,%u,%u native-eye %d,%d,%d position %d,%d,%d\n",
+                        (unsigned long long)m->cpu.icount, ring, caller, type, view[0], view[1], view[2],
+                        (int16_t)peek16(m, ds, 0x49AC), (int16_t)peek16(m, ds, 0x49AE), (int16_t)peek16(m, ds, 0x49B0),
+                        r->units[u].position[0], r->units[u].position[1], r->units[u].position[2]);
+                ++placements_logged[ring];
+            }
         }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
         if (r->hud_at < 0) r->hud_at = (long)r->frame.n;
@@ -1093,6 +1160,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
             memcpy(r->done_band, r->band_rec, sizeof r->done_band);
             r->done_have_band = r->have_band; r->have_done = r->done.n > 0;
+            r->done_complete = r->frame_complete;
             memcpy(r->done_origin, r->origin, sizeof r->origin); memcpy(r->done_window, r->window, sizeof r->window);
         }
         {                                       /* this frame's band pass starts here: its argument is the view block */
@@ -1107,6 +1175,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
         r->frames++;
         remaster_frame_clear(&r->frame);
+        r->frame_complete = 1;
         r->pending = 0;
     }
     return 0;

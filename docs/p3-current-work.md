@@ -1,13 +1,16 @@
-# Stopping checklist: coastline and settings (3 November 2026)
+# Current checklist: coastline and settings (3 November 2026)
 
-The owner requested a handoff, commit, push and stop. This is a verified partial
-stopping point, not completion of Phase 3. Resume the remaining owner requests:
+Work resumed at the scheduled 8 a.m. Pacific time on 3 November. Phase 3 is
+incomplete. The shoreline correction is now installed for owner review; other
+settings requests remain open:
 
-- [ ] Finish a stable world-space Remastered shoreline, anchored to an
-  authoritative gameplay water boundary if one exists. The original/GOG issue
-  is owner-confirmed; use all twelve session-154150 screenshots and motion.
-- [ ] Correct ground alignment across the central view and both widescreen
-  margins, including banked views and low-altitude shoreline crossings.
+- [x] Correct the reported Remastered shoreline motion using a common camera
+  and complete-scene background ownership. All twelve views and a moving
+  regression pass; owner confirmation/broader terrain coverage remain pending.
+  No authoritative gameplay water boundary was established or changed.
+- [x] Correct the same scene's ground projection/composition across the centre
+  and widescreen margins, including ground near clipping at each ring scale.
+  Banked wide-ground native tests pass; broader owner viewpoint review is pending.
 - [ ] Saving and restarting settings must preserve normal SETUP auto-answering
   and apply edited values despite launcher command-line overrides.
 - [x] Show nondefault option values and nonempty resource folders in blue.
@@ -38,7 +41,6 @@ unverified work. Preserve unrelated owner files.
 
 Unfinished submenus/reset and experimental coastline source are preserved in
 `private/settings-20261103/unfinished-snapshot/` (ignored, local only).
-`base.json` records original base and source hashes. `resume-wip.patch` is
-relative to this stopping point: first run `git apply --check` on it, then apply
-only when deliberately resuming. It restores experiments, not accepted fixes.
-Do not use `original-wip.patch` over this newer menu commit.
+`base.json` records original base and source hashes. `resume-wip.patch` predates the accepted coastline correction. Check/apply only
+the settings paths when reusing its menu WIP; do not restore its old renderer.
+It remains unfinished host-integration work, not accepted settings behavior.

@@ -145,6 +145,17 @@ class ImageVerdicts(unittest.TestCase):
         im.putpixel((5,5), (178,154,24))
         self.assertFalse(host.feature_ok(im, yellow))
 
+    def test_old_shoreline_and_missing_ground_are_rejected(self):
+        feature = dict(kind="ground_fraction", roi=[0,0,12,12], minimum=0.98)
+        im = Image.new("RGB", (12,12), (70,66,52))
+        self.assertTrue(host.feature_ok(im, feature))
+        for colour in ((12,70,102), (0,0,0), (40,40,40), (255,255,170), (20,255,20)):
+            im.paste(colour, (0,0,12,12))
+            self.assertFalse(host.feature_ok(im, feature))
+        im.paste((70,66,52), (0,0,12,12))
+        im.paste((12,70,102), (0,10,12,12))
+        self.assertFalse(host.feature_ok(im, feature))
+
     def test_frozen_sequence_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             files = []

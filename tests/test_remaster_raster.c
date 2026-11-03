@@ -39,6 +39,31 @@ static void quad(remaster_v3 q[4], int32_t z, double half, double dx)
 
 int main(void)
 {
+    /* The same ground directly under a two-unit-high camera must cover
+     * the bottom corners at every terrain detail, including wide margins.
+     * A fixed native near plane leaves holes at the coarser levels. */
+    for (int ring = 1; ring <= 4; ++ring) {
+      for (int bank = -1; bank <= 1; ++bank) {
+        const int scale = 1 << (2 * (4 - ring)), unit = 256 * scale;
+        remaster_target t = make(128, 48);
+        t.sx = t.sy = 32;
+        t.inv_depth_scale = scale;
+        t.near_z = remaster_ground_near_z(scale);
+        remaster_v3 floor[4] = {
+            {-1024*unit, 2*unit, -1024*unit}, {1024*unit, 2*unit, -1024*unit},
+            {1024*unit, 2*unit, 4096*unit}, {-1024*unit, 2*unit, 4096*unit}
+        };
+        for (int k = 0; k < 4; ++k) {
+            const double x = floor[k].x, y = floor[k].y, a = bank * 0.15;
+            floor[k].x = (int32_t)llround(x*cos(a)-y*sin(a));
+            floor[k].y = (int32_t)llround(x*sin(a)+y*cos(a));
+        }
+        CHECK(remaster_polygon(&t, floor, 4, GREEN) > 0);
+        CHECK(t.color[47*128] == GREEN && t.color[48*128-1] == GREEN);
+        CHECK(t.color[64] == BG);
+        free(t.color); free(t.inv_z);
+      }
+    }
     /* 1. the nearer face wins in either order: the original's whole-object sort cannot promise this */
     for (int order = 0; order < 2; order++) {
         remaster_target t = make(64, 48);

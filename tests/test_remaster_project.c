@@ -12,6 +12,35 @@
 
 int main(void)
 {
+    /* The same authored ground point must have the same world-relative
+     * position at every terrain detail. In the reported Halfar view the
+     * original ring-4 eye is 128 world units high; the real eye is only 24. */
+    {
+        uint32_t view[3] = { 984882, 800052, 24 };
+        double offset[3];
+        CHECK(remaster_ring_camera_offset(view, 4, offset));
+        CHECK(offset[0] == 0.21875 && offset[1] == 1.625 && offset[2] == -0.1875);
+        const unsigned heights[] = { 0, 1, 2, 23, 24, 31, 32, 63, 64, 127, 128, 129, 1024 };
+        for (unsigned h = 0; h < sizeof heights / sizeof heights[0]; ++h) {
+            view[2] = heights[h];
+            for (unsigned ring = 1; ring <= 4; ++ring) {
+                const unsigned scale = 1u << (2 * (ring - 1));
+                const double old_x = (view[0] + scale / 2) / scale;
+                const double old_y = (view[1] + scale / 2) / scale;
+                double old_height = (view[2] + scale / 2) / scale;
+                if (old_height < 2) old_height = 2;
+                CHECK(remaster_ring_camera_offset(view, ring, offset));
+                CHECK((985600.0 / scale - old_x + offset[0]) * scale == 718.0);
+                CHECK((-old_height + offset[1]) * scale == -(double)(view[2] < 2 ? 2 : view[2]));
+                CHECK((old_y - 800768.0 / scale + offset[2]) * scale == -716.0);
+            }
+        }
+        CHECK(!remaster_ring_camera_offset(view, 0, offset));
+        CHECK(offset[0] == 0 && offset[1] == 0 && offset[2] == 0);
+        CHECK(!remaster_ring_camera_offset(view, 5, offset));
+        view[0] = UINT32_MAX;
+        CHECK(!remaster_ring_camera_offset(view, 4, offset));
+    }
     /* ranges: by the high word of z */
     CHECK(remaster_range(0x01000000) == REMASTER_NEAR);
     CHECK(remaster_range(0x00FF0000) == REMASTER_MID);

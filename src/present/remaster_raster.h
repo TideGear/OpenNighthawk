@@ -17,6 +17,12 @@
 
 typedef struct { int32_t x, y, z; } remaster_v3;
 
+/* One quarter of a world unit, expressed in the current terrain ring's
+ * camera units. A fixed native near plane opens a larger ground gap at
+ * every coarser ring, especially when the camera sits on the surface. */
+static inline double remaster_ground_near_z(double inv_depth_scale)
+{ return 64.0 * (inv_depth_scale > 0.0 ? inv_depth_scale : 1.0); }
+
 typedef struct {
     int w, h;
     uint32_t *color;            /* w * h */

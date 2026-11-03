@@ -196,6 +196,9 @@ def feature_ok(im, feature):
         return not any(r >= 100 and g >= 80 and b < 50 for r, g, b in pixels)
     if kind == "water_fraction":
         return sum(r < 50 and b >= g and b > r + 24 for r, g, b in pixels) / len(pixels) >= feature["minimum"]
+    if kind == "ground_fraction":
+        return sum(r >= 32 and b < 96 and r >= b * 1.15 and g >= b * 1.1 and 0 <= r-g <= 32
+                   for r, g, b in pixels) / len(pixels) >= feature["minimum"]
     if kind == "dark_fraction":
         return sum(max(p) <= 32 for p in pixels) / len(pixels) >= feature["minimum"]
     raise ValueError(f"unknown renderer feature: {kind}")

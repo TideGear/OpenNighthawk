@@ -1,45 +1,52 @@
 # Handoff
 
-## Current stopping point: 3 November 2026
+## Current: 3 November shoreline correction
 
-The owner requested a handoff, commit, push and stop. **Phase 3 is incomplete.**
-The latest verified subset adds blue nondefault settings, plain-language help
-for every existing setting/folder/root action, and wrapped fix descriptions
-with scrolling by rendered height. It changes host menu presentation only.
-The current score remains P1 100.00%, P2 96.93%, P3 93.84%, All 97.51%.
+Work resumed at the owner's scheduled 8 a.m. Pacific time. The Remastered
+shoreline correction is implemented, verified against the twelve reported
+views, and installed in ONTests for owner review. Phase 3 remains incomplete.
 
-**Still open:** moving shoreline/hangar alignment; ground joins in widescreen
-margins (including banked/low views); restart/joystick prompt and command-line
-precedence; reset all settings; Advanced and Audio submenus; full key-binding
-list. See [current checklist](docs/p3-current-work.md) for the complete checklist. Original-game parity
-remains mandatory: visual overrides must not change simulation or collision.
-The owner already confirmed the shoreline defect in GOG; another independent
-GOG reproduction is not a prerequisite. No verified water-impact boundary has
-yet been found. Read [coast investigation](docs/coastline-reconstruction.md) before resuming the terrain work.
+Two coupled causes were confirmed: terrain rings used different rounded
+cameras and minimum eye heights, and the compositor pasted the old native
+water footprint back where corrected terrain exposed background. Remastered
+now uses one world camera (with the finest ring's two-world-unit eye floor),
+scales ground clipping consistently, and gives complete reconstructed scenes
+ownership of cleared background. Invalid model captures/unsupported backgrounds
+retain conservative fallback. HUD, text, sprites and cockpit remain protected.
+No simulation, collision, matched routine, Original or Enhanced change was made.
 
-**Unfinished work preserved locally, excluded from product:**
-`private/settings-20261103/unfinished-snapshot/` contains seven source snapshots,
-hashes and patches. Its `resume-wip.patch` is relative to this stopping commit;
-run `git apply --check` first. It restores the experimental ring-camera correction
-and unfinished menu grouping/reset code. Neither is accepted or integrated
-through all host paths. The experimental renderer was restored to HEAD before
-the final build. Diagnostic evidence and the partial coastline capture failure
-are described in the coast document. Do not deploy the saved candidate.exe.
+**Verified and installed:** SHA-256
+`A26310FF2A8DE6DB548B3E91395A05A937B699B444EA24FBBDC41B2F90A8B86E`.
+All eleven host integration cases pass, including the new moving shoreline
+foreground regression. Nine native tests and 24 Python verdict/presentation/title
+tests pass. Original, Enhanced, Remastered and both faulty-render controls produce
+identical full 1 MB guest RAM snapshots at the sampled clock. This is targeted
+presentation-isolation evidence, not a new full machine gate. Re-enabling either
+the old ring eye or old footprint rule reproduces the defect and fails the new
+regression. Owner visual confirmation remains pending.
 
-**Final verification:** build SHA-256 2FEE698AFF93BC1AF0047D5474881871B7A14FC09FDFA2195557663034AA6F35. All ten recorded-flight host cases pass, and the report verifies against this executable: private/settings-20261103/final-acceptance/report.json. Eight focused native menu/renderer tests and 23 Python acceptance/presentation/title tests pass. Menu previews were visually checked at 640x400 (private/settings-20261103/menu-defaults.png, menu-fixes.png); all text fits. These checks do not certify the still-open coast or restart fixes.
+Evidence (ignored, local): `private/settings-20261103/coast-host-final/report.json`
+and gallery; `coast-final-twelve/sheet.png` and report; `coast-isolation/report.json`.
+The twelve captures record requested and actual clocks: one is one instruction
+later, explicitly reported. The earlier failed capture run is superseded.
+The old ONTests executable is backed up as
+`private/settings-20261103/ONTests-before-coast.exe` (previous SHA `507D03C...`).
+Use the usual Roland launcher to review movement and ground joins in the margins.
 
-**Installation:** ONTests remains SHA-256
-`507D03C37566D8E64852625C5BC5814360C57B82C4A427258F5CDA38155F1516`.
-No new install or full machine gate was performed. The earlier audio cutoff
-and false brown margin strip fixes are installed, with owner confirmation
-pending; the shifting shoreline itself is not fixed. Existing host acceptance
-supplements machine parity and does not certify all visual fidelity.
+**Next work:** restart/joystick auto-answer and CLI precedence; reset all
+settings; Advanced and Audio grouping; full key-remapping list. Blue nondefaults,
+setting descriptions and wrapped fix descriptions were committed in ee2ec20.
+Read [current checklist](docs/p3-current-work.md) and [coast investigation](docs/coastline-reconstruction.md) for details and parity requirements. The original/GOG
+coast defect is owner-confirmed. No authoritative water-impact boundary has been
+established; this correction keeps the authored visual edges and simulation rules.
+Broader theatres/viewpoints still need review before a general fidelity claim.
 
-**Unrelated owner work preserved:** changes in `tools/sound_board_page.py` and
-`tools/sound_board_template.html`; untracked `.ppm`, `100`, `4k60.bat`,
-`docs/p2-completion-plan.md`, `original-fixed.bat`, and `x.slice(0`.
-Do not stage or clean these indiscriminately. Published history was not rewritten
-to add scores to older titles. All new titles use the score guard.
+**Preserved unfinished settings:** the ignored source snapshot at
+`private/settings-20261103/unfinished-snapshot/` still holds grouping/reset WIP.
+Its old full resume patch predates this accepted renderer: use only the settings
+paths when checking/applying it, never overwrite the completed coast correction.
+Unrelated sound-board edits and owner untracked files remain untouched.
+New commit titles must retain the current score prefix; scores are unchanged.
 
 Older sections below are historical; this section takes precedence.
 

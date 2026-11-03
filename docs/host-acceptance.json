@@ -43,6 +43,16 @@
   ],
   "render": [
     {
+      "name": "shoreline-under-hangars",
+      "session": "session-20261102-154150",
+      "clock": 12391636686,
+      "duration": 120000000,
+      "features": [
+        {"kind": "ground_fraction", "roi": [450, 175, 800, 190], "minimum": 0.98, "fraction": 1.0}
+      ],
+      "review": ["Ground stays beneath the hangars; native water footprints must not be pasted back over corrected terrain", "Review the full twelve-view coast sequence and banked centre/margin joins separately"]
+    },
+    {
       "name": "hangar-lights-and-flags",
       "session": "session-20261102-141108",
       "clock": 3522889584,

@@ -32,3 +32,25 @@ int remaster_project(int32_t v, int32_t z, double *offset)
     *offset = 256.0 * (double)v / (double)z;
     return 1;
 }
+
+int remaster_ring_camera_offset(const uint32_t view[3], unsigned ring, double offset[3])
+{
+    if (!offset) return 0;
+    offset[0] = offset[1] = offset[2] = 0.0;
+    if (!view || ring < 1 || ring > 4) return 0;
+    for (int axis = 0; axis < 3; ++axis)
+        if (view[axis] > INT32_MAX) return 0;
+    const unsigned scale = 1u << (2 * (ring - 1));
+    double rounded[3], exact[3];
+    for (int axis = 0; axis < 3; ++axis) {
+        rounded[axis] = ((uint64_t)view[axis] + scale / 2) / scale;
+        /* Preserve the original finest ring's two-world-unit eye floor,
+         * shared by every ring rather than multiplied by ring scale. */
+        exact[axis] = (double)(axis == 2 && view[axis] < 2 ? 2 : view[axis]) / scale;
+    }
+    if (rounded[2] < 2.0) rounded[2] = 2.0;
+    offset[0] = rounded[0] - exact[0];
+    offset[1] = rounded[2] - exact[2];
+    offset[2] = exact[1] - rounded[1];
+    return 1;
+}

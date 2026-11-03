@@ -28,6 +28,7 @@ by the suite are managed. Inherited `F117_*` diagnostics are cleared.
 | Overlapping effect | Normal bay-door key presses, routed effect 31, non-engine OPL key-on and mixed PCM while moving |
 | Stop | Normal brake key, sustained zero speed/thrust, quiet engine PCM after settling |
 | Audio observer isolation | Same derived input with diagnostics off; complete 1 MB guest RAM snapshot must match |
+| Shoreline below hangars | Ground remains in the reviewed foreground throughout the approach; stale native water footprints fail |
 | Hangar motion | Whole cream-light and flag components over a three-second sequence |
 | Rear hangars | No leaked yellow door strips throughout motion |
 | Transport/edge motion | Near aircraft surface continues to occlude the gray ground in the reviewed region |
@@ -83,6 +84,9 @@ recording, manifest or checker hashes. The ROM-free checker tests run in
 Windows CI and deliberately reject absent routing, dropped parameters, silent
 PCM, fixed pitch, missing effects, stuck voices, light stripes, missing flag
 endpoints, leaked yellow lines, water cutoffs, frozen motion and menu overflow.
+The shoreline foreground check also rejects water pasted back over corrected
+ground; it supplements the full twelve-view spatial review, rather than proving
+every shoreline or theatre from one image region.
 CI's ROM-free tests are **not** the local recorded-flight acceptance run.
 
 Always report three independent outcomes: **machine parity**, **host
