@@ -15,6 +15,8 @@ sidecar_t *sidecar_new_adlib(const uint8_t *file, size_t len, sidecar_opl_fn opl
 void       sidecar_free(sidecar_t *s);
 /* Entry 1: raise sound `id`. Returns 0 when the driver did not return within its step limit. */
 int        sidecar_request(sidecar_t *s, uint16_t id);
+/* Entry 1 with its second stack word (request 23's airspeed in knots). */
+int        sidecar_request_arg(sidecar_t *s, uint16_t id, uint16_t value);
 /* One game timer tick: entry 3 (the sequencer) on six ticks in seven, entry 4 (the noise step) every tick. */
 int        sidecar_tick(sidecar_t *s);
 uint64_t   sidecar_icount(const sidecar_t *s);

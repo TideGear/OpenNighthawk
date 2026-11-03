@@ -175,6 +175,8 @@ void audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
     else speaker_count(&a->spk, icount, reload);
 }
 
+uint64_t audio_next_frame(const audio_t *a) { return a->done - a->count; }
+
 size_t audio_take(audio_t *a, int16_t *out, size_t max_frames)
 {
     size_t n = 0;

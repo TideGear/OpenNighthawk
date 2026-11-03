@@ -213,11 +213,12 @@ static uint32_t mean_colour(uint32_t a, uint32_t b)
  * per pixel of the game's 320 x 200 picture across and down: h/240 and h/200 for a picture at the 4:3 shape, N and N for the
  * picture N times finer that the Enhanced presentation keeps (320N x 200N, stretched to 4:3 later). */
 static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
-                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage);
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage,
+                          double *timing);
 static void draw_scene(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
                        int have_band, const int origin[2], const int window[4], double ux, double uy)
 {
-    draw_scene_ex(m, t, fr, band_rec, have_band, origin, window, ux, uy, 0.0, 0, 0);
+    draw_scene_ex(m, t, fr, band_rec, have_band, origin, window, ux, uy, 0.0, 0, 0, NULL);
 }
 
 /* xoff is the target pixel at which the game's own 320-pixel-wide picture starts, and wide asks for the world to fill the
@@ -225,12 +226,12 @@ static void draw_scene(const machine_t *m, remaster_target *t, const remaster_fr
  * the rows, stages 1, 2 and 3 are run one after another, each on every worker (the lights' depth test reads the rows above and
  * below, so a stage must be finished everywhere before the next starts): 1 the clear, the bands and the polygons, 2 the whole-line
  * pass, 3 the ordinary line pass and the mask outside the game's window. */
-static double g_tm_clear, g_tm_bands, g_tm_prims, g_tm_lines;       /* F117_REMASTER_TIMING: milliseconds spent in each part of draw_scene_ex */
 static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster_frame *fr, const int32_t band_rec[],
-                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage)
+                          int have_band, const int origin[2], const int window[4], double ux, double uy, double xoff, int wide, int stage,
+                          double *timing)
 {
     const int do1 = stage == 0 || stage == 1, do2 = stage == 0 || stage == 2, do3 = stage == 0 || stage == 3;
-    double tq0 = now_ms();
+    const double tq0 = timing ? now_ms() : 0.0;
     t->cx = origin[0] * ux + xoff; t->cy = origin[1] * uy;           /* the game's origin, in its 320 x 200 pixels */
     t->sx = 256.0 * ux; t->sy = 256.0 * uy;
     t->near_z = 0x10000;
@@ -239,8 +240,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     t->palette = palette;
     t->paint_index = REMASTER_NO_INDEX;
     if (do1) remaster_clear(t, 0xFF000000u);
-    double tq1 = now_ms();
-    g_tm_clear += tq1 - tq0;
+    const double tq1 = timing ? now_ms() : 0.0;
+    if (timing) timing[0] += tq1 - tq0;
     if (do1 && have_band) {                     /* the sky and ground bands, as far as anything: the game's own state model */
         band_state st;
         band_exact_list ex;
@@ -333,17 +334,20 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 word_colour(m, p->colour_word, p->darken, &colour);
                 fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d owner %08X flat %u\n",
                         i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0, p->owner, (unsigned)p->flat);
-                if (p->kind == SCENE_LINES || p->kind == SCENE_DOTS)
+                if (p->kind == SCENE_LINES || p->kind == SCENE_DOTS || getenv("F117_REMASTER_PROBE_VERTICES"))
                     for (int k = 0; k < p->n; ++k)
                         fprintf(stderr, "[probe]   vertex %d: %d,%d,%d\n", k, p->v[k].x, p->v[k].y, p->v[k].z);
             }
         }
     }
-    double tq2 = now_ms();
-    g_tm_bands += tq2 - tq1;
+    const double tq2 = timing ? now_ms() : 0.0;
+    if (timing) timing[1] += tq2 - tq1;
     for (size_t i = 0; do1 && i < fr->n; i++) {
         const remaster_prim *p = &fr->prim[i];
         t->inv_depth_scale = p->inv_depth_scale;
+        /* Ground can pass directly under the camera. Clipping it at the
+         * model near plane exposes the background below it in tall margins. */
+        t->near_z = p->flat ? 0x1000 : 0x10000;
         uint32_t colour;
         if (!word_colour(m, p->colour_word, p->darken, &colour)) continue;
         unsigned idx = 0;
@@ -366,8 +370,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         else if (p->kind == SCENE_DOTS)
             for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
     }
-    double tq3 = now_ms();
-    g_tm_prims += tq3 - tq2;
+    const double tq3 = timing ? now_ms() : 0.0;
+    if (timing) timing[2] += tq3 - tq2;
     if (t->line_strong) {                       /* the lines, after the polygons: whole (huge bias) into line_strong, then as the depth allows */
         const size_t px = (size_t)(remaster_row_hi(t) - remaster_row_lo(t)) * t->w, off = (size_t)remaster_row_lo(t) * t->w;   /* this call's rows */
         int any_bright = 0;                     /* only bright lines are ever taken whole (the composite checks): skip the pass without any */
@@ -399,6 +403,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 const double line_w = ux > 1.0 ? ux : 1.0;
                 t->paint_index = (uint16_t)idx;
                 t->inv_depth_scale = p->inv_depth_scale;
+                t->near_z = p->flat ? 0x1000 : 0x10000;
                 /* Lines and dots are decals on the face they belong to (remaster_raster.h, line_decal): over their own face, over the
                  * faces of their own object unless clearly nearer, and behind anything else that is nearer, in both passes.
                  * F117_LINES=old (diagnostic) restores the earlier rules: whole lines with a 50x bias, lights by the ground's slope. */
@@ -423,7 +428,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0; t->line_decal = 0;
         if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
-    g_tm_lines += now_ms() - tq3;
+    if (timing) timing[3] += now_ms() - tq3;
     if (!wide && do3) {                         /* nothing outside the game's clip window */
         const int x0 = (int)(window[0] * ux), x1 = (int)((window[2] + 1) * ux);
         const int y0 = (int)(window[1] * uy), y1 = (int)((window[3] + 1) * uy);
@@ -532,14 +537,31 @@ typedef struct {
     int have_band, wide, parts, stage;
     const int *origin, *window;
     double n, xoff;
+    /* A worker owns its counters; only the caller combines them after all
+     * stage barriers. Never update shared floating-point accumulators here. */
+    double (*timing)[4];
+    int row_tile;
 } scene_job;
 
 static void scene_rows_part(void *arg, int part)
 {
     const scene_job *j = (const scene_job *)arg;
     remaster_target t = j->base;
-    if (j->parts > 1) { t.y_lo = t.h * part / j->parts; t.y_hi = t.h * (part + 1) / j->parts; }
-    draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage);
+    if (j->parts > 1 && j->row_tile > 0) {
+        /* Spread the narrow, busy horizon across workers rather than leaving
+         * its lines and models in one contiguous worker band. A stage still
+         * finishes all rows before any worker starts the next stage. */
+        for (int row = part * j->row_tile; row < t.h; row += j->parts * j->row_tile) {
+            t.y_lo = row;
+            t.y_hi = row + j->row_tile < t.h ? row + j->row_tile : t.h;
+            draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage,
+                          j->timing ? j->timing[part] : NULL);
+        }
+    } else {
+        if (j->parts > 1) { t.y_lo = t.h * part / j->parts; t.y_hi = t.h * (part + 1) / j->parts; }
+        draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage,
+                      j->timing ? j->timing[part] : NULL);
+    }
 }
 
 static void run_parts(void (*fn)(void *, int), void *arg, int parts)
@@ -688,15 +710,21 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     t.stroke_aux_x = (float *)pool[8].p; t.stroke_aux_y = (float *)pool[9].p;
     t.stroke_z = (float *)pool[6].p; t.stroke_owner = (uint32_t *)pool[7].p;
     t.owner = (uint32_t *)pool[5].p; t.paint_owner = 0; t.line_decal = 0;
-    const double tm0 = now_ms();
+    const int timed = getenv("F117_REMASTER_TIMING") != NULL;
+    double worker_timing[REMASTER_PARTS][4] = { 0 };
+    const double tm0 = timed ? now_ms() : 0.0;
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;
     {
         scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, parts, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+        sj.timing = timed ? worker_timing : NULL;
+        const char *tile = getenv("F117_REMASTER_ROW_TILE");
+        sj.row_tile = tile ? atoi(tile) : parts >= 8 && h >= 1200 ? 64 : 0;
+        if (sj.row_tile < 16 || sj.row_tile > 1024) sj.row_tile = 0;
         if (parts > 1) for (sj.stage = 1; sj.stage <= 3; sj.stage++) run_parts(scene_rows_part, &sj, parts);       /* a barrier between the stages */
         else run_parts(scene_rows_part, &sj, 1);
     }
-    const double tm1 = now_ms();
+    const double tm1 = timed ? now_ms() : 0.0;
     {                                           /* F117_REMASTER_DUMP=FILE.ppm: the render itself, once, for a look */
         static int dumped; const char *path = getenv("F117_REMASTER_DUMP");
         const char *from = getenv("F117_REMASTER_DUMP_FROM");
@@ -814,7 +842,9 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             }
         }
     }
-    if (parts > 1 && getenv("F117_REMASTER_THREADCHECK")) {   /* diagnostic: the same picture again on one thread, every output pixel compared */
+    const char *check_from = getenv("F117_REMASTER_THREADCHECK_FROM");
+    if (parts > 1 && getenv("F117_REMASTER_THREADCHECK") &&
+        (!check_from || m->cpu.icount >= strtoull(check_from, NULL, 0))) {   /* same picture on one thread, every output pixel compared */
         const size_t npx = (size_t)w * h, nwide = (size_t)tw * h;
         uint8_t *c_dst = (uint8_t *)malloc(npx), *c_mask = (uint8_t *)malloc(npx);
         uint32_t *c_rgb = (uint32_t *)malloc(npx * 4), *c_wide = wide ? (uint32_t *)malloc(nwide * 4) : NULL;
@@ -870,16 +900,23 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             if (bad && getenv("F117_REMASTER_THREADCHECK")[0] == '2') fprintf(stderr, "[threadcheck] differing rows %d..%d of %d (%zu in the game's picture)\n", first_y, last_y, h, bad_narrow);
             static unsigned checks, mismatches;
             checks++; mismatches += bad != 0;
-            if (checks % 60 == 1 || bad) fprintf(stderr, "[threadcheck] %u pictures checked on %d threads against one, %u differ (this one: %zu pixels)\n", checks, parts, mismatches, bad);
+            if (checks % 60 == 1 || bad || getenv("F117_REMASTER_THREADCHECK")[0] == '3')
+                fprintf(stderr, "[threadcheck] %u pictures checked on %d threads against one, %u differ (this one: %zu pixels)\n", checks, parts, mismatches, bad);
         }
         free(c_dst); free(c_mask); free(c_rgb); free(c_wide);
     }
-    if (getenv("F117_REMASTER_TIMING")) {
-        static double s_scene, s_loop; static unsigned s_n;
+    if (timed) {
+        static double s_scene, s_loop, s_worker_max[4]; static unsigned s_n;
         s_scene += tm1 - tm0; s_loop += now_ms() - tm1; s_n++;
+        for (int phase = 0; phase < 4; ++phase) {
+            double longest = 0.0;
+            for (int part = 0; part < parts; ++part)
+                if (worker_timing[part][phase] > longest) longest = worker_timing[part][phase];
+            s_worker_max[phase] += longest;
+        }
         if (s_n % 120 == 0)
-            fprintf(stderr, "[timing] composite parts (ms, mean of %u): scene %.2f (clear %.2f, bands %.2f, polygons %.2f, lines %.2f), replace loop %.2f\n", s_n,
-                    s_scene / s_n, g_tm_clear / s_n, g_tm_bands / s_n, g_tm_prims / s_n, g_tm_lines / s_n, s_loop / s_n);
+            fprintf(stderr, "[timing] composite parts (ms, mean of %u): scene %.2f, worker maxima (clear %.2f, bands %.2f, polygons %.2f, lines %.2f), replace loop %.2f\n", s_n,
+                    s_scene / s_n, s_worker_max[0] / s_n, s_worker_max[1] / s_n, s_worker_max[2] / s_n, s_worker_max[3] / s_n, s_loop / s_n);
     }
     return replaced > 0;
 }

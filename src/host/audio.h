@@ -19,6 +19,9 @@ typedef struct audio audio_t;
 
 /* GOG DOSBox's configured OPL/mixer rate. Output is stereo int16. */
 #define AUDIO_RATE 44100
+
+/* Absolute sample-frame index at the head of the output queue (diagnostics). */
+uint64_t audio_next_frame(const audio_t *a);
 typedef enum { AUDIO_OPL_DBOPL, AUDIO_OPL_NUKED } audio_opl_backend;
 
 audio_t *audio_create(uint64_t ips);

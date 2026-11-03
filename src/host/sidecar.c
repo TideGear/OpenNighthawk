@@ -21,14 +21,15 @@ static void on_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
     if (s->opl) s->opl(s->user, icount, reg, val);
 }
 
-/* A far call to CS:IP of entry `e` with an optional word argument pushed first (the id, as the game pushes it). */
-static int far_call(sidecar_t *s, int e, int has_arg, uint16_t arg)
+/* A far call to entry e. Requests carry the command and its optional value
+ * above the return address, in the same stack order as the game. */
+static int far_call(sidecar_t *s, int e, int has_arg, uint16_t arg, uint16_t value)
 {
     cpu_t *c = &s->m->cpu;
     c->seg[S_SS] = c->seg[S_DS] = c->seg[S_ES] = LOAD;
     c->r[R_SP] = STACK_TOP;
     c->flags &= ~(uint32_t)F_DF;
-    if (has_arg) cpu_push16(c, arg);
+    if (has_arg) { cpu_push16(c, value); cpu_push16(c, arg); }
     cpu_push16(c, STOP_SEG);       /* the far return address: CS, then IP */
     cpu_push16(c, 0);
     c->seg[S_CS] = (uint16_t)(LOAD + 0x01B6);
@@ -71,7 +72,7 @@ sidecar_t *sidecar_new_adlib(const uint8_t *file, size_t len, sidecar_opl_fn opl
         image[at] = (uint8_t)w; image[at + 1] = (uint8_t)(w >> 8);
     }
     m->cpu.icount = 1000;
-    if (!far_call(s, E_INIT, 0, 0)) { sidecar_free(s); return NULL; }
+    if (!far_call(s, E_INIT, 0, 0, 0)) { sidecar_free(s); return NULL; }
     return s;
 }
 
@@ -83,14 +84,15 @@ void sidecar_free(sidecar_t *s)
     free(s);
 }
 
-int sidecar_request(sidecar_t *s, uint16_t id) { return far_call(s, E_REQUEST, 1, id); }
+int sidecar_request_arg(sidecar_t *s, uint16_t id, uint16_t value) { return far_call(s, E_REQUEST, 1, id, value); }
+int sidecar_request(sidecar_t *s, uint16_t id) { return sidecar_request_arg(s, id, 0); }
 
 int sidecar_tick(sidecar_t *s)
 {
     int ok = 1;
-    if (s->tick % 7 != 6) ok = far_call(s, E_TICK, 0, 0);
+    if (s->tick % 7 != 6) ok = far_call(s, E_TICK, 0, 0, 0);
     s->tick++;
-    return far_call(s, E_NOISE, 0, 0) && ok;
+    return far_call(s, E_NOISE, 0, 0, 0) && ok;
 }
 
 uint64_t sidecar_icount(const sidecar_t *s) { return s->m->cpu.icount; }

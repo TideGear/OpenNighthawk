@@ -32,12 +32,13 @@ import re
 import shutil
 import subprocess
 import sys
+from host_acceptance import verify_report
 
 ROOT = Path(__file__).resolve().parents[1]
 # Presentation analysis tools: run by people and tests, never by the runner or the gate's checks.
 TOOLS = {"tools/interp_frame.py", "tools/motion_check.py", "tools/present_diag.py", "tools/drawlist_frame.py",
          "tools/drawlist_spans.py", "tools/hires_frame.py", "tools/hires_spans.py", "tools/hires_subpixel.py",
-         "tools/present_light_check.py"}
+         "tools/present_light_check.py", "tools/host_acceptance.py", "tests/test_host_acceptance.py"}
 TESTS = re.compile(r"tests/test_(present_\w+|hud_\w+|band_\w+|world_\w+|map_marker|interp|hires|drawlist|"
                    r"near_polygons|nearclip|scene_mesh|frame_pacer)\.c$")
 APP_ONLY = {"src/host/main.c", "f117a.example.ini", "f117a.4k.ini"}
@@ -150,6 +151,7 @@ def main():
     ap.add_argument("--list-only", action="store_true", help="only say whether the change qualifies")
     ap.add_argument("--app-session", type=Path, help="a recorded session (input.log, save-start/) for app-only changes")
     ap.add_argument("--app-exit-after", type=int, help="machine clock at which the app replay stops")
+    ap.add_argument("--host-sessions", type=Path, help="recording root for required host acceptance when host/presentation code changed")
     a = ap.parse_args()
     names = changed_files(a.base)
     bad = refusals(names)
@@ -169,6 +171,10 @@ def main():
         return 1
     if a.list_only:
         return 0
+    host_changed = any(n.startswith(("src/host/", "src/present/")) for n in names)
+    if host_changed and not a.host_sessions:
+        print("refused: give --host-sessions; host integration acceptance is required in addition to parity checks")
+        return 1
     a.out.mkdir(parents=True, exist_ok=True)
     env_note = "SDL_VIDEODRIVER/SDL_AUDIODRIVER must be dummy"
     if os.environ.get("SDL_VIDEODRIVER") != "dummy":
@@ -185,6 +191,15 @@ def main():
     print("  ctest: " + (verdict["ctest"] or "no tally"))
     if rc or not tally or tally.group(2) != "0":
         return 1
+    if host_changed:
+        host_out = a.out / "host-acceptance"
+        rc, _ = run([sys.executable, str(ROOT / "tools/host_acceptance.py"), "--app", str(ROOT / "build/f117a.exe"),
+                     "--data", a.data, "--sessions", str(a.host_sessions), "--out", str(host_out)],
+                    a.out / "host-acceptance.log")
+        if rc:
+            print("host integration failed; see " + str(host_out))
+            return 1
+        verdict["host"] = verify_report(host_out / "report.json", ROOT / "build/f117a.exe")
     if app_changed:
         ok, verdict["app"] = app_smoke(a)
         if not ok:

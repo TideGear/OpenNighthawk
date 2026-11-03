@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "about": "Host integration regressions, not machine parity or GOG visual/audio acceptance. Recordings remain local. Bounds describe reviewed bug regions at 1280x600; no automatic baseline regeneration.",
+  "sessions": {
+    "session-20261102-141108": "19675f745f98bda55d0ea938bb3f99bf4d23559a033e92c36fcc77b154a041f4",
+    "session-20261102-154150": "59dd3045fa70aef290a2449318cfc23d72e4e1299bc38762dbcee7c56d3ad58c"
+  },
+  "sound": {
+    "session": "session-20261102-154150",
+    "keep_until": 12391636686,
+    "exit_after": 14400000000,
+    "inject_keys": [[1500000000, "09"], [1503000000, "89"], [1650000000, "09"], [1653000000, "89"], [12400000000, "0B"], [12403000000, "8B"]],
+    "effect_id": 31,
+    "effect_keyon_register": 178,
+    "coast": [12000000000, 12390000000],
+    "overlap": [1500000000, 1740000000],
+    "stop": [13800000000, 14400000000],
+    "minimum_rms": 8,
+    "maximum_stopped_rms": 8,
+    "minimum_coast_updates": 70,
+    "engine_pitch_register": 166,
+    "minimum_pitch_values": 2
+  },
+  "workers": [
+    {
+      "name": "workers-hangar-4k",
+      "session": "session-20261102-141108",
+      "clock": 3522889584,
+      "duration": 240000000,
+      "window": "3840x2160",
+      "threads": 8,
+      "minimum_frames": 8
+    },
+    {
+      "name": "workers-hangar-4by3",
+      "session": "session-20261102-141108",
+      "clock": 3522889584,
+      "duration": 240000000,
+      "window": "1280x960",
+      "threads": 8,
+      "minimum_frames": 8
+    }
+  ],
+  "render": [
+    {
+      "name": "hangar-lights-and-flags",
+      "session": "session-20261102-141108",
+      "clock": 3522889584,
+      "duration": 180000000,
+      "features": [
+        {"kind": "cream_component", "roi": [790, 120, 1100, 160], "minimum_area": 8, "fraction": 0.75},
+        {"kind": "flag_component", "roi": [800, 80, 1220, 135], "minimum_area": 8, "fraction": 0.95}
+      ],
+      "review": ["Light stability and flag/pole junctions throughout motion"]
+    },
+    {
+      "name": "rear-hangar-occlusion",
+      "session": "session-20261102-141108",
+      "clock": 10452330792,
+      "duration": 120000000,
+      "features": [{"kind": "no_yellow", "roi": [0, 100, 1280, 240], "fraction": 1.0}],
+      "review": ["Door markings remain hidden behind the hangars"]
+    },
+    {
+      "name": "transport-and-screen-edge",
+      "session": "session-20261102-141108",
+      "clock": 3966919746,
+      "duration": 120000000,
+      "features": [{"kind": "dark_fraction", "roi": [845, 183, 875, 193], "minimum": 0.95, "fraction": 1.0}],
+      "review": ["Ground-line occlusion across the moving aircraft", "Close-edge visibility, allowing the inherited GOG cull"]
+    },
+    {
+      "name": "water-crossing-margins",
+      "session": "session-20261102-154150",
+      "clock": 16551899976,
+      "duration": 120000000,
+      "features": [
+        {"kind": "water_fraction", "roi": [0, 460, 130, 590], "minimum": 0.98, "fraction": 1.0},
+        {"kind": "water_fraction", "roi": [1150, 460, 1280, 590], "minimum": 0.98, "fraction": 1.0}
+      ],
+      "review": ["Coast crossing and margin continuity", "Stable world-space shoreline aligned with a verified gameplay water boundary, if one exists; original/GOG coast issue confirmed by owner"]
+    }
+  ]
+}

@@ -96,7 +96,7 @@ static host_t H;
 
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
-static uint64_t g_lt_run, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
+static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
  * session names the flight, the clock the moment a replay of it jumps to */
 static char g_shots_dir[800], g_session_name[64];
@@ -246,6 +246,8 @@ static int wide_make(SDL_Renderer *ren, int aspect)
  * writes go to a chip of their own (g_side_audio) at the main machine's clock, never earlier than the last write. */
 static sidecar_t *g_side;
 static int g_hook_flight;               /* the loaded program is the flight program: its sound 31 is the bay doors, not START's launch animation */
+static unsigned g_speed_hook = ~0u;
+static FILE *g_host_accept;          /* optional host integration evidence; never guest state */
 static int g_adlib_effects = -1;      /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music); unset: on with --sound roland */
 static audio_t *g_side_audio;
 static uint64_t g_side_now, g_side_last, g_side_ticks, g_side_writes, g_side_requests, g_side_failed;
@@ -255,13 +257,27 @@ static void side_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
     g_side_writes++;
     if (g_side_now < g_side_last) g_side_now = g_side_last;
     audio_opl_write(g_side_audio, g_side_now, reg, val);
+    if (g_host_accept) fprintf(g_host_accept, "{\"kind\":\"opl\",\"clock\":%llu,\"reg\":%u,\"value\":%u}\n",
+                              (unsigned long long)g_side_now, reg, val);
     g_side_last = g_side_now;
 }
 static void side_request(const machine_t *m, uint16_t id)
 {
     g_side_now = m->cpu.icount;
     g_side_requests++;
-    if (!sidecar_request(g_side, id)) g_side_failed++;
+    const uint16_t sp = (uint16_t)(m->cpu.r[R_SP] + 6);
+    const uint32_t ss = (uint32_t)m->cpu.seg[S_SS] << 4;
+    const uint16_t value = id == 23 ? (uint16_t)(m->mem[(ss + sp) & 0xFFFFF] |
+        m->mem[(ss + (uint16_t)(sp + 1)) & 0xFFFFF] << 8) : 0;
+    const int ok = sidecar_request_arg(g_side, id, value);
+    if (!ok) g_side_failed++;
+    if (g_host_accept) {
+        const uint32_t ds = (uint32_t)m->cpu.seg[S_DS] << 4;
+        const uint16_t thrust = id == 23 ? (uint16_t)(m->mem[(ds + 0x2E0A) & 0xFFFFF] | m->mem[(ds + 0x2E0B) & 0xFFFFF] << 8) : 0;
+        const uint16_t observed = id == 23 ? (uint16_t)(m->mem[(ds + 0xB194) & 0xFFFFF] | m->mem[(ds + 0xB195) & 0xFFFFF] << 8) : 0;
+        fprintf(g_host_accept, "{\"kind\":\"request\",\"clock\":%llu,\"id\":%u,\"value\":%u,\"thrust\":%u,\"observed_knots\":%u,\"ok\":%d}\n",
+                (unsigned long long)m->cpu.icount, id, value, thrust, observed, ok);
+    }
 }
 /* The game's timer ticks at 60.001 Hz of the machine's clock: run the sidecar's ticks that have come due. */
 static void side_run(const machine_t *m, uint64_t ips)
@@ -287,12 +303,38 @@ static int copy_exec(void *user, machine_t *m, unsigned index)
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
+    /* Continuous speed updates can bypass the library slot. Mirror them at
+     * its bound driver entry, while retaining the native call and timing. */
+    if (index == g_speed_hook) {
+        const uint32_t ss = (uint32_t)m->cpu.seg[S_SS] << 4;
+        const uint16_t sp = (uint16_t)(m->cpu.r[R_SP] + 4);
+        const uint16_t id = (uint16_t)(m->mem[(ss + sp) & 0xFFFFF] | m->mem[(ss + (uint16_t)(sp + 1)) & 0xFFFFF] << 8);
+        if (g_side && id == 23) {
+            if (getenv("F117_SOUND_LOG")) {
+                const uint16_t arg = (uint16_t)(sp + 2);
+                const uint16_t speed = (uint16_t)(m->mem[(ss + arg) & 0xFFFFF] | m->mem[(ss + (uint16_t)(arg + 1)) & 0xFFFFF] << 8);
+                const uint32_t at = ((uint32_t)m->cpu.seg[S_DS] << 4) + 0x2E0A;
+                const uint16_t thrust = (uint16_t)(m->mem[at & 0xFFFFF] | m->mem[(at + 1) & 0xFFFFF] << 8);
+                fprintf(stderr, "[sound-driver] id 23 speed %u thrust %u at clock %llu\n", speed, thrust, (unsigned long long)m->cpu.icount);
+            }
+            side_request(m, id);
+        }
+        return 0; /* preserve the native call, its state and its timing */
+    }
     if (g_rlive && index >= g_rlive_base) return remaster_live_exec(g_rlive, m, index - g_rlive_base);
     if (index != 0) return 0;                                   /* index 0 is the sound stub; the others are Remastered's */
     const uint16_t id = (uint16_t)(m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 4)) & 0xFFFFF] |
                                    m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
+    if (g_side && g_hook_flight && g_speed_hook == ~0u && m->exec_hook_n < EXEC_HOOKS_MAX) {
+        const uint32_t at = ((uint32_t)m->cpu.seg[S_CS] << 4) + m->cpu.ip;
+        if (m->mem[at & 0xFFFFF] == 0xEA) {
+            g_speed_hook = m->exec_hook_n++;
+            m->exec_hook[g_speed_hook].ip = (uint16_t)(m->mem[(at + 1) & 0xFFFFF] | m->mem[(at + 2) & 0xFFFFF] << 8);
+            m->exec_hook[g_speed_hook].cs = (uint16_t)(m->mem[(at + 3) & 0xFFFFF] | m->mem[(at + 4) & 0xFFFFF] << 8);
+        }
+    }
     if (log_requests) fprintf(stderr, "[sound] id %u%s at clock %llu\n", (unsigned)id, g_mac && macsound_has(g_mac, id) ? " (has recording)" : "", (unsigned long long)m->cpu.icount);
     if (g_subtitles && id >= 41 && id <= 45) {                    /* the radio call as text, named by the request itself (every driver) */
         int words[3];
@@ -432,7 +474,7 @@ static int pal_helper_main(void *u)
 }
 
 /* Helpers for the Remastered composite: a picture's rows are shared among them and the calling thread (remaster_live_set_parallel). */
-#define PAR_HELPERS 3
+#define PAR_HELPERS 7
 typedef struct {
     SDL_Thread *thread;
     SDL_Semaphore *go, *done;
@@ -849,6 +891,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
+        g_speed_hook = ~0u;
         g_hook_flight = !SDL_strcasecmp(name, "VGAME.EXE");
         if (g_mac || g_side || g_subtitles) {                                  /* each program's sound stub: a far jump slot the driver patches */
             static const struct { const char *name; uint16_t seg, ip; } slot[] = {
@@ -1607,6 +1650,12 @@ int main(int argc, char **argv)
     static int16_t abuf[AUDIO_RATE * 2];
     FILE *audio_queue_log = audio_queue_log_path ? fopen(audio_queue_log_path, "w") : NULL;
     FILE *audio_dump = audio_dump_path ? fopen(audio_dump_path, "wb") : NULL;
+    const char *host_accept_path = getenv("F117_HOST_ACCEPT_LOG");
+    if (host_accept_path) {
+        g_host_accept = fopen(host_accept_path, "w");
+        if (!g_host_accept) { fprintf(stderr, "cannot write host acceptance log %s\n", host_accept_path); H.audio_failed = 1; }
+        else fprintf(g_host_accept, "{\"kind\":\"format\",\"version\":1,\"sample_rate\":%d,\"ips\":%llu}\n", AUDIO_RATE, (unsigned long long)ips);
+    }
     if (audio_queue_log_path && !audio_queue_log)
         fprintf(stderr, "cannot write audio queue log %s\n", audio_queue_log_path);
     if (audio_dump_path && !audio_dump)
@@ -1630,14 +1679,22 @@ int main(int argc, char **argv)
                 if (g_pal[k].go && g_pal[k].done)
                     g_pal[k].thread = SDL_CreateThread(pal_helper_main, "present-palette", &g_pal[k]);
             }
-            if (!getenv("F117_REMASTER_THREADS_OFF")) {                  /* the Remastered composite on four threads */
+            if (g_remaster && !getenv("F117_REMASTER_THREADS_OFF")) {
+                /* Keep modest pictures on four workers; larger rasters
+                 * have enough rows to benefit from a larger share. */
+                int parts = g_scale >= 6 && SDL_GetNumLogicalCPUCores() >= 16 ? 8 : 4;
+                const char *threads = getenv("F117_REMASTER_THREADS");
+                if (threads) {
+                    const int requested = atoi(threads);
+                    if (requested >= 1 && requested <= 1 + PAR_HELPERS) parts = requested;
+                }
                 int made = 0;
-                for (int k = 0; k < PAR_HELPERS; k++) {
+                for (int k = 0; k + 1 < parts; k++) {
                     g_par[k].go = SDL_CreateSemaphore(0);
                     g_par[k].done = SDL_CreateSemaphore(0);
                     if (g_par[k].go && g_par[k].done) { g_par[k].thread = SDL_CreateThread(par_helper_main, "remaster-rows", &g_par[k]); made += g_par[k].thread != NULL; }
                 }
-                if (made == PAR_HELPERS) remaster_live_set_parallel(par_run, 1 + PAR_HELPERS);
+                if (made + 1 == parts) remaster_live_set_parallel(par_run, parts);
             }
         }
     }
@@ -2207,15 +2264,27 @@ int main(int argc, char **argv)
                 size_t n;
                 if (g_side) { side_run(&H.m, ips); audio_advance(g_side_audio, H.m.cpu.icount); }
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    const uint64_t first = g_host_accept ? audio_next_frame(H.audio) - n : 0;
+                    size_t side_frames = 0; uint64_t side_first = 0; double side_energy = 0.0;
                     if (g_side) {                                     /* the sidecar's AdLib effects over Roland's music */
                         static int16_t sbuf[AUDIO_RATE * 2];
                         const size_t got = audio_take(g_side_audio, sbuf, n);
+                        if (g_host_accept) {
+                            side_frames = got; side_first = audio_next_frame(g_side_audio) - got;
+                            for (size_t k = 0; k < got * 2; ++k) side_energy += (double)sbuf[k] * sbuf[k];
+                        }
                         for (size_t k = 0; k < got * 2; k++) {
                             const int v = abuf[k] + sbuf[k];
                             abuf[k] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
                         }
                     }
                     macsound_mix(g_mac, abuf, n);                     /* the Mac recordings over the driver's output */
+                    if (g_host_accept) {
+                        double mix_energy = 0.0;
+                        for (size_t k = 0; k < n * 2; ++k) mix_energy += (double)abuf[k] * abuf[k];
+                        fprintf(g_host_accept, "{\"kind\":\"audio\",\"first\":%llu,\"frames\":%zu,\"side_first\":%llu,\"side_frames\":%zu,\"side_energy\":%.0f,\"mix_energy\":%.0f}\n",
+                                (unsigned long long)first, n, (unsigned long long)side_first, side_frames, side_energy, mix_energy);
+                    }
                     if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
                         H.audio_failed = 1;
                     if (stream && replay_x4 == 4 && !seek_target) {   /* a replay off normal speed, or seeking, is silent */
@@ -2278,6 +2347,7 @@ int main(int argc, char **argv)
 
         /* Show the last frame the VGA scanned out, or with --present interp the
          * in-between frame at the machine's clock now. */
+        const uint64_t lt_build0 = g_loop_timing ? SDL_GetTicksNS() : 0;
         if (!H.have_frame) present_capture(&H.m, &H.frame);
         int got = 0;
         double t_shown = 0;
@@ -2304,7 +2374,7 @@ int main(int argc, char **argv)
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
                         g_fine = remaster_apply(g_live.shown_hi);
-                        if (g_fine && tex_fine && !H.frame.text) {
+                        if (g_fine && tex_fine && !H.frame.text && !g_wide_filled) {
                             convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             remaster_true_colour(fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             fine_ready = 1;
@@ -2336,6 +2406,8 @@ int main(int argc, char **argv)
             }
             g_presented += (uint64_t)got;
         }
+        if (g_loop_timing) g_lt_build += SDL_GetTicksNS() - lt_build0;
+        const uint64_t lt_upload0 = g_loop_timing ? SDL_GetTicksNS() : 0;
         int w, h, wide = 0;
         SDL_Texture *show = tex;
         if (g_replay && !H.frame.text) {
@@ -2344,19 +2416,26 @@ int main(int argc, char **argv)
         }
         if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
             w = 320 * g_scale; h = 200 * g_scale;
-            if (!fine_ready) {
-                convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
-                remaster_true_colour(fine_pixels, (size_t)w * h);
+            /* The wide composite already contains the centre, HUD and cockpit.
+             * Converting and uploading a separate 4:3 texture here would be
+             * unused work whenever that complete wide picture is displayed. */
+            if (wide_make(ren, aspect)) {
+                show = g_wtex; w = g_ww; h = g_wh; wide = 1;
+            } else {
+                if (!fine_ready) {
+                    convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
+                    remaster_true_colour(fine_pixels, (size_t)w * h);
+                }
+                SDL_Rect src = { 0, 0, w, h };
+                SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
+                show = tex_fine;
             }
-            SDL_Rect src = { 0, 0, w, h };
-            SDL_UpdateTexture(tex_fine, &src, crt_view(fine_pixels, w, h), w * 4);
-            show = tex_fine;
-            if (wide_make(ren, aspect)) { show = g_wtex; w = g_ww; h = g_wh; wide = 1; }   /* a window wider than 4:3 */
         } else {
             present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex, &src, crt_view(pixels, w, h), w * 4);
         }
+        if (g_loop_timing) g_lt_upload += SDL_GetTicksNS() - lt_upload0;
         /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
          * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
         {
@@ -2491,9 +2570,10 @@ int main(int argc, char **argv)
             const uint64_t now = SDL_GetTicksNS();
             if (!g_lt_last) { g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; }
             if (now - g_lt_last >= 2000000000ull) {
-                fprintf(stderr, "[loop] wall %.1f s: icount +%.0fM (discarded +%.0fM); run %.0f ms, present %.0f ms, other %.0f ms, %u iterations; hooks: opl %.0f ms (%llu), speaker %.0f ms (%llu), vsync %.0f ms (%llu)\n",
+                fprintf(stderr, "[loop] wall %.1f s: icount +%.0fM (discarded +%.0fM); run %.0f ms, build %.0f ms, upload %.0f ms, present %.0f ms, other %.0f ms, %u iterations; hooks: opl %.0f ms (%llu), speaker %.0f ms (%llu), vsync %.0f ms (%llu)\n",
                         (double)(now - start_ns) / 1e9, (double)(H.m.cpu.icount - g_lt_icount) / 1e6, (double)(discarded_clocks - g_lt_disc) / 1e6,
-                        (double)g_lt_run / 1e6, (double)g_lt_present / 1e6, (double)(now - g_lt_last - g_lt_run - g_lt_present) / 1e6, g_lt_iter,
+                        (double)g_lt_run / 1e6, (double)g_lt_build / 1e6, (double)g_lt_upload / 1e6,
+                        (double)g_lt_present / 1e6, (double)(now - g_lt_last - g_lt_run - g_lt_build - g_lt_upload - g_lt_present) / 1e6, g_lt_iter,
                         1e3 * (double)g_lt_hook[0] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[0],
                         1e3 * (double)g_lt_hook[1] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[1],
                         1e3 * (double)g_lt_hook[2] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[2]);
@@ -2506,7 +2586,8 @@ int main(int argc, char **argv)
                     g_lt_slow[best].n = 0;
                 }
                 g_lt_nslow = 0;
-                g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; g_lt_run = g_lt_present = 0; g_lt_iter = 0;
+                g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks;
+                g_lt_run = g_lt_build = g_lt_upload = g_lt_present = 0; g_lt_iter = 0;
             }
             g_lt_iter++;
         }
@@ -2585,6 +2666,7 @@ int main(int argc, char **argv)
     if (H.m.log) fclose(H.m.log);
     if (audio_queue_log) fclose(audio_queue_log);
     if (audio_dump) fclose(audio_dump);
+    if (g_host_accept) { if (fclose(g_host_accept)) H.audio_failed = 1; g_host_accept = NULL; }
     audio_destroy(H.audio);
     if (g_side) { if (getenv("F117_SOUND_LOG")) fprintf(stderr, "[sidecar] %llu requests (%llu failed), %llu ticks, %llu OPL writes\n", (unsigned long long)g_side_requests, (unsigned long long)g_side_failed, (unsigned long long)g_side_ticks, (unsigned long long)g_side_writes); sidecar_free(g_side); audio_destroy(g_side_audio); }
     SDL_Quit();

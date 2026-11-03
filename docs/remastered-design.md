@@ -1,9 +1,15 @@
 # Remastered presentation (design)
 
-Status (30 October 2026): the renderer is not in the app and nothing is credited. Built so far: the terrain, world and model
-decoders (checked against the game's memory), an offline depth-buffer model sheet, the exact projection, a depth-correct
-triangle fill and the request-to-primitives glue, all standalone ("Progress" below; current state in
-[p3-handoff.md](p3-handoff.md)). Written 29 October 2026 after a feasibility pass over what the repository already has. The owner's brief (24 October 2026, [roadmap.md](roadmap.md) "Re-release features"):
+Current status (2 November 2026): the renderer runs in the app, including widescreen,
+depth-tested geometry and decorations, smooth bands and frames from the interpolated
+rerun copy. Moving host regressions now have [automated acceptance](host-acceptance.md).
+Longer scenery reach, coastline stability, broader motion/occlusion checks and owner
+approval remain incomplete. [Current throughput](remaster-performance.md) does not
+yet meet the native 4K/60 requirement. The historical stage descriptions below retain
+the design and experiments; they are not current completion claims. See
+[p3-handoff.md](p3-handoff.md) for installed builds and current evidence.
+
+Written 29 October 2026 after a feasibility pass over what the repository already has. The owner's brief (24 October 2026, [roadmap.md](roadmap.md) "Re-release features"):
 widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
 objects, so a far hangar's edge can be drawn over a nearer one), and no road or coastline jitter. Everything else
 about the game, above all its simulation, stays as it is.

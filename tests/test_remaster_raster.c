@@ -430,6 +430,31 @@ int main(void)
         }
         free(t.color); free(t.inv_z);
     }
+    /* A ground plane under a low camera must reach the bottom of a tall
+     * side margin. The model near plane used to cut it off inside the view. */
+    {
+        remaster_target t = make(64, 48);
+        const remaster_v3 floor[4] = {{-0x100000,0x1000,-0x100000}, {0x100000,0x1000,-0x100000},
+                                     {0x100000,0x1000,0x100000}, {-0x100000,0x1000,0x100000}};
+        remaster_polygon(&t, floor, 4, BLUE);
+        CHECK(t.color[47 * 64 + 32] == BG);
+        t.near_z = 0x1000;
+        remaster_polygon(&t, floor, 4, BLUE);
+        CHECK(t.color[47 * 64 + 32] == BLUE);
+        /* Coast tiles use a palette OR fill; it needs the same clipping. */
+        uint32_t palette[256] = {0}; palette[128] = BLUE;
+        t.palette = palette;
+        t.index = (uint16_t *)calloc(64 * 48, sizeof *t.index);
+        for (int low = 0; low < 2; ++low) {
+            remaster_clear(&t, BG);
+            memset(t.index, 0, 64 * 48 * sizeof *t.index);
+            t.near_z = low ? 0x1000 : 0x10000;
+            remaster_polygon_logic(&t, floor, 4, REMASTER_OR, 128);
+            CHECK(t.color[47 * 64 + 32] == (low ? BLUE : BG));
+        }
+        free(t.index);
+        free(t.color); free(t.inv_z);
+    }
     puts("remaster raster passes");
     return 0;
 }

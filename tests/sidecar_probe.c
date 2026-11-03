@@ -7,10 +7,22 @@
 
 static unsigned writes, keyons;
 static int verbose;
+static uint64_t write_hash;
+static uint8_t registers[256];
+static unsigned active_voices(void)
+{
+    unsigned active = 0;
+    for (unsigned reg = 0xB0; reg <= 0xB8; ++reg) active += (registers[reg] & 0x20) != 0;
+    if (registers[0xBD] & 0x20) active += (registers[0xBD] & 0x1F) != 0;
+    return active;
+}
 static void opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
 {
     (void)user;
     writes++;
+    registers[reg] = val;
+    write_hash = (write_hash ^ reg) * UINT64_C(1099511628211);
+    write_hash = (write_hash ^ val) * UINT64_C(1099511628211);
     if (reg >= 0xB0 && reg <= 0xB8 && (val & 0x20)) keyons++;
     if (verbose) printf("  %llu: %02X <- %02X\n", (unsigned long long)icount, reg, val);
 }
@@ -44,6 +56,38 @@ int main(int argc, char **argv)
     sidecar_free(q);
     printf("id 0 for 200 ticks: %u writes\n", quiet);
     if (quiet != 0 || (id != 0 && made == 0)) { printf("FAILED\n"); return 1; }
+    /* Run the real engine handler and timer with the second call argument.
+     * Losing that word made every speed update reset the sidecar to zero. */
+    uint64_t engine_hash[3];
+    const uint16_t speeds[3] = { 0, 60, 120 };
+    for (unsigned i = 0; i < 3; ++i) {
+        q = sidecar_new_adlib(b, (size_t)n, opl, NULL);
+        if (!q || !sidecar_request(q, 24) || !sidecar_request_arg(q, 23, speeds[i])) return 1;
+        write_hash = UINT64_C(14695981039346656037); w0 = writes;
+        for (int t = 0; t < 200; ++t) if (!sidecar_tick(q)) return 1;
+        engine_hash[i] = write_hash;
+        printf("engine %u knots: %u writes, hash %llx\n", speeds[i], writes - w0, (unsigned long long)write_hash);
+        if (speeds[i]) {
+            /* Ordinary throttle decrements do not themselves send command
+             * 25. Ongoing nonzero airspeed updates must keep the voice alive. */
+            for (int t = 0; t < 200; ++t)
+                if (!sidecar_request_arg(q, 23, speeds[i]) || !sidecar_tick(q)) return 1;
+            printf("continued speed updates at %u knots: %u active OPL voices\n", speeds[i], active_voices());
+            if (!active_voices()) return 1;
+            if (!sidecar_request(q, 25)) return 1; /* explicit engine-off command */
+            for (int t = 0; t < 200; ++t) {
+                if (!sidecar_request_arg(q, 23, speeds[i]) || !sidecar_tick(q)) return 1;
+            }
+            const unsigned active = active_voices();
+            printf("explicit engine off at %u knots: %u active OPL voices\n", speeds[i], active);
+            /* The original driver's engine-off command releases the voice;
+             * keep that behavior rather than inventing an idle sound. */
+            if (active) return 1;
+        }
+        sidecar_free(q);
+    }
+    if (engine_hash[0] == engine_hash[1] || engine_hash[1] == engine_hash[2]) return 1;
+    free(b);
     printf("ok\n");
     return 0;
 }

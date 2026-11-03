@@ -370,6 +370,11 @@ Each ROM must be a single whole file; the split halves some dumps come as
 
 ## Verifying parity yourself
 
+Host sound, moving rendering and shortcut behavior have a separate
+[recorded-flight acceptance suite](docs/host-acceptance.md). Run it before
+deploying host/presentation changes. It supplements the machine gates below;
+its report cannot claim simulation parity or owner/GOG acceptance.
+
 Every claim above can be re-run on your own copy:
 
 ```bat

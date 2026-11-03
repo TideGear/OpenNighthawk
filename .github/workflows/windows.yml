@@ -94,6 +94,8 @@ jobs:
         run: python tests/test_presentation_check.py
       - name: Complete scene-input capture regressions
         run: python tests/test_scene_capture.py
+      - name: Host acceptance verdict regressions (ROM-free; not recorded-flight acceptance)
+        run: python tests/test_host_acceptance.py
       - name: Original model topology regressions
         run: python tests/test_scene_model.py
       - name: Presentation pacing verdict regressions
@@ -146,6 +148,8 @@ jobs:
         run: python tests/test_matched_draft.py
       - name: Phase 2 census credit regressions
         run: python tests/test_progress.py
+      - name: Scored commit-title guard regressions
+        run: python tests/test_commit_title.py
       - name: Phase 2 census classification regressions
         run: python tests/test_census_classify.py
       - name: Encoded static-code review validator
