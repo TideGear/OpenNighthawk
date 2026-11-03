@@ -87,8 +87,8 @@ def run(app, data, session, out, timeout=45):
         ("advanced",base,["Open"]+down(19)+["Return","Escape","Escape"],"advanced",None,[]),
         ("keys-remap",base,["OpenKeys","Return","Q","Escape"],"keys-tab",None,[]),
         ("keys-restore",base+"remap = Q:=,=:Q\n",["OpenKeys","Backspace","Escape"],"keys-tab",None,[]),
-        ("reset",changed,["Open"]+down(27)+["Return"]+["Up"]*7+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
-        ("cancel-reset",changed,["Open"]+down(27)+["Return","Escape"],"reset",None,[]),
+        ("reset",changed,["Open"]+down(25)+["Return"]+["Up"]*5+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
+        ("cancel-reset",changed,["Open"]+down(25)+["Return","Escape"],"reset",None,[]),
         ("fresh restart",base,["Open","Right"]+down(20)+["Return"],None,None,["--presentation","original"]),
     ]
     report=dict(app_sha256=digest(app),checker_sha256=digest(__file__),cases=[])

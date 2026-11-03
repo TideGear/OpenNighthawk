@@ -157,7 +157,7 @@ int settings_menu_rows(const settings_state *s, int *rows, int capacity)
         if (settings_group(DEFS[i].key) == s->page) ROW(i);
     if (s->page == SETTINGS_MAIN) {
         ROW(NDEFS + 11); ROW(NDEFS + 10);
-        for (int i = 0; i < 9; ++i) if (i != 2 && i != 3) ROW(NDEFS + i);   /* key remapping lives on the Keys tab */
+        for (int i = 0; i < 9; ++i) if (i != 2 && i != 3 && i != 7 && i != 8) ROW(NDEFS + i);   /* key and controller-button assignment live on the Keys tab */
         ROW(NDEFS + 12); ROW(NDEFS + 9);
     } else ROW(NDEFS + 13);
 #undef ROW

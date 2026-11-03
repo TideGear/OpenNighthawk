@@ -34,8 +34,9 @@ game key sends what the pressed key sent, so no two keys do the same thing.
 Backspace restores the row's default. A row whose binding is not the default
 shows the new key in blue. Host shortcuts continue using physical keys. Changes
 take effect and save immediately. Settings no longer has Remap a Key or Clear Key
-Remaps; Reset All Settings to Default still clears the remaps. Controller-button
-key assignments stay in Settings. Fix-picker selections are saved as a custom
+Remaps; Reset All Settings to Default still clears the remaps. Controller buttons are assigned there too: press a button instead of a key while a
+row waits, and Backspace on a row also clears its buttons (shown as "+ pad N").
+Settings no longer lists the controller-button rows. Fix-picker selections are saved as a custom
 set and take effect after restart.
 
 Folders accepts typed or pasted paths. Enter keeps an edit, Escape undoes it,

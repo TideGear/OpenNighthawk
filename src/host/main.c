@@ -1958,6 +1958,12 @@ int main(int argc, char **argv)
                         g_set.padkey_stage = 2;
                         snprintf(g_set.note, sizeof g_set.note, "Button %d", g_set.padkey_button);
                     }
+                } else if (ref_open && ref_wait) {                  /* the Keys tab: a controller button for this row's game key */
+                    const int button = ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? ev.gbutton.button : ev.jbutton.button;
+                    int n; const keyref_row *rows = keyref_rows(ref_page, &n);
+                    const char *def = ref_cursor >= 0 && ref_cursor < n ? keyref_row_default(&rows[ref_cursor]) : NULL;
+                    if (def && button >= 0 && button <= 31) { padkeys_set(button, SDL_GetScancodeFromName(def)); padkeys_save(settings_path); }
+                    ref_wait = 0;
                 }
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -2160,6 +2166,10 @@ int main(int argc, char **argv)
                             if (before && remap_assign(game, game) && save_remaps(settings_path)) snprintf(g_set.note, sizeof g_set.note, "Key binding saved");
                             else { if (before) { remap_clear(); remap_add(before); } snprintf(g_set.note, sizeof g_set.note, "Could not save key binding"); }
                             free(before);
+                            const SDL_Scancode pad_key = game;                      /* and no controller button sends it */
+                            int kept = 0;
+                            for (int j = 0; j < g_npadkeys; j++) if (g_padkeys[j].key != pad_key) g_padkeys[kept++] = g_padkeys[j];
+                            if (kept != g_npadkeys) { g_npadkeys = kept; padkeys_save(settings_path); }
                         } else if (sc == SDL_SCANCODE_ESCAPE) {
                             ref_open = 0;
                             if (ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
@@ -2674,8 +2684,10 @@ int main(int argc, char **argv)
                     const char *def = keyref_row_default(&rows[i]);
                     if (!def) continue;
                     const SDL_Scancode game = SDL_GetScancodeFromName(def), from = remap_source(game);
-                    if (from == game) continue;
-                    snprintf(names[i], sizeof names[i], "%s", from == SDL_SCANCODE_UNKNOWN ? "(no key)" : SDL_GetScancodeName(from));
+                    char pads[24] = "";
+                    for (int j = 0, u = 0; j < g_npadkeys; j++) if (g_padkeys[j].key == game && u < 20) u += snprintf(pads + u, sizeof pads - (size_t)u, " + pad %d", g_padkeys[j].button);
+                    if (from == game && !pads[0]) continue;
+                    snprintf(names[i], sizeof names[i], "%s%s", from == SDL_SCANCODE_UNKNOWN ? "(no key)" : SDL_GetScancodeName(from), pads);
                     bound[i] = names[i]; changed[i] = 1;
                 }
                 keyref_render_bind(ref_page, menu_pixels, 640, 400, ref_cursor, ref_wait, bound, changed);

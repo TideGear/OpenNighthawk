@@ -84,20 +84,11 @@ int main(void)
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == n + 9);
-    /* Controller button as key and Clear controller keys ask the host and keep the menu open */
-    s.cursor = n + 7;
-    settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.padkey_stage == 1);
-    s.padkey_stage = 0;
-    s.cursor = n + 8;
-    settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.clear_padkeys);
-    s.clear_padkeys = 0;
-    /* Key remapping lives on the Keys tab: the Settings list no longer offers Remap a key or Clear key remaps */
+    /* Key remapping lives on the Keys tab: the Settings list no longer offers Remap a key, Clear key remaps or the controller-button rows */
     {
         int rows[48];
         const int listed = settings_menu_rows(&s, rows, 48);
-        for (int k = 0; k < listed; k++) CHECK(rows[k] != n + 2 && rows[k] != n + 3);
+        for (int k = 0; k < listed; k++) CHECK(rows[k] != n + 2 && rows[k] != n + 3 && rows[k] != n + 7 && rows[k] != n + 8);
     }
     /* the fix picker: the host lists the fixes, Enter opens it, Enter switches one, Esc comes back with the change noted */
     s.cursor = n + 4;

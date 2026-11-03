@@ -157,7 +157,7 @@ void keyref_render_bind(int page, uint32_t *px, int w, int h, int cursor, int wa
                 put_text(px, w, h, x0 + 16, y, ">", 0xFFFFFFFFu);
             }
             put_text(px, w, h, x0 + 32, y, rows[i].what, 0xFFD0D0D0u);
-            if (i == cursor && waiting) put_text(px, w, h, kx, y, "press the new key...", 0xFFFFFFFFu);
+            if (i == cursor && waiting) put_text(px, w, h, kx, y, "press a key or button", 0xFFFFFFFFu);
             else if (bound && bound[i] && changed && changed[i]) put_text(px, w, h, kx, y, bound[i], 0xFF60B0FFu);
             else put_text(px, w, h, kx, y, bound && bound[i] ? bound[i] : rows[i].keys, 0xFFFFE060u);
         }
