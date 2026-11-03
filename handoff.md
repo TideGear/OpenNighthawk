@@ -1,5 +1,48 @@
 # Handoff
 
+## Current stopping point: 3 November 2026
+
+The owner requested a handoff, commit, push and stop. **Phase 3 is incomplete.**
+The latest verified subset adds blue nondefault settings, plain-language help
+for every existing setting/folder/root action, and wrapped fix descriptions
+with scrolling by rendered height. It changes host menu presentation only.
+The current score remains P1 100.00%, P2 96.93%, P3 93.84%, All 97.51%.
+
+**Still open:** moving shoreline/hangar alignment; ground joins in widescreen
+margins (including banked/low views); restart/joystick prompt and command-line
+precedence; reset all settings; Advanced and Audio submenus; full key-binding
+list. See [current checklist](docs/p3-current-work.md) for the complete checklist. Original-game parity
+remains mandatory: visual overrides must not change simulation or collision.
+The owner already confirmed the shoreline defect in GOG; another independent
+GOG reproduction is not a prerequisite. No verified water-impact boundary has
+yet been found. Read [coast investigation](docs/coastline-reconstruction.md) before resuming the terrain work.
+
+**Unfinished work preserved locally, excluded from product:**
+`private/settings-20261103/unfinished-snapshot/` contains seven source snapshots,
+hashes and patches. Its `resume-wip.patch` is relative to this stopping commit;
+run `git apply --check` first. It restores the experimental ring-camera correction
+and unfinished menu grouping/reset code. Neither is accepted or integrated
+through all host paths. The experimental renderer was restored to HEAD before
+the final build. Diagnostic evidence and the partial coastline capture failure
+are described in the coast document. Do not deploy the saved candidate.exe.
+
+**Final verification:** build SHA-256 2FEE698AFF93BC1AF0047D5474881871B7A14FC09FDFA2195557663034AA6F35. All ten recorded-flight host cases pass, and the report verifies against this executable: private/settings-20261103/final-acceptance/report.json. Eight focused native menu/renderer tests and 23 Python acceptance/presentation/title tests pass. Menu previews were visually checked at 640x400 (private/settings-20261103/menu-defaults.png, menu-fixes.png); all text fits. These checks do not certify the still-open coast or restart fixes.
+
+**Installation:** ONTests remains SHA-256
+`507D03C37566D8E64852625C5BC5814360C57B82C4A427258F5CDA38155F1516`.
+No new install or full machine gate was performed. The earlier audio cutoff
+and false brown margin strip fixes are installed, with owner confirmation
+pending; the shifting shoreline itself is not fixed. Existing host acceptance
+supplements machine parity and does not certify all visual fidelity.
+
+**Unrelated owner work preserved:** changes in `tools/sound_board_page.py` and
+`tools/sound_board_template.html`; untracked `.ppm`, `100`, `4k60.bat`,
+`docs/p2-completion-plan.md`, `original-fixed.bat`, and `x.slice(0`.
+Do not stage or clean these indiscriminately. Published history was not rewritten
+to add scores to older titles. All new titles use the score guard.
+
+Older sections below are historical; this section takes precedence.
+
 For the next conversation on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left, the batch table),
 [docs/progress.md](docs/progress.md) (what the scores measure),

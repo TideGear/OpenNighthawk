@@ -68,7 +68,74 @@ static const setting_def DEFS[] = {
     { "engine",       "CPU engine",       C_ENGINE,       0, 0 },
 };
 #define NDEFS ((int)(sizeof DEFS / sizeof DEFS[0]))
-#define SETTINGS_VISIBLE 12                           /* rows shown at once; the list scrolls past them */
+#define SETTINGS_VISIBLE 10                           /* leave room for the selected setting's description */
+
+const char *settings_description(const char *key)
+{
+    static const struct { const char *key, *text; } help[] = {
+        { "presentation", "Original preserves the DOS picture. Enhanced adds finer drawing. Remastered rebuilds the 3D view." },
+        { "fixes", "Original disables repairs. Recommended enables them. Custom uses your choices in Choose fixes." },
+        { "scale", "Sets the starting window size. Picture detail controls how finely the world is drawn." },
+        { "fullscreen", "Fills the display with the game. Alt+Enter also switches this immediately." },
+        { "speaker", "RealSound reconstructs digitized speech. PWM reproduces the original speaker pulses." },
+        { "timing", "Selects the emulated CPU timing model. Changing this can affect game behavior and compatibility." },
+        { "ips", "Sets the emulated instruction budget per second. Higher values use more CPU and can affect behavior." },
+        { "crt", "Adds dark scanlines to the displayed picture, like a CRT monitor." },
+        { "crt-mask", "Adds a colored phosphor pattern to simulate a CRT screen." },
+        { "crt-glow", "Adds a soft glow around bright parts of the displayed picture." },
+        { "colourblind", "Changes HUD colors for the selected color-vision aid. Off keeps the original colors." },
+        { "subtitles", "Shows radio calls as text so they can be read as well as heard." },
+        { "sound", "Chooses the original DOS sound driver. Ask shows the original SETUP questions at startup." },
+        { "music-source", "Default follows the sound policy. Mac uses available Mac recordings; DOS uses the selected DOS driver." },
+        { "sound-source", "Selects the source of effects and speech. Mac recordings require your own recording folder." },
+        { "roland", "Munt plays MT-32 music using your ROMs. Windows sends MIDI to a device. Off disables Roland output." },
+        { "adlib-effects", "Plays AdLib effects beside Roland music, using a separate copy of the original AdLib driver." },
+        { "sim-hz", "Chooses simulation updates per second. This changes the game's update cadence, not the monitor refresh rate." },
+        { "opl", "Chooses the AdLib synthesizer. DBOPL is faster; Nuked favors chip emulation accuracy." },
+        { "no-aspect", "Stretches the original pixels without correcting their intended 4:3 display shape." },
+        { "present-scale", "Controls drawing detail. Auto fits the display; larger values draw more pixels and cost more CPU time." },
+        { "present-line-width", "Changes fine-line thickness. Zero selects the automatic width." },
+        { "present-age", "Interpolate gives smooth motion with some delay. Extrapolate predicts ahead and can overshoot sudden changes." },
+        { "pad-deadzone", "Ignores small stick movements near the center to prevent unwanted drift." },
+        { "pad-fire1", "Chooses the controller button used for the game's first trigger, normally the cannon." },
+        { "pad-fire2", "Chooses the controller button used for the game's second trigger, normally the selected weapon." },
+        { "pad-invert-x", "Reverses the controller stick's left and right directions." },
+        { "pad-invert-y", "Reverses the controller stick's forward and backward directions." },
+        { "engine", "Chooses how DOS instructions execute. Recomp is faster; Interp is useful for diagnosis. Both must preserve parity." },
+        { "data", "Folder containing your original DOS game files. Clear to use the normal game-folder search." },
+        { "mt32-roms", "Folder containing your MT-32 ROM files for Munt's Roland music output." },
+        { "mac-sounds", "Folder containing recordings extracted from your own Macintosh copy of the game." },
+    };
+    for (unsigned i = 0; i < sizeof help / sizeof help[0]; ++i)
+        if (!strcmp(help[i].key, key)) return help[i].text;
+    return "";
+}
+
+/* Never discard the tail of a description. A long word is split only when
+ * it cannot fit on an otherwise empty line. */
+static int wrap_piece(const char *text, int columns)
+{
+    int n = 0;
+    while (text[n] && n < columns) ++n;
+    if (text[n]) {
+        int word = n;
+        while (word > 0 && text[word] != ' ') --word;
+        if (word) n = word;
+    }
+    return n;
+}
+
+static int fix_height(const settings_state *s, int index)
+{
+    const char *text = s->pick_what[index];
+    int lines = 0;
+    do {
+        text += wrap_piece(text, 34);
+        while (*text == ' ') ++text;
+        ++lines;
+    } while (*text);
+    return lines * 16 + 8;
+}
 
 const setting_def *settings_defs(int *count)
 {
@@ -234,10 +301,15 @@ int settings_key_event(settings_state *s, settings_key k)
         else if (k == SKEY_LEFT || k == SKEY_RIGHT || k == SKEY_ENTER) { s->pick_on[s->pick_cursor] ^= 1; s->picks_changed = 1; }
         else if (k == SKEY_ESC) s->picker = 0;
         if (s->pick_cursor < s->pick_top) s->pick_top = s->pick_cursor;
-        if (s->pick_cursor >= s->pick_top + SETTINGS_VISIBLE - 2) s->pick_top = s->pick_cursor - SETTINGS_VISIBLE + 3;
+        for (;;) {
+            int height = 0;
+            for (int i = s->pick_top; i <= s->pick_cursor; ++i) height += fix_height(s, i);
+            if (height <= SETTINGS_VISIBLE * 20 - 8 || s->pick_top == s->pick_cursor) break;
+            ++s->pick_top;
+        }
         return 1;
     }
-    const int rows = NDEFS + 10;                   /* the settings, then Save, Watch last flight, Remap a key, Clear key remaps, the pickers, the controller keys, Close */
+    const int rows = NDEFS + 10;
     switch (k) {
     case SKEY_UP: s->cursor = (s->cursor + rows - 1) % rows; break;
     case SKEY_DOWN: s->cursor = (s->cursor + 1) % rows; break;
@@ -280,7 +352,7 @@ int settings_key_event(settings_state *s, settings_key k)
     case SKEY_BACKSPACE:
         break;
     }
-    if (s->cursor < s->top) s->top = s->cursor;                  /* keep the cursor inside the rows shown */
+    if (s->cursor < s->top) s->top = s->cursor;
     if (s->cursor >= s->top + SETTINGS_VISIBLE) s->top = s->cursor - SETTINGS_VISIBLE + 1;
     return 1;
 }
@@ -324,10 +396,39 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
     for (; *t; t++, x += 8) put_char(px, w, h, x, y, (unsigned char)*t, color);
 }
 
+static void put_wrapped(uint32_t *px, int w, int h, int x, int y, const char *text, int columns, int lines, uint32_t color)
+{
+    for (int line = 0; line < lines && *text; ++line) {
+        char buf[64];
+        const int n = wrap_piece(text, columns);
+        memcpy(buf, text, (size_t)n); buf[n] = 0;
+        put_text(px, w, h, x, y + line * 16, buf, color);
+        text += n;
+        while (*text == ' ') ++text;
+    }
+}
+
+static const char *action_help(int action)
+{
+    static const char *const help[] = {
+        "Writes your selected settings. A restart is offered when needed; fullscreen changes immediately.",
+        "Restarts into the newest recorded flight using a private copy of its starting saves.",
+        "Press a physical key, then the key it should send to the game. Escape cancels the assignment.",
+        "Restores every keyboard key to its original binding.",
+        "Shows the switchable game repairs. Read each description before choosing a custom set.",
+        "Lists recorded flights so you can choose one to watch from its start.",
+        "Sets the locations of your original game files, MT-32 ROMs and Macintosh recordings.",
+        "Choose a controller button, then the keyboard key that button should press in the game.",
+        "Removes controller-button keyboard assignments. The normal fire-button settings are kept.",
+        "Closes the menu and discards pending option changes.",
+    };
+    return action >= 0 && action < (int)(sizeof help / sizeof help[0]) ? help[action] : "";
+}
+
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
     const int total = NDEFS + 10, shown = total < SETTINGS_VISIBLE ? total : SETTINGS_VISIBLE;
-    const int pw = 400, ph = 24 + shown * 20 + 56;
+    const int pw = 400, ph = 24 + shown * 20 + 104;
     const int x0 = (w - pw) / 2, y0 = (h - ph) / 2;
     for (int y = y0; y < y0 + ph; y++)
         for (int x = x0; x < x0 + pw; x++) {
@@ -347,8 +448,9 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             const size_t n = strlen(v);
             if (n > 40) snprintf(line, sizeof line, "...%s%s", v + n - 37, editing ? "_" : "");
             else snprintf(line, sizeof line, "%s%s", v[0] ? v : "(the game's default)", editing ? "_" : "");
-            put_text(px, w, h, x0 + 46, y + 18, line, editing ? 0xFFFFFFFFu : 0xFFA0A0A0u);
+            put_text(px, w, h, x0 + 46, y + 18, line, editing ? 0xFFFFFFFFu : s->text_val[i][0] ? 0xFF60B0FFu : 0xFFA0A0A0u);
         }
+        put_wrapped(px, w, h, x0 + 16, y0 + ph - 86, settings_description(TEXTS[s->pick_cursor].key), 46, 3, 0xFFB0B0B0u);
         put_text(px, w, h, x0 + 16, y0 + ph - 38, s->text_edit >= 0 ? "Type or paste (Ctrl+V). Enter keeps, Esc undoes." : "Enter: edit   Backspace: clear   Esc: back", 0xFF909090u);
         put_text(px, w, h, x0 + 16, y0 + ph - 22, "(applies after restart)", 0xFF909090u);
         return;
@@ -366,29 +468,19 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
         return;
     }
     if (s->picker) {                               /* the fix picker: a scrolling checklist */
-        const int per = SETTINGS_VISIBLE - 2;
         put_text(px, w, h, x0 + 16, y0 + 10, "CHOOSE FIXES (custom set)", 0xFFFFFFFFu);
-        for (int i = s->pick_top; i < s->pick_top + per && i < s->pick_count; i++) {
-            const int y = y0 + 34 + (i - s->pick_top) * 20, on = i == s->pick_cursor;
-            char line[64];
-            snprintf(line, sizeof line, "[%c] %-4s %.32s", s->pick_on[i] ? 'x' : ' ', s->pick_id[i], s->pick_what[i]);
+        int y = y0 + 34;
+        for (int i = s->pick_top; i < s->pick_count; i++) {
+            const int height = fix_height(s, i), on = i == s->pick_cursor;
+            if (y + height > y0 + ph - 38) break;
+            char line[24];
+            snprintf(line, sizeof line, "[%c] %s", s->pick_on[i] ? 'x' : ' ', s->pick_id[i]);
             if (on) put_text(px, w, h, x0 + 12, y, ">", 0xFFFFE060u);
             put_text(px, w, h, x0 + 30, y, line, on ? 0xFFFFE060u : 0xFFD0D0D0u);
+            put_wrapped(px, w, h, x0 + 110, y, s->pick_what[i], 34, height / 16, on ? 0xFFFFE060u : 0xFFD0D0D0u);
+            y += height;
         }
-        /* the highlighted fix in full, two lines */
-        const char *what = s->pick_what[s->pick_cursor];
-        for (int line = 0; line < 2 && *what; line++) {
-            char buf[48];
-            int len = (int)strlen(what) > 44 ? 44 : (int)strlen(what);
-            if (what[len]) while (len > 0 && what[len] != ' ') len--;
-            if (len <= 0) len = 44;
-            memcpy(buf, what, (size_t)len);
-            buf[len] = 0;
-            put_text(px, w, h, x0 + 16, y0 + ph - 54 + line * 16, buf, 0xFFA0A0A0u);
-            what += len;
-            while (*what == ' ') what++;
-        }
-        put_text(px, w, h, x0 + 16, y0 + ph - 22, "Enter: switch   Esc: back   (applies after restart)", 0xFF909090u);
+        put_text(px, w, h, x0 + 16, y0 + ph - 22, "Enter: toggle   Esc: back (restart needed)", 0xFF909090u);
         return;
     }
     put_text(px, w, h, x0 + 16, y0 + 10, "SETTINGS", 0xFFFFFFFFu);
@@ -400,14 +492,15 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
             char v[64];
             snprintf(v, sizeof v, "< %s >", DEFS[i].choices[s->value[i]]);
             put_text(px, w, h, x0 + 30, y, DEFS[i].label, color);
-            put_text(px, w, h, x0 + 200, y, v, color);
+            put_text(px, w, h, x0 + 200, y, v, s->value[i] != DEFS[i].def ? 0xFF60B0FFu : color);
             if (!DEFS[i].live && s->value[i] != s->saved[i]) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
                   i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : i == NDEFS + 6 ? "Folders..." : i == NDEFS + 7 ? "Controller button as key..." :
                   i == NDEFS + 8 ? "Clear controller keys" : "Close without saving", color);
     }
-    if (s->top > 0) put_text(px, w, h, x0 + pw - 28, y0 + 10, "^", 0xFF909090u);                  /* more above */
-    if (s->top + shown < total) put_text(px, w, h, x0 + pw - 28, y0 + ph - 54, "v", 0xFF909090u); /* more below */
+    if (s->top > 0) put_text(px, w, h, x0 + pw - 40, y0 + 10, "^", 0xFF909090u);
+    if (s->top + shown < total) put_text(px, w, h, x0 + pw - 24, y0 + 10, "v", 0xFF909090u);
+    put_wrapped(px, w, h, x0 + 16, y0 + ph - 86, s->cursor < NDEFS ? settings_description(DEFS[s->cursor].key) : action_help(s->cursor - NDEFS), 46, 3, 0xFFB0B0B0u);
     const int fy = y0 + ph - 38;
     if (s->remap_stage) {
         put_text(px, w, h, x0 + 16, fy, s->remap_stage == 1 ? "Press the key to change (Esc: cancel)" : "Press the key it should act as", 0xFFFFE060u);

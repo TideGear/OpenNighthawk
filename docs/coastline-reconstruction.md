@@ -48,3 +48,36 @@ the camera, no new gaps or overlaps across terrain detail transitions, and
 agreement with any verified gameplay water boundary. Keep the existing depth,
 lights, hidden-door-line and margin-water regressions. Broader theatres and
 viewpoints still need coverage before calling a general correction complete.
+
+## 3 November stopping investigation
+
+Matched Phase 2 code was used as a guide and cross-checked against original
+decompressed VGAME instruction bytes and runtime observations. The terrain
+walker clamps eye height to at least two native units separately in each
+detail ring (07FD..0805: compare AX with 2, replace lower values with 2).
+At world eye height 24, rings 1/2 therefore see world height 24, ring 3 sees
+32, and ring 4 sees 128. Position rounding also differs by ring. This is a
+confirmed rendering discrepancy and a candidate contributor, not proof of
+the whole shoreline cause. The map-class bits remain unproven as water impact
+classification; no authoritative water collision boundary has been established.
+
+A presentation-only ring-eye correction and independent projection tests were
+tried. The first comparison changed pixels but did not establish a stable
+coastline under the hangars. The experimental renderer/math source was removed
+from the final build and preserved with its tests in the local unfinished
+snapshot described in [p3-current-work.md](p3-current-work.md). Fine generic
+ground patches overwriting coarser water geometry remain another lead; verify
+geometry, transforms and classification before choosing a shared land/water
+edge. No simulation or collision changes are authorized for this visual fix.
+
+Local evidence: `private/settings-20261103/coast-diagnostic/process.log`,
+`original-ground-instructions.txt`, and `coast-captures/`. The capture run is
+partial/failed: one requested clock was sampled one instruction later and
+failed the script's exact-clock assertion. Do not describe it as a completed
+twelve-view validation. Saved experimental executable and images are research
+artifacts, not a deployment candidate. Original game binaries remain ignored.
+
+The owner's additional report is ground not lining up in widescreen margins.
+This remains OPEN alongside shoreline motion; the earlier near-plane fix only
+addresses the false brown bottom strip. Check ground joins across center and
+side margins while banking, moving at ground level and crossing the coast.

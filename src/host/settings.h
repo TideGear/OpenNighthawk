@@ -64,6 +64,8 @@ typedef struct {
 
 /* the table and its length */
 const setting_def *settings_defs(int *count);
+/* Plain-language help for a setting key, including resource folders. */
+const char *settings_description(const char *key);
 
 /* Read the values from the INI text (NULL for none) and close the menu. */
 void settings_load(settings_state *s, const char *ini_text);

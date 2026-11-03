@@ -24,6 +24,10 @@ int main(void)
     settings_defs(&n);
     const int pres = find("presentation"), fixes = find("fixes"), full = find("fullscreen"), scale = find("scale");
     CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= 32);
+    {
+        const setting_def *defs = settings_defs(NULL);
+        for (int i = 0; i < n; ++i) CHECK(strlen(settings_description(defs[i].key)) > 20);
+    }
 
     /* the colour-blind aid is a menu row with its four choices, off first */
     {
@@ -74,7 +78,7 @@ int main(void)
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
     CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 9);   /* wraps to the last row */
-    CHECK(s.top == n + 10 - 12 && s.cursor >= s.top && s.cursor < s.top + 12);   /* the list scrolled to show it */
+    CHECK(s.top == n + 10 - 10 && s.cursor >= s.top && s.cursor < s.top + 10);
     for (int k = 0; k < n + 9; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
@@ -195,6 +199,30 @@ int main(void)
             if (px[y * W + x]) { lit++; if (x < (W - 400) / 2 || x >= (W + 400) / 2) outside++; }
     CHECK(lit > 5000 && !outside);
     free(px);
+    /* Blue means different from the default, including values already saved.
+     * Long fix descriptions must show their tail, not silently drop it. */
+    {
+        static uint32_t before[640 * 400], after[640 * 400];
+        settings_load(&s, ""); settings_open(&s);
+        settings_render(&s, before, 640, 400);
+        int blue = 0;
+        for (int i = 0; i < 640 * 400; ++i) blue += before[i] == 0xFF60B0FFu;
+        CHECK(blue == 0);
+        settings_mark_saved(&s, "presentation", "remastered");
+        settings_render(&s, after, 640, 400);
+        for (int i = 0; i < 640 * 400; ++i) blue += after[i] == 0xFF60B0FFu;
+        CHECK(blue > 0 && !settings_needs_restart(&s));
+        settings_set_fix(&s, 0, "LONG", "This is a long fix description whose complete explanation must wrap within the panel even after the old two-line limit. TAILAAA", 1);
+        s.picker = 1; s.pick_cursor = s.pick_top = 0;
+        memset(before, 0, sizeof before); memset(after, 0, sizeof after);
+        settings_render(&s, before, 640, 400);
+        strcpy(strstr(s.pick_what[0], "TAILAAA"), "TAILBBB");
+        settings_render(&s, after, 640, 400);
+        CHECK(memcmp(before, after, sizeof before) != 0);
+        for (int y = 0; y < 400; ++y)
+            for (int x = 0; x < 640; ++x)
+                if (after[y * 640 + x]) CHECK(x >= 120 && x < 520 && y >= 0 && y < 400);
+    }
     /* the Folders screen: typed or pasted text is kept per folder, Backspace and Esc work, and Save writes only what changed */
     {
         int rows;
@@ -202,7 +230,7 @@ int main(void)
         settings_load(&s, "; mine\ndata = C:/Old/Game\nmt32-roms = C:/Roms\n");
         CHECK(!strcmp(s.text_val[0], "C:/Old/Game") && !strcmp(s.text_val[1], "C:/Roms") && s.text_val[2][0] == 0);
         settings_open(&s);
-        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);        /* to the Folders row */
+        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);
         settings_key_event(&s, SKEY_ENTER);
         CHECK(s.text_picker && s.text_edit < 0);
         settings_text_input(&s, "ignored");                                          /* not editing yet */
