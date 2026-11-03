@@ -1,8 +1,8 @@
-# Current checklist: coastline and settings (3 November 2026)
+# Current checklist: coastline, settings, and scenery distance (3 November 2026)
 
-Stopped at the owner's request for a committed handoff to a new conversation.
-Phase 3 is incomplete. Read `handoff.md` before resuming; the airborne distance
-comparison was stopped before completion and is not acceptance evidence.
+Stopped at the owner's request for a handoff to a new conversation. Phase 3
+remains incomplete. Read `handoff.md` before resuming. The latest draw-distance
+work is recorded below and in [scenery-distance.md](scenery-distance.md).
 
 Work resumed at the scheduled 8 a.m. Pacific time on 3 November. Phase 3 is
 incomplete. The shoreline correction is now installed for owner review; the requested settings batch is now implemented and integration-tested:
@@ -53,12 +53,27 @@ terrain coverage, remaining controls/accessibility/replay/audio capabilities,
 and the applicable owner/reference checks. This checklist covers the latest
 owner reports; it does not replace that scope or authorize another full gate.
 
-Next renderer work: general scenery reach; the existing aircraft-specific
-distance adjustment is not a completed terrain/building distance increase.
-The disabled extra-walk experiment now forwards the full camera arguments;
-native positive/negative tests and a replay RAM comparison pass. Added requests
-have not yet produced a visible sampled-frame benefit. See
-[scenery-distance.md](scenery-distance.md); keep the experiment disabled.
+## Remastered scenery distance (3 November 2026)
+
+- [x] Enable a three-cell additional terrain walk in the Remastered wide-view
+  render copy. A fresh North Cape airborne land/coast frame shows 177 changed
+  pixels at the widened edge; setting the environment override to 0 restores
+  the control. The normal game simulation and Original/Enhanced live hook limit
+  remain unchanged.
+- [x] Preserve the full eight-word camera call and install both private copy
+  hooks even when all eight live hooks are occupied. The focused rerun test
+  passes, including the full-slot condition and live-memory isolation.
+- [ ] Check distant buildings and terrain on several land-heavy flights,
+  moving/turning views, ring transitions, duplicated geometry and coast
+  interaction. Measure performance beyond the current single-scene counts.
+
+The three-cell result receives partial credit only. The prior taxi samples and
+the first land comparison with no installed scenery hook are not distance
+acceptance evidence. The later post-turn sky capture is an exact no-change
+negative sample. Details and current-build hashes are in
+[scenery-distance.md](scenery-distance.md). No full machine gate or ONTests
+refresh was done.
+
 Also audit held-key release across host overlays and remapping before claiming
 complete controls coverage: current menu scripts open shortcuts through modifier
 flags, without preceding physical modifier key-down events. This is a coverage

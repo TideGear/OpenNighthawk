@@ -1,31 +1,48 @@
 # Handoff
 
-## Stopped for a new conversation: 3 November scenery-distance investigation
+## Ready for a new conversation: 3 November Remastered scenery distance
 
-The owner replaced the active goal with **wrap up for handoff to a new
-conversation, commit, push, and stop**. Phase 3 remains incomplete; no automatic
-continuation is requested here. Settings and shoreline are installed. This
-checkpoint fixes only the disabled scenery experiment's camera-call arguments.
+The owner requested a handoff, commit, push and stop. Phase 3 remains
+incomplete. The draw-distance implementation and evidence are recorded in
+`docs/scenery-distance.md`; the current checklist is
+`docs/p3-current-work.md`.
+
+Remastered wide views now make a default three-cell terrain pass in the private
+render copy. A fresh airborne North Cape land/coast replay shows 177 added
+pixels at the widened edge. The default capture matches an explicit three-cell
+capture exactly. Six and twelve cells added no visible pixels in that view.
+The later post-turn view was sky-only and remained pixel-identical. The extra
+walk uses the full eight-word camera call and now fits alongside the aircraft
+hook even when all eight live hooks are occupied. The live hook limit stays
+eight; Original and Enhanced drawing paths are unchanged.
+
+This earns 0.25 of the 1.0 R6 distance estimate. Distant buildings, multiple
+land routes, continuous ground views through turning, ring transitions,
+coastline interaction and representative performance are still open. The
+single land replay raised model requests by about 11% and primitives by about
+30%; one process-time comparison is not enough to certify performance. No full
+machine gate was run and ONTests was not refreshed for this change. Current
+candidate `build/f117a.exe` SHA-256:
+`858d3f00f6a307bba891d36b86a032caf25fb1ca2eb162b7d5aae044c5529ad3`.
 
 **Next conversation:** read this file, `docs/p3-current-work.md`,
-`docs/coastline-reconstruction.md` and `docs/scenery-distance.md` first.
-Continue general scenery reach only when asked to resume. The owner suggested
-an airborne comparison; taxi samples have not shown a visible benefit despite
-additional requests/primitives. The two owned `airborne-recon/candidate.exe`
-processes (PIDs 19296/33204) were stopped at the owner's wrap-up request, and
-their Python supervisor exited. The incomplete `private/scenery-20261103/airborne-recon/`
-run has no passing report and must not be cited as flight or distance evidence.
-Its script, `private/scenery-20261103/airborne.py`, uses the existing normal-input
-`tools/routes/recon.input` at 9 million instructions/second, clock 7000000000,
-with separate empty saves and extra-pass controls 0/3. Use a fresh output
-directory on retry; first verify the actual airborne state and replay setup.
+`docs/coastline-reconstruction.md`, `docs/scenery-distance.md`,
+`docs/progress.md` and `docs/roadmap.md`. Do not use the older renderer shots
+for distance conclusions; the evidence directory above contains new captures
+from the current candidate. The settings/coast executable already installed in
+ONTests remains SHA-256
+`7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
 
-The full-camera call passes the native isolation test (including wrapping SP),
-and restoring the old two-word call in a separately compiled negative control
-fails it. Five focused native rerun/Remastered tests pass. Completed taxi
-comparisons, matching 1 MiB live RAM and exact candidate hashes are recorded in
-`docs/scenery-distance.md`. No full machine gate or new deployment was performed.
-The additional scenery pass stays disabled; no distance score was credited.
+The user's earlier coastline/crash-on taxi feedback was tested in the recomp,
+not GOG; it is not proof of Original gameplay collision behavior. Preserve the
+simulation boundary: Remastered changes remain presentation overrides. No
+settings-menu, shoreline or unrelated owner files are included in the scenery
+change.
+
+Scores use `tools/progress.py --title`; the current estimate grants only the
+partial R6 credit described above. Do not claim Phase 3 completion. Preserve
+the owner's sound-board edits and untracked files; only the scenery source,
+focused regression and related documentation belong to this handoff.
 
 ## Accepted settings and shoreline
 
@@ -71,21 +88,15 @@ the remaining controls, accessibility, replay-camera and hybrid-audio rows in
 `docs/progress.json`/the roadmap. Physical controls, explicit joystick-answer
 coverage, original mouse interaction, clipboard/folder interaction, broader
 sound-driver listening/reference checks and owner approval remain applicable.
-Do not mark 100% from the settings tests. Scores are unchanged pending the
-broader requirements; commit titles use `tools/progress.py --title`.
+Do not mark 100% from the settings tests. Broader requirements remain open; the
+distance item has only the partial credit recorded in `docs/progress.json`.
+Commit titles use `tools/progress.py --title`.
 
-Continue from [current checklist](docs/p3-current-work.md) and the roadmap. The next renderer task is general scenery reach.
-The disabled scenery experiment's camera call now forwards all eight argument
-words. Native positive/negative coverage and a live replay RAM comparison pass;
-the sampled taxi frames show no visible distance benefit. See
-[distance evidence](docs/scenery-distance.md). This is a prerequisite correction,
-not an enabled distance feature; ONTests and the progress scores are unchanged.
-A useful performance investigation
-is whether the normal true-color Remastered path still computes an unused
-paletted image; prove pixel equivalence and measure before claiming a gain.
-Scenery work must address which detail-ring cells are requested, not only
-raise the far plane. Keep all simulation and original renderer behavior intact.
-Honor the standing limit: no additional full machine gate without authorization.
+Continue from [current checklist](docs/p3-current-work.md) and the roadmap.
+Next renderer tasks are broader terrain/building reach, coastline and motion
+coverage, and measured cost. See [distance evidence](docs/scenery-distance.md).
+Keep all simulation and Original renderer behavior intact. Honor the standing
+limit: no additional full machine gate without authorization.
 
 **Preserved owner work:** sound-board tool edits and the existing untracked
 files remain excluded. The old ignored `unfinished-snapshot` patches are now

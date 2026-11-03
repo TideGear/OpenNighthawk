@@ -234,10 +234,11 @@ void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 
  * runs first with the coarsest ring alone (the other rings' enable words [04FA + 2 ring] cleared) and every cell of a sector moved on along
  * the sector's heading: row r of the table is the X offsets of sector r and the Y offsets of sector r - 2, so adding D(r) = n sin(45 r) to
  * every entry of row r moves sector r by (D(r), D(r + 2)), a direction turning with the sector. For that walk the far plane [48E6] is raised
- * and the side allowances lowered so their sum with the depth stays under 7FFFh. F117_WIDE_SCENERY=N (experiment) turns it on, N the
- * cells moved (off by default: extra requests have not yet shown a visible range benefit); F117_WIDE_SCENERY_FAR the far plane
- * (default 30000). The original two-word extra call was invalid; see docs/scenery-distance.md for corrected-call evidence. */
+ * and the side allowances lowered so their sum with the depth stays under 7FFFh. Remastered wide views add a three-cell pass;
+ * F117_WIDE_SCENERY overrides it for diagnostics (0 disables, values clamp to 0..6). F117_WIDE_SCENERY_FAR sets the far plane
+ * (default 30000). The extra call forwards all eight original arguments; see docs/scenery-distance.md for evidence. */
 static int g_walk_k = -1, g_walk_busy, g_walk_cells = 3;
+static unsigned g_walk_calls;
 static int walk_second(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -312,7 +313,10 @@ static int walk_second(machine_t *m)
 static int g_air_k = -1, g_air_done, g_air_pct = 100;
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
-    if ((int)k == g_walk_k) return g_walk_busy ? 0 : walk_second(m);
+    if ((int)k == g_walk_k) {
+        g_walk_calls++;
+        return g_walk_busy ? 0 : walk_second(m);
+    }
     if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
     const uint16_t ds = m->cpu.seg[S_DS];
     if (!g_air_done) {
@@ -454,7 +458,12 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
             }
             g_walk_k = -1;
             {   static int cells = -1;
-                if (cells < 0) { const char *e = getenv("F117_WIDE_SCENERY"); cells = e ? atoi(e) : 0; }
+                if (cells < 0) {
+                    const char *e = getenv("F117_WIDE_SCENERY");
+                    cells = e ? atoi(e) : 3;
+                    if (cells < 0) cells = 0;
+                    if (cells > 6) cells = 6;
+                }
                 g_walk_cells = cells;
                 if (cells > 0 && s->exec_hook_n < EXEC_HOOKS_MAX)
                     for (unsigned k = 0; k < s->exec_hook_n; k++)
@@ -466,6 +475,16 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                             s->hooks.exec = wide_air_exec;
                             break;
                         }
+            }
+            if (getenv("F117_WIDE_SCENERY_DIAG_FROM")) {
+                static int reported;
+                if (!reported) {
+                    reported = 1;
+                    fprintf(stderr,"[scenery] armed view %d cells %d hooks %u walk %d copy %04X:%04X\n",
+                        pct,g_walk_cells,s->exec_hook_n,g_walk_k,
+                        s->exec_hook_n ? s->exec_hook[0].cs : 0,
+                        s->exec_hook_n ? s->exec_hook[0].ip : 0);
+                }
             }
         }
     }
@@ -485,6 +504,12 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
     if (g_collector.end) g_collector.end(g_collector.user);
     if (getenv("F117_WIDE_VIEW_DIAG")) fprintf(stderr, "[wide] copy records %d, vertices-ish values %zu\n", out->nrec, out->nvals);
+    if (getenv("F117_WIDE_SCENERY_DIAG_FROM")) {
+        static unsigned reported;
+        if (reported++ < 4)
+            fprintf(stderr,"[scenery] draw clock %llu walk calls %u collector %d\n",
+                (unsigned long long)a->m.cpu.icount,g_walk_calls,g_collector.exec != NULL);
+    }
     g_out = NULL;
     observe_set(real);
     observe_pending_restore(g_pending);

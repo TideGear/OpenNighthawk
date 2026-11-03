@@ -286,3 +286,6 @@ Owner weight decisions for Phase 3:
   sub-items, credited only for what is built, run in the app on a recorded flight and, for hybrid sound, gated (Remastered 5.5 of
   10, hybrid sound 2.11 of 3; the owner's own look and listen, longer draw distance, road and coastline jitter and interpolation
   stay at 0): P3 85.42% -> 91.23%.
+- **3 Nov 2026:** R6 receives partial credit (0.25 of 1.0) for a default three-cell terrain pass in the Remastered wide render copy.
+  One fresh airborne land/coast capture shows 177 added edge pixels; distant buildings, route/turn coverage, coastline interaction
+  and representative performance are still open. See [scenery-distance.md](scenery-distance.md).

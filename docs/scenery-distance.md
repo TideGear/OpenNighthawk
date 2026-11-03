@@ -1,72 +1,113 @@
 # Scenery distance: current evidence
 
-General terrain/building reach is unfinished and disabled. The installed
-ONTests build remains the accepted settings/coastline build. Aircraft already
-have a separate model-to-dot distance extension in the widened render copy;
-that is not completion of the general scenery requirement.
+The Remastered wide view now makes a three-cell terrain pass in its private
+render copy. It fills a small part of the widened land view that the normal
+walk leaves empty. Original and Enhanced keep their existing drawing path and
+live machine hook limit. This is partial R6 progress: distant buildings,
+several land views, and broad movement/performance coverage are still open.
 
-## Correct the experimental camera call first
+The default applies only when Remastered uses a view wider than 4:3. The
+diagnostic `F117_WIDE_SCENERY=0` disables the pass; values 1 through 6 select
+the cell shift and are clamped to that range. The installed ONTests build was
+not refreshed. No full machine gate was run.
 
-The original VGAME walker at 04E6 takes eight words: heading, pitch, and three
-32-bit camera coordinates (X, Y, height). Its matched implementation reads
-BP+4 through BP+12h; original callers push all sixteen argument bytes.
-The disabled `F117_WIDE_SCENERY` experiment previously passed only the two
-angles. The missing coordinates came from unrelated caller-stack contents,
-so the earlier negative distance experiment was not reliable evidence.
+## Implementation and regression
 
-The extra call now forwards all eight words before modifying SP. Native
-`presentation_rerun_isolation` exercises both calls with sentinel arguments,
-including a stack wrapping through zero, and checks that the real machine and
-its entire memory remain unchanged. A separately compiled old-call negative
-control fails this test; the corrected call passes. All five focused
-rerun/Remastered CTests pass. The optional bounded scenery trace reports the
-actual camera, sector, extra draw values and return status; it is off normally.
+VGAME's terrain walk at `04E6` takes eight words: heading, pitch, and three
+32-bit camera coordinates (X, Y, height). The matched implementation reads
+the full 16-byte argument block. The extra call forwards every word before
+adjusting SP; the earlier two-word experiment read unrelated stack contents
+as its camera position and was not valid evidence.
 
-This defect affected only the explicitly enabled extra-pass experiment. It
-does not explain normal-play coastline motion, layer sorting or aircraft
-culling, and the correction is not a claim to fix those independent issues.
+The extra pass shifts a sector's cell table along the current heading, disables
+the three finer rings, raises the far plane to 30000, lowers the side allowance
+when needed to avoid 16-bit depth overflow, then restores the copied machine's
+registers and modified table values. The caller itself is the speculative
+Remastered render copy, never the live game machine.
 
-## Replay results on 3 November
+The first land replay exposed a second failure mode: the live renderer already
+occupied seven of its eight execution hooks, so the copy installed the
+aircraft hook but had no slot for the terrain walk. `machine_t` now has two
+additional hook slots for the render copy. Live sound and Remastered hooks
+remain capped at eight, preserving their existing behavior. The focused
+`test_rerun` fills all eight live slots and checks that both copy-only hooks
+still work; it also checks all eight camera arguments, stack wraparound, and
+that the real machine and its full memory remain unchanged. `build/test_rerun.exe`
+passes on the final build.
 
-Private evidence is under `private/scenery-20261103/`; it contains no files
-that should be distributed with the repository.
+## Fresh airborne land replay, 3 November
 
-- `argument-regression.json`: healthy call passes, old two-word call fails.
-- `camera-call-comparison/`: session `20261101-224822`, clock 10000000000.
-  Corrected extra pass raises cumulative model requests from 49200 to 54770;
-  the displayed and raw reconstructed samples are pixel-identical.
-- `direction-isolation/`: session `20261102-141108`, displayed clock 900000000.
-  Corrected extra pass raises the diagnostic model requests from 980 to 1120
-  and primitives from 631 to 641. Both the displayed sample and the separate
-  raw reconstructed sample remain pixel-identical to the disabled control.
-  The diagnostic primitive count alone therefore does not establish a visible
-  benefit. The bounded trace confirms a complete-camera call returning normally.
-  Live 1 MiB RAM at clock 1000000000 is identical across the prior installed
-  executable with the experiment enabled, the corrected candidate enabled,
-  and the corrected candidate disabled (SHA-256
-  `05f1c0fc4bccd632f8d3db2ce9f3415a6c73e2f7145d66d4aabf5ab9a18d4b71`).
-  Candidate SHA-256:
-  `43209b7fe79ce7cfda0caa84825e1f9e845818505ffb65a37a8eed9cf4982d81`.
+The comparison uses a newly recorded North Cape strike route generated through
+the game's normal menus and takeoff controls. Captures are from current build
+SHA-256 `858d3f00f6a307bba891d36b86a032caf25fb1ca2eb162b7d5aae044c5529ad3`;
+none of the older renderer screenshots were used. Private files are under
+`private/scenery-20261103/north-cape-route/`.
 
-No full machine gate was run. These are focused test and single-clock RAM
-comparisons, not a replacement for machine parity or broad moving acceptance.
+At clock 3,700,000,000 the placement trace reports camera position
+`109237,330178,7116` and a live aircraft altitude of about 7,116 feet. The
+fresh frame shows land beside the coast. In the 173% wide view:
 
-The owner suggested testing in the air. `private/scenery-20261103/airborne.py`
-started two private recon-route replays (extra pass 0/3), but the owner then
-requested a committed handoff and stop. Both owned children were stopped and
-the supervisor exited with the expected nonzero result. `airborne-recon/` is
-incomplete evidence, with no passing report, sampled flight state or distance
-conclusion. Retry in a fresh directory and establish airborne state first.
+| Terrain pass | Extra walk values | Primitives | Model requests | Difference from control |
+|---|---:|---:|---:|---|
+| Off | 0 | 79 | 29,102 | — |
+| 3 cells (default) | 7,070 | 103 | 32,273 | 177 pixels at the widened edge |
+| 6 cells | 421 | 81 | 29,205 | pixel-identical |
+| 12 cells (before the diagnostic clamp) | 0 | 79 | 29,278 | pixel-identical |
 
-## Work still needed
+For the three-cell result, the differing pixels occupy `x=1120..1274`,
+`y=466..506` in the 1280 x 600 capture, within the wide land margin. The
+default-without-an-environment-override capture is pixel-identical to the
+explicit three-cell capture. The tested six-cell offset draws less useful
+geometry; twelve cells finds none in this view, so neither is selected.
 
-Trace requested cells and their finished geometry on an airborne flight over
-distant scenery. Establish additional visible buildings/terrain at known world
-distances, continuity while moving and turning, and measured performance cost.
-Do not infer that extra requests or a larger far plane alone prove success.
-Review ring detail transitions, duplicated cells and the fixed-size placement
-metadata buffer before enabling a larger walk. Preserve coastline, occlusion,
-light, margin and live-simulation isolation checks. Enable accepted changes
-only as Remastered presentation overrides; retain Original/Enhanced controls.
+At clock 3,900,000,000, after a turn, the aircraft is at about 10,694 feet
+and looking into sky. The extra walk returns with zero geometry and the image
+matches the control exactly, so this sample shows no terrain bleeding into
+the sky. It does not substitute for continuity checks across multiple land
+headings or sector/detail transitions.
 
-The distance score remains unchanged until the actual feature is demonstrated.
+The short replay's requests rose about 11% and primitives about 30% with the
+three-cell pass. End-to-end wall time in single runs was 54.6 seconds for the
+control and 54.8 seconds for three cells; this is too little timing evidence
+to establish a general performance cost. A later performance pass should use
+the project's measured renderer workflow.
+
+The 1 MiB snapshots at clock 3.8 billion differed between the control and the
+three-cell run at two bytes (`0x4CD8` and `0x4CE4`); the same two offsets also
+varied between duplicate control runs. Do not cite those snapshots as proof
+of exact machine parity. The native rerun isolation regression checks the
+copy's full-memory isolation directly. The new work is confined to the
+Remastered render copy and the live machine hook cap is unchanged.
+
+## Earlier negative controls
+
+The prior comparisons were useful for finding mistakes but did not establish
+a visible distance improvement:
+
+- The corrected pass increased model requests in taxi/airfield samples while
+  producing pixel-identical images.
+- The first land flight at 6 and 12 cells also appeared unchanged. Its trace
+  showed `walk=-1`: the scenery hook had not been installed because the eight
+  live hook slots were full. Those samples are not evidence that the pass was
+  ineffective.
+- The original two-word-call sample was invalid because its camera arguments
+  were incomplete.
+
+Native positive/negative call coverage and the original disabled-pass
+comparisons are in `private/scenery-20261103/argument-regression.json`,
+`camera-call-comparison/`, and `direction-isolation/`.
+
+## Remaining work
+
+- Verify additional distant buildings and terrain at known world distances on
+  more than one land-heavy route and across cell sectors/detail-ring changes.
+- Capture moving land scenes while turning, and check for gaps, duplicates,
+  pop-in, occlusion, and interaction with the coastline correction.
+- Measure the pass's renderer cost across representative flights and display
+  sizes; the current request/primitive counts and one end-to-end timing are
+  not a performance acceptance.
+- Review the result in ONTests after a future authorized refresh.
+
+Original game behavior and simulation parity remain hard boundaries. Keep
+future distance changes in Remastered's private presentation copy, and keep
+the progress credit partial until the remaining evidence is available.

@@ -206,7 +206,11 @@ struct machine {
     uint8_t  trap_on;
     /* Host execution hooks (hooks.exec), none by default: the first exec_hook_n CS:IP pairs are watched. Checked beside
      * trap_on in the run loops, and only when exec_hook_n is not zero. */
-#define EXEC_HOOKS_MAX 8
+/* The live machine keeps its existing eight host hooks. The speculative
+ * presentation copy needs two additional addresses for independent render
+ * overrides (aircraft and scenery) without consuming live slots. */
+#define EXEC_HOOKS_LIVE_MAX 8
+#define EXEC_HOOKS_MAX (EXEC_HOOKS_LIVE_MAX + 2)
     uint8_t  exec_hook_n;
     struct { uint16_t cs, ip; } exec_hook[EXEC_HOOKS_MAX];
     uint16_t trap_cs, trap_ip, trap_sp;

@@ -189,9 +189,9 @@
       {
         "item": "Remastered: longer draw distance (R6)",
         "weight": 1.0,
-        "done": 0.0,
+        "done": 0.25,
         "kind": "estimate",
-        "evidence": "Not started: the game asks for models only inside its own reach."
+        "evidence": "3 Nov 2026: Remastered wide views now run a three-cell terrain pass in the private render copy. On a fresh airborne North Cape land/coast replay it adds 177 pixels at the widened edge (0 cells: 79 primitives/29,102 model requests; 3 cells: 103/32,273). Original and Enhanced live drawing are unchanged, and the full-slot native rerun test passes. Partial credit only: no distant buildings or several land routes yet; movement, ring transitions, coastline interaction and representative performance remain open. See docs/scenery-distance.md."
       },
       {
         "item": "Remastered: no road or coastline jitter",

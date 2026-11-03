@@ -112,7 +112,7 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
 {
     (void)r;
     const unsigned base = m->exec_hook_n;
-    for (unsigned k = 0; k < 5 && m->exec_hook_n < EXEC_HOOKS_MAX; k++) {
+    for (unsigned k = 0; k < 5 && m->exec_hook_n < EXEC_HOOKS_LIVE_MAX; k++) {
         m->exec_hook[m->exec_hook_n].cs = (uint16_t)(load_seg + WATCH[k].seg);
         m->exec_hook[m->exec_hook_n].ip = WATCH[k].ip;
         m->exec_hook_n++;

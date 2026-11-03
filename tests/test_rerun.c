@@ -110,7 +110,10 @@ int main(void)
         m.cpu.io_write=pc_io_write;m.cpu.io_read=pc_io_read;m.cpu.int_hook=dos_int_hook;pc_reset(&m);
         m.cpu.seg[S_CS]=0x1000;m.cpu.seg[S_DS]=0x2000;m.cpu.seg[S_SS]=0x3000;
         m.cpu.ip=0x1450;m.cpu.r[R_SP]=wrap ? 8 : 0xF000;m.cpu.icount=100;
-        m.exec_hook_n=2;m.exec_hook[0].cs=m.exec_hook[1].cs=0x1000;
+        CHECK(EXEC_HOOKS_MAX >= EXEC_HOOKS_LIVE_MAX + 2);
+        m.exec_hook_n=EXEC_HOOKS_LIVE_MAX;
+        for(unsigned k=2;k<m.exec_hook_n;k++){m.exec_hook[k].cs=0x2000;m.exec_hook[k].ip=(uint16_t)(0x100+k);}
+        m.exec_hook[0].cs=m.exec_hook[1].cs=0x1000;
         m.exec_hook[0].ip=0x1450;m.exec_hook[1].ip=0x04E7;
         unsigned at=0x11450;
         for(int i=7;i>=0;i--) {memory[at++]=0x68;memory[at++]=(uint8_t)terrain_args[i];memory[at++]=(uint8_t)(terrain_args[i]>>8);}

@@ -327,7 +327,7 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
                                    m->mem[(((uint32_t)m->cpu.seg[S_SS] << 4) + (uint16_t)(m->cpu.r[R_SP] + 5)) & 0xFFFFF] << 8);
     static int log_requests = -1;
     if (log_requests < 0) log_requests = getenv("F117_SOUND_LOG") != NULL;   /* diagnostic: every request */
-    if (g_side && g_hook_flight && g_speed_hook == ~0u && m->exec_hook_n < EXEC_HOOKS_MAX) {
+    if (g_side && g_hook_flight && g_speed_hook == ~0u && m->exec_hook_n < EXEC_HOOKS_LIVE_MAX) {
         const uint32_t at = ((uint32_t)m->cpu.seg[S_CS] << 4) + m->cpu.ip;
         if (m->mem[at & 0xFFFFF] == 0xEA) {
             g_speed_hook = m->exec_hook_n++;

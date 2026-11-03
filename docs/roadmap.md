@@ -933,6 +933,8 @@ jitter is the original's; no smoothing", "Do not extend the draw distance").
       2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
       because it deformed objects; in-between pictures come from `rerun`).
 - [ ] **A longer draw distance** in the original renderer (owner, 15 Oct 2026). Planned for Remastered instead (Phase 3, 24 Oct 2026).
+      Remastered R6 is in progress: a three-cell terrain pass reaches the wide-view land edge in one fresh airborne route; broader
+      buildings, motion, coastline and performance checks remain. See [scenery-distance.md](scenery-distance.md).
 
 ## Phase 4 - checked by people and independent references
 
