@@ -3,6 +3,12 @@
 Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix). `py tools/progress.py --title`
 prints the current figures; do not copy a title from an older commit.
+Enable the local commit-message guard with `py tools/check_commit_title.py --install`.
+It rejects missing or stale prefixes and empty descriptions; it does not change
+published history. The hook scores the worktree making the commit, including
+when that worktree uses the shared installed checker. Existing custom hooks
+are left intact for manual integration. Regression checks:
+`py tests/test_commit_title.py`.
 `py tools/progress.py` alone prints every item
 with its completion, weight and kind, then the gameplay score with its
 unmatched bytes by module, the accounted-for checklist, the census line (with
