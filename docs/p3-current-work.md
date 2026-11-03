@@ -1,5 +1,9 @@
 # Current checklist: coastline and settings (3 November 2026)
 
+Stopped at the owner's request for a committed handoff to a new conversation.
+Phase 3 is incomplete. Read `handoff.md` before resuming; the airborne distance
+comparison was stopped before completion and is not acceptance evidence.
+
 Work resumed at the scheduled 8 a.m. Pacific time on 3 November. Phase 3 is
 incomplete. The shoreline correction is now installed for owner review; the requested settings batch is now implemented and integration-tested:
 
@@ -51,6 +55,10 @@ owner reports; it does not replace that scope or authorize another full gate.
 
 Next renderer work: general scenery reach; the existing aircraft-specific
 distance adjustment is not a completed terrain/building distance increase.
+The disabled extra-walk experiment now forwards the full camera arguments;
+native positive/negative tests and a replay RAM comparison pass. Added requests
+have not yet produced a visible sampled-frame benefit. See
+[scenery-distance.md](scenery-distance.md); keep the experiment disabled.
 Also audit held-key release across host overlays and remapping before claiming
 complete controls coverage: current menu scripts open shortcuts through modifier
 flags, without preceding physical modifier key-down events. This is a coverage

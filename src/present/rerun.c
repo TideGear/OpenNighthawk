@@ -235,13 +235,19 @@ void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 
  * the sector's heading: row r of the table is the X offsets of sector r and the Y offsets of sector r - 2, so adding D(r) = n sin(45 r) to
  * every entry of row r moves sector r by (D(r), D(r + 2)), a direction turning with the sector. For that walk the far plane [48E6] is raised
  * and the side allowances lowered so their sum with the depth stays under 7FFFh. F117_WIDE_SCENERY=N (experiment) turns it on, N the
- * cells moved (off by default: it drew no more on the owner's flight); F117_WIDE_SCENERY_FAR the far plane (default 30000). */
+ * cells moved (off by default: extra requests have not yet shown a visible range benefit); F117_WIDE_SCENERY_FAR the far plane
+ * (default 30000). The original two-word extra call was invalid; see docs/scenery-distance.md for corrected-call evidence. */
 static int g_walk_k = -1, g_walk_busy, g_walk_cells = 3;
 static int walk_second(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
-    const uint16_t heading = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 2)), pitch = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 4));
+    /* 04E6 takes eight words: heading, pitch, then three world-coordinate
+     * longs. Forward all of them before changing SP. Angles alone made the
+     * extra walk read the caller's return address as part of its camera. */
+    uint16_t arguments[8];
+    for(int i=0;i<8;i++)arguments[i]=rd16(m->mem,ss,(uint16_t)(c->r[R_SP]+2+2*i));
+    const size_t values_before=g_out ? g_out->nvals : 0;
     static const int dir10[8] = { 0, 7, 10, 7, 0, -7, -10, -7 };       /* 10 sin(45 r), rounded */
     static int far = -1;
     if (far < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far = e ? atoi(e) : 30000; if (far > 32000) far = 32000; }
@@ -265,8 +271,7 @@ static int walk_second(machine_t *m)
     const uint8_t on = m->trap_on;
     const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
     const uint64_t until = m->run_until, stop = c->stop_at;
-    cpu_push16(c, pitch);
-    cpu_push16(c, heading);
+    for(int i=7;i>=0;i--)cpu_push16(c,arguments[i]);
     cpu_push16(c, 0x04E6);                                              /* the return address: never run, the trap stops at it */
     c->ip = 0x04E6;
     m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x04E6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
@@ -275,6 +280,23 @@ static int walk_second(machine_t *m)
     const uint64_t limit = c->icount + 200000000ull;                   /* a throwaway copy: no slice to keep, only a bound */
     while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
     g_walk_busy = 0;
+    {   /* Optional read-only trace of an experimental pass, after a seek. */
+        const char *from=getenv("F117_WIDE_SCENERY_DIAG_FROM");
+        static int logged;
+        if(from && !logged && c->icount>=strtoull(from,NULL,0)) {
+            logged=1;
+            const unsigned sector=((uint16_t)(0x1000-arguments[0]))>>13;
+            fprintf(stderr,"[scenery] heading %04X pitch %04X view %u,%u,%u sector %u extra values %zu rc %d\n",
+                arguments[0],arguments[1],arguments[2]|(uint32_t)arguments[3]<<16,
+                arguments[4]|(uint32_t)arguments[5]<<16,arguments[6]|(uint32_t)arguments[7]<<16,
+                sector,(g_out ? g_out->nvals : 0)-values_before,rc);
+            fprintf(stderr,"[scenery] sector first cell %d,%d shift %d,%d view-forward %d,%d\n",
+                (int16_t)table[sector*9],(int16_t)table[((sector+2)&7)*9],
+                (dir10[sector]*g_walk_cells+(dir10[sector]<0 ? -5 : 5))/10,
+                (dir10[(sector+2)&7]*g_walk_cells+(dir10[(sector+2)&7]<0 ? -5 : 5))/10,
+                (int16_t)rd16(m->mem,ds,0x7B2C),(int16_t)rd16(m->mem,ds,0x7B38));
+        }
+    }
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
     for (int i = 0; i < 72; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * i), table[i]);
     for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), enable[r]);
@@ -462,7 +484,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     while (!g_done && s->cpu.icount < limit)
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
     if (g_collector.end) g_collector.end(g_collector.user);
-    if (getenv("F117_WIDE_VIEW_DIAG")) fprintf(stderr, "[wide] copy records %d, vertices-ish values %d\n", out->nrec, out->nvals);
+    if (getenv("F117_WIDE_VIEW_DIAG")) fprintf(stderr, "[wide] copy records %d, vertices-ish values %zu\n", out->nrec, out->nvals);
     g_out = NULL;
     observe_set(real);
     observe_pending_restore(g_pending);

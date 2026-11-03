@@ -1,10 +1,33 @@
 # Handoff
 
-## Current: 3 November settings and shoreline
+## Stopped for a new conversation: 3 November scenery-distance investigation
 
-The active goal remains **get Phase 3 to 100% safely**. The previous goal turn
-made verified progress (installed shoreline correction); this turn completes
-the requested settings batch. Neither local batch is completion of Phase 3.
+The owner replaced the active goal with **wrap up for handoff to a new
+conversation, commit, push, and stop**. Phase 3 remains incomplete; no automatic
+continuation is requested here. Settings and shoreline are installed. This
+checkpoint fixes only the disabled scenery experiment's camera-call arguments.
+
+**Next conversation:** read this file, `docs/p3-current-work.md`,
+`docs/coastline-reconstruction.md` and `docs/scenery-distance.md` first.
+Continue general scenery reach only when asked to resume. The owner suggested
+an airborne comparison; taxi samples have not shown a visible benefit despite
+additional requests/primitives. The two owned `airborne-recon/candidate.exe`
+processes (PIDs 19296/33204) were stopped at the owner's wrap-up request, and
+their Python supervisor exited. The incomplete `private/scenery-20261103/airborne-recon/`
+run has no passing report and must not be cited as flight or distance evidence.
+Its script, `private/scenery-20261103/airborne.py`, uses the existing normal-input
+`tools/routes/recon.input` at 9 million instructions/second, clock 7000000000,
+with separate empty saves and extra-pass controls 0/3. Use a fresh output
+directory on retry; first verify the actual airborne state and replay setup.
+
+The full-camera call passes the native isolation test (including wrapping SP),
+and restoring the old two-word call in a separately compiled negative control
+fails it. Five focused native rerun/Remastered tests pass. Completed taxi
+comparisons, matching 1 MiB live RAM and exact candidate hashes are recorded in
+`docs/scenery-distance.md`. No full machine gate or new deployment was performed.
+The additional scenery pass stays disabled; no distance score was credited.
+
+## Accepted settings and shoreline
 
 **Verified and installed in ONTests:** SHA-256 `7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
 The prior coast build is backed up at `private/settings-20261103/ONTests-before-settings.exe`.
@@ -52,6 +75,11 @@ Do not mark 100% from the settings tests. Scores are unchanged pending the
 broader requirements; commit titles use `tools/progress.py --title`.
 
 Continue from [current checklist](docs/p3-current-work.md) and the roadmap. The next renderer task is general scenery reach.
+The disabled scenery experiment's camera call now forwards all eight argument
+words. Native positive/negative coverage and a live replay RAM comparison pass;
+the sampled taxi frames show no visible distance benefit. See
+[distance evidence](docs/scenery-distance.md). This is a prerequisite correction,
+not an enabled distance feature; ONTests and the progress scores are unchanged.
 A useful performance investigation
 is whether the normal true-color Remastered path still computes an unused
 paletted image; prove pixel equivalence and measure before claiming a gain.
