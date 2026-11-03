@@ -20,6 +20,12 @@ SDL_Scancode remap_apply(SDL_Scancode physical);
 void remap_clear(void);
 void remap_remove(SDL_Scancode physical);
 int remap_set(SDL_Scancode physical, SDL_Scancode target);
+/* The physical key that now sends target to the game: target itself when it is not remapped, the first key remapped to it otherwise, and
+ * SDL_SCANCODE_UNKNOWN when none does. */
+SDL_Scancode remap_source(SDL_Scancode target);
+/* Make physical send the game key target and target send what physical sent (a swap), first freeing the key that sent target before.
+ * physical == target restores target's default. Returns 0 if a pair could not be stored. */
+int remap_assign(SDL_Scancode physical, SDL_Scancode target);
 /* Canonical current nondefault pairs; caller frees the returned string. */
 char *remap_export(void);
 

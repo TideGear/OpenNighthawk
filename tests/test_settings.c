@@ -93,15 +93,12 @@ int main(void)
     settings_key_event(&s, SKEY_ENTER);
     CHECK(s.open && s.clear_padkeys);
     s.clear_padkeys = 0;
-    /* Remap a key and Clear key remaps ask the host and keep the menu open */
-    s.cursor = n + 2;
-    settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.key_picker == 1 && !s.clear_remaps);
-    s.key_picker = 0;
-    s.cursor = n + 3;
-    settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.clear_remaps && !s.key_picker);
-    s.clear_remaps = 0;
+    /* Key remapping lives on the Keys tab: the Settings list no longer offers Remap a key or Clear key remaps */
+    {
+        int rows[48];
+        const int listed = settings_menu_rows(&s, rows, 48);
+        for (int k = 0; k < listed; k++) CHECK(rows[k] != n + 2 && rows[k] != n + 3);
+    }
     /* the fix picker: the host lists the fixes, Enter opens it, Enter switches one, Esc comes back with the change noted */
     s.cursor = n + 4;
     settings_key_event(&s, SKEY_ENTER);

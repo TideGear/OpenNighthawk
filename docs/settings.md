@@ -25,15 +25,18 @@ folders are kept. The default sound driver is **Ask**, so a factory reset can
 bring SETUP's questions back. Original pilot/mission options remain the game's
 own settings.
 
-Remap a Key opens a list of all 101 supported game keys. The left column is the
-physical key; the right column is what the game receives. Blue mappings differ
-from the original binding. Enter opens an output-key list, including Escape,
-Enter and punctuation keys. Enter assigns; Escape cancels the selection.
-Backspace restores the selected physical key's default. Page Up/Down and
-Home/End move through either list. Host shortcuts continue using physical keys.
-Assignments and Clear Key Remaps take effect and save immediately, as do the
-existing controller-key assignment actions. Fix-picker selections are saved
-as a custom set and take effect after restart.
+The Keys tab (Tab switches to it from Settings, or Ctrl+Alt+K) is also the key
+remapper, so you can see what a key does while you change it. Up/Down moves
+through the rows that can be remapped (every single-key control of the first
+four pages); Enter then waits for the new key, and Escape cancels. The
+assignment is a swap: the key you press sends the row's game key and the old
+game key sends what the pressed key sent, so no two keys do the same thing.
+Backspace restores the row's default. A row whose binding is not the default
+shows the new key in blue. Host shortcuts continue using physical keys. Changes
+take effect and save immediately. Settings no longer has Remap a Key or Clear Key
+Remaps; Reset All Settings to Default still clears the remaps. Controller-button
+key assignments stay in Settings. Fix-picker selections are saved as a custom
+set and take effect after restart.
 
 Folders accepts typed or pasted paths. Enter keeps an edit, Escape undoes it,
 and Backspace clears a folder choice. Save writes folder changes. Choose Fixes

@@ -85,11 +85,10 @@ def run(app, data, session, out, timeout=45):
     cases=[
         ("audio",base,["Open"]+down(18)+["Return","Escape","Escape"],"audio",None,[]),
         ("advanced",base,["Open"]+down(19)+["Return","Escape","Escape"],"advanced",None,[]),
-        ("bindings",base,["Open"]+down(22)+["Return"]+down(16)+["Return","Home"]+down(4)+["Return","Escape","Escape"],"keys","Q",["--remap","Q:W"]),
-        ("targets",base,["Open"]+down(22)+["Return"]+down(16)+["Return","Escape","Escape","Escape"],"targets",None,["--remap","Q:W"]),
-        ("restore-key",base+"remap = A:B,Q:W\n",["Open"]+down(22)+["Return"]+down(16)+["Backspace","Escape","Escape"],"keys","Q",[]),
-        ("reset",changed,["Open"]+down(29)+["Return"]+["Up"]*9+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
-        ("cancel-reset",changed,["Open"]+down(29)+["Return","Escape"],"reset",None,[]),
+        ("keys-remap",base,["OpenKeys","Return","Q","Escape"],"keys-tab",None,[]),
+        ("keys-restore",base+"remap = Q:=,=:Q\n",["OpenKeys","Backspace","Escape"],"keys-tab",None,[]),
+        ("reset",changed,["Open"]+down(27)+["Return"]+["Up"]*7+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
+        ("cancel-reset",changed,["Open"]+down(27)+["Return","Escape"],"reset",None,[]),
         ("fresh restart",base,["Open","Right"]+down(20)+["Return"],None,None,["--presentation","original"]),
     ]
     report=dict(app_sha256=digest(app),checker_sha256=digest(__file__),cases=[])
@@ -101,7 +100,8 @@ def run(app, data, session, out, timeout=45):
         env.update(SDL_VIDEODRIVER="dummy",SDL_AUDIODRIVER="dummy",SDL_RENDER_DRIVER="software",F117_WINDOW="1280x960",
                    F117_SETTINGS_SCRIPT=",".join(script),F117_SETTINGS_TRACE="1",F117_SETTINGS_AUTOTEST="1")
         if name!="fresh restart":env["F117_RESTART_DRYRUN"]="1"
-        if shot_state:env.update(F117_MENU_SHOT=str(folder/"menu.ppm"),F117_MENU_SHOT_STATE=shot_state)
+        if shot_state=="keys-tab":env.update(F117_MENU_SHOT=str(folder/"menu.ppm"),F117_REF_AUTOTEST="1")
+        elif shot_state:env.update(F117_MENU_SHOT=str(folder/"menu.ppm"),F117_MENU_SHOT_STATE=shot_state)
         if shot_key:env["F117_MENU_SHOT_KEY"]=shot_key
         # The final backslash exercises actual Windows restart argument quoting.
         save=str(folder/"save")+("\\" if os.name=="nt" else "/")
@@ -120,7 +120,7 @@ def run(app, data, session, out, timeout=45):
                 time.sleep(.1);log=(folder/"process.log").read_text()
             check_restart(log)
         counts=re.findall(r"\[settings-bindings\] supported=(\d+) listed=(\d+)",log)
-        require(counts and all(int(a)==int(b) and 80<=int(a)<=128 for a,b in counts),f"{name}: incomplete key list")
+        if shot_state!="keys-tab":require(counts and all(int(a)==int(b) and 80<=int(a)<=128 for a,b in counts),f"{name}: incomplete key list")
         values=ini_values(config.read_text())
         if name=="reset":
             require(all(values.get(k)==v for k,v in DEFAULTS.items()),"reset did not persist every default")
@@ -131,10 +131,15 @@ def run(app, data, session, out, timeout=45):
             require(defaults.get("QUIZ")=="0" and len(defaults)>30 and
                     all(value=="1" for key,value in defaults.items() if key!="QUIZ"),"reset fix-picker defaults disagree with normal-play policy")
         elif name=="cancel-reset":require(config.read_text()==text,"cancelled reset changed the file")
-        elif name=="bindings":require(values.get("remap")=="Q:E","binding list did not replace the CLI mapping")
-        elif name=="restore-key":require(values.get("remap")=="A:B","restoring one key changed another key")
+        elif name=="keys-remap":require(values.get("remap")=="Q:=,=:Q","Keys tab did not save the swapped binding")
+        elif name=="keys-restore":require("remap" not in values,"Keys tab did not restore the default binding")
         elif name=="fresh restart":require(values.get("sound")=="roland" and values.get("presentation")=="enhanced","restart choices were not persisted")
-        if shot_state:
+        if shot_state=="keys-tab":
+            with Image.open(folder/"menu.ppm") as im:
+                picture=im.convert("RGB");picture.save(folder/"menu.png")
+                blue=sum(p==(96,176,255) for p in picture.getdata())
+                require((blue>0)==(name=="keys-remap"),"changed key row is not blue (or a default one is)")
+        elif shot_state:
             with Image.open(folder/"menu.ppm") as im:
                 require(im.size==(640,400),"unexpected menu picture size")
                 picture=im.convert("RGB");picture.save(folder/"menu.png")
@@ -143,10 +148,7 @@ def run(app, data, session, out, timeout=45):
                     for x in range(640):
                         if not (120<=x<520 and 36<=y<364) and not (40<=x<600 and 6<=y<30):
                             require(picture.getpixel((x,y))==(0,0,0),f"{name}: menu text spills outside its panel")
-                if name in ("bindings","restore-key"):
-                    blue=sum(p==(96,176,255) for p in picture.crop((330,240,515,270)).getdata())
-                    require((blue>0)==(name=="bindings"),"nondefault/default key color is incorrect")
-        report["cases"].append(dict(name=name,status="pass",supported_keys=int(counts[-1][0])))
+        report["cases"].append(dict(name=name,status="pass",supported_keys=int(counts[-1][0]) if counts else 0))
         (out/"report.json").write_text(json.dumps(report,indent=2))
     report.update(status="pass",seconds=time.monotonic()-started)
     (out/"report.json").write_text(json.dumps(report,indent=2))

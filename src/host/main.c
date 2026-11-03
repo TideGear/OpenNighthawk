@@ -643,6 +643,15 @@ static void fill_bindings(settings_state *s)
     if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-bindings] supported=%d listed=%d\n",row,s->key_count);
 }
 
+/* The Keys tab as the remapper: the next row of the page that has a default game key, from `from` in direction dir (or from if none). */
+static int keyref_step(int page, int from, int dir)
+{
+    int n; const keyref_row *rows = keyref_rows(page, &n);
+    for (int i = from + dir; i >= 0 && i < n; i += dir) if (keyref_row_default(&rows[i])) return i;
+    return from;
+}
+static int keyref_first(int page) { int n; keyref_rows(page, &n); const keyref_row *r = keyref_rows(page, &n); return n > 0 && keyref_row_default(&r[0]) ? 0 : keyref_step(page, 0, 1) ; }
+
 static int save_remaps(const char *path)
 {
     char *pairs=remap_export(), *text=config_read_file(path);
@@ -1761,7 +1770,7 @@ int main(int argc, char **argv)
     uint64_t vt_ns = 0, vt_last = 0;                /* a replay's own clock, run at that speed */
     uint64_t seek_target = player && seek_secs > 0 ? (uint64_t)(seek_secs * (double)ips) : 0;   /* a replay runs flat out to here */
     int tabs_on = 0, esc_swallow = 0, switch_to_settings = 0;      /* the Esc menu: settings and keys as two tabs (a flight only: the original does nothing with Esc there) */
-    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0, sk_frame = 0;
+    int running = 1, paused = 0, menu_paused = 0, diag_frame = 0, ref_open = 0, ref_page = 0, ref_cursor = -1, ref_wait = 0, ref_paused = 0, ref_frame = 0, rm_frame = 0, fx_frame = 0, wa_frame = 0, rp_frame = 0, sk_frame = 0;
     int mouse_buttons = 0;
 
     while (running) {
@@ -1777,6 +1786,7 @@ int main(int argc, char **argv)
                     memcpy(key,next,len);key[len]=0;
                     SDL_Event e;SDL_zero(e);e.type=SDL_EVENT_KEY_DOWN;
                     if(!strcmp(key,"Open")) {e.key.scancode=SDL_SCANCODE_S;e.key.mod=(SDL_Keymod)(SDL_KMOD_CTRL|SDL_KMOD_ALT);}
+                    else if(!strcmp(key,"OpenKeys")) {e.key.scancode=SDL_SCANCODE_K;e.key.mod=(SDL_Keymod)(SDL_KMOD_CTRL|SDL_KMOD_ALT);}
                     else e.key.scancode=SDL_GetScancodeFromName(key);
                     if(e.key.scancode!=SDL_SCANCODE_UNKNOWN)SDL_PushEvent(&e);
                 }
@@ -1819,7 +1829,7 @@ int main(int argc, char **argv)
          * up; F117_MENU_SHOT=FILE.ppm saves its picture. */
         {
             static int ref_next;
-            if (getenv("F117_REF_AUTOTEST") && ++ref_frame >= 5 && ref_next < 3) {
+            if (getenv("F117_REF_AUTOTEST") && !getenv("F117_SETTINGS_SCRIPT") && ++ref_frame >= 5 && ref_next < 3) {
                 const int k = ref_next++;
                 SDL_Event e;
                 SDL_zero(e);
@@ -2048,7 +2058,7 @@ int main(int argc, char **argv)
                         settings_key_event(&g_set, SKEY_ESC);                              /* close Settings without saving, keep the pause */
                         SDL_StopTextInput(win);
                         if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
-                        ref_open = 1; ref_page = 0;
+                        ref_open = 1; ref_page = 0; ref_cursor = keyref_first(0); ref_wait = 0;
                         if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); ref_paused = 1; }
                     } else if (ref_open) {
                         ref_open = 0;
@@ -2118,17 +2128,39 @@ int main(int argc, char **argv)
                 if (down && (mod & SDL_KMOD_CTRL) && (mod & SDL_KMOD_ALT) && ev.key.scancode == SDL_SCANCODE_K &&
                     live && !g_set.open && tex_menu) {              /* the on-screen key reference */
                     ref_open = !ref_open;
-                    ref_page = 0;
+                    ref_page = 0; ref_cursor = keyref_first(0); ref_wait = 0;
                     if (ref_open && !paused) { paused = 1; pause_began = SDL_GetTicksNS(); ref_paused = 1; }
                     else if (!ref_open && ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
                     break;
                 }
-                if (ref_open) {                                     /* the reference has the keyboard */
+                if (ref_open) {                                     /* the reference has the keyboard: the Keys tab, which also remaps */
                     if (down) {
                         const SDL_Scancode sc = ev.key.scancode;
-                        if (sc == SDL_SCANCODE_RIGHT && ref_page + 1 < KEYREF_PAGES) ref_page++;
-                        else if (sc == SDL_SCANCODE_LEFT && ref_page > 0) ref_page--;
-                        else if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_RETURN) {
+                        int n; const keyref_row *rows = keyref_rows(ref_page, &n);
+                        const keyref_row *row = ref_cursor >= 0 && ref_cursor < n ? &rows[ref_cursor] : NULL;
+                        const char *def = keyref_row_default(row);
+                        if (ref_wait) {                             /* waiting for the key to give this row */
+                            if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_GRAVE) ref_wait = 0;
+                            else if (def && (pc_scancode(sc) || sc == SDL_SCANCODE_PAUSE) && !ev.key.repeat) {
+                                const SDL_Scancode game = SDL_GetScancodeFromName(def);
+                                char *before = remap_export();
+                                if (before && remap_assign(sc, game) && save_remaps(settings_path)) snprintf(g_set.note, sizeof g_set.note, "Key binding saved");
+                                else { if (before) { remap_clear(); remap_add(before); } snprintf(g_set.note, sizeof g_set.note, "Could not save key binding"); }
+                                free(before);
+                                ref_wait = 0;
+                            }
+                        } else if (sc == SDL_SCANCODE_RIGHT && ref_page + 1 < KEYREF_PAGES) { ref_page++; ref_cursor = keyref_first(ref_page); }
+                        else if (sc == SDL_SCANCODE_LEFT && ref_page > 0) { ref_page--; ref_cursor = keyref_first(ref_page); }
+                        else if (sc == SDL_SCANCODE_UP) ref_cursor = keyref_step(ref_page, ref_cursor < 0 ? n : ref_cursor, -1);
+                        else if (sc == SDL_SCANCODE_DOWN) ref_cursor = keyref_step(ref_page, ref_cursor < 0 ? -1 : ref_cursor, 1);
+                        else if ((sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) && def) ref_wait = 1;
+                        else if (sc == SDL_SCANCODE_BACKSPACE && def) {          /* this row's default key again */
+                            const SDL_Scancode game = SDL_GetScancodeFromName(def);
+                            char *before = remap_export();
+                            if (before && remap_assign(game, game) && save_remaps(settings_path)) snprintf(g_set.note, sizeof g_set.note, "Key binding saved");
+                            else { if (before) { remap_clear(); remap_add(before); } snprintf(g_set.note, sizeof g_set.note, "Could not save key binding"); }
+                            free(before);
+                        } else if (sc == SDL_SCANCODE_ESCAPE) {
                             ref_open = 0;
                             if (ref_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; ref_paused = 0; }
                         }
@@ -2635,7 +2667,19 @@ int main(int argc, char **argv)
         }
         if (ref_open && tex_menu) {
             memset(menu_pixels, 0, sizeof menu_pixels);
-            keyref_render(ref_page, menu_pixels, 640, 400);
+            {   /* each remappable row shows the physical key that now sends its game key; blue when that is not the default */
+                static char names[24][KEYREF_KEYS_CHARS + 1]; const char *bound[24] = { 0 }; int changed[24] = { 0 };
+                int n; const keyref_row *rows = keyref_rows(ref_page, &n);
+                for (int i = 0; i < n && i < 24; i++) {
+                    const char *def = keyref_row_default(&rows[i]);
+                    if (!def) continue;
+                    const SDL_Scancode game = SDL_GetScancodeFromName(def), from = remap_source(game);
+                    if (from == game) continue;
+                    snprintf(names[i], sizeof names[i], "%s", from == SDL_SCANCODE_UNKNOWN ? "(no key)" : SDL_GetScancodeName(from));
+                    bound[i] = names[i]; changed[i] = 1;
+                }
+                keyref_render_bind(ref_page, menu_pixels, 640, 400, ref_cursor, ref_wait, bound, changed);
+            }
             if (tabs_on) keyref_tabs(1, menu_pixels, 640, 400);
             const char *rshot = getenv("F117_MENU_SHOT");
             if (rshot && getenv("F117_REF_AUTOTEST")) {

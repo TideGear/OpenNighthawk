@@ -22,6 +22,18 @@ int main(void)
         total += n;
     }
     CHECK(total > 50);
+    /* the Keys tab remaps: rows with a default game key (not headings, not the program's own page), each with a short key name */
+    int remappable = 0;
+    for (int page = 0; page < KEYREF_PAGES; page++) {
+        int n;
+        const keyref_row *rows = keyref_rows(page, &n);
+        for (int i = 0; i < n; i++) {
+            const char *d = keyref_row_default(&rows[i]);
+            if (!rows[i].what) CHECK(!d);
+            if (d) { CHECK(d[0] && strlen(d) <= 12 && page < KEYREF_PAGES - 1); remappable++; }
+        }
+    }
+    CHECK(remappable >= 25);
     /* the manual's keys that matter most are all present */
     const char *must[] = { "Shift F10", "F2", "F7", "space bar", "Backspace", "Shift F8", "Ctrl+Alt+S", "Ctrl+Alt+K", "Ctrl+Alt+P", NULL };
     for (int k = 0; must[k]; k++) {
@@ -37,6 +49,16 @@ int main(void)
     enum { W = 640, H = 400 };
     uint32_t *px = (uint32_t *)calloc((size_t)W * H, 4);
     CHECK(px);
+    {   /* the cursor, the prompt and a changed (blue) binding draw inside the buffer */
+        const char *bound[16] = { 0 }; int changed[16] = { 0 };
+        bound[1] = "Q"; changed[1] = 1;
+        memset(px, 0, (size_t)W * H * 4);
+        keyref_render_bind(1, px, W, H, 1, 0, bound, changed);
+        int blue = 0;
+        for (int i = 0; i < W * H; i++) blue += px[i] == 0xFF60B0FFu;
+        CHECK(blue > 0);
+        keyref_render_bind(1, px, W, H, 1, 1, bound, changed);
+    }
     for (int page = 0; page < KEYREF_PAGES; page++) {
         memset(px, 0, (size_t)W * H * 4);
         keyref_render(page, px, W, H);

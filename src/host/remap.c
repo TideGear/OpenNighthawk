@@ -82,6 +82,22 @@ int remap_set(SDL_Scancode physical, SDL_Scancode target)
     g_pairs[at].from=physical;g_pairs[at].to=target;return 1;
 }
 
+SDL_Scancode remap_source(SDL_Scancode target)
+{
+    if (remap_apply(target) == target) return target;
+    for (int i = 0; i < g_count; i++) if (g_pairs[i].to == target) return g_pairs[i].from;
+    return SDL_SCANCODE_UNKNOWN;
+}
+
+int remap_assign(SDL_Scancode physical, SDL_Scancode target)
+{
+    const SDL_Scancode was = remap_source(target);
+    if (was != SDL_SCANCODE_UNKNOWN && was != target) remap_remove(was);        /* the key that sent it goes back to itself */
+    if (physical == target) { remap_remove(target); return 1; }
+    const SDL_Scancode sent = remap_apply(physical);
+    return remap_set(physical, target) && remap_set(target, sent);
+}
+
 char *remap_export(void)
 {
     const size_t capacity=(size_t)MAX_PAIRS*100+1;

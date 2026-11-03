@@ -18,56 +18,56 @@ static const keyref_row PAGE0[] = {
     { "Max stick movement", "fast double-press of the key" },
     { NULL, "THROTTLE" },
     { "Maximum power", "Shift +" },
-    { "Increase", "=" },
-    { "Decrease", "-" },
+    { "Increase", "=", "=" },
+    { "Decrease", "-", "-" },
     { "No power", "Shift -" },
     { NULL, "WEAPONS" },
-    { "Select weapon", "space bar" },
-    { "Fire weapon", "Return / Enter, joy button 2" },
-    { "Fire cannon", "Backspace, joy button 1" },
+    { "Select weapon", "space bar", "Space" },
+    { "Fire weapon", "Return / Enter, joy button 2", "Return" },
+    { "Fire cannon", "Backspace, joy button 1", "Backspace" },
 };
 static const keyref_row PAGE1[] = {
     { NULL, "DEFENSES" },
-    { "Drop flare", "1" },
-    { "Drop chaff", "2" },
-    { "IR jammer on/off", "3" },
-    { "ECM on/off", "4" },
-    { "Drop decoy", "5" },
+    { "Drop flare", "1", "1" },
+    { "Drop chaff", "2", "2" },
+    { "IR jammer on/off", "3", "3" },
+    { "ECM on/off", "4", "4" },
+    { "Drop decoy", "5", "5" },
     { NULL, "EQUIPMENT" },
-    { "Gear up/down", "6" },
-    { "Autopilot on/off", "7" },
-    { "Bay open/closed", "8" },
-    { "Flaps in/out", "9" },
-    { "Brakes on/off", "0" },
+    { "Gear up/down", "6", "6" },
+    { "Autopilot on/off", "7", "7" },
+    { "Bay open/closed", "8", "8" },
+    { "Flaps in/out", "9", "9" },
+    { "Brakes on/off", "0", "0" },
     { "Eject", "Shift F10" },
 };
 static const keyref_row PAGE2[] = {
     { NULL, "DISPLAYS" },
-    { "HUD modes", "F2" },
-    { "HUD de-clutter", "V" },
-    { "Maps", "F3" },
-    { "Day/night HUD", "F4" },
-    { "Ordnance", "F5" },
-    { "FLIR on/off", "F6" },
-    { "ILS on/off", "F9" },
-    { "Mission orders", "F10" },
+    { "HUD modes", "F2", "F2" },
+    { "HUD de-clutter", "V", "V" },
+    { "Maps", "F3", "F3" },
+    { "Day/night HUD", "F4", "F4" },
+    { "Ordnance", "F5", "F5" },
+    { "FLIR on/off", "F6", "F6" },
+    { "ILS on/off", "F9", "F9" },
+    { "Mission orders", "F10", "F10" },
     { NULL, "TRACKING CAMERA (RIGHT MFD)" },
-    { "Cam ahead", "/" },
+    { "Cam ahead", "/", "/" },
     { "Cam rear", ">" },
     { "Cam left", "<   (see note)" },
-    { "Cam right", "M   (see note)" },
-    { "Designate new target", "N" },
-    { "Select target", "B" },
+    { "Cam right", "M   (see note)", "M" },
+    { "Designate new target", "N", "N" },
+    { "Select target", "B", "B" },
 };
 static const keyref_row PAGE3[] = {
     { NULL, "INS WAYPOINTS" },
-    { "Select waypoint", "F7" },
-    { "Change waypoint", "F8" },
+    { "Select waypoint", "F7", "F7" },
+    { "Change waypoint", "F8", "F8" },
     { "Reset waypoint", "Shift F8" },
     { "Last / next waypoint", "PgUp* / PgDn*" },
     { "Move waypoint", "arrows or keypad 8 2 4 6*" },
     { NULL, "FROM THE COCKPIT" },
-    { "Cockpit view", "F1" },
+    { "Cockpit view", "F1", "F1" },
     { "View ahead / rear", "Shift /  and  Shift >" },
     { "View left / right", "Shift <  and  Shift M" },
     { NULL, "OUT OF THE PLANE" },
@@ -101,6 +101,10 @@ static const char *const NOTES[KEYREF_PAGES] = {
     "The settings menu and the pause work while you fly; the last four keys only while a saved flight is watched (--watch).",
 };
 
+/* Remapping. A row with a default key (its third field) can be given another physical key. Assigning P to a row whose game key is D
+ * makes P send D and D send what P sent (a swap), so no key is left sending the same thing twice. */
+const char *keyref_row_default(const keyref_row *row) { return row && row->what ? row->def : NULL; }
+
 const keyref_row *keyref_rows(int page, int *count)
 {
     static const keyref_row *const pages[KEYREF_PAGES] = { PAGE0, PAGE1, PAGE2, PAGE3, PAGE4 };
@@ -127,7 +131,9 @@ static void put_text(uint32_t *px, int w, int h, int x, int y, const char *t, ui
     for (; *t; t++, x += 8) put_char(px, w, h, x, y, (unsigned char)*t, color);
 }
 
-void keyref_render(int page, uint32_t *px, int w, int h)
+void keyref_render(int page, uint32_t *px, int w, int h) { keyref_render_bind(page, px, w, h, -1, 0, NULL, NULL); }
+
+void keyref_render_bind(int page, uint32_t *px, int w, int h, int cursor, int waiting, const char *const *bound, const int *changed)
 {
     int n;
     if (page < 0 || page >= KEYREF_PAGES) page = 0;
@@ -145,8 +151,15 @@ void keyref_render(int page, uint32_t *px, int w, int h)
         const int y = y0 + 32 + i * 18;
         if (!rows[i].what) put_text(px, w, h, x0 + 16, y, rows[i].keys, 0xFF60C8D8u);
         else {
+            const int kx = x0 + 32 + 8 * (KEYREF_WHAT_CHARS + 1);
+            if (i == cursor) {
+                for (int yy = y - 1; yy < y + 16 && yy < h; yy++) for (int xx = x0 + 6; xx < x0 + pw - 6; xx++) px[(size_t)yy * (size_t)w + (size_t)xx] = 0xFF283848u;
+                put_text(px, w, h, x0 + 16, y, ">", 0xFFFFFFFFu);
+            }
             put_text(px, w, h, x0 + 32, y, rows[i].what, 0xFFD0D0D0u);
-            put_text(px, w, h, x0 + 32 + 8 * (KEYREF_WHAT_CHARS + 1), y, rows[i].keys, 0xFFFFE060u);
+            if (i == cursor && waiting) put_text(px, w, h, kx, y, "press the new key...", 0xFFFFFFFFu);
+            else if (bound && bound[i] && changed && changed[i]) put_text(px, w, h, kx, y, bound[i], 0xFF60B0FFu);
+            else put_text(px, w, h, kx, y, bound && bound[i] ? bound[i] : rows[i].keys, 0xFFFFE060u);
         }
     }
     /* the page's note, wrapped to the panel's width (66 characters) */
@@ -162,7 +175,8 @@ void keyref_render(int page, uint32_t *px, int w, int h)
         note += len;
         while (*note == ' ') note++;
     }
-    put_text(px, w, h, x0 + 16, y0 + ph - 22, "Left/Right: page   `: close   (the manual's Key Controls Summary)", 0xFF909090u);
+    put_text(px, w, h, x0 + 16, y0 + ph - 22, page == KEYREF_PAGES - 1 ? "Left/Right: page   `: close" :
+             "Up/Down: row  Enter: remap  Backspace: default  Left/Right: page", 0xFF909090u);
 }
 
 void keyref_tabs(int active, uint32_t *px, int w, int h)

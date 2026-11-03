@@ -239,7 +239,19 @@ void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 
  * (default 30000). The extra call forwards all eight original arguments; see docs/scenery-distance.md for evidence. */
 static int g_walk_k = -1, g_walk_busy, g_walk_cells = 3;
 static unsigned g_walk_calls;
+static int walk_pass(machine_t *m, unsigned ring_mask, int cells);
 static int walk_second(machine_t *m)
+{
+    /* Ring 4 (the coarsest, the whole map's large objects) in one pass; rings 1-3 (the medium and small objects, which the game shows only in
+     * a 3x3 neighbourhood of their own, finer cells: the pop-in) in another, F117_WIDE_FINE_CELLS (diagnostic, default 0: off). */
+    static int fine=-2;
+    if (fine==-2) { const char *e=getenv("F117_WIDE_FINE_CELLS"); fine = e ? atoi(e) : 0; if (fine>6) fine=6;   /* off unless asked: see docs/scenery-distance.md */ }
+    walk_pass(m, 1u<<4, g_walk_cells);
+    const int fc = fine < 0 ? 0 : fine;
+    if (fc>0) walk_pass(m, 0xEu, fc);
+    return 0;
+}
+static int walk_pass(machine_t *m, unsigned ring_mask, int cells)
 {
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
@@ -259,10 +271,10 @@ static int walk_second(machine_t *m)
     for (int md = 0; md < 8; md++) allow[md] = rd16(m->mem, ds, (uint16_t)(base + 2 * md));
     far_was = rd16(m->mem, ds, 0x48E6);
     for (int r = 0; r < 8; r++) {
-        const int d = (dir10[r] * g_walk_cells + (dir10[r] < 0 ? -5 : 5)) / 10;
+        const int d = (dir10[r] * cells + (dir10[r] < 0 ? -5 : 5)) / 10;
         for (int i = 0; i < 9; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (r * 9 + i)), (uint16_t)(table[r * 9 + i] + d));
     }
-    for (int r = 1; r <= 3; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), 0);
+    for (int r = 1; r <= 4; r++) if (!(ring_mask >> r & 1)) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), 0);
     wr16(m->mem, ds, 0x48E6, (uint16_t)far);
     for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far) wr16(m->mem, ds, (uint16_t)(base + 2 * md), (uint16_t)(32600 - far));
     uint16_t sv_r[8], sv_seg[4];

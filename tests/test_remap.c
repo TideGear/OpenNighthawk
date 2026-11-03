@@ -42,6 +42,17 @@ int main(void)
     CHECK(remap_apply(SDL_SCANCODE_SEMICOLON)==SDL_SCANCODE_A);
     remap_clear();
     CHECK(remap_apply(SDL_SCANCODE_Q) == SDL_SCANCODE_Q);
+    /* The Keys tab's assignment: a swap, the old key freed, restorable. */
+    CHECK(remap_source(SDL_SCANCODE_1) == SDL_SCANCODE_1);
+    CHECK(remap_assign(SDL_SCANCODE_Q, SDL_SCANCODE_1));
+    CHECK(remap_apply(SDL_SCANCODE_Q) == SDL_SCANCODE_1 && remap_apply(SDL_SCANCODE_1) == SDL_SCANCODE_Q);
+    CHECK(remap_source(SDL_SCANCODE_1) == SDL_SCANCODE_Q);
+    CHECK(remap_assign(SDL_SCANCODE_W, SDL_SCANCODE_1));                      /* Q goes back to itself */
+    CHECK(remap_apply(SDL_SCANCODE_Q) == SDL_SCANCODE_Q && remap_apply(SDL_SCANCODE_W) == SDL_SCANCODE_1 &&
+          remap_apply(SDL_SCANCODE_1) == SDL_SCANCODE_W && remap_source(SDL_SCANCODE_1) == SDL_SCANCODE_W);
+    CHECK(remap_assign(SDL_SCANCODE_1, SDL_SCANCODE_1));                      /* default again: no pairs left */
+    { char *none = remap_export(); CHECK(none && !*none); free(none); }
+    CHECK(remap_source(SDL_SCANCODE_1) == SDL_SCANCODE_1);
     puts("keyboard remapping passes");
     return 0;
 }
