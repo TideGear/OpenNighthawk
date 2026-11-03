@@ -94,6 +94,12 @@ aircraft. No building, tower or terrain polygon appeared in any sampled frame, s
 left off until a land-heavy frame with objects in the finer rings can be compared against the original's own drawing of the same
 place, and its extra cost (requests rose 45% to 60%) measured.
 
+Land check (recon route, clocks 6, 7, 8 and 9 billion, over desert and coast, 3 cells against off): primitives 78 -> 116, 63 -> 100,
+68 -> 182 and 82 -> 156; changed pixels 335 to 2,419. Again the additions are small dark specks on the ground toward the horizon
+(ground clutter dots, not buildings or terrain polygons), and model requests per run rise about 1.9x (108k -> 215k, 192k -> 362k,
+249k -> 468k, 305k -> 559k). That is a large renderer cost for a faint effect that has not been compared with the original's
+nearer drawing of the same dots, so the default stays off. Evidence: private `scenery-20261103/fine-compare/pair-*.png`.
+
 ## Earlier negative controls
 
 The prior comparisons were useful for finding mistakes but did not establish
