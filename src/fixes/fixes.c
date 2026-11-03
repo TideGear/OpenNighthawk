@@ -1134,6 +1134,12 @@ static int g_on[NFIXES];
 /* Options are not repairs: `all` never switches one on, so they are named explicitly (--fix QUIZ); `none` clears them. */
 static int is_option(const char *id) { return !strcmp(id, "QUIZ"); }
 
+int fixes_default_enabled(const char *id)
+{
+    for(unsigned i=0;i<NFIXES;i++)if(!strcmp(id,FIXES[i].id))return !is_option(id);
+    return 0;
+}
+
 /* Fixes that were retired: a session log recorded while they existed still names them, and --fix accepts them, both with no effect.
  * Q11 (full-width model range) culled the two aircraft parked beside the Siconella tower, which the original draws through the
  * 16-bit wrap it removed (docs/bugs.md, "Closed"; docs/owner-issues.md R7). */

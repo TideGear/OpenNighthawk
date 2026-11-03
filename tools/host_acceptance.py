@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 
 from PIL import Image
+import settings_acceptance
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,13 +37,14 @@ def verify_report(path, app, manifest_path=ROOT / "docs/host-acceptance.json"):
     """A partial, stale or incomplete report is not release/deployment evidence."""
     report = json.loads(Path(path).read_text())
     manifest = json.loads(Path(manifest_path).read_text())
-    expected = {"sound", "input-live", "input-replay", "input-watch", "menu", "renderer-workers"}
+    expected = {"sound", "input-live", "input-replay", "input-watch", "menu", "renderer-workers", "settings"}
     expected.update(s["name"] for s in manifest["render"])
     require(report.get("status") == "pass" and report.get("full_suite") is True and report.get("scope") == "all",
             "a complete passing host suite is required")
     require(report.get("app_sha256") == digest(app), "host report is for a different executable")
     require(report.get("manifest_sha256") == digest(manifest_path) and report.get("checker_sha256") == digest(__file__),
             "host report predates the current manifest/checker")
+    require(report.get("settings_checker_sha256")==digest(settings_acceptance.__file__),"host report predates the settings checker")
     cases = report.get("cases", [])
     require(len(cases) == len(expected) and {c["name"] for c in cases} == expected and
             all(c.get("status") == "pass" for c in cases), "host report is missing required passing cases")
@@ -390,6 +392,13 @@ class Runner:
         return dict(name="menu", status="pass", seconds=elapsed,
                     checks=check_menu((root / "process.log").read_text(), shot))
 
+    def settings(self):
+        result=settings_acceptance.run(self.args.app,self.args.data,
+            self.args.sessions/self.manifest["sound"]["session"],self.args.out/"settings")
+        return dict(name="settings",status="pass",seconds=result["seconds"],checks=result["cases"],
+            images=["settings/"+case["name"]+"/menu.png" for case in result["cases"]
+                    if (self.args.out/"settings"/case["name"]/"menu.png").exists()])
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -417,6 +426,7 @@ def main():
         setattr(args, key, getattr(args, key).resolve())
     report = dict(scope=args.only, full_suite=args.only == "all", machine_parity="not_run",
                   owner_reference_comparison="pending", cases=[], checker_sha256=digest(__file__),
+                  settings_checker_sha256=digest(settings_acceptance.__file__),
                   started_utc=datetime.now(timezone.utc).isoformat())
     try:
         require(not args.out.exists() or not any(args.out.iterdir()), "output directory must be new or empty; stale evidence is not accepted")
@@ -441,6 +451,7 @@ def main():
         if args.only in ("all", "input"):
             tasks.extend(("input-"+mode, runner.input, (mode,)) for mode in ("live", "replay", "watch"))
             tasks.append(("menu", runner.menu, ()))
+            tasks.append(("settings",runner.settings,()))
         with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
             futures = [(name, pool.submit(fn, *values)) for name, fn, values in tasks]
             for name, future in futures:
@@ -465,6 +476,7 @@ def main():
                 gallery.append(f"<p>Review pending: {item}</p>")
             if "animation" in c:
                 gallery.append(f"<img src='{c['animation']}'>")
+            for path in c.get("images",[]):gallery.append(f"<img src='{path}'>")
         (args.out / "index.html").write_text("\n".join(gallery))
     return 0 if report["status"] == "pass" else 1
 

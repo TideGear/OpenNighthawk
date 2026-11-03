@@ -100,6 +100,12 @@ int main(void)
         CHECK(config_get("a = \"q w\"\na = z\n", "a", val, sizeof val) && !strcmp(val, "z"));
         CHECK(config_get("a = \"q w\"\n", "a", val, sizeof val) && !strcmp(val, "q w"));
     }
+    {
+        const char *arguments[]={"", "C:\\Game Files\\", "a\"b", "a\\\"b"};
+        const char *quoted[]={"\"\"", "\"C:\\Game Files\\\\\"", "\"a\\\"b\"", "\"a\\\\\\\"b\""};
+        for(int i=0;i<4;i++) {char *q=config_quote_arg(arguments[i]);CHECK(q && !strcmp(q,quoted[i]));free(q);}
+        CHECK(config_option_arity("--data")==2 && config_option_arity("--fullscreen")==1);
+    }
     puts("f117a.ini options pass");
     return 0;
 }

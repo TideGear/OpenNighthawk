@@ -36,6 +36,7 @@ by the suite are managed. Inherited `F117_*` diagnostics are cleared.
 | Render workers | Eight workers at scale 9, in wide and 4:3 moving scenes: every output pixel equals a single-worker redraw of that same frame |
 | Live/replay/watched-replay shortcuts | Real SDL event loop: multiple Tab presses, Ctrl+Alt+C, paused unique filenames and ignored held repeat |
 | Menu | Tab switching, pause/resume, close, and text contained within the actual top-bar bounds |
+| Settings | Eight real-menu cases: Audio/Advanced pages, 101 key rows, output selection, individual default, reset/cancel and a fresh process that keeps sound/presentation and advances past SETUP |
 
 The sound input is derived reproducibly from session `20261102-154150`:
 retain the recorded zero-thrust coast, add ordinary bay-door keys for overlap,
@@ -102,3 +103,14 @@ For each new owner report, add the regression at the layer where it escaped:
 real input dispatch for shortcuts, captured forwarding plus OPL/PCM for sound,
 and moving visual evidence plus a specific invariant for rendering. Keep a
 known-broken negative test. A green result at another layer is insufficient.
+
+The settings case uses private configs/saves and ordinary SDL key events.
+It checks every persisted factory default, retained resource folders, canonical
+key mapping replacement/restoration and normal repair defaults (quiz off).
+Its fresh restart uses a folder containing spaces and a trailing-backslash save
+argument, verifies the actual child process, normal N/driver SETUP inputs and
+progress beyond SETUP, then waits for that owned child to exit. Timeouts fail
+and terminate only that captured child handle. Both checker file hashes bind
+the host report; changing `settings_acceptance.py` invalidates old evidence.
+Actual menu PNGs appear in the report gallery. ROM-free negative verdicts
+reject parent-only, wrong-driver, stalled-SETUP and unsuccessful-child traces.

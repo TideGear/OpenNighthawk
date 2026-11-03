@@ -78,8 +78,9 @@ int main(void)
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
     CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 9);   /* wraps to the last row */
-    CHECK(s.top == n + 10 - 10 && s.cursor >= s.top && s.cursor < s.top + 10);
-    for (int k = 0; k < n + 9; k++) settings_key_event(&s, SKEY_UP);
+    const int main_rows = settings_menu_rows(&s, NULL, 0);
+    CHECK(s.top == main_rows - 10);
+    for (int k = 0; k < main_rows - 1; k++) settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == n + 9);
@@ -95,11 +96,11 @@ int main(void)
     /* Remap a key and Clear key remaps ask the host and keep the menu open */
     s.cursor = n + 2;
     settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.remap_stage == 1 && !s.clear_remaps);
-    s.remap_stage = 0;
+    CHECK(s.open && s.key_picker == 1 && !s.clear_remaps);
+    s.key_picker = 0;
     s.cursor = n + 3;
     settings_key_event(&s, SKEY_ENTER);
-    CHECK(s.open && s.clear_remaps && !s.remap_stage);
+    CHECK(s.open && s.clear_remaps && !s.key_picker);
     s.clear_remaps = 0;
     /* the fix picker: the host lists the fixes, Enter opens it, Enter switches one, Esc comes back with the change noted */
     s.cursor = n + 4;
@@ -230,7 +231,9 @@ int main(void)
         settings_load(&s, "; mine\ndata = C:/Old/Game\nmt32-roms = C:/Roms\n");
         CHECK(!strcmp(s.text_val[0], "C:/Old/Game") && !strcmp(s.text_val[1], "C:/Roms") && s.text_val[2][0] == 0);
         settings_open(&s);
-        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);
+        const int steps = settings_steps_to_row(&s, rows + 6);
+        CHECK(steps >= 0);
+        for (int i = 0; i < steps; i++) settings_key_event(&s, SKEY_DOWN);
         settings_key_event(&s, SKEY_ENTER);
         CHECK(s.text_picker && s.text_edit < 0);
         settings_text_input(&s, "ignored");                                          /* not editing yet */
@@ -264,13 +267,100 @@ int main(void)
         /* it draws, in bounds */
         static uint32_t px[640 * 400];
         settings_open(&s);
-        for (int i = 0; i < rows + 6; i++) settings_key_event(&s, SKEY_DOWN);
+        const int folder_steps = settings_steps_to_row(&s, rows + 6);
+        CHECK(folder_steps >= 0);
+        for (int i = 0; i < folder_steps; i++) settings_key_event(&s, SKEY_DOWN);
         settings_key_event(&s, SKEY_ENTER);
         settings_key_event(&s, SKEY_ENTER);
         settings_render(&s, px, 640, 400);
         int lit = 0;
         for (int i = 0; i < 640 * 400; i++) lit += px[i] != 0;
         CHECK(lit > 5000);
+    }
+    /* Risk-sensitive options and sound controls are reachable in their own
+     * submenus, absent from the main list, and Back retains pending edits. */
+    {
+        const char *ini = "; keep\nengine = interp\nips = 9000000\nsim-hz = 8\ntiming = 386\nfixes = custom\nfix = D2\nremap = Q:W\npad-keys = 2:G\ndata = C:/Game\n";
+        settings_load(&s, ini); settings_open(&s);
+        int menu[48], count = settings_menu_rows(&s, menu, 48);
+        const setting_def *defs = settings_defs(NULL);
+        for (int i = 0; i < count; ++i)
+            if (menu[i] < n) CHECK(settings_group(defs[menu[i]].key) == SETTINGS_MAIN);
+        int steps = settings_steps_to_row(&s, n + 10);
+        CHECK(steps >= 0);
+        for (int i = 0; i < steps; ++i) settings_key_event(&s, SKEY_DOWN);
+        settings_key_event(&s, SKEY_ENTER);
+        CHECK(s.page == SETTINGS_ADVANCED && s.open);
+        count = settings_menu_rows(&s, menu, 48);
+        CHECK(count == 5);
+        for (int i = 0; i < count - 1; ++i) CHECK(settings_group(defs[menu[i]].key) == SETTINGS_ADVANCED);
+        settings_key_event(&s, SKEY_RIGHT);
+        CHECK(settings_needs_restart(&s));
+        settings_key_event(&s, SKEY_ESC);
+        CHECK(s.page == SETTINGS_MAIN && s.open && settings_needs_restart(&s));
+        steps = settings_steps_to_row(&s, n + 11);
+        for (int i = 0; i < steps; ++i) settings_key_event(&s, SKEY_DOWN);
+        settings_key_event(&s, SKEY_ENTER);
+        CHECK(s.page == SETTINGS_AUDIO && s.open);
+        count = settings_menu_rows(&s, menu, 48);
+        CHECK(count == 8);
+        for (int i = 0; i < count - 1; ++i) CHECK(settings_group(defs[menu[i]].key) == SETTINGS_AUDIO);
+        settings_key_event(&s, SKEY_ESC);
+        settings_reset_defaults(&s);
+        for (int i = 0; i < n; ++i) CHECK(s.value[i] == defs[i].def);
+        char *out = settings_apply(&s, ini), value[300];
+        CHECK(out && strstr(out, "; keep"));
+        CHECK(config_get(out, "engine", value, sizeof value) && !strcmp(value, "recomp"));
+        CHECK(config_get(out, "data", value, sizeof value) && !strcmp(value, "C:/Game"));
+        CHECK(!config_get(out, "remap", value, sizeof value) && !config_get(out, "pad-keys", value, sizeof value));
+        CHECK(!config_get(out, "fix", value, sizeof value));
+        free(out);
+        settings_key_event(&s, SKEY_ESC);
+        CHECK(!s.open && !s.reset_all);
+        out = settings_apply(&s, ini);
+        CHECK(out && !strcmp(out, ini));
+        free(out);
+    }
+    {
+        const int clock=find("ips");
+        settings_load(&s,"ips = 12345678\n");settings_open(&s);
+        CHECK(!strcmp(settings_value(&s,clock),"12345678") && !settings_needs_restart(&s));
+        s.page=SETTINGS_ADVANCED;s.cursor=clock;settings_key_event(&s,SKEY_RIGHT);
+        CHECK(strcmp(settings_value(&s,clock),"12345678") && settings_needs_restart(&s));
+        settings_key_event(&s,SKEY_ESC);settings_key_event(&s,SKEY_ESC);
+        CHECK(!strcmp(settings_value(&s,clock),"12345678"));
+    }
+    {
+        settings_load(&s,"sound = ask\npresentation = original\n");settings_open(&s);
+        settings_mark_saved(&s,"sound","roland");s.preserve_sound=1;s.value[pres]=2;
+        char *args[]={"game.exe","--data","--sound","--presentation","original","--sound","adlib","--ips","12345678","--remap","Q:W",NULL};
+        char **next=settings_restart_args(&s,args,"C:/folder with spaces/game.ini");CHECK(next);
+        CHECK(!strcmp(next[1],"--data") && !strcmp(next[2],"--sound"));
+        int presentations=0, sound_options=0, retained_ips=0, config=0;
+        for(int i=1;next[i];) {
+            const int arity=config_option_arity(next[i]);
+            presentations+=!strcmp(next[i],"--presentation");
+            if(!strcmp(next[i],"--sound")) {++sound_options;CHECK(!strcmp(next[i+1],"roland"));}
+            if(!strcmp(next[i],"--ips")) retained_ips=!strcmp(next[i+1],"12345678");
+            if(!strcmp(next[i],"--config")) config=!strcmp(next[i+1],"C:/folder with spaces/game.ini");
+            CHECK(strcmp(next[i],"--remap"));i+=arity;
+        }
+        CHECK(!presentations && sound_options==1 && retained_ips && config);free(next);
+        char *text=settings_apply(&s,"sound = ask\npresentation = original\n"),value[32];
+        CHECK(text && config_get(text,"sound",value,sizeof value) && !strcmp(value,"roland"));free(text);
+        settings_reset_defaults(&s);text=settings_apply(&s,"fullscreen=yes\nips=12345678\n");
+        CHECK(text && config_get(text,"ips",value,sizeof value) && !strcmp(value,"60000000"));free(text);
+        char *fixargs[]={"game.exe","--fix","none","--fixes","original",NULL};
+        next=settings_restart_args(&s,fixargs,"game.ini");CHECK(next);
+        for(int i=1;next[i];i++)CHECK(strcmp(next[i],"--fix") && strcmp(next[i],"--fixes"));free(next);
+        settings_set_fix(&s,0,"QUIZ","Optional quiz",1);s.pick_default[0]=0;
+        settings_reset_defaults(&s);CHECK(!s.pick_on[0]);
+        settings_set_binding(&s,0,4,"A",4,"A");settings_set_binding(&s,1,41,"Escape",41,"Escape");
+        s.key_picker=1;s.key_cursor=0;s.key_target=0;
+        settings_key_event(&s,SKEY_ENTER);settings_key_event(&s,SKEY_END);settings_key_event(&s,SKEY_ENTER);
+        CHECK(s.key_assign && s.remap_from==4 && s.remap_to==41 && !s.key_target);
+        s.key_assign=0;settings_key_event(&s,SKEY_BACKSPACE);CHECK(s.key_assign && s.remap_from==s.remap_to);
+        settings_key_event(&s,SKEY_ESC);CHECK(!s.key_picker && s.open);
     }
     puts("settings menu passes");
     return 0;

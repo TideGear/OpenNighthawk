@@ -25,6 +25,30 @@ static int in(const char *const *list, const char *s)
     return 0;
 }
 
+int config_option_arity(const char *option)
+{
+    return !strcmp(option, "--config") || (!strncmp(option, "--", 2) && in(VALUED, option+2)) ? 2 : 1;
+}
+
+char *config_quote_arg(const char *argument)
+{
+    const size_t n=strlen(argument);
+    char *out=malloc(n*2+3), *q=out;
+    if (!out) return NULL;
+    *q++='"';
+    for (const char *p=argument;;) {
+        size_t slashes=0;
+        while (*p=='\\') { ++slashes; ++p; }
+        size_t copies=slashes * ((*p=='"' || !*p) ? 2 : 1);
+        while (copies--) *q++='\\';
+        if (!*p) break;
+        if (*p=='"') *q++='\\';
+        *q++=*p++;
+    }
+    *q++='"'; *q=0;
+    return out;
+}
+
 static char *dup_n(const char *s, size_t n)
 {
     char *d = (char *)malloc(n + 1);

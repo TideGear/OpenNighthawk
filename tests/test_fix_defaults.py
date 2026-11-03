@@ -32,6 +32,17 @@ def enabled(exe, args, app=False):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_original_presentation_overrides_a_remastered_config(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);data=root/"data";data.mkdir();(data/"F117.COM").write_bytes(b"\xeb\xfe")
+            config=root/"settings.ini";config.write_text("presentation = remastered\n")
+            env={k:v for k,v in os.environ.items() if not k.startswith("F117_")}
+            env.update(SDL_VIDEODRIVER="dummy",SDL_AUDIODRIVER="dummy",F117_SETTINGS_TRACE="1")
+            result=subprocess.run([str(APP),"--config",str(config),"--data",str(data),"--save",str(root/"save"),
+                "--no-record","--presentation","original","--exit-after","50000"],capture_output=True,text=True,env=env,timeout=15)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertRegex(result.stderr,r"\[settings-start\] child=0 sound=\? presentation=original ")
+
     def test_session_timing_defaults_overrides_and_replay_compatibility(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

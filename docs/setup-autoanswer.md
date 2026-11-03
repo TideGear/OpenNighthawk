@@ -38,11 +38,21 @@ joystick one.
   a prompt need not be stable on other clocks.
 - Every injected key is recorded as an input so replays stay exact.
 
+## Settings restart checked (3 November 2026)
+
+Saving preserves an active explicit sound selection and settings restart removes
+conflicting launch options. A real restarted process is checked in the mandatory
+host suite: it reads the saved presentation and sound, receives the ordinary N/3
+inputs and progresses beyond SETUP. Paths with spaces and a trailing backslash
+are included. Sound Driver Ask explicitly shows the questions; factory reset
+returns it to Ask. See [host-acceptance.md](host-acceptance.md). This retains the
+existing type-ahead schedule; it does not claim the precise-read injection below.
+
 ## Not done
 
 - Answering yes to the joystick (SETUP then calibrates).
 - A `hybrid` choice ([sound-board.md](sound-board.md)).
-- An option to show the prompts only when asked.
+- A separate run-SETUP-now action; Sound Driver Ask already shows the prompts on restart.
 - Injecting at the DOS key reads instead of by delay. That needs locating the joystick prompt's read in SETUP (about an
   hour of focused matching work) and a change in `src/machine/dos_files.c`, which is P2 gate territory: do it after the
   Phase 2 integration.

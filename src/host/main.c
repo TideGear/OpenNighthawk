@@ -633,6 +633,32 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
  * 1991 AT keyboard does not have. (The Reimp's table, platform_sdl3.c.) */
 #include "host_keys.h"
 
+static void fill_bindings(settings_state *s)
+{
+    int row=0;
+    for(int id=1;id<SDL_SCANCODE_COUNT;id++) if(pc_scancode((SDL_Scancode)id) || id==SDL_SCANCODE_PAUSE) {
+        const SDL_Scancode target=remap_apply((SDL_Scancode)id);
+        settings_set_binding(s,row++,id,SDL_GetScancodeName((SDL_Scancode)id),target,SDL_GetScancodeName(target));
+    }
+    if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-bindings] supported=%d listed=%d\n",row,s->key_count);
+}
+
+static int save_remaps(const char *path)
+{
+    char *pairs=remap_export(), *text=config_read_file(path);
+    char *out=pairs ? config_set(text ? text : "","remap",*pairs ? pairs : NULL) : NULL;
+    FILE *f=out ? fopen(path,"wb") : NULL;
+    int ok=0;
+    if(f) {ok=fputs(out,f)>=0; if(fclose(f))ok=0;}
+    free(pairs);free(text);free(out);return ok;
+}
+
+static int settings_root_steps(int row)
+{
+    settings_state state={0}; settings_open(&state);
+    return settings_steps_to_row(&state,row);
+}
+
 /* The controller-key list as f117a.ini holds it ("2:G,3:Left Shift"), written from the table; NULL clears the key. */
 static void padkeys_save(const char *settings_path)
 {
@@ -828,6 +854,7 @@ static void save_fixset_check(const char *save, SDL_Window *win)
 /* The settings menu saved a setting that is read when the game starts: offer to start it again. */
 static int restart_wanted(SDL_Window *win)
 {
+    if(getenv("F117_SETTINGS_AUTOTEST"))return 1;
     static const SDL_MessageBoxButtonData buttons[] = {
         { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Restart now" },
         { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Later" },
@@ -841,30 +868,39 @@ static int restart_wanted(SDL_Window *win)
 
 /* Start the game again with the arguments it was given (each quoted: the C runtime joins them into one
  * command line, so a path with a space would otherwise split). The caller then quits. */
-static void restart_game(char **orig_argv, const char *extra1, const char *extra2)
+static int restart_game(char **orig_argv, const char *extra1, const char *extra2)
 {
     if (getenv("F117_RESTART_DRYRUN")) {            /* diagnostic: say what would be started, start nothing */
         for (int i = 0; orig_argv[i]; i++) fprintf(stderr, "%s ", orig_argv[i]);
         fprintf(stderr, "%s %s\n", extra1 ? extra1 : "", extra2 ? extra2 : "");
-        return;
+        return 1;
     }
 #ifdef _WIN32
     int n = 0;
     while (orig_argv[n]) n++;
     char **q = (char **)calloc((size_t)n + 3, sizeof *q);
-    if (!q) return;
+    if (!q) return 0;
     for (int i = 0; i < n; i++) {
-        const size_t len = strlen(orig_argv[i]) + 3;
-        q[i] = (char *)malloc(len);
-        if (!q[i]) return;
-        snprintf(q[i], len, "\"%s\"", orig_argv[i]);
+        q[i] = config_quote_arg(orig_argv[i]);
+        if (!q[i]) {for(int j=0;j<i;j++)free(q[j]);free(q);return 0;}
     }
     int m = n;
-    if (extra1) { q[m] = (char *)malloc(strlen(extra1) + 3); if (q[m]) snprintf(q[m], strlen(extra1) + 3, "\"%s\"", extra1); m++; }
-    if (extra2) { q[m] = (char *)malloc(strlen(extra2) + 3); if (q[m]) snprintf(q[m], strlen(extra2) + 3, "\"%s\"", extra2); m++; }
-    _spawnvp(_P_NOWAIT, orig_argv[0], (const char *const *)q);
+    if (extra1) q[m++] = config_quote_arg(extra1);
+    if (extra2) q[m++] = config_quote_arg(extra2);
+    int ok=1;
+    for(int i=0;i<m;i++) if(!q[i])ok=0;
+    if(ok) {
+        if(getenv("F117_SETTINGS_SCRIPT")) {_putenv_s("F117_SETTINGS_SCRIPT","");_putenv_s("F117_SETTINGS_CHILD","1");}
+        const intptr_t child=_spawnvp(_P_NOWAIT,orig_argv[0],(const char *const *)q);
+        ok=child!=-1;
+        if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-restart] pid %lu\n",ok ? (unsigned long)GetProcessId((HANDLE)child) : 0ul);
+        if(ok)CloseHandle((HANDLE)child);
+    }
+    for(int i=0;i<m;i++)free(q[i]);free(q);
+    return ok;
 #else
     (void)orig_argv; (void)extra1; (void)extra2;
+    return 0;
 #endif
 }
 
@@ -872,6 +908,7 @@ static void restart_game(char **orig_argv, const char *extra1, const char *extra
  * as the gate's routes do: keys typed at fixed instruction counts after SETUP starts. Never during a replay, which
  * brings its own inputs; the typed keys are recorded like any other input. */
 static char g_setup_sound;                           /* the digit SETUP wants: '1' speaker, '2' AdLib, '3' Roland; 0 = ask */
+static int g_settings_child;
 
 static void setup_key(machine_t *m, uint64_t at, char key)
 {
@@ -889,6 +926,8 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                             uint16_t load_seg, uint16_t reloc)
 {
     recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if(getenv("F117_SETTINGS_TRACE") && (kind!=MODLOAD_OVERLAY))
+        fprintf(stderr,"[settings-module] child=%d %s clock=%llu\n",g_settings_child,name,(unsigned long long)m->cpu.icount);
     if (kind != MODLOAD_OVERLAY) {
         m->exec_hook_n = 0;
         g_speed_hook = ~0u;
@@ -922,6 +961,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
         }
     }
     if (kind != MODLOAD_OVERLAY && g_setup_sound && !SDL_strcasecmp(name, "SETUP.EXE")) {
+        if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-autoanswer] child=%d N %c\n",g_settings_child,g_setup_sound);
         setup_key(m, m->cpu.icount + 200000, 'N');
         setup_key(m, m->cpu.icount + 2000000, g_setup_sound);
     }
@@ -994,6 +1034,8 @@ static void fill_fix_picker(settings_state *st)
         char *what = line + used;
         what[strcspn(what, "\r\n")] = 0;
         settings_set_fix(st, i, id, what, !strcmp(state, "on"));
+        st->pick_default[i]=(unsigned char)fixes_default_enabled(id);
+        if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-default-fix] %s=%d\n",id,st->pick_default[i]);
     }
     fclose(f);
 }
@@ -1015,6 +1057,7 @@ static void write_custom_fixes(settings_state *st, const char *path)
         fputs(b, f);
         fclose(f);
         settings_mark_saved(st, "fixes", "custom");
+        st->fixes_edited=1;
         snprintf(st->note, sizeof st->note, "Custom fixes saved; applies after restart");
     } else snprintf(st->note, sizeof st->note, "Could not write f117a.ini");
     free(text);
@@ -1024,7 +1067,10 @@ static void write_custom_fixes(settings_state *st, const char *path)
 
 int main(int argc, char **argv)
 {
+    g_settings_child=getenv("F117_SETTINGS_CHILD")!=NULL;
     const char *data = NULL, *save = NULL, *log_path = NULL;
+    int data_option=0;
+    const char *mac_sounds_path=NULL;
     const char *audio_queue_log_path = NULL;
     const char *audio_dump_path = NULL;
     uint64_t ips = MACHINE_APP_IPS;
@@ -1099,6 +1145,7 @@ int main(int argc, char **argv)
     }
     if (!replay_requested)
         fixes_enable("all", fixes_custom ? 0 : 1);
+    const char *fix_choice=fixes_custom ? "custom" : "recommended";
 
     controls_defaults(&g_pad);
     int from_cli = 0, cli_roland = 0;
@@ -1125,7 +1172,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--mt32-roms") && v) { mt32_roms = v; i++; continue; }
         if (!strcmp(a, "--config") && v) { i++; continue; }
         if (!strcmp(a, "--no-config")) continue;
-        if (!strcmp(a, "--data") && v) { data = v; i++; }
+        if (!strcmp(a, "--data") && v) { data = v; data_option=1; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--crt")) g_crt = 1;
@@ -1147,7 +1194,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--subtitles")) g_subtitles = 1;
         else if (!strcmp(a, "--adlib-effects")) g_adlib_effects = 1;
         else if (!strcmp(a, "--no-adlib-effects")) g_adlib_effects = 0;
-        else if (!strcmp(a, "--mac-sounds") && v) { g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
+        else if (!strcmp(a, "--mac-sounds") && v) { mac_sounds_path=v;g_mac = macsound_load(v, AUDIO_RATE); if (!g_mac) fprintf(stderr, "--mac-sounds: no NNN.wav recordings in %s\n", v); i++; }
         else if (!strcmp(a, "--music-source") && v) { g_source[SP_MUSIC] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--sound-source") && v) { g_source[SP_SOUND] = parse_source_option(a, v); i++; }
         else if (!strcmp(a, "--remap") && v) {
@@ -1212,7 +1259,8 @@ int main(int argc, char **argv)
              * parked jet draws 11.6 frames a second (docs/bugs.md D1). 386: the 386DX/33 profile,
              * the pace of a 1991 PC (src/cpu/timing386.h) */
             if (!strcmp(v, "386")) { _putenv_s("F117R_TIMING", "386"); ips = MACHINE_386_IPS; }
-            else if (strcmp(v, "dosbox")) { fprintf(stderr, "--timing takes dosbox or 386\n"); return 2; }
+            else if (!strcmp(v,"dosbox")) _putenv_s("F117R_TIMING","");
+            else { fprintf(stderr, "--timing takes dosbox or 386\n"); return 2; }
             i++;
         }
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
@@ -1227,6 +1275,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--fix") && v) {
             if (!strcmp(v, "none")) fixes_enable("all", 0);
             else if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            fix_choice=!strcmp(v,"none") ? "original" : !strcmp(v,"all") && strcmp(fix_choice,"custom") ? "recommended" : "custom";
             i++;
         }
         else if (!strcmp(a, "--replay-fixes") && v) {
@@ -1252,8 +1301,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--presentation") && v) {
             /* the re-release's presentation setting (docs/roadmap.md, Phase 3): shorthand for the --present
              * options, which a later one still refines; Remastered needs its own renderer */
-            if (!strcmp(v, "original")) { g_replay = g_rerun = g_scale = g_fit_scale = 0; }
-            else if (!strcmp(v, "enhanced")) { g_replay = 2; g_rerun = 1; g_fit_scale = 1; }
+            if (!strcmp(v, "original")) { g_replay = g_rerun = g_scale = g_fit_scale = g_remaster = 0; }
+            else if (!strcmp(v, "enhanced")) { g_remaster = 0; g_replay = 2; g_rerun = 1; g_fit_scale = 1; }
             else if (!strcmp(v, "remastered")) {                 /* the Enhanced picture with the 3D view redrawn (remaster_live.h) */
                 g_replay = 2; g_rerun = 1; g_fit_scale = 1; g_remaster = 1;
 #ifdef _WIN32
@@ -1266,6 +1315,7 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--fixes") && v) {
+            fix_choice=v;
             /* the re-release's fix setting: original (none) or recommended (the normal-play set); a later
              * --fix ID adds one, or after --fix none picks single fixes (Custom) */
             if (!strcmp(v, "original")) fixes_enable("all", 0);
@@ -1312,6 +1362,8 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-start] child=%d sound=%c presentation=%s ips=%llu\n",
+        g_settings_child,g_setup_sound ? g_setup_sound : '?',g_remaster ? "remastered" : g_replay==2 ? "enhanced" : "original",(unsigned long long)ips);
     /* --roland and --mt32-roms: the simple form of the Roland options */
     if (roland == ROLAND_WINDOWS) {
         mt32_control = mt32_pcm = NULL;
@@ -1713,12 +1765,30 @@ int main(int argc, char **argv)
     int mouse_buttons = 0;
 
     while (running) {
+        /* A bounded integration script uses ordinary SDL keys, never guest edits.
+         * Comma-separated SDL key names; Open means the normal menu shortcut. */
+        {
+            static char *script, *next;
+            static int loaded, frame;
+            if(!loaded) {loaded=1;const char *e=getenv("F117_SETTINGS_SCRIPT");if(e)script=next=SDL_strdup(e);}
+            if(next && *next && ++frame>=5) {
+                char key[48];size_t len=strcspn(next,",");
+                if(len<sizeof key) {
+                    memcpy(key,next,len);key[len]=0;
+                    SDL_Event e;SDL_zero(e);e.type=SDL_EVENT_KEY_DOWN;
+                    if(!strcmp(key,"Open")) {e.key.scancode=SDL_SCANCODE_S;e.key.mod=(SDL_Keymod)(SDL_KMOD_CTRL|SDL_KMOD_ALT);}
+                    else e.key.scancode=SDL_GetScancodeFromName(key);
+                    if(e.key.scancode!=SDL_SCANCODE_UNKNOWN)SDL_PushEvent(&e);
+                }
+                next+=len;if(*next==',')++next;
+            }
+        }
         /* F117_MENU_AUTOTEST=1 (diagnostic): a few frames in, press Ctrl+Alt+S, move to Fullscreen, change it,
          * move to Save and press Enter, as a player's keys would arrive; F117_MENU_SHOT=FILE.ppm saves the
          * menu's picture while it is open. Lets the real menu path run in a window-less check. */
         static int diag_next;
-        int diag_rows = 0;
-        settings_defs(&diag_rows);
+        static int diag_rows=-1;
+        if(diag_rows<0) {settings_defs(&diag_rows);diag_rows=settings_root_steps(diag_rows);}
         /* open; down to Fullscreen (row 3); change it; down to Save (row diag_rows); Enter */
         const int diag_steps = 1 + 3 + 1 + (diag_rows - 3) + 1;
         if (getenv("F117_MENU_AUTOTEST") && ++diag_frame >= 5 && diag_next < diag_steps) {
@@ -1759,30 +1829,29 @@ int main(int argc, char **argv)
                 SDL_PushEvent(&e);
             }
         }
-        /* F117_REMAP_AUTOTEST=1 (diagnostic): open the menu, choose Remap a key, press Q then W, close it. */
+        /* Exercise Q -> W through both binding lists using real SDL key events. */
         {
-            static int rm_next;
-            int rm_rows = 0;
-            settings_defs(&rm_rows);
-            if (getenv("F117_REMAP_AUTOTEST") && ++rm_frame >= 5 && rm_next < rm_rows + 7) {
-                const int k = rm_next++;
-                SDL_Event e;
-                SDL_zero(e);
-                e.type = SDL_EVENT_KEY_DOWN;
-                if (k == 0) { e.key.scancode = SDL_SCANCODE_S; e.key.mod = (SDL_Keymod)(SDL_KMOD_LCTRL | SDL_KMOD_LALT); }
-                else if (k <= rm_rows + 2) e.key.scancode = SDL_SCANCODE_DOWN;       /* to the Remap a key row */
-                else if (k == rm_rows + 3) e.key.scancode = SDL_SCANCODE_RETURN;
-                else if (k == rm_rows + 4) e.key.scancode = SDL_SCANCODE_Q;
-                else if (k == rm_rows + 5) e.key.scancode = SDL_SCANCODE_W;
-                else e.key.scancode = SDL_SCANCODE_ESCAPE;
+            static int phase;
+            if(getenv("F117_REMAP_AUTOTEST") && ++rm_frame>=5 && phase<6) {
+                SDL_Event e;SDL_zero(e);e.type=SDL_EVENT_KEY_DOWN;
+                if(phase==0) {e.key.scancode=SDL_SCANCODE_S;e.key.mod=(SDL_Keymod)(SDL_KMOD_CTRL|SDL_KMOD_ALT);phase=1;}
+                else if(phase==1) {
+                    int n;settings_defs(&n);
+                    if(settings_steps_to_row(&g_set,n+2))e.key.scancode=SDL_SCANCODE_DOWN;
+                    else {e.key.scancode=SDL_SCANCODE_RETURN;phase=2;}
+                } else if(phase==2 || phase==3) {
+                    const int want=phase==2 ? SDL_SCANCODE_Q : SDL_SCANCODE_W;
+                    if(g_set.keys[g_set.key_cursor].physical!=want)e.key.scancode=SDL_SCANCODE_DOWN;
+                    else {e.key.scancode=SDL_SCANCODE_RETURN;++phase;}
+                } else {e.key.scancode=SDL_SCANCODE_ESCAPE;++phase;}
                 SDL_PushEvent(&e);
             }
         }
         /* F117_FIXES_AUTOTEST=1 (diagnostic): open the menu, choose Choose fixes, switch the first fix, come back. */
         {
             static int fx_next;
-            int fx_rows = 0;
-            settings_defs(&fx_rows);
+            static int fx_rows=-1;
+            if(fx_rows<0) {settings_defs(&fx_rows);fx_rows=settings_root_steps(fx_rows+4)-4;}
             if (getenv("F117_FIXES_AUTOTEST") && ++fx_frame >= 5 && fx_next < fx_rows + 8) {
                 const int k = fx_next++;
                 SDL_Event e;
@@ -1799,8 +1868,8 @@ int main(int argc, char **argv)
         /* F117_WATCH_AUTOTEST=1 (diagnostic): open the menu, choose Watch a flight, take the second one in the list. */
         {
             static int wa_next;
-            int wa_rows = 0;
-            settings_defs(&wa_rows);
+            static int wa_rows=-1;
+            if(wa_rows<0) {settings_defs(&wa_rows);wa_rows=settings_root_steps(wa_rows+5)-5;}
             if (getenv("F117_WATCH_AUTOTEST") && ++wa_frame >= 5 && wa_next < wa_rows + 9) {
                 const int k = wa_next++;
                 SDL_Event e;
@@ -1975,7 +2044,7 @@ int main(int argc, char **argv)
                     tabs_on = 1; switch_to_settings = 1; esc_swallow = 1;                   /* ` in flight: the menu, on its Settings tab */
                 }
                 if (down && tabs_on && ev.key.scancode == SDL_SCANCODE_TAB) {              /* Tab: the other tab (not from inside a sub-screen) */
-                    if (g_set.open && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.remap_stage && !g_set.padkey_stage) {
+                    if (g_set.open && g_set.page==SETTINGS_MAIN && !g_set.key_picker && !g_set.picker && !g_set.flight_picker && !g_set.text_picker && !g_set.padkey_stage) {
                         settings_key_event(&g_set, SKEY_ESC);                              /* close Settings without saving, keep the pause */
                         SDL_StopTextInput(win);
                         if (menu_paused) { paused_ns += SDL_GetTicksNS() - pause_began; paused = 0; menu_paused = 0; }
@@ -1996,16 +2065,32 @@ int main(int argc, char **argv)
                     settings_load(&g_set, text);
                     free(text);
                     settings_open(&g_set);
+                    if(data_option)settings_mark_folder_saved(&g_set,"data",data);
+                    if(mt32_roms)settings_mark_folder_saved(&g_set,"mt32-roms",mt32_roms);
+                    if(mac_sounds_path)settings_mark_folder_saved(&g_set,"mac-sounds",mac_sounds_path);
                     SDL_StartTextInput(win);                              /* for the Folders screen; the other screens ignore typed text */
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
                     {   /* the menu shows what is running: options given on the command line (a .bat) are not in the file, so mark them */
                         char b[40];
                         settings_mark_saved(&g_set, "presentation", g_remaster ? "remastered" : g_replay == 2 ? "enhanced" : "original");
+                        settings_mark_saved(&g_set,"fixes",fix_choice);
                         if (g_replay == 2 || g_remaster) {
                             snprintf(b, sizeof b, "%d", g_scale);
                             settings_mark_saved(&g_set, "present-scale", g_scale > 0 ? b : "auto");
                         }
                         if (g_setup_sound) settings_mark_saved(&g_set, "sound", g_setup_sound == '1' ? "speaker" : g_setup_sound == '2' ? "adlib" : "roland");
+                        g_set.preserve_sound=g_setup_sound!=0;
+                        settings_mark_saved(&g_set,"speaker",speaker_model ? "pwm" : "realsound");
+                        settings_mark_saved(&g_set,"opl",opl_backend==AUDIO_OPL_NUKED ? "nuked" : "dbopl");
+                        settings_mark_saved(&g_set,"music-source",g_source[SP_MUSIC]==SP_NONE ? "default" : g_source[SP_MUSIC]==SP_MAC ? "mac" : "dos");
+                        settings_mark_saved(&g_set,"sound-source",g_source[SP_SOUND]==SP_NONE ? "default" : g_source[SP_SOUND]==SP_MAC ? "mac" : "dos");
+                        settings_mark_saved(&g_set,"roland",mt32_control ? "munt" : midi_dev!=-2 ? "windows" : "off");
+                        snprintf(b,sizeof b,"%u",sim_hz);settings_mark_saved(&g_set,"sim-hz",b);
+                        settings_mark_saved(&g_set,"colourblind",g_colourblind==1 ? "protanopia" : g_colourblind==2 ? "deuteranopia" : g_colourblind==3 ? "tritanopia" : "off");
+                        settings_mark_saved(&g_set,"present-age",g_age ? "extrapolate" : "interp");
+                        settings_mark_saved(&g_set,"timing",getenv("F117R_TIMING") && !strcmp(getenv("F117R_TIMING"),"386") ? "386" : "dosbox");
+                        snprintf(b,sizeof b,"%d",g_line_width);settings_mark_saved(&g_set,"present-line-width",b);
+                        snprintf(b,sizeof b,"%d",scale);settings_mark_saved(&g_set,"scale",b);
                         settings_mark_saved(&g_set, "crt", g_crt ? "yes" : "no");
                         settings_mark_saved(&g_set, "crt-mask", g_crt_mask ? "yes" : "no");
                         settings_mark_saved(&g_set, "crt-glow", g_crt_glow ? "yes" : "no");
@@ -2025,6 +2110,7 @@ int main(int argc, char **argv)
                         settings_mark_saved(&g_set, "engine", H.m.engine == ENGINE_INTERP ? "interp" : "recomp");
                     }
                     fill_fix_picker(&g_set);
+                    fill_bindings(&g_set);
                     fill_flight_list(&g_set, save);
                     if (!paused) { paused = 1; pause_began = SDL_GetTicksNS(); menu_paused = 1; }
                     break;
@@ -2062,38 +2148,31 @@ int main(int argc, char **argv)
                             }
                             break;
                         }
-                        if (g_set.remap_stage) {            /* Remap a key: this press is one of its two keys */
-                            const SDL_Scancode rsc = ev.key.scancode;
-                            if (rsc == SDL_SCANCODE_ESCAPE) g_set.remap_stage = 0;
-                            else if (g_set.remap_stage == 1) { g_set.remap_from = (int)rsc; g_set.remap_stage = 2; }
-                            else {
-                                char pair[160], cur[400] = "";
-                                snprintf(pair, sizeof pair, "%s:%s", SDL_GetScancodeName((SDL_Scancode)g_set.remap_from), SDL_GetScancodeName(rsc));
-                                if (remap_add(pair) > 0) {
-                                    char *text = config_read_file(settings_path);
-                                    if (text) config_get(text, "remap", cur, sizeof cur);
-                                    const size_t used = strlen(cur);
-                                    snprintf(cur + used, sizeof cur - used, "%s%s", used ? ", " : "", pair);
-                                    char *out = config_set(text ? text : "", "remap", cur);
-                                    FILE *rf = out ? fopen(settings_path, "wb") : NULL;
-                                    if (rf) { fputs(out, rf); fclose(rf); snprintf(g_set.note, sizeof g_set.note, "Added %s", pair); }
-                                    else snprintf(g_set.note, sizeof g_set.note, "Could not write f117a.ini");
-                                    free(text);
-                                    free(out);
-                                } else snprintf(g_set.note, sizeof g_set.note, "Those keys have no name the game can use");
-                                g_set.remap_stage = 0;
-                            }
-                            break;
-                        }
                         const SDL_Scancode sc = ev.key.scancode;
                         const int k = sc == SDL_SCANCODE_UP ? SKEY_UP : sc == SDL_SCANCODE_DOWN ? SKEY_DOWN :
                                       sc == SDL_SCANCODE_LEFT ? SKEY_LEFT : sc == SDL_SCANCODE_RIGHT ? SKEY_RIGHT :
                                       sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER ? SKEY_ENTER :
-                                      sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : sc == SDL_SCANCODE_BACKSPACE ? SKEY_BACKSPACE : -1;
+                                      sc == SDL_SCANCODE_ESCAPE ? SKEY_ESC : sc == SDL_SCANCODE_BACKSPACE ? SKEY_BACKSPACE :
+                                      sc == SDL_SCANCODE_PAGEUP ? SKEY_PAGEUP : sc == SDL_SCANCODE_PAGEDOWN ? SKEY_PAGEDOWN :
+                                      sc == SDL_SCANCODE_HOME ? SKEY_HOME : sc == SDL_SCANCODE_END ? SKEY_END : -1;
                         if (sc == SDL_SCANCODE_V && (mod & SDL_KMOD_CTRL) && g_set.text_picker && g_set.text_edit >= 0) {   /* a paste into the folder being typed */
                             char *clip = SDL_GetClipboardText();
                             if (clip) { settings_text_input(&g_set, clip); SDL_free(clip); }
                         } else if (k >= 0) settings_key_event(&g_set, (settings_key)k);
+                        if(g_set.key_assign) {
+                            g_set.key_assign=0;
+                            char *before=remap_export();
+                            int valid=before!=NULL;
+                            if(valid && g_set.remap_from==g_set.remap_to)remap_remove((SDL_Scancode)g_set.remap_from);
+                            else if(valid) {
+                                valid=remap_set((SDL_Scancode)g_set.remap_from,(SDL_Scancode)g_set.remap_to);
+                            }
+                            if(!valid || !save_remaps(settings_path)) {
+                                if(before) {remap_clear();remap_add(before);}
+                                snprintf(g_set.note,sizeof g_set.note,"Could not save key binding");
+                            } else snprintf(g_set.note,sizeof g_set.note,"Key binding saved");
+                            free(before);fill_bindings(&g_set);
+                        }
                         if (g_set.picks_changed && !g_set.picker) { g_set.picks_changed = 0; write_custom_fixes(&g_set, settings_path); }
                         if (g_set.clear_padkeys) {          /* Clear controller keys: forget them now and in the file */
                             g_set.clear_padkeys = 0;
@@ -2103,14 +2182,13 @@ int main(int argc, char **argv)
                         }
                         if (g_set.clear_remaps) {           /* Clear key remaps: forget them now and in the file */
                             g_set.clear_remaps = 0;
-                            remap_clear();
-                            char *text = config_read_file(settings_path);
-                            char *out = text ? config_set(text, "remap", NULL) : NULL;
-                            FILE *rf = out ? fopen(settings_path, "wb") : NULL;
-                            if (rf) { fputs(out, rf); fclose(rf); }
-                            snprintf(g_set.note, sizeof g_set.note, "Key remaps cleared");
-                            free(text);
-                            free(out);
+                            char *before=remap_export();
+                            if(before) {
+                                remap_clear();
+                                if(!save_remaps(settings_path)) {remap_add(before);snprintf(g_set.note,sizeof g_set.note,"Could not save key bindings");}
+                                else snprintf(g_set.note,sizeof g_set.note,"Key remaps cleared");
+                                free(before);fill_bindings(&g_set);
+                            }
                         }
                         if (g_set.changed_live) {
                             g_set.changed_live = 0;
@@ -2127,14 +2205,23 @@ int main(int argc, char **argv)
                             if (g_set.watch_now) { restart_game(orig_argv, "--watch", g_set.watch_name[0] ? g_set.watch_name : "latest"); running = 0; }
                             if (g_set.saved_now) {
                                 const int restart = g_set.want_restart;
+                                int bindings_ok=1;
+                                if(!g_set.reset_all) {bindings_ok=save_remaps(settings_path);if(bindings_ok)padkeys_save(settings_path);}
                                 char *text = config_read_file(settings_path);
-                                char *out = settings_apply(&g_set, text);
+                                char *out = bindings_ok ? settings_apply(&g_set, text) : NULL;
                                 FILE *f = out ? fopen(settings_path, "wb") : NULL;
-                                if (f) { fputs(out, f); fclose(f); }
-                                else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", "Could not write f117a.ini", win);
+                                int wrote=0;
+                                if (f) {wrote=fputs(out,f)>=0;if(fclose(f))wrote=0;}
+                                if (!wrote) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", "Could not write f117a.ini", win);
                                 free(text);
                                 free(out);
-                                if (f && restart && restart_wanted(win)) { restart_game(orig_argv, NULL, NULL); running = 0; }
+                                if(wrote && g_set.reset_all) {remap_clear();g_npadkeys=0;fill_bindings(&g_set);}
+                                if (wrote && restart && restart_wanted(win)) {
+                                    char **next=settings_restart_args(&g_set,orig_argv,settings_path);
+                                    if(next && restart_game(next,NULL,NULL))running=0;
+                                    else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"F-117A","Settings saved, but the game could not restart.",win);
+                                    free(next);
+                                }
                             }
                         }
                     }
@@ -2496,7 +2583,15 @@ int main(int argc, char **argv)
             settings_render(&g_set, menu_pixels, 640, 400);
             if (tabs_on) keyref_tabs(0, menu_pixels, 640, 400);
             const char *shot = getenv("F117_MENU_SHOT");
-            if (shot) {
+            const char *shot_state=getenv("F117_MENU_SHOT_STATE"), *shot_key=getenv("F117_MENU_SHOT_KEY");
+            const int shot_ready=(!shot_state ||
+                (!strcmp(shot_state,"audio") && g_set.page==SETTINGS_AUDIO) ||
+                (!strcmp(shot_state,"advanced") && g_set.page==SETTINGS_ADVANCED) ||
+                (!strcmp(shot_state,"keys") && g_set.key_picker && !g_set.key_target) ||
+                (!strcmp(shot_state,"targets") && g_set.key_picker && g_set.key_target) ||
+                (!strcmp(shot_state,"reset") && g_set.reset_all)) &&
+                (!shot_key || (g_set.key_picker && g_set.keys[g_set.key_cursor].physical==SDL_GetScancodeFromName(shot_key)));
+            if (shot && shot_ready) {
                 FILE *sf = fopen(shot, "wb");
                 if (sf) {
                     fprintf(sf, "P6\n640 400\n255\n");
@@ -2669,6 +2764,7 @@ int main(int argc, char **argv)
     if (g_host_accept) { if (fclose(g_host_accept)) H.audio_failed = 1; g_host_accept = NULL; }
     audio_destroy(H.audio);
     if (g_side) { if (getenv("F117_SOUND_LOG")) fprintf(stderr, "[sidecar] %llu requests (%llu failed), %llu ticks, %llu OPL writes\n", (unsigned long long)g_side_requests, (unsigned long long)g_side_failed, (unsigned long long)g_side_ticks, (unsigned long long)g_side_writes); sidecar_free(g_side); audio_destroy(g_side_audio); }
+    if(getenv("F117_SETTINGS_TRACE"))fprintf(stderr,"[settings-exit] child=%d rc=%d\n",g_settings_child,H.audio_failed ? 1 : 0);
     SDL_Quit();
     return H.audio_failed ? 1 : 0;
 }

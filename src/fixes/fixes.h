@@ -16,6 +16,8 @@ void fixes_register(void);
 /* Switch a fix by its bug ID ("D5"), or "all"; the number switched. */
 int  fixes_enable(const char *id, int on);
 void fixes_list(FILE *f);
+/* Read-only normal-play default for a listed repair; never switches fixes. */
+int fixes_default_enabled(const char *id);
 /* The fixes now on, space-separated ("" for the original). */
 void fixes_enabled(char *out, size_t n);
 /* Switch on each fix a recorded session names; 0 if one is unknown. */

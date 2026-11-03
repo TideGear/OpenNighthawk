@@ -1,52 +1,67 @@
-# Phase 3 handoff (updated night of 1 November 2026; the table and the branch notes further down are from 30 October)
+# Phase 3 handoff
 
-## Current: 3 November shoreline correction
+## Current: 3 November settings and shoreline
 
-Work resumed at the owner's scheduled 8 a.m. Pacific time. The Remastered
-shoreline correction is implemented, verified against the twelve reported
-views, and installed in ONTests for owner review. Phase 3 remains incomplete.
+The active goal remains **get Phase 3 to 100% safely**. The previous goal turn
+made verified progress (installed shoreline correction); this turn completes
+the requested settings batch. Neither local batch is completion of Phase 3.
 
-Two coupled causes were confirmed: terrain rings used different rounded
-cameras and minimum eye heights, and the compositor pasted the old native
-water footprint back where corrected terrain exposed background. Remastered
-now uses one world camera (with the finest ring's two-world-unit eye floor),
-scales ground clipping consistently, and gives complete reconstructed scenes
-ownership of cleared background. Invalid model captures/unsupported backgrounds
-retain conservative fallback. HUD, text, sprites and cockpit remain protected.
-No simulation, collision, matched routine, Original or Enhanced change was made.
+**Verified and installed in ONTests:** SHA-256 `7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
+The prior coast build is backed up at `private/settings-20261103/ONTests-before-settings.exe`.
+All twelve host acceptance cases pass, including eight real-menu settings
+subcases and an actual fresh-process restart. Eleven focused native tests,
+twelve ROM-free defaults/precedence tests and 25 Python checker/presentation/
+title tests pass. The report verifies against this executable and both checker
+files: `private/settings-20261103/settings-release-verified/report.json`.
+The gallery includes the actual Audio, Advanced, binding/output-key lists and
+reset screens; they were visually reviewed. No full machine gate was run.
 
-**Verified and installed:** SHA-256
-`A26310FF2A8DE6DB548B3E91395A05A937B699B444EA24FBBDC41B2F90A8B86E`.
-All eleven host integration cases pass, including the new moving shoreline
-foreground regression. Nine native tests and 24 Python verdict/presentation/title
-tests pass. Original, Enhanced, Remastered and both faulty-render controls produce
-identical full 1 MB guest RAM snapshots at the sampled clock. This is targeted
-presentation-isolation evidence, not a new full machine gate. Re-enabling either
-the old ring eye or old footprint rule reproduces the defect and fails the new
-regression. Owner visual confirmation remains pending.
+**Settings completed in code and integration checks:** active sound survives
+saving/restart and SETUP advances through its normal typed N/driver answers;
+saved edits supersede conflicting launch arguments; Reset writes every menu
+default, clears custom bindings/fixes, cancels without changes and keeps resource
+folders. Sound intentionally returns to Ask on factory reset. Advanced and
+Audio pages group the requested controls without removing capabilities.
+All 101 supported keys are listed with blue nondefault mappings, output-key
+selection (including Escape/punctuation), individual restore and paging.
+Remap persistence is canonical and supports more than the old 64-pair/400-byte
+limits. Custom numeric launch values remain visible/preserved. Prior blue
+option values, wrapped fix descriptions and setting help remain intact.
+See [settings guide](settings.md). The original code's fix default policy is queried read-only;
+Reset does not accidentally enable the optional quiz. Original presentation
+also correctly overrides a Remastered configuration; a ROM-free process test
+checks that actual parser path.
 
-Evidence (ignored, local): `private/settings-20261103/coast-host-final/report.json`
-and gallery; `coast-final-twelve/sheet.png` and report; `coast-isolation/report.json`.
-The twelve captures record requested and actual clocks: one is one instruction
-later, explicitly reported. The earlier failed capture run is superseded.
-The old ONTests executable is backed up as
-`private/settings-20261103/ONTests-before-coast.exe` (previous SHA `507D03C...`).
-Use the usual Roland launcher to review movement and ground joins in the margins.
+**Owner shoreline feedback:** the installed 81e0e11 coast build seems fixed in
+the owner's quick recomp check. They then tested crashes on: slow dirt and
+water taxiing worked, accelerating on either crashed. These were explicitly
+**recomp tests, not a GOG gameplay comparison**. They agree with the matched
+original taxi-ground branch and its instruction bytes (this off-field check
+becomes eligible above 50 knots). There is no water test in that branch.
+The Remastered correction changes drawing only. Broader coast/road/mission
+review remains open; do not convert this feedback into blanket renderer approval.
 
-**Next work:** restart/joystick auto-answer and CLI precedence; reset all
-settings; Advanced and Audio grouping; full key-remapping list. Blue nondefaults,
-setting descriptions and wrapped fix descriptions were committed in ee2ec20.
-Read [current checklist](p3-current-work.md) and [coast investigation](coastline-reconstruction.md) for details and parity requirements. The original/GOG
-coast defect is owner-confirmed. No authoritative water-impact boundary has been
-established; this correction keeps the authored visual edges and simulation rules.
-Broader theatres/viewpoints still need review before a general fidelity claim.
+**Full scope still open:** renderer throughput (measured native 4K remains
+below 60 fps), longer scenery reach, road-motion/terrain transitions, broader
+depth/visibility and interpolation checks, widescreen HUD/cockpit work, and
+the remaining controls, accessibility, replay-camera and hybrid-audio rows in
+`docs/progress.json`/the roadmap. Physical controls, explicit joystick-answer
+coverage, original mouse interaction, clipboard/folder interaction, broader
+sound-driver listening/reference checks and owner approval remain applicable.
+Do not mark 100% from the settings tests. Scores are unchanged pending the
+broader requirements; commit titles use `tools/progress.py --title`.
 
-**Preserved unfinished settings:** the ignored source snapshot at
-`private/settings-20261103/unfinished-snapshot/` still holds grouping/reset WIP.
-Its old full resume patch predates this accepted renderer: use only the settings
-paths when checking/applying it, never overwrite the completed coast correction.
-Unrelated sound-board edits and owner untracked files remain untouched.
-New commit titles must retain the current score prefix; scores are unchanged.
+Continue from [current checklist](p3-current-work.md) and the roadmap. The next renderer task is general scenery reach.
+A useful performance investigation
+is whether the normal true-color Remastered path still computes an unused
+paletted image; prove pixel equivalence and measure before claiming a gain.
+Scenery work must address which detail-ring cells are requested, not only
+raise the far plane. Keep all simulation and original renderer behavior intact.
+Honor the standing limit: no additional full machine gate without authorization.
+
+**Preserved owner work:** sound-board tool edits and the existing untracked
+files remain excluded. The old ignored `unfinished-snapshot` patches are now
+superseded by accepted coast/settings source; do not apply them over this code.
 
 Older sections below are historical; this section takes precedence.
 

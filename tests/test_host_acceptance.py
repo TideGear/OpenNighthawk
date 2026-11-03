@@ -168,6 +168,18 @@ class ImageVerdicts(unittest.TestCase):
 
 
 class InputVerdicts(unittest.TestCase):
+    def test_restart_requires_a_fresh_process_and_completed_setup(self):
+        log="\n".join(["[settings-restart] pid 1234",
+            "[settings-start] child=1 sound=3 presentation=enhanced ips=60000000",
+            "[settings-autoanswer] child=1 N 3",
+            "[settings-module] child=1 MPS_LOGO.EXE clock=2001240",
+            "[settings-exit] child=1 rc=0"])
+        host.settings_acceptance.check_restart(log)
+        for broken in (log.replace("child=1","child=0"),log.replace("sound=3","sound=?"),
+                       log.replace(" N 3"," N 2"),log.replace("MPS_LOGO.EXE","SETUP.EXE"),
+                       log.replace("rc=0","rc=1"),log.replace("pid 1234","pid 0")):
+            with self.subTest(log=broken),self.assertRaises(ValueError):host.settings_acceptance.check_restart(broken)
+
     def test_paused_unique_screenshots_and_held_repeat(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -235,12 +247,13 @@ class ReportVerdicts(unittest.TestCase):
             manifest.write_text(json.dumps(m))
             good = dict(status="pass",full_suite=True,scope="all",app_sha256=host.digest(app),
                         manifest_sha256=host.digest(manifest),checker_sha256=host.digest(host.__file__),
+                        settings_checker_sha256=host.digest(host.settings_acceptance.__file__),
                         recordings=m["sessions"],machine_parity="not_run",owner_reference_comparison="pending",
-                        cases=[dict(name=n,status="pass") for n in ["sound","input-live","input-replay","input-watch","menu","moving","renderer-workers"]])
+                        cases=[dict(name=n,status="pass") for n in ["sound","input-live","input-replay","input-watch","menu","moving","renderer-workers","settings"]])
             path.write_text(json.dumps(good))
             host.verify_report(path,app,manifest)
             for key,value in [("full_suite",False),("app_sha256","old"),("checker_sha256","old"),
-                              ("recordings",{}),("machine_parity","pass"),("status","skip"),
+                              ("settings_checker_sha256","old"),("recordings",{}),("machine_parity","pass"),("status","skip"),
                               ("cases",good["cases"][:-1])]:
                 bad = copy.deepcopy(good)
                 bad[key] = value

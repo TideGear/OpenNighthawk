@@ -45,5 +45,8 @@ int config_get(const char *text, const char *key, char *out, size_t size);
 
 /* A whole file's text (NUL-terminated, malloc'd), or NULL. */
 char *config_read_file(const char *path);
+int config_option_arity(const char *option);
+/* Quote one Windows CRT argument, including trailing backslashes and quotes. */
+char *config_quote_arg(const char *argument);
 
 #endif

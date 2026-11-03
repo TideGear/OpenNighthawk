@@ -245,9 +245,13 @@ Host keys (chosen so as not to collide with the game's):
 Esc is the game's own (it cancels the Alt+Q quit dialog in flight, skips the title animation, cancels a text entry), so it
 only does anything in the menu while the menu is open. `Ctrl+Alt+S` and `Ctrl+Alt+K` still open the menu on the Settings and Keys tabs.
 
-**Changing keys.** Open the menu, go down the Settings tab to *Remap a key...*, press Enter, press the key to change, then the key it
-should act as (the line under the list confirms it). It is live at once and saved to `f117a.ini` as `remap = Q:W`; *Clear key remaps*
-removes them all. This maps one key to another: the game's own commands keep their keys, and the Keys tab lists the defaults.
+**Changing keys.** Choose *Remap a key...*, select a physical key, then select what it should send to the game. All 101 supported
+game keys are listed; changed mappings appear in blue. Backspace restores one key, and Page Up/Down or Home/End moves through the list.
+Assignments are live and saved immediately; *Clear key remaps* removes them all. The Keys tab lists the game's default commands.
+
+**Settings pages.** Audio and Advanced pages group sound controls and machine/simulation controls. Nondefault values are blue;
+each setting has a description. *Reset all settings to default* takes effect when you Save and keeps game/sound folders.
+See the [settings guide](docs/settings.md) for restart, reset and key-mapping behavior.
 
 **Controllers and joysticks.** In the same menu: *Stick dead zone %*, *Invert stick X / Y*, *Fire 1 button* and *Fire 2 button* (0 south,
 1 east, 2 west, 3 north, in SDL's gamepad order), and *Controller button as key...* (press a controller button, then the key it should act

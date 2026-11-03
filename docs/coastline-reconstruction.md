@@ -12,6 +12,23 @@ verify whether such a boundary exists; a visual edge, map class and aircraft
 impact rule must not be assumed equivalent. The renderer must not alter the
 simulation to make a shoreline comparison pass.
 
+## Original ground behavior confirmed by the owner (3 November)
+
+The owner briefly tested the installed correction and reports that the
+shoreline seems fixed; that first visual check had crashes disabled. They
+then enabled crashes and confirmed slow taxiing on both dirt and water,
+followed by a crash after accelerating on either surface. The owner explicitly
+clarified that these live tests were in the recomp, not the original GOG game.
+Record them as recomp runtime evidence, not an independent GOG comparison.
+This agrees with
+the matched original ground-contact routine and its original instruction
+bytes: the off-field check at 42A2 compares speed with 0x32 (50 knots), and
+skips that crash at or below the threshold, subject to its other state checks.
+There is no land/water test in this taxi-ground branch. The owner's test
+confirms the shared behavior, not an exact measured threshold or all other
+landing/rescue paths. Preserve it for original-game parity; the Remastered
+shoreline correction adds no water physics or collision rules.
+
 ## Owner evidence
 
 The latest twelve screenshots are from `session-20261102-154150`, clocks

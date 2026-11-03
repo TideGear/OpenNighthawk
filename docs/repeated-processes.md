@@ -29,15 +29,15 @@ verification) is not an optimisation; it needs the owner's approval.
 - **Host sound, rendering and input.** Run the [host integration suite](host-acceptance.md)
   in addition to the applicable existing parity checks, before deployment and release:
   `py tools/host_acceptance.py --app build/f117a.exe --data D:/GOG/F-117A --sessions C:/Users/Tideg/AppData/Roaming/F117Recomp/F-117A/sessions --out NEW_DIR`.
-  It uses private save copies and eleven cases covering actual routed/mixed audio,
+  It uses private save copies and twelve cases covering actual routed/mixed audio,
   moving scene regressions, eight-worker/single-worker pixel equivalence at
-  scale 9 in wide and 4:3 windows, and the SDL event loop. Missing recordings/evidence
+  scale 9 in wide and 4:3 windows, and the SDL event loop plus eight settings/restart subcases. Missing recordings/evidence
   fail. Measured full-suite cost: 125.8 seconds at two jobs (2 November 2026,
   with diagnostic capture; this is not a renderer performance benchmark).
   Use a new output folder; keep the JSON, images, animations and logs.
   Verify a reused report with `--app EXE --verify-report REPORT`: partial suites
   and old executable/checker/manifest hashes are refused. ROM-free verdict tests:
-  `py tests/test_host_acceptance.py` (14 tests, about 0.4 s locally); they also run
+  `py tests/test_host_acceptance.py` (15 tests, about 0.5 s locally); they also run
   in Windows CI. `present_light_check.py` requires `--host-sessions` and runs this
   suite for host/presentation source changes. No machine proof input or gate
   requirement is relaxed. The result separately records machine parity as

@@ -3,8 +3,8 @@
  * A menu over the options f117a.ini holds. It reads the file's current values, lets the player
  * change them, and writes them back with config_set; the host pauses the machine while it is open.
  * Most options take effect when the game next starts (the host offers to restart); an option marked
- * live is applied at once. A value given on the command line still wins over the file, which the menu
- * says. Nothing here touches the simulation. */
+ * live is applied at once. Launch options win on initial startup; a settings
+ * restart removes options conflicting with edited/saved values. Nothing here touches the simulation. */
 #ifndef F117R_SETTINGS_H
 #define F117R_SETTINGS_H
 
@@ -21,21 +21,30 @@ typedef struct {
 
 #define SETTINGS_MAX_FIXES 48
 
-typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC, SKEY_BACKSPACE } settings_key;
+typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC, SKEY_BACKSPACE,
+    SKEY_PAGEUP, SKEY_PAGEDOWN, SKEY_HOME, SKEY_END } settings_key;
 
 #define SETTINGS_TEXTS 3             /* the folders the Folders screen edits: the game's, the MT-32 ROMs', the Mac recordings' */
 #define SETTINGS_TEXT_MAX 260
+enum { SETTINGS_MAIN, SETTINGS_AUDIO, SETTINGS_ADVANCED };
 
 typedef struct {
     int open;
     int cursor;                    /* a setting, or the "Save", "Watch last flight" and "Close" rows after them */
     int top;                       /* the first row shown: the list scrolls when it is longer than the panel */
+    int page, parent_cursor, parent_top;
+    int reset_all;                 /* pending defaults reset; only persisted by Save */
+    int preserve_sound;            /* remember the active explicit sound choice across restart */
+    int fixes_edited;              /* a custom set was saved; runtime still needs restarting */
+    int key_picker, key_target, key_cursor, key_top, key_from, key_source_top, key_count;
+    int key_assign, remap_to;
+    struct { int physical, target; char name[32], target_name[32]; } keys[128];
     int value[32];                 /* the choice index per setting */
     int saved[32];                 /* what the file holds */
+    char custom[32][64], saved_custom[32][64]; /* valid launch values outside the menu's presets */
     int at_open[32];               /* live settings as they were when the menu opened (the window's state) */
     int changed_live;              /* a live setting changed since the host last looked */
     int saved_now;                 /* the menu was closed with Save: the host writes the file */
-    int remap_stage;               /* Remap a key was chosen: 1 waiting for the key to change, 2 for what it acts as */
     int remap_from;                /* the key chosen at stage 1 (an SDL scancode, set by the host) */
     int clear_remaps;              /* Clear key remaps was chosen: the host empties the list */
     int padkey_stage;              /* Controller button as key was chosen: 1 waiting for a controller button, 2 for the key it acts as */
@@ -46,6 +55,7 @@ typedef struct {
     int pick_cursor, pick_top, pick_count;
     int picks_changed;             /* the picker closed with a change: the host writes fixes = custom and the list */
     unsigned char pick_on[SETTINGS_MAX_FIXES];
+    unsigned char pick_default[SETTINGS_MAX_FIXES];
     char pick_id[SETTINGS_MAX_FIXES][8];
     char pick_what[SETTINGS_MAX_FIXES][160];
     int flight_count;              /* recorded flights listed for Watch a flight (newest first) */
@@ -66,6 +76,15 @@ typedef struct {
 const setting_def *settings_defs(int *count);
 /* Plain-language help for a setting key, including resource folders. */
 const char *settings_description(const char *key);
+int settings_group(const char *key);
+int settings_menu_rows(const settings_state *s, int *rows, int capacity);
+int settings_steps_to_row(const settings_state *s, int row);
+void settings_reset_defaults(settings_state *s);
+void settings_set_binding(settings_state *s, int index, int physical, const char *name, int target, const char *target_name);
+void settings_mark_folder_saved(settings_state *s, const char *key, const char *value);
+/* New pointer array, borrowed strings; free the array after use. Saved choices
+ * supersede conflicting launch options while unrelated arguments survive. */
+char **settings_restart_args(const settings_state *s, char **original, const char *config_path);
 
 /* Read the values from the INI text (NULL for none) and close the menu. */
 void settings_load(settings_state *s, const char *ini_text);
