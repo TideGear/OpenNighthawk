@@ -100,6 +100,20 @@ Land check (recon route, clocks 6, 7, 8 and 9 billion, over desert and coast, 3 
 249k -> 468k, 305k -> 559k). That is a large renderer cost for a faint effect that has not been compared with the original's
 nearer drawing of the same dots, so the default stays off. Evidence: private `scenery-20261103/fine-compare/pair-*.png`.
 
+## Owner's land flight, 3 November (session 20261103-145810)
+
+The owner took seven Tab shots after scenery popped in on the ground below (clocks 5.22, 5.71, 6.07, 6.41, 6.67, 6.97 and 7.77 billion).
+Replayed from that session's `save-start` (a replay without it diverged completely), the pass-off frame matches each shot within
+900 to 6,600 pixels, the pass-on frame within 1,500 to 7,100. The shots show rows of white and yellow lights (airfield lights) and black
+ground specks. With `F117_WIDE_FINE_CELLS=3` the same frames gain further light rows and specks farther out, for example at the right
+margin at 6.41 and 6.67 billion and across the ground ahead at 5.22 billion: the first evidence of a real distance gain for lit objects.
+Evidence: private `scenery-20261103/owner-compare/sheet-*.png` (owner shot, pass on, changed pixels in red).
+
+Cost, 1920 x 1080 scale 3, software output, the same replay from clock 6.4 to 6.9 billion, one run each: pass off 60.0 pictures a
+second (p95 interval 19.3 ms); 1 cell 49.5 (25.8 ms); 2 cells 49.5 (26.2 ms); 3 cells 54.6 (23.7 ms). The runs are single and the
+ordering is not monotonic, so treat it as "every variant misses 60 here", not a ranking. The pass stays off until its cost is reduced
+(it reruns the whole terrain walk a second time per copy) and measured with the protocol in remaster-performance.md.
+
 ## Earlier negative controls
 
 The prior comparisons were useful for finding mistakes but did not establish
