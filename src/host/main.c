@@ -247,6 +247,8 @@ static int wide_make(SDL_Renderer *ren, int aspect)
 static sidecar_t *g_side;
 static int g_hook_flight;               /* the loaded program is the flight program: its sound 31 is the bay doors, not START's launch animation */
 static unsigned g_speed_hook = ~0u;
+static int g_stub_passed = -1;           /* the effect id the sound stub just let through to the driver, and when: not to be mirrored again at the driver entry */
+static uint64_t g_stub_passed_at;
 static FILE *g_host_accept;          /* optional host integration evidence; never guest state */
 static int g_adlib_effects = -1;      /* --adlib-effects: the AdLib driver in a sidecar plays the effects (Roland: music); unset: on with --sound roland */
 static audio_t *g_side_audio;
@@ -265,6 +267,7 @@ static void side_request(const machine_t *m, uint16_t id)
 {
     g_side_now = m->cpu.icount;
     g_side_requests++;
+    if (getenv("F117_SOUND_LOG") && id != 23) fprintf(stderr, "[sidecar] id %u at clock %llu\n", (unsigned)id, (unsigned long long)m->cpu.icount);
     const uint16_t sp = (uint16_t)(m->cpu.r[R_SP] + 6);
     const uint32_t ss = (uint32_t)m->cpu.seg[S_SS] << 4;
     const uint16_t value = id == 23 ? (uint16_t)(m->mem[(ss + sp) & 0xFFFFF] |
@@ -309,6 +312,15 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
         const uint32_t ss = (uint32_t)m->cpu.seg[S_SS] << 4;
         const uint16_t sp = (uint16_t)(m->cpu.r[R_SP] + 4);
         const uint16_t id = (uint16_t)(m->mem[(ss + sp) & 0xFFFFF] | m->mem[(ss + (uint16_t)(sp + 1)) & 0xFFFFF] << 8);
+        if (getenv("F117_SOUND_LOG") && id != 23) fprintf(stderr, "[sound-driver] id %u at clock %llu\n", (unsigned)id, (unsigned long long)m->cpu.icount);   /* every other request reaching the driver entry */
+        /* Any other effect that reaches the driver without passing the stub (id 19, from the keys, in the owner's flight) is the same
+         * bypass as request 23: the AdLib sidecar plays it if the policy gives effects to AdLib, unless the stub itself just let this
+         * one through. */
+        if (g_side && id >= 4 && id <= 35 && id != 23) {
+            const int from_stub = g_stub_passed == (int)id && m->cpu.icount - g_stub_passed_at < 20000;
+            g_stub_passed = -1;
+            if (!from_stub && sp_choose(SP_SOUND, (g_mac && macsound_has(g_mac, id) ? SP_BIT(SP_MAC) : 0) | SP_BIT(SP_ROLAND) | SP_BIT(SP_ADLIB) | SP_BIT(SP_SPEAKER), g_source[SP_SOUND]) == SP_ADLIB) side_request(m, id);
+        }
         if (g_side && id == 23) {
             if (getenv("F117_SOUND_LOG")) {
                 const uint16_t arg = (uint16_t)(sp + 2);
@@ -366,6 +378,7 @@ static int on_exec_hook(void *user, machine_t *m, unsigned index)
         m->cpu.r[R_AX] = 0;
         return 1;
     }
+    g_stub_passed = id; g_stub_passed_at = m->cpu.icount;      /* the native driver gets this one: its entry hook must not mirror it too */
     return 0;
 }
 static sp_source parse_source_option(const char *flag, const char *v)
