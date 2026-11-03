@@ -243,12 +243,17 @@ static int walk_pass(machine_t *m, unsigned ring_mask, int cells);
 static int walk_second(machine_t *m)
 {
     /* Ring 4 (the coarsest, the whole map's large objects) in one pass; rings 1-3 (the medium and small objects, which the game shows only in
-     * a 3x3 neighbourhood of their own, finer cells: the pop-in) in another, F117_WIDE_FINE_CELLS (diagnostic, default 0: off). */
+     * a 3x3 neighbourhood of their own, finer cells: the pop-in) in another, F117_WIDE_FINE_CELLS (default 3, 0: off). */
     static int fine=-2;
-    if (fine==-2) { const char *e=getenv("F117_WIDE_FINE_CELLS"); fine = e ? atoi(e) : 0; if (fine>6) fine=6;   /* off unless asked: see docs/scenery-distance.md */ }
+    if (fine==-2) { const char *e=getenv("F117_WIDE_FINE_CELLS"); fine = e ? atoi(e) : 3; if (fine>6) fine=6;   /* three cells by default: see docs/scenery-distance.md */ }
     walk_pass(m, 1u<<4, g_walk_cells);
     const int fc = fine < 0 ? 0 : fine;
-    if (fc>0) walk_pass(m, 0xEu, fc);
+    /* Which of rings 1-3 the extra walk covers: rings 2 and 3 (the buildings and mid-size objects: in the owner's flight model 271 was
+     * drawn out to 3,400 units without the pass, 11,000 with it) by default; ring 1 (the specks and lights, most of the extra cost) only with
+     * F117_WIDE_FINE_RINGS=14. */
+    static unsigned rings = ~0u;
+    if (rings == ~0u) { const char *e = getenv("F117_WIDE_FINE_RINGS"); rings = e ? (unsigned)strtoul(e, NULL, 0) & 0xEu : 0xCu; }
+    if (fc>0 && rings) walk_pass(m, rings, fc);
     return 0;
 }
 static int walk_pass(machine_t *m, unsigned ring_mask, int cells)

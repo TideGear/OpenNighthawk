@@ -1135,7 +1135,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             /* Read-only diagnostic for terrain-ring camera quantization. */
             const char *placement_from = getenv("F117_REMASTER_PLACEMENT_LOG_FROM");
             static unsigned placements_logged[5];
-            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < 4 &&
+            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < (getenv("F117_REMASTER_PLACEMENT_LOG_ALL") ? ~0u : 4u) &&
                 (caller == 0x06A6 || caller == 0x075E) &&
                 m->cpu.icount >= strtoull(placement_from, NULL, 0)) {
                 fprintf(stderr, "[placement] clock %llu ring %u caller %04X model %u view %u,%u,%u native-eye %d,%d,%d position %d,%d,%d\n",

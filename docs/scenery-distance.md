@@ -79,7 +79,7 @@ of exact machine parity. The native rerun isolation regression checks the
 copy's full-memory isolation directly. The new work is confined to the
 Remastered render copy and the live machine hook cap is unchanged.
 
-## Finer rings (3 November, experimental, off by default)
+## Finer rings (3 November; rings 2-3 on by default in Remastered wide views)
 
 The terrain map is static, not loaded around the player: level 4 is an 8 x 8 byte map at `B03C` with a populated 4 x 4 block, level 3 a
 16 x 16 map at `9F98` (RAM dump at clock 3.7 billion, VGAME DS `37BC`). The three-cell ring-4 pass therefore already reaches everything the
@@ -91,14 +91,14 @@ Measured on the recon route (private `fine-compare/`, candidate exe, 1920 x 1080
 at clock 3.7 billion; 353 -> 425, 102 -> 175 and 102 -> 201 at 3.3, 3.5 and 3.6 billion. The changed pixels (232 to 1285 a frame) are
 single black specks scattered over the sea toward the horizon, which look like the sea-detail dots the game draws only near the
 aircraft. No building, tower or terrain polygon appeared in any sampled frame, so this is **not** an accepted improvement: it is
-left off until a land-heavy frame with objects in the finer rings can be compared against the original's own drawing of the same
+held back at that point until a land-heavy frame with objects in the finer rings can be compared against the original's own drawing of the same
 place, and its extra cost (requests rose 45% to 60%) measured.
 
 Land check (recon route, clocks 6, 7, 8 and 9 billion, over desert and coast, 3 cells against off): primitives 78 -> 116, 63 -> 100,
 68 -> 182 and 82 -> 156; changed pixels 335 to 2,419. Again the additions are small dark specks on the ground toward the horizon
 (ground clutter dots, not buildings or terrain polygons), and model requests per run rise about 1.9x (108k -> 215k, 192k -> 362k,
 249k -> 468k, 305k -> 559k). That is a large renderer cost for a faint effect that has not been compared with the original's
-nearer drawing of the same dots, so the default stays off. Evidence: private `scenery-20261103/fine-compare/pair-*.png`.
+nearer drawing of the same dots, so ring 1 stays off (see the rings 2-3 section below). Evidence: private `scenery-20261103/fine-compare/pair-*.png`.
 
 ## Owner's land flight, 3 November (session 20261103-145810)
 
@@ -111,8 +111,27 @@ Evidence: private `scenery-20261103/owner-compare/sheet-*.png` (owner shot, pass
 
 Cost, 1920 x 1080 scale 3, software output, the same replay from clock 6.4 to 6.9 billion, one run each: pass off 60.0 pictures a
 second (p95 interval 19.3 ms); 1 cell 49.5 (25.8 ms); 2 cells 49.5 (26.2 ms); 3 cells 54.6 (23.7 ms). The runs are single and the
-ordering is not monotonic, so treat it as "every variant misses 60 here", not a ranking. The pass stays off until its cost is reduced
+ordering is not monotonic, so treat it as "every variant misses 60 here", not a ranking. The all-rings pass was held back until its cost was reduced
 (it reruns the whole terrain walk a second time per copy) and measured with the protocol in remaster-performance.md.
+
+## Rings 2-3 only: on by default (3 November, later)
+
+Logging every placement through the owner's session (`F117_REMASTER_PLACEMENT_LOG_ALL=1`, private `placements/`, `placements2/`) shows
+where the cost and the benefit are. Ring 1 (the specks and lights, models 282, 293, 295) nearly doubles with the all-rings pass but is
+the least visible; ring 3 (the mid-size objects) is where pop-in distance changes most. Furthest distance each model is drawn, units, without
+the pass and with rings 2-3 only: ring 3 model 271 3,439 -> 11,183; 299 1,999 -> 12,976; 316, 317, 318 about 10,000-12,000 -> about 20,000;
+265 and 266 appear only with the pass (to about 20,000); ring 2 model 279 10,680 -> 17,566, 277 11,805 -> 15,278, 338 10,330 -> 13,700,
+276 and 278 up to 12,405 and 13,150. Ring 1 and ring 4 models are unchanged.
+
+`F117_WIDE_FINE_RINGS` (a mask, default 12 = rings 2 and 3; 14 adds ring 1) selects the rings; `F117_WIDE_FINE_CELLS` (default 3, 0 turns
+the whole extra pass off). Cost, 1920 x 1080 scale 3, two runs each, clock 6.4 to 6.9 billion: pass off 60.1 and 60.2 pictures a second
+(p95 20.8 and 20.2 ms), rings 2-3 60.2 and 60.0 (20.7 and 19.3 ms): no measurable cost on this machine. The all-rings pass was 49.5 to 54.6.
+
+What is not shown: at the owner's seven shot clocks the rings 2-3 pass changed no pixels at 6.41 and 6.67 billion and only 128 at 5.22 billion
+(no building-class objects were in range), and at clocks 4.04 and 4.30 billion where it draws ring-3 models 5,000 to 11,000 units out it
+changed 480 and 208 pixels along the horizon, because objects that far are a few pixels across. I have no frame in which a building is seen
+to appear earlier; the evidence for the buildings is the placement distances above. The owner should judge it in ONTests. Unit tests:
+`presentation_rerun_isolation` now expects three walk calls (the game's, the ring-4 pass, the rings 2-3 pass), each with all eight words.
 
 ## Earlier negative controls
 

@@ -124,7 +124,7 @@ int main(void)
         terrain_seen=terrain_bad=0;
         const rerun_collector terrain={NULL,terrain_exec,NULL,NULL};rerun_set_collector(&terrain);
         CHECK(!rerun_draw(&snap,NULL,0,&list,1));rerun_set_collector(NULL);
-        CHECK(terrain_seen==2 && !terrain_bad);
+        CHECK(terrain_seen==3 && !terrain_bad);   /* the game's own walk, the ring-4 pass and the rings 2-3 pass, each with all eight words */
         CHECK(!list.changed && !memcmp(&m,&before,sizeof m) && !memcmp(memory,saved,MEM_SIZE));
     }
     observe_set(NULL); rerun_snap_free(&snap); rerun_list_free(&list);
