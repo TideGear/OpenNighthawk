@@ -564,3 +564,11 @@ Open: Maximum costs about 15 pictures a second on the owner's runway replay (54 
 on; a cone filter was tried and removed (not exact). Ring 1 cannot pass the 16-bit limit (28,672 units). Also this evening: the Keys tab remaps keys and
 controller buttons (Settings no longer lists those rows); request ids that bypass the sound stub (id 19) are mirrored into the AdLib sidecar; R18, R23 and
 R24 are owner-confirmed. Not gated; presentation and host changes only. Owner to judge Maximum, Far and Near in ONTests.
+
+## Next for P3: improve the CRT effects (owner, 3 Nov 22:19)
+
+The owner's first look at the CRT filter (`crt.c`, `crt = yes`, `crt-mask`, `crt-glow`) is that it does not look good. Tracked as R25 in [owner-issues.md](owner-issues.md). Not started. It applies to the displayed copy only, so it cannot touch the game or the machine. To settle with the owner before building: the look they want (sharp slot mask, soft aperture grille, plain scanlines), how much brightness to give up, curvature or none, and the cost at 4K and 60 fps.
+
+## Draw distance: the cause of the building pop-in, and the fix (3 Nov evening, R26)
+
+Every terrain model is drawn only while its camera depth is under 8191 units of its own ring, so ring-1 buildings stop at about 8,000 real units whatever the walk's cell radius. `far_scenery` in `rerun.c` now draws each object natively at a coarser ring scale (4x the reach a step, the model shrunk to size) from a list of every object on the map, with the game's cull ported and the pose patched from a per-frame template (`remaster_live_native`). Draw distance: Near (default, one step, about 2 fps), Far (two, about 10 fps), Maximum (the whole map, renderer-bound), Original. `F117_NATIVE_CHECK=1` compares each native object with the game's own placement (1.6 million, 0 differing); `F117_FAR_WALKER=1` returns to the old extra terrain walks, which `tests/test_rerun.c` still drives. The renderer's mesh cache is keyed on the detail level now and the bank signature is kept, which also speeds the live game's model drawing about 14 times in that call. Details and numbers: [scenery-distance.md](scenery-distance.md). Open: multi-part and shared-vertex models still use the game's placement; a cheaper stroke path for Maximum; the owner judges Near, Far and Maximum.
