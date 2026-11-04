@@ -75,3 +75,14 @@ has two extra hook slots for the copy so the walk hook installs even when the li
   all rings (all three at three cells), replaced by the explicit-cell walk above. The shifted blocks could not reach past about 5 cells.
 - Negative controls kept for the record: taxi/airfield samples with the first walk were pixel-identical (it had no hook slot); a two-word-call
   sample was invalid (incomplete camera arguments); the sea and desert frames showed only specks until the owner's runway flight showed buildings.
+
+## Why ring 1 stops at 28,672 units, and what passing it would take
+
+Read from `vgame_scene_walk` (`matched.c`): the walker stores each cell's eye-relative centre as 16-bit words at `DS:9506` and `9508`
+(`-((cell << 12) - offset) - 800h`) and `950A` (depth), then hands them to `D9E7` and `E3AC`. The limit is the width of the eye-relative
+coordinate itself, not the sector table, so sending more cells cannot pass it. A coarser ring reaches farther only because it works in a
+scale 4 times coarser (`0810`), and `E328` (the ring) also drives the tile-list lookup, the model scale and the depth key shift in `0DB3C`
+(`distance >> (4 - E328) * 2`). Drawing a ring-1 object past the limit would need a copy-side placer that runs the ring-1 entries at ring-2
+scale (entry offsets divided by 4, the cell centre computed by hand, `E328` set to 2 around `C436` and `E2B6`) and a check that
+`remaster_live.c`'s depth correction (`2^(2 * (4 - ring) + model_shift)`) still holds. Not built; it needs a pixel comparison of an in-range
+ring-1 object drawn both ways before it can be trusted.
