@@ -450,3 +450,8 @@ flights: runway session 20261103-154444 (clocks 3.9 to 4.8 billion, 901 pictures
 latest flight 20261104-134053 (7.0 to 7.4 billion, 401). Earlier: the Maximum runway final RAM matched byte for byte; the range predicate agreed with the game 2.6
 million times. **Not covered:** other theatres, night, air-to-air, ground targets; no comparison against the game's own picture (the off path is the guest-backed one in the same build);
 no full machine gate. Revert by setting the three variables to 0 or the two-line change in `remaster_live.c`.
+
+Timing of the final default-on build (commit 0293cd5's source), runway session 20261103-154444, clocks 3.9 to 4.8 billion, 1920 x 1080, software renderer, ONTests ini
+via `--config`, work per frame (`cost_ns`), two runs each, p95 ms (p99 in brackets): Near 9.04 (10.75) and 8.63 (9.99); Far 9.55 (11.44) and 8.52 (9.55);
+Maximum 11.27 (13.39) and 11.08 (14.32). All under 12 ms p95; Maximum's p99 is not. A software-renderer proxy: the owner's GPU window has not been measured (`--present-log`
+from a real flight is the missing evidence).
