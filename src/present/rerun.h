@@ -60,5 +60,7 @@ typedef struct {
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */
 void rerun_set_wide(int percent);
+/* The extra terrain walks' reach in world units (0 turns them off; the 16-bit limit of the guest's cell offsets caps every ring, whatever is asked). */
+void rerun_set_distance(int units);
 
 #endif

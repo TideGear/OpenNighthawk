@@ -1,167 +1,77 @@
-# Scenery distance: current evidence
+# Scenery distance
 
-The Remastered wide view now makes a three-cell terrain pass in its private
-render copy. It fills a small part of the widened land view that the normal
-walk leaves empty. Original and Enhanced keep their existing drawing path and
-live machine hook limit. This is partial R6 progress: distant buildings,
-several land views, and broad movement/performance coverage are still open.
+Remastered's wide view draws scenery farther than the original, with an adjustable reach. It happens only in the Remastered render copy
+(`src/present/rerun.c`): the game's logic, the live machine and `matched.c` are untouched, and Original and Enhanced keep the game's own
+short reach. The setting is **Draw distance** in the settings menu (Maximum, Far, Near, Original), applied at once; `--draw-distance` and
+`draw-distance =` in `f117a.ini` take the same names or a number of world units. Default: Maximum.
 
-The default applies only when Remastered uses a view wider than 4:3. The
-diagnostic `F117_WIDE_SCENERY=0` disables the pass; values 1 through 6 select
-the cell shift and are clamped to that range. The installed ONTests build was
-not refreshed. No full machine gate was run.
+## How the game limits it, and what the copy does
 
-## Implementation and regression
+The game's terrain walk (VGAME `04E6`) draws scenery on four **rings**: four grids over the one static world, each object belonging to exactly
+one ring by size. Ring 4 is the coarsest (an 8 x 8 map of cells 262,144 units wide, the big landmarks); ring 1 the finest (a 256 x 256 map of
+cells 4,096 units wide: the small things, such as lit windows and roofs, patches of colour, the spinning radar dish); rings 3 and 2 are between.
+Each ring visits only nine cells of a 4 x 4 block around the viewer's own cell (the sector table at `[034C]`, offsets -1..2), so small objects
+appear a few cells out, which is the pop-in.
 
-VGAME's terrain walk at `04E6` takes eight words: heading, pitch, and three
-32-bit camera coordinates (X, Y, height). The matched implementation reads
-the full 16-byte argument block. The extra call forwards every word before
-adjusting SP; the earlier two-word experiment read unrelated stack contents
-as its camera position and was not valid evidence.
+The guest keeps a cell's position as a 16-bit `offset << 12`, so any offset beyond -8..7 cells wraps. That is the far limit of every ring: 28,672
+units on ring 1, 114,688 on ring 2, 458,752 on ring 3 and the whole map on ring 4. It is also why shifting the sector table by 6 or 12 cells
+drew nothing (an earlier experiment, and the first versions of this work, which also covered only about 4 cells).
 
-The extra pass shifts a sector's cell table along the current heading, disables
-the three finer rings, raises the far plane to 30000, lowers the side allowance
-when needed to avoid 16-bit depth overflow, then restores the copied machine's
-registers and modified table values. The caller itself is the speculative
-Remastered render copy, never the live game machine.
+In the copy, before the game's own walk, `walk_second` runs extra walks that feed the walker **explicit cells**: row r of the table is the X
+offsets of sector r and the Y offsets of sector r + 2 (nine pairs), so each pass writes up to nine chosen (dx, dy) offsets into the current
+sector's rows, enables one ring, and calls `04E6` with all eight original words (pitch forced level, because a steep downward pitch reads the near
+tables `[04CC]` instead). The far plane is raised to 30,000 and the side allowances lowered so their sum with the depth stays under 7FFFh.
 
-The first land replay exposed a second failure mode: the live renderer already
-occupied seven of its eight execution hooks, so the copy installed the
-aircraft hook but had no slot for the terrain walk. `machine_t` now has two
-additional hook slots for the render copy. Live sound and Remastered hooks
-remain capped at eight, preserving their existing behavior. The focused
-`test_rerun` fills all eight live slots and checks that both copy-only hooks
-still work; it also checks all eight camera arguments, stack wraparound, and
-that the real machine and its full memory remain unchanged. `build/test_rerun.exe`
-passes on the final build.
+Which cells: every cell within the setting's reach on each ring (radius = reach / cell width, at least 2, at most 7), except the nine the
+game draws itself. Before a pass is built the map is read natively (`cell_tile`, matching `0871`; `cell_base`, matching `0810`), and a cell is
+left out if it lies outside the map or its tile holds no objects (`[061E + 2 (32 ring + tile)]` is 0). The outside-the-map test matters: the guest
+answers tile 0 for a cell outside the map, and tile 0 is a real tile, so asking for such a cell would draw ghost copies of its objects. This
+filter is exact: pictures are pixel-identical with and without it (three clocks, 0 differing pixels).
 
-## Fresh airborne land replay, 3 November
+Reach, in world units: Maximum 4,194,304 (every ring to its limit), Far 20,000, Near 12,000 (ring 1 reaches 5 and 3 cells; the coarser rings
+keep their minimum of 2 cells), Original 0 (no extra walks). Diagnostics: `F117_WIDE_DISTANCE` (units, overrides), `F117_WIDE_SCENERY=0` (off),
+`F117_WIDE_SCENERY_FAR` (the far plane), `F117_WIDE_WALK_STATS=1` (cost per copy, per ring, every 300th copy), `F117_REMASTER_PLACEMENT_LOG_FROM`
+with `F117_REMASTER_PLACEMENT_LOG_ALL=1` (every placement: ring, model, position).
 
-The comparison uses a newly recorded North Cape strike route generated through
-the game's normal menus and takeoff controls. Captures are from current build
-SHA-256 `858d3f00f6a307bba891d36b86a032caf25fb1ca2eb162b7d5aae044c5529ad3`;
-none of the older renderer screenshots were used. Private files are under
-`private/scenery-20261103/north-cape-route/`.
+## What it brings in
 
-At clock 3,700,000,000 the placement trace reports camera position
-`109237,330178,7116` and a live aircraft altitude of about 7,116 feet. The
-fresh frame shows land beside the coast. In the 173% wide view:
+On the owner's runway flight (session 20261103-154444, replayed from its `save-start`; the replay matches the owner's shots) the Maximum
+setting draws about four times as much as the earlier shifted-block pass: the horizon fills with specks, lit building clusters appear on the
+left, and a dotted lit line appears along the runway edge, 1,600 to 2,500 changed pixels a frame at the three runway clocks. In the owner's first
+flight (session 20261103-145810) the placement logs show ring 3 model 271 drawn out to 3,439 units without extra walks and 11,183 with, model 299
+1,999 and 12,976, models 316 to 318 about 12,000 and 20,000, models 265 and 266 only with them. The owner confirmed the lit dot rows are buildings
+(dark roofs, lit windows) and that these, the colour patches and the radar dish were popping in.
 
-| Terrain pass | Extra walk values | Primitives | Model requests | Difference from control |
-|---|---:|---:|---:|---|
-| Off | 0 | 79 | 29,102 | — |
-| 3 cells (default) | 7,070 | 103 | 32,273 | 177 pixels at the widened edge |
-| 6 cells | 421 | 81 | 29,205 | pixel-identical |
-| 12 cells (before the diagnostic clamp) | 0 | 79 | 29,278 | pixel-identical |
+## Cost (measured)
 
-For the three-cell result, the differing pixels occupy `x=1120..1274`,
-`y=466..506` in the 1280 x 600 capture, within the wide land margin. The
-default-without-an-environment-override capture is pixel-identical to the
-explicit three-cell capture. The tested six-cell offset draws less useful
-geometry; twelve cells finds none in this view, so neither is selected.
+1920 x 1080, scale 3, software output, the same replay (clock 3.9 to 4.8 billion, runway taxi and take-off), one run each, two for Original, Near
+and Far: Original 54.4 and 53.5 pictures a second (p95 interval 25.3 and 26.3 ms), Near 47.2 and 45.5, Far 42.5 and 42.3, Maximum 39.2 and 37.4
+(34.4 and 38.7 ms). At Maximum an extra walk is 35 passes, about 357,000 emulated instructions and 4.2 ms a copy (down from 96 passes, 771,000 and
+6.8 ms before the object filter); ring 1 is 216 cells and 164,000 of those instructions, ring 4 (heavy models) 131,000. **So Maximum costs about
+15 pictures a second on this scene on this machine; the 60 fps target is not met with it on.** Original keeps the game's own cost.
 
-At clock 3,900,000,000, after a turn, the aircraft is at about 10,694 feet
-and looking into sky. The extra walk returns with zero geometry and the image
-matches the control exactly, so this sample shows no terrain bleeding into
-the sky. It does not substitute for continuity checks across multiple land
-headings or sector/detail transitions.
+Tried and removed: a native view-cone filter, to skip cells behind or beside the viewer. It was not exact: objects on every ring extend across many
+cells (the shoreline models especially), and a margin wide enough to be exact keeps nearly every cell. A cheaper walk needs the copy's emulated work
+reduced or run in parallel; that is the open performance work.
 
-The short replay's requests rose about 11% and primitives about 30% with the
-three-cell pass. End-to-end wall time in single runs was 54.6 seconds for the
-control and 54.8 seconds for three cells; this is too little timing evidence
-to establish a general performance cost. A later performance pass should use
-the project's measured renderer workflow.
+## Limits and what is not shown
 
-The 1 MiB snapshots at clock 3.8 billion differed between the control and the
-three-cell run at two bytes (`0x4CD8` and `0x4CE4`); the same two offsets also
-varied between duplicate control runs. Do not cite those snapshots as proof
-of exact machine parity. The native rerun isolation regression checks the
-copy's full-memory isolation directly. The new work is confined to the
-Remastered render copy and the live machine hook cap is unchanged.
+- Ring 1 (the small buildings) cannot be pushed past the 16-bit limit of 28,672 units without a different technique (drawing it at a coarser
+  scale about the eye); it is not infinite for small objects. Ring 4's landmarks cover the whole map.
+- No frame was captured of an object being seen to appear earlier in a moving sequence; the evidence is stills at known clocks and the placement
+  distances. The owner should judge Maximum, Far and Near in ONTests.
+- Steep downward pitch (past 30 degrees) was not tested with the extra walks.
+- The cost numbers are single software-output runs on one machine.
 
-## Finer rings (3 November; rings 2-3 on by default in Remastered wide views)
+## Regression
 
-The terrain map is static, not loaded around the player: level 4 is an 8 x 8 byte map at `B03C` with a populated 4 x 4 block, level 3 a
-16 x 16 map at `9F98` (RAM dump at clock 3.7 billion, VGAME DS `37BC`). The three-cell ring-4 pass therefore already reaches everything the
-coarsest ring holds. What the game limits is rings 1-3: each holds its own smaller objects and visits only a 3 x 3 neighbourhood of its
-own, finer cells, so small and medium scenery appears late. `F117_WIDE_FINE_CELLS=N` (0 default, clamp 6) adds a second extra walk
-over rings 1-3 shifted N cells ahead (`walk_pass` in `src/present/rerun.c`).
+`presentation_rerun_isolation` (`tests/test_rerun.c`) runs the copy with every ring enabled and a populated map: the game's own walk once, extra
+walks each with all eight words (pitch 0), none when the map holds no objects, and the live machine and its full memory unchanged. `machine_t`
+has two extra hook slots for the copy so the walk hook installs even when the live machine's eight are full.
 
-Measured on the recon route (private `fine-compare/`, candidate exe, 1920 x 1080 Remastered): primitives 102 -> 198 at N=3 and 127 at N=6
-at clock 3.7 billion; 353 -> 425, 102 -> 175 and 102 -> 201 at 3.3, 3.5 and 3.6 billion. The changed pixels (232 to 1285 a frame) are
-single black specks scattered over the sea toward the horizon, which look like the sea-detail dots the game draws only near the
-aircraft. No building, tower or terrain polygon appeared in any sampled frame, so this is **not** an accepted improvement: it is
-held back at that point until a land-heavy frame with objects in the finer rings can be compared against the original's own drawing of the same
-place, and its extra cost (requests rose 45% to 60%) measured.
+## History
 
-Land check (recon route, clocks 6, 7, 8 and 9 billion, over desert and coast, 3 cells against off): primitives 78 -> 116, 63 -> 100,
-68 -> 182 and 82 -> 156; changed pixels 335 to 2,419. Again the additions are small dark specks on the ground toward the horizon
-(ground clutter dots, not buildings or terrain polygons), and model requests per run rise about 1.9x (108k -> 215k, 192k -> 362k,
-249k -> 468k, 305k -> 559k). That is a large renderer cost for a faint effect that has not been compared with the original's
-nearer drawing of the same dots, so ring 1 stays off (see the rings 2-3 section below). Evidence: private `scenery-20261103/fine-compare/pair-*.png`.
-
-## Owner's land flight, 3 November (session 20261103-145810)
-
-The owner took seven Tab shots after scenery popped in on the ground below (clocks 5.22, 5.71, 6.07, 6.41, 6.67, 6.97 and 7.77 billion).
-Replayed from that session's `save-start` (a replay without it diverged completely), the pass-off frame matches each shot within
-900 to 6,600 pixels, the pass-on frame within 1,500 to 7,100. The shots show rows of white and yellow lights (airfield lights) and black
-ground specks. With `F117_WIDE_FINE_CELLS=3` the same frames gain further light rows and specks farther out, for example at the right
-margin at 6.41 and 6.67 billion and across the ground ahead at 5.22 billion: the first evidence of a real distance gain for lit objects.
-Evidence: private `scenery-20261103/owner-compare/sheet-*.png` (owner shot, pass on, changed pixels in red).
-
-Cost, 1920 x 1080 scale 3, software output, the same replay from clock 6.4 to 6.9 billion, one run each: pass off 60.0 pictures a
-second (p95 interval 19.3 ms); 1 cell 49.5 (25.8 ms); 2 cells 49.5 (26.2 ms); 3 cells 54.6 (23.7 ms). The runs are single and the
-ordering is not monotonic, so treat it as "every variant misses 60 here", not a ranking. The all-rings pass was held back until its cost was reduced
-(it reruns the whole terrain walk a second time per copy) and measured with the protocol in remaster-performance.md.
-
-## Rings 2-3 only: on by default (3 November, later)
-
-Logging every placement through the owner's session (`F117_REMASTER_PLACEMENT_LOG_ALL=1`, private `placements/`, `placements2/`) shows
-where the cost and the benefit are. Ring 1 (the specks and lights, models 282, 293, 295) nearly doubles with the all-rings pass but is
-the least visible; ring 3 (the mid-size objects) is where pop-in distance changes most. Furthest distance each model is drawn, units, without
-the pass and with rings 2-3 only: ring 3 model 271 3,439 -> 11,183; 299 1,999 -> 12,976; 316, 317, 318 about 10,000-12,000 -> about 20,000;
-265 and 266 appear only with the pass (to about 20,000); ring 2 model 279 10,680 -> 17,566, 277 11,805 -> 15,278, 338 10,330 -> 13,700,
-276 and 278 up to 12,405 and 13,150. Ring 1 and ring 4 models are unchanged.
-
-`F117_WIDE_FINE_RINGS` (a mask, default 12 = rings 2 and 3; 14 adds ring 1) selects the rings; `F117_WIDE_FINE_CELLS` (default 3, 0 turns
-the whole extra pass off). Cost, 1920 x 1080 scale 3, two runs each, clock 6.4 to 6.9 billion: pass off 60.1 and 60.2 pictures a second
-(p95 20.8 and 20.2 ms), rings 2-3 60.2 and 60.0 (20.7 and 19.3 ms): no measurable cost on this machine. The all-rings pass was 49.5 to 54.6.
-
-What is not shown: at the owner's seven shot clocks the rings 2-3 pass changed no pixels at 6.41 and 6.67 billion and only 128 at 5.22 billion
-(no building-class objects were in range), and at clocks 4.04 and 4.30 billion where it draws ring-3 models 5,000 to 11,000 units out it
-changed 480 and 208 pixels along the horizon, because objects that far are a few pixels across. I have no frame in which a building is seen
-to appear earlier; the evidence for the buildings is the placement distances above. The owner should judge it in ONTests. Unit tests:
-`presentation_rerun_isolation` now expects three walk calls (the game's, the ring-4 pass, the rings 2-3 pass), each with all eight words.
-
-## Earlier negative controls
-
-The prior comparisons were useful for finding mistakes but did not establish
-a visible distance improvement:
-
-- The corrected pass increased model requests in taxi/airfield samples while
-  producing pixel-identical images.
-- The first land flight at 6 and 12 cells also appeared unchanged. Its trace
-  showed `walk=-1`: the scenery hook had not been installed because the eight
-  live hook slots were full. Those samples are not evidence that the pass was
-  ineffective.
-- The original two-word-call sample was invalid because its camera arguments
-  were incomplete.
-
-Native positive/negative call coverage and the original disabled-pass
-comparisons are in `private/scenery-20261103/argument-regression.json`,
-`camera-call-comparison/`, and `direction-isolation/`.
-
-## Remaining work
-
-- Verify additional distant buildings and terrain at known world distances on
-  more than one land-heavy route and across cell sectors/detail-ring changes.
-- Capture moving land scenes while turning, and check for gaps, duplicates,
-  pop-in, occlusion, and interaction with the coastline correction.
-- Measure the pass's renderer cost across representative flights and display
-  sizes; the current request/primitive counts and one end-to-end timing are
-  not a performance acceptance.
-- Review the result in ONTests after a future authorized refresh.
-
-Original game behavior and simulation parity remain hard boundaries. Keep
-future distance changes in Remastered's private presentation copy, and keep
-the progress credit partial until the remaining evidence is available.
+- 3 Nov, earlier: a three-cell shifted block over ring 4 only (177 pixels at the widened edge on one North Cape frame), then rings 2 and 3, then
+  all rings (all three at three cells), replaced by the explicit-cell walk above. The shifted blocks could not reach past about 5 cells.
+- Negative controls kept for the record: taxi/airfield samples with the first walk were pixel-identical (it had no hook slot); a two-word-call
+  sample was invalid (incomplete camera arguments); the sea and desert frames showed only specks until the owner's runway flight showed buildings.

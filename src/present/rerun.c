@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 void rerun_snap_take(rerun_snap *s, const machine_t *m)
 {
@@ -229,59 +233,88 @@ void rerun_set_wide(int percent) { g_wide_pct = percent < 100 ? 100 : percent > 
  * through the run loop, so an exec hook sees it: at the first call of a copy's frame it divides the x row by the view's width factor,
  * which widens that cone by the same factor (the aircraft's own drawing does not read that row; its position on the 320-pixel screen,
  * [4A10], is off in the copy, which only the margins see). */
-/* Scenery distance: the terrain walk (VGAME 04E6) visits, on each of four rings, only the nine cells around the viewer's own cell (the sector
- * table at [034C]: offsets -1..2), so the coarsest ring, the last to reach out, ends about two of its cells away. In the copy, a second walk
- * runs first with the coarsest ring alone (the other rings' enable words [04FA + 2 ring] cleared) and every cell of a sector moved on along
- * the sector's heading: row r of the table is the X offsets of sector r and the Y offsets of sector r - 2, so adding D(r) = n sin(45 r) to
- * every entry of row r moves sector r by (D(r), D(r + 2)), a direction turning with the sector. For that walk the far plane [48E6] is raised
- * and the side allowances lowered so their sum with the depth stays under 7FFFh. Remastered wide views add a three-cell pass;
- * F117_WIDE_SCENERY overrides it for diagnostics (0 disables, values clamp to 0..6). F117_WIDE_SCENERY_FAR sets the far plane
- * (default 30000). The extra call forwards all eight original arguments; see docs/scenery-distance.md for evidence. */
-static int g_walk_k = -1, g_walk_busy, g_walk_cells = 3;
+/* Scenery distance. The terrain walk (VGAME 04E6) draws, on each of four rings, only nine cells of a 4 x 4 block around the viewer's own cell
+ * (the sector table at [034C], offsets -1..2). The rings are four grids over the one static world: ring 4 the coarsest (an 8 x 8 map of cells
+ * 262,144 units wide), ring 1 the finest (a 256 x 256 map of cells 4,096 units wide, from 0810's scales 1, 4, 16 and 64), and each object
+ * lives on exactly one ring by size, so the small things (lit windows, roofs, patches, the radar dish) show only a few cells out. The
+ * guest keeps a cell's position as a 16-bit (offset << 12), so an offset beyond -8..7 cells wraps: that is the far limit of any ring
+ * (28,672 units on ring 1, 114,688 on ring 2, 458,752 on ring 3, the whole map on ring 4), and why shifting the table six or twelve
+ * cells drew nothing. The copy's extra walks therefore feed the walker explicit cells: row r of the table is the X offsets of sector r and the
+ * Y offsets of sector r + 2 (nine pairs), so a pass writes up to nine chosen (dx, dy) offsets into the rows of the current sector, enables
+ * one ring, and calls 04E6 with all eight original words (pitch forced level, because a steep downward pitch reads the near tables [04CC] instead).
+ * The guest's own cull (E3AC, E3BF) and tile lookup (0871) then decide what is seen; cells the game's own call draws are skipped. The far plane
+ * [48E6] is raised and the side allowances lowered so their sum with the depth stays under 7FFFh. The reach is adjustable:
+ * rerun_set_distance (world units; the menu's Draw distance) or F117_WIDE_DISTANCE; 0 turns the extra walks off. See docs/scenery-distance.md. */
+/* The terrain map, read natively (VGAME 0871 and 0810, matched in matched.c): which tile a cell holds on a ring, and whether it holds anything.
+ * Level 4 is an 8-wide byte map at DS:B03C (cells offset by 2), level 3 a 16-wide one at 9F98; levels 2, 1 and 0 read a 4 x 4 block of their parent
+ * at 9D40, 9B38 and 9934. A cell outside [0506 + 2 level] answers tile 0, which is a real tile: the guest would draw tile 0's objects there, so
+ * the extra walks never ask for such a cell. A tile's object count is [061E + 2 (32 ring + tile)]; a cell with none draws nothing. */
+static int cell_tile(const machine_t *m, uint16_t ds, int level, int x, int y)
+{
+    if (level == 4) { x += 2; y += 2; }
+    if (x < 0 || y < 0 || x >= (int16_t)rd16(m->mem, ds, (uint16_t)(0x506 + 2 * level)) || y >= (int16_t)rd16(m->mem, ds, (uint16_t)(0x506 + 2 * level))) return -1;
+    if (level == 4) return m->mem[(((uint32_t)ds << 4) + (uint16_t)(0xB03C + x + y * 8)) & 0xFFFFF];
+    if (level == 3) return m->mem[(((uint32_t)ds << 4) + (uint16_t)(0x9F98 + x + y * 16)) & 0xFFFFF];
+    static const uint16_t block[3] = { 0x9934, 0x9B38, 0x9D40 };
+    const int parent = cell_tile(m, ds, level + 1, x >> 2, y >> 2);
+    if (parent < 0) return 0;
+    return m->mem[(((uint32_t)ds << 4) + (uint16_t)(block[level] + parent * 16 + (y & 3) * 4 + (x & 3))) & 0xFFFFF];
+}
+/* The viewer's cell on a ring: 0810's scale of a position long (level 1 as it is, 2 to 4 divided by 4, 16, 64 to nearest), shifted down by 12. */
+static int64_t cell_scaled(int level, uint32_t v)
+{
+    static const int shift[5] = { 0, 0, 2, 4, 6 };
+    int64_t s = (int32_t)v;
+    if (shift[level]) s = (s + ((int64_t)1 << (shift[level] - 1))) >> shift[level];
+    return s;
+}
+static int cell_base(int level, uint32_t v) { return (int)(cell_scaled(level, v) >> 12); }
+static int g_walk_k = -1, g_walk_busy;
+static double walk_ms(void)
+{
+#ifdef _WIN32
+    static LARGE_INTEGER freq;
+    LARGE_INTEGER now;
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
+    return (double)now.QuadPart * 1000.0 / (double)freq.QuadPart;
+#else
+    return (double)clock() * 1000.0 / CLOCKS_PER_SEC;
+#endif
+}
+static int g_distance = 1 << 22;                          /* world units: every ring out to the 16-bit limit (ring 4: the whole map) */
+void rerun_set_distance(int units) { g_distance = units < 0 ? 0 : units > (1 << 26) ? (1 << 26) : units; }
 static unsigned g_walk_calls;
-static int walk_pass(machine_t *m, unsigned ring_mask, int cells);
 static int walk_second(machine_t *m)
 {
-    /* Ring 4 (the coarsest, the whole map's large objects) in one pass; rings 1-3 (the medium and small objects, which the game shows only in
-     * a 3x3 neighbourhood of their own, finer cells: the pop-in) in another, F117_WIDE_FINE_CELLS (default 3, 0: off). */
-    static int fine=-2;
-    if (fine==-2) { const char *e=getenv("F117_WIDE_FINE_CELLS"); fine = e ? atoi(e) : 3; if (fine>6) fine=6;   /* three cells by default: see docs/scenery-distance.md */ }
-    walk_pass(m, 1u<<4, g_walk_cells);
-    const int fc = fine < 0 ? 0 : fine;
-    /* Which of rings 1-3 the extra walk covers: rings 2 and 3 (the buildings and mid-size objects: in the owner's flight model 271 was
-     * drawn out to 3,400 units without the pass, 11,000 with it) by default; ring 1 (the specks and lights, most of the extra cost) only with
-     * F117_WIDE_FINE_RINGS=14. */
-    static unsigned rings = ~0u;
-    if (rings == ~0u) { const char *e = getenv("F117_WIDE_FINE_RINGS"); rings = e ? (unsigned)strtoul(e, NULL, 0) & 0xEu : 0xCu; }
-    if (fc>0 && rings) walk_pass(m, rings, fc);
-    return 0;
-}
-static int walk_pass(machine_t *m, unsigned ring_mask, int cells)
-{
     cpu_t *c = &m->cpu;
+    static int env_done;
+    if (!env_done) {
+        env_done = 1;
+        const char *e = getenv("F117_WIDE_DISTANCE");
+        if (e) g_distance = atoi(e) < 0 ? 0 : atoi(e);
+        const char *s = getenv("F117_WIDE_SCENERY");
+        if (s && atoi(s) == 0) g_distance = 0;
+    }
+    if (g_distance <= 0) return 0;
+    const uint64_t icount_before = c->icount;
+    const double ms_before = walk_ms();
+    int passes = 0;
+    static double ring_ins[5], ring_cells[5], ring_passes[5]; static unsigned ring_n;
+    const size_t values_before = g_out ? g_out->nvals : 0;
     const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
-    /* 04E6 takes eight words: heading, pitch, then three world-coordinate
-     * longs. Forward all of them before changing SP. Angles alone made the
-     * extra walk read the caller's return address as part of its camera. */
-    uint16_t arguments[8];
-    for(int i=0;i<8;i++)arguments[i]=rd16(m->mem,ss,(uint16_t)(c->r[R_SP]+2+2*i));
-    const size_t values_before=g_out ? g_out->nvals : 0;
-    static const int dir10[8] = { 0, 7, 10, 7, 0, -7, -10, -7 };       /* 10 sin(45 r), rounded */
-    static int far = -1;
-    if (far < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far = e ? atoi(e) : 30000; if (far > 32000) far = 32000; }
+    uint16_t arguments[8];                                              /* 04E6's eight words: heading, pitch, three world-coordinate longs */
+    for (int i = 0; i < 8; i++) arguments[i] = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 2 + 2 * i));
+    arguments[1] = 0;                                                    /* level: a steep downward pitch would read the near tables [04CC] instead */
+    static int far_plane = -1;
+    if (far_plane < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far_plane = e ? atoi(e) : 30000; if (far_plane > 32000) far_plane = 32000; }
     uint16_t table[72], enable[5], allow[8], far_was;
     const uint16_t base = rd16(m->mem, ds, 0xE56A);
     for (int i = 0; i < 72; i++) table[i] = rd16(m->mem, ds, (uint16_t)(0x034C + 2 * i));
     for (int r = 1; r <= 4; r++) enable[r] = rd16(m->mem, ds, (uint16_t)(0x04FA + 2 * r));
     for (int md = 0; md < 8; md++) allow[md] = rd16(m->mem, ds, (uint16_t)(base + 2 * md));
     far_was = rd16(m->mem, ds, 0x48E6);
-    for (int r = 0; r < 8; r++) {
-        const int d = (dir10[r] * cells + (dir10[r] < 0 ? -5 : 5)) / 10;
-        for (int i = 0; i < 9; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (r * 9 + i)), (uint16_t)(table[r * 9 + i] + d));
-    }
-    for (int r = 1; r <= 4; r++) if (!(ring_mask >> r & 1)) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), 0);
-    wr16(m->mem, ds, 0x48E6, (uint16_t)far);
-    for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far) wr16(m->mem, ds, (uint16_t)(base + 2 * md), (uint16_t)(32600 - far));
+    const unsigned sector = ((uint16_t)(0x1000 - arguments[0])) >> 13, sector_y = (sector + 2) & 7;
     uint16_t sv_r[8], sv_seg[4];
     for (int i = 0; i < 8; i++) sv_r[i] = c->r[i];
     for (int i = 0; i < 4; i++) sv_seg[i] = c->seg[i];
@@ -289,38 +322,77 @@ static int walk_pass(machine_t *m, unsigned ring_mask, int cells)
     const uint8_t on = m->trap_on;
     const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
     const uint64_t until = m->run_until, stop = c->stop_at;
-    for(int i=7;i>=0;i--)cpu_push16(c,arguments[i]);
-    cpu_push16(c, 0x04E6);                                              /* the return address: never run, the trap stops at it */
-    c->ip = 0x04E6;
-    m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x04E6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
-    g_walk_busy = 1;
-    int rc = RUN_SLICE;
-    const uint64_t limit = c->icount + 200000000ull;                   /* a throwaway copy: no slice to keep, only a bound */
-    while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
-    g_walk_busy = 0;
-    {   /* Optional read-only trace of an experimental pass, after a seek. */
-        const char *from=getenv("F117_WIDE_SCENERY_DIAG_FROM");
-        static int logged;
-        if(from && !logged && c->icount>=strtoull(from,NULL,0)) {
-            logged=1;
-            const unsigned sector=((uint16_t)(0x1000-arguments[0]))>>13;
-            fprintf(stderr,"[scenery] heading %04X pitch %04X view %u,%u,%u sector %u extra values %zu rc %d\n",
-                arguments[0],arguments[1],arguments[2]|(uint32_t)arguments[3]<<16,
-                arguments[4]|(uint32_t)arguments[5]<<16,arguments[6]|(uint32_t)arguments[7]<<16,
-                sector,(g_out ? g_out->nvals : 0)-values_before,rc);
-            fprintf(stderr,"[scenery] sector first cell %d,%d shift %d,%d view-forward %d,%d\n",
-                (int16_t)table[sector*9],(int16_t)table[((sector+2)&7)*9],
-                (dir10[sector]*g_walk_cells+(dir10[sector]<0 ? -5 : 5))/10,
-                (dir10[(sector+2)&7]*g_walk_cells+(dir10[(sector+2)&7]<0 ? -5 : 5))/10,
-                (int16_t)rd16(m->mem,ds,0x7B2C),(int16_t)rd16(m->mem,ds,0x7B38));
+    wr16(m->mem, ds, 0x48E6, (uint16_t)far_plane);
+    for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far_plane) wr16(m->mem, ds, (uint16_t)(base + 2 * md), (uint16_t)(32600 - far_plane));
+    int bad = 0;
+    for (int ring = 4; ring >= 1; ring--) {
+        const uint64_t ring_ic = c->icount; const int ring_p0 = passes;
+        const long cell = 4096L << (2 * (ring - 1));              /* a cell's width in world units on this ring */
+        int radius = (int)((g_distance + cell - 1) / cell);
+        if (radius > 7) radius = 7;                               /* the 16-bit limit of a cell offset */
+        if (radius < 2) radius = 2;
+        for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), r == ring ? enable[r] : 0);
+        if (!enable[ring]) continue;
+        const int base_x = cell_base(ring, arguments[2] | (uint32_t)arguments[3] << 16), base_y = cell_base(ring, arguments[4] | (uint32_t)arguments[5] << 16);
+        int dx[256], dy[256], n = 0;                              /* outward from the viewer's cell, skipping the nine the game's own call draws */
+        for (int k = 0; k <= radius; k++)
+            for (int y = -k; y <= k; y++)
+                for (int x = -k; x <= k; x++) {
+                    if ((x < 0 ? -x : x) != k && (y < 0 ? -y : y) != k) continue;
+                    int own = 0;
+                    for (int i = 0; i < 9; i++) if ((int16_t)table[sector * 9 + i] == x && (int16_t)table[sector_y * 9 + i] == y) own = 1;
+                    if (own || n >= 256) continue;
+                    const int t = cell_tile(m, ds, ring, base_x + x, base_y + y);       /* outside the map, or no objects there: nothing to draw */
+                    if (t < 0 || rd16(m->mem, ds, (uint16_t)(0x061E + 2 * (ring * 32 + t))) == 0) continue;
+                    dx[n] = x; dy[n] = y; n++;
+                }
+        int pad_x = 0, pad_y = 0, have_pad = 0;                  /* an in-map cell with no objects fills the last pass (an outside cell would answer tile 0) */
+        for (int y = -7; y <= 7 && !have_pad; y++)
+            for (int x = -7; x <= 7 && !have_pad; x++) {
+                const int t = cell_tile(m, ds, ring, base_x + x, base_y + y);
+                if (t >= 0 && rd16(m->mem, ds, (uint16_t)(0x061E + 2 * (ring * 32 + t))) == 0) { pad_x = x; pad_y = y; have_pad = 1; }
+            }
+        for (int at = 0; at < n; at += 9) {
+            for (int i = 0; i < 9; i++) {
+                const int j = at + i < n ? at + i : (have_pad ? -1 : at);   /* (no empty cell anywhere: the pass's first cell again) */
+                wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector * 9 + i)), (uint16_t)(int16_t)(j >= 0 ? dx[j] : pad_x));
+                wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector_y * 9 + i)), (uint16_t)(int16_t)(j >= 0 ? dy[j] : pad_y));
+            }
+            for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
+            for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
+            c->flags = sv_fl;
+            for (int i = 7; i >= 0; i--) cpu_push16(c, arguments[i]);
+            cpu_push16(c, 0x04E6);                                    /* the return address: never run, the trap stops at it */
+            c->ip = 0x04E6;
+            m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x04E6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+            g_walk_busy = 1;
+            int rc = RUN_SLICE;
+            const uint64_t limit = c->icount + 200000000ull;          /* a throwaway copy: no slice to keep, only a bound */
+            while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
+            g_walk_busy = 0;
+            if (rc != RUN_TRAP) bad++;
+            passes++;
         }
+        ring_ins[ring] += (double)(c->icount - ring_ic); ring_cells[ring] += n; ring_passes[ring] += passes - ring_p0;
     }
+    ring_n++;
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
     for (int i = 0; i < 72; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * i), table[i]);
     for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), enable[r]);
     for (int md = 0; md < 8; md++) wr16(m->mem, ds, (uint16_t)(base + 2 * md), allow[md]);
     wr16(m->mem, ds, 0x48E6, far_was);
-    if (rc != RUN_TRAP) fprintf(stderr, "[wide] the second terrain walk did not return (rc %d)\n", rc);
+    if (bad) fprintf(stderr, "[wide] %d extra terrain walks did not return\n", bad);
+    {   /* F117_WIDE_WALK_STATS: what the extra walks cost, every 300th copy (stderr) */
+        static int stats = -1; static double ms_sum, ins_sum, val_sum, pass_sum; static unsigned n;
+        if (stats < 0) stats = getenv("F117_WIDE_WALK_STATS") != NULL;
+        if (stats) {
+            ms_sum += walk_ms() - ms_before; ins_sum += (double)(c->icount - icount_before); pass_sum += passes; val_sum += (double)((g_out ? g_out->nvals : 0) - values_before);
+            if (++n % 300 == 0) {
+                fprintf(stderr, "[walk] mean of %u: %.2f ms, %.0f instructions, %.1f passes, %.0f values\n", n, ms_sum / n, ins_sum / n, pass_sum / n, val_sum / n);
+                for (int r = 4; r >= 1; r--) fprintf(stderr, "[walk]   ring %d: %.0f cells, %.1f passes, %.0f instructions\n", r, ring_cells[r] / ring_n, ring_passes[r] / ring_n, ring_ins[r] / ring_n);
+            }
+        }
+    }
     for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
     for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
     c->ip = sv_ip; c->flags = sv_fl;
@@ -474,31 +546,22 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                     }
             }
             g_walk_k = -1;
-            {   static int cells = -1;
-                if (cells < 0) {
-                    const char *e = getenv("F117_WIDE_SCENERY");
-                    cells = e ? atoi(e) : 3;
-                    if (cells < 0) cells = 0;
-                    if (cells > 6) cells = 6;
-                }
-                g_walk_cells = cells;
-                if (cells > 0 && s->exec_hook_n < EXEC_HOOKS_MAX)
-                    for (unsigned k = 0; k < s->exec_hook_n; k++)
-                        if (s->exec_hook[k].ip == 0x1450) {
-                            g_walk_k = (int)s->exec_hook_n;
-                            s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
-                            s->exec_hook[s->exec_hook_n].ip = 0x04E6;
-                            s->exec_hook_n++;
-                            s->hooks.exec = wide_air_exec;
-                            break;
-                        }
-            }
+            if (s->exec_hook_n < EXEC_HOOKS_MAX)                    /* the walk's reach is decided when it runs (rerun_set_distance), not here */
+                for (unsigned k = 0; k < s->exec_hook_n; k++)
+                    if (s->exec_hook[k].ip == 0x1450) {
+                        g_walk_k = (int)s->exec_hook_n;
+                        s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
+                        s->exec_hook[s->exec_hook_n].ip = 0x04E6;
+                        s->exec_hook_n++;
+                        s->hooks.exec = wide_air_exec;
+                        break;
+                    }
             if (getenv("F117_WIDE_SCENERY_DIAG_FROM")) {
                 static int reported;
                 if (!reported) {
                     reported = 1;
-                    fprintf(stderr,"[scenery] armed view %d cells %d hooks %u walk %d copy %04X:%04X\n",
-                        pct,g_walk_cells,s->exec_hook_n,g_walk_k,
+                    fprintf(stderr,"[scenery] armed view %d distance %d hooks %u walk %d copy %04X:%04X\n",
+                        pct,g_distance,s->exec_hook_n,g_walk_k,
                         s->exec_hook_n ? s->exec_hook[0].cs : 0,
                         s->exec_hook_n ? s->exec_hook[0].ip : 0);
                 }

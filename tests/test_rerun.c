@@ -16,7 +16,7 @@ static int sounds;
 static void speaker(void *u, uint64_t clock) { (void)u; (void)clock; sounds++; }
 static const machine_t *g_coll_real;
 static int g_coll_begin, g_coll_end, g_coll_exec, g_coll_wrong;
-static int terrain_seen, terrain_bad;
+static int terrain_seen, terrain_bad, terrain_orig, terrain_extra;
 static const uint16_t terrain_args[8]={0x2345,0x6789,0x1111,0x000E,0x2222,0x000C,24,0};
 static int terrain_exec(void *u,machine_t *copy,unsigned k)
 {
@@ -26,7 +26,9 @@ static int terrain_exec(void *u,machine_t *copy,unsigned k)
         for(int i=0;i<8;i++) {
             const uint16_t at=(uint16_t)(copy->cpu.r[R_SP]+2+2*i);
             const uint16_t got=copy->mem[base+at] | (uint16_t)copy->mem[base+(uint16_t)(at+1)]<<8;
-            if(got!=terrain_args[i])terrain_bad++;
+            if(i==1) {                            /* the pitch: the game's own call keeps it, the extra walks force it level */
+                if(got==terrain_args[1])terrain_orig++; else if(got==0)terrain_extra++; else terrain_bad++;
+            } else if(got!=terrain_args[i])terrain_bad++;
         }
         terrain_seen++;
     }
@@ -104,7 +106,8 @@ int main(void)
     setenv("F117_WIDE_VIEW","180",1);setenv("F117_WIDE_SCENERY","3",1);
 #endif
     rerun_set_wide(180);
-    for(int wrap=0;wrap<2;wrap++) {
+    for(int variant=0;variant<4;variant++) {
+        const int wrap=variant&1, populated_off=variant>>1;
         memset(&m,0,sizeof m);memset(memory,0,sizeof memory);
         cpu_init(&m.cpu,memory);m.mem=memory;m.ips=MACHINE_DEFAULT_IPS;m.cpu.user=&m;
         m.cpu.io_write=pc_io_write;m.cpu.io_read=pc_io_read;m.cpu.int_hook=dos_int_hook;pc_reset(&m);
@@ -120,11 +123,24 @@ int main(void)
         memory[at++]=0xE8;const uint16_t rel=(uint16_t)(0x104E6-(at+2));memory[at++]=(uint8_t)rel;memory[at++]=(uint8_t)(rel>>8);
         const uint8_t end[]={0x83,0xC4,0x10,0xB4,0x40,0xCD,0x21};memcpy(memory+at,end,sizeof end);
         memory[0x104E6]=0x90;memory[0x104E7]=0xC3;
+        for(int ring=1;ring<=4;ring++){memory[0x20000+0x04FA+2*ring]=1;memory[0x20000+0x04FA+2*ring+1]=0;}   /* every ring enabled, as in a flight */
+        {   /* a populated terrain map: map sizes, every cell tile 1 on every ring, and one object in tile 1 of each ring */
+            static const uint16_t size[5]={256,256,64,16,8};
+            for(int level=1;level<=4;level++){memory[0x20000+0x506+2*level]=(uint8_t)size[level];memory[0x20000+0x506+2*level+1]=(uint8_t)(size[level]>>8);}
+            memset(memory+0x20000+0xB03C,1,64);memset(memory+0x20000+0x9F98,1,256);        /* levels 4 and 3 */
+            memset(memory+0x20000+0x9D40,1,32);memset(memory+0x20000+0x9B38,1,32);memset(memory+0x20000+0x9934,1,32);   /* the blocks of parent 0 and 1 */
+            for(int ring=1;ring<=4;ring++)memory[0x20000+0x061E+2*(ring*32+1)]=1;
+            if(populated_off)for(int ring=1;ring<=4;ring++)memory[0x20000+0x061E+2*(ring*32+1)]=0;
+        }
         rerun_snap_take(&snap,&m);before=m;memcpy(saved,memory,MEM_SIZE);
-        terrain_seen=terrain_bad=0;
+        terrain_seen=terrain_bad=terrain_orig=terrain_extra=0;
+        rerun_set_distance(1<<22);
         const rerun_collector terrain={NULL,terrain_exec,NULL,NULL};rerun_set_collector(&terrain);
         CHECK(!rerun_draw(&snap,NULL,0,&list,1));rerun_set_collector(NULL);
-        CHECK(terrain_seen==3 && !terrain_bad);   /* the game's own walk, the ring-4 pass and the rings 2-3 pass, each with all eight words */
+        /* the game's own walk once, then every ring out to the 16-bit limit: 224 cells (15 x 15 less the viewer's own) in passes of nine, 25 a ring */
+        CHECK(terrain_orig==1 && !terrain_bad);
+        if(populated_off) CHECK(terrain_extra==0);          /* a map with no objects: nothing for an extra walk to draw (and no ghost tile 0 outside it) */
+        else CHECK(terrain_extra>=4 && terrain_extra<100);   /* every ring walks the cells it has objects in, in passes of nine */
         CHECK(!list.changed && !memcmp(&m,&before,sizeof m) && !memcmp(memory,saved,MEM_SIZE));
     }
     observe_set(NULL); rerun_snap_free(&snap); rerun_list_free(&list);

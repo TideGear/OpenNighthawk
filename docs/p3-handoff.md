@@ -551,3 +551,16 @@ Four-thread verification on the low-camera coastline replay logged at least 481 
 The S10 repair mirrored only request 23 at the driver's bound entry. Asked whether other effects could bypass the stub too, I audited the owner's flight (session 20261103-145810, to clock 7.8 billion, `F117_SOUND_LOG=1`): the stub saw 31 requests (ids 0, 2, 3, 10, 11, 24, 26, 28, 31, 35); the driver entry saw 1,412 speed updates (23) and one id 19 (a key-triggered effect, clock 4,010,527,871) that the stub never saw, so the AdLib sidecar never played it.
 
 Fix (`src/host/main.c`, `on_exec_hook`): any effect id 4 to 35 reaching the driver entry is mirrored into the sidecar when the policy gives effects to AdLib, except one the stub itself just let through (remembered by id and clock, 20,000-instruction window), so nothing plays twice. Rerun of the same replay: id 19 reaches the sidecar once at the same clock; every other id's count is unchanged (26 x5, 31 x3, 0 x3, 28 x2, 24 x2, 35, 11, 10 once). Only one bypassing id appeared in this flight; effects that bypass in situations it did not exercise are not covered by evidence. `F117_SOUND_LOG` now also logs driver-entry ids and `[sidecar]` requests. Evidence: `private/scenery-20261103/sound-audit/`. 256 sound and host tests pass. No full gate; awaits the owner's listening check with S10.
+
+
+## 3 Nov, evening: adjustable draw distance (Remastered)
+
+The owner asked for adjustable, effectively infinite draw distance that respects the original code, and said every ground element counts (the lit dot rows
+are buildings; "don't leave anything out"). Done in the render copy only: the extra terrain walks feed the walker explicit cells on every ring out to the
+16-bit limit of the guest's cell offsets, filtered natively by the map (exact: pixel-identical to the unfiltered walk). Setting: Draw distance in the menu
+(Maximum, Far, Near, Original; live), `--draw-distance`, `draw-distance =` in the ini. Design, evidence and cost: [scenery-distance.md](scenery-distance.md).
+
+Open: Maximum costs about 15 pictures a second on the owner's runway replay (54 down to 38 at 1920 x 1080, software output), so 60 fps is not met with it
+on; a cone filter was tried and removed (not exact). Ring 1 cannot pass the 16-bit limit (28,672 units). Also this evening: the Keys tab remaps keys and
+controller buttons (Settings no longer lists those rows); request ids that bypass the sound stub (id 19) are mirrored into the AdLib sidecar; R18, R23 and
+R24 are owner-confirmed. Not gated; presentation and host changes only. Owner to judge Maximum, Far and Near in ONTests.

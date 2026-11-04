@@ -83,13 +83,13 @@ def run(app, data, session, out, timeout=45):
     changed=base+f"data = {data}\nmt32-roms = kept-rom-folder\nips = 9000000\ncrt = yes\nfixes = custom\nfix = D4\nremap = Q:W\npad-keys = 2:G\npad-invert-x = yes\n"
     down=lambda n:["Down"]*n
     cases=[
-        ("audio",base,["Open"]+down(18)+["Return","Escape","Escape"],"audio",None,[]),
-        ("advanced",base,["Open"]+down(19)+["Return","Escape","Escape"],"advanced",None,[]),
+        ("audio",base,["Open"]+down(19)+["Return","Escape","Escape"],"audio",None,[]),
+        ("advanced",base,["Open"]+down(20)+["Return","Escape","Escape"],"advanced",None,[]),
         ("keys-remap",base,["OpenKeys","Return","Q","Escape"],"keys-tab",None,[]),
         ("keys-restore",base+"remap = Q:=,=:Q\n",["OpenKeys","Backspace","Escape"],"keys-tab",None,[]),
-        ("reset",changed,["Open"]+down(25)+["Return"]+["Up"]*5+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
-        ("cancel-reset",changed,["Open"]+down(25)+["Return","Escape"],"reset",None,[]),
-        ("fresh restart",base,["Open","Right"]+down(20)+["Return"],None,None,["--presentation","original"]),
+        ("reset",changed,["Open"]+down(26)+["Return"]+["Up"]*5+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
+        ("cancel-reset",changed,["Open"]+down(26)+["Return","Escape"],"reset",None,[]),
+        ("fresh restart",base,["Open","Right"]+down(21)+["Return"],None,None,["--presentation","original"]),
     ]
     report=dict(app_sha256=digest(app),checker_sha256=digest(__file__),cases=[])
     started=time.monotonic()

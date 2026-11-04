@@ -44,3 +44,7 @@ and Backspace clears a folder choice. Save writes folder changes. Choose Fixes
 wraps complete descriptions and scrolls by their actual rendered height.
 
 Developer verification is documented in [host-acceptance.md](host-acceptance.md).
+
+Draw distance (Remastered only, applied at once) sets how far scenery is drawn: Maximum draws every ring out to the limit of the game's own arithmetic, Far
+and Near shorten the reach of the smallest objects, and Original keeps the game's short reach. Farther costs picture rate; see
+[scenery-distance.md](scenery-distance.md).

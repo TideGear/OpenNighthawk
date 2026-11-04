@@ -26,6 +26,7 @@ static const char *const C_BUTTON[] = { "0", "1", "2", "3", "4", "5", "6", "7", 
 static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
 static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9", NULL };
 static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
+static const char *const C_DRAW[] = { "maximum", "far", "near", "original", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* The folders the Folders screen edits, typed or pasted. */
@@ -57,6 +58,7 @@ static const setting_def DEFS[] = {
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
+    { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
     { "present-age",  "Picture delay",    C_AGE,          0, 0 },
@@ -96,6 +98,7 @@ const char *settings_description(const char *key)
         { "sim-hz", "Chooses simulation updates per second. This changes the game's update cadence, not the monitor refresh rate." },
         { "opl", "Chooses the AdLib synthesizer. DBOPL is faster; Nuked favors chip emulation accuracy." },
         { "no-aspect", "Stretches the original pixels without correcting their intended 4:3 display shape." },
+        { "draw-distance", "Remastered only: how far scenery is drawn. Maximum draws every ring out to the limit of the game's own arithmetic; Original keeps the game's short reach. Farther costs picture rate." },
         { "present-scale", "Controls drawing detail. Auto fits the display; larger values draw more pixels and cost more CPU time." },
         { "present-line-width", "Changes fine-line thickness. Zero selects the automatic width." },
         { "present-age", "Interpolate gives smooth motion with some delay. Extrapolate predicts ahead and can overshoot sudden changes." },

@@ -646,6 +646,18 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
  * 1991 AT keyboard does not have. (The Reimp's table, platform_sdl3.c.) */
 #include "host_keys.h"
 
+/* A draw-distance choice as world units: original turns the extra walks off, maximum is every ring to the limit of the guest's 16-bit cell offsets. -1: not a choice. */
+static const char *g_draw_choice = "maximum";           /* the draw distance in force, for the menu */
+static int draw_distance_units(const char *v)
+{
+    if (!strcmp(v, "maximum")) return 1 << 22;
+    if (!strcmp(v, "far")) return 20000;
+    if (!strcmp(v, "near")) return 12000;
+    if (!strcmp(v, "original")) return 0;
+    char *end; const long n = strtol(v, &end, 10);
+    return *v && !*end && n >= 0 && n <= (1 << 26) ? (int)n : -1;
+}
+
 static void fill_bindings(settings_state *s)
 {
     int row=0;
@@ -1344,6 +1356,11 @@ int main(int argc, char **argv)
             else if (!strcmp(v, "recommended")) { fixes_enable("all", 0); fixes_enable("all", 1); }
             else if (!strcmp(v, "custom")) { /* the set the --fix options name, started from none above */ }
             else { fprintf(stderr, "--fixes takes original, recommended or custom\n"); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--draw-distance") && v) {                 /* Remastered: how far scenery is drawn (maximum, far, near, original, or world units) */
+            if (draw_distance_units(v) < 0) { fprintf(stderr, "--draw-distance takes maximum, far, near, original or a number of units\n"); return 2; }
+            rerun_set_distance(draw_distance_units(v)); g_draw_choice = v;
             i++;
         }
         else if (!strcmp(a, "--present-scale") && v && !strcmp(v, "auto")) i++;      /* the settings menu's choice: as fine as the display allows */
@@ -2137,6 +2154,7 @@ int main(int argc, char **argv)
                         settings_mark_saved(&g_set, "pad-invert-x", g_pad.invert_x ? "yes" : "no");
                         settings_mark_saved(&g_set, "pad-invert-y", g_pad.invert_y ? "yes" : "no");
                         settings_mark_saved(&g_set, "engine", H.m.engine == ENGINE_INTERP ? "interp" : "recomp");
+                        settings_mark_saved(&g_set, "draw-distance", g_draw_choice);
                     }
                     fill_fix_picker(&g_set);
                     fill_bindings(&g_set);
@@ -2248,11 +2266,13 @@ int main(int argc, char **argv)
                         if (g_set.changed_live) {
                             g_set.changed_live = 0;
                             int n; const setting_def *d = settings_defs(&n);
-                            for (int i = 0; i < n; i++)
+                            for (int i = 0; i < n; i++) {
+                                if (!strcmp(d[i].key, "draw-distance")) { rerun_set_distance(draw_distance_units(settings_value(&g_set, i))); g_draw_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "fullscreen")) {
                                     fullscreen = !strcmp(settings_value(&g_set, i), "yes");
                                     SDL_SetWindowFullscreen(win, fullscreen);
                                 }
+                            }
                         }
                         if (!g_set.open) {
                             SDL_StopTextInput(win);
