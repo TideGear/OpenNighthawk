@@ -1363,6 +1363,33 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     const int added = remaster_scene_add(r->scene, m->mem, 0x100000, ds, n->bank, n->model, n->pos, target);
     if (added < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
     const double tm2 = timing ? now_ms() : 0.0;
+    {   /* F117_FAR_DOTS_OFF (diagnostic): no point primitives from objects drawn at a coarser level than their own ring */
+        static int dots_off = -1;
+        if (dots_off < 0) { const char *e = getenv("F117_FAR_DOTS_OFF"); dots_off = e ? atoi(e) : 0; }   /* a mask of kinds to drop: 1 polygons, 2 lines, 4 dots */
+        if (dots_off && n->shrink > 0 && added >= 0) {
+            size_t w = first;
+            for (size_t i = first; i < target->n; i++)
+                if (!(dots_off & (1 << target->prim[i].kind))) target->prim[w++] = target->prim[i];
+            target->n = w;
+        }
+        /* Terrain dots: a dark point (a light drawn as a line from a point to itself, or a dot) of an object placed at a coarser level than its own ring
+         * is a speck on the ground, thousands of them at Maximum. Their reach stays the original's; lit points (lights) keep the setting's reach.
+         * F117_FAR_DARK_DOTS=1 draws them at the full reach again. */
+        static int dark_dots = -1;
+        if (dark_dots < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); dark_dots = e && e[0] == '1'; }
+        if (!dark_dots && n->shrink > 0 && added >= 0) {
+            size_t w = first;
+            for (size_t i = first; i < target->n; i++) {
+                const remaster_prim *q = &target->prim[i];
+                uint32_t c;
+                int dark = 0;
+                if (q->kind == SCENE_DOTS || (q->kind == SCENE_LINES && q->n == 2 && !memcmp(&q->v[0], &q->v[1], sizeof q->v[0])))
+                    dark = word_colour(m, q->colour_word, q->darken, &c) && (c >> 16 & 255) < 80 && (c >> 8 & 255) < 80 && (c & 255) < 80;
+                if (!dark) target->prim[w++] = target->prim[i];
+            }
+            target->n = w;
+        }
+    }
     if (added >= 0 && target->n > first) {
         ring_correction local = {0};
         ring_correction *cached = n->level >= 1 && n->level <= 4 ? &r->native_correction[n->level - 1] : &local;

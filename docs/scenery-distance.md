@@ -424,3 +424,15 @@ Far run 1 missed 12 ms once and its repeat did not. Software-renderer proxy, not
 
 Follow-up, same setup: Near and Far, fixed cadence, switches off versus on: 901 of 901 composed-image checksums identical
 in each. Three more Far runs with the switches on: 8.42, 8.51 and 8.57 ms p95 (run 1's 12.62 ms was a one-off).
+
+## Dark terrain dots (R27, 4 November 2026)
+
+The owner's Tab capture at clock 7160721726 (session 20261104-134053, Maximum) shows black specks across land and sea. Findings, same clock:
+the game's own picture draws a few dark points near the ground and Remastered at Original reach matches; the speckle comes only from objects the
+renderer places at a coarser level than their own ring (`n->shrink > 0`). By kind, dropping dot primitives changes nothing, dropping polygons changes 448
+pixels, dropping lines changes 1,168 (a light is a line from a point to itself). Dropping every coarser-level primitive removes the speckle and leaves the
+lit lights (they are the ring's own).
+Change: a dark point (dot, or a zero-length line, every colour channel under 80) from a coarser level is no longer drawn: their reach stays the original's,
+lit points keep the setting's reach. At the capture clock the picture equals the all-coarser-dropped one (1,158 pixels removed, all the specks).
+`F117_FAR_DARK_DOTS=1` restores the old behaviour. `F117_FAR_DOTS_OFF=MASK` (1 polygons, 2 lines, 4 dots) is a diagnostic.
+Not done: a settings-menu row for it (the owner's request was an independent terrain-dot distance); the threshold (80) is a first choice, not reviewed by the owner.
