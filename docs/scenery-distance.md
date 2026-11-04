@@ -406,18 +406,18 @@ bias" setting (finer detail farther out) is easy and would bring the shimmer bac
 - Negative controls kept for the record: a native view-cone filter on cells was not exact (objects extend across many cells); taxi/airfield samples with the
   first walk were pixel-identical (it had no hook slot).
 
-## Native terrain options on by default (4 November 2026)
+## Native terrain options: measured with them on, still opt-in (4 November 2026)
 
-`F117_NATIVE_SKIP_OWN_FACES`, `F117_NATIVE_REFRESH_PART` and `F117_NATIVE_RANGE_CULL` are now on unless set to `0`
-(`env_default_on` in `remaster_live.c`). Parity: Maximum, eight workers, `F117_REPLAY_FIXED_CADENCE=1`, all three forced
-off versus the new defaults: the composed-image checksums of all 901 pictures from clock 3.9 billion are identical.
-Timing (1920 x 1080, software renderer, runway session 20261103-154444, clocks 3.9 to 4.8 billion, work per frame, p95 ms;
-replayed with `--config` of the ONTests ini, because without its fix list the replay crashes at about clock 3.54 billion):
+The three switches (`F117_NATIVE_SKIP_OWN_FACES`, `F117_NATIVE_REFRESH_PART`, `F117_NATIVE_RANGE_CULL`) stay **opt-in**, per
+the handoff, pending wider validation. A brief default-on commit (222ad1b) was reverted for that reason.
+Parity: Maximum, eight workers, `F117_REPLAY_FIXED_CADENCE=1`, switches off versus on: all 901 composed-image checksums
+identical. Timing with the three set (1920 x 1080, software renderer, runway session 20261103-154444, clocks 3.9 to 4.8
+billion, work per frame, p95 ms; replay run with `--config` of the ONTests ini, since without its fix list the replay
+crashes near clock 3.54 billion):
 
 | | Near | Far | Maximum |
 |---|---|---|---|
 | switches off | 9.12 | 10.73 | 38.48 |
-| new defaults, run 1 / run 2 | 8.43 / 8.36 | 12.62 / 8.53 | 10.07 / 10.77 |
+| switches on, run 1 / run 2 | 8.43 / 8.36 | 12.62 / 8.53 | 10.07 / 10.77 |
 
-Far run 1 missed 12 ms once and its repeat did not; treat Far as met but noisy. This is a software-renderer proxy,
-not the owner's GPU window, and the native renderer goal is still open (the copy still runs the game's frame composition).
+Far run 1 missed 12 ms once and its repeat did not. Software-renderer proxy, not the owner's GPU window.
