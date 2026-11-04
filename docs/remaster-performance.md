@@ -125,3 +125,17 @@ checks. Include fast turns and crowded ground scenes, not only takeoff.
 Completion needs sustained 60 distinct pictures/second at the required detail
 and a physical 4K display pacing check. Lowering detail or labelling the
 Enhanced results as Remastered acceptance would not complete this requirement.
+
+## GPU-renderer baseline (4 November 2026)
+
+`F117_HIDDEN_WINDOW=1` (new, diagnostic) creates the window hidden, so the real renderer can be timed without anything on screen. Runway session
+20261103-154444, clocks 3.9 to 4.8 billion, ONTests ini via `--config`, `SDL_RENDER_DRIVER=direct3d11`, default native options:
+
+| Output / detail | Draw distance | p95 work per frame | Where it goes (per frame) |
+|---|---|---|---|
+| 1920 x 1080 / 3 | Maximum | 13.2 ms | the copy 5.4 ms on the main thread; the composite overlaps on the worker |
+| 3840 x 2160 / 9 | Near | 40.0 ms | waiting for the worker 21.0 ms: CPU raster 15.3 ms (eight threads: bands 5.5, lines 6.5, polygons 2.0, clear 1.5) and the single-threaded replace loop 4.7 ms; the copy 3.8 ms; upload about 1.1 ms, present about 0.1 ms |
+| 3840 x 2160 / 9 | Maximum | 34.1 ms | as Near |
+
+With the GPU renderer the 4K upload and present are no longer the problem (about 1 ms together); the CPU compositor is. 4K at 60 fps with headroom
+needs the compositor's pixel work on the GPU. Toolchain present: SDL 3.2.10's GPU API (D3D12, Vulkan) and the Windows SDK's `dxc`.

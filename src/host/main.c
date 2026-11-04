@@ -1573,7 +1573,8 @@ int main(int argc, char **argv)
     }
     if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0",
                                      win_w, win_h,
-                                     SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0),
+                                     SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                                     (getenv("F117_HIDDEN_WINDOW") ? SDL_WINDOW_HIDDEN : 0),   /* diagnostic: a real renderer (GPU) without showing a window, for timing */
                                      &win, &ren)) {
         fprintf(stderr, "SDL_CreateWindowAndRenderer: %s\n", SDL_GetError());
         return 1;
