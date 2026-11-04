@@ -569,6 +569,30 @@ R24 are owner-confirmed. Not gated; presentation and host changes only. Owner to
 
 The owner's first look at the CRT filter (`crt.c`, `crt = yes`, `crt-mask`, `crt-glow`) is that it does not look good. Tracked as R25 in [owner-issues.md](owner-issues.md). Not started. It applies to the displayed copy only, so it cannot touch the game or the machine. To settle with the owner before building: the look they want (sharp slot mask, soft aperture grille, plain scanlines), how much brightness to give up, curvature or none, and the cost at 4K and 60 fps.
 
-## Draw distance: the cause of the building pop-in, and the fix (3 Nov evening, R26)
+## Draw distance, native renderer: where it stands (3 Nov, late; read this first)
 
-Every terrain model is drawn only while its camera depth is under 8191 units of its own ring, so ring-1 buildings stop at about 8,000 real units whatever the walk's cell radius. `far_scenery` in `rerun.c` now draws each object natively at a coarser ring scale (4x the reach a step, the model shrunk to size) from a list of every object on the map, with the game's cull ported and the pose patched from a per-frame template (`remaster_live_native`). Draw distance: Near (default, one step, about 2 fps), Far (two, about 10 fps), Maximum (the whole map, renderer-bound), Original. `F117_NATIVE_CHECK=1` compares each native object with the game's own placement (1.6 million, 0 differing); `F117_FAR_WALKER=1` returns to the old extra terrain walks, which `tests/test_rerun.c` still drives. The renderer's mesh cache is keyed on the detail level now and the bank signature is kept, which also speeds the live game's model drawing about 14 times in that call. Details and numbers: [scenery-distance.md](scenery-distance.md). Open: multi-part and shared-vertex models still use the game's placement; a cheaper stroke path for Maximum; the owner judges Near, Far and Maximum.
+The owner's goal at the end of the session: **a native Remastered renderer** (the game keeps simulating; each presented frame is built natively from its state; the rerun copy becomes the oracle), proven one subsystem
+at a time against the game's own output, game logic untouched, with the runway replay at 1920 x 1080 holding **p95 work per frame under 12 ms at Near and Far, and at Maximum through a GPU or equivalent path**.
+(Decision recorded in memory: f117-native-renderer-target.) Not met: Far is at 12.4 to 12.7 ms, Maximum at 39 to 40, no GPU path. Figures and method: [scenery-distance.md](scenery-distance.md), "Cost".
+
+Done, committed and pushed:
+- The cause of the building pop-in (R26): every terrain model is drawn only while its camera depth is under 8191 units of its own ring (VGAME `120A:02B2`; `[7D5E]` is 16383), so ring-1 buildings stop at about 8,000 real
+  units. Fix: far scenery drawn natively at a coarser ring scale (`far_scenery` in `rerun.c`, `remaster_live_native` in `remaster_live.c`; Near one step, Far two, Maximum the whole map; default Near), with the game's cull
+  ported, the pose patched from a per-frame template, and `F117_NATIVE_CHECK=1` as the oracle (1.77 million native objects, 0 differing from the game's own placement of the same model).
+- The deferred-list overflow that made lights and buildings flicker while banking (`4dc161e`), the override table, `F117_PROFILE`, `F117_FAR_TRACE`, the `cost_ns` column of `--present-log`, the loop-timing breakdown.
+- The Remastered composite on the present worker (3.6 ms off the main thread; work per frame p95 14.7 to 9.4 ms at Near), checked byte for byte against the main-thread composite (`F117_WORKER_COMPOSE_CHECK`).
+- The level-of-detail fix for objects drawn at a coarser scale (monotonic detail, see scenery-distance.md "Level of detail").
+- Owner issues: R25 (the CRT looks poor; not started, scope questions in the tracker), R26 (pop-in; fixed in code, the owner has not confirmed the banking flicker, the lights, or the distance).
+
+Next, in this order:
+1. **Far's last 0.4 to 0.7 ms (p95 12.4 to 12.7, to under 12).** The copy (3.5 to 4.6 ms) is now the largest single main-thread cost; the game's own terrain walk is half of what is left in it. Options: make `F117_NATIVE_WALK` exact (see
+   scenery-distance.md "Native terrain walk": per-object logging of what each path draws, diff the sets; the strip along the horizon is sea against ground), or run the copy for frame N+1 while the worker composes frame N
+   (needs the copy's globals made per-thread: `rerun.c` statics, the observer, `g_f117_observer`; the old comment says "call only on the thread that runs the machine").
+2. **Maximum (39 ms p95).** It is the compositor's line stage drawing thousands of tiny strokes (`remaster_line`, `fill_triangle`): a cheaper path for strokes under a pixel (a point with a coverage fade, lit ones with a
+   floor: the owner's call, they were asked), then the GPU.
+3. Measure on the owner's live window (GPU renderer), not the headless software one; ask for a `--present-log` from a real flight and read `cost_ns`.
+4. The remaining guest work in the copy: the game's HUD and cockpit pass is 3.3 million instructions (0.6 ms), the machine's own step 1.4 ms.
+
+Known, not mine: `func_lockstep` fails with 4 mismatching routines (RSOUND.LOG 03A2, RSOUND.117 0D07 and 0ACE, ASOUND.117 005E: "with N clocks of room the body declined", P2 sound routines) on a clean checkout of `7d9020f` too.
+Build note: a worktree needs `build.cmd "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` or the lockstep tests are not registered. The bash tool eats backslashes: write patch scripts with the file tool and run them with
+`python -I`; run Python from a directory without stray modules (`C:\Users\Tideg\AppData\Local\Temp` has a `bisect.py` that shadows the standard one).

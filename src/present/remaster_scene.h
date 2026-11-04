@@ -60,6 +60,10 @@ int remaster_scene_has_shared(const remaster_scene *s);
 /* Add one request's primitives to f. mem is the guest's memory (mem_size bytes: a megabyte); ds and bank_segment are
  * segments in it. Returns the number added, or -1 when the request cannot be read (a data segment or bank outside the
  * memory, an undecodable model, a pose the decoder refuses). */
+/* The detail level of the model is chosen by its depth shifted left by this many bits (2 per ring): a model drawn at a coarser scale than its own ring is at
+ * a depth that many bits smaller in that scale's units, and the game would pick its level of detail by the depth in its own ring's units. Set before the call,
+ * for that call only (it returns to 0). */
+void remaster_scene_lod_shift(unsigned bits);
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f);
 

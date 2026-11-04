@@ -2,6 +2,7 @@
 #include "remaster_scene.h"
 
 #include "scene_mesh.h"
+#include "tls.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -259,6 +260,8 @@ int remaster_scene_has_shared(const remaster_scene *s)
 }
 void remaster_scene_origin(const remaster_scene *s, int32_t out[3]) { for (int j = 0; j < 3; j++) out[j] = s->pose.part[0].translation[j]; }
 
+static F117_TLS unsigned g_lod_shift;
+void remaster_scene_lod_shift(unsigned bits) { g_lod_shift = bits; }
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f)
 {
@@ -267,7 +270,9 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     const uint8_t *dsp = mem + ds_at, *bank = mem + bank_at;
     int16_t camera[9];
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
-    const uint16_t depth = scene_model_depth(position, camera);
+    uint32_t depth32 = scene_model_depth(position, camera);
+    if (g_lod_shift) { depth32 <<= g_lod_shift > 16 ? 16 : g_lod_shift; if (depth32 > 32767) depth32 = 32767; g_lod_shift = 0; }
+    const uint16_t depth = (uint16_t)depth32;
     const scene_mesh *mesh = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
     if (!mesh) return -1;
     s->serial = (s->serial + 1) & 0xFFFFF;

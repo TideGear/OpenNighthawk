@@ -96,6 +96,8 @@ static host_t H;
 
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
+static uint64_t g_bt[6];                 /* F117_LOOP_TIMING: the build's steps (collect, wait for the worker, apply the picture, publish and plan, the copy, other) */
+static uint64_t g_iter_ns, g_cost_ns;     /* the loop iteration's start, and its work before the present call (the --present-log cost column) */
 static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
  * session names the flight, the clock the moment a replay of it jumps to */
@@ -172,7 +174,12 @@ static int wide_prepare(int wide_w)
 
 /* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
  * original fine picture when there is nothing to compose. */
-static const uint8_t *remaster_apply(const uint8_t *hi)
+static int g_pw_compose = 1;            /* F117_NO_WORKER_COMPOSE=1: the main thread composes, as before */
+static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, int ww_given, int on_worker);
+static const uint8_t *remaster_apply(const uint8_t *hi) { return remaster_apply_ex(hi, H.frame.dac, -1, 0); }
+/* ww_given -1: work out the wide picture here (main thread: it may make a texture); otherwise the width the main thread worked out. on_worker: only a picture
+ * from a rerun copy is composed (the live machine's frame is written by the main thread meanwhile), else NULL. */
+static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, int ww_given, int on_worker)
 {
     static int said;
     if (!said && g_remaster && getenv("F117_REMASTER_DEBUG")) {
@@ -195,6 +202,7 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     static int no_copy = -1;                              /* F117_REMASTER_NOCOPY (diagnostic): always the live frame, as before the copies */
     if (no_copy < 0) no_copy = getenv("F117_REMASTER_NOCOPY") != NULL;
     remaster_live *src = !no_copy && g_live.shown_copy && g_rlive_copy ? g_rlive_copy : g_rlive;
+    if (on_worker && src != g_rlive_copy) return NULL;
     if (getenv("F117_REMASTER_COPYCHECK")) {
         static unsigned calls;
         static unsigned every; if (!every) { const int e = atoi(getenv("F117_REMASTER_COPYCHECK")); every = e > 1 ? (unsigned)e : 120; }   /* =N: every Nth picture (a prime avoids the logic-step phase) */
@@ -202,11 +210,14 @@ static const uint8_t *remaster_apply(const uint8_t *hi)
     }
     g_remaster_src = src;
     g_wide_filled = 0;
-    int ww = wide_width();
-    if (ww && !wide_prepare(ww)) ww = 0;
-    rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);   /* the copies see 30% wider than the canvas shows, so a big object (a hangar) is still asked for while part of it is in view (the cull tests the centre; the side planes, in the copy only) */
+    int ww = ww_given;
+    if (ww_given < 0) {
+        ww = wide_width();
+        if (ww && !wide_prepare(ww)) ww = 0;
+        rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);
+    }   /* the copies see 30% wider than the canvas shows, so a big object (a hangar) is still asked for while part of it is in view (the cull tests the centre; the side planes, in the copy only) */
     const uint64_t t0 = SDL_GetPerformanceCounter();
-    const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, H.frame.dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
+    const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
     g_wide_filled = composed && ww;
     if (getenv("F117_REMASTER_TIMING")) {               /* diagnostic: where a Remastered picture's milliseconds go (stderr, every 120th) */
         static double sum; static unsigned n;
@@ -439,8 +450,15 @@ typedef struct {
     drawlive_plan plan;
     present_frame frame;
     int got;
+    int ww, composed;                     /* the wide picture's width the composite is to use; whether the worker composed this picture */
+    const uint8_t *fine;                  /* the composed picture (g_rbuf), when composed */
 } present_worker;
 static present_worker g_pw;
+static int g_pw_pending;               /* a job is planned and not yet released to the worker: it is released just before the present call, after the main thread has uploaded the previous picture (the composite fills buffers the upload reads) */
+static void pw_release(void)
+{
+    if (g_pw_pending) { g_pw_pending = 0; SDL_SignalSemaphore(g_pw.go); }
+}
 static uint64_t g_frame_ips;          /* guest clocks in one host frame */
 
 /* Distinct palettes, presented and scanned out, for the summary: a presentation that freezes the palette
@@ -463,6 +481,15 @@ static int present_worker_main(void *u)
         SDL_WaitSemaphore(w->go);
         if (w->quit) break;
         w->got = drawlive_render(&g_live, &w->plan, &w->frame);
+        w->composed = 0;
+        if (w->got && g_pw_compose) {
+            /* The Remastered composite of this picture, here and not on the machine's thread: it reads the rerun copy's frame (which no copy touches until the
+             * main thread has waited for this job) and the frame's own palette. A picture from the live machine's frame is composed by the main thread. */
+            remaster_live_set_palette(w->frame.dac);
+            w->fine = remaster_apply_ex(g_live.shown_hi, w->frame.dac, w->ww, 1);
+            remaster_live_set_palette(NULL);
+            w->composed = w->fine != NULL;
+        }
         SDL_SignalSemaphore(w->done);
     }
     return 0;
@@ -1335,7 +1362,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--present-log") && v) {
             g_present_log = fopen(v, "w");
             if (!g_present_log) { fprintf(stderr, "cannot write %s\n", v); return 2; }
-            fprintf(g_present_log, "host_ns icount older newer t replayed\n");
+            fprintf(g_present_log, "host_ns icount older newer t replayed cost_ns\n");
             i++;
         }
         else if (!strcmp(a, "--presentation") && v) {
@@ -1799,6 +1826,7 @@ int main(int argc, char **argv)
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
     g_loop_timing = getenv("F117_LOOP_TIMING") != NULL;
+    g_pw_compose = getenv("F117_NO_WORKER_COMPOSE") == NULL;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
     int jump_typing = 0;                            /* a replay: G pressed, the second to jump to being typed */
     unsigned long jump_secs = 0;
@@ -1810,6 +1838,7 @@ int main(int argc, char **argv)
     int mouse_buttons = 0;
 
     while (running) {
+        g_iter_ns = SDL_GetTicksNS();
         /* A bounded integration script uses ordinary SDL keys, never guest edits.
          * Comma-separated SDL key names; Open means the normal menu shortcut. */
         {
@@ -2528,12 +2557,16 @@ int main(int argc, char **argv)
                  * frame shown below, which carries the previous plan's picture and palette (handing that on
                  * froze the palette: the driver's colour cycling, e.g. the gun rounds, and every fade). */
                 static present_frame fresh;
+                uint64_t bt0 = g_loop_timing ? SDL_GetTicksNS() : 0, bt1;
                 fresh = H.frame;
                 drawlive_collect(&g_live, &g_feed);
+                if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[0] += bt1 - bt0; bt0 = bt1; }
                 /* the picture planned a frame ago, drawn meanwhile by the worker */
                 g_fine = NULL;
                 if (g_pw.busy) {
+                    pw_release();                            /* (a job planned and never released would be waited for for ever) */
                     SDL_WaitSemaphore(g_pw.done);
+                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[1] += bt1 - bt0; bt0 = bt1; }
                     g_pw.busy = 0;
                     older = g_pw.plan.older; newer = g_pw.plan.newer; t_shown = g_pw.plan.t_shown;
                     got = g_pw.got;
@@ -2541,7 +2574,42 @@ int main(int argc, char **argv)
                         memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
-                        g_fine = remaster_apply(g_live.shown_hi);
+                        g_fine = g_pw.composed ? g_pw.fine : remaster_apply(g_live.shown_hi);   /* composed on the worker, or here when it was a live-machine picture */
+                        if (g_pw.composed && g_rbuf_cap && getenv("F117_WORKER_COMPOSE_CHECK")) {
+                            /* the same composite again here, from the same inputs (the copy's frame, the frame's palette, the width): every output byte must agree */
+                            static uint8_t *kb, *km; static uint32_t *kr, *kw; static size_t kcap, kwcap;
+                            static unsigned same, differ;
+                            const size_t size = (size_t)320 * g_scale * 200 * g_scale, wsize = g_wide_filled ? (size_t)g_ww * g_wh : 0;
+                            if (kcap < size) { free(kb); free(km); free(kr); kb = (uint8_t *)malloc(size); km = (uint8_t *)malloc(size); kr = (uint32_t *)malloc(size * 4); kcap = kb && km && kr ? size : 0; }
+                            if (kwcap < wsize) { free(kw); kw = (uint32_t *)malloc(wsize * 4); kwcap = kw ? wsize : 0; }
+                            if (kcap >= size && kwcap >= wsize) {
+                                memcpy(kb, g_rbuf, size); memcpy(km, g_rmask, size); memcpy(kr, g_rrgb, size * 4);
+                                if (wsize) memcpy(kw, g_wpix, wsize * 4);
+                                const int was_true = g_rtrue, was_wide = g_wide_filled;
+                                remaster_live_set_palette(g_pw.frame.dac);
+                                const uint8_t *again = remaster_apply_ex(g_live.shown_hi, g_pw.frame.dac, g_pw.ww, 1);
+                                remaster_live_set_palette(NULL);
+                                int ok = again == g_rbuf && was_true == g_rtrue && was_wide == g_wide_filled && !memcmp(kb, g_rbuf, size) && !memcmp(km, g_rmask, size) &&
+                                         !memcmp(kr, g_rrgb, size * 4) && (!wsize || !memcmp(kw, g_wpix, wsize * 4));
+                                if (!ok) {   /* is the composite itself repeatable on the main thread? a third run against the second */
+                                    static uint8_t *k2b; static uint32_t *k2w; static size_t k2cap, k2w_cap;
+                                    if (k2cap < size) { free(k2b); k2b = (uint8_t *)malloc(size); k2cap = k2b ? size : 0; }
+                                    if (k2w_cap < wsize) { free(k2w); k2w = (uint32_t *)malloc(wsize * 4); k2w_cap = k2w ? wsize : 0; }
+                                    if (k2cap >= size && k2w_cap >= wsize) {
+                                        memcpy(k2b, g_rbuf, size); if (wsize) memcpy(k2w, g_wpix, wsize * 4);
+                                        remaster_live_set_palette(g_pw.frame.dac);
+                                        remaster_apply_ex(g_live.shown_hi, g_pw.frame.dac, g_pw.ww, 1);
+                                        remaster_live_set_palette(NULL);
+                                        const int repeatable = !memcmp(k2b, g_rbuf, size) && (!wsize || !memcmp(k2w, g_wpix, wsize * 4));
+                                        size_t dw = 0; if (wsize) for (size_t q = 0; q < wsize; q++) dw += k2w[q] != g_wpix[q];
+                                        size_t dwk = 0; if (wsize) for (size_t q = 0; q < wsize; q++) dwk += kw[q] != k2w[q];
+                                        fprintf(stderr, "[compose-check] main twice: %s (%zu wide pixels differ); worker vs main %zu wide pixels\n", repeatable ? "repeatable" : "NOT repeatable", dw, dwk);
+                                    }
+                                }
+                                if (ok) same++; else { differ++; fprintf(stderr, "[compose-check] differs at composite %u (again %s, true %d/%d, wide %d/%d, ww %d)\n", same + differ, again == g_rbuf ? "same buffer" : "other", was_true, g_rtrue, was_wide, g_wide_filled, g_pw.ww); }
+                                if ((same + differ) % 200 == 0) fprintf(stderr, "[compose-check] %u composites the same on the worker and the main thread, %u differ\n", same, differ);
+                            }
+                        }
                         if (g_fine && tex_fine && !H.frame.text && !g_wide_filled) {
                             convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
                             remaster_true_colour(fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
@@ -2549,16 +2617,25 @@ int main(int argc, char **argv)
                         }
                     }
                 }
+                if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[2] += bt1 - bt0; bt0 = bt1; }
                 drawlive_publish(&g_live);          /* the worker is idle: nothing renders from the old steps */
                 drawlive_plan plan;
                 /* Interpolation shows the clock as it stands (a frame later than the drawing, which
                  * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
                 if (drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[3] += bt1 - bt0; bt0 = bt1; }
+                    if (g_remaster && g_rlive && g_scale >= 1) {         /* the wide picture the next composite is to use (it may make a texture: here), and the copies' wider view */
+                        int ww = wide_width();
+                        if (ww && !wide_prepare(ww)) ww = 0;
+                        rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);
+                        g_pw.ww = ww;
+                    } else g_pw.ww = 0;
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
+                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[4] += bt1 - bt0; bt0 = bt1; }
                     g_pw.plan = plan;
                     g_pw.frame = fresh;
                     g_pw.busy = 1;
-                    SDL_SignalSemaphore(g_pw.go);
+                    g_pw_pending = 1;                        /* released before the present call (pw_release) */
                 }
             } else {
                 drawlive_update(&g_live, &g_feed);
@@ -2753,7 +2830,9 @@ int main(int argc, char **argv)
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }
+        pw_release();
         const uint64_t lt_pr0 = SDL_GetTicksNS();
+        g_cost_ns = lt_pr0 - g_iter_ns;                         /* everything this iteration did before presenting: the machine, the picture, the upload */
         SDL_RenderPresent(ren);
         g_lt_present += SDL_GetTicksNS() - lt_pr0;
         if (g_loop_timing) {                                  /* F117_LOOP_TIMING: where the loop's wall time goes, every 2 s */
@@ -2767,6 +2846,10 @@ int main(int argc, char **argv)
                         1e3 * (double)g_lt_hook[0] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[0],
                         1e3 * (double)g_lt_hook[1] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[1],
                         1e3 * (double)g_lt_hook[2] / (double)SDL_GetPerformanceFrequency(), (unsigned long long)g_lt_calls[2]);
+                fprintf(stderr, "[loop]   build per frame: collect %.2f ms, wait for the worker %.2f, apply the picture %.2f, publish and plan %.2f, the copy %.2f\n",
+                        (double)g_bt[0] / 1e6 / (g_lt_iter ? g_lt_iter : 1), (double)g_bt[1] / 1e6 / (g_lt_iter ? g_lt_iter : 1), (double)g_bt[2] / 1e6 / (g_lt_iter ? g_lt_iter : 1),
+                        (double)g_bt[3] / 1e6 / (g_lt_iter ? g_lt_iter : 1), (double)g_bt[4] / 1e6 / (g_lt_iter ? g_lt_iter : 1));
+                memset(g_bt, 0, sizeof g_bt);
                 memset(g_lt_hook, 0, sizeof g_lt_hook); memset(g_lt_calls, 0, sizeof g_lt_calls);
                 for (int pass = 0; pass < 4 && g_lt_nslow; pass++) {          /* the places slow slices ended, most first */
                     int best = 0;
@@ -2792,8 +2875,8 @@ int main(int argc, char **argv)
             display_logged = 1;
         }
         if (g_present_log)                                    /* when the frame went out, and what it showed */
-            fprintf(g_present_log, "%llu %llu %llu %llu %.6f %d\n", (unsigned long long)(SDL_GetTicksNS() - start_ns),
-                    (unsigned long long)H.m.cpu.icount, (unsigned long long)older, (unsigned long long)newer, t_shown, got);
+            fprintf(g_present_log, "%llu %llu %llu %llu %.6f %d %llu\n", (unsigned long long)(SDL_GetTicksNS() - start_ns),
+                    (unsigned long long)H.m.cpu.icount, (unsigned long long)older, (unsigned long long)newer, t_shown, got, (unsigned long long)g_cost_ns);
         /* Roland chosen in the game with no MIDI output: say so once, rather
          * than play an unexplained silence. */
         if (H.roland_unheard == 1) {
@@ -2807,6 +2890,7 @@ int main(int argc, char **argv)
     }
 
     if (g_pw.thread) {
+        pw_release();
         if (g_pw.busy) SDL_WaitSemaphore(g_pw.done);
         g_pw.quit = 1;
         SDL_SignalSemaphore(g_pw.go);

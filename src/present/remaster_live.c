@@ -187,9 +187,11 @@ static int word_style(unsigned word, unsigned darken, unsigned *idx)
 }
 
 /* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
+static const uint8_t *g_palette_override;                /* the composite on the present worker reads the frame's own palette, never the live machine's (which runs meanwhile); a plain variable, not thread-local: the composite's row helpers read it too */
+void remaster_live_set_palette(const uint8_t *dac) { g_palette_override = dac; }
 static uint32_t dac_colour(const machine_t *m, unsigned index)
 {
-    const uint8_t *d = &m->dac[(index & 255) * 3];
+    const uint8_t *d = g_palette_override ? &g_palette_override[(index & 255) * 3] : &m->dac[(index & 255) * 3];
     const unsigned r = d[0] << 2 | d[0] >> 4, g = d[1] << 2 | d[1] >> 4, b = d[2] << 2 | d[2] >> 4;
     return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
 }
@@ -1211,6 +1213,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     unsigned dropped[3];
     memcpy(dropped, remaster_scene_dropped, sizeof dropped);
     const double tm1 = timing ? now_ms() : 0.0;
+    remaster_scene_lod_shift((unsigned)n->shrink);                         /* the level of detail by the real distance, not the coarser unit's */
     const int added = remaster_scene_add(r->scene, m->mem, 0x100000, ds, n->bank, n->model, n->pos, target);
     if (added < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
     const double tm2 = timing ? now_ms() : 0.0;
@@ -1354,6 +1357,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             const size_t first = r->frame.n;
             unsigned dropped[3];
             memcpy(dropped, remaster_scene_dropped, sizeof dropped);
+            remaster_scene_lod_shift(r->pending_shrink > 0 ? (unsigned)r->pending_shrink : 0);
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
             if (n < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
             finish_model(r, &r->frame, m, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, r->pending_camera_offset);

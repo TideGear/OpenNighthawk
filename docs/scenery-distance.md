@@ -54,21 +54,56 @@ read from it depends on what the game drew just before. Diagnostics: `F117_FAR_W
 
 ## Cost (measured)
 
-1920 x 1080, scale 3, software output, threads on, the owner's runway replay (clock 3.9 to 4.8 billion, session 20261103-154444), pictures a second:
-Original 59.8, Near 55.8, Far 50.0, Maximum 22.9. Per copy, native placement: Near about 200 objects, 0.24 ms; Far about 2,200 (and 0.7 ms choosing);
-Maximum about 10,000, 9 ms. The compositor (the lines stage in particular) is the larger part at Far and Maximum: composite 6.7 ms (Original), 7.8 (Near),
-11.4 (Far), 19 (Maximum, threads on). Near's whole cost is about 2 ms a frame. One native object costs about 0.7 microseconds, against about 35 through the game's own
-placement: most of that was the renderer's mesh cache, which decoded a model again for every distinct depth and hashed two thousand bytes of the bank on every
-call (`remaster_scene.c`: keyed on the detail level now, with the bank signature kept); that also speeds the live game's own model drawing.
+Two numbers matter and the first measurements mixed them up. **Presented intervals** are paced to the display (60 Hz): Original reads exactly 16.7 ms, which is the cap, not what the machine can do.
+**Work per frame** is what one loop iteration does before it presents (the machine's step, the copy, the composite, the upload): the column `cost_ns` of `--present-log` (added 3 Nov), and
+`tools`-free to read (`private/.../p95cost.py` style: sort the column over the runway replay's clocks 3.9 to 4.8 billion; the headroom the owner asked for is this at the 95th percentile).
+
+1920 x 1080, scale 3, **software** renderer (the owner's window uses the GPU renderer; every number here is from a headless software run on the development machine), threads on, session
+20261103-154444, work per frame, ms:
+
+| | mean | p50 | p95 | p99 |
+|---|---|---|---|---|
+| before the composite moved to the worker (Original / Near / Far / Maximum) | 9.0 / 10.2 / 12.2 / 34.2 | 8.5 / 9.2 / 11.7 / 38.5 | 11.5 / 14.7 / 16.5 / 44.6 | 13.4 / 16.3 / 17.6 / 48.0 |
+| after, two runs (same four) | 5.9 to 6.0 / 6.5 to 6.6 / 7.8 to 8.1 / 28.6 to 29.4 | 4.6 to 6.3 / 5.7 to 6.6 / 7.3 to 7.6 / 33.5 to 34.1 | 8.9 to 10.2 / 9.4 to 10.2 / 12.4 to 12.7 / 39.1 to 39.5 | 12.5 to 13.2 / 12.9 to 13.1 / 13.8 / 41.4 to 41.9 |
+
+So against the owner's goal (p95 under 12 ms): Original and **Near are met** (9.4 to 10.2); **Far misses by 0.4 to 0.7 ms** (12.4 to 12.7); Maximum is far off (39 ms) and needs a cheaper path for tiny strokes or the GPU.
+
+Where the main thread's time went (F117_LOOP_TIMING, per frame, Original/Near): the machine's step 1.4 ms; the copy 3.5 to 4.6 ms (the game's own frame composition, run on the main thread: `drawlive_prepare_rerun`);
+**the Remastered composite 3.6 to 4.2 ms (`remaster_live_compose`, on the main thread, serial with the copy)**; the upload 0.2 ms. The composite was the cheapest thing to move: it now runs on the present worker, right after the
+worker renders the Enhanced picture (`present_worker_main`, `remaster_apply_ex(..., on_worker=1)`), and the worker is released just before the present call (`pw_release`) so the buffers the main thread uploads are not
+overwritten under it. Only a picture from a rerun copy is composed there (the live machine's frame is written by the main thread meanwhile); others are composed by the main thread as before. The composite reads
+the frame's own palette snapshot (`remaster_live_set_palette`, a plain variable because the composite's row helpers read it too; a thread-local one let some rows read the live machine's palette, which differs
+in a fade). `F117_WORKER_COMPOSE_CHECK=1` recomputes each worker composite on the main thread from the same inputs and compares every output byte: 0 differing of 800 (Near) and 600 (Far) composites after the
+palette fix (3 of 400 before it). `F117_NO_WORKER_COMPOSE=1` returns to the old arrangement.
+
+The copy itself (profile, `F117_PROFILE=1`, per copy at Near, 4.4 ms): copy start to the terrain walk 0.7 ms (189,000 original instructions), the far scenery 0.8 ms (26,000), the game's own terrain walk and scene 2.2 ms
+(437,000), the HUD pass to the end 0.6 ms (3.3 million instructions, which is the game's frame drawing). One native far object costs about 0.5 microseconds (the renderer's mesh cache is keyed on the detail level and keeps
+the bank signature; it was about 7 before and about 35 through the game's own placement); `F117_WIDE_WALK_STATS=1` prints the far scenery's choosing and placing times, `F117_NATIVE_TIMING=1` the phases of one native object.
+
+## Native terrain walk (experimental, off)
+
+`F117_NATIVE_WALK=1` skips the game's own terrain walk in the copy and places its nine cells a ring through the same native path (and the game's override table, `far_override`): the copy falls from 4.4 to 2.7 ms at Near.
+It is **not exact**: the picture differs from the game's walk by 2,770, 1,998 and 277 pixels at the three runway clocks 4.0, 4.4 and 4.7 billion, mostly a strip along the horizon where the original draws sea (12, 28, 85)
+and the native walk draws ground (36, 28, 11). Tried and ruled out, each leaving the three counts unchanged: the override table, deferral of the game's own cells, draw order by ring, the game's whole-cell cull
+(`E3AC` on each cell's centre, with the game's own far plane and allowances). Not yet looked at: what else the walk leaves behind (`DS:0504`, `49AC..49B0`, `950A`), per-object comparison of what each path draws (log both,
+diff the sets), whether the sea is a flat object whose order against the coast depends on the walk's step order (the walk visits a sector table's cells in a fixed order; mine sorts by level and distance).
+
+## Level of detail
+
+The game picks a model's level of detail from its depth. An object drawn at a coarser scale is at a depth 4 times smaller in that scale's units, so it got a finer level than the game would at the real distance, and the
+detail dropped at the moment the object switched back to its own scale (the owner saw a group of lights thin out and come back as they flew closer). `remaster_scene_lod_shift` now scales the depth used for the level by the
+same factor, so the level follows the real distance (monotonic). The level is not worth keeping for speed (a few thousand polygons); it is worth keeping for stability (tiny lit windows drawn in full detail crawl). A "LOD
+bias" setting (finer detail farther out) is easy and would bring the shimmer back; not built. The remaining 1-pixel light shimmer is aliasing: a coverage fade for sub-pixel points (lit ones with a floor) is the modern fix, not built, the owner's call.
 
 ## Limits and what is not shown
 
 - Beyond about 524,000 units nothing small is drawn (ring 4's reach); that is half the map.
-- The shape of a distant model comes from the game's own level of detail at the coarser level's depth (nearer in its units, so a more detailed level than
-  the game would have chosen at the real distance, shrunk back to size).
 - Multi-part and shared-vertex models (a few percent of objects, for instance a spinning radar dish) still go through the game's placement every copy.
 - Maximum is renderer-bound: the lines stage draws thousands of tiny strokes. A cheaper path for strokes under a pixel is possible and not built.
-- No moving-sequence capture of a building appearing earlier; the evidence is the placement and reach logs and the oracle above. The owner judges Near, Far and Maximum.
+- The deferred-draw list: the far scenery used to fill the game's 50-entry list (full in 116 of 1,392 copies of the owner's banking flight), dropping its nearest entries (lights and buildings flickered while banking). While the
+  far scenery is placed the defer bit of the classes it places is cleared and restored after; the list is empty after it in all 1,484 copies of that flight (`F117_FAR_TRACE=FROM` prints it).
+- No moving-sequence capture of a building appearing earlier; the evidence is the placement and reach logs and the oracle. The owner judges Near, Far and Maximum, the banking flicker, and the lights (3 Nov late: the owner reported
+  lights becoming tiny flickery points far away, groups thinning then thickening on approach, and some buildings still popping in at a distance; the LOD fix above answers the second; the third is Near's reach, one step: Far is two).
 
 ## History
 
