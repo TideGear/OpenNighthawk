@@ -1420,8 +1420,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             }
         }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
+        rerun_prof_mark(4);
         if (r->hud_at < 0) r->hud_at = (long)r->frame.n;
     } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
+        rerun_prof_mark(1);
         r->nunits = 0;
         {   static int diag = -1;
             if (diag < 0) diag = getenv("F117_HUD_ORDER") != NULL;

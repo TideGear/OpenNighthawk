@@ -80,6 +80,8 @@ void rerun_set_distance(int units);
 int rerun_coarse_active(void);
 /* Nonzero while the copy runs any extra terrain walk (not the game's own): the renderer takes those models from their geometry, so the copy skips the game's own face drawing for them. */
 int rerun_extra_active(void);
+/* F117_PROFILE: stamp a named moment of the copy being run (its instruction count and the wall clock); the collector calls it at the frame's own landmarks. */
+void rerun_prof_mark(int label);
 /* The scale difference, in bits (2 per ring), between the unit the object being placed is drawn in and its own ring's: the renderer shrinks its model by that much. */
 int rerun_scale_shift(void);
 

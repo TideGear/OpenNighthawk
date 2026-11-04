@@ -286,6 +286,16 @@ static double walk_ms(void)
 static int g_distance = 12000;                           /* the Near setting: far scenery one scale coarser (4 times the reach). Far (20000) is two, Maximum (1 << 22) three: the whole map */
 void rerun_set_distance(int units) { g_distance = units < 0 ? 0 : units > (1 << 26) ? (1 << 26) : units; }
 static unsigned g_walk_calls;
+enum { PROF_MARKS = 8 };
+static int g_prof = -1;
+static uint64_t g_prof_ic[PROF_MARKS]; static double g_prof_ms[PROF_MARKS]; static int g_prof_set[PROF_MARKS];
+static machine_t *g_prof_m;
+static double walk_ms(void);
+void rerun_prof_mark(int label)
+{
+    if (g_prof <= 0 || label < 0 || label >= PROF_MARKS || !g_prof_m) return;
+    g_prof_ic[label] = g_prof_m->cpu.icount; g_prof_ms[label] = walk_ms(); g_prof_set[label] = 1;
+}
 F117_TLS static int g_coarse_busy;
 int rerun_coarse_active(void) { return g_coarse_busy; }
 int rerun_extra_active(void) { return g_walk_busy; }
@@ -550,7 +560,7 @@ static int walk_second(machine_t *m)
  * in the same units in [49AC..49B0]: exactly what the walker leaves there. The renderer shrinks a model drawn at a coarser scale than its
  * own ring by the same factor (rerun_scale_shift). Objects the game's own call draws (its nine cells of a ring, where the ring is drawn at
  * all) are left to it. The copy only: the live machine is never touched. */
-typedef struct { int32_t x, y, z; int16_t cx, cy; uint8_t ring, type; } far_inst;
+typedef struct { int32_t x, y, z; int16_t cx, cy; uint8_t ring, type, entry; } far_inst;
 static far_inst *g_inst; static size_t g_ninst, g_cap_inst; static uint64_t g_world_key;
 /* The objects are listed cell by cell (row-major per ring), so a window of cells is a few runs of the list: cell_first[ring][row * side + column] is where a cell's
  * objects start, with one more entry at the end. */
@@ -604,7 +614,7 @@ static void world_build(const machine_t *m, uint16_t ds)
                     f->x = x * 4096 + 2048 + (int16_t)rd16(m->mem, ds, a);
                     f->y = y * 4096 + 2048 + (int16_t)rd16(m->mem, ds, (uint16_t)(a + 2));
                     f->z = (int16_t)rd16(m->mem, ds, (uint16_t)(a + 4));
-                    f->cx = (int16_t)x; f->cy = (int16_t)y; f->ring = (uint8_t)r;
+                    f->cx = (int16_t)x; f->cy = (int16_t)y; f->ring = (uint8_t)r; f->entry = (uint8_t)e;
                     f->type = m->mem[(((uint32_t)ds << 4) + (uint16_t)(a + 6)) & 0xFFFFF];
                 }
             }
@@ -660,16 +670,39 @@ static uint8_t far_detail(const machine_t *m, uint16_t ds, int16_t zh, unsigned 
     return m->mem[(((uint32_t)ds << 4) + 0x43E6) & 0xFFFFF] ? (uint8_t)(t >> 1) : 0;
 }
 
-typedef struct { int idx, level; double dist; int16_t x, y, z, ox, oy, oz; uint16_t model; uint8_t darken; } far_pick;
+/* VGAME 0FBD, scene_override (matched.c): the override table at DS:B79E ([9932] entries of five bytes: ring, entry in the tile, cell x, cell y, and a
+ * replacement type), searched from the last down; what the game keeps there is the state of changed objects (a destroyed building shows its wreck). The walker
+ * asks it for every entry, with the ring it walks, the entry's number in its tile and the cell's absolute coordinates (low bytes). -1 when there is none. */
+static int far_override(const machine_t *m, uint16_t ds, const far_inst *f)
+{
+    const int count = (int16_t)rd16(m->mem, ds, 0x9932);
+    for (int i = count - 1; i >= 0; i--) {
+        const uint32_t at = ((uint32_t)ds << 4) + (uint16_t)(0xB79E + 5 * i);
+        if (m->mem[at & 0xFFFFF] == f->ring && m->mem[(at + 1) & 0xFFFFF] == f->entry && m->mem[(at + 2) & 0xFFFFF] == (uint8_t)f->cx && m->mem[(at + 3) & 0xFFFFF] == (uint8_t)f->cy)
+            return m->mem[(at + 4) & 0xFFFFF];
+    }
+    return -1;
+}
+
+typedef struct { int idx, level, ring; double dist; int16_t x, y, z, ox, oy, oz; uint16_t model; uint8_t darken; uint8_t own, defers; } far_pick;
 static int far_pick_cmp(const void *a, const void *b)
 {
     const far_pick *p = (const far_pick *)a, *q = (const far_pick *)b;
     if (p->level != q->level) return q->level - p->level;                   /* coarsest (farthest) scale first */
-    return p->dist < q->dist ? 1 : p->dist > q->dist ? -1 : 0;              /* then the farthest first: painter's order */
+    return p->dist < q->dist ? 1 : p->dist > q->dist ? -1 : 0;
 }
 
+static int g_native_walk;                                 /* F117_NATIVE_WALK=1: the game's own terrain walk is skipped in the copy and its cells placed natively too */
 static int g_far_native = 1;                              /* the far scenery is placed natively (docs/scenery-distance.md); F117_FAR_WALKER=1 returns to the extra terrain walks */
+static int far_scenery_body(machine_t *m);
 static int far_scenery(machine_t *m)
+{
+    rerun_prof_mark(2);
+    const int rc = far_scenery_body(m);
+    rerun_prof_mark(3);
+    return rc;
+}
+static int far_scenery_body(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     static int env_done;
@@ -679,6 +712,7 @@ static int far_scenery(machine_t *m)
         if (e) g_distance = atoi(e) < 0 ? 0 : atoi(e);
         const char *s = getenv("F117_WIDE_SCENERY");
         if (s && atoi(s) == 0) g_distance = 0;
+        g_native_walk = getenv("F117_NATIVE_WALK") != NULL;
     }
     if (g_distance <= 0) return 0;
     const double ms0 = walk_ms();
@@ -704,10 +738,11 @@ static int far_scenery(machine_t *m)
     }
     /* the reach: how many coarser levels an object may be drawn at beyond its own ring (each 4 times the reach): Near 1, Far 2, Maximum 3 (the whole map) */
     const int extra_levels = g_distance >= (1 << 22) ? 3 : g_distance >= 16000 ? 2 : 1;
-    int game_draws[5] = { 0 }, radius[5] = { 0 };
+    int game_draws[5] = { 0 }, game_would[5] = { 0 }, radius[5] = { 0 };
     int64_t base[5][2];
     for (int r = 1; r <= 4; r++) {
-        game_draws[r] = enable[r] && eye_l[r][2] >= 0 && eye_l[r][2] < 0x7FFF;
+        game_would[r] = enable[r] && eye_l[r][2] >= 0 && eye_l[r][2] < 0x7FFF;      /* the game's own walk draws this ring */
+        game_draws[r] = !g_native_walk && game_would[r];                               /* ... and the far scenery leaves its cells to it */
         base[r][0] = eye_l[r][0] >> 12; base[r][1] = eye_l[r][1] >> 12;
         const long cell = 4096L << (2 * (r - 1));
         long rad = (g_distance + cell - 1) / cell; if (rad < 2) rad = 2;
@@ -756,25 +791,30 @@ static int far_scenery(machine_t *m)
             pk.x = (int16_t)(uint16_t)qx; pk.y = (int16_t)(uint16_t)qy; pk.z = (int16_t)(uint16_t)qz;
             pk.ox = (int16_t)(uint16_t)eye_l[l][0]; pk.oy = (int16_t)(uint16_t)eye_l[l][1]; pk.oz = (int16_t)(uint16_t)ez;
             /* the model word and its class, as E2B6 reads them */
-            uint16_t w = (uint16_t)(0x100 | (f->type & 0x7F));
+            uint8_t tb = f->type; int same_type = 0;
+            const int ov = far_override(m, ds, f);
+            if (ov >= 0) { same_type = ((ov ^ tb) & 0x7F) == 0; tb = (uint8_t)ov; }       /* the game draws the replacement; the same type again sets bit 15 of the model word */
+            uint16_t w = (uint16_t)(0x100 | (tb & 0x7F));
             w = (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0510 + 2 * (w & 0x7F))) | (w & 0x8000));                       /* C436 */
+            if (same_type) w |= 0x8000;
             const unsigned bank = (w & 0x7FFF) >> 8, idx = w & 0x7F;
             const uint8_t klass = m->mem[(((uint32_t)ds << 4) + (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * bank)) + idx)) & 0xFFFFF];
             int16_t zh = 0;
             const int visible = far_cull(m, ds, ss, (uint16_t)(pk.x - pk.ox), (uint16_t)(pk.y - pk.oy), (uint16_t)(pk.z - pk.oz), klass & 7u, s, &zh);
             if ((zh < 0 ? -(int)zh : (int)zh) >= reach) { if (l == r + extra_levels || l == 4) tr_deep++; continue; }      /* too deep at this level: a coarser one */
-            chosen = 1; pk.level = l; pk.model = w;
+            chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
             if (!visible) { chosen = -1; tr_culled++; break; }
             pk.darken = far_detail(m, ds, zh, klass & 7u);
             pk.dist = sqrt((double)ddx * ddx + (double)ddy * ddy + (double)ddz * ddz) * (double)(1 << (2 * (l - 1)));
         }
         if (chosen != 1) continue;
-        if (pk.level == r && game_draws[r]) {                                     /* the game's own cells */
+        if (pk.level == r && game_would[r]) {                                     /* the game's own cells */
             int own = 0;
             for (int k = 0; k < 9; k++) if (own_x[k] == dcx && own_y[k] == dcy) own = 1;
-            if (own) continue;
+            if (own && game_draws[r]) continue;
+            pk.own = (uint8_t)own;
         }
-        pk.idx = (int)i;
+        pk.idx = (int)i; pk.ring = r;
         if (npick == pick_cap) { pick_cap = pick_cap ? pick_cap * 2 : 1024; picks = (far_pick *)realloc(picks, pick_cap * sizeof *picks); if (!picks) { pick_cap = npick = 0; return 0; } }
         picks[npick++] = pk;
           }
@@ -813,6 +853,7 @@ static int far_scenery(machine_t *m)
      * and put back after: the list the game's own frame uses is not touched. */
     struct { uint16_t at; uint8_t was; } nodefer[256]; unsigned n_nodefer = 0;
     for (size_t k = 0; k < npick && n_nodefer < 256; k++) {
+        if (picks[k].own) continue;                                    /* the game's own cells keep the game's deferral (the sea and the ground are layered by it) */
         const unsigned bank_idx = (picks[k].model & 0x7FFF) >> 8, idx = picks[k].model & 0x7F;
         const uint16_t at = (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * bank_idx)) + idx);
         uint8_t *p = &m->mem[(((uint32_t)ds << 4) + at) & 0xFFFFF];
@@ -823,7 +864,7 @@ static int far_scenery(machine_t *m)
     for (size_t k = 0; k < npick; k++) {
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
-        if (g_collector.native) {
+        if (g_collector.native && !(pk->own && pk->defers)) {
             rerun_native spec;
             const unsigned bank_idx = (pk->model & 0x7FFF) >> 8;
             spec.bank = rd16(m->mem, ds, (uint16_t)(0xB78A + 2 * bank_idx));
@@ -863,6 +904,7 @@ static int far_scenery(machine_t *m)
     for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
     for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
     c->ip = sv_ip; c->flags = sv_fl;
+    if (g_native_walk) { wr16(m->mem, ds, 0xE328, 0); c->ip = cpu_pop16(c); }     /* the walk is done: return from it (a near call; the caller drops the arguments) */
     if (bad) fprintf(stderr, "[far] %d placements did not return\n", bad);
     {   /* F117_FAR_TRACE: how full the game's 50-entry deferred-draw list is once the far scenery has been placed (a full list drops its nearest entry) */
         static int tr = -1; static unsigned mx;
@@ -1061,10 +1103,36 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     g_done = 0;
     g_blocked = 0;
     const uint64_t start = s->cpu.icount, limit = start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
+    if (g_prof < 0) g_prof = getenv("F117_PROFILE") != NULL;
+    if (g_prof) { g_prof_m = s; memset(g_prof_set, 0, sizeof g_prof_set); g_prof_ic[0] = s->cpu.icount; g_prof_ms[0] = walk_ms(); g_prof_set[0] = 1; }
     if (g_collector.begin) g_collector.begin(g_collector.user);
     while (!g_done && s->cpu.icount < limit)
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
     if (g_collector.end) g_collector.end(g_collector.user);
+    if (g_prof) {
+        rerun_prof_mark(7);
+        /* labels: 0 the copy starts, 1 the per-frame draw routine is entered (the end of the frame being drawn), 2 the game's terrain walk begins (the far
+         * scenery starts), 3 the far scenery is done, 4 the HUD pass, 7 the copy ends. Taken in the order they happened. */
+        static const char *name[PROF_MARKS] = { "copy start", "frame draw routine", "terrain walk", "far scenery done", "HUD pass", "", "", "copy end" };
+        static double sum_ms[PROF_MARKS][PROF_MARKS], sum_ic[PROF_MARKS][PROF_MARKS]; static unsigned n, seen[PROF_MARKS][PROF_MARKS];
+        int order[PROF_MARKS], k = 0;
+        for (int l = 0; l < PROF_MARKS; l++) if (g_prof_set[l]) order[k++] = l;
+        for (int i = 1; i < k; i++) for (int j = i; j > 0 && g_prof_ic[order[j]] < g_prof_ic[order[j - 1]]; j--) { const int t = order[j]; order[j] = order[j - 1]; order[j - 1] = t; }
+        for (int i = 1; i < k; i++) {
+            const int a = order[i - 1], c2 = order[i];
+            sum_ms[a][c2] += g_prof_ms[c2] - g_prof_ms[a]; sum_ic[a][c2] += (double)(g_prof_ic[c2] - g_prof_ic[a]); seen[a][c2]++;
+        }
+        if (++n % 240 == 0) {
+            fprintf(stderr, "[profile] mean of %u copies, per stretch (wall ms, original instructions):\n", n);
+            double tot_ms = 0, tot_ic = 0;
+            for (int a = 0; a < PROF_MARKS; a++) for (int c2 = 0; c2 < PROF_MARKS; c2++) if (seen[a][c2]) {
+                const double ms = sum_ms[a][c2] / n, ic = sum_ic[a][c2] / n;       /* per copy, whether or not the stretch occurs in every one */
+                fprintf(stderr, "[profile]   %-18s to %-18s %6.2f ms %9.0f\n", name[a], name[c2], ms, ic);
+                tot_ms += ms; tot_ic += ic;
+            }
+            fprintf(stderr, "[profile]   %-42s %6.2f ms %9.0f\n", "total", tot_ms, tot_ic);
+        }
+    }
     if (getenv("F117_WIDE_VIEW_DIAG")) fprintf(stderr, "[wide] copy records %d, vertices-ish values %zu\n", out->nrec, out->nvals);
     if (getenv("F117_WIDE_SCENERY_DIAG_FROM")) {
         static unsigned reported;
