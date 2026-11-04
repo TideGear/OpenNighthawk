@@ -726,6 +726,7 @@ static int far_scenery(machine_t *m)
     static far_pick *picks; static size_t pick_cap;
     size_t npick = 0;
     const int level_lim = 24000, reach = 8000;
+    unsigned tr_seen = 0, tr_culled = 0, tr_deep = 0;
     for (int ring_i = 1; ring_i <= 4; ring_i++) {
         if (!enable[ring_i] || !g_cell_side[ring_i]) continue;
         /* the cells an object of this ring can be drawn from: its coarsest allowed level reaches 8000 units of that level, plus a margin for the object's own offset */
@@ -741,6 +742,7 @@ static int far_scenery(machine_t *m)
           for (size_t i = first_i; i < last_i; i++) {
         const far_inst *f = &g_inst[i];
         const int r = f->ring;
+        tr_seen++;
         const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
         far_pick pk; int chosen = 0;
         for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
@@ -760,9 +762,9 @@ static int far_scenery(machine_t *m)
             const uint8_t klass = m->mem[(((uint32_t)ds << 4) + (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * bank)) + idx)) & 0xFFFFF];
             int16_t zh = 0;
             const int visible = far_cull(m, ds, ss, (uint16_t)(pk.x - pk.ox), (uint16_t)(pk.y - pk.oy), (uint16_t)(pk.z - pk.oz), klass & 7u, s, &zh);
-            if ((zh < 0 ? -(int)zh : (int)zh) >= reach) continue;                                                      /* too deep at this level: a coarser one */
+            if ((zh < 0 ? -(int)zh : (int)zh) >= reach) { if (l == r + extra_levels || l == 4) tr_deep++; continue; }      /* too deep at this level: a coarser one */
             chosen = 1; pk.level = l; pk.model = w;
-            if (!visible) { chosen = -1; break; }
+            if (!visible) { chosen = -1; tr_culled++; break; }
             pk.darken = far_detail(m, ds, zh, klass & 7u);
             pk.dist = sqrt((double)ddx * ddx + (double)ddy * ddy + (double)ddz * ddz) * (double)(1 << (2 * (l - 1)));
         }
@@ -779,6 +781,13 @@ static int far_scenery(machine_t *m)
         }
     }
     qsort(picks, npick, sizeof *picks, far_pick_cmp);
+    {   /* F117_FAR_TRACE=FROM: one line a copy from that clock: the attitude, and what the far scenery chose */
+        static int tr = -1; static unsigned long long tr_from;
+        if (tr < 0) { const char *e = getenv("F117_FAR_TRACE"); tr = e != NULL; tr_from = e ? strtoull(e, NULL, 0) : 0; }
+        if (tr && c->icount >= tr_from)
+            fprintf(stderr, "[far-trace] clock %llu heading %04X pitch %04X roll %04X: %u seen, %u culled, %u too deep, %zu drawn\n", (unsigned long long)c->icount,
+                    rd16(m->mem, ds, 0x2DEE), rd16(m->mem, ds, 0x2DF0), rd16(m->mem, ds, 0x2DF2), tr_seen, tr_culled, tr_deep, npick);
+    }
     /* place them: natively where the renderer has a template for the model, else through the game's own placement (which makes one) */
     const double ms1 = walk_ms();
     uint16_t sv_r[8], sv_seg[4];
@@ -798,6 +807,19 @@ static int far_scenery(machine_t *m)
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     const uint16_t frame_sp = c->r[R_SP];
+    /* E2B6 defers an object whose class byte has bit 7 (the table at [0A60 + 2 * bank], by model) into the game's own 50-entry list, which drops
+     * its nearest entry when full: far objects placed through the game filled it and pushed out the game's own (lights and buildings flickered while
+     * banking). In the copy, while the far scenery is placed, those bits are cleared so such an object is drawn at once (the renderer orders by depth),
+     * and put back after: the list the game's own frame uses is not touched. */
+    struct { uint16_t at; uint8_t was; } nodefer[256]; unsigned n_nodefer = 0;
+    for (size_t k = 0; k < npick && n_nodefer < 256; k++) {
+        const unsigned bank_idx = (picks[k].model & 0x7FFF) >> 8, idx = picks[k].model & 0x7F;
+        const uint16_t at = (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * bank_idx)) + idx);
+        uint8_t *p = &m->mem[(((uint32_t)ds << 4) + at) & 0xFFFFF];
+        if (!(*p & 0x80)) continue;
+        nodefer[n_nodefer].at = at; nodefer[n_nodefer].was = *p; n_nodefer++;
+        *p &= 0x7F;
+    }
     for (size_t k = 0; k < npick; k++) {
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
@@ -832,6 +854,7 @@ static int far_scenery(machine_t *m)
         g_walk_busy = 0; g_scale_shift = 0;
     }
     g_walk_busy = 0; g_scale_shift = 0;
+    while (n_nodefer) { n_nodefer--; m->mem[(((uint32_t)ds << 4) + nodefer[n_nodefer].at) & 0xFFFFF] = nodefer[n_nodefer].was; }
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
     wr16(m->mem, ds, 0x48E6, far_was);
     for (int md = 0; md < 8; md++) wr16(m->mem, ds, (uint16_t)(base_w + 2 * md), allow[md]);
@@ -841,6 +864,11 @@ static int far_scenery(machine_t *m)
     for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
     c->ip = sv_ip; c->flags = sv_fl;
     if (bad) fprintf(stderr, "[far] %d placements did not return\n", bad);
+    {   /* F117_FAR_TRACE: how full the game's 50-entry deferred-draw list is once the far scenery has been placed (a full list drops its nearest entry) */
+        static int tr = -1; static unsigned mx;
+        if (tr < 0) tr = getenv("F117_FAR_TRACE") != NULL;
+        if (tr) { const unsigned d = rd16(m->mem, ds, 0x49F4); if (d > mx) mx = d; fprintf(stderr, "[far-trace] deferred %u of 50 (most %u), guest-placed %u, native %u\n", d, mx, guest, native); }
+    }
     {
         static int stats = -1; static double sel_ms, run_ms; static unsigned n, picked, total, nat, gst;
         if (stats < 0) stats = getenv("F117_WIDE_WALK_STATS") != NULL;
