@@ -47,6 +47,13 @@ static const struct { uint16_t seg, ip; } WATCH[5] = {
 #define TEMPLATE_AT 0x7B28
 #define TEMPLATE_LEN 0x278
 
+typedef struct {
+    uint32_t eye[3];
+    uint8_t matrix[18];
+    int32_t value[3];
+    int valid;
+} ring_correction;
+
 struct remaster_live {
     remaster_scene *scene;
     remaster_frame frame;
@@ -63,10 +70,18 @@ struct remaster_live {
     struct { uint16_t bank, model; int parts; uint8_t bytes[TEMPLATE_LEN]; } tmpl[96];
     unsigned ntmpl, native_drawn, native_missed;
     remaster_frame chk_frame;                 /* F117_NATIVE_CHECK: a native object's primitives are built here, never in the frame */
-    struct { uint16_t bank, model; int16_t pos[3]; remaster_prim *prim; size_t n; uint8_t pose[TEMPLATE_LEN]; } chk[256];
-    unsigned nchk, chk_ok, chk_bad, chk_unmatched; uint8_t chk_pose_now[TEMPLATE_LEN];
+    struct { uint16_t bank, model; int16_t pos[3]; int shrink; double inv_depth; remaster_prim *prim; size_t n; uint8_t pose[TEMPLATE_LEN]; } *chk;
+    unsigned nchk, chk_cap, chk_ok, chk_bad, chk_expired, chk_empty, chk_alloc_failed;
+    uint8_t chk_pose_now[TEMPLATE_LEN];
+    int chk_return_pending, chk_predicted_range;
+    unsigned chk_range_agree, chk_false_reject, chk_false_accept, chk_prediction_unknown;
+    unsigned chk_before_match, chk_before_requests, chk_before_added, chk_before_deferred;
+    unsigned chk_returns, chk_no_request, chk_no_faces, chk_no_pair, chk_deferred, chk_no_return;
+    unsigned chk_range_rejected, chk_range_accepted, chk_range_unknown;
     unsigned nunits;
     int frame_complete, done_complete;
+    int replay_copy;
+    ring_correction native_correction[4];
     unsigned frames, want_frame;
     int w, h;
     char *out_path;
@@ -100,9 +115,25 @@ remaster_live *remaster_live_new(int w, int h, unsigned frame, const char *out_p
     return r;
 }
 
+static void expire_native_checks(remaster_live *r)
+{
+    while (r->nchk) {
+        const unsigned i = --r->nchk;
+        r->chk_empty += r->chk[i].n == 0;
+        r->chk_expired++;
+        free(r->chk[i].prim);
+    }
+}
+
 void remaster_live_free(remaster_live *r)
 {
     if (!r) return;
+    expire_native_checks(r);
+    if (r->chk_ok || r->chk_bad || r->chk_expired || r->chk_alloc_failed)
+        fprintf(stderr, "[native-check] final: %u match, %u differ, %u expired, %u empty unmatched, %u allocation failures\n",
+                r->chk_ok, r->chk_bad, r->chk_expired, r->chk_empty, r->chk_alloc_failed);
+    free(r->chk);
+    remaster_frame_free(&r->chk_frame);
     remaster_scene_free(r->scene);
     remaster_frame_free(&r->frame);
     remaster_frame_free(&r->done);
@@ -112,6 +143,8 @@ void remaster_live_free(remaster_live *r)
 
 void remaster_live_copy_begin(remaster_live *r)
 {
+    r->replay_copy = 1;
+    expire_native_checks(r);
     remaster_frame_clear(&r->frame);
     r->pending = 0;
     r->nunits = 0;
@@ -393,8 +426,12 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     if (timing) timing[2] += tq3 - tq2;
     if (t->line_strong) {                       /* the lines, after the polygons: whole (huge bias) into line_strong, then as the depth allows */
         const size_t px = (size_t)(remaster_row_hi(t) - remaster_row_lo(t)) * t->w, off = (size_t)remaster_row_lo(t) * t->w;   /* this call's rows */
-        int any_bright = 0;                     /* only bright lines are ever taken whole (the composite checks): skip the pass without any */
-        for (size_t i = 0; i < fr->n && !any_bright; i++) {
+        static int decal = -1;
+        if (decal < 0) { const char *e = getenv("F117_LINES"); decal = !(e && !strcmp(e, "old")); }
+        /* Both decal passes use the same polygon depth and stroke order.
+         * Only the legacy slope rules can produce a different whole line. */
+        int any_bright = 0;
+        for (size_t i = 0; !decal && i < fr->n && !any_bright; i++) {
             const remaster_prim *p = &fr->prim[i];
             uint32_t c;
             if ((p->kind == SCENE_LINES || p->kind == SCENE_DOTS) && word_colour(m, p->colour_word, p->darken, &c))
@@ -426,8 +463,6 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 /* Lines and dots are decals on the face they belong to (remaster_raster.h, line_decal): over their own face, over the
                  * faces of their own object unless clearly nearer, and behind anything else that is nearer, in both passes.
                  * F117_LINES=old (diagnostic) restores the earlier rules: whole lines with a 50x bias, lights by the ground's slope. */
-                static int decal = -1;
-                if (decal < 0) { const char *e = getenv("F117_LINES"); decal = !(e && !strcmp(e, "old")); }
                 t->paint_owner = p->owner;
                 if (decal) { t->line_decal = 1; t->line_bias = 1.0; t->line_slope = 0.0; }
                 else if (pass == 0) {
@@ -1044,9 +1079,26 @@ static void report_validation(const remaster_live *r)
     fprintf(stderr, "[validate] %u models, %u vertices, %u differ\n", r->nchecks, total, bad);
 }
 
+static void model_camera_correction(machine_t *m, const double camera_offset[3], int32_t correction[3])
+{
+    correction[0] = correction[1] = correction[2] = 0;
+    static int native_ring_eye = -1;
+    if (native_ring_eye < 0) native_ring_eye = getenv("F117_REMASTER_NATIVE_RING_EYE") != NULL;
+    if (!native_ring_eye) {
+        /* Use the prepared view basis, not an object's part rotation. Geometry is already emitted, so facing/material rules and
+         * original machine state remain untouched. */
+        for (int axis = 0; axis < 3; ++axis) {
+            double value = 0.0;
+            for (int world = 0; world < 3; ++world)
+                value += camera_offset[world] * (int16_t)peek16(m, m->cpu.seg[S_DS], (uint16_t)(0x7B28 + 2 * (3 * world + axis)));
+            correction[axis] = (int32_t)llround(value);
+        }
+    }
+}
+
 /* A model's primitives from `first` are in the frame: shrink them about the object's origin when it was drawn at a coarser scale than its own ring
  * (the position is in the coarser units, the model's vertices are not), shift them by the ring-rounding correction, and set the inverse-depth scale. */
-static void finish_model(remaster_live *r, remaster_frame *f, machine_t *m, size_t first, int shrink, double inv_depth, const double camera_offset[3])
+static void finish_model(remaster_live *r, remaster_frame *f, size_t first, int shrink, double inv_depth, const int32_t correction[3])
 {
     if (shrink > 0) {
         int32_t origin[3];
@@ -1058,19 +1110,6 @@ static void finish_model(remaster_live *r, remaster_frame *f, machine_t *m, size
                 for (int axis = 0; axis < 3; ++axis)
                     *coordinates[axis] = origin[axis] + (int32_t)((*coordinates[axis] - (int64_t)origin[axis] + ((int64_t)1 << (shrink - 1))) >> shrink);
             }
-        }
-    }
-    int32_t correction[3] = { 0, 0, 0 };
-    static int native_ring_eye = -1;
-    if (native_ring_eye < 0) native_ring_eye = getenv("F117_REMASTER_NATIVE_RING_EYE") != NULL;
-    if (!native_ring_eye) {
-        /* Use the prepared view basis, not an object's part rotation. Geometry is already emitted, so facing/material rules and
-         * original machine state remain untouched. */
-        for (int axis = 0; axis < 3; ++axis) {
-            double value = 0.0;
-            for (int world = 0; world < 3; ++world)
-                value += camera_offset[world] * (int16_t)peek16(m, m->cpu.seg[S_DS], (uint16_t)(0x7B28 + 2 * (3 * world + axis)));
-            correction[axis] = (int32_t)llround(value);
         }
     }
     for (size_t i = first; i < f->n; ++i) {
@@ -1111,9 +1150,14 @@ static void capture_template(remaster_live *r, machine_t *m)
  * model at the same position, which arrives from `guest_first` on (a deferred object arrives later, which is why they are paired by what they are). */
 static void check_native(remaster_live *r, machine_t *m, size_t guest_first)
 {
-    unsigned q = 0;
-    while (q < r->nchk && !(r->chk[q].bank == r->bank && r->chk[q].model == r->model && !memcmp(r->chk[q].pos, r->position, sizeof r->position))) q++;
-    if (q == r->nchk) return;
+    unsigned q = r->nchk;
+    while (q > 0) {
+        --q;
+        if (r->chk[q].bank == r->bank && r->chk[q].model == r->model &&
+            r->chk[q].shrink == r->pending_shrink && r->chk[q].inv_depth == r->pending_inv_depth &&
+            !memcmp(r->chk[q].pos, r->position, sizeof r->position)) break;
+        if (q == 0) return;
+    }
     const size_t n_guest = r->frame.n - guest_first;
     /* DS:7D8A is the fill colour of the face the game drew last, which the renderer reads as the model's base shade: a stale value that depends on what was
      * drawn just before, not on the object. When it differs the shades are not comparable. */
@@ -1147,34 +1191,137 @@ static void check_native(remaster_live *r, machine_t *m, size_t guest_first)
             }
         }
     }
-    if ((r->chk_ok + r->chk_bad) % 5000 == 0) fprintf(stderr, "[native-check] %u same as the game's own, %u differ, %u never matched\n", r->chk_ok, r->chk_bad, r->chk_unmatched);
+    if ((r->chk_ok + r->chk_bad) % 5000 == 0) fprintf(stderr, "[native-check] %u same as the game's own, %u differ, %u expired, %u empty unmatched\n", r->chk_ok, r->chk_bad, r->chk_expired, r->chk_empty);
     free(r->chk[q].prim);
     r->chk[q] = r->chk[--r->nchk];
+}
+
+/* Mirror 120A:02B2 against the guest's prepared translation and its own
+ * detail record, before any Remastered distance adjustment. */
+static int model_range(const machine_t *m, uint16_t bank, uint16_t model, const uint32_t translation[3], uint16_t size)
+{
+    const uint16_t z = (uint16_t)(translation[2] >> 16);
+    const uint16_t depth = z & 0x8000 ? (uint16_t)(0u - z) : z;
+    if ((uint16_t)((depth + 1u) * 2u) >= size) return 0;
+    const uint32_t bank_at = (uint32_t)bank << 4;
+    uint16_t lod;
+    if (bank_at > 0x100000u - SCENE_SEGMENT ||
+        !scene_mesh_lod(m->mem + bank_at, model, depth, &lod)) return -1;
+    const uint16_t limit = (uint16_t)(2u * z + peek16(m, bank, lod));
+    if (limit & 0x8000) return 0;
+    for (unsigned axis = 0; axis < 2; axis++) {
+        uint32_t value = translation[axis];
+        if (value & 0x80000000u) value = 0u - value;
+        if ((value >> 16) > limit) return 0;
+    }
+    return 1;
+}
+
+static int guest_model_range(const machine_t *m, uint16_t bank, uint16_t model)
+{
+    const uint16_t ds = m->cpu.seg[S_DS];
+    if (m->mem[(((uint32_t)ds << 4) + 0x7D8E) & 0xFFFFF]) return -1;
+    uint32_t translation[3];
+    for (unsigned axis = 0; axis < 3; axis++) {
+        const uint16_t at = (uint16_t)(0x7CD2 + 4 * axis);
+        translation[axis] = peek16(m, ds, at) | (uint32_t)peek16(m, ds, at + 2) << 16;
+    }
+    return model_range(m, bank, model, translation, peek16(m, ds, 0x7D5E));
+}
+
+void remaster_live_placement_return(remaster_live *r, machine_t *m, int returned)
+{
+    if (!r->chk_return_pending) return;
+    r->chk_return_pending = 0;
+    const int paired = r->chk_ok + r->chk_bad != r->chk_before_match;
+    const int missing = returned && !paired &&
+        peek16(m, m->cpu.seg[S_DS], 0x49F4) <= r->chk_before_deferred &&
+        r->requests != r->chk_before_requests && r->added == r->chk_before_added;
+    if (returned && (paired || missing)) {
+        if (r->chk_predicted_range < 0) r->chk_prediction_unknown++;
+        else if (r->chk_predicted_range == paired) r->chk_range_agree++;
+        else if (paired) r->chk_false_reject++;
+        else r->chk_false_accept++;
+    }
+    if (!returned) r->chk_no_return++;
+    else if (!paired) {
+        const unsigned deferred = peek16(m, m->cpu.seg[S_DS], 0x49F4);
+        if (deferred > r->chk_before_deferred) r->chk_deferred++;
+        else if (r->requests == r->chk_before_requests) r->chk_no_request++;
+        else if (r->added == r->chk_before_added) {
+            const int range = guest_model_range(m, r->bank, r->model);
+            r->chk_no_faces++;
+            if (range < 0) r->chk_range_unknown++;
+            else if (range == 0) r->chk_range_rejected++;
+            else r->chk_range_accepted++;
+        }
+        else r->chk_no_pair++;
+    }
+    if (++r->chk_returns % 50000 == 0) {
+        fprintf(stderr, "[range-prediction] %u agree, %u false reject, %u false accept, %u unknown\n",
+                r->chk_range_agree, r->chk_false_reject, r->chk_false_accept, r->chk_prediction_unknown);
+        fprintf(stderr, "[placement-return] %u checked: %u no request, %u request without capture (range %u rejected, %u accepted, %u unknown), %u captured without pair, %u deferred, %u failed return\n",
+                r->chk_returns, r->chk_no_request, r->chk_no_faces, r->chk_range_rejected, r->chk_range_accepted, r->chk_range_unknown, r->chk_no_pair, r->chk_deferred, r->chk_no_return);
+    }
 }
 
 int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
 {
     const rerun_native *n = (const rerun_native *)spec;
     const uint16_t ds = m->cpu.seg[S_DS];
-    static int timing = -1; static double t_patch, t_add, t_fin; static unsigned t_n;
+    static int timing = -1; static double t_patch, t_add, t_fin;
+    static unsigned t_n, no_template, unsupported, stale;
     if (timing < 0) timing = getenv("F117_NATIVE_TIMING") != NULL;
     const double tm0 = timing ? now_ms() : 0.0;
     unsigned t = 0;
     while (t < r->ntmpl && !(r->tmpl[t].bank == n->bank && r->tmpl[t].model == n->model)) t++;
-    if (t < r->ntmpl && r->tmpl[t].parts < 0) return 0;
-    if (t == r->ntmpl) { r->native_missed++; { static int shown; if (shown++ < 6) fprintf(stderr, "[native] no template for bank %04X model %u (%u templates)\n", (unsigned)n->bank, (unsigned)n->model, r->ntmpl); } return 0; }
+    if (t < r->ntmpl && r->tmpl[t].parts < 0) { if (timing) unsupported++; return 0; }
+    if (t == r->ntmpl) { if (timing) no_template++; r->native_missed++; { static int shown; if (shown++ < 6) fprintf(stderr, "[native] no template for bank %04X model %u (%u templates)\n", (unsigned)n->bank, (unsigned)n->model, r->ntmpl); } return 0; }
     uint8_t *dsp = m->mem + (((uint32_t)ds << 4) + TEMPLATE_AT);
     /* the template belongs to this frame's camera and light: the matrix and the light words must still be what they were */
-    const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18), light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
-    if (!matrix_same || !light_same) {
+    const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18);
+    const int light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
+    static int refresh_matrix = -1;
+    if (refresh_matrix < 0) refresh_matrix = getenv("F117_NATIVE_REFRESH_PART") != NULL;
+    const int refresh = refresh_matrix && !matrix_same && r->tmpl[t].parts == 1;
+    if ((!matrix_same && !refresh) || !light_same) {
+        if (timing) stale++;
         r->native_missed++;
         static int shown2;
         if (shown2++ < 6) fprintf(stderr, "[native] template stale for bank %04X model %u: matrix %s, light %s\n", (unsigned)n->bank, (unsigned)n->model, matrix_same ? "same" : "differs", light_same ? "same" : "differs");
         return 0;
     }
+    static int check = -1, range_cull = -1;
+    if (check < 0) check = getenv("F117_NATIVE_CHECK") != NULL;
+    if (range_cull < 0) range_cull = getenv("F117_NATIVE_RANGE_CULL") != NULL;
+    uint32_t translation[3] = { 0, 0, 0 };
+    for (int k = 0; k < 3; k++)
+        for (int row = 0; row < 3; row++)
+            translation[k] += (uint32_t)((int32_t)n->pos[row] *
+                (int16_t)peek16(m, ds, (uint16_t)(TEMPLATE_AT + 2 * (3 * row + k))));
+    const uint8_t *pose = r->tmpl[t].bytes;
+    if (!check && range_cull && !pose[0x7D8E - TEMPLATE_AT]) {
+        const uint16_t size = pose[0x7D5E - TEMPLATE_AT] | (uint16_t)pose[0x7D5F - TEMPLATE_AT] << 8;
+        if (model_range(m, n->bank, n->model, translation, size) == 0) return 1;
+    }
     uint8_t saved[TEMPLATE_LEN], keep48c4 = m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF];
     memcpy(saved, dsp, TEMPLATE_LEN);
     memcpy(dsp, r->tmpl[t].bytes, TEMPLATE_LEN);
+    if (refresh) {
+        memcpy(dsp, saved, 18);
+        /* 120A:0392 calls 1452:0288 with orientation, camera, and output.
+         * 7B5E holds the transpose of the unchanged base orientation. */
+        for (int row = 0; row < 3; row++)
+            for (int col = 0; col < 3; col++) {
+                uint32_t sum = 0;
+                for (int k = 0; k < 3; k++) {
+                    const int16_t orientation = (int16_t)peek16(m, ds, (uint16_t)(0x7B5E + 6 * k + 2 * row));
+                    const int16_t camera = (int16_t)peek16(m, ds, (uint16_t)(TEMPLATE_AT + 6 * k + 2 * col));
+                    sum += (uint32_t)((int32_t)orientation * camera);
+                }
+                poke16(m, ds, (uint16_t)(0x7B4C + 6 * row + 2 * col), (uint16_t)(sum >> 15));
+            }
+    }
     for (int i = 0; i < 3; i++) poke16(m, ds, (uint16_t)(0x7CCC + 2 * i), (uint16_t)n->pos[i]);
     {   /* the eye: the position negated (120A:0317); with a base part also through the part's matrix at 7B5E (1452:021B, in place:
          * each element the high words of its three products summed and doubled, 16 bits) */
@@ -1193,9 +1340,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
         for (int i = 0; i < 3; i++) poke16(m, ds, (uint16_t)(0x7C6C + 2 * i), eye[i]);
     }
     for (int k = 0; k < 3; k++) {                                                              /* the position through the camera matrix, 32 bits (1452:0330) */
-        uint32_t acc = 0;
-        for (int row = 0; row < 3; row++)
-            acc += (uint32_t)((int32_t)n->pos[row] * (int16_t)peek16(m, ds, (uint16_t)(0x7B28 + 2 * (3 * row + k))));
+        const uint32_t acc = translation[k];
         poke16(m, ds, (uint16_t)(0x7CD2 + 4 * k), (uint16_t)acc);
         poke16(m, ds, (uint16_t)(0x7CD4 + 4 * k), (uint16_t)(acc >> 16));
         if (r->tmpl[t].parts == 1) {                                                           /* a base part's translation is the copy at 7CDE */
@@ -1204,11 +1349,12 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
         }
     }
     m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = n->darken;
-    memcpy(r->chk_pose_now, dsp, TEMPLATE_LEN);
-    static int check = -1;
-    if (check < 0) check = getenv("F117_NATIVE_CHECK") != NULL;
     remaster_frame *target = check ? &r->chk_frame : &r->frame;
-    if (check) target->n = 0;
+    if (check) {
+        target->n = 0;
+        memcpy(r->chk_pose_now, dsp, TEMPLATE_LEN);
+        r->chk_predicted_range = guest_model_range(m, n->bank, n->model);
+    }
     const size_t first = target->n;
     unsigned dropped[3];
     memcpy(dropped, remaster_scene_dropped, sizeof dropped);
@@ -1217,14 +1363,25 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     const int added = remaster_scene_add(r->scene, m->mem, 0x100000, ds, n->bank, n->model, n->pos, target);
     if (added < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
     const double tm2 = timing ? now_ms() : 0.0;
-    double offset[3];
-    remaster_ring_camera_offset(n->eye, (unsigned)n->level, offset);
-    if (added >= 0) finish_model(r, target, m, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), offset);
+    if (added >= 0 && target->n > first) {
+        ring_correction local = {0};
+        ring_correction *cached = n->level >= 1 && n->level <= 4 ? &r->native_correction[n->level - 1] : &local;
+        if (!cached->valid || memcmp(cached->eye, n->eye, sizeof cached->eye) ||
+            memcmp(cached->matrix, dsp, sizeof cached->matrix)) {
+            double offset[3];
+            remaster_ring_camera_offset(n->eye, (unsigned)n->level, offset);
+            model_camera_correction(m, offset, cached->value);
+            memcpy(cached->eye, n->eye, sizeof cached->eye);
+            memcpy(cached->matrix, dsp, sizeof cached->matrix);
+            cached->valid = 1;
+        }
+        finish_model(r, target, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), cached->value);
+    }
     memcpy(dsp, saved, TEMPLATE_LEN);
     if (timing) {
         const double tm3 = now_ms();
         t_patch += tm1 - tm0; t_add += tm2 - tm1; t_fin += tm3 - tm2;
-        if (++t_n % 20000 == 0) fprintf(stderr, "[native-timing] per object: patch %.2f us, scene add %.2f us, finish %.2f us (%u objects)\n", t_patch * 1000.0 / t_n, t_add * 1000.0 / t_n, t_fin * 1000.0 / t_n, t_n);
+        if (++t_n % 20000 == 0) fprintf(stderr, "[native-timing] per object: patch %.2f us, scene add %.2f us, finish %.2f us (%u objects), fallback: %u no template, %u unsupported, %u stale\n", t_patch * 1000.0 / t_n, t_add * 1000.0 / t_n, t_fin * 1000.0 / t_n, t_n, no_template, unsupported, stale);
     }
     m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = keep48c4;
     if (added < 0) { r->refused++; return 0; }
@@ -1252,13 +1409,26 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
             fprintf(stderr, "[sizes] radius in original pixels: <0.1 %u, <0.25 %u, <0.5 %u, <1 %u, <2 %u, <4 %u, <8 %u, more %u (of %u)\n", bucket[0], bucket[1], bucket[2], bucket[3], bucket[4], bucket[5], bucket[6], bucket[7], total);
     }
     if (check) {                                                    /* keep the native primitives for the comparison, and let the game place it too */
-        if (r->nchk == sizeof r->chk / sizeof r->chk[0]) { free(r->chk[0].prim); r->chk[0] = r->chk[--r->nchk]; r->chk_unmatched++; }
+        r->chk_return_pending = 1;
+        r->chk_before_match = r->chk_ok + r->chk_bad;
+        r->chk_before_requests = r->requests;
+        r->chk_before_added = r->added;
+        r->chk_before_deferred = peek16(m, ds, 0x49F4);
+        if (r->nchk == r->chk_cap) {
+            const unsigned cap = r->chk_cap ? r->chk_cap * 2 : 256;
+            void *next = realloc(r->chk, (size_t)cap * sizeof *r->chk);
+            if (!next) { r->chk_alloc_failed++; return 0; }
+            r->chk = next;
+            r->chk_cap = cap;
+        }
         const unsigned q = r->nchk++;
         r->chk[q].bank = n->bank; r->chk[q].model = n->model; memcpy(r->chk[q].pos, n->pos, sizeof n->pos);
         r->chk[q].n = target->n;
+        r->chk[q].shrink = n->shrink;
+        r->chk[q].inv_depth = ldexp(1.0, 2 * (4 - n->level));
         memcpy(r->chk[q].pose, r->chk_pose_now, TEMPLATE_LEN);
         r->chk[q].prim = (remaster_prim *)malloc((target->n ? target->n : 1) * sizeof *target->prim);
-        if (r->chk[q].prim) memcpy(r->chk[q].prim, target->prim, target->n * sizeof *target->prim); else r->nchk--;
+        if (r->chk[q].prim) memcpy(r->chk[q].prim, target->prim, target->n * sizeof *target->prim); else { r->nchk--; r->chk_alloc_failed++; }
         return 0;
     }
     return 1;
@@ -1360,11 +1530,17 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             remaster_scene_lod_shift(r->pending_shrink > 0 ? (unsigned)r->pending_shrink : 0);
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
             if (n < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
-            finish_model(r, &r->frame, m, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, r->pending_camera_offset);
+            if (r->frame.n > first) {
+                int32_t correction[3];
+                model_camera_correction(m, r->pending_camera_offset, correction);
+                finish_model(r, &r->frame, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, correction);
+            }
             if (n >= 0 && r->pending_terrain) capture_template(r, m);
             if (n >= 0 && r->nchk) check_native(r, m, first);
-            if (n >= 0 && rerun_extra_active()) {
-                /* An extra terrain walk's model (the copy's own, never the live machine's): its geometry is in the frame now, and the
+            static int skip_own_faces = -1;
+            if (skip_own_faces < 0) skip_own_faces = getenv("F117_NATIVE_SKIP_OWN_FACES") != NULL;
+            if (n >= 0 && (rerun_extra_active() || (skip_own_faces && r->replay_copy && r->pending_terrain))) {
+                /* The copy's terrain geometry is in the frame now, and the
                  * renderer draws it from that, so the game's own face drawing is skipped (model_faces ends in a plain near RET). */
                 static int skip = -1;
                 if (skip < 0) { const char *e = getenv("F117_EXTRA_SKIP_FACES"); skip = !(e && e[0] == '0'); }

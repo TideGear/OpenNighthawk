@@ -596,3 +596,36 @@ Next, in this order:
 Known, not mine: `func_lockstep` fails with 4 mismatching routines (RSOUND.LOG 03A2, RSOUND.117 0D07 and 0ACE, ASOUND.117 005E: "with N clocks of room the body declined", P2 sound routines) on a clean checkout of `7d9020f` too.
 Build note: a worktree needs `build.cmd "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` or the lockstep tests are not registered. The bash tool eats backslashes: write patch scripts with the file tool and run them with
 `python -I`; run Python from a directory without stray modules (`C:\Users\Tideg\AppData\Local\Temp` has a `bisect.py` that shadows the standard one).
+
+## Renderer handoff, 4 Nov 2026
+
+- The local Remastered path retains the guest terrain walk. The experimental
+  native terrain walk still differs along the horizon and stays off.
+  See the placement oracle and switch details in scenery-distance.md.
+- Maximum at 1920 × 1080 with eight workers and the three experimental
+  switches matched all 901 composed RGB checksums from the guest-backed
+  path and matched final simulation RAM. Use fixed cadence for sequence
+  parity. The same wall-clock replay can prepare a different sequence of
+  render copies even at a matching final clock.
+- Timing with frame hashing off, on the software replay, was 13.34 and
+  12.61 ms p95 in two fixed-cadence Maximum trials. In the first trial,
+  134 of 137 frames at or above 12 ms fell on the same one-in-four clock
+  phase. Inspect live game draw work and render-copy preparation on that
+  phase next. Earlier wall-clock Near and Far measured 10.61 and 10.56 ms
+  p95. Keep the performance switches opt-in pending further validation.
+- Replay session 20261103-154444, clocks 3.9–4.8 billion, picture detail 3.
+  Use copied save-start, --adlib-effects --roland off, --seek 65, and
+  --exit-after 4800000000. F117_REPLAY_FIXED_CADENCE=1 fixes the clock
+  sequence. F117_PRESENT_HASH_FROM=3900000000 emits image checksums.
+  Leave hashing off for timing. Use --present-log and the cost_ns column.
+- Video settings now groups the visual controls. Draw distance goes
+  Original, Near, Far, Maximum. New settings default to Original, and
+  existing saved choices still apply. Line width Auto accepts legacy 0.
+- The owner's Tab captures are in the F117Recomp screenshots folder,
+  session 20261104-134053. Clock 7160721726 shows heavy black speckling
+  across land and water. Open requests are an independent terrain-dot
+  draw distance defaulting to original reach, distant building-light
+  fade-in, and the remaining light slivers. The local stroke-depth
+  changes still need visual confirmation. Prior isolated white dots
+  traced to the guest distant-aircraft routine. Banking looked stable
+  to the owner. The Desktop ONTests executable predates this handoff.

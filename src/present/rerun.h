@@ -70,6 +70,7 @@ typedef struct {
     void (*end)(void *user);
     void *user;
     int  (*native)(void *user, machine_t *m, const rerun_native *n);   /* 1: drawn; 0: no template yet, the copy places it itself */
+    void (*placement_return)(void *user, machine_t *m, int returned);
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */

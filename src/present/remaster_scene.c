@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define CACHE_SIZE 1024
+#define CACHED_VERTICES 16
 
 unsigned remaster_scene_dropped[3];   /* primitives left out: a vertex the game did not make (dots), (edges), a chain that is not one */
 
@@ -18,6 +19,9 @@ typedef struct {
     uint16_t model, depth;
     scene_mesh *mesh;               /* NULL: a slot never used, or a model that would not decode (failed != 0) */
     int failed;
+    int offsets_valid;
+    int16_t offset_matrix[9];
+    uint32_t offsets[CACHED_VERTICES][3];
 } cache_entry;
 
 struct remaster_scene {
@@ -74,7 +78,7 @@ static uint64_t bank_signature_cached(remaster_scene *s, const uint8_t *page)
 
 /* The mesh for a model at a camera depth. The cache is keyed on the detail level the depth selects, not on the depth: every object at its own depth used to
  * decode its model again (a copy of the 64 KB bank and a hash of it each time). */
-static const scene_mesh *lookup(remaster_scene *s, const uint8_t *bank_page, uint64_t sig, uint16_t model, uint16_t depth)
+static cache_entry *lookup(remaster_scene *s, const uint8_t *bank_page, uint64_t sig, uint16_t model, uint16_t depth)
 {
     uint16_t lod;
     if (!scene_mesh_lod(bank_page, model, depth, &lod)) return NULL;
@@ -82,8 +86,8 @@ static const scene_mesh *lookup(remaster_scene *s, const uint8_t *bank_page, uin
     for (unsigned probe = 0; probe < 2; probe++) {
         const unsigned slot = s->index[h ^ probe];
         if (!slot) continue;
-        const cache_entry *e = &s->cache[slot - 1];
-        if ((e->mesh || e->failed) && e->bank == sig && e->model == model && e->depth == lod) return e->failed ? NULL : e->mesh;
+        cache_entry *e = &s->cache[slot - 1];
+        if ((e->mesh || e->failed) && e->bank == sig && e->model == model && e->depth == lod) return e->failed ? NULL : e;
     }
     cache_entry *e = &s->cache[s->next % CACHE_SIZE];
     const unsigned slot = s->next++ % CACHE_SIZE;
@@ -92,10 +96,11 @@ static const scene_mesh *lookup(remaster_scene *s, const uint8_t *bank_page, uin
     e->mesh = scene_mesh_decode(bank_page, SCENE_SEGMENT, model, depth, &err);
     e->bank = sig; e->model = model; e->depth = lod;
     e->failed = e->mesh == NULL;
+    e->offsets_valid = 0;
     unsigned put = h;
     if (s->index[h]) { const cache_entry *o = &s->cache[s->index[h] - 1]; if (o->mesh || o->failed) put = h ^ 1; }     /* the second probe when the first holds a live entry */
     s->index[put] = (uint16_t)(slot + 1);
-    return e->mesh;
+    return e->failed ? NULL : e;
 }
 
 typedef struct {
@@ -166,13 +171,10 @@ static unsigned order_by_angle(const scene_mesh *mesh, const scene_geometry *g, 
     return m;
 }
 
-static int emit(void *user, const scene_material *c)
+static void init_primitive(remaster_prim *p, const emit_ctx *x, const scene_material *c)
 {
-    emit_ctx *x = (emit_ctx *)user;
-    if (!grow(x->f)) { x->ok = 0; return 0; }
-    remaster_prim *p = &x->f->prim[x->f->n];
-    memset(p, 0, sizeof *p);
     p->kind = c->kind;
+    p->n = 0;
     p->colour_index = c->colour_index;
     p->colour_word = c->colour_word;
     p->shade = c->shade;
@@ -180,15 +182,20 @@ static int emit(void *user, const scene_material *c)
     p->face = c->face;
     p->model = x->model;
     p->owner = x->serial << 12 | (c->face & 0xFFFu);
+    p->flat = 0;
+    p->inv_depth_scale = 0.0;
+}
+
+static int emit(void *user, const scene_material *c)
+{
+    emit_ctx *x = (emit_ctx *)user;
     if (c->kind == SCENE_LINES) {                             /* the items are edges, each its own segment (not one chain) */
-        const remaster_prim head = *p;
         for (unsigned k = 0; k < c->count; k++) {
             const scene_edge *e = &x->mesh->edge[c->item[k]];
             if (!x->geometry->present[e->a] || !x->geometry->present[e->b]) { remaster_scene_dropped[1]++; continue; }
             if (!grow(x->f)) { x->ok = 0; return 0; }
             remaster_prim *q = &x->f->prim[x->f->n];
-            *q = head;
-            q->n = 0;
+            init_primitive(q, x, c);
             put_vertex(q, x->geometry, e->a);
             put_vertex(q, x->geometry, e->b);
             x->f->n++;
@@ -196,6 +203,9 @@ static int emit(void *user, const scene_material *c)
         }
         return 1;
     }
+    if (!grow(x->f)) { x->ok = 0; return 0; }
+    remaster_prim *p = &x->f->prim[x->f->n];
+    init_primitive(p, x, c);
     if (c->kind == SCENE_DOTS) {                              /* the items are vertices */
         for (unsigned k = 0; k < c->count && p->n < REMASTER_PRIM_VERTICES; k++) {
             if (!x->geometry->present[c->item[k]]) { remaster_scene_dropped[0]++; return 1; }  /* a vertex the game did not make: skip the dot set */
@@ -273,11 +283,24 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     uint32_t depth32 = scene_model_depth(position, camera);
     if (g_lod_shift) { depth32 <<= g_lod_shift > 16 ? 16 : g_lod_shift; if (depth32 > 32767) depth32 = 32767; g_lod_shift = 0; }
     const uint16_t depth = (uint16_t)depth32;
-    const scene_mesh *mesh = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
-    if (!mesh) return -1;
+    cache_entry *entry = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
+    if (!entry) return -1;
+    const scene_mesh *mesh = entry->mesh;
     s->serial = (s->serial + 1) & 0xFFFFF;
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
-    if (!scene_mesh_eval(mesh, &s->pose, &s->geometry)) return -1;
+    const uint32_t (*offsets)[3] = NULL;
+    if (s->pose.nparts == 1 && !(mesh->raw_vertices & 0x8000) && mesh->nvertices <= CACHED_VERTICES) {
+        const int16_t *matrix = s->pose.part[0].matrix;
+        if (!entry->offsets_valid || memcmp(entry->offset_matrix, matrix, sizeof entry->offset_matrix)) {
+            for (unsigned k = 0; k < mesh->nvertices; k++)
+                for (int axis = 0; axis < 3; axis++)
+                    entry->offsets[k][axis] = scene_vertex_offset(&mesh->vertex[k], matrix, axis);
+            memcpy(entry->offset_matrix, matrix, sizeof entry->offset_matrix);
+            entry->offsets_valid = 1;
+        }
+        offsets = entry->offsets;
+    }
+    if (!scene_mesh_eval_offsets(mesh, &s->pose, &s->geometry, offsets)) return -1;
     const size_t frame_start = f->n;
     emit_ctx ctx = { mesh, &s->geometry, f, model, dsp[0x48C4], 0, 1, s->serial };
     if (!scene_mesh_materials(mesh, &s->pose, &s->geometry, emit, &ctx)) {

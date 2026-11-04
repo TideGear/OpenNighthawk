@@ -214,8 +214,12 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
                 }
                 const int point_tie = old_z > 0.0f && object && object == (old & 0xFFFFFu) &&
                     old_point != t->line_point && ((t->paint_owner & 0x800u) || (point_z >= edge_z * 0.99f && edge_z >= point_z * 0.99f));
-                const int same_object_pair = object && object == (old & 0xFFFFFu) && old_point != t->line_point;
-                if (same_object_pair && (point_tie ? !t->line_point : iz < old_z * 0.9999f)) continue;
+                const int point_edge_pair = object && (old & 0xFFFFFu) && old_point != t->line_point;
+                if (point_edge_pair) {
+                    const float new_z = t->line_point ? point_z : edge_z;
+                    const float previous_z = t->line_point ? edge_z : point_z;
+                    if (point_tie ? !t->line_point : new_z < previous_z * 0.9999f) continue;
+                }
                 t->stroke_z[i] = iz;
                 if (t->stroke_aux_x && t->stroke_aux_y) {
                     t->stroke_aux_x[i] = (float)(t->line_point ? t->line_screen[0] : t->line_depth_dx);
@@ -383,6 +387,13 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
     const double bias = t->line_bias > 0.0 ? t->line_bias : 1.5;     /* near the horizon one pixel of height is a big step in depth: the ground just below a line is "nearer" than the line */
     const sv sa = { t->cx + t->sx * ax / az, t->cy + t->sy * ay / az, bias * inverse_depth(t, az) };
     const sv sb = { t->cx + t->sx * bx / bz, t->cy + t->sy * by / bz, bias * inverse_depth(t, bz) };
+    /* The square caps and cross-stroke width extend less than one full
+     * width beyond the endpoints on either axis. Reject an off-band
+     * stroke before setting up its two triangles. */
+    if ((sa.y + width_px < remaster_row_lo(t) && sb.y + width_px < remaster_row_lo(t)) ||
+        (sa.y - width_px > remaster_row_hi(t) && sb.y - width_px > remaster_row_hi(t)) ||
+        (sa.x + width_px < 0.0 && sb.x + width_px < 0.0) ||
+        (sa.x - width_px > t->w && sb.x - width_px > t->w)) return 0;
     t->point_self_hidden = t->line_point && t->line_decal && point_behind_own_surface(t, sa.x, sa.y, (float)sa.iz);
     if (t->point_self_hidden) return 0;
     t->line_screen[0] = sa.x; t->line_screen[1] = sa.y;

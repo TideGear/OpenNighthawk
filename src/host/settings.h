@@ -26,7 +26,7 @@ typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC, 
 
 #define SETTINGS_TEXTS 3             /* the folders the Folders screen edits: the game's, the MT-32 ROMs', the Mac recordings' */
 #define SETTINGS_TEXT_MAX 260
-enum { SETTINGS_MAIN, SETTINGS_AUDIO, SETTINGS_ADVANCED };
+enum { SETTINGS_MAIN, SETTINGS_AUDIO, SETTINGS_ADVANCED, SETTINGS_VIDEO };
 
 typedef struct {
     int open;

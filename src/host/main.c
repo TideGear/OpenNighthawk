@@ -320,6 +320,12 @@ static int copy_native(void *user, machine_t *m, const rerun_native *n)
     return g_rlive_copy ? remaster_live_native(g_rlive_copy, m, n) : 0;
 }
 
+static void copy_placement_return(void *user, machine_t *m, int returned)
+{
+    (void)user;
+    if (g_rlive_copy) remaster_live_placement_return(g_rlive_copy, m, returned);
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -680,7 +686,7 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
 #include "host_keys.h"
 
 /* A draw-distance choice as world units: original turns the extra walks off, maximum is every ring to the limit of the guest's 16-bit cell offsets. -1: not a choice. */
-static const char *g_draw_choice = "near";           /* the draw distance in force, for the menu */
+static const char *g_draw_choice = "original";           /* the draw distance in force, for the menu */
 static int draw_distance_units(const char *v)
 {
     if (!strcmp(v, "maximum")) return 1 << 22;
@@ -1022,7 +1028,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return };
                 if (g_rlive_copy) rerun_set_collector(&coll);
             }
         }
@@ -1403,10 +1409,11 @@ int main(int argc, char **argv)
             if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--present-line-width") && v && !strcmp(v, "auto")) { g_line_width = 0; i++; }
         else if (!strcmp(a, "--present-line-width") && v) {
             char *end;
             const long width = strtol(v, &end, 10);
-            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes 0 to 20 (0 scales with resolution)\n"); return 2; }
+            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes auto or 0 to 20 (0 is an alias for auto)\n"); return 2; }
             g_line_width = (int)width;
             i++;
         }
@@ -1427,7 +1434,7 @@ int main(int argc, char **argv)
                 "             [--audio-queue-log FILE]\n"
                 "             [--presentation original|enhanced] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker] [--watch latest|SESSION] [--seek SECONDS]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
-                "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
+                "             [--present-line-width auto|0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all|none]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
@@ -1825,7 +1832,11 @@ int main(int argc, char **argv)
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
-    g_loop_timing = getenv("F117_LOOP_TIMING") != NULL;
+    const int slow_frame_trace = getenv("F117_SLOW_FRAME_TRACE") != NULL;
+    const char *frame_hash_from = getenv("F117_PRESENT_HASH_FROM");
+    const uint64_t frame_hash_clock = frame_hash_from ? strtoull(frame_hash_from, NULL, 0) : 0;
+    const uint64_t replay_frame_clocks = player && getenv("F117_REPLAY_FIXED_CADENCE") ? ips / 60 : 0;
+    g_loop_timing = slow_frame_trace || getenv("F117_LOOP_TIMING") != NULL;
     g_pw_compose = getenv("F117_NO_WORKER_COMPOSE") == NULL;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
     int jump_typing = 0;                            /* a replay: G pressed, the second to jump to being typed */
@@ -2170,7 +2181,7 @@ int main(int argc, char **argv)
                         settings_mark_saved(&g_set,"colourblind",g_colourblind==1 ? "protanopia" : g_colourblind==2 ? "deuteranopia" : g_colourblind==3 ? "tritanopia" : "off");
                         settings_mark_saved(&g_set,"present-age",g_age ? "extrapolate" : "interp");
                         settings_mark_saved(&g_set,"timing",getenv("F117R_TIMING") && !strcmp(getenv("F117R_TIMING"),"386") ? "386" : "dosbox");
-                        snprintf(b,sizeof b,"%d",g_line_width);settings_mark_saved(&g_set,"present-line-width",b);
+                        snprintf(b,sizeof b,"%d",g_line_width);settings_mark_saved(&g_set,"present-line-width",g_line_width ? b : "auto");
                         snprintf(b,sizeof b,"%d",scale);settings_mark_saved(&g_set,"scale",b);
                         settings_mark_saved(&g_set, "crt", g_crt ? "yes" : "no");
                         settings_mark_saved(&g_set, "crt-mask", g_crt_mask ? "yes" : "no");
@@ -2427,6 +2438,12 @@ int main(int argc, char **argv)
                     fprintf(stderr, "replay seek done at clock %llu, wall %llu ms\n", (unsigned long long)H.m.cpu.icount, (unsigned long long)SDL_GetTicks());
                 } else target = H.m.cpu.icount + ips / 5 < seek_target ? H.m.cpu.icount + ips / 5 : seek_target;
             }
+            /* Diagnostics can use the same replay clock sequence on both
+             * runs, regardless of how long the previous picture took. */
+            if (replay_frame_clocks && !seek_target) {
+                target = H.m.cpu.icount + replay_frame_clocks;
+                if (exit_after && target > exit_after) target = exit_after;
+            }
             const uint64_t lt_run0 = SDL_GetTicksNS();
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
@@ -2544,6 +2561,7 @@ int main(int argc, char **argv)
 
         /* Show the last frame the VGA scanned out, or with --present interp the
          * in-between frame at the machine's clock now. */
+        uint64_t frame_wait_ns = 0, frame_copy_ns = 0;
         const uint64_t lt_build0 = g_loop_timing ? SDL_GetTicksNS() : 0;
         if (!H.have_frame) present_capture(&H.m, &H.frame);
         int got = 0;
@@ -2566,7 +2584,7 @@ int main(int argc, char **argv)
                 if (g_pw.busy) {
                     pw_release();                            /* (a job planned and never released would be waited for for ever) */
                     SDL_WaitSemaphore(g_pw.done);
-                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[1] += bt1 - bt0; bt0 = bt1; }
+                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_wait_ns = bt1 - bt0; g_bt[1] += frame_wait_ns; bt0 = bt1; }
                     g_pw.busy = 0;
                     older = g_pw.plan.older; newer = g_pw.plan.newer; t_shown = g_pw.plan.t_shown;
                     got = g_pw.got;
@@ -2631,7 +2649,7 @@ int main(int argc, char **argv)
                         g_pw.ww = ww;
                     } else g_pw.ww = 0;
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
-                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[4] += bt1 - bt0; bt0 = bt1; }
+                    if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;
                     g_pw.frame = fresh;
                     g_pw.busy = 1;
@@ -2681,6 +2699,14 @@ int main(int argc, char **argv)
             SDL_UpdateTexture(tex, &src, crt_view(pixels, w, h), w * 4);
         }
         if (g_loop_timing) g_lt_upload += SDL_GetTicksNS() - lt_upload0;
+        if (frame_hash_from && got && H.m.cpu.icount >= frame_hash_clock) {
+            const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            uint64_t hash = 14695981039346656037ull;
+            for (size_t i = 0; i < (size_t)w * h; ++i)
+                hash = (hash ^ (px[i] & 0xFFFFFFu)) * 1099511628211ull;
+            fprintf(stderr, "[present-hash] %llu %dx%d %016llx\n",
+                    (unsigned long long)H.m.cpu.icount, w, h, (unsigned long long)hash);
+        }
         /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
          * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
         {
@@ -2835,6 +2861,10 @@ int main(int argc, char **argv)
         g_cost_ns = lt_pr0 - g_iter_ns;                         /* everything this iteration did before presenting: the machine, the picture, the upload */
         SDL_RenderPresent(ren);
         g_lt_present += SDL_GetTicksNS() - lt_pr0;
+        if (slow_frame_trace && got && g_cost_ns >= 12000000ull)
+            fprintf(stderr, "[slow-frame] clock %llu total %.3f ms, worker wait %.3f, render copy %.3f\n",
+                    (unsigned long long)H.m.cpu.icount, (double)g_cost_ns / 1e6,
+                    (double)frame_wait_ns / 1e6, (double)frame_copy_ns / 1e6);
         if (g_loop_timing) {                                  /* F117_LOOP_TIMING: where the loop's wall time goes, every 2 s */
             const uint64_t now = SDL_GetTicksNS();
             if (!g_lt_last) { g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; }

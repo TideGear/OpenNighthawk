@@ -40,6 +40,7 @@ void remaster_live_set_palette(const uint8_t *dac);
  * for this frame's camera (the caller lets the copy place it, which makes one). F117_NATIVE_CHECK=1 compares each with the game's own. */
 struct rerun_native_s;
 int remaster_live_native(remaster_live *r, machine_t *m, const void *spec);
+void remaster_live_placement_return(remaster_live *r, machine_t *m, int returned);
 
 /* Compose the Enhanced presentation's fine picture (n times finer: 320n x 200n palette indices in src, the origin tag of
  * each pixel in tag when F117_PRESENT_DIAG is on, dac the six-bit palette) with the last completed frame's Remastered

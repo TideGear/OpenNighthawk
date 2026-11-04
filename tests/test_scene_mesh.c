@@ -124,6 +124,11 @@ int main(int argc, char **argv)
     CHECK(emitted[0].colour_word==0xA002&&emitted[0].shade==1&&emitted[2].item[0]==1);
     pose.setting[1]=0;CHECK(scene_mesh_eval(m,&pose,&geometry));CHECK(geometry.visibility[0]==127&&!geometry.projected[0]);
     nemitted=0;CHECK(scene_mesh_materials(m,&pose,&geometry,collect,NULL)&&!nemitted);
+    /* An odd table address can split a little-endian word across DS:FFFF. */
+    put(ds,0x7D4E,0xFFFF,2);put(ds,0x7D80,0xFFFF,2);
+    put(ds,0xFFFF,0x8001,2);put(ds,1,0xABCD,2);
+    CHECK(scene_pose_read(&pose,m,ds,sizeof ds));
+    CHECK(pose.setting[0]==-32767&&pose.palette[0]==0x8001&&pose.palette[1]==0xABCD);
     /* Mesh and pose must survive mutation/reuse of captured input storage. */
     memset(bank,0,sizeof bank);memset(ds,0,sizeof ds);CHECK(scene_mesh_eval(m,&pose,&geometry)&&geometry.camera[0][0]==32867);
     pose.nparts=1;CHECK(!scene_mesh_eval(m,&pose,&geometry));scene_mesh_free(m);

@@ -64,19 +64,22 @@ typedef struct {
     scene_part_pose part[SCENE_PARTS];
     int16_t setting[128];
     uint16_t palette[256];
-    int32_t shared_camera[SCENE_VERTICES][3];
+    int32_t shared_camera[SCENE_VERTICES][3];  /* valid where shared_present is set */
     uint8_t shared_present[SCENE_VERTICES];
 } scene_pose;
 typedef struct {
-    int32_t camera[SCENE_VERTICES][3];
+    int32_t camera[SCENE_VERTICES][3];        /* valid where present is set */
     uint8_t present[SCENE_VERTICES], projected[SCENE_VERTICES];
-    uint8_t visibility[SCENE_PLANES], shade[SCENE_PLANES];
+    uint8_t visibility[SCENE_PLANES], shade[SCENE_PLANES];  /* valid for mesh planes */
 } scene_geometry;
 
 /* Load a compact pose from an original DS snapshot AFTER part preparation.
  * The input is private captured memory, never a pointer to live devices. */
 int scene_pose_read(scene_pose *pose, const scene_mesh *mesh, const uint8_t *prepared, size_t size);
 int scene_mesh_eval(const scene_mesh *mesh, const scene_pose *pose, scene_geometry *geometry);
+/* Local vertex offsets for an unshared, single-part mesh, before translation. */
+uint32_t scene_vertex_offset(const scene_vertex *vertex, const int16_t matrix[9], int axis);
+int scene_mesh_eval_offsets(const scene_mesh *mesh, const scene_pose *pose, scene_geometry *geometry, const uint32_t (*offsets)[3]);
 /* Original painter order, including the nonzero-versus-visible distinction
  * in conditional plane states. No output is committed on failure. */
 int scene_mesh_order(const scene_mesh *mesh, const scene_geometry *geometry, uint16_t *faces, unsigned capacity, unsigned *count);

@@ -720,10 +720,11 @@ int main(int argc, char **argv)
             if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--present-line-width") && v && !strcmp(v, "auto")) { g_line_width = 0; i++; }
         else if (!strcmp(a, "--present-line-width") && v) {
             char *end;
             const long width = strtol(v, &end, 10);
-            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes 0 to 20 (0 scales with resolution)\n"); return 2; }
+            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes auto or 0 to 20 (0 is an alias for auto)\n"); return 2; }
             g_line_width = (int)width;
             i++;
         }

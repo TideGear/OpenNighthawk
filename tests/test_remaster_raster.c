@@ -383,6 +383,20 @@ int main(void)
             if (reverse) remaster_line(&t, light, light, 4.0, cream);
             CHECK(t.color[24 * 64 + 32] == cream);
         }
+        /* A crossing stroke from another object still compares at the
+         * light centre, regardless of which object was painted first. */
+        for (int reverse = 0; reverse < 2; ++reverse) {
+            remaster_clear(&t, BG);
+            memset(t.stroke_z, 0, 64 * 48 * sizeof *t.stroke_z);
+            t.paint_owner = 0x1001;
+            if (!reverse) remaster_line(&t, light, light, 4.0, cream);
+            t.paint_owner = 0x2001;
+            remaster_line(&t, (remaster_v3){a.x, 0, 0x03000000},
+                          (remaster_v3){b.x, 0, 0x03000000}, 2.0, RED);
+            t.paint_owner = 0x1001;
+            if (reverse) remaster_line(&t, light, light, 4.0, cream);
+            CHECK(t.color[24 * 64 + 32] == cream);
+        }
         /* A same-object stroke sufficiently in front also wins. */
         memset(t.stroke_z, 0, 64 * 48 * sizeof *t.stroke_z);
         remaster_line(&t, light, light, 4.0, cream);

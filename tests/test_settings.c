@@ -67,7 +67,8 @@ int main(void)
 
     /* navigating and changing; choices wrap */
     settings_open(&s);
-    CHECK(s.open && s.cursor == 0);
+    CHECK(s.open && s.cursor == n + 14);
+    CHECK(settings_key_event(&s, SKEY_ENTER) && s.page == SETTINGS_VIDEO && s.cursor == pres);
     CHECK(settings_key_event(&s, SKEY_RIGHT));                /* presentation: enhanced -> remastered -> original */
     CHECK(!strcmp(settings_value(&s, pres), "remastered"));
     CHECK(settings_key_event(&s, SKEY_RIGHT));
@@ -77,11 +78,12 @@ int main(void)
     CHECK(settings_key_event(&s, SKEY_LEFT));
     CHECK(!strcmp(settings_value(&s, pres), "enhanced"));
     CHECK(!settings_needs_restart(&s));
+    CHECK(settings_key_event(&s, SKEY_ESC) && s.page == SETTINGS_MAIN);
     CHECK(settings_key_event(&s, SKEY_UP) && s.cursor == n + 9);   /* wraps to the last row */
     const int main_rows = settings_menu_rows(&s, NULL, 0);
     CHECK(s.top == main_rows - 10);
     for (int k = 0; k < main_rows - 1; k++) settings_key_event(&s, SKEY_UP);
-    CHECK(s.cursor == 0 && s.top == 0);                       /* and back to the top */
+    CHECK(s.cursor == n + 14 && s.top == 0);                       /* and back to the top */
     settings_key_event(&s, SKEY_UP);
     CHECK(s.cursor == n + 9);
     /* Key remapping lives on the Keys tab: the Settings list no longer offers Remap a key, Clear key remaps or the controller-button rows */
@@ -197,6 +199,7 @@ int main(void)
         int blue = 0;
         for (int i = 0; i < 640 * 400; ++i) blue += before[i] == 0xFF60B0FFu;
         CHECK(blue == 0);
+        CHECK(settings_key_event(&s, SKEY_ENTER) && s.page == SETTINGS_VIDEO);
         settings_mark_saved(&s, "presentation", "remastered");
         settings_render(&s, after, 640, 400);
         for (int i = 0; i < 640 * 400; ++i) blue += after[i] == 0xFF60B0FFu;

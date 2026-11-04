@@ -19,14 +19,14 @@ static const char *const C_SOURCE[] = { "default", "mac", "dos", NULL };      /*
 static const char *const C_ROLAND[] = { "munt", "windows", "off", NULL };
 static const char *const C_HZ[] = { "8", "15", NULL };
 static const char *const C_OPL[] = { "dbopl", "nuked", NULL };
-static const char *const C_WIDTH[] = { "0", "1", "2", "3", "4", NULL };
+static const char *const C_WIDTH[] = { "auto", "1", "2", "3", "4", NULL };
 static const char *const C_AGE[] = { "interp", "extrapolate", NULL };
 static const char *const C_DEAD[] = { "0", "5", "10", "15", "20", "25", "30", NULL };
 static const char *const C_BUTTON[] = { "0", "1", "2", "3", "4", "5", "6", "7", NULL };   /* SDL gamepad order: 0 south, 1 east, 2 west, 3 north */
 static const char *const C_ENGINE[] = { "recomp", "interp", NULL };
 static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9", NULL };
 static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
-static const char *const C_DRAW[] = { "maximum", "far", "near", "original", NULL };
+static const char *const C_DRAW[] = { "original", "near", "far", "maximum", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* The folders the Folders screen edits, typed or pasted. */
@@ -58,7 +58,7 @@ static const setting_def DEFS[] = {
     { "sim-hz",       "Game steps a sec", C_HZ,           1, 0 },
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
-    { "draw-distance", "Draw distance",   C_DRAW,         2, 1 },     /* Remastered: how far scenery is drawn; applied at once */
+    { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
     { "present-age",  "Picture delay",    C_AGE,          0, 0 },
@@ -99,8 +99,8 @@ const char *settings_description(const char *key)
         { "opl", "Chooses the AdLib synthesizer. DBOPL is faster; Nuked favors chip emulation accuracy." },
         { "no-aspect", "Stretches the original pixels without correcting their intended 4:3 display shape." },
         { "draw-distance", "Remastered only: how far scenery is drawn. The game stops drawing each object at a fixed depth, so buildings appear suddenly; each step here draws far objects one scale coarser, four times farther: Near one step (the default, almost free), Far two, Maximum the whole map. Original keeps the game's own reach. Farther costs picture rate." },
-        { "present-scale", "Controls drawing detail. Auto fits the display; larger values draw more pixels and cost more CPU time." },
-        { "present-line-width", "Changes fine-line thickness. Zero selects the automatic width." },
+        { "present-scale", "Sets render resolution. 3 draws three pixels per original pixel on each axis. Auto fits the display. Higher values cost more CPU time." },
+        { "present-line-width", "Changes fine-line thickness. Auto scales the width with resolution." },
         { "present-age", "Interpolate gives smooth motion with some delay. Extrapolate predicts ahead and can overshoot sudden changes." },
         { "pad-deadzone", "Ignores small stick movements near the center to prevent unwanted drift." },
         { "pad-fire1", "Chooses the controller button used for the game's first trigger, normally the cannon." },
@@ -146,6 +146,8 @@ static int fix_height(const settings_state *s, int index)
 int settings_group(const char *key)
 {
     static const char *const audio[] = { "sound", "music-source", "sound-source", "roland", "adlib-effects", "speaker", "opl", NULL };
+    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "present-scale", "present-line-width", "present-age", NULL };
+    for (int i = 0; video[i]; ++i) if (!strcmp(key, video[i])) return SETTINGS_VIDEO;
     static const char *const advanced[] = { "timing", "ips", "sim-hz", "engine", NULL };
     for (int i = 0; audio[i]; ++i) if (!strcmp(key, audio[i])) return SETTINGS_AUDIO;
     for (int i = 0; advanced[i]; ++i) if (!strcmp(key, advanced[i])) return SETTINGS_ADVANCED;
@@ -156,6 +158,7 @@ int settings_menu_rows(const settings_state *s, int *rows, int capacity)
 {
     int count = 0;
 #define ROW(value_) do { if (rows && count < capacity) rows[count] = (value_); ++count; } while (0)
+    if (s->page == SETTINGS_MAIN) ROW(NDEFS + 14);
     for (int i = 0; i < NDEFS; ++i)
         if (settings_group(DEFS[i].key) == s->page) ROW(i);
     if (s->page == SETTINGS_MAIN) {
@@ -255,7 +258,7 @@ const setting_def *settings_defs(int *count)
 static int index_of(const setting_def *d, const char *text)
 {
     for (int i = 0; d->choices[i]; i++)
-        if (!strcmp(d->choices[i], text)) return i;
+        if (!strcmp(d->choices[i], text) || (i == 0 && d->choices == C_WIDTH && !strcmp(text, "0"))) return i;
     return -1;
 }
 
@@ -293,7 +296,7 @@ void settings_load(settings_state *s, const char *ini_text)
 void settings_open(settings_state *s)
 {
     s->open = 1;
-    s->cursor = 0;
+    s->cursor = NDEFS + 14;
     s->top = 0;
     s->page = SETTINGS_MAIN;
     s->want_restart = 0;
@@ -490,9 +493,9 @@ int settings_key_event(settings_state *s, settings_key k)
             s->padkey_stage = 1;
         } else if (s->cursor == NDEFS + 8) {       /* Clear controller keys: the host empties the list at once */
             s->clear_padkeys = 1;
-        } else if (s->cursor == NDEFS + 10 || s->cursor == NDEFS + 11) {
+        } else if (s->cursor == NDEFS + 10 || s->cursor == NDEFS + 11 || s->cursor == NDEFS + 14) {
             s->parent_cursor = s->cursor; s->parent_top = s->top;
-            s->page = s->cursor == NDEFS + 10 ? SETTINGS_ADVANCED : SETTINGS_AUDIO;
+            s->page = s->cursor == NDEFS + 10 ? SETTINGS_ADVANCED : s->cursor == NDEFS + 11 ? SETTINGS_AUDIO : SETTINGS_VIDEO;
             settings_menu_rows(s, rows, 48); s->cursor = rows[0]; s->top = 0;
             return 1;
         } else if (s->cursor == NDEFS + 12) settings_reset_defaults(s);
@@ -592,6 +595,7 @@ static const char *action_help(int action)
         "Groups the DOS driver, music and effects sources, Roland output and sound emulation options.",
         "Restores defaults and key mappings; Sound becomes Ask. Game and sound folders stay. Save applies; Close cancels.",
         "Returns to the main settings list, keeping your pending selections.",
+        "Presentation, draw distance, picture detail and display options.",
     };
     return action >= 0 && action < (int)(sizeof help / sizeof help[0]) ? help[action] : "";
 }
@@ -673,7 +677,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
         put_text(px, w, h, x0 + 16, y0 + ph - 22, "Enter: toggle   Esc: back (restart needed)", 0xFF909090u);
         return;
     }
-    put_text(px, w, h, x0 + 16, y0 + 10, s->page == SETTINGS_AUDIO ? "AUDIO SETTINGS" : s->page == SETTINGS_ADVANCED ? "ADVANCED SETTINGS" : "SETTINGS", 0xFFFFFFFFu);
+    put_text(px, w, h, x0 + 16, y0 + 10, s->page == SETTINGS_VIDEO ? "VIDEO SETTINGS" : s->page == SETTINGS_AUDIO ? "AUDIO SETTINGS" : s->page == SETTINGS_ADVANCED ? "ADVANCED SETTINGS" : "SETTINGS", 0xFFFFFFFFu);
     for (int row = s->top; row < s->top + shown && row < total; row++) {
         const int i = rows[row];
         const int y = y0 + 34 + (row - s->top) * 20, on = i == s->cursor;
@@ -688,7 +692,7 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
         } else put_text(px, w, h, x0 + 30, y, i == NDEFS ? "Save" : i == NDEFS + 1 ? "Watch last flight" : i == NDEFS + 2 ? "Remap a key..." :
                   i == NDEFS + 3 ? "Clear key remaps" : i == NDEFS + 4 ? "Choose fixes..." : i == NDEFS + 5 ? "Watch a flight..." : i == NDEFS + 6 ? "Folders..." : i == NDEFS + 7 ? "Controller button as key..." :
                   i == NDEFS + 8 ? "Clear controller keys" : i == NDEFS + 10 ? "Advanced settings..." : i == NDEFS + 11 ? "Audio settings..." :
-                  i == NDEFS + 12 ? "Reset all settings to default" : i == NDEFS + 13 ? "Back" : "Close without saving", color);
+                  i == NDEFS + 14 ? "Video settings..." : i == NDEFS + 12 ? "Reset all settings to default" : i == NDEFS + 13 ? "Back" : "Close without saving", color);
     }
     if (s->top > 0) put_text(px, w, h, x0 + pw - 40, y0 + 10, "^", 0xFF909090u);
     if (s->top + shown < total) put_text(px, w, h, x0 + pw - 24, y0 + 10, "v", 0xFF909090u);

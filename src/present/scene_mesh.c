@@ -170,10 +170,23 @@ fail:
     return NULL;
 }
 
+#if defined(_WIN32) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+/* Settings and material words have the same representation as the guest
+ * on little-endian hosts. Split a table that straddles the segment end. */
+static void copy_pose_words(void *dest, const uint8_t *ds, unsigned at, size_t bytes)
+{
+    size_t first = SCENE_SEGMENT - at;
+    if (first > bytes) first = bytes;
+    memcpy(dest, ds + at, first);
+    if (first < bytes) memcpy((uint8_t *)dest + first, ds, bytes - first);
+}
+#endif
+
 int scene_pose_read(scene_pose *p, const scene_mesh *m, const uint8_t *ds, size_t size)
 {
     if (!p || !m || !ds || size != SCENE_SEGMENT) return 0;
-    memset(p, 0, sizeof *p); p->nparts = m->nparts ? m->nparts : 1;
+    memset(p->shared_present, 0, sizeof p->shared_present);
+    p->nparts = m->nparts ? m->nparts : 1;
     p->ortho = ds[0x7D8E]; p->base_shade = ds[0x7D8A];
     const unsigned base = peek(ds, 0x7D50), settings = peek(ds, 0x7D4E), palette = peek(ds, 0x7D80);
     for (unsigned k = 0; k < p->nparts; k++) {
@@ -185,8 +198,13 @@ int scene_pose_read(scene_pose *p, const scene_mesh *m, const uint8_t *ds, size_
             part->light[j] = s16(peek(ds, 0x7C9C + 6 * k + 2 * j));
         }
     }
+#if defined(_WIN32) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    copy_pose_words(p->setting, ds, settings, sizeof p->setting);
+    copy_pose_words(p->palette, ds, palette, sizeof p->palette);
+#else
     for (unsigned k = 0; k < 128; k++) p->setting[k] = s16(peek(ds, settings + 2 * k));
     for (unsigned k = 0; k < 256; k++) p->palette[k] = peek(ds, palette + 2 * k);
+#endif
     for (unsigned k = 0; k < m->nvertices; k++) if (m->vertex[k].shared) {
         const unsigned id = m->vertex[k].shared_index; p->shared_present[id] = 1;
         for (int j = 0; j < 3; j++) p->shared_camera[id][j] = dword(ds, 0x4EE6 + 16 * id + 4 * j);
@@ -194,10 +212,24 @@ int scene_pose_read(scene_pose *p, const scene_mesh *m, const uint8_t *ds, size_
     return 1;
 }
 
+uint32_t scene_vertex_offset(const scene_vertex *v, const int16_t matrix[9], int axis)
+{
+    uint32_t value = 0;
+    for (int row = 0; row < 3; row++)
+        value += (uint32_t)((int32_t)v->xyz[row] * matrix[3 * row + axis]);
+    return value;
+}
+
 int scene_mesh_eval(const scene_mesh *m, const scene_pose *p, scene_geometry *g)
 {
+    return scene_mesh_eval_offsets(m, p, g, NULL);
+}
+
+int scene_mesh_eval_offsets(const scene_mesh *m, const scene_pose *p, scene_geometry *g, const uint32_t (*offsets)[3])
+{
     if (!m || !p || !g || !p->nparts || p->nparts > SCENE_PARTS) return 0;
-    memset(g, 0, sizeof *g);
+    memset(g->present, 0, sizeof g->present);
+    memset(g->projected, 0, sizeof g->projected);
     for (unsigned k = 0; k < m->nvertices; k++) {
         const scene_vertex *v = &m->vertex[k];
         if (v->part >= p->nparts || (v->shared && !p->shared_present[v->shared_index])) return 0;
@@ -206,7 +238,7 @@ int scene_mesh_eval(const scene_mesh *m, const scene_pose *p, scene_geometry *g)
         for (int j = 0; j < 3; j++) {
             uint32_t value = (uint32_t)part->translation[j];
             if (v->shared) value += (uint32_t)p->shared_camera[id][j];
-            else for (int row = 0; row < 3; row++) value += (uint32_t)((int32_t)v->xyz[row] * part->matrix[3 * row + j]);
+            else value += offsets ? offsets[k][j] : scene_vertex_offset(v, part->matrix, j);
             g->camera[id][j] = s32(value);
         }
         if (!m->nplanes || v->shared) g->projected[id] = 1;
