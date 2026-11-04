@@ -436,3 +436,17 @@ Change: a dark point (dot, or a zero-length line, every colour channel under 80)
 lit points keep the setting's reach. At the capture clock the picture equals the all-coarser-dropped one (1,158 pixels removed, all the specks).
 `F117_FAR_DARK_DOTS=1` restores the old behaviour. `F117_FAR_DOTS_OFF=MASK` (1 polygons, 2 lines, 4 dots) is a diagnostic.
 Not done: a settings-menu row for it (the owner's request was an independent terrain-dot distance); the threshold (80) is a first choice, not reviewed by the owner.
+
+## Terrain dots setting and native options default-on (4 November 2026)
+
+**Terrain dots** (`dot-distance` in f117a.ini, `--dot-distance original|near|far|maximum`, Video settings, applied at once; default original): how many coarser
+levels beyond its own ring an object's dark dots are drawn (0, 1, 2, 3). Draw distance still decides lights and buildings. At the owner's capture clock (session
+20261104-134053, 7,160,7xx,xxx, Maximum) the default draws no specks, `maximum` brings them back (1,356 pixels differ between them; the shots are a fraction
+of a frame apart, so a few dozen more differ from motion). The dark threshold (every channel under 80) is a first choice the owner has not reviewed.
+
+**Native options default-on again** (`F117_NATIVE_SKIP_OWN_FACES`, `F117_NATIVE_REFRESH_PART`, `F117_NATIVE_RANGE_CULL`; set to `0` to turn one off). Basis, per the handoff's
+"pending further validation": fixed-cadence composed-image checksums, switches off against on, eight workers, all identical at Near, Far and Maximum on three recorded
+flights: runway session 20261103-154444 (clocks 3.9 to 4.8 billion, 901 pictures per cell), the banked flight 20261103-235538 (11.0 to 12.4 billion, 1,401) and the
+latest flight 20261104-134053 (7.0 to 7.4 billion, 401). Earlier: the Maximum runway final RAM matched byte for byte; the range predicate agreed with the game 2.6
+million times. **Not covered:** other theatres, night, air-to-air, ground targets; no comparison against the game's own picture (the off path is the guest-backed one in the same build);
+no full machine gate. Revert by setting the three variables to 0 or the two-line change in `remaster_live.c`.

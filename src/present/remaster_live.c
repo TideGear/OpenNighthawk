@@ -18,6 +18,17 @@
 #include <windows.h>
 #endif
 
+/* How many coarser levels beyond its own ring an object's dark dots are still drawn: 0 the original's reach, 3 the whole map (the Terrain dots setting). -1: not set yet. */
+static volatile int g_dot_levels = -1;
+void remaster_live_set_dot_levels(int levels) { g_dot_levels = levels < 0 ? 0 : levels > 3 ? 3 : levels; }
+
+/* A native-path option that is on unless the variable is set to 0 (validated off against on at Near, Far and Maximum on three recorded flights: docs/scenery-distance.md). */
+static int env_default_on(const char *name)
+{
+    const char *e = getenv(name);
+    return !(e && e[0] == '0');
+}
+
 /* Milliseconds from an arbitrary start, for F117_REMASTER_TIMING. */
 static double now_ms(void)
 {
@@ -1282,7 +1293,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18);
     const int light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
     static int refresh_matrix = -1;
-    if (refresh_matrix < 0) refresh_matrix = getenv("F117_NATIVE_REFRESH_PART") != NULL;
+    if (refresh_matrix < 0) refresh_matrix = env_default_on("F117_NATIVE_REFRESH_PART");
     const int refresh = refresh_matrix && !matrix_same && r->tmpl[t].parts == 1;
     if ((!matrix_same && !refresh) || !light_same) {
         if (timing) stale++;
@@ -1293,7 +1304,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     }
     static int check = -1, range_cull = -1;
     if (check < 0) check = getenv("F117_NATIVE_CHECK") != NULL;
-    if (range_cull < 0) range_cull = getenv("F117_NATIVE_RANGE_CULL") != NULL;
+    if (range_cull < 0) range_cull = env_default_on("F117_NATIVE_RANGE_CULL");
     uint32_t translation[3] = { 0, 0, 0 };
     for (int k = 0; k < 3; k++)
         for (int row = 0; row < 3; row++)
@@ -1373,11 +1384,10 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
             target->n = w;
         }
         /* Terrain dots: a dark point (a light drawn as a line from a point to itself, or a dot) of an object placed at a coarser level than its own ring
-         * is a speck on the ground, thousands of them at Maximum. Their reach stays the original's; lit points (lights) keep the setting's reach.
-         * F117_FAR_DARK_DOTS=1 draws them at the full reach again. */
-        static int dark_dots = -1;
-        if (dark_dots < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); dark_dots = e && e[0] == '1'; }
-        if (!dark_dots && n->shrink > 0 && added >= 0) {
+         * is a speck on the ground, thousands of them at Maximum. Their reach is the Terrain dots setting's (default: the original's); lit points (lights)
+         * keep the Draw distance setting's reach. F117_FAR_DARK_DOTS=1 draws them at the full reach. */
+        if (g_dot_levels < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); g_dot_levels = e && e[0] == '1' ? 3 : 0; }
+        if (n->shrink / 2 > g_dot_levels && added >= 0) {
             size_t w = first;
             for (size_t i = first; i < target->n; i++) {
                 const remaster_prim *q = &target->prim[i];
@@ -1565,7 +1575,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             if (n >= 0 && r->pending_terrain) capture_template(r, m);
             if (n >= 0 && r->nchk) check_native(r, m, first);
             static int skip_own_faces = -1;
-            if (skip_own_faces < 0) skip_own_faces = getenv("F117_NATIVE_SKIP_OWN_FACES") != NULL;
+            if (skip_own_faces < 0) skip_own_faces = env_default_on("F117_NATIVE_SKIP_OWN_FACES");
             if (n >= 0 && (rerun_extra_active() || (skip_own_faces && r->replay_copy && r->pending_terrain))) {
                 /* The copy's terrain geometry is in the frame now, and the
                  * renderer draws it from that, so the game's own face drawing is skipped (model_faces ends in a plain near RET). */
