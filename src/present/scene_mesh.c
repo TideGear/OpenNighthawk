@@ -61,6 +61,18 @@ static int validate_commands(const scene_mesh *m, uint16_t at)
     return 0;
 }
 
+int scene_mesh_lod(const uint8_t *bank, uint16_t model, uint16_t depth, uint16_t *lod)
+{
+    if (!bank || model >= peek(bank, 0)) return 0;
+    unsigned at = peek(bank, 2u + 2u * model);
+    for (unsigned guard = 0; guard < 64; guard++, at += 4) {
+        if (at + 4 > SCENE_SEGMENT) return 0;
+        const uint16_t range = peek(bank, at), offset = peek(bank, at + 2);
+        if (depth <= range) { *lod = offset; return 1; }
+    }
+    return 0;
+}
+
 scene_mesh *scene_mesh_decode(const uint8_t *bank, size_t size, uint16_t model, uint16_t depth, scene_error *error)
 {
     scene_error e = SCENE_INPUT;

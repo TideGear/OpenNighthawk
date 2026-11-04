@@ -52,6 +52,10 @@ void remaster_scene_free(remaster_scene *s);
 
 /* The vertices of the last model remaster_scene_add evaluated (camera space, the game's units, with which ids exist). */
 const scene_geometry *remaster_scene_geometry(const remaster_scene *s);
+/* The camera-space origin of the last model remaster_scene_add evaluated (its first part's translation). */
+void remaster_scene_origin(const remaster_scene *s, int32_t out[3]);
+/* Whether the last model remaster_scene_add evaluated has shared vertices: those are projected by the game per object (DS:4EE6), so the pose cannot be rebuilt without it. */
+int remaster_scene_has_shared(const remaster_scene *s);
 
 /* Add one request's primitives to f. mem is the guest's memory (mem_size bytes: a megabyte); ds and bank_segment are
  * segments in it. Returns the number added, or -1 when the request cannot be read (a data segment or bank outside the

@@ -1,5 +1,6 @@
 /* remaster_live.c - Remastered's view of a running game through the machine's execution hooks (see remaster_live.h). */
 #include "remaster_live.h"
+#include "rerun.h"
 
 #include "remaster_raster.h"
 #include "remaster_scene.h"
@@ -42,6 +43,10 @@ static const struct { uint16_t seg, ip; } WATCH[5] = {
     { 0x0000, 0xE2B6 },                 /* placement: capture native units before deferral */
 };
 
+#define UNITS_MAX 16384                       /* placements remembered for a frame: the far scenery places thousands */
+#define TEMPLATE_AT 0x7B28
+#define TEMPLATE_LEN 0x278
+
 struct remaster_live {
     remaster_scene *scene;
     remaster_frame frame;
@@ -50,14 +55,23 @@ struct remaster_live {
     int16_t position[3];
     double pending_inv_depth;
     double pending_camera_offset[3];
-    struct { uint16_t bank, model; int16_t position[3]; double inv_depth, camera_offset[3]; } units[512];
+    int pending_shrink;                       /* the bits (2 per ring) by which the object is drawn at a coarser scale than its own ring: its vertices shrink by that much about its origin */
+    int pending_terrain;                      /* the pending request was placed by the terrain walker: its pose may become a template */
+    struct { uint16_t bank, model; int16_t position[3]; double inv_depth, camera_offset[3]; int shrink, terrain; } units[UNITS_MAX];
+    /* Templates for natively drawn static terrain objects: the game's pose state (DS:7B28 .. 7DA0) as it stood for one terrain object of a model
+     * this frame; a later object of the same model patches only what depends on its place (remaster_live_native). */
+    struct { uint16_t bank, model; int parts; uint8_t bytes[TEMPLATE_LEN]; } tmpl[96];
+    unsigned ntmpl, native_drawn, native_missed;
+    remaster_frame chk_frame;                 /* F117_NATIVE_CHECK: a native object's primitives are built here, never in the frame */
+    struct { uint16_t bank, model; int16_t pos[3]; remaster_prim *prim; size_t n; uint8_t pose[TEMPLATE_LEN]; } chk[256];
+    unsigned nchk, chk_ok, chk_bad, chk_unmatched; uint8_t chk_pose_now[TEMPLATE_LEN];
     unsigned nunits;
     int frame_complete, done_complete;
     unsigned frames, want_frame;
     int w, h;
     char *out_path;
     int written;
-    unsigned requests, added, refused, overwritten, ortho_skipped;
+    unsigned requests, added, refused, overwritten, ortho_skipped, skipped;
     /* F117_REMASTER_VALIDATE: per model, how many vertices' projections match the game's own (the 8-byte records at
      * DS:D6B4 + 8 * id, signed pixel offsets from the origin) and how many do not */
     struct { uint16_t model; unsigned seen, match, differ, behind_mine, behind_game, off1, off8, farther; } check[256];
@@ -1028,8 +1042,275 @@ static void report_validation(const remaster_live *r)
     fprintf(stderr, "[validate] %u models, %u vertices, %u differ\n", r->nchecks, total, bad);
 }
 
+/* A model's primitives from `first` are in the frame: shrink them about the object's origin when it was drawn at a coarser scale than its own ring
+ * (the position is in the coarser units, the model's vertices are not), shift them by the ring-rounding correction, and set the inverse-depth scale. */
+static void finish_model(remaster_live *r, remaster_frame *f, machine_t *m, size_t first, int shrink, double inv_depth, const double camera_offset[3])
+{
+    if (shrink > 0) {
+        int32_t origin[3];
+        remaster_scene_origin(r->scene, origin);
+        for (size_t i = first; i < f->n; ++i) {
+            remaster_prim *p = &f->prim[i];
+            for (int vertex = 0; vertex < p->n; ++vertex) {
+                int32_t *coordinates[3] = { &p->v[vertex].x, &p->v[vertex].y, &p->v[vertex].z };
+                for (int axis = 0; axis < 3; ++axis)
+                    *coordinates[axis] = origin[axis] + (int32_t)((*coordinates[axis] - (int64_t)origin[axis] + ((int64_t)1 << (shrink - 1))) >> shrink);
+            }
+        }
+    }
+    int32_t correction[3] = { 0, 0, 0 };
+    static int native_ring_eye = -1;
+    if (native_ring_eye < 0) native_ring_eye = getenv("F117_REMASTER_NATIVE_RING_EYE") != NULL;
+    if (!native_ring_eye) {
+        /* Use the prepared view basis, not an object's part rotation. Geometry is already emitted, so facing/material rules and
+         * original machine state remain untouched. */
+        for (int axis = 0; axis < 3; ++axis) {
+            double value = 0.0;
+            for (int world = 0; world < 3; ++world)
+                value += camera_offset[world] * (int16_t)peek16(m, m->cpu.seg[S_DS], (uint16_t)(0x7B28 + 2 * (3 * world + axis)));
+            correction[axis] = (int32_t)llround(value);
+        }
+    }
+    for (size_t i = first; i < f->n; ++i) {
+        remaster_prim *p = &f->prim[i];
+        p->inv_depth_scale = inv_depth;
+        for (int vertex = 0; vertex < p->n; ++vertex) {
+            int32_t *coordinates[3] = { &p->v[vertex].x, &p->v[vertex].y, &p->v[vertex].z };
+            for (int axis = 0; axis < 3; ++axis) {
+                const uint32_t bits = (uint32_t)*coordinates[axis] + (uint32_t)correction[axis];
+                *coordinates[axis] = bits <= INT32_MAX ? (int32_t)bits : -(int32_t)(UINT32_MAX - bits) - 1;
+            }
+        }
+    }
+}
+
+static void poke16(machine_t *m, uint16_t seg, uint16_t off, uint16_t v)
+{
+    const uint32_t at = ((uint32_t)seg << 4) + off;
+    m->mem[at & 0xFFFFF] = (uint8_t)v; m->mem[(at + 1) & 0xFFFFF] = (uint8_t)(v >> 8);
+}
+
+/* The pose state of the terrain object just placed, kept for its model when it has no parts (the part count [7D58] not above zero) and is a
+ * perspective one: every terrain object is placed with zero angles, so a model's pose differs between two of them only by position. */
+static void capture_template(remaster_live *r, machine_t *m)
+{
+    const uint16_t ds = m->cpu.seg[S_DS];
+    const int parts = (int16_t)peek16(m, ds, 0x7D58);
+    if (parts < 0 || parts > 1 || m->mem[(((uint32_t)ds << 4) + 0x7D8E) & 0xFFFFF]) return;     /* none or the base part only; more parts: the game's own pose */
+    unsigned i = 0;
+    while (i < r->ntmpl && !(r->tmpl[i].bank == r->bank && r->tmpl[i].model == r->model)) i++;
+    if (i == r->ntmpl) { if (r->ntmpl == sizeof r->tmpl / sizeof r->tmpl[0]) return; r->ntmpl++; }
+    r->tmpl[i].bank = r->bank; r->tmpl[i].model = r->model;
+    r->tmpl[i].parts = remaster_scene_has_shared(r->scene) ? -1 : parts;      /* -1: shared vertices, always the game's own pose */
+    memcpy(r->tmpl[i].bytes, m->mem + (((uint32_t)ds << 4) + TEMPLATE_AT), TEMPLATE_LEN);
+}
+
+/* F117_NATIVE_CHECK: an object drawn natively (its primitives kept in chk[], not in the frame) is compared with the game's own drawing of the same
+ * model at the same position, which arrives from `guest_first` on (a deferred object arrives later, which is why they are paired by what they are). */
+static void check_native(remaster_live *r, machine_t *m, size_t guest_first)
+{
+    unsigned q = 0;
+    while (q < r->nchk && !(r->chk[q].bank == r->bank && r->chk[q].model == r->model && !memcmp(r->chk[q].pos, r->position, sizeof r->position))) q++;
+    if (q == r->nchk) return;
+    const size_t n_guest = r->frame.n - guest_first;
+    /* DS:7D8A is the fill colour of the face the game drew last, which the renderer reads as the model's base shade: a stale value that depends on what was
+     * drawn just before, not on the object. When it differs the shades are not comparable. */
+    const int shade_comparable = r->chk[q].pose[0x7D8A - TEMPLATE_AT] == m->mem[(((uint32_t)m->cpu.seg[S_DS] << 4) + 0x7D8A) & 0xFFFFF];
+    int same = n_guest == r->chk[q].n;
+    for (size_t i = 0; same && i < n_guest; i++) {
+        const remaster_prim *a = &r->chk[q].prim[i], *g = &r->frame.prim[guest_first + i];
+        if (a->kind != g->kind || a->n != g->n || a->colour_index != g->colour_index || a->colour_word != g->colour_word || (shade_comparable && a->shade != g->shade) ||
+            a->darken != g->darken || a->inv_depth_scale != g->inv_depth_scale) same = 0;
+        for (int v = 0; same && v < a->n; v++)
+            if (a->v[v].x != g->v[v].x || a->v[v].y != g->v[v].y || a->v[v].z != g->v[v].z) same = 0;
+    }
+    if (same) r->chk_ok++; else {
+        r->chk_bad++;
+        if (r->chk_bad <= 8) {
+            fprintf(stderr, "[native-check] model %u differs: native %zu prims, game %zu; game side: shrink %d offset %.1f,%.1f,%.1f depth %g terrain %d\n", (unsigned)r->model, r->chk[q].n, n_guest,
+                    r->pending_shrink, r->pending_camera_offset[0], r->pending_camera_offset[1], r->pending_camera_offset[2], r->pending_inv_depth, r->pending_terrain);
+            {
+                const uint8_t *now = m->mem + (((uint32_t)m->cpu.seg[S_DS] << 4) + TEMPLATE_AT);
+                int shown = 0;
+                for (unsigned o = 0; o < TEMPLATE_LEN && shown < 24; o += 2) {
+                    const unsigned a = r->chk[q].pose[o] | r->chk[q].pose[o + 1] << 8, g = now[o] | now[o + 1] << 8;
+                    if (a != g) { fprintf(stderr, "[native-check]   DS:%04X native %04X game %04X\n", (unsigned)(TEMPLATE_AT + o), a, g); shown++; }
+                }
+            }
+            for (size_t i = 0; i < r->chk[q].n && i < n_guest && i < 3; i++) {
+                const remaster_prim *a = &r->chk[q].prim[i], *g = &r->frame.prim[guest_first + i];
+                fprintf(stderr, "[native-check]   prim %zu kind %d/%d n %d/%d colour %u/%u shade %u/%u darken %u/%u depth %g/%g v0 %d,%d,%d / %d,%d,%d\n", i, a->kind, g->kind, a->n, g->n,
+                        a->colour_index, g->colour_index, a->shade, g->shade, a->darken, g->darken, a->inv_depth_scale, g->inv_depth_scale,
+                        a->v[0].x, a->v[0].y, a->v[0].z, g->v[0].x, g->v[0].y, g->v[0].z);
+            }
+        }
+    }
+    if ((r->chk_ok + r->chk_bad) % 5000 == 0) fprintf(stderr, "[native-check] %u same as the game's own, %u differ, %u never matched\n", r->chk_ok, r->chk_bad, r->chk_unmatched);
+    free(r->chk[q].prim);
+    r->chk[q] = r->chk[--r->nchk];
+}
+
+int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
+{
+    const rerun_native *n = (const rerun_native *)spec;
+    const uint16_t ds = m->cpu.seg[S_DS];
+    static int timing = -1; static double t_patch, t_add, t_fin; static unsigned t_n;
+    if (timing < 0) timing = getenv("F117_NATIVE_TIMING") != NULL;
+    const double tm0 = timing ? now_ms() : 0.0;
+    unsigned t = 0;
+    while (t < r->ntmpl && !(r->tmpl[t].bank == n->bank && r->tmpl[t].model == n->model)) t++;
+    if (t < r->ntmpl && r->tmpl[t].parts < 0) return 0;
+    if (t == r->ntmpl) { r->native_missed++; { static int shown; if (shown++ < 6) fprintf(stderr, "[native] no template for bank %04X model %u (%u templates)\n", (unsigned)n->bank, (unsigned)n->model, r->ntmpl); } return 0; }
+    uint8_t *dsp = m->mem + (((uint32_t)ds << 4) + TEMPLATE_AT);
+    /* the template belongs to this frame's camera and light: the matrix and the light words must still be what they were */
+    const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18), light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
+    if (!matrix_same || !light_same) {
+        r->native_missed++;
+        static int shown2;
+        if (shown2++ < 6) fprintf(stderr, "[native] template stale for bank %04X model %u: matrix %s, light %s\n", (unsigned)n->bank, (unsigned)n->model, matrix_same ? "same" : "differs", light_same ? "same" : "differs");
+        return 0;
+    }
+    uint8_t saved[TEMPLATE_LEN], keep48c4 = m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF];
+    memcpy(saved, dsp, TEMPLATE_LEN);
+    memcpy(dsp, r->tmpl[t].bytes, TEMPLATE_LEN);
+    for (int i = 0; i < 3; i++) poke16(m, ds, (uint16_t)(0x7CCC + 2 * i), (uint16_t)n->pos[i]);
+    {   /* the eye: the position negated (120A:0317); with a base part also through the part's matrix at 7B5E (1452:021B, in place:
+         * each element the high words of its three products summed and doubled, 16 bits) */
+        uint16_t eye[3];
+        for (int i = 0; i < 3; i++) eye[i] = (uint16_t)(0 - (uint16_t)n->pos[i]);
+        if (r->tmpl[t].parts == 1) {
+            uint16_t out[3];
+            for (int k = 0; k < 3; k++) {
+                uint16_t sum = 0;
+                for (int row = 0; row < 3; row++)
+                    sum = (uint16_t)(sum + (uint16_t)(((int32_t)(int16_t)eye[row] * (int16_t)peek16(m, ds, (uint16_t)(0x7B5E + 6 * row + 2 * k))) >> 16));
+                out[k] = (uint16_t)(sum << 1);
+            }
+            for (int i = 0; i < 3; i++) eye[i] = out[i];
+        }
+        for (int i = 0; i < 3; i++) poke16(m, ds, (uint16_t)(0x7C6C + 2 * i), eye[i]);
+    }
+    for (int k = 0; k < 3; k++) {                                                              /* the position through the camera matrix, 32 bits (1452:0330) */
+        uint32_t acc = 0;
+        for (int row = 0; row < 3; row++)
+            acc += (uint32_t)((int32_t)n->pos[row] * (int16_t)peek16(m, ds, (uint16_t)(0x7B28 + 2 * (3 * row + k))));
+        poke16(m, ds, (uint16_t)(0x7CD2 + 4 * k), (uint16_t)acc);
+        poke16(m, ds, (uint16_t)(0x7CD4 + 4 * k), (uint16_t)(acc >> 16));
+        if (r->tmpl[t].parts == 1) {                                                           /* a base part's translation is the copy at 7CDE */
+            poke16(m, ds, (uint16_t)(0x7CDE + 4 * k), (uint16_t)acc);
+            poke16(m, ds, (uint16_t)(0x7CE0 + 4 * k), (uint16_t)(acc >> 16));
+        }
+    }
+    m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = n->darken;
+    memcpy(r->chk_pose_now, dsp, TEMPLATE_LEN);
+    static int check = -1;
+    if (check < 0) check = getenv("F117_NATIVE_CHECK") != NULL;
+    remaster_frame *target = check ? &r->chk_frame : &r->frame;
+    if (check) target->n = 0;
+    const size_t first = target->n;
+    unsigned dropped[3];
+    memcpy(dropped, remaster_scene_dropped, sizeof dropped);
+    const double tm1 = timing ? now_ms() : 0.0;
+    const int added = remaster_scene_add(r->scene, m->mem, 0x100000, ds, n->bank, n->model, n->pos, target);
+    if (added < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
+    const double tm2 = timing ? now_ms() : 0.0;
+    double offset[3];
+    remaster_ring_camera_offset(n->eye, (unsigned)n->level, offset);
+    if (added >= 0) finish_model(r, target, m, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), offset);
+    memcpy(dsp, saved, TEMPLATE_LEN);
+    if (timing) {
+        const double tm3 = now_ms();
+        t_patch += tm1 - tm0; t_add += tm2 - tm1; t_fin += tm3 - tm2;
+        if (++t_n % 20000 == 0) fprintf(stderr, "[native-timing] per object: patch %.2f us, scene add %.2f us, finish %.2f us (%u objects)\n", t_patch * 1000.0 / t_n, t_add * 1000.0 / t_n, t_fin * 1000.0 / t_n, t_n);
+    }
+    m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = keep48c4;
+    if (added < 0) { r->refused++; return 0; }
+    r->added++; r->native_drawn++;
+    static int want_sizes = -1;
+    if (want_sizes < 0) want_sizes = getenv("F117_NATIVE_SIZES") != NULL;
+    if (want_sizes && target->n > first) {   /* diagnostic: the projected radius, in the original's pixels (256 x / z), of the natively drawn objects */
+        static unsigned bucket[8], total;
+        int32_t origin[3];
+        remaster_scene_origin(r->scene, origin);
+        double extent = 0.0;
+        for (size_t i = first; i < target->n; i++)
+            for (int v = 0; v < target->prim[i].n; v++)
+                for (int a = 0; a < 3; a++) {
+                    const int32_t c = a == 0 ? target->prim[i].v[v].x : a == 1 ? target->prim[i].v[v].y : target->prim[i].v[v].z;
+                    const double d = fabs((double)c - (double)origin[a]);
+                    if (d > extent) extent = d;
+                }
+        const double depth = fabs((double)origin[2]);
+        const double radius = depth > 0 ? 256.0 * extent / depth : 1e9;
+        static const double edge[7] = { 0.1, 0.25, 0.5, 1, 2, 4, 8 };
+        int b = 0; while (b < 7 && radius >= edge[b]) b++;
+        bucket[b]++;
+        if (++total % 20000 == 0)
+            fprintf(stderr, "[sizes] radius in original pixels: <0.1 %u, <0.25 %u, <0.5 %u, <1 %u, <2 %u, <4 %u, <8 %u, more %u (of %u)\n", bucket[0], bucket[1], bucket[2], bucket[3], bucket[4], bucket[5], bucket[6], bucket[7], total);
+    }
+    if (check) {                                                    /* keep the native primitives for the comparison, and let the game place it too */
+        if (r->nchk == sizeof r->chk / sizeof r->chk[0]) { free(r->chk[0].prim); r->chk[0] = r->chk[--r->nchk]; r->chk_unmatched++; }
+        const unsigned q = r->nchk++;
+        r->chk[q].bank = n->bank; r->chk[q].model = n->model; memcpy(r->chk[q].pos, n->pos, sizeof n->pos);
+        r->chk[q].n = target->n;
+        memcpy(r->chk[q].pose, r->chk_pose_now, TEMPLATE_LEN);
+        r->chk[q].prim = (remaster_prim *)malloc((target->n ? target->n : 1) * sizeof *target->prim);
+        if (r->chk[q].prim) memcpy(r->chk[q].prim, target->prim, target->n * sizeof *target->prim); else r->nchk--;
+        return 0;
+    }
+    return 1;
+}
+
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 {
+    static int reach_log = -1, extra_count = -1;
+    if (reach_log < 0) { reach_log = getenv("F117_REACH_LOG") != NULL; extra_count = getenv("F117_EXTRA_COUNT") != NULL; }
+    if (reach_log && !rerun_extra_active()) {   /* diagnostic: where each model's body stops being drawn (the game's own walk only) */
+        static struct { unsigned key, req, faced, size; double far_faced; } row[512];
+        static unsigned nrow, tick; static int pending = -1; static double pending_real;
+        const uint16_t ds = m->cpu.seg[S_DS], ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        if (k == 0) {
+            const unsigned key = peek16(m, ss, (uint16_t)(sp + 4)) & 0x7FFF;
+            unsigned i = 0; while (i < nrow && row[i].key != key) i++;
+            if (i == nrow && nrow < 512) row[nrow++].key = key;
+            pending = i < nrow ? (int)i : -1;
+            if (pending >= 0) {
+                int16_t pos[3], cam[9];
+                for (int a = 0; a < 3; a++) pos[a] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * a));
+                for (int a = 0; a < 9; a++) cam[a] = (int16_t)peek16(m, ds, (uint16_t)(0x7B28 + 2 * a));
+                const unsigned e = peek16(m, ds, 0xE328), ring = e >= 1 && e <= 4 ? e : 1;
+                pending_real = (double)scene_model_depth(pos, cam) * (double)(1u << (2 * (ring - 1)));
+                row[pending].req++;
+            }
+            if (++tick % 15000 == 0) {
+                fprintf(stderr, "[reach] model word: requests, with faces, farthest real depth with faces, size word\n");
+                for (unsigned q = 0; q < nrow; q++) if (row[q].req > 200)
+                    fprintf(stderr, "[reach] %04X: %u req, %u faced, farthest faced %.0f, size %u\n", row[q].key, row[q].req, row[q].faced, row[q].far_faced, row[q].size);
+            }
+        } else if (k == 1 && pending >= 0) {
+            row[pending].faced++;
+            if (pending_real > row[pending].far_faced) row[pending].far_faced = pending_real;
+            row[pending].size = peek16(m, ds, 0x7D5E);
+            pending = -1;
+        }
+    }
+    if (extra_count) {                       /* diagnostic: what the extra walks ask of the game, and how much survives its cull */
+        static unsigned long placed[2], asked[2], faces[2], total;
+        static unsigned long long mark, phase_a, phase_b, phase_c, other;
+        static int phase = -1;                              /* 0 after a placement, 1 after a model request, 2 after the faces hook */
+        const int x = rerun_extra_active() ? 1 : 0;
+        const unsigned long long now = m->cpu.icount;
+        if (x) {
+            if (phase == 0) phase_a += now - mark; else if (phase == 1) phase_b += now - mark; else if (phase == 2) phase_c += now - mark;
+            mark = now;
+            phase = k == 4 ? 0 : k == 0 ? 1 : k == 1 ? 2 : phase;
+        } else phase = -1;
+        if (k == 4) placed[x]++; else if (k == 0) asked[x]++; else if (k == 1) faces[x]++;
+        (void)other;
+        if (k == 4 && ++total % 200000 == 0)
+            fprintf(stderr, "[count] game walk: %lu placements, %lu model requests, %lu face draws | extra walks: %lu, %lu, %lu | extra instructions: placement %llu, request to faces %llu, faces onward %llu\n",
+                    placed[0], asked[0], faces[0], placed[1], asked[1], faces[1], phase_a, phase_b, phase_c);
+    }
     if (k == 0) {                                           /* the model request: return IP, CS, then the model */
         const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
         if (r->pending) r->overwritten++;                   /* the previous request never reached a projection */
@@ -1045,11 +1326,15 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->window[3] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8600);
         for (int i = 0; i < 3; i++) r->position[i] = (int16_t)peek16(m, ss, (uint16_t)(sp + 6 + 2 * i));
         r->pending_inv_depth = 1.0;
+        r->pending_shrink = 0;
+        r->pending_terrain = 0;
         memset(r->pending_camera_offset, 0, sizeof r->pending_camera_offset);
         for (unsigned u = r->nunits; u > 0; --u) {
             if (r->units[u - 1].bank == r->bank && r->units[u - 1].model == r->model &&
                 !memcmp(r->units[u - 1].position, r->position, sizeof r->position)) {
                 r->pending_inv_depth = r->units[u - 1].inv_depth;
+                r->pending_shrink = r->units[u - 1].shrink;
+                r->pending_terrain = r->units[u - 1].terrain;
                 memcpy(r->pending_camera_offset, r->units[u - 1].camera_offset, sizeof r->pending_camera_offset);
                 break;
             }
@@ -1071,29 +1356,15 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             memcpy(dropped, remaster_scene_dropped, sizeof dropped);
             const int n = remaster_scene_add(r->scene, m->mem, 0x100000, m->cpu.seg[S_DS], r->bank, r->model, r->position, &r->frame);
             if (n < 0 || memcmp(dropped, remaster_scene_dropped, sizeof dropped)) r->frame_complete = 0;
-            int32_t correction[3] = { 0, 0, 0 };
-            if (!getenv("F117_REMASTER_NATIVE_RING_EYE")) {
-                /* Use the prepared view basis, not an object's part rotation.
-                 * Geometry is already emitted, so facing/material rules and
-                 * original machine state remain untouched. */
-                for (int axis = 0; axis < 3; ++axis) {
-                    double value = 0.0;
-                    for (int world = 0; world < 3; ++world)
-                        value += r->pending_camera_offset[world] *
-                            (int16_t)peek16(m, m->cpu.seg[S_DS], (uint16_t)(0x7B28 + 2 * (3 * world + axis)));
-                    correction[axis] = (int32_t)llround(value);
-                }
-            }
-            for (size_t i = first; i < r->frame.n; ++i) {
-                remaster_prim *p = &r->frame.prim[i];
-                p->inv_depth_scale = r->pending_inv_depth;
-                for (int vertex = 0; vertex < p->n; ++vertex) {
-                    int32_t *coordinates[3] = { &p->v[vertex].x, &p->v[vertex].y, &p->v[vertex].z };
-                    for (int axis = 0; axis < 3; ++axis) {
-                        const uint32_t bits = (uint32_t)*coordinates[axis] + (uint32_t)correction[axis];
-                        *coordinates[axis] = bits <= INT32_MAX ? (int32_t)bits : -(int32_t)(UINT32_MAX - bits) - 1;
-                    }
-                }
+            finish_model(r, &r->frame, m, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, r->pending_camera_offset);
+            if (n >= 0 && r->pending_terrain) capture_template(r, m);
+            if (n >= 0 && r->nchk) check_native(r, m, first);
+            if (n >= 0 && rerun_extra_active()) {
+                /* An extra terrain walk's model (the copy's own, never the live machine's): its geometry is in the frame now, and the
+                 * renderer draws it from that, so the game's own face drawing is skipped (model_faces ends in a plain near RET). */
+                static int skip = -1;
+                if (skip < 0) { const char *e = getenv("F117_EXTRA_SKIP_FACES"); skip = !(e && e[0] == '0'); }
+                if (skip) { r->skipped++; m->cpu.ip = cpu_pop16(&m->cpu); }
             }
             if (n < 0) r->refused++; else r->added++;
             if (n >= 0 && validate_on()) validate_model(r, m);
@@ -1113,7 +1384,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         if (peek16(m, ss, sp) == 0xBC59)
             shift += (int16_t)peek16(m, ss, (uint16_t)(m->cpu.r[R_BP] + 0x16));
         const uint16_t type = peek16(m, ss, (uint16_t)(sp + 2)) & 0x7FFF;
-        if (shift >= -16 && shift <= 16 && r->nunits < 512) {
+        if (shift >= -16 && shift <= 16 && r->nunits < UNITS_MAX) {
             const unsigned u = r->nunits++;
             r->units[u].bank = peek16(m, ds, (uint16_t)(0xB78A + 2 * (type >> 8)));
             r->units[u].model = type & 0x7F;
@@ -1121,6 +1392,8 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             r->units[u].position[1] = (int16_t)(peek16(m, ss, sp + 14) - peek16(m, ds, 0x49B0));
             r->units[u].position[2] = (int16_t)(peek16(m, ds, 0x49AE) - peek16(m, ss, sp + 12));
             r->units[u].inv_depth = ldexp(1.0, shift);
+            r->units[u].shrink = rerun_scale_shift();
+            r->units[u].terrain = peek16(m, ss, sp) == 0x06A6 || peek16(m, ss, sp) == 0x075E;
             memset(r->units[u].camera_offset, 0, sizeof r->units[u].camera_offset);
             const unsigned caller = peek16(m, ss, sp);
             uint32_t view[3] = { 0, 0, 0 };
@@ -1133,9 +1406,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 remaster_ring_camera_offset(view, ring, r->units[u].camera_offset);
             }
             /* Read-only diagnostic for terrain-ring camera quantization. */
-            const char *placement_from = getenv("F117_REMASTER_PLACEMENT_LOG_FROM");
+            static const char *placement_from; static int placement_all = -1;       /* read once: this runs for every placement */
+            if (placement_all < 0) { placement_from = getenv("F117_REMASTER_PLACEMENT_LOG_FROM"); placement_all = getenv("F117_REMASTER_PLACEMENT_LOG_ALL") != NULL; }
             static unsigned placements_logged[5];
-            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < (getenv("F117_REMASTER_PLACEMENT_LOG_ALL") ? ~0u : 4u) &&
+            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < (placement_all ? ~0u : 4u) &&
                 (caller == 0x06A6 || caller == 0x075E) &&
                 m->cpu.icount >= strtoull(placement_from, NULL, 0)) {
                 fprintf(stderr, "[placement] clock %llu ring %u caller %04X model %u view %u,%u,%u native-eye %d,%d,%d position %d,%d,%d\n",

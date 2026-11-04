@@ -32,6 +32,10 @@ void remaster_live_copy_begin(remaster_live *r);
 /* The machine reached exec_hook[base + k]; k counts from the first entry armed here. Always returns 0 (never takes a
  * call). */
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
+/* A static terrain object drawn without the game's placement (rerun.h, rerun_native): 1 when drawn, 0 when no template of its model exists yet
+ * for this frame's camera (the caller lets the copy place it, which makes one). F117_NATIVE_CHECK=1 compares each with the game's own. */
+struct rerun_native_s;
+int remaster_live_native(remaster_live *r, machine_t *m, const void *spec);
 
 /* Compose the Enhanced presentation's fine picture (n times finer: 320n x 200n palette indices in src, the origin tag of
  * each pixel in tag when F117_PRESENT_DIAG is on, dac the six-bit palette) with the last completed frame's Remastered

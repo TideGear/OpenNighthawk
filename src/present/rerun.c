@@ -1,5 +1,6 @@
 /* rerun.c - see rerun.h. */
 #include "rerun.h"
+#include "tls.h"
 #include "observe.h"
 #include "../fixes/fixes.h"
 
@@ -282,25 +283,55 @@ static double walk_ms(void)
     return (double)clock() * 1000.0 / CLOCKS_PER_SEC;
 #endif
 }
-static int g_distance = 1 << 22;                          /* world units: every ring out to the 16-bit limit (ring 4: the whole map) */
+static int g_distance = 12000;                           /* the Near setting: far scenery one scale coarser (4 times the reach). Far (20000) is two, Maximum (1 << 22) three: the whole map */
 void rerun_set_distance(int units) { g_distance = units < 0 ? 0 : units > (1 << 26) ? (1 << 26) : units; }
 static unsigned g_walk_calls;
+F117_TLS static int g_coarse_busy;
+int rerun_coarse_active(void) { return g_coarse_busy; }
+int rerun_extra_active(void) { return g_walk_busy; }
+static int g_fine2 = 1, g_fine2_test;                    /* ring 1 past its reach, drawn at ring 2's scale; test: no ring-1 passes, all children coarse */
 static int walk_second(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     static int env_done;
     if (!env_done) {
         env_done = 1;
+        if (getenv("F117_FINE2_OFF")) g_fine2 = 0;
+        if (getenv("F117_FINE2_TEST")) g_fine2_test = 1;
         const char *e = getenv("F117_WIDE_DISTANCE");
         if (e) g_distance = atoi(e) < 0 ? 0 : atoi(e);
         const char *s = getenv("F117_WIDE_SCENERY");
         if (s && atoi(s) == 0) g_distance = 0;
     }
     if (g_distance <= 0) return 0;
+    if (getenv("F117_FINE_DIAG")) {
+        static int once;
+        if (!once) {
+            once = 1;
+            const uint16_t dsd = c->seg[S_DS];
+            for (int r = 1; r <= 4; r++) {
+                unsigned lo = 0xFFFF, hi = 0, tot = 0, used = 0;
+                for (int t = 0; t < 32; t++) {
+                    const unsigned p = rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (r * 32 + t))), n = rd16(m->mem, dsd, (uint16_t)(0x061E + 2 * (r * 32 + t)));
+                    if (n) { used++; if (p < lo) lo = p; if (p + 7 * n > hi) hi = p + 7 * n; tot += n; }
+                }
+                fprintf(stderr, "[fine] ring %d: %u tiles used, %u entries, lists %04X..%04X\n", r, used, tot, lo, hi);
+            }
+            unsigned best = 0, best_at = 0, run = 0;
+            for (unsigned a = 0; a < 0x10000; a++) {
+                if (m->mem[(((uint32_t)dsd << 4) + a) & 0xFFFFF] == 0) { if (++run > best) { best = run; best_at = a - run + 1; } } else run = 0;
+            }
+            fprintf(stderr, "[fine] DS %04X SS %04X SP %04X; longest zero run %u at %04X\n", dsd, c->seg[S_SS], c->r[R_SP], best, best_at);
+            for (int t = 0; t < 4; t++) fprintf(stderr, "[fine] ring1 tile %d ptr %04X n %u first entry %04X %04X %04X %02X\n", t,
+                rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (32 + t))), rd16(m->mem, dsd, (uint16_t)(0x061E + 2 * (32 + t))),
+                rd16(m->mem, dsd, rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (32 + t)))), rd16(m->mem, dsd, (uint16_t)(rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (32 + t))) + 2)),
+                rd16(m->mem, dsd, (uint16_t)(rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (32 + t))) + 4)), m->mem[(((uint32_t)dsd << 4) + (uint16_t)(rd16(m->mem, dsd, (uint16_t)(0xE330 + 2 * (32 + t))) + 6)) & 0xFFFFF]);
+        }
+    }
     const uint64_t icount_before = c->icount;
     const double ms_before = walk_ms();
     int passes = 0;
-    static double ring_ins[5], ring_cells[5], ring_passes[5]; static unsigned ring_n;
+    static double ring_ins[5], ring_cells[5], ring_passes[5], ring_ms[5]; static unsigned ring_n;
     const size_t values_before = g_out ? g_out->nvals : 0;
     const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
     uint16_t arguments[8];                                              /* 04E6's eight words: heading, pitch, three world-coordinate longs */
@@ -326,13 +357,14 @@ static int walk_second(machine_t *m)
     for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far_plane) wr16(m->mem, ds, (uint16_t)(base + 2 * md), (uint16_t)(32600 - far_plane));
     int bad = 0;
     for (int ring = 4; ring >= 1; ring--) {
-        const uint64_t ring_ic = c->icount; const int ring_p0 = passes;
+        const uint64_t ring_ic = c->icount; const int ring_p0 = passes; const double ring_t0 = walk_ms();
         const long cell = 4096L << (2 * (ring - 1));              /* a cell's width in world units on this ring */
         int radius = (int)((g_distance + cell - 1) / cell);
         if (radius > 7) radius = 7;                               /* the 16-bit limit of a cell offset */
         if (radius < 2) radius = 2;
         for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), r == ring ? enable[r] : 0);
         if (!enable[ring]) continue;
+        if (ring == 1 && g_fine2_test) continue;
         const int base_x = cell_base(ring, arguments[2] | (uint32_t)arguments[3] << 16), base_y = cell_base(ring, arguments[4] | (uint32_t)arguments[5] << 16);
         int dx[256], dy[256], n = 0;                              /* outward from the viewer's cell, skipping the nine the game's own call draws */
         for (int k = 0; k <= radius; k++)
@@ -373,9 +405,117 @@ static int walk_second(machine_t *m)
             if (rc != RUN_TRAP) bad++;
             passes++;
         }
-        ring_ins[ring] += (double)(c->icount - ring_ic); ring_cells[ring] += n; ring_passes[ring] += passes - ring_p0;
+        ring_ms[ring] += walk_ms() - ring_t0; ring_ins[ring] += (double)(c->icount - ring_ic); ring_cells[ring] += n; ring_passes[ring] += passes - ring_p0;
+    }
+    if (enable[1] && enable[2] && g_fine2) {
+        /* Ring 1's small objects past its own 16-bit reach, drawn through ring 2's coarser scale (a quarter of the units, so four times the
+         * range). The ring-2 cell is a 4 x 4 block of ring-1 cells (block table 9B38), so for each ring-2 cell a merged tile list is built in
+         * scratch memory from its ring-1 children: each entry's x and y moved by the child's place in the block and all three divided by 4. The
+         * ring-2 slot of that cell's tile is pointed at the list for the pass and put back after. The children the ring-1 passes already draw
+         * (within r1 cells of the viewer) are left out, so every object is drawn once. */
+        const int ring1_cells = (int)((g_distance + 4095) / 4096);
+        int r1 = ring1_cells > 7 ? 7 : ring1_cells; if (r1 < 2) r1 = 2;
+        const int b1x = cell_base(1, arguments[2] | (uint32_t)arguments[3] << 16), b1y = cell_base(1, arguments[4] | (uint32_t)arguments[5] << 16);
+        const int b2x = cell_base(2, arguments[2] | (uint32_t)arguments[3] << 16), b2y = cell_base(2, arguments[4] | (uint32_t)arguments[5] << 16);
+        enum { SCRATCH = 0x0F00, MAXITEMS = 225 };
+        static unsigned scratch_at = 0xFFFFFFFFu;
+        if (scratch_at == 0xFFFFFFFFu) {                          /* a run of zero bytes in the data segment, found once */
+            unsigned run = 0; scratch_at = 0;
+            for (unsigned a = 0; a < 0x10000; a++) {
+                if (m->mem[(((uint32_t)ds << 4) + a) & 0xFFFFF] == 0) { if (++run >= SCRATCH + 16) { scratch_at = a - run + 1 + 8; break; } } else run = 0;
+            }
+        }
+        if (scratch_at) {
+            uint8_t keep[SCRATCH];
+            const double cb0 = walk_ms();
+            for (unsigned k = 0; k < SCRATCH; k++) keep[k] = m->mem[(((uint32_t)ds << 4) + scratch_at + k) & 0xFFFFF];
+            struct item { int pdx, pdy, t2, at, n; } items[MAXITEMS]; int nitems = 0;
+            int pad_x = 0, pad_y = 0, have_pad = 0, pad_t = 0;
+            unsigned used = 0;
+            for (int k = 0; k <= 7; k++)
+                for (int py = -k; py <= k; py++)
+                    for (int px = -k; px <= k; px++) {
+                        if ((px < 0 ? -px : px) != k && (py < 0 ? -py : py) != k) continue;
+                        const int t2 = cell_tile(m, ds, 2, b2x + px, b2y + py);
+                        if (t2 < 0 || nitems >= MAXITEMS) continue;
+                        struct { int16_t x, y, z; uint8_t type; } list[160]; int ln = 0;
+                        for (int j = 0; j < 4; j++)
+                            for (int i = 0; i < 4; i++) {
+                                const int fx = (b2x + px) * 4 + i, fy = (b2y + py) * 4 + j;
+                                const int dxc = fx - b1x, dyc = fy - b1y, d = (dxc < 0 ? -dxc : dxc) > (dyc < 0 ? -dyc : dyc) ? (dxc < 0 ? -dxc : dxc) : (dyc < 0 ? -dyc : dyc);
+                                if ((!g_fine2_test && d <= r1) || d > ring1_cells) continue;
+                                const int t1 = cell_tile(m, ds, 1, fx, fy);
+                                if (t1 < 0) continue;
+                                const unsigned cnt = rd16(m->mem, ds, (uint16_t)(0x061E + 2 * (32 + t1))), p = rd16(m->mem, ds, (uint16_t)(0xE330 + 2 * (32 + t1)));
+                                for (unsigned e = 0; e < cnt && ln < 160; e++) {
+                                    const uint16_t a = (uint16_t)(p + 7 * e);
+                                    list[ln].x = (int16_t)(((int16_t)rd16(m->mem, ds, a) + 4096 * i - 6144 + 2) >> 2);
+                                    list[ln].y = (int16_t)(((int16_t)rd16(m->mem, ds, (uint16_t)(a + 2)) + 4096 * j - 6144 + 2) >> 2);
+                                    list[ln].z = (int16_t)(((int16_t)rd16(m->mem, ds, (uint16_t)(a + 4)) + 2) >> 2);
+                                    list[ln].type = m->mem[(((uint32_t)ds << 4) + (uint16_t)(a + 6)) & 0xFFFFF];
+                                    ln++;
+                                }
+                            }
+                        if (!ln || used + 7u * ln > SCRATCH) continue;
+                        for (int e = 0; e < ln; e++) {
+                            const uint16_t a = (uint16_t)(scratch_at + used + 7 * e);
+                            wr16(m->mem, ds, a, (uint16_t)list[e].x); wr16(m->mem, ds, (uint16_t)(a + 2), (uint16_t)list[e].y);
+                            wr16(m->mem, ds, (uint16_t)(a + 4), (uint16_t)list[e].z); m->mem[(((uint32_t)ds << 4) + (uint16_t)(a + 6)) & 0xFFFFF] = list[e].type;
+                        }
+                        items[nitems].pdx = px; items[nitems].pdy = py; items[nitems].t2 = t2; items[nitems].at = (int)(scratch_at + used); items[nitems].n = ln;
+                        used += 7u * ln; nitems++;
+                    }
+            unsigned item_tiles = 0;
+            for (int q = 0; q < nitems; q++) item_tiles |= 1u << items[q].t2;
+            for (int y = -7; y <= 7 && !have_pad; y++)           /* an empty in-map cell whose tile no item uses fills the last pass */
+                for (int x = -7; x <= 7 && !have_pad; x++) {
+                    const int t = cell_tile(m, ds, 2, b2x + x, b2y + y);
+                    if (t >= 0 && !(item_tiles >> t & 1) && rd16(m->mem, ds, (uint16_t)(0x061E + 2 * (64 + t))) == 0) { pad_x = x; pad_y = y; pad_t = t; have_pad = 1; }
+                }
+            { static double acc; static unsigned nn; acc += walk_ms() - cb0; if (++nn % 300 == 0 && getenv("F117_WIDE_WALK_STATS")) fprintf(stderr, "[walk]   coarse list build: %.2f ms a copy\n", acc / nn); }
+            /* the passes: up to nine cells with distinct tiles (the slot is by tile), the rest padded with the empty cell */
+            int done[MAXITEMS] = { 0 }, left = nitems;
+            for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), r == 2 ? enable[r] : 0);
+            while (left > 0) {
+                int pick[9], np = 0; unsigned tiles = 0;
+                for (int q = 0; q < nitems && np < 9; q++) if (!done[q] && !(tiles >> items[q].t2 & 1)) { pick[np++] = q; tiles |= 1u << items[q].t2; done[q] = 1; left--; }
+                if (!np) break;
+                uint16_t sp[9], sn[9];
+                for (int i = 0; i < 9; i++) {
+                    const int q = i < np ? pick[i] : (have_pad ? -1 : pick[0]);
+                    wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector * 9 + i)), (uint16_t)(int16_t)(q >= 0 ? items[q].pdx : pad_x));
+                    wr16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector_y * 9 + i)), (uint16_t)(int16_t)(q >= 0 ? items[q].pdy : pad_y));
+                }
+                for (int i = 0; i < np; i++) {
+                    const uint16_t sl = (uint16_t)(2 * (64 + items[pick[i]].t2));
+                    sp[i] = rd16(m->mem, ds, (uint16_t)(0xE330 + sl)); sn[i] = rd16(m->mem, ds, (uint16_t)(0x061E + sl));
+                    wr16(m->mem, ds, (uint16_t)(0xE330 + sl), (uint16_t)items[pick[i]].at); wr16(m->mem, ds, (uint16_t)(0x061E + sl), (uint16_t)items[pick[i]].n);
+                }
+                for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
+                for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
+                c->flags = sv_fl;
+                for (int i = 7; i >= 0; i--) cpu_push16(c, arguments[i]);
+                cpu_push16(c, 0x04E6);
+                c->ip = 0x04E6;
+                m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x04E6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+                g_walk_busy = 1; g_coarse_busy = 1;
+                int rc = RUN_SLICE;
+                const uint64_t limit = c->icount + 200000000ull;
+                while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
+                g_walk_busy = 0; g_coarse_busy = 0;
+                if (rc != RUN_TRAP) bad++;
+                passes++;
+                for (int i = 0; i < np; i++) {
+                    const uint16_t sl = (uint16_t)(2 * (64 + items[pick[i]].t2));
+                    wr16(m->mem, ds, (uint16_t)(0xE330 + sl), sp[i]); wr16(m->mem, ds, (uint16_t)(0x061E + sl), sn[i]);
+                }
+            }
+            for (unsigned k = 0; k < SCRATCH; k++) m->mem[(((uint32_t)ds << 4) + scratch_at + k) & 0xFFFFF] = keep[k];
+            if (getenv("F117_FINE_DIAG")) fprintf(stderr, "[fine] coarse: %d cells, %u scratch bytes\n", nitems, used);
+        }
     }
     ring_n++;
+    if (getenv("F117_WIDE_WALK_STATS")) { static unsigned mx, calls; const unsigned d = rd16(m->mem, ds, 0x49F4); if (d > mx) mx = d; if (++calls % 300 == 0) fprintf(stderr, "[walk] deferred list after the extra walks: %u of 50 now, %u at most\n", d, mx); }
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
     for (int i = 0; i < 72; i++) wr16(m->mem, ds, (uint16_t)(0x034C + 2 * i), table[i]);
     for (int r = 1; r <= 4; r++) wr16(m->mem, ds, (uint16_t)(0x04FA + 2 * r), enable[r]);
@@ -389,7 +529,7 @@ static int walk_second(machine_t *m)
             ms_sum += walk_ms() - ms_before; ins_sum += (double)(c->icount - icount_before); pass_sum += passes; val_sum += (double)((g_out ? g_out->nvals : 0) - values_before);
             if (++n % 300 == 0) {
                 fprintf(stderr, "[walk] mean of %u: %.2f ms, %.0f instructions, %.1f passes, %.0f values\n", n, ms_sum / n, ins_sum / n, pass_sum / n, val_sum / n);
-                for (int r = 4; r >= 1; r--) fprintf(stderr, "[walk]   ring %d: %.0f cells, %.1f passes, %.0f instructions\n", r, ring_cells[r] / ring_n, ring_passes[r] / ring_n, ring_ins[r] / ring_n);
+                for (int r = 4; r >= 1; r--) fprintf(stderr, "[walk]   ring %d: %.0f cells, %.1f passes, %.0f instructions, %.2f ms\n", r, ring_cells[r] / ring_n, ring_passes[r] / ring_n, ring_ins[r] / ring_n, ring_ms[r] / ring_n);
             }
         }
     }
@@ -399,12 +539,326 @@ static int walk_second(machine_t *m)
     return 0;
 }
 
+/* ---- Native far scenery ------------------------------------------------------------------------------------------------------------
+ * The extra terrain walks above feed the game's own walker explicit cells. The walker keeps a cell's position as a 16-bit word in its ring's
+ * units, which is the limit of a ring's reach, and it repeats for every in-between frame the whole per-cell and per-object setup of objects that
+ * never move (about four fifths of its placements are culled at once). This path does not use the walker. The terrain is static: once per
+ * mission (keyed on the tile data) every object of every ring is listed with its position in its ring's units (cell * 4096 + 2048 + the
+ * entry's offsets, the walker's own sum); each copy then, for every object, takes the finest scale (ring 1 .. 4: the unit grows by 4 each time)
+ * at which its offset from the eye fits the game's 16-bit camera-relative words, runs the game's own camera transform and cull (VGAME E3BF,
+ * ported exactly) on it, and hands only the survivors to the game's placement routine (E2B6) with the scale in [E328] and the eye's position
+ * in the same units in [49AC..49B0]: exactly what the walker leaves there. The renderer shrinks a model drawn at a coarser scale than its
+ * own ring by the same factor (rerun_scale_shift). Objects the game's own call draws (its nine cells of a ring, where the ring is drawn at
+ * all) are left to it. The copy only: the live machine is never touched. */
+typedef struct { int32_t x, y, z; int16_t cx, cy; uint8_t ring, type; } far_inst;
+static far_inst *g_inst; static size_t g_ninst, g_cap_inst; static uint64_t g_world_key;
+/* The objects are listed cell by cell (row-major per ring), so a window of cells is a few runs of the list: cell_first[ring][row * side + column] is where a cell's
+ * objects start, with one more entry at the end. */
+static uint32_t *g_cell_first[5]; static int g_cell_lo[5], g_cell_side[5];
+F117_TLS static int g_scale_shift;
+int rerun_scale_shift(void) { return g_scale_shift ? g_scale_shift : (g_coarse_busy ? 2 : 0); }
+
+static uint64_t world_key(const machine_t *m, uint16_t ds)
+{
+    uint64_t h = 1469598103934665603ull;
+#define MIX(v) (h = (h ^ (uint64_t)(uint8_t)(v)) * 1099511628211ull)
+    for (int i = 0; i < 12; i++) MIX(m->mem[(((uint32_t)ds << 4) + 0x506 + i) & 0xFFFFF]);
+    for (int r = 1; r <= 4; r++)
+        for (int t = 0; t < 32; t++) {
+            const unsigned slot = (unsigned)(r * 32 + t), n = rd16(m->mem, ds, (uint16_t)(0x061E + 2 * slot)), p = rd16(m->mem, ds, (uint16_t)(0xE330 + 2 * slot));
+            MIX(n); MIX(n >> 8); MIX(p); MIX(p >> 8);
+            for (unsigned k = 0; k < 7 * n; k++) MIX(m->mem[(((uint32_t)ds << 4) + (uint16_t)(p + k)) & 0xFFFFF]);
+        }
+    for (unsigned k = 0; k < 64; k++) MIX(m->mem[(((uint32_t)ds << 4) + (uint16_t)(0xB03C + k)) & 0xFFFFF]);
+    for (unsigned k = 0; k < 256; k++) MIX(m->mem[(((uint32_t)ds << 4) + (uint16_t)(0x9F98 + k)) & 0xFFFFF]);
+    static const uint16_t blocks[3] = { 0x9934, 0x9B38, 0x9D40 };
+    for (int b = 0; b < 3; b++) for (unsigned k = 0; k < 0x204; k++) MIX(m->mem[(((uint32_t)ds << 4) + (uint16_t)(blocks[b] + k)) & 0xFFFFF]);
+#undef MIX
+    return h;
+}
+
+static void world_build(const machine_t *m, uint16_t ds)
+{
+    g_ninst = 0;
+    for (int r = 1; r <= 4; r++) {
+        const int size = (int16_t)rd16(m->mem, ds, (uint16_t)(0x506 + 2 * r));
+        const int lo = r == 4 ? -2 : 0, hi = r == 4 ? size - 2 : size;       /* ring 4's map has a two-cell border (cell_tile adds 2) */
+        const int side = hi - lo > 0 ? hi - lo : 0;
+        free(g_cell_first[r]);
+        g_cell_first[r] = (uint32_t *)calloc((size_t)side * side + 1, sizeof(uint32_t));
+        g_cell_lo[r] = lo; g_cell_side[r] = g_cell_first[r] ? side : 0;
+        for (int y = lo; y < hi; y++)
+            for (int x = lo; x < hi; x++) {
+                if (g_cell_first[r]) g_cell_first[r][(size_t)(y - lo) * side + (x - lo)] = (uint32_t)g_ninst;
+                const int t = cell_tile(m, ds, r, x, y);
+                if (t < 0) continue;
+                const unsigned slot = (unsigned)(r * 32 + t), n = rd16(m->mem, ds, (uint16_t)(0x061E + 2 * slot)), p = rd16(m->mem, ds, (uint16_t)(0xE330 + 2 * slot));
+                for (unsigned e = 0; e < n; e++) {
+                    if (g_ninst == g_cap_inst) {
+                        g_cap_inst = g_cap_inst ? g_cap_inst * 2 : 4096;
+                        g_inst = (far_inst *)realloc(g_inst, g_cap_inst * sizeof *g_inst);
+                        if (!g_inst) { g_cap_inst = g_ninst = 0; return; }
+                    }
+                    const uint16_t a = (uint16_t)(p + 7 * e);
+                    far_inst *f = &g_inst[g_ninst++];
+                    f->x = x * 4096 + 2048 + (int16_t)rd16(m->mem, ds, a);
+                    f->y = y * 4096 + 2048 + (int16_t)rd16(m->mem, ds, (uint16_t)(a + 2));
+                    f->z = (int16_t)rd16(m->mem, ds, (uint16_t)(a + 4));
+                    f->cx = (int16_t)x; f->cy = (int16_t)y; f->ring = (uint8_t)r;
+                    f->type = m->mem[(((uint32_t)ds << 4) + (uint16_t)(a + 6)) & 0xFFFFF];
+                }
+            }
+        if (g_cell_first[r]) g_cell_first[r][(size_t)side * side] = (uint32_t)g_ninst;
+    }
+}
+
+/* VGAME E3BF and its cull (matched.c: vgame_camera_transform, camera_cull), exactly: the point's camera-space words by the matrix at DS:49BE (BP, BX, CX
+ * are rx, ry, rz here), and 1 when it survives. The side allowances are divided by 2^shift: they are in the units of the object's own ring, and an
+ * object drawn at a coarser level is that much smaller in them. *zh_out is the camera z high word. */
+static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, uint16_t rx, uint16_t ry, uint16_t rz, unsigned lod, int shift, int16_t *zh_out)
+{
+    uint32_t acc[3];
+    for (int i = 0; i < 3; i++) {
+        uint32_t a = (uint32_t)((int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49CA + 2 * i)) * (int16_t)ry);
+        a += (uint32_t)((int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49C4 + 2 * i)) * (int16_t)rz);
+        a += (uint32_t)((int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49BE + 2 * i)) * (int16_t)rx);
+        acc[i] = a << 1;
+    }
+    const int16_t xh = (int16_t)(acc[0] >> 16), yh = (int16_t)(acc[1] >> 16), zh = (int16_t)(acc[2] >> 16);
+    if (zh_out) *zh_out = zh;
+    if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) return 0;
+    const uint16_t lod2 = (uint16_t)(lod << 1);
+    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6))) return 0;
+    if (rd16(m->mem, ds, 0x438E) != 0) return 1;                             /* the second frustum: left to the game's own test */
+    const int16_t di = (int16_t)(zh < 0 ? (uint16_t)(-zh) : (uint16_t)zh);   /* |z|, 8000h staying 8000h */
+    const uint16_t t_across = (uint16_t)(rd16(m->mem, ds, 0xE56A) + lod2), t_up = (uint16_t)(rd16(m->mem, ds, 0xE570) + lod2);
+    const unsigned cl = (m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] ^ 1) & 31;
+    int16_t ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ds, t_across) >> shift)) >> cl);
+    const int16_t si = (int16_t)(ax + (ax >> 2));
+    const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
+    if (axx > si) return 0;
+    ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
+    int16_t up = ax;
+    if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF] != 0) up = (int16_t)(((int16_t)((up >> 3) + ax)) >> 1);
+    const int16_t ayy = yh < 0 ? (int16_t)-yh : yh;
+    if (ayy > up) return 0;
+    const int16_t metric = (int16_t)(((int16_t)(axx + ayy) >> 2) + di);
+    return !(metric > (int16_t)rd16(m->mem, ds, 0x48E6));
+}
+
+/* VGAME 1039:011A, scene_detail_level, as E2B6 keeps it in DS:48C4 (the fade by depth): 0 for an orthographic view, else the signed byte of the camera
+ * z high word's top (a negative one as 0) halved, the class [49AA] taken off, clamped to 0..31 and halved again; 0 when [43E6] is clear. */
+static uint8_t far_detail(const machine_t *m, uint16_t ds, int16_t zh, unsigned lod)
+{
+    if (m->mem[(((uint32_t)ds << 4) + 0x7D8E) & 0xFFFFF]) return 0;
+    int a = (int8_t)(uint8_t)((uint16_t)zh >> 8);
+    if (a < 0) a = 0;
+    a >>= 1;
+    int t = (int8_t)(uint8_t)(a - (int)lod);
+    if (t < 0) t = 0;
+    if (t > 0x1F) t = 0x1F;
+    return m->mem[(((uint32_t)ds << 4) + 0x43E6) & 0xFFFFF] ? (uint8_t)(t >> 1) : 0;
+}
+
+typedef struct { int idx, level; double dist; int16_t x, y, z, ox, oy, oz; uint16_t model; uint8_t darken; } far_pick;
+static int far_pick_cmp(const void *a, const void *b)
+{
+    const far_pick *p = (const far_pick *)a, *q = (const far_pick *)b;
+    if (p->level != q->level) return q->level - p->level;                   /* coarsest (farthest) scale first */
+    return p->dist < q->dist ? 1 : p->dist > q->dist ? -1 : 0;              /* then the farthest first: painter's order */
+}
+
+static int g_far_native = 1;                              /* the far scenery is placed natively (docs/scenery-distance.md); F117_FAR_WALKER=1 returns to the extra terrain walks */
+static int far_scenery(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static int env_done;
+    if (!env_done) {
+        env_done = 1;
+        const char *e = getenv("F117_WIDE_DISTANCE");
+        if (e) g_distance = atoi(e) < 0 ? 0 : atoi(e);
+        const char *s = getenv("F117_WIDE_SCENERY");
+        if (s && atoi(s) == 0) g_distance = 0;
+    }
+    if (g_distance <= 0) return 0;
+    const double ms0 = walk_ms();
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    uint16_t arguments[8];
+    for (int i = 0; i < 8; i++) arguments[i] = rd16(m->mem, ss, (uint16_t)(c->r[R_SP] + 2 + 2 * i));
+    const uint64_t key = world_key(m, ds);
+    if (key != g_world_key || !g_ninst) { world_build(m, ds); g_world_key = key; }
+    if (!g_ninst) return 0;
+    const uint32_t eye_long[3] = { arguments[2] | (uint32_t)arguments[3] << 16, arguments[4] | (uint32_t)arguments[5] << 16, arguments[6] | (uint32_t)arguments[7] << 16 };
+    int64_t eye_l[5][3];                                                    /* the eye in each level's units, 810's rounding */
+    for (int l = 1; l <= 4; l++) for (int a = 0; a < 3; a++) eye_l[l][a] = cell_scaled(l, eye_long[a]);
+    uint16_t enable[5];
+    for (int r = 1; r <= 4; r++) enable[r] = rd16(m->mem, ds, (uint16_t)(0x04FA + 2 * r));
+    /* The game's own call: a ring is drawn when enabled and its eye height fits (0 .. 7FFEh in the ring's units); it draws nine cells a sector's
+     * table names (or, below -60 degrees of pitch, the near tables [04CC]/[04DE]). Those cells are left to it. */
+    const unsigned sector = ((uint16_t)(0x1000 - arguments[0])) >> 13, sector_y = (sector + 2) & 7;
+    int own_x[9], own_y[9];
+    const int near_tables = (int16_t)arguments[1] < (int16_t)0xD555;
+    for (int i = 0; i < 9; i++) {
+        if (near_tables) { own_x[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x04CC + 2 * i)); own_y[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x04DE + 2 * i)); }
+        else { own_x[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector * 9 + i))); own_y[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector_y * 9 + i))); }
+    }
+    /* the reach: how many coarser levels an object may be drawn at beyond its own ring (each 4 times the reach): Near 1, Far 2, Maximum 3 (the whole map) */
+    const int extra_levels = g_distance >= (1 << 22) ? 3 : g_distance >= 16000 ? 2 : 1;
+    int game_draws[5] = { 0 }, radius[5] = { 0 };
+    int64_t base[5][2];
+    for (int r = 1; r <= 4; r++) {
+        game_draws[r] = enable[r] && eye_l[r][2] >= 0 && eye_l[r][2] < 0x7FFF;
+        base[r][0] = eye_l[r][0] >> 12; base[r][1] = eye_l[r][1] >> 12;
+        const long cell = 4096L << (2 * (r - 1));
+        long rad = (g_distance + cell - 1) / cell; if (rad < 2) rad = 2;
+        radius[r] = 1 << 20;                                  /* no cell radius: the level limit decides */
+        (void)rad;
+    }
+    const uint16_t base_w = rd16(m->mem, ds, 0xE56A), far_was = rd16(m->mem, ds, 0x48E6), e328 = rd16(m->mem, ds, 0xE328);
+    uint16_t allow[8], org[3];
+    for (int md = 0; md < 8; md++) allow[md] = rd16(m->mem, ds, (uint16_t)(base_w + 2 * md));
+    for (int i = 0; i < 3; i++) org[i] = rd16(m->mem, ds, (uint16_t)(0x49AC + 2 * i));
+    static int far_plane = -1;
+    if (far_plane < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far_plane = e ? atoi(e) : 30000; if (far_plane > 32000) far_plane = 32000; }
+    wr16(m->mem, ds, 0x48E6, (uint16_t)far_plane);
+    for (int md = 0; md < 8; md++) if (allow[md] > 32600 - far_plane) wr16(m->mem, ds, (uint16_t)(base_w + 2 * md), (uint16_t)(32600 - far_plane));
+    /* the picks: each object once, at the finest level where its camera depth is under the game's reach (8191 units; 8000 here) */
+    static far_pick *picks; static size_t pick_cap;
+    size_t npick = 0;
+    const int level_lim = 24000, reach = 8000;
+    for (int ring_i = 1; ring_i <= 4; ring_i++) {
+        if (!enable[ring_i] || !g_cell_side[ring_i]) continue;
+        /* the cells an object of this ring can be drawn from: its coarsest allowed level reaches 8000 units of that level, plus a margin for the object's own offset */
+        const int top = ring_i + extra_levels < 4 ? ring_i + extra_levels : 4;
+        const double reach_cells = 8000.0 * (double)(1 << (2 * (top - 1))) / (4096.0 * (double)(1 << (2 * (ring_i - 1))));
+        const int rad = (int)reach_cells + 3;
+        const int lo = g_cell_lo[ring_i], side = g_cell_side[ring_i];
+        int64_t cx0 = base[ring_i][0] - rad, cx1 = base[ring_i][0] + rad, cy0 = base[ring_i][1] - rad, cy1 = base[ring_i][1] + rad;
+        if (cx0 < lo) cx0 = lo; if (cy0 < lo) cy0 = lo;
+        if (cx1 > lo + side - 1) cx1 = lo + side - 1; if (cy1 > lo + side - 1) cy1 = lo + side - 1;
+        for (int64_t cy = cy0; cy <= cy1; cy++) {
+          const size_t first_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx0 - lo)], last_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx1 - lo) + 1];
+          for (size_t i = first_i; i < last_i; i++) {
+        const far_inst *f = &g_inst[i];
+        const int r = f->ring;
+        const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
+        far_pick pk; int chosen = 0;
+        for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
+            if (eye_l[l][2] >= 0x7FFF || eye_l[l][2] < 0) continue;
+            const int s = 2 * (l - r);
+            const int64_t half = s ? ((int64_t)1 << (s - 1)) : 0;
+            const int64_t qx = (f->x + half) >> s, qy = (f->y + half) >> s, qz = (f->z + half) >> s;
+            const int64_t ez = eye_l[l][2] < 2 ? 2 : eye_l[l][2];
+            const int64_t ddx = qx - eye_l[l][0], ddy = qy - eye_l[l][1], ddz = qz - ez;
+            if (ddx > level_lim || ddx < -level_lim || ddy > level_lim || ddy < -level_lim || ddz > level_lim || ddz < -level_lim) continue;
+            pk.x = (int16_t)(uint16_t)qx; pk.y = (int16_t)(uint16_t)qy; pk.z = (int16_t)(uint16_t)qz;
+            pk.ox = (int16_t)(uint16_t)eye_l[l][0]; pk.oy = (int16_t)(uint16_t)eye_l[l][1]; pk.oz = (int16_t)(uint16_t)ez;
+            /* the model word and its class, as E2B6 reads them */
+            uint16_t w = (uint16_t)(0x100 | (f->type & 0x7F));
+            w = (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0510 + 2 * (w & 0x7F))) | (w & 0x8000));                       /* C436 */
+            const unsigned bank = (w & 0x7FFF) >> 8, idx = w & 0x7F;
+            const uint8_t klass = m->mem[(((uint32_t)ds << 4) + (uint16_t)(rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * bank)) + idx)) & 0xFFFFF];
+            int16_t zh = 0;
+            const int visible = far_cull(m, ds, ss, (uint16_t)(pk.x - pk.ox), (uint16_t)(pk.y - pk.oy), (uint16_t)(pk.z - pk.oz), klass & 7u, s, &zh);
+            if ((zh < 0 ? -(int)zh : (int)zh) >= reach) continue;                                                      /* too deep at this level: a coarser one */
+            chosen = 1; pk.level = l; pk.model = w;
+            if (!visible) { chosen = -1; break; }
+            pk.darken = far_detail(m, ds, zh, klass & 7u);
+            pk.dist = sqrt((double)ddx * ddx + (double)ddy * ddy + (double)ddz * ddz) * (double)(1 << (2 * (l - 1)));
+        }
+        if (chosen != 1) continue;
+        if (pk.level == r && game_draws[r]) {                                     /* the game's own cells */
+            int own = 0;
+            for (int k = 0; k < 9; k++) if (own_x[k] == dcx && own_y[k] == dcy) own = 1;
+            if (own) continue;
+        }
+        pk.idx = (int)i;
+        if (npick == pick_cap) { pick_cap = pick_cap ? pick_cap * 2 : 1024; picks = (far_pick *)realloc(picks, pick_cap * sizeof *picks); if (!picks) { pick_cap = npick = 0; return 0; } }
+        picks[npick++] = pk;
+          }
+        }
+    }
+    qsort(picks, npick, sizeof *picks, far_pick_cmp);
+    /* place them: natively where the renderer has a template for the model, else through the game's own placement (which makes one) */
+    const double ms1 = walk_ms();
+    uint16_t sv_r[8], sv_seg[4];
+    for (int i = 0; i < 8; i++) sv_r[i] = c->r[i];
+    for (int i = 0; i < 4; i++) sv_seg[i] = c->seg[i];
+    const uint16_t sv_ip = c->ip, sv_fl = c->flags;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    const uint64_t until = m->run_until, stop = c->stop_at;
+    int bad = 0; unsigned native = 0, guest = 0;
+    /* the walker's frame, as the renderer's hook reads it: the eye longs at BP + 8, BP + 0Ch, BP + 10h */
+    for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
+    for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
+    c->flags = sv_fl;
+    for (int i = 7; i >= 0; i--) cpu_push16(c, arguments[i]);
+    cpu_push16(c, 0x04E6);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t frame_sp = c->r[R_SP];
+    for (size_t k = 0; k < npick; k++) {
+        const far_pick *pk = &picks[k];
+        const far_inst *f = &g_inst[pk->idx];
+        if (g_collector.native) {
+            rerun_native spec;
+            const unsigned bank_idx = (pk->model & 0x7FFF) >> 8;
+            spec.bank = rd16(m->mem, ds, (uint16_t)(0xB78A + 2 * bank_idx));
+            spec.model = (uint16_t)(pk->model & 0x7F);
+            spec.pos[0] = (int16_t)(uint16_t)(pk->x - pk->ox);
+            spec.pos[1] = (int16_t)(uint16_t)(pk->z - pk->oz);
+            spec.pos[2] = (int16_t)(uint16_t)(0 - (uint16_t)(pk->y - pk->oy));
+            spec.darken = pk->darken; spec.level = pk->level; spec.shrink = 2 * (pk->level - f->ring);
+            spec.eye[0] = eye_long[0]; spec.eye[1] = eye_long[1]; spec.eye[2] = eye_long[2];
+            if (g_collector.native(g_collector.user, m, &spec)) { native++; continue; }
+        }
+        guest++;
+        wr16(m->mem, ds, 0xE328, (uint16_t)pk->level);
+        wr16(m->mem, ds, 0x49AC, (uint16_t)pk->ox); wr16(m->mem, ds, 0x49AE, (uint16_t)pk->oy); wr16(m->mem, ds, 0x49B0, (uint16_t)pk->oz);
+        g_scale_shift = 2 * (pk->level - f->ring);
+        g_walk_busy = 1;
+        c->r[R_SP] = frame_sp;
+        cpu_push16(c, (uint16_t)pk->z); cpu_push16(c, (uint16_t)pk->y); cpu_push16(c, (uint16_t)pk->x);
+        cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0);
+        cpu_push16(c, pk->model);
+        cpu_push16(c, 0x06A6);
+        c->ip = 0xE2B6;
+        m->trap_on = 1; m->trap_cs = c->seg[S_CS]; m->trap_ip = 0x06A6; m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+        int rc = RUN_SLICE;
+        const uint64_t limit = c->icount + 200000000ull;
+        while (rc == RUN_SLICE && c->icount < limit) rc = machine_run(m, limit);
+        if (rc != RUN_TRAP) bad++;
+        g_walk_busy = 0; g_scale_shift = 0;
+    }
+    g_walk_busy = 0; g_scale_shift = 0;
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
+    wr16(m->mem, ds, 0x48E6, far_was);
+    for (int md = 0; md < 8; md++) wr16(m->mem, ds, (uint16_t)(base_w + 2 * md), allow[md]);
+    wr16(m->mem, ds, 0xE328, e328);
+    for (int i = 0; i < 3; i++) wr16(m->mem, ds, (uint16_t)(0x49AC + 2 * i), org[i]);
+    for (int i = 0; i < 8; i++) c->r[i] = sv_r[i];
+    for (int i = 0; i < 4; i++) c->seg[i] = sv_seg[i];
+    c->ip = sv_ip; c->flags = sv_fl;
+    if (bad) fprintf(stderr, "[far] %d placements did not return\n", bad);
+    {
+        static int stats = -1; static double sel_ms, run_ms; static unsigned n, picked, total, nat, gst;
+        if (stats < 0) stats = getenv("F117_WIDE_WALK_STATS") != NULL;
+        if (stats) {
+            sel_ms += ms1 - ms0; run_ms += walk_ms() - ms1; picked += (unsigned)npick; total += (unsigned)g_ninst; nat += native; gst += guest;
+            ++n; if (n <= 5 || n % 300 == 0) fprintf(stderr, "[far] mean of %u: %.2f ms choosing (%u objects listed), %.2f ms placing %.0f survivors (%.0f native, %.0f by the game)\n", n, sel_ms / n, total / n, run_ms / n, (double)picked / n, (double)nat / n, (double)gst / n);
+        }
+    }
+    return 0;
+}
+
 static int g_air_k = -1, g_air_done, g_air_pct = 100;
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
     if ((int)k == g_walk_k) {
         g_walk_calls++;
-        return g_walk_busy ? 0 : walk_second(m);
+        { static int init; if (!init) { init = 1; if (getenv("F117_FAR_WALKER")) g_far_native = 0; } }
+        return g_walk_busy ? 0 : (g_far_native ? far_scenery(m) : walk_second(m));
     }
     if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
     const uint16_t ds = m->cpu.seg[S_DS];

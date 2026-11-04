@@ -51,16 +51,36 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
  * copy runs with its host hooks cleared, so its execution hooks (the snapshot keeps machine_t.exec_hook) reach nobody. With a
  * collector set, each copy gets hooks.exec = exec (and hooks.user = user), and begin(user) is called just before the copy
  * runs and end(user) just after, whether or not it finished. The collector sees the copy's machine, never the real one. */
+/* One static terrain object drawn natively (docs/scenery-distance.md, "Native far scenery"): the copy's own placement is skipped and the renderer
+ * builds the pose from a template, patching only what depends on the object's place. pos is model_draw's position words (x, the height, minus y;
+ * camera-relative, in the level's units), bank and model are what E2B6 hands over, darken is DS:48C4 as the game's detail-level routine gives it,
+ * level is the ring scale (1..4) it is drawn in, shrink the bits (2 per ring) its own ring's units are finer than that, and eye the three world
+ * longs of the viewpoint (for the ring-rounding correction). */
+typedef struct {
+    uint16_t bank, model;
+    int16_t  pos[3];
+    uint8_t  darken;
+    int      level, shrink;
+    uint32_t eye[3];
+} rerun_native;
+
 typedef struct {
     void (*begin)(void *user);
     int  (*exec)(void *user, machine_t *m, unsigned index);
     void (*end)(void *user);
     void *user;
+    int  (*native)(void *user, machine_t *m, const rerun_native *n);   /* 1: drawn; 0: no template yet, the copy places it itself */
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */
 void rerun_set_wide(int percent);
 /* The extra terrain walks' reach in world units (0 turns them off; the 16-bit limit of the guest's cell offsets caps every ring, whatever is asked). */
 void rerun_set_distance(int units);
+/* Nonzero while the copy runs its coarse-scale passes: ring-1 objects drawn at ring 2's scale, whose model vertices the renderer shrinks by 4. */
+int rerun_coarse_active(void);
+/* Nonzero while the copy runs any extra terrain walk (not the game's own): the renderer takes those models from their geometry, so the copy skips the game's own face drawing for them. */
+int rerun_extra_active(void);
+/* The scale difference, in bits (2 per ring), between the unit the object being placed is drawn in and its own ring's: the renderer shrinks its model by that much. */
+int rerun_scale_shift(void);
 
 #endif

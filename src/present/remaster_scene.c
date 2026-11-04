@@ -21,7 +21,9 @@ typedef struct {
 
 struct remaster_scene {
     cache_entry cache[CACHE_SIZE];
+    uint16_t index[4096];           /* hash of (bank, model, level) -> cache slot + 1: a lookup is two probes, not a scan of the cache */
     unsigned next;                  /* the next slot to take when none matches */
+    const uint8_t *sig_page; uint8_t sig_samples[40]; uint64_t sig;   /* the last bank page's signature, reused while its samples are unchanged */
     scene_pose pose;
     scene_geometry geometry;
     uint32_t serial;                /* the requests added, numbering each object of a frame (remaster_prim.owner) */
@@ -56,18 +58,42 @@ static uint64_t bank_signature(const uint8_t *page)
     return h;
 }
 
+/* The bank's signature, kept while forty sampled bytes (the first sixteen and one every 2.7 KB) and the page are unchanged: hashing two thousand bytes for every
+ * model asked for was most of what a cached lookup cost. A new bank (a change of theatre) changes those bytes. */
+static uint64_t bank_signature_cached(remaster_scene *s, const uint8_t *page)
+{
+    uint8_t samples[40];
+    for (unsigned k = 0; k < 16; k++) samples[k] = page[k];
+    for (unsigned k = 0; k < 24; k++) samples[16 + k] = page[16 + k * 2731u];
+    if (s->sig_page == page && !memcmp(samples, s->sig_samples, sizeof samples)) return s->sig;
+    s->sig_page = page; memcpy(s->sig_samples, samples, sizeof samples);
+    s->sig = bank_signature(page);
+    return s->sig;
+}
+
+/* The mesh for a model at a camera depth. The cache is keyed on the detail level the depth selects, not on the depth: every object at its own depth used to
+ * decode its model again (a copy of the 64 KB bank and a hash of it each time). */
 static const scene_mesh *lookup(remaster_scene *s, const uint8_t *bank_page, uint64_t sig, uint16_t model, uint16_t depth)
 {
-    for (unsigned i = 0; i < CACHE_SIZE; i++) {
-        const cache_entry *e = &s->cache[i];
-        if ((e->mesh || e->failed) && e->bank == sig && e->model == model && e->depth == depth) return e->failed ? NULL : e->mesh;
+    uint16_t lod;
+    if (!scene_mesh_lod(bank_page, model, depth, &lod)) return NULL;
+    const unsigned h = (unsigned)((sig ^ (sig >> 29) ^ ((uint64_t)model * 0x9E3779B1u) ^ ((uint64_t)lod * 0x85EBCA6Bu)) & 4095u);
+    for (unsigned probe = 0; probe < 2; probe++) {
+        const unsigned slot = s->index[h ^ probe];
+        if (!slot) continue;
+        const cache_entry *e = &s->cache[slot - 1];
+        if ((e->mesh || e->failed) && e->bank == sig && e->model == model && e->depth == lod) return e->failed ? NULL : e->mesh;
     }
-    cache_entry *e = &s->cache[s->next++ % CACHE_SIZE];
+    cache_entry *e = &s->cache[s->next % CACHE_SIZE];
+    const unsigned slot = s->next++ % CACHE_SIZE;
     scene_mesh_free(e->mesh);
     scene_error err = SCENE_OK;
     e->mesh = scene_mesh_decode(bank_page, SCENE_SEGMENT, model, depth, &err);
-    e->bank = sig; e->model = model; e->depth = depth;
+    e->bank = sig; e->model = model; e->depth = lod;
     e->failed = e->mesh == NULL;
+    unsigned put = h;
+    if (s->index[h]) { const cache_entry *o = &s->cache[s->index[h] - 1]; if (o->mesh || o->failed) put = h ^ 1; }     /* the second probe when the first holds a live entry */
+    s->index[put] = (uint16_t)(slot + 1);
     return e->mesh;
 }
 
@@ -226,6 +252,12 @@ static int emit(void *user, const scene_material *c)
 }
 
 const scene_geometry *remaster_scene_geometry(const remaster_scene *s) { return &s->geometry; }
+int remaster_scene_has_shared(const remaster_scene *s)
+{
+    for (unsigned i = 0; i < SCENE_VERTICES; i++) if (s->pose.shared_present[i]) return 1;
+    return 0;
+}
+void remaster_scene_origin(const remaster_scene *s, int32_t out[3]) { for (int j = 0; j < 3; j++) out[j] = s->pose.part[0].translation[j]; }
 
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f)
@@ -236,7 +268,7 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     int16_t camera[9];
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
     const uint16_t depth = scene_model_depth(position, camera);
-    const scene_mesh *mesh = lookup(s, bank, bank_signature(bank), model, depth);
+    const scene_mesh *mesh = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
     if (!mesh) return -1;
     s->serial = (s->serial + 1) & 0xFFFFF;
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;

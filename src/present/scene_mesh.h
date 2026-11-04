@@ -48,6 +48,9 @@ typedef struct {
 } scene_mesh;
 
 uint16_t scene_model_depth(const int16_t position[3], const int16_t camera[9]);
+/* The detail level a model is drawn at for a camera depth: the offset of its level in the bank (the first (range, offset) pair whose range is not below the
+ * depth), without decoding it. 1 and *lod set, or 0 when the model is out of the bank or its list is cut short. */
+int scene_mesh_lod(const uint8_t *bank, uint16_t model, uint16_t depth, uint16_t *lod);
 scene_mesh *scene_mesh_decode(const uint8_t *bank, size_t size, uint16_t model, uint16_t depth, scene_error *error);
 void scene_mesh_free(scene_mesh *mesh);
 

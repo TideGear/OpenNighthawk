@@ -303,6 +303,12 @@ static int copy_exec(void *user, machine_t *m, unsigned index)
     return remaster_live_exec(g_rlive_copy, m, index - g_rlive_base);
 }
 
+static int copy_native(void *user, machine_t *m, const rerun_native *n)
+{
+    (void)user;
+    return g_rlive_copy ? remaster_live_native(g_rlive_copy, m, n) : 0;
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -647,7 +653,7 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
 #include "host_keys.h"
 
 /* A draw-distance choice as world units: original turns the extra walks off, maximum is every ring to the limit of the guest's 16-bit cell offsets. -1: not a choice. */
-static const char *g_draw_choice = "maximum";           /* the draw distance in force, for the menu */
+static const char *g_draw_choice = "near";           /* the draw distance in force, for the menu */
 static int draw_distance_units(const char *v)
 {
     if (!strcmp(v, "maximum")) return 1 << 22;
@@ -989,7 +995,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native };
                 if (g_rlive_copy) rerun_set_collector(&coll);
             }
         }

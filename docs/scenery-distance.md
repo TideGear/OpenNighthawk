@@ -1,88 +1,79 @@
 # Scenery distance
 
-Remastered's wide view draws scenery farther than the original, with an adjustable reach. It happens only in the Remastered render copy
-(`src/present/rerun.c`): the game's logic, the live machine and `matched.c` are untouched, and Original and Enhanced keep the game's own
-short reach. The setting is **Draw distance** in the settings menu (Maximum, Far, Near, Original), applied at once; `--draw-distance` and
-`draw-distance =` in `f117a.ini` take the same names or a number of world units. Default: Maximum.
+Remastered draws far scenery farther than the original, with an adjustable reach. It happens only in the Remastered render copy
+(`src/present/rerun.c`, `remaster_live.c`): the game's logic, the live machine and `matched.c` are untouched, and Original and Enhanced keep
+the game's own reach. The setting is **Draw distance** in the settings menu (Near, Far, Maximum, Original), applied at once;
+`--draw-distance` and `draw-distance =` in `f117a.ini` take the same names or a number of world units. Default: Near.
 
-## How the game limits it, and what the copy does
+## Why buildings pop in
 
-The game's terrain walk (VGAME `04E6`) draws scenery on four **rings**: four grids over the one static world, each object belonging to exactly
-one ring by size. Ring 4 is the coarsest (an 8 x 8 map of cells 262,144 units wide, the big landmarks); ring 1 the finest (a 256 x 256 map of
-cells 4,096 units wide: the small things, such as lit windows and roofs, patches of colour, the spinning radar dish); rings 3 and 2 are between.
-Each ring visits only nine cells of a 4 x 4 block around the viewer's own cell (the sector table at `[034C]`, offsets -1..2), so small objects
-appear a few cells out, which is the pop-in.
+The terrain is four **rings**: four grids over the one static world, each object on exactly one ring by size. Ring 4 is the coarsest (an 8 x 8
+map of cells 262,144 units wide: the big landmarks); ring 1 the finest (256 x 256 cells 4,096 wide: small buildings, lit windows, the radar
+dish); rings 3 and 2 are between. A ring works in its own unit, 4 times coarser each step (`0810`), so the guest's 16-bit camera-relative words
+reach 4 times farther on each ring.
 
-The guest keeps a cell's position as a 16-bit `offset << 12`, so any offset beyond -8..7 cells wraps. That is the far limit of every ring: 28,672
-units on ring 1, 114,688 on ring 2, 458,752 on ring 3 and the whole map on ring 4. It is also why shifting the sector table by 6 or 12 cells
-drew nothing (an earlier experiment, and the first versions of this work, which also covered only about 4 cells).
+The game draws a terrain model only while its camera depth is under 8,191 units **of its own ring** (the range test, VGAME `120A:02B2`: it fails
+when `2 * (|depth| + 1)` reaches the size word `[7D5E]`, which is 16,383 for every model in the replays checked). That is about 8,000 real units for ring 1,
+32,000 for ring 2, 131,000 for ring 3 and 524,000 for ring 4. Ring-1 buildings therefore appear at about 8,000 units, while the ring-2 and ring-3
+versions of the same area (dots) show beyond: groups of buildings pop in with dots already visible past them. Widening the cells the walk visits
+cannot move this (the owner's session 20261103-205615, and `F117_REACH_LOG`, which lists each model's farthest drawn depth); the earlier work that did
+(extra terrain walks, 3 and 4 Nov) mostly drew objects the test then rejected.
 
-In the copy, before the game's own walk, `walk_second` runs extra walks that feed the walker **explicit cells**: row r of the table is the X
-offsets of sector r and the Y offsets of sector r + 2 (nine pairs), so each pass writes up to nine chosen (dx, dy) offsets into the current
-sector's rows, enables one ring, and calls `04E6` with all eight original words (pitch forced level, because a steep downward pitch reads the near
-tables `[04CC]` instead). The far plane is raised to 30,000 and the side allowances lowered so their sum with the depth stays under 7FFFh.
+## What the copy does
 
-Which cells: every cell within the setting's reach on each ring (radius = reach / cell width, at least 2, at most 7), except the nine the
-game draws itself. Before a pass is built the map is read natively (`cell_tile`, matching `0871`; `cell_base`, matching `0810`), and a cell is
-left out if it lies outside the map or its tile holds no objects (`[061E + 2 (32 ring + tile)]` is 0). The outside-the-map test matters: the guest
-answers tile 0 for a cell outside the map, and tile 0 is a real tile, so asking for such a cell would draw ghost copies of its objects. This
-filter is exact: pictures are pixel-identical with and without it (three clocks, 0 differing pixels).
+An object drawn at a **coarser level** has a smaller depth in that level's units, so it passes the same test 4 times farther; its model is shrunk by
+the same factor so it keeps its real size (the renderer shrinks the vertices about the object's origin, `finish_model` in `remaster_live.c`). The copy
+does this for every object, once per object, in `far_scenery` (`rerun.c`), at the entry of the game's own terrain walk (the live walk then draws its
+nine cells per ring as always):
 
-Reach, in world units: Maximum 4,194,304 (every ring to its limit), Far 20,000, Near 12,000 (ring 1 reaches 5 and 3 cells; the coarser rings
-keep their minimum of 2 cells), Original 0 (no extra walks). Diagnostics: `F117_WIDE_DISTANCE` (units, overrides), `F117_WIDE_SCENERY=0` (off),
-`F117_WIDE_SCENERY_FAR` (the far plane), `F117_WIDE_WALK_STATS=1` (cost per copy, per ring, every 300th copy), `F117_REMASTER_PLACEMENT_LOG_FROM`
-with `F117_REMASTER_PLACEMENT_LOG_ALL=1` (every placement: ring, model, position).
+1. **The world, once.** Every object of every ring is listed from the map and tile lists (position in its ring's units: cell * 4096 + 2048 + the entry's
+   offsets, which is the walker's own sum), keyed on a hash of that data and indexed by cell. About 74,000 objects on the 3 Nov map.
+2. **The level.** For each object in the cells within reach, the finest level (its ring or coarser, up to the setting) at which its camera depth is
+   under 8,000 of that level's units and its offset fits the guest's 16-bit words. The setting is how many coarser levels are allowed: Near 1, Far 2,
+   Maximum 3 (the whole map; ring 4 reaches about 524,000 units, the map is 1,048,576 across). The objects in the game's own nine cells per ring are
+   left to it, where the ring is drawn at all.
+3. **The cull.** The game's own camera transform and cull (`E3BF`, ported exactly: `far_cull`), with the side allowance divided by the level
+   difference, since it is in the object's own units; and the darkening byte the game keeps in `DS:48C4` (`far_detail`).
+4. **The pose, natively.** The first object of each model in a copy is placed through the game's own `E2B6`, which makes the renderer take a
+   *template* of the game's pose state (`DS:7B28 .. 7DA0`). Every later object of that model patches only what depends on its place: the position words, the
+   eye (the position negated, and for a model with one base part also through the part's matrix, `1452:021B`), the 32-bit translation (`1452:0330`) and the
+   darkening byte; then the renderer builds the primitives (`remaster_scene_add`) exactly as it does for the game's own placements. Models with two or
+   more parts, with shared vertices, or in orthographic views keep the game's own placement (about 3 to 4 percent of objects).
 
-## What it brings in
+The game's placement of an extra object also skips its own face drawing (the renderer draws the model from its geometry): zero differing pixels over three
+runway moments (3 Nov).
 
-On the owner's runway flight (session 20261103-154444, replayed from its `save-start`; the replay matches the owner's shots) the Maximum
-setting draws about four times as much as the earlier shifted-block pass: the horizon fills with specks, lit building clusters appear on the
-left, and a dotted lit line appears along the runway edge, 1,600 to 2,500 changed pixels a frame at the three runway clocks. In the owner's first
-flight (session 20261103-145810) the placement logs show ring 3 model 271 drawn out to 3,439 units without extra walks and 11,183 with, model 299
-1,999 and 12,976, models 316 to 318 about 12,000 and 20,000, models 265 and 266 only with them. The owner confirmed the lit dot rows are buildings
-(dark roofs, lit windows) and that these, the colour patches and the radar dish were popping in.
+## Checked against the game
+
+`F117_NATIVE_CHECK=1` builds each native object's primitives aside and compares them, field by field, with the game's own drawing of the same model at the
+same position (paired by bank, model and position, since a deferred object is drawn later): 1.6 million objects over the runway replay, 0 differing. One
+field is left out when it cannot agree: the shade, when `DS:7D8A` differs; that byte is the game's per-face fill colour, so the renderer's "base shade"
+read from it depends on what the game drew just before. Diagnostics: `F117_FAR_WALKER=1` (the old extra terrain walks), `F117_WIDE_WALK_STATS=1` (cost per copy),
+`F117_NATIVE_TIMING=1` (per phase), `F117_NATIVE_SIZES=1` (projected size of drawn objects), `F117_REACH_LOG=1` (the cap per model),
+`F117_WIDE_DISTANCE=UNITS` (overrides the setting), `F117_WIDE_SCENERY=0` (off).
 
 ## Cost (measured)
 
-1920 x 1080, scale 3, software output, the same replay (clock 3.9 to 4.8 billion, runway taxi and take-off), one run each, two for Original, Near
-and Far: Original 54.4 and 53.5 pictures a second (p95 interval 25.3 and 26.3 ms), Near 47.2 and 45.5, Far 42.5 and 42.3, Maximum 39.2 and 37.4
-(34.4 and 38.7 ms). At Maximum an extra walk is 35 passes, about 357,000 emulated instructions and 4.2 ms a copy (down from 96 passes, 771,000 and
-6.8 ms before the object filter); ring 1 is 216 cells and 164,000 of those instructions, ring 4 (heavy models) 131,000. **So Maximum costs about
-15 pictures a second on this scene on this machine; the 60 fps target is not met with it on.** Original keeps the game's own cost.
-
-Tried and removed: a native view-cone filter, to skip cells behind or beside the viewer. It was not exact: objects on every ring extend across many
-cells (the shoreline models especially), and a margin wide enough to be exact keeps nearly every cell. A cheaper walk needs the copy's emulated work
-reduced or run in parallel; that is the open performance work.
+1920 x 1080, scale 3, software output, threads on, the owner's runway replay (clock 3.9 to 4.8 billion, session 20261103-154444), pictures a second:
+Original 59.8, Near 55.8, Far 50.0, Maximum 22.9. Per copy, native placement: Near about 200 objects, 0.24 ms; Far about 2,200 (and 0.7 ms choosing);
+Maximum about 10,000, 9 ms. The compositor (the lines stage in particular) is the larger part at Far and Maximum: composite 6.7 ms (Original), 7.8 (Near),
+11.4 (Far), 19 (Maximum, threads on). Near's whole cost is about 2 ms a frame. One native object costs about 0.7 microseconds, against about 35 through the game's own
+placement: most of that was the renderer's mesh cache, which decoded a model again for every distinct depth and hashed two thousand bytes of the bank on every
+call (`remaster_scene.c`: keyed on the detail level now, with the bank signature kept); that also speeds the live game's own model drawing.
 
 ## Limits and what is not shown
 
-- Ring 1 (the small buildings) cannot be pushed past the 16-bit limit of 28,672 units without a different technique (drawing it at a coarser
-  scale about the eye); it is not infinite for small objects. Ring 4's landmarks cover the whole map.
-- No frame was captured of an object being seen to appear earlier in a moving sequence; the evidence is stills at known clocks and the placement
-  distances. The owner should judge Maximum, Far and Near in ONTests.
-- Steep downward pitch (past 30 degrees) was not tested with the extra walks.
-- The cost numbers are single software-output runs on one machine.
-
-## Regression
-
-`presentation_rerun_isolation` (`tests/test_rerun.c`) runs the copy with every ring enabled and a populated map: the game's own walk once, extra
-walks each with all eight words (pitch 0), none when the map holds no objects, and the live machine and its full memory unchanged. `machine_t`
-has two extra hook slots for the copy so the walk hook installs even when the live machine's eight are full.
+- Beyond about 524,000 units nothing small is drawn (ring 4's reach); that is half the map.
+- The shape of a distant model comes from the game's own level of detail at the coarser level's depth (nearer in its units, so a more detailed level than
+  the game would have chosen at the real distance, shrunk back to size).
+- Multi-part and shared-vertex models (a few percent of objects, for instance a spinning radar dish) still go through the game's placement every copy.
+- Maximum is renderer-bound: the lines stage draws thousands of tiny strokes. A cheaper path for strokes under a pixel is possible and not built.
+- No moving-sequence capture of a building appearing earlier; the evidence is the placement and reach logs and the oracle above. The owner judges Near, Far and Maximum.
 
 ## History
 
-- 3 Nov, earlier: a three-cell shifted block over ring 4 only (177 pixels at the widened edge on one North Cape frame), then rings 2 and 3, then
-  all rings (all three at three cells), replaced by the explicit-cell walk above. The shifted blocks could not reach past about 5 cells.
-- Negative controls kept for the record: taxi/airfield samples with the first walk were pixel-identical (it had no hook slot); a two-word-call
-  sample was invalid (incomplete camera arguments); the sea and desert frames showed only specks until the owner's runway flight showed buildings.
-
-## Why ring 1 stops at 28,672 units, and what passing it would take
-
-Read from `vgame_scene_walk` (`matched.c`): the walker stores each cell's eye-relative centre as 16-bit words at `DS:9506` and `9508`
-(`-((cell << 12) - offset) - 800h`) and `950A` (depth), then hands them to `D9E7` and `E3AC`. The limit is the width of the eye-relative
-coordinate itself, not the sector table, so sending more cells cannot pass it. A coarser ring reaches farther only because it works in a
-scale 4 times coarser (`0810`), and `E328` (the ring) also drives the tile-list lookup, the model scale and the depth key shift in `0DB3C`
-(`distance >> (4 - E328) * 2`). Drawing a ring-1 object past the limit would need a copy-side placer that runs the ring-1 entries at ring-2
-scale (entry offsets divided by 4, the cell centre computed by hand, `E328` set to 2 around `C436` and `E2B6`) and a check that
-`remaster_live.c`'s depth correction (`2^(2 * (4 - ring) + model_shift)`) still holds. Not built; it needs a pixel comparison of an in-range
-ring-1 object drawn both ways before it can be trusted.
+- 3 Nov, earlier: a shifted three-cell block over ring 4, then rings 2 and 3, then explicit cells fed to the game's walker out to its 16-bit limit, with a
+  coarse-scale pass (ring-1 objects through ring 2's scale via merged tile lists in scratch memory). Replaced by the native path above: the walker's
+  16-bit cell offsets, its per-cell and per-object overhead, and the scratch-memory trick are gone. Still there behind `F117_FAR_WALKER=1`.
+- Negative controls kept for the record: a native view-cone filter on cells was not exact (objects extend across many cells); taxi/airfield samples with the
+  first walk were pixel-identical (it had no hook slot).

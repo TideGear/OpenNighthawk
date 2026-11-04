@@ -101,9 +101,9 @@ int main(void)
      * angles. A tiny guest callee exposes both the added and original call,
      * including a stack that wraps at 64 KiB. The real machine stays intact. */
 #ifdef _WIN32
-    _putenv_s("F117_WIDE_VIEW","180");_putenv_s("F117_WIDE_SCENERY","3");
+    _putenv_s("F117_WIDE_VIEW","180");_putenv_s("F117_WIDE_SCENERY","3");_putenv_s("F117_FAR_WALKER","1");   /* this test drives the extra terrain walks (the legacy path); the native far scenery is checked against the game by F117_NATIVE_CHECK */
 #else
-    setenv("F117_WIDE_VIEW","180",1);setenv("F117_WIDE_SCENERY","3",1);
+    setenv("F117_WIDE_VIEW","180",1);setenv("F117_WIDE_SCENERY","3",1);setenv("F117_FAR_WALKER","1",1);
 #endif
     rerun_set_wide(180);
     for(int variant=0;variant<4;variant++) {
@@ -140,7 +140,7 @@ int main(void)
         /* the game's own walk once, then every ring out to the 16-bit limit: 224 cells (15 x 15 less the viewer's own) in passes of nine, 25 a ring */
         CHECK(terrain_orig==1 && !terrain_bad);
         if(populated_off) CHECK(terrain_extra==0);          /* a map with no objects: nothing for an extra walk to draw (and no ghost tile 0 outside it) */
-        else CHECK(terrain_extra>=4 && terrain_extra<100);   /* every ring walks the cells it has objects in, in passes of nine */
+        else CHECK(terrain_extra>=4 && terrain_extra<1000);  /* every ring walks the cells it has objects in, in passes of nine; the coarse-scale pass adds its own */
         CHECK(!list.changed && !memcmp(&m,&before,sizeof m) && !memcmp(memory,saved,MEM_SIZE));
     }
     observe_set(NULL); rerun_snap_free(&snap); rerun_list_free(&list);
