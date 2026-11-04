@@ -43,6 +43,9 @@ Game logic is untouched throughout: the GPU only reads the primitive list the co
 ## Stages
 
 1. Headless harness: an SDL GPU device with no window, the frame's primitives uploaded, a compute pass, readback, compare with the CPU raster.
+   **Toolchain done (4 Nov):** `tools/gpu_probe.c` and `src/present/gpu/probe.hlsl` (CTest `gpu_compositor_probe`): dxc to DXIL, a D3D12 device with no
+   window (SDL 3.2 needs `SDL_INIT_VIDEO` for that), a 3840 x 2160 compute pass, readback: 0 of 8,294,400 values differ; upload, dispatch and
+   readback of 33 MB each way 5.0 ms.
 2. Clear and the sky/ground bands (5.5 ms of the 15.3).
 3. Polygons: depth, owner and the palette logic.
 4. Lines and dots: the decal rules, after the item above is verified.

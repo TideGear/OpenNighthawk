@@ -170,6 +170,20 @@ if(F117R_BUILD_APP)
   f117r_audio_target(f117a)
   target_link_libraries(f117a PRIVATE SDL3::SDL3)
   # the commented settings file, beside the executable to copy as f117a.ini
+  # The GPU compositor (docs/gpu-compositor.md): HLSL compiled to DXIL with the Windows SDK's dxc; build outputs, never committed.
+  if(WIN32)
+    find_program(F117R_DXC dxc HINTS "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64")
+  endif()
+  if(F117R_DXC)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/probe.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/probe.hlsl)
+    add_custom_target(gpu_shaders ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil)
+    add_executable(gpu_probe tools/gpu_probe.c)
+    target_link_libraries(gpu_probe PRIVATE SDL3::SDL3)
+    add_dependencies(gpu_probe gpu_shaders)
+    add_test(NAME gpu_compositor_probe COMMAND gpu_probe ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil)
+  endif()
   add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
     copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.example.ini $<TARGET_FILE_DIR:f117a>)
   add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
