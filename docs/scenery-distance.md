@@ -421,3 +421,6 @@ crashes near clock 3.54 billion):
 | switches on, run 1 / run 2 | 8.43 / 8.36 | 12.62 / 8.53 | 10.07 / 10.77 |
 
 Far run 1 missed 12 ms once and its repeat did not. Software-renderer proxy, not the owner's GPU window.
+
+Follow-up, same setup: Near and Far, fixed cadence, switches off versus on: 901 of 901 composed-image checksums identical
+in each. Three more Far runs with the switches on: 8.42, 8.51 and 8.57 ms p95 (run 1's 12.62 ms was a one-off).
