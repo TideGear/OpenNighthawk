@@ -7,6 +7,11 @@ total is printed by `py tools/progress.py`; what the measure counts is in
 prove that no input can reach them. All these bytes remain in the Phase 2
 denominator; this review certifies no new dead code.
 
+**Status of the figures (5 November 2026).** The table below is the 21 October snapshot and sums to 10,301 bytes. `py tools/progress.py` now reports 11,601 reviewed static bytes outside the census
+(`reviewed_static_bytes` in `tools/census_classify.py`: reviewed ranges that no route executes). That is a different set, so the two numbers are not expected to match, but the 1,300-byte difference has not
+been attributed to specific ranges. It is the same size as the SETUP bootstrap region described under "Encoded SETUP code" (585 code bytes and 715 bytes of metadata and prompt data); whether that is the cause
+is unchecked. The reconciliation is open, and this review must not be called complete until each of the 11,601 bytes is in a group below or explained.
+
 An independent review checked 27 ranges (6,505 bytes) in groups A and
 D-H against the current installed images: hashes, complete instructions, exact
 ends and zero observed execution agree. Its direct walk does not resolve every

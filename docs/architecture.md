@@ -34,11 +34,15 @@ src/recomp/     the recompiled code's run-time (recomp.c) and the generated-code
 src/matched/    hand-written equivalents of original routines (matched.c) and the
                 draw-list observer (observe.c)
 src/fixes/      the switchable fixes (fixes.c)
-src/present/    the optional presentation: draw lists, finer re-draw, in-between frames
+src/present/    the optional presentation: draw lists, finer re-draw, in-between frames, and the
+                Remastered renderer (remaster_*.c, rerun.c: a render copy of the machine redrawn per
+                displayed frame) with its CPU compositor and the optional GPU compositor
+                (gpu_compose.c, gpu/*.hlsl; docs/gpu-compositor.md)
 src/host/       the window, input and presentation driver (main.c, present.c), the
                 headless runner (headless.c), audio (audio.c, speaker.c), the MT-32
-                backend (mt32.c), input logs (inputlog.c), the settings file
-                (config.c), the scripting API (machine_api.c)
+                backend (mt32.c), input logs (inputlog.c), the settings file and menu
+                (config.c, settings.c), controls and key remapping (controls.c, remap.c,
+                keys.c), sound-source policy (soundpolicy.c), the scripting API (machine_api.c)
 recompiler/     the translator: decoder, code discovery, C emitter (Python)
 tools/          the gate (build_recomp.py), pilots and checks, reference-machine
                 harnesses (ref86box/), routes (routes/)
@@ -904,3 +908,10 @@ the count (with the hardware's polarity and the full 10,000 swing tones have);
 is OPL writes (bug D2) and the speaker stays off (port 61h bit 1 clear).
 `tools/speaker_parity.py` holds the port-level stream and the intro's speaker
 audio to DOSBox-X ([roadmap.md](roadmap.md)).
+
+**Hybrid sound (Phase 3, off unless Mac recordings are supplied).** `src/host/soundpolicy.c` chooses, per kind of sound, which source plays it from what is available:
+speech takes the Macintosh recording, then the PC speaker; music takes the Mac recording, then Roland, then AdLib; effects take the Mac recording, then AdLib. `--music-source` and
+`--sound-source` (`default`, `mac` or `dos`) override the order for a whole kind. `src/host/macsound.c` loads the owner's own `NNN.wav` Mac recordings (`--mac-sounds DIR`), resamples
+them and maps game sound ids to Mac resources; none are in the repository. With Roland as the music driver, `--adlib-effects` lets the AdLib effects driver play the effects beside it. The
+sound-id table, the open mappings and the code proof of ids across the three drivers are in [sound-board.md](sound-board.md), [sound-id-table.md](sound-id-table.md) and
+[sound-code-proof.md](sound-code-proof.md). The policy is a host-side choice of what is heard; how requests are intercepted is described in sound-board.md.
