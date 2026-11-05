@@ -8,7 +8,7 @@ Valid launch values outside the presets remain visible and are preserved until
 you deliberately choose a preset or reset defaults.
 
 Audio Settings groups the DOS sound driver, music/effects sources, Roland
-output, speaker speech and AdLib emulation. All seven controls remain available.
+output, speaker speech and AdLib emulation. Music from and Effects from choose which version's sound plays: the best available (default), the Macintosh recordings you supplied, or the DOS drivers (`--music-source`, `--sound-source`). All seven controls remain available.
 Advanced Settings contains machine timing, the instruction budget, simulation
 steps per second and the CPU engine. These can affect game behavior.
 
