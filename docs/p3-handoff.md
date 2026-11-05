@@ -293,22 +293,6 @@ this game. Start after hybrid sound is proven.
 - Window-less runs: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`; `--no-record`, a copy of the
   install.
 
-Phase 3 (host-side features and the Remastered research) is merged into `master`. The merged tree passed the full
-acceptance gate during P2 batch `bx` (823 tests, 63 routes, 62 fresh interpreter sessions, all 1,638 matched routines,
-both timing profiles, three gate seeds, N=1 presentation on all routes, boot N=4/9; evidence
-`D:/f117-gate/p2-batch-bx-accept/`). Continue on `master`. Scoreboard: `py tools/progress.py --title`.
-
-**Gate on `p3-remaster-live` (30 October 2026, commit `d9fc8b8`, about 33 minutes):** `tools/build_recomp.py` passed in full:
-824 unit tests; all 63 routes identical between the recompiled engine and the interpreter (62 fresh interpreter sessions);
-5,764,032 instruction states under each timing profile, 0 mismatching; all 1,638 matched routines at three seeds, 0
-mismatching; every routes-only routine ran on a route; none ran past its event limit. That covers the `src/machine` change (the
-execution hook table in `machine.h` and `pc.c`). Not run: the presentation groups of a batch acceptance (N=1 on all routes, boot
-N=4/9), which the Remastered composite touches only when `--presentation remastered` is chosen. The log is kept at
-`C:\Users\Tideg\f117-recomp-local\p3-session-29oct\gate_p3_remaster_live_d9fc8b8.txt`.
-
-The hybrid sound and Remastered work on `p3-remaster-live` changes `src/machine` (`machine.h`, `pc.c`); the gate above covers it.
-Everything else listed here is host-side (`src/host/`, `src/present/`, `tools/`, `docs/`, `tests/`).
-
 ## 2 Nov 11:10 update: the five issues, honest state
 
 1. Jets in margins: fixed in code (R20), awaiting the owner's look.
