@@ -3,7 +3,7 @@
 Remastered draws far scenery farther than the original, with an adjustable reach. It happens only in the Remastered render copy
 (`src/present/rerun.c`, `remaster_live.c`): the game's logic, the live machine and `matched.c` are untouched, and Original and Enhanced keep
 the game's own reach. The setting is **Draw distance** in the settings menu (Near, Far, Maximum, Original), applied at once;
-`--draw-distance` and `draw-distance =` in `f117a.ini` take the same names or a number of world units. Default: Near.
+`--draw-distance` and `draw-distance =` in `f117a.ini` take the same names or a number of world units. Default: Original (the game's own reach); earlier notes below that say Near is the default describe 3 November.
 
 ## Why buildings pop in
 
@@ -334,7 +334,7 @@ final clock matched byte for byte. The checksums are for the composed
 image before SDL scaling. Run performance benchmarks with hashing off.
 
 
-## Skip duplicate terrain faces in the render copy (experimental, off)
+## Skip duplicate terrain faces in the render copy (default on since 4 November; `F117_NATIVE_SKIP_OWN_FACES=0` turns it off)
 
 `F117_NATIVE_SKIP_OWN_FACES=1` keeps the game's terrain walk and prepared
 poses. After the native collector captures a terrain model, the private
@@ -352,11 +352,13 @@ instructions in that stretch. The full-frame p95 still straddles 12 ms.
 At clocks 4,000,000,000, 4,400,000,001 and 4,700,000,001, the raw native
 rasters and the final composed frames were pixel-identical in paired
 captures. These three samples used one presentation thread. Verify
-additional moving and banked scenes before enabling the bypass by default.
+additional moving and banked scenes before enabling the bypass by default. (Done: validated on three flights and on by default since 4 November, see "Terrain dots setting and native options default-on".)
 The compositor uses the original outline footprint as a fallback for
 some strokes, so compare final frames as well as captured geometry.
 
 ## Native terrain walk (experimental, off)
+
+*Update, 4 November: the across-test fix (last sections) cut the difference from these figures to about 200 pixels (223 and 202 at 4.0 and 4.4 billion). Still not exact, still off.*
 
 `F117_NATIVE_WALK=1` skips the game's own terrain walk in the copy and places its nine cells a ring through the same native path (and the game's override table, `far_override`): the copy falls from 4.4 to 2.7 ms at Near.
 It is **not exact**: the picture differs from the game's walk by 2,770, 1,998 and 277 pixels at the three runway clocks 4.0, 4.4 and 4.7 billion, mostly a strip along the horizon where the original draws sea (12, 28, 85)
@@ -406,10 +408,10 @@ bias" setting (finer detail farther out) is easy and would bring the shimmer bac
 - Negative controls kept for the record: a native view-cone filter on cells was not exact (objects extend across many cells); taxi/airfield samples with the
   first walk were pixel-identical (it had no hook slot).
 
-## Native terrain options: measured with them on, still opt-in (4 November 2026)
+## Native terrain options: measured with them on (4 November 2026; they were opt-in then, default-on after the section below)
 
-The three switches (`F117_NATIVE_SKIP_OWN_FACES`, `F117_NATIVE_REFRESH_PART`, `F117_NATIVE_RANGE_CULL`) stay **opt-in**, per
-the handoff, pending wider validation. A brief default-on commit (222ad1b) was reverted for that reason.
+The three switches (`F117_NATIVE_SKIP_OWN_FACES`, `F117_NATIVE_REFRESH_PART`, `F117_NATIVE_RANGE_CULL`) stayed **opt-in** at this point, per
+the handoff, pending wider validation (the validation was done later the same day and they are on by default now). A brief default-on commit (222ad1b) was reverted for that reason.
 Parity: Maximum, eight workers, `F117_REPLAY_FIXED_CADENCE=1`, switches off versus on: all 901 composed-image checksums
 identical. Timing with the three set (1920 x 1080, software renderer, runway session 20261103-154444, clocks 3.9 to 4.8
 billion, work per frame, p95 ms; replay run with `--config` of the ONTests ini, since without its fix list the replay
@@ -545,3 +547,10 @@ Runway replay, 1080p Maximum, hidden window, CPU compositor, work per frame (`co
 | Fast, run 2 | 6.72 | 5.59 | 11.16 | 11.85 |
 
 Fast lowers the mean by about 0.8 ms; the p95 moves run to run by more than that (9.7 to 11.8 ms for Exact), so the p95 does not show the saving.
+
+## The choosing on several threads (5 November 2026)
+
+Step 2 above (the level and the cull, `far_choose_row` in `rerun.c`) runs one row of cells per job on a pool of its own (`F117_CHOOSE_THREADS`, default 4; 1 turns it off), each job writing its own list, the lists
+joined in row order. The pick list, and `qsort`'s result on it, are therefore the same as the single loop's: 901 of 901 composed-image checksums identical at Near, Far and Maximum, and the end-of-run machine hash
+identical. `F117_FAR_WHY`, `F117_CULL_WHY` and `F117_NATIVE_FORCE_BASE` keep the choosing on one thread (they print or count while choosing). The placing (step 4) stays on one thread: it patches the machine's
+template area and uses a scene reader with caches, so threading it needs private copies per thread. Timings and guards: [gpu-compositor.md](gpu-compositor.md), last section.
