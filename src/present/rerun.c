@@ -891,7 +891,9 @@ static int far_scenery_body(machine_t *m)
                 for (const char *q = e; q && *q && why_n < 8; ) { why_models[why_n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; }
                 why_left = why_n ? 200 : 0;
             }
-            if (why_left && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
+            static unsigned long long why_from; static int why_from_init;
+            if (!why_from_init) { why_from_init = 1; const char *e2 = getenv("F117_FAR_WHY_FROM"); why_from = e2 ? strtoull(e2, NULL, 0) : 0; }
+            if (why_left && c->icount >= why_from && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
                 const unsigned mi = model_by_type[f->type & 0x7F] & 0x7F;
                 for (int q = 0; q < why_n; q++)
                     if ((int)mi == why_models[q]) {

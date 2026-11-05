@@ -489,3 +489,8 @@ Found: the missing models 0, 3 and 6 are ring 4's first entries (`F117_FAR_WHY=0
 2,1 and 2,-2), are placed by the game once and natively after (the native path adds 4, 4 and 1 primitives each copy), and yet are not in the frame the compositor gets. Not yet found: where they are lost
 between the placement and the completed frame. Diagnostics (all env-gated, off by default): `F117_PRIM_HIST=FROM` (the first composites' primitive counts by model), `F117_DS_DUMP=N,C:/path` (the copy's data segment at
 its Nth HUD pass), `F117_FAR_WHY`, `F117_FAR_WHY_FROM`. The data-segment diff of the two walk modes at one copy is dominated by per-object scratch (1,322 differing words) and does not isolate a cause.
+
+**Correction (4 November, evening).** The paragraph above says the missing models 0, 3 and 6 are "placed ... and yet are not in the frame the compositor gets". That was read from diagnostic lines taken from the
+first copies of the run (early hangar frames), not the runway window. With the print restricted to the runway window (`F117_FAR_WHY_FROM` on the copy machine's clock, about 3.4 billion there, and the copy
+instance only), native-walk copy frames hold 385 primitives and none of models 0, 3 and 6 against 549 primitives and 13 of them with the game's walk. So at the runway those objects are not placed at all, and the
+open question is why the native selection does not pick them there; the "chosen" verdicts and the native-placement counts above belong to earlier frames and say nothing about it.
