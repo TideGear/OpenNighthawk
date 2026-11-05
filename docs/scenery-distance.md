@@ -500,3 +500,9 @@ clock about 3.467 billion the native selection says "culled" for model 3 at the 
 (`far_cull`) disagrees with the game for ring 4's first entry of a tile (the huge ground and sea base tiles, models 0, 3 and 6). Experiment `F117_NATIVE_FORCE_BASE=1` (with `F117_NATIVE_WALK=1`): those entries are never culled.
 Pixels that differ from the game's walk, runway replay, fixed cadence, one worker: 4.0 billion 2,625 to 205; 4.4 billion 1,967 to 185. Not a fix yet (it is an override, not an emulation of the game's rule: the game
 probably does not apply that test to these entries at all, see the walk's `centre_tile` and `tile_marker` paths at VGAME 0638 to 0761), and about 200 pixels remain (models 37, 39, 40 and 44 were also short by about 40%).
+
+**The remaining ring-1 shortfall is not the across, up or metric test (4 November, night).** With the base tiles forced visible, native-walk copy frames still hold fewer of models 37, 39, 40 and 44 than the game's walk (81, 51, 10 and 20
+polygons against 129, 77, 20 and 40; all ring 1, at the viewer's finest cells). `F117_CULL_SKIP=MASK` (diagnostic, own-level objects only: 1 the across test, 2 the up test, 4 the combined metric) changes the frame's
+total (421 with 2 or 4, 515 with 1 or 7) but leaves those four models' counts exactly where they were, so none of the three tests rejects them. What is left in `far_cull` is its first two checks (the far plane
+`[48E6]` and the per-class near plane `[48F6 + 2 lod]`) and, before it, the selection's own range and bounds gates; per-object comparison with the game's decisions (the `[req]` requests of the game's own walk against
+the native verdicts) has not been done.

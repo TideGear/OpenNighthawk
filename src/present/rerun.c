@@ -646,15 +646,16 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     const unsigned cl = (m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] ^ 1) & 31;
     int16_t ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ds, t_across) >> shift)) >> cl);
     const int16_t si = (int16_t)(ax + (ax >> 2));
+    static int skip = -1; if (skip < 0) { const char *e = getenv("F117_CULL_SKIP"); skip = e ? atoi(e) : 0; }   /* diagnostic mask: 1 across test, 2 up test, 4 metric test (own-level objects only) */
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
-    if (axx > si) return 0;
+    if (axx > si && !((skip & 1) && shift == 0)) return 0;
     ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
     int16_t up = ax;
     if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF] != 0) up = (int16_t)(((int16_t)((up >> 3) + ax)) >> 1);
     const int16_t ayy = yh < 0 ? (int16_t)-yh : yh;
-    if (ayy > up) return 0;
+    if (ayy > up && !((skip & 2) && shift == 0)) return 0;
     const int16_t metric = (int16_t)(((int16_t)(axx + ayy) >> 2) + di);
-    return !(metric > (int16_t)rd16(m->mem, ds, 0x48E6));
+    return (skip & 4) && shift == 0 ? 1 : !(metric > (int16_t)rd16(m->mem, ds, 0x48E6));
 }
 
 /* VGAME 1039:011A, scene_detail_level, as E2B6 keeps it in DS:48C4 (the fade by depth): 0 for an orthographic view, else the signed byte of the camera
