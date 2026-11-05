@@ -2715,6 +2715,17 @@ int main(int argc, char **argv)
                         rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);
                         g_pw.ww = ww;
                     } else g_pw.ww = 0;
+                    if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_BLEND_CHECK")) {
+                        /* piece 2: the copy at t = 0 and t = 1, then at t; the blend of the first two against the third */
+                        static remaster_frame_copy *ca, *cb, *cc;
+                        if (!ca) { ca = remaster_frame_copy_new(); cb = remaster_frame_copy_new(); cc = remaster_frame_copy_new(); }
+                        drawlive_plan p0 = plan, p1 = plan;
+                        p0.t = 0.0; p1.t = 1.0;
+                        drawlive_prepare_rerun(&g_live, &p0); const int oka = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, ca);
+                        drawlive_prepare_rerun(&g_live, &p1); const int okb = p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, cb);
+                        drawlive_prepare_rerun(&g_live, &plan);
+                        if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) remaster_blend_report(ca, cb, cc, plan.t);
+                    } else
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;

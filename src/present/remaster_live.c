@@ -1938,3 +1938,110 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
 size_t remaster_live_done_prims(const remaster_live *r) { return r->have_done ? r->done.n : 0; }
 unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }
+
+/* ---- Piece 2: the blend check (F117_BLEND_CHECK=1, docs/gpu-compositor.md) ---- */
+
+struct remaster_frame_copy {
+    remaster_prim *prim;
+    size_t n, cap;
+    int origin[2];
+};
+
+remaster_frame_copy *remaster_frame_copy_new(void) { return (remaster_frame_copy *)calloc(1, sizeof(remaster_frame_copy)); }
+void remaster_frame_copy_free(remaster_frame_copy *c) { if (c) { free(c->prim); free(c); } }
+
+int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
+{
+    if (!r || !out || !r->have_done) return 0;
+    if (out->cap < r->done.n) {
+        remaster_prim *q = (remaster_prim *)realloc(out->prim, r->done.n * sizeof *q);
+        if (!q) return 0;
+        out->prim = q; out->cap = r->done.n;
+    }
+    memcpy(out->prim, r->done.prim, r->done.n * sizeof *out->prim);
+    out->n = r->done.n;
+    out->origin[0] = r->done_origin[0]; out->origin[1] = r->done_origin[1];
+    return 1;
+}
+
+/* The greedy, order-preserving pairing of the diagnostic: primitive i of `x` with the first unused primitive of `y` with the same (model, kind, vertex count, colour word); -1 when none. */
+static double blend_pos(const remaster_prim *p, int axis)
+{
+    const double z = p->v[0].z > 65536 ? (double)p->v[0].z : 65536.0;
+    return 256.0 * (axis ? (double)p->v[0].y : (double)p->v[0].x) / z;
+}
+
+static void pair_by_key(const remaster_frame_copy *x, const remaster_frame_copy *y, int *match)
+{
+    /* For each primitive of x, the unused primitive of y with the same (model, kind, vertex count, colour word) whose first vertex is nearest on the screen: the first of several identical
+     * ones (the windows of one building) is not necessarily the right one. F117_BLEND_FIRST=1 takes the first, as the step-pair diagnostic does. */
+    static int first = -1;
+    if (first < 0) first = getenv("F117_BLEND_FIRST") != NULL;
+    unsigned char *used = (unsigned char *)calloc(y->n ? y->n : 1, 1);
+    for (size_t i = 0; i < x->n; i++) {
+        match[i] = -1;
+        if (!used) continue;
+        double best = 1e300; int bj = -1;
+        const double xa = blend_pos(&x->prim[i], 0), ya = blend_pos(&x->prim[i], 1);
+        for (size_t j = 0; j < y->n; j++) {
+            if (used[j] || y->prim[j].model != x->prim[i].model || y->prim[j].kind != x->prim[i].kind || y->prim[j].n != x->prim[i].n || y->prim[j].colour_word != x->prim[i].colour_word) continue;
+            if (first) { bj = (int)j; break; }
+            const double dx = blend_pos(&y->prim[j], 0) - xa, dy = blend_pos(&y->prim[j], 1) - ya, d = dx * dx + dy * dy;
+            if (d < best) { best = d; bj = (int)j; }
+        }
+        if (bj >= 0) { used[bj] = 1; match[i] = bj; }
+    }
+    free(used);
+}
+
+void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t)
+{
+    /* error buckets, in game pixels: below 0.25, 0.5, 1, 2, 4, and 4 or more; for all vertices in front of the camera (all) and those more than 4 near-plane distances out (far) */
+    static unsigned calls; static double sum_pair; static unsigned long long hist[2][6]; static unsigned long long tsplit[3][2];   /* vertices and gross errors by t: below 0.15, middle, above 0.85 */ static unsigned long long by_model[1024][3];   /* vertices, 4 or more off, and primitives by model */
+    if (!a->n || !b->n || !at->n) return;
+    int *ab = (int *)malloc(a->n * sizeof *ab), *aat = (int *)malloc(a->n * sizeof *aat);
+    if (!ab || !aat) { free(ab); free(aat); return; }
+    pair_by_key(a, b, ab);
+    pair_by_key(a, at, aat);
+    size_t paired = 0;
+    for (size_t i = 0; i < a->n; i++) {
+        if (ab[i] < 0 || aat[i] < 0) continue;
+        const remaster_prim *pa = &a->prim[i], *pb = &b->prim[ab[i]], *pc = &at->prim[aat[i]];
+        paired++;
+        for (int v = 0; v < pa->n && v < pb->n && v < pc->n; v++) {
+            const double bx = pa->v[v].x + t * ((double)pb->v[v].x - pa->v[v].x), by = pa->v[v].y + t * ((double)pb->v[v].y - pa->v[v].y), bz = pa->v[v].z + t * ((double)pb->v[v].z - pa->v[v].z);
+            if (bz < 65536.0 || pc->v[v].z < 65536) continue;
+            const double sx = 256.0 * bx / bz, sy = 256.0 * by / bz, cx = 256.0 * pc->v[v].x / pc->v[v].z, cy = 256.0 * pc->v[v].y / pc->v[v].z;
+            const double e = sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy));
+            const int k = e < 0.25 ? 0 : e < 0.5 ? 1 : e < 1.0 ? 2 : e < 2.0 ? 3 : e < 4.0 ? 4 : 5;
+            hist[0][k]++;
+            { const int ti = t < 0.15 ? 0 : t > 0.85 ? 2 : 1; tsplit[ti][0]++; if (k == 5) tsplit[ti][1]++; }
+            by_model[pa->model & 1023][0]++; if (k == 5) by_model[pa->model & 1023][1]++;
+            if (bz > 4.0 * 65536.0 && pc->v[v].z > 4 * 65536) hist[1][k]++;
+        }
+    }
+    sum_pair += a->n ? (double)paired / (double)a->n : 0.0;
+    if (++calls % 30 == 1) {
+        for (int g = 0; g < 2; g++) {
+            unsigned long long tot = 0; for (int k = 0; k < 6; k++) tot += hist[g][k];
+            if (!tot) continue;
+            fprintf(stderr, "[blend-check] %u frames, %.1f%% of primitives paired in all three; %s vertices (%llu): error in game pixels < 0.25: %.1f%%, < 0.5: %.1f%%, < 1: %.1f%%, < 2: %.1f%%, < 4: %.1f%%, 4 or more: %.1f%%\n",
+                    calls, 100.0 * sum_pair / calls, g ? "far" : "all", tot, 100.0 * (double)hist[g][0] / (double)tot, 100.0 * (double)hist[g][1] / (double)tot, 100.0 * (double)hist[g][2] / (double)tot,
+                    100.0 * (double)hist[g][3] / (double)tot, 100.0 * (double)hist[g][4] / (double)tot, 100.0 * (double)hist[g][5] / (double)tot);
+        }
+    }
+    if (calls % 30 == 1)
+        fprintf(stderr, "[blend-check] 4 or more game pixels off, by t: below 0.15: %.2f%% of %llu vertices; 0.15 to 0.85: %.2f%% of %llu; above 0.85: %.2f%% of %llu\n",
+                tsplit[0][0] ? 100.0 * (double)tsplit[0][1] / (double)tsplit[0][0] : 0.0, tsplit[0][0], tsplit[1][0] ? 100.0 * (double)tsplit[1][1] / (double)tsplit[1][0] : 0.0, tsplit[1][0],
+                tsplit[2][0] ? 100.0 * (double)tsplit[2][1] / (double)tsplit[2][0] : 0.0, tsplit[2][0]);
+    if (calls % 30 == 1) {                           /* the models with the most vertices off by four pixels or more */
+        unsigned top[6] = { 0 }; unsigned long long topn[6] = { 0 };
+        for (unsigned m2 = 0; m2 < 1024; m2++)
+            for (int q = 0; q < 6; q++)
+                if (by_model[m2][1] > topn[q]) { for (int r2 = 5; r2 > q; r2--) { top[r2] = top[r2 - 1]; topn[r2] = topn[r2 - 1]; } top[q] = m2; topn[q] = by_model[m2][1]; break; }
+        fprintf(stderr, "[blend-check] models with the most vertices 4 or more game pixels off (of their vertices):");
+        for (int q = 0; q < 6; q++) if (topn[q]) fprintf(stderr, " %u: %llu of %llu (%.0f%%);", top[q], topn[q], by_model[top[q]][0], 100.0 * (double)topn[q] / (double)by_model[top[q]][0]);
+        fprintf(stderr, "\n");
+    }
+    free(ab); free(aat);
+}

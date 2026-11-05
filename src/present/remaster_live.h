@@ -80,6 +80,13 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
 /* Primitives collected for the frame being drawn, and frames completed. */
 size_t remaster_live_prims(const remaster_live *r);
 size_t remaster_live_done_prims(const remaster_live *r);      /* the last completed frame's */
+/* Piece 2 (docs/gpu-compositor.md): a deep copy of the last completed frame's primitives and origin, and the check that blends two such frames (the game's copy at t = 0 and t = 1)
+ * at t and compares the result with the copy's own frame at t: the screen-space error of the blended vertices. */
+typedef struct remaster_frame_copy remaster_frame_copy;
+remaster_frame_copy *remaster_frame_copy_new(void);
+void remaster_frame_copy_free(remaster_frame_copy *c);
+int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out);
+void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
 unsigned remaster_live_frames(const remaster_live *r);
 
 #endif
