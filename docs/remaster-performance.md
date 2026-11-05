@@ -1,5 +1,13 @@
 # Remastered throughput
 
+## Current (5 November 2026)
+
+Runway replay, hidden window, p95 work per frame (`cost_ns`), two runs each. 1080p, CPU compositor: 7.9 to 11.2 ms at Near, Far and Maximum (under 12 ms). 4K: CPU path 32 to 40 ms; GPU path
+(`F117_GPU_COMPOSE=1 F117_GPU_PRESENT=1`, SDL 3.4.8, no readback) 14.5 to 17.1 ms, meeting 16.7 ms in five of six runs, with the GPU compositor not yet bit-exact against the CPU one. At 4K the
+CPU is about 1.5 of 32 threads busy and the GPU close to idle: the frame is a chain, with the main thread waiting about 6 ms for the worker and then running the copy about 5 ms. The owner's own window
+(1080p, free flight, before today's threading) measured p95 about 13 ms at Maximum, 60 fps locked. Full tables, switches, guards and the plan: [gpu-compositor.md](gpu-compositor.md), last section. The sections
+below are the earlier measurements, kept as history.
+
 ## Current measurement: balanced workers (2 November 2026)
 
 Remastered is not yet proven to meet 60 fps at native 4K detail. The older
