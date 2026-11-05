@@ -182,6 +182,17 @@ if(F117R_BUILD_APP)
     add_executable(gpu_probe tools/gpu_probe.c)
     target_link_libraries(gpu_probe PRIVATE SDL3::SDL3)
     add_dependencies(gpu_probe gpu_shaders)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Gis -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands.hlsl)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl)
+    add_custom_target(gpu_shaders_bands ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil)
+    add_executable(gpu_stage tools/gpu_stage.c src/present/remaster_raster.c)
+    target_include_directories(gpu_stage PRIVATE src/present)
+    target_link_libraries(gpu_stage PRIVATE SDL3::SDL3)
+    add_dependencies(gpu_stage gpu_shaders_bands)
     add_test(NAME gpu_compositor_probe COMMAND gpu_probe ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil)
     set_tests_properties(gpu_compositor_probe PROPERTIES SKIP_RETURN_CODE 77)
   endif()
