@@ -17,7 +17,7 @@ DEFAULTS = dict(presentation="original", fixes="recommended", scale="3", fullscr
     roland="off", opl="dbopl", engine="recomp", colourblind="off")
 DEFAULTS.update({"crt-mask":"no", "crt-glow":"no", "music-source":"default", "sound-source":"default",
     "adlib-effects":"yes", "sim-hz":"15", "no-aspect":"no", "present-scale":"auto",
-    "present-line-width":"0", "present-age":"interp", "pad-deadzone":"0", "pad-fire1":"0",
+    "present-line-width":"auto", "present-age":"interp", "draw-distance":"original", "dot-distance":"original", "pick-order":"exact", "pad-deadzone":"0", "pad-fire1":"0",
     "pad-fire2":"1", "pad-invert-x":"no", "pad-invert-y":"no"})
 
 
@@ -81,15 +81,16 @@ def run(app, data, session, out, timeout=45):
     require((session/"save-start").is_dir(), "settings check needs private starting saves")
     base="presentation = original\nsound = ask\nroland = off\n"
     changed=base+f"data = {data}\nmt32-roms = kept-rom-folder\nips = 9000000\ncrt = yes\nfixes = custom\nfix = D4\nremap = Q:W\npad-keys = 2:G\npad-invert-x = yes\n"
+    # Root rows: Video settings (0), six main settings (1-6), Audio (7), Advanced (8), Save (9), ..., Reset (14), Close (15).
     down=lambda n:["Down"]*n
     cases=[
-        ("audio",base,["Open"]+down(19)+["Return","Escape","Escape"],"audio",None,[]),
-        ("advanced",base,["Open"]+down(20)+["Return","Escape","Escape"],"advanced",None,[]),
+        ("audio",base,["Open"]+down(7)+["Return","Escape","Escape"],"audio",None,[]),
+        ("advanced",base,["Open"]+down(8)+["Return","Escape","Escape"],"advanced",None,[]),
         ("keys-remap",base,["OpenKeys","Return","Q","Escape"],"keys-tab",None,[]),
         ("keys-restore",base+"remap = Q:=,=:Q\n",["OpenKeys","Backspace","Escape"],"keys-tab",None,[]),
-        ("reset",changed,["Open"]+down(26)+["Return"]+["Up"]*5+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
-        ("cancel-reset",changed,["Open"]+down(26)+["Return","Escape"],"reset",None,[]),
-        ("fresh restart",base,["Open","Right"]+down(21)+["Return"],None,None,["--presentation","original"]),
+        ("reset",changed,["Open"]+down(14)+["Return"]+["Up"]*5+["Return"],"reset",None,["--ips","9000000","--crt","--engine","interp","--fix","none","--remap","A:B","--pad-keys","3:B"]),
+        ("cancel-reset",changed,["Open"]+down(14)+["Return","Escape"],"reset",None,[]),
+        ("fresh restart",base,["Open","Return","Right","Escape"]+down(9)+["Return"],None,None,["--presentation","original"]),
     ]
     report=dict(app_sha256=digest(app),checker_sha256=digest(__file__),cases=[])
     started=time.monotonic()

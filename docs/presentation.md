@@ -18,6 +18,7 @@ measurements so far and the guards are in [gpu-compositor.md](gpu-compositor.md)
 | `--present replay` | the same picture rebuilt from the original's own drawing commands; with `--present-scale N` the 3-D scene, HUD and sky/ground are redrawn N times finer | a new picture when the game draws one | verified: the "sharp mode" |
 | `--present interp` | adds pictures between the game's steps by moving the shapes of two consecutive steps | a new picture every display refresh | experimental: shapes it cannot match switch halfway |
 | `--present rerun` | adds pictures between the game's steps drawn by the original's own drawing code, run on a throwaway copy of the machine | a new picture every display refresh | experimental: integrated and gated; the owner accepted its motion at 4K "for now" (15 Oct) |
+| `--presentation remastered` | the 3-D view rebuilt by the project's own renderer from a render copy of the machine: widescreen, far scenery out to the whole map, depth-correct drawing, smooth motion between steps | a new picture every display refresh | experimental; its own track: [gpu-compositor.md](gpu-compositor.md), [remastered-design.md](remastered-design.md) |
 
 - **Frame rate.** The app presents one picture per display refresh (vsync on), so the rate is whatever refresh the
   display is set to: 60 Hz gives 60 pictures a second, 144 Hz gives 144, if the PC keeps up. The game itself still
@@ -36,7 +37,7 @@ measurements so far and the guards are in [gpu-compositor.md](gpu-compositor.md)
   ([decisions](#decisions-that-constrain-the-work); status in [gpu-compositor.md](gpu-compositor.md) and [../handoff.md](../handoff.md)).
 - **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
   selects fullscreen, `present = rerun` and scale 9.
-- **One setting.** The app's `--presentation original|enhanced` (`presentation =` in `f117a.ini`) chooses for you:
+- **One setting.** The app's `--presentation original|enhanced|remastered` (`presentation =` in `f117a.ini`) chooses for you (`remastered` is the row above):
   `original` is `--present scan` (the default); `enhanced` is `--present rerun` with `--present-scale` taken from the
   display's height (height / 240, 1 to 16: 2,160 lines give 9, 1,440 give 6, 1,080 give 4). A later `--present...`
   option refines either.

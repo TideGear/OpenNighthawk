@@ -235,7 +235,7 @@ def check_workers(log, presentation, spec):
     require(all(int(threads) == spec["threads"] and int(mismatch) == 0 and int(pixels) == 0
                 for count, threads, mismatch, pixels in checks), "parallel renderer differs from the single-worker reference")
     rows = [line.split() for line in presentation.splitlines() if line and line[0].isdigit()]
-    require(all(len(r) == 6 for r in rows), "malformed presentation evidence")
+    require(all(len(r) in (6, 7) for r in rows), "malformed presentation evidence")      # a seventh column, cost_ns, was added to --present-log
     rows = [r for r in rows if int(r[1]) >= spec["clock"]]
     require(len(rows) >= spec["minimum_frames"], "missing moving presentation evidence")
     clocks = [int(r[1]) for r in rows]

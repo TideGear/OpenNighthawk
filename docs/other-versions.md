@@ -59,7 +59,7 @@ code 248,520 bytes against 252,860). Addresses below are 2.3.2 unless marked 2.1
     guard; launch `0314C`-`031E4`), D1SLOT (`04268` cancel, `03CB8` decrement; call order traced so
     no path skips it), D1PROX (`03F8C`-`03F9E`, `(speed << 3) / S`), D1ACCEL (`0383A`-`03858`), D4
     (mission table `CODE02:00D90`; the world data is byte-identical), D5 (`03D3A`-`03D5C`), D6
-    (`032C0`-`03314`), D7 through D8 (`03C16`-`03C26`), D12 (`CODE07:005B2`), Q9, Q10, Q11, Q13a
+    (`032C0`-`03314`), D7 through D8 (`03C16`-`03C26`), D12 (`CODE07:005B2`), Q9, Q10, Q11 (retired on 1 November in the DOS list: the original relies on that wrap), Q13a
     (`CODE13:0327C`), Q13b (`CODE08:0092C`), Q14 (the overdue string, `CODE12:0198C`), Q19 (Enemy
     Troops, `CODE08:027CE`), Q21 (was D75, `CODE10:0207A`), Q22 (the armoury, `CODE05:017B8`) and the
     roster fix-up (`CODE05:0531C`).

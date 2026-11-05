@@ -40,7 +40,7 @@ def check(text, width=3840, height=2160, refresh=60.0, ips=9000000,
         if not line or line.startswith(("#", "host_ns ")):
             continue
         fields = line.split()
-        if len(fields) != 6:
+        if len(fields) not in (6, 7):                      # the seventh column, cost_ns, is optional
             raise ValueError("malformed presentation row")
         host, clock, older, newer = map(int, fields[:4])
         t, replayed = float(fields[4]), int(fields[5])

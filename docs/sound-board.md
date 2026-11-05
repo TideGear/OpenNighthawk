@@ -119,9 +119,9 @@ speech as OPL writes. The same detector gives the subtitle text.
 - music: Mac if available, else Roland, else AdLib;
 - sounds: Mac if available, else AdLib.
 
-**Built on the branch `p3-hybrid-sound` (unmerged):**
+**Built (on the branch `p3-hybrid-sound`, merged into `master` on 31 October):**
 
-- `src/host/soundpolicy.c` (also on master): chooses a source per kind from what is available, with an override.
+- `src/host/soundpolicy.c`: chooses a source per kind from what is available, with an override.
 - `src/host/macsound.c`: loads `NNN.wav` Mac recordings, resamples, maps game ids to resources (effects 4 to 20 as 300 + id;
   music 36, 37, 38 as 322, 321, 200), mixes them over the DOS driver's output.
 - `machine_hooks.exec` (`src/machine`, one comparison beside the existing `trap_on` check in `pc.c`): when execution reaches
@@ -157,10 +157,10 @@ Known limits:
   MT-32's effect channels muted). Sounds with no Mac recording are played by whichever driver is loaded.
 - **START and END** call their own thunks (START `0A95:6BB1`, END `05FA:25F3`, far jump slots like VGAME's). Since 31 Oct 2026 `app_module_load` points the hook at the loaded program's slot, so the host sees their requests too (a replay of the recorded boot logged START's ids 2, 26, 28, 31 and 33). None of those ids has a Mac recording in the current mapping, so nothing is taken from START yet; END was not reached by that route and is untested.
 - **Speech** stays with the DOS driver: the Mac has the words, not the phrases.
-- The machine change (the execution hook table) passed the full gate on 30 October 2026 (`d9fc8b8`; see [p3-handoff.md](p3-handoff.md)).
+- The machine change (the execution hook table) passed the full gate on 30 October 2026 (`d9fc8b8`; see [archive/p3-handoff-log-20261105.md](archive/p3-handoff-log-20261105.md)).
 
 **Assets.** The Mac WAVs and the MT-32 ROMs are the owner's; the plan for importing them into one library folder is in
-[p3-handoff.md](p3-handoff.md). Nothing from the Mac release goes into the repository.
+[p3-handoff.md](p3-handoff.md) ("What Phase 3 holds"). Nothing from the Mac release goes into the repository.
 
 ## Second driver: the AdLib sidecar (31 October 2026, built; opt-in `--adlib-effects`)
 

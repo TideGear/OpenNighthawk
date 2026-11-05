@@ -36,7 +36,7 @@ by the suite are managed. Inherited `F117_*` diagnostics are cleared.
 | Render workers | Eight workers at scale 9, in wide and 4:3 moving scenes: every output pixel equals a single-worker redraw of that same frame |
 | Live/replay/watched-replay shortcuts | Real SDL event loop: multiple Tab presses, Ctrl+Alt+C, paused unique filenames and ignored held repeat |
 | Menu | Tab switching, pause/resume, close, and text contained within the actual top-bar bounds |
-| Settings | Eight real-menu cases: Audio/Advanced pages, 101 key rows, output selection, individual default, reset/cancel and a fresh process that keeps sound/presentation and advances past SETUP |
+| Settings | Seven real-menu cases: Audio/Advanced pages, 101 key rows, output selection, individual default, reset/cancel and a fresh process that keeps sound/presentation and advances past SETUP |
 
 The sound input is derived reproducibly from session `20261102-154150`:
 retain the recorded zero-thrust coast, add ordinary bay-door keys for overlap,
@@ -114,3 +114,9 @@ and terminate only that captured child handle. Both checker file hashes bind
 the host report; changing `settings_acceptance.py` invalidates old evidence.
 Actual menu PNGs appear in the report gallery. ROM-free negative verdicts
 reject parent-only, wrong-driver, stalled-SETUP and unsuccessful-child traces.
+
+**Status, 5 November 2026.** All twelve cases pass on the build with SDL 3.4.8 (the GPU present path and the threaded far-scenery choosing, both off or exact by default). Two checker defects, older than that build, were found and fixed
+on the way: the settings case drove the menu with row counts from before the Video, Audio and Advanced pages existed (the root page is now Video settings, six main settings, Audio, Advanced, Save, ..., Reset, Close: update
+`tools/settings_acceptance.py`'s key scripts whenever the root rows change; it also expects `present-line-width = auto` and the three Remastered settings in the reset defaults), and the renderer-workers case and `presentation_timing.py`
+rejected `--present-log` rows with the seventh `cost_ns` column. Both now accept it (`tests/test_presentation_timing.py` covers it).
+

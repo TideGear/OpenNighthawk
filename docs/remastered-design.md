@@ -9,7 +9,7 @@ approval remain incomplete, and the native terrain walk is not yet exact. Throug
 the hidden-window replay; 4K is 14.5 to 17.1 ms on the GPU path and 32 to 40 ms on the CPU path
 ([gpu-compositor.md](gpu-compositor.md), last section; [remaster-performance.md](remaster-performance.md)). The historical stage descriptions below retain
 the design and experiments; they are not current completion claims. See
-[p3-handoff.md](p3-handoff.md) for installed builds and current evidence.
+[../handoff.md](../handoff.md) for the current state and [archive/p3-handoff-log-20261105.md](archive/p3-handoff-log-20261105.md) for the dated evidence and installed builds.
 
 Written 29 October 2026 after a feasibility pass over what the repository already has. The owner's brief (24 October 2026, [roadmap.md](roadmap.md) "Re-release features"):
 widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
@@ -29,7 +29,9 @@ about the game, above all its simulation, stays as it is.
 - **Observer rule.** Presentation reads the machine and never writes to it
   ([presentation.md](presentation.md)); `rerun` runs on a throwaway copy of the machine.
 
-## What does not exist
+## What did not exist (29 October 2026; most of it does now)
+
+*Status, 5 November: the world data is read by this project (`tools/world_decode.py`, and `world_build` in `rerun.c`, which lists every object of every ring from the map and tile lists); object instances come from the render copy; the rasteriser with a depth buffer, the widescreen frame and the sky, sea and terrain drawing are built (`remaster_raster.c`, `remaster_live.c`). What is not exact yet is the native terrain walk.*
 
 1. **A world loader.** The original keeps four rings of 32 tile slots resident (`DS:E330`); a longer view needs
    this project to read the world data itself and build terrain beyond those rings. Which file holds the terrain is

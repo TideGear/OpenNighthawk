@@ -1,11 +1,15 @@
 # Current checklist: coastline, settings, and scenery distance (3 November 2026)
 
+> **Archived on 5 November 2026.** The 3 November checklist: every item is done except the scenery check, which [../scenery-distance.md](../scenery-distance.md) now covers. The parity boundary and the held-key release audit
+> it names are carried in [../p3-handoff.md](../p3-handoff.md). Its "no full machine gate without authorization" line is out of date (the owner lifted that limit on 3 November).
+
+
 This checklist is dated 3 November. For the renderer's speed work and the owner's 4 November goal, the section at the top of `handoff.md` and the last section of
-[gpu-compositor.md](gpu-compositor.md) are newer and take precedence.
+[gpu-compositor.md](../gpu-compositor.md) are newer and take precedence.
 
 Stopped at the owner's request for a handoff to a new conversation. Phase 3
 remains incomplete. Read `handoff.md` before resuming. The latest draw-distance
-work is recorded below and in [scenery-distance.md](scenery-distance.md).
+work is recorded below and in [scenery-distance.md](../scenery-distance.md).
 
 Work resumed at the scheduled 8 a.m. Pacific time on 3 November. Phase 3 is
 incomplete. The shoreline correction is now installed for owner review; the requested settings batch is now implemented and integration-tested:
@@ -48,7 +52,7 @@ unverified work. Preserve unrelated owner files.
 The prior ignored settings/coast experiments are superseded by accepted source.
 Do not apply their old patches over the current worktree. Current settings
 evidence: `private/settings-20261103/settings-release-verified/`, including
-eight actual menu/restart subcases. See [settings.md](settings.md).
+eight actual menu/restart subcases. See [settings.md](../settings.md).
 
 The full Phase 3 goal remains active: the roadmap/progress rows still require
 renderer throughput, longer scenery reach, broader motion/visibility/HUD and
@@ -74,7 +78,7 @@ The three-cell result receives partial credit only. The prior taxi samples and
 the first land comparison with no installed scenery hook are not distance
 acceptance evidence. The later post-turn sky capture is an exact no-change
 negative sample. Details and current-build hashes are in
-[scenery-distance.md](scenery-distance.md). No full machine gate or ONTests
+[scenery-distance.md](../scenery-distance.md). No full machine gate or ONTests
 refresh was done.
 
 Also audit held-key release across host overlays and remapping before claiming

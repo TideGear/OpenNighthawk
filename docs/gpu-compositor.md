@@ -315,6 +315,6 @@ takes longer than the copy, so **the worker is the critical path at 4K**, not th
 4. Stage 2 (the capture per game step). Overlapping the emulator with the copy and threading the far scenery's placing (about 2.5 ms at Maximum; `remaster_live_native` patches the machine's template area and uses a
    scene reader with caches, so each thread would need private copies) only matter for the per-frame copy that stage 2 retires: do them only if the step 1 measurement says the CPU chain still holds 4K back.
 
-Guards for every step: picture checksums (`F117_REPLAY_FIXED_CADENCE=1`, `F117_PRESENT_HASH_FROM=3900000000`, eight workers) identical to the baseline, and the end-of-run machine hash. The scripts are outside the
-repository, in `C:\Dev\f117-bench`: `base.sh TAG` (checksums at the three distances), `cmpbase.sh TAG` (the same, compared with `hash_base_*`, the baseline taken from the build at `03c6631`), `statehash.sh`
-(final machine hash, `--log`, old build in ONTests against the new one), `gbench.sh NAME DISTANCE [ENV...]` (hidden-window timing; `WIN`, `PSCALE`, `EXE`, `XARGS`, extra `NAME=value` assignments).
+Guards for every step: picture checksums (`F117_REPLAY_FIXED_CADENCE=1`, `F117_PRESENT_HASH_FROM=3900000000`, eight workers) identical to the baseline, and the end-of-run machine hash. The scripts are in the repository,
+[tools/renderer_bench/](../tools/renderer_bench/README.md): `bench.sh NAME DISTANCE [NAME=value ...]` (timing; `MODE=gpu`, `WIN`, `PSCALE`, `EXE`, `XARGS`) and `guards.sh checksums TAG` / `baseline` / `statehash`. The recorded flight, the ini and the baseline
+(taken from the build at `03c6631`) are in `private/renderer-bench/`, which is git-ignored.

@@ -51,7 +51,7 @@ existing type-ahead schedule; it does not claim the precise-read injection below
 ## Not done
 
 - Answering yes to the joystick (SETUP then calibrates).
-- A `hybrid` choice ([sound-board.md](sound-board.md)).
+- A single `hybrid` choice in the sound-driver row ([sound-board.md](sound-board.md)): the effect exists through Music from, Effects from and `--adlib-effects`, but not as one driver option.
 - A separate run-SETUP-now action; Sound Driver Ask already shows the prompts on restart.
 - Injecting at the DOS key reads instead of by delay. That needs locating the joystick prompt's read in SETUP (about an
   hour of focused matching work) and a change in `src/machine/dos_files.c`, which is P2 gate territory: do it after the

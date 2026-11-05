@@ -8,6 +8,7 @@ on:
     # docs/bugs.md is NOT listed: tests/test_progress.py reads it (tools/progress.py
     # counts its D sections for the fixes score).
     paths-ignore:
+      - 'docs/archive/**'
       - 'docs/architecture.md'
       - 'docs/other-versions.md'
       - 'docs/parity-audit.md'
@@ -23,6 +24,7 @@ on:
       - 'docs/static-code-review.md'
       - 'tools/ref86box/*.md'
       - 'tools/routes/README.md'
+      - 'tools/renderer_bench/**'
       - 'third_party/dosbox-dbopl/README.md'
       - 'handoff.md'
       - 'README.md'

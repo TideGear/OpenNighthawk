@@ -21,6 +21,16 @@ class Timing(unittest.TestCase):
         self.assertEqual(result["flight_frames"], 700)
         self.assertEqual(check(capture()+"\n"+capture().splitlines()[1])["errors"], [])
 
+    def test_cost_ns_column(self):
+        # --present-log gained a seventh column, cost_ns (work per frame), on 3 November 2026; it is optional.
+        lines = capture().splitlines()
+        with_cost = [lines[0] + " cost_ns", lines[1]] + [l + " 7500000" for l in lines[2:]]
+        result = check("\n".join(with_cost))
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["flight_frames"], 700)
+        with self.assertRaises(ValueError):
+            check("\n".join(lines + ["1 2 3 4 0.5 1 7 8"]))          # eight fields are still malformed
+
     def test_wrong_target_or_pacing(self):
         good = capture()
         for text in (good.replace("3840x2160", "1920x1080"),

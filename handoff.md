@@ -3,7 +3,7 @@
 ## Ready for a new conversation: 5 November, presentation independent of resolution and refresh rate
 
 The owner asked to find a stopping place, hand off, commit and push. Phase 3 remains incomplete; this session was all renderer speed. Full figures, switches and the plan:
-[docs/gpu-compositor.md](docs/gpu-compositor.md), last section ("Two-stage plan, stage 1 so far"); the older material below and in [docs/p3-handoff.md](docs/p3-handoff.md) still holds.
+[docs/gpu-compositor.md](docs/gpu-compositor.md), last section ("Two-stage plan, stage 1 so far"); the older material below and in [docs/p3-handoff.md](docs/p3-handoff.md) (short Phase 3 working notes; the dated log is archived in [docs/archive/](docs/archive/)) still holds.
 **Read this section to the end before changing a default** (the last session flipped three defaults against the newest handoff text once).
 
 **The goal in force when the session ended** (owner's words, 4 Nov 23:13): make the Remastered renderer independent of resolution and refresh rate, so a system like the owner's (Ryzen 9 7950X, RTX) runs
@@ -17,10 +17,39 @@ smooth. Pass line: p95 under 6.9 ms (144 fps) at 4K at Near, Far and Maximum, tw
 commit and push each verified step, stop and report rather than ship an approximation. (The owner's decisions behind it: never cut corners, aim for 4K 144 as headroom, higher than 60 Hz is by measurement
 since the owner's monitor is 60 Hz.)
 
-**State at the end** (master `e79203e` and the commit that carries this note, everything pushed):
+**The plan, in order, with status** (details and tables: [docs/gpu-compositor.md](docs/gpu-compositor.md), last section)
+
+1. **Done:** stage 1 step 1, the GPU present path merged to `master` (`e79203e`, SDL 3.4.8, behind `F117_GPU_PRESENT=1`; `F117_GPU_COMPOSE=1` is the GPU compositor; both default off).
+2. **Next:** instrument the worker by stage at 4K (the game's picture layer redrawn at 4K, the replace pass, the GPU begin and finish; milliseconds each). It is the critical path at 4K (below), and this says exactly what step 3 must move to the GPU.
+3. **Stage 1 step 2:** a bit-exact GPU compositor: integer edge equations and integer depth on both sides, the CPU compositor as the oracle, identical fixed-cadence checksums at Near, Far and Maximum. Today the GPU compositor differs in a bounded number of
+   pixels by float rounding (the fast band shader works in float, the exact one in double; weights are evaluated in double on the CPU at each 16 x 16 tile's origin).
+4. **Stage 1 step 3:** the per-pixel CPU work that remains at 4K (the game's picture layer, the replace pass) onto the GPU. Then stage 1's pass line and a `--present-log` from the owner's own 4K window.
+5. **Stage 2 steps 4 to 6** as in the goal above: one capture of the scene per game step with a wide view, drawn by the GPU every displayed frame from the interpolated camera; the per-frame copy retired only after the checks and the owner's approval.
+6. **The native renderer track** (the owner's 3 November target: frames built natively from the game's state, the render copy becoming the oracle) continues alongside, not blocking 4K 60. It is what the stage 2 capture eventually wants, and its gate is the native terrain walk (below).
+
+**Facts that shape the plan** (all measured; the runway replay 20261103-154444, clocks 3.9 to 4.8 billion, unless said)
+
+- **The per-frame copy at Maximum, mean 6.5 ms** (`F117_PROFILE=1`, `F117_WIDE_WALK_STATS=1`): copy start 0.75 ms (192,000 original instructions); far scenery 3.35 ms (choosing about 1.7 ms from 74,005 listed objects, now threaded and exact;
+  placing about 10,000 survivors 2.5 to 2.9 ms, one thread: `remaster_live_native` patches the machine's template area and uses a scene reader with caches, so threading it needs private copies per thread); the game's own terrain walk and scene 1.64 ms; the
+  game's frame drawing (HUD and cockpit) 0.68 ms (3.46 million instructions, matched C at full speed). Half the copy is my native code, not emulation and not Phase 2 routines.
+- **At 4K the frame is a chain of waits:** CPU about 4.7% of the chip (about 1.5 of 32 threads), GPU close to idle; the main thread waits about 6 ms for the worker and then runs the copy about 5 ms. The worker is the critical path, so speeding up the copy
+  does not help 4K. Overlapping the emulator with the copy (a thread-local observer in `src/matched/observe.c`, which the owner approved editing) and threading the placing only help the per-frame copy that stage 2 retires: do them only if the step 2 measurement says the CPU chain still holds 4K back.
+- **Stage 2 is feasible but not free:** in-between frames made by blending two copies (measured with `F117_BLEND_CHECK`, `F117_BLEND_PICTURE`): primitives pair by key 98.1 to 98.7% across three flights; 91% of paired vertices are within 0.25 game pixel of
+  the copy's, 2% off by 4 or more; the blended scene differs from the copy's in 0.35% of pixels. Only 35 to 40% of a copy's primitives exist in the live game step (27% native at Near, 69% at Maximum), so the once-per-step capture must come from a render
+  copy with a wide view, not from the live step; that puts the native terrain walk on its critical path. Per-step decisions (detail levels, draw-distance culling) can switch up to one step (1/15 s) earlier or later than in the copy: that is closer to the
+  original, but it counts against the 0.5% and 2% caps and is reported separately.
+- **The native terrain walk** (`F117_NATIVE_WALK`, off): the picture differs from the game's walk by about 200 pixels (223 and 202 at clocks 4.0 and 4.4 billion), down from about 2,600 after the base-tile cull fix; the later across-test fix (own-level objects now read the original table word: 86% of the game's model-37 objects are chosen) left the difference unchanged. Model counts are still short against the game's: models 37, 39, 40 and 44 at 81, 51, 10 and 20 against 129, 77, 20 and 40. Ruled out, no picture change: cell order, step rules, near plane, deferred drain,
+  `C06E`/`C070`. The remaining suspect is the own-cell deferring objects' primitives after the guest placement; **the next measurement is a per-copy count of model-37 primitives by source** (native, game-placed, deferred). Evidence: [docs/scenery-distance.md](docs/scenery-distance.md).
+- **The GPU path** (piece 3, merged): 4K Near about 77 fps against about 64 with a readback in throughput runs; the p95 table is in the next section. Presenting without a readback needs SDL 3.4: `SDL_CreateGPURenderer`, `SDL_GetGPURendererDevice` and
+  `SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER` to wrap the compositor's texture. With vsync on the GPU renderer blocks in its draw calls, so benchmark with `F117_NO_VSYNC=1`.
+- **Owner decisions behind the plan:** never cut corners; the Far object order stays Exact by default (Fast is a setting); the radix sort is opt-in; SDL 3.4.8 on `master` (approved by pasting the goal); the owner's order after the renderer is hybrid sound; higher than 60 Hz is by
+  measurement (the owner's monitor is 60 Hz). The owner's own window measured 1080p Maximum p95 about 13 ms, 60 fps locked, before today's threading.
+
+**State at the end** (everything pushed; the renderer commits of 5 November end at `e79203e`, later commits are documentation):
 
 - Done: the GPU present path merged (SDL 3.4.8, behind `F117_GPU_PRESENT=1`; both GPU switches default off); the far scenery's choosing threaded and proven exact; the Far object order setting (Exact default,
   Fast opt-in); the owner's first own-window log (1080p Maximum, p95 about 13 ms, 60 fps locked).
+- Checks on the merged build: host acceptance passes all twelve cases (two older checker defects fixed: stale menu row counts in `tools/settings_acceptance.py` and a 6-column present-log assumption; [docs/host-acceptance.md](docs/host-acceptance.md)), the in-repo guard scripts reproduce the 901-checksum baseline at all three distances, the quick CTest set passes.
 - Measured, p95 work per frame, hidden window: 1080p CPU path 7.9 to 11.2 ms at all three distances (under 12); 4K CPU path 32 to 40 ms; 4K GPU path 14.5 to 17.1 ms (stage 1's 16.7 met in five of six runs,
   checksum-identical to the CPU compositor not yet).
 - The finding that sets the next step: at 4K the CPU is about 1.5 of 32 threads busy and the GPU close to idle; the frame is a chain, the main thread waiting on the **worker** about 6 ms and then the copy about 5 ms.
@@ -31,8 +60,7 @@ since the owner's monitor is 60 Hz.)
 - Owner action pending: an own-window `--present-log` at 4K (and again at 1080p) with a build that carries today's changes. `Desktop\ONTests` still holds the earlier build (before the threading, the Far object order
   setting and the SDL merge) plus the launchers `ON-presentlog.bat` and `ON-presentlog-gpu.bat`; refresh `f117a.exe`, `SDL3.dll` (3.4.8 now) and the `gpu_*.dxil` shader files together, then make a 4K launcher
   (`F117_WINDOW=3840x2160`, `F117_GPU_PRESENT=1`, `F117_GPU_COMPOSE=1`). The backup of the pre-refresh exe is `private/ontests-20261104/`; the two logs are in `private/present-logs-20261104/`.
-- Guards you can reuse: `C:\Dev\f117-bench\base.sh`, `cmpbase.sh`, `statehash.sh`, `gbench.sh` (described in docs/gpu-compositor.md). The checksum baseline is `hash_base_*.txt` there (taken at `03c6631`); if those
-  are gone, regenerate from a build at or before `85ec934`. The final machine hash of the replay is `600306c77cb04481`.
+- Guards and benchmarks (in the repository since the doc pass): [tools/renderer_bench/](tools/renderer_bench/README.md): `bench.sh NAME DISTANCE` (runway-replay timing; `MODE=gpu`, `WIN=3840x2160 PSCALE=9` for 4K) and `guards.sh checksums TAG` / `baseline` / `statehash`. The recorded flight, the ONTests ini it needs and the 901-checksum baselines (taken at `03c6631`) are in `private/renderer-bench/` (git-ignored; if lost, regenerate the baseline from a build at or before `85ec934`; the flight is the owner's session `20261103-154444`). The final machine hash of the replay is `600306c77cb04481`.
 - Traps met this session: `ctest` with no filter starts the long machine gates (use `ctest -R "host_|remaster|presentation"`); a benchmark script that passes an option it never reads runs the old setting (check the
   "fast" run really differs); the GPU utilization counter must include the compute engine; with vsync on the GPU renderer blocks in its draw calls, so benchmark with `F117_NO_VSYNC=1`.
 - Untouched on purpose: the owner's `tools/sound_board_page.py` and `tools/sound_board_template.html` edits, and the untracked `4k60.bat`, `original-fixed.bat`, `docs/p2-completion-plan.md` and strays.
@@ -48,8 +76,8 @@ For the next conversation on this repository. Read the section above, then
 [docs/repeated-processes.md](docs/repeated-processes.md) (every repeated process, its command and cost),
 [docs/bugs.md](docs/bugs.md) (the original's bugs and our fixes),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and, for Phase 3,
-[docs/p3-handoff.md](docs/p3-handoff.md), [docs/p3-current-work.md](docs/p3-current-work.md) and
-[docs/scenery-distance.md](docs/scenery-distance.md). This file holds only the current state, how to resume, open decisions and traps; dated history is in `git log` and in the
+[docs/p3-handoff.md](docs/p3-handoff.md) and
+[docs/scenery-distance.md](docs/scenery-distance.md) (the dated Phase 3 logs are in [docs/archive/](docs/archive/)). This file holds only the current state, how to resume, open decisions and traps; dated history is in `git log` and in the
 roadmap's batch table. Keep it that way: replace, do not append.
 **The owner's reported issues are tracked one by one in [docs/owner-issues.md](docs/owner-issues.md) (status and evidence for each; do not drop an item until the owner agrees). Read it before anything else.**
 
