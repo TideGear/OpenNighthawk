@@ -14,6 +14,7 @@
 #define F117R_REMASTER_RASTER_H
 
 #include <stdint.h>
+#include "tls.h"
 
 typedef struct { int32_t x, y, z; } remaster_v3;
 
@@ -109,7 +110,8 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
 /* The last two are not raster calls but writes the composite makes between them: depth zeroed after the bands (v unused), and the black
  * outside the game's clip window (v[0] = x0,y0 and v[1] = x1,y1 in pixels). */
 enum { REMASTER_T_CLEAR, REMASTER_T_POLYGON, REMASTER_T_SHADED, REMASTER_T_LOGIC, REMASTER_T_LINE, REMASTER_T_ZRESET, REMASTER_T_WINDOW };
-extern void (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
-                                   uint32_t color, double width, int op, unsigned value);
+/* Per thread. It returns non-zero to say the call is recorded and the CPU is not to draw it (the GPU compositor, docs/gpu-compositor.md). */
+extern F117_TLS int (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
+                                          uint32_t color, double width, int op, unsigned value);
 
 #endif

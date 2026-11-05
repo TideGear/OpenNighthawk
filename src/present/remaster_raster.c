@@ -8,8 +8,8 @@
 
 #define MAX_POLY 16
 
-void (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
-                            uint32_t color, double width, int op, unsigned value);
+F117_TLS int (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
+                                   uint32_t color, double width, int op, unsigned value);
 
 typedef struct { double x, y, z; } dv3;
 
@@ -86,7 +86,7 @@ static int decal_stroke_hidden(const remaster_target *t, double px, double py, f
 
 void remaster_clear(remaster_target *t, uint32_t color)
 {
-    if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_CLEAR, t, NULL, 0, NULL, color, 0.0, 0, 0);
+    if (remaster_trace_hook && remaster_trace_hook(REMASTER_T_CLEAR, t, NULL, 0, NULL, color, 0.0, 0, 0)) return;
     const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
     for (long i = from; i < to; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
     if (t->index) for (long i = from; i < to; i++) t->index[i] = REMASTER_NO_INDEX;
@@ -341,7 +341,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
 
 long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int op, unsigned value)
 {
-    if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_LOGIC, t, v, n, NULL, 0, 0.0, op, value);
+    if (remaster_trace_hook && remaster_trace_hook(REMASTER_T_LOGIC, t, v, n, NULL, 0, 0.0, op, value)) return 0;
     if (n < 3 || n > MAX_POLY - 2) return 0;
     dv3 c[MAX_POLY];
     const int m = clip_near(v, n, (double)t->near_z, c);
@@ -359,7 +359,7 @@ long remaster_polygon_logic(remaster_target *t, const remaster_v3 *v, int n, int
 
 long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uint32_t *colors, int n)
 {
-    if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_SHADED, t, v, n, colors, 0, 0.0, 0, 0);
+    if (remaster_trace_hook && remaster_trace_hook(REMASTER_T_SHADED, t, v, n, colors, 0, 0.0, 0, 0)) return 0;
     if (n < 3 || n > MAX_POLY - 2) return 0;
     sv s[MAX_POLY];
     double rgb[MAX_POLY][3];
@@ -377,7 +377,7 @@ long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uin
 
 long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color)
 {
-    if (remaster_trace_hook) { const remaster_v3 ab[2] = { a, b }; remaster_trace_hook(REMASTER_T_LINE, t, ab, 2, NULL, color, width_px, 0, 0); }
+    if (remaster_trace_hook) { const remaster_v3 ab[2] = { a, b }; if (remaster_trace_hook(REMASTER_T_LINE, t, ab, 2, NULL, color, width_px, 0, 0)) return 0; }
     t->line_point = a.x == b.x && a.y == b.y && a.z == b.z;
     const double near_z = (double)t->near_z;
     double ax = a.x, ay = a.y, az = a.z, bx = b.x, by = b.y, bz = b.z;
@@ -427,7 +427,7 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
 
 long remaster_polygon(remaster_target *t, const remaster_v3 *v, int n, uint32_t color)
 {
-    if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_POLYGON, t, v, n, NULL, color, 0.0, 0, 0);
+    if (remaster_trace_hook && remaster_trace_hook(REMASTER_T_POLYGON, t, v, n, NULL, color, 0.0, 0, 0)) return 0;
     if (n < 3 || n > MAX_POLY - 2) return 0;
     dv3 c[MAX_POLY];
     const int m = clip_near(v, n, (double)t->near_z, c);

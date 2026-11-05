@@ -53,7 +53,7 @@ int main(int argc, char **argv)
         const Uint64 t0 = SDL_GetTicksNS();
         for (int k = 0; k < reps; k++) {
             gpu_compose_run(g, &in, got);
-            double s, gg; gpu_compose_times(g, &s, &gg);
+            double s, gg, cc; gpu_compose_times(g, &s, &gg, &cc);
             setup += s; gpu += gg; if (s > mx_s) mx_s = s; if (gg > mx_g) mx_g = gg;
         }
         printf("%d runs, each synchronous: %.3f ms (CPU setup and upload %.3f, GPU compute, readback and copy %.3f; worst %.3f and %.3f)\n", reps,

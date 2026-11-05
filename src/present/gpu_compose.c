@@ -36,7 +36,7 @@ struct gpu_compose {
     Uint32 up_cap, down_cap;
     clist polys, strokes;
     vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
-    double setup_ms, gpu_ms;
+    double setup_ms, gpu_ms, copy_ms;
     int said;
 };
 
@@ -120,8 +120,9 @@ void gpu_compose_destroy(gpu_compose *g)
     free(g);
 }
 
-void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms)
+void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, double *copy_ms)
 {
+    if (copy_ms) *copy_ms = g ? g->copy_ms : 0.0;
     if (setup_ms) *setup_ms = g ? g->setup_ms : 0.0;
     if (gpu_ms) *gpu_ms = g ? g->gpu_ms : 0.0;
 }
@@ -515,6 +516,7 @@ int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out
     if (!got) return 0;
     memcpy(wide_out, got, pbytes);
     SDL_UnmapGPUTransferBuffer(g->dev, g->down);
+    g->copy_ms = (double)(SDL_GetTicksNS() - t_gpu) / 1e6;
     g->setup_ms = (double)(t_setup - t_start) / 1e6;
     g->gpu_ms = (double)(t_gpu - t_setup) / 1e6;
     return 1;

@@ -32,14 +32,17 @@ static int env_default_on(const char *name)
 
 /* F117_GPU_DUMP=FILE[,FROM] (diagnostic, with F117_REMASTER_THREADS=1): the first composite from clock FROM, as every raster call and the CPU result
  * (gpu_trace.h), for the GPU compositor's harness. */
-static FILE *g_trace_file; static gpu_trace_rec *g_trace_recs; static size_t g_trace_n, g_trace_cap;
+static FILE *g_trace_file; static F117_TLS gpu_trace_rec *g_trace_recs; static F117_TLS size_t g_trace_n, g_trace_cap;
+static F117_TLS int g_record_only, g_record_failed;      /* the GPU compositor: record the raster calls and skip the CPU drawing */
+static remaster_gpu_fn g_gpu_fn;
+void remaster_live_set_gpu(remaster_gpu_fn fn) { g_gpu_fn = fn; }
 static char g_trace_path[1024]; static int g_trace_extra;      /* the replace section is still to be appended */
-static void gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors, uint32_t color, double width, int op, unsigned value)
+static int gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors, uint32_t color, double width, int op, unsigned value)
 {
     if (g_trace_n == g_trace_cap) {
         g_trace_cap = g_trace_cap ? g_trace_cap * 2 : 4096;
         g_trace_recs = (gpu_trace_rec *)realloc(g_trace_recs, g_trace_cap * sizeof *g_trace_recs);
-        if (!g_trace_recs) { g_trace_cap = g_trace_n = 0; return; }
+        if (!g_trace_recs) { g_trace_cap = g_trace_n = 0; g_record_failed = 1; return g_record_only; }
     }
     gpu_trace_rec *r = &g_trace_recs[g_trace_n++];
     memset(r, 0, sizeof *r);
@@ -47,6 +50,7 @@ static void gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3
     for (int i = 0; i < n && i < 16; i++) { r->v[i] = v[i]; if (colors) r->colors[i] = colors[i]; }
     r->cx = t->cx; r->cy = t->cy; r->sx = t->sx; r->sy = t->sy; r->inv_depth_scale = t->inv_depth_scale; r->line_bias = t->line_bias;
     r->near_z = t->near_z; r->line_decal = t->line_decal; r->line_order = t->line_order; r->paint_owner = t->paint_owner; r->paint_index = t->paint_index;
+    return g_record_only;
 }
 
 /* Milliseconds from an arbitrary start, for F117_REMASTER_TIMING. */
@@ -372,8 +376,9 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 t->paint_index = fine.q[q].colour;      /* the flat band's palette index stands under the smooth colour */
                 remaster_polygon_shaded(t, v, cols, 4);
             }
-            if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_ZRESET, t, NULL, 0, NULL, 0, 0.0, 0, 0);
-            for (long i = (long)remaster_row_lo(t) * t->w; i < (long)remaster_row_hi(t) * t->w; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
+            const int recorded = remaster_trace_hook && remaster_trace_hook(REMASTER_T_ZRESET, t, NULL, 0, NULL, 0, 0.0, 0, 0);   /* recorded for the GPU: nothing was drawn, nothing to zero */
+            if (!recorded)
+                for (long i = (long)remaster_row_lo(t) * t->w; i < (long)remaster_row_hi(t) * t->w; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
     }
     if (do1 && getenv("F117_REMASTER_LEFT")) {   /* diagnostic: how many primitives lie wholly left of the original's screen (the margin's), by model */
@@ -813,6 +818,48 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     const double tm0 = timed ? now_ms() : 0.0;
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;
+    uint32_t *gpu_check = NULL;                  /* F117_GPU_COMPOSE_CHECK: the GPU's wide picture, kept to compare with the CPU's */
+    if (g_gpu_fn && wide) {                      /* the GPU compositor (gpu_compose.h): the same raster calls, recorded and not drawn here */
+        static int check = -1;
+        if (check < 0) check = getenv("F117_GPU_COMPOSE_CHECK") != NULL;
+        scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+        sj.timing = NULL; sj.row_tile = 0;
+        const double gt0 = timed ? now_ms() : 0.0;
+        g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+        run_parts(scene_rows_part, &sj, 1);
+        remaster_trace_hook = NULL; g_record_only = 0;
+        const double gt1 = timed ? now_ms() : 0.0;
+        uint32_t palette[256];
+        for (unsigned i = 0; i < 256; i++) palette[i] = dac_colour(m, i);
+        static uint8_t flags[256]; static int flags_done;
+        if (!flags_done) {
+            for (int g = 0; g < 256; g++)
+                flags[g] = (uint8_t)((is_scene_tag((uint8_t)g) ? 1 : 0) | ((g == DT_OUTLINE_FINE || g == DT_OUTLINE_COARSE) ? 2 : 0) | (is_span_tag((uint8_t)g) ? 4 : 0));
+            flags_done = 1;
+        }
+        gpu_compose_in gin;
+        memset(&gin, 0, sizeof gin);
+        gin.recs = g_trace_recs; gin.nrec = (uint32_t)g_trace_n; gin.palette = palette;
+        gin.w = w; gin.h = h; gin.tw = tw; gin.xoff = xoff;
+        gin.x0 = (int)(r->done_window[0] * n); gin.x1 = (int)((r->done_window[2] + 1) * n);
+        gin.y0 = (int)(r->done_window[1] * n); gin.y1 = (int)((r->done_window[3] + 1) * n);
+        gin.complete = complete; gin.src = src; gin.tag = tag; gin.dac = dac; gin.tagflags = flags;
+        uint32_t *target = wide_out;
+        if (check) { gpu_check = (uint32_t *)malloc((size_t)tw * h * 4); target = gpu_check; }
+        const int gpu_ok = !g_record_failed && target && g_gpu_fn(&gin, target);
+        if (timed) {
+            static double a_rec, a_run; static unsigned an;
+            a_rec += gt1 - gt0; a_run += now_ms() - gt1; an++;
+            if (an % 120 == 0) fprintf(stderr, "[gpu-compose] mean of %u: recording the calls %.2f ms, the GPU run (setup, compute, readback) %.2f ms\n", an, a_rec / an, a_run / an);
+        }
+        if (gpu_ok) {
+            if (!check) {
+                memcpy(dst, src, (size_t)w * h);
+                if (mask) memset(mask, 0, (size_t)w * h);
+                return 1;
+            }
+        } else { free(gpu_check); gpu_check = NULL; }
+    }
     {
         scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, parts, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
         sj.timing = timed ? worker_timing : NULL;
@@ -1045,6 +1092,20 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
                 fprintf(stderr, "[threadcheck] %u pictures checked on %d threads against one, %u differ (this one: %zu pixels)\n", checks, parts, mismatches, bad);
         }
         free(c_dst); free(c_mask); free(c_rgb); free(c_wide);
+    }
+    if (gpu_check) {                             /* F117_GPU_COMPOSE_CHECK: the CPU's wide picture against the GPU's */
+        static unsigned checked; static unsigned long long diff_total, big_total;
+        size_t bad = 0, big = 0;
+        for (size_t i = 0; i < (size_t)tw * h; i++)
+            if (gpu_check[i] != wide_out[i]) {
+                bad++;
+                int mx = 0;
+                for (int sh = 0; sh < 24; sh += 8) { int d = (int)(gpu_check[i] >> sh & 255) - (int)(wide_out[i] >> sh & 255); if (d < 0) d = -d; if (d > mx) mx = d; }
+                if (mx > 8) big++;
+            }
+        diff_total += bad; big_total += big;
+        if (++checked % 60 == 1) fprintf(stderr, "[gpu-compose] %u pictures checked: %llu pixels differ in all (%llu by more than 8 levels); this one %zu of %zu\n", checked, diff_total, big_total, bad, (size_t)tw * h);
+        free(gpu_check);
     }
     if (timed) {
         static double s_scene, s_loop, s_worker_max[4]; static unsigned s_n;

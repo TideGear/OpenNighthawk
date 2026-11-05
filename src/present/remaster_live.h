@@ -14,6 +14,7 @@
 #include "machine.h"
 
 #include <stdint.h>
+#include "gpu_compose.h"
 
 typedef struct remaster_live remaster_live;
 
@@ -36,6 +37,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
 /* While set (on the calling thread), remaster_live_compose reads colours from this 768-byte six-bit palette instead of the machine's: the composite can then
  * run on another thread than the machine's, with the palette of the frame it belongs to. NULL: the machine's. */
 void remaster_live_set_palette(const uint8_t *dac);
+/* The GPU compositor (gpu_compose.h), registered by the app: given a composite's raster calls and the replace step's inputs it writes the wide picture and returns 1, or
+ * returns 0 and the CPU compositor is used. NULL: always the CPU. F117_GPU_COMPOSE_CHECK also runs the CPU compositor and compares. */
+typedef int (*remaster_gpu_fn)(const gpu_compose_in *in, uint32_t *wide_out);
+void remaster_live_set_gpu(remaster_gpu_fn fn);
 /* Terrain dots: how many coarser levels beyond its own ring an object's dark dots are drawn (0 the original's reach .. 3 the whole map). */
 void remaster_live_set_dot_levels(int levels);
 /* A static terrain object drawn without the game's placement (rerun.h, rerun_native): 1 when drawn, 0 when no template of its model exists yet

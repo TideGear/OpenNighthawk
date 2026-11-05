@@ -34,6 +34,6 @@ void gpu_compose_destroy(gpu_compose *g);
 int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out);
 
 /* Milliseconds of the last run: CPU setup, upload and compute (to the end of the submission), readback. For diagnostics. */
-void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms);
+void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, double *copy_ms);
 
 #endif

@@ -49,6 +49,7 @@
 #include "sidecar.h"
 #include "soundpolicy.h"
 #include "remaster_live.h"
+#include "gpu_compose.h"
 #include "font8x16.h"
 #ifdef _WIN32
 #include <process.h>
@@ -177,6 +178,36 @@ static int wide_prepare(int wide_w)
  * original fine picture when there is nothing to compose. */
 static int g_pw_compose = 1;            /* F117_NO_WORKER_COMPOSE=1: the main thread composes, as before */
 static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, int ww_given, int on_worker);
+
+/* The GPU compositor (F117_GPU_COMPOSE=1; docs/gpu-compositor.md): compute passes on a device of its own, the wide Remastered picture read back into the same buffer the CPU
+ * compositor fills. It declines a frame it cannot handle and the CPU compositor takes it. F117_GPU_COMPOSE_CHECK=1 runs both and compares. */
+static gpu_compose *g_gpu;
+static SDL_Mutex *g_gpu_lock;
+static int gpu_compose_cb(const gpu_compose_in *in, uint32_t *wide_out)
+{
+    if (!g_gpu) return 0;
+    SDL_LockMutex(g_gpu_lock);
+    const int ok = gpu_compose_run(g_gpu, in, wide_out);
+    if (ok && getenv("F117_REMASTER_TIMING")) {            /* where the GPU run's milliseconds go, every 120th picture */
+        static double sum_s, sum_g, sum_c; static unsigned n;
+        double st, gt, ct;
+        gpu_compose_times(g_gpu, &st, &gt, &ct);
+        sum_s += st; sum_g += gt; sum_c += ct;
+        if (++n % 120 == 0) fprintf(stderr, "[gpu-compose] mean of %u: CPU setup and upload %.2f ms, GPU compute and readback %.2f ms, copy into the picture buffer %.2f ms\n", n, sum_s / n, sum_g / n, sum_c / n);
+    }
+    SDL_UnlockMutex(g_gpu_lock);
+    return ok;
+}
+static void gpu_compose_start(void)
+{
+    if (g_gpu || !getenv("F117_GPU_COMPOSE")) return;
+    const char *base = SDL_GetBasePath();
+    g_gpu = gpu_compose_create(base ? base : ".");
+    if (!g_gpu) { fprintf(stderr, "[gpu-compose] no usable GPU device or shaders beside the executable: the CPU compositor is used\n"); return; }
+    g_gpu_lock = SDL_CreateMutex();
+    remaster_live_set_gpu(gpu_compose_cb);
+    fprintf(stderr, "[gpu-compose] on\n");
+}
 static const uint8_t *remaster_apply(const uint8_t *hi) { return remaster_apply_ex(hi, H.frame.dac, -1, 0); }
 /* ww_given -1: work out the wide picture here (main thread: it may make a texture); otherwise the width the main thread worked out. on_worker: only a picture
  * from a rerun copy is composed (the live machine's frame is written by the main thread meanwhile), else NULL. */
@@ -1022,7 +1053,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
         }
         if (!SDL_strcasecmp(name, "VGAME.EXE")) {
             const char *spec = getenv("F117_REMASTER_FRAME");       /* N:FILE.ppm: write the Nth frame's geometry as a picture */
-            if (g_remaster && !g_rlive) g_rlive = remaster_live_new(960, 720, ~0u, NULL);
+            if (g_remaster && !g_rlive) { g_rlive = remaster_live_new(960, 720, ~0u, NULL); gpu_compose_start(); }
             if (spec && !g_rlive) {
                 const unsigned frame = (unsigned)strtoul(spec, NULL, 10);
                 const char *colon = strchr(spec, ':');
