@@ -1004,6 +1004,8 @@ static int far_scenery_body(machine_t *m)
         }
         guest++;
         const double guest_start = stats ? walk_ms() : 0.0;
+        { static int set_flags = -1; if (set_flags < 0) set_flags = getenv("F117_NATIVE_C06E") != NULL;   /* experiment: the walk sets [C070] and [C06E] from [98A4] before each entry */
+          if (set_flags) { const uint16_t v98 = rd16(m->mem, ds, 0x98A4); wr16(m->mem, ds, 0xC070, v98); wr16(m->mem, ds, 0xC06E, v98); } }
         wr16(m->mem, ds, 0xE328, (uint16_t)pk->level);
         wr16(m->mem, ds, 0x49AC, (uint16_t)pk->ox); wr16(m->mem, ds, 0x49AE, (uint16_t)pk->oy); wr16(m->mem, ds, 0x49B0, (uint16_t)pk->oz);
         g_scale_shift = 2 * (pk->level - f->ring);

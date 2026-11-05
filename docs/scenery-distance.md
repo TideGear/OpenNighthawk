@@ -527,3 +527,6 @@ own-level objects read the saved original word (`g_allow_saved`). Same compariso
 81, 51, 10 and 20 polygons (the game: 129, 77, 20 and 40), although the frame total rose from 421 to 494 primitives. The chosen own-cell objects of those models are the deferring class (`own 1 defers 1`: placed by the
 game's own placement, which defers them into its 50-entry list for the caller to draw), 32 guest placements a copy, with at most 2 in the list when sampled; where those objects' primitives go afterwards is the
 open question (a per-copy count of model 37 primitives by source has not been taken). The across-test fix is a correctness fix of the selection and stands on its own evidence; it is not the whole explanation of the picture.
+
+Also tried, no effect on the picture or the counts (81, 51, 10, 20 for models 37, 39, 40, 44; total 494): setting the drawing-flag words `[C070]` and `[C06E]` from `[98A4]` before each guest placement, as the game's walk does
+before each entry (`F117_NATIVE_C06E=1`, experiment). Remaining unexamined for the own-cell deferring objects: the per-copy count of their primitives by source, and the deferred list's contents at the moment the game draws it.
