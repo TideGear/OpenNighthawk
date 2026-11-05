@@ -506,3 +506,8 @@ polygons against 129, 77, 20 and 40; all ring 1, at the viewer's finest cells). 
 total (421 with 2 or 4, 515 with 1 or 7) but leaves those four models' counts exactly where they were, so none of the three tests rejects them. What is left in `far_cull` is its first two checks (the far plane
 `[48E6]` and the per-class near plane `[48F6 + 2 lod]`) and, before it, the selection's own range and bounds gates; per-object comparison with the game's decisions (the `[req]` requests of the game's own walk against
 the native verdicts) has not been done.
+
+**Which check of `far_cull` rejects own-level objects** (`F117_CULL_WHY=1`, native walk with the base tiles forced, runway replay, counts over the first copies): far plane 0, near plane 99,125, across test 248,518, up test 22,869, combined
+metric 0, visible 89,488. The across test rejects the most objects, but skipping it (or the up or metric test: `F117_CULL_SKIP`) does not change models 37, 39, 40 and 44, so those are held back by the near plane (`zh` below
+`[48F6 + 2 lod]`, the per-class value the wide copy has moved back by up to 12,000) or by the selection's range and bounds gates before `far_cull`. Not yet tried: skipping the near-plane check for own-level objects, or
+comparing the near-plane words as the game's own walk sees them with the ones the selection reads.

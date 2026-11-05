@@ -636,9 +636,12 @@ static int16_t far_axis(const int16_t matrix[9], int axis, int16_t x, int16_t y,
 static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t matrix[9],
                     int16_t x, int16_t y, int16_t z, int16_t zh, unsigned lod, int shift)
 {
-    if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) return 0;
+    static unsigned why[7]; static int why_on = -1;                  /* F117_CULL_WHY: which check first rejects an own-level object (shift 0), printed every 20000 */
+    if (why_on < 0) why_on = getenv("F117_CULL_WHY") != NULL;
+#define CULL_FAIL(k) do { if (why_on && shift == 0) { why[k]++; if ((why[0] + why[1] + why[2] + why[3] + why[4] + why[5] + why[6]) % 20000 == 0) fprintf(stderr, "[cull-why] own-level objects: far plane %u, near plane %u, across %u, up %u, metric %u, visible %u, early-visible %u\n", why[0], why[1], why[2], why[3], why[4], why[5], why[6]); } return 0; } while (0)
+    if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(0);
     const uint16_t lod2 = (uint16_t)(lod << 1);
-    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6))) return 0;
+    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6))) CULL_FAIL(1);
     if (rd16(m->mem, ds, 0x438E) != 0) return 1;
     const int16_t xh = far_axis(matrix, 0, x, y, z), yh = far_axis(matrix, 1, x, y, z);
     const int16_t di = (int16_t)(zh < 0 ? (uint16_t)(-zh) : (uint16_t)zh);   /* |z|, 8000h staying 8000h */
@@ -648,14 +651,16 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     const int16_t si = (int16_t)(ax + (ax >> 2));
     static int skip = -1; if (skip < 0) { const char *e = getenv("F117_CULL_SKIP"); skip = e ? atoi(e) : 0; }   /* diagnostic mask: 1 across test, 2 up test, 4 metric test (own-level objects only) */
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
-    if (axx > si && !((skip & 1) && shift == 0)) return 0;
+    if (axx > si && !((skip & 1) && shift == 0)) CULL_FAIL(2);
     ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
     int16_t up = ax;
     if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF] != 0) up = (int16_t)(((int16_t)((up >> 3) + ax)) >> 1);
     const int16_t ayy = yh < 0 ? (int16_t)-yh : yh;
-    if (ayy > up && !((skip & 2) && shift == 0)) return 0;
+    if (ayy > up && !((skip & 2) && shift == 0)) CULL_FAIL(3);
     const int16_t metric = (int16_t)(((int16_t)(axx + ayy) >> 2) + di);
-    return (skip & 4) && shift == 0 ? 1 : !(metric > (int16_t)rd16(m->mem, ds, 0x48E6));
+    if (!((skip & 4) && shift == 0) && metric > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(4);
+    if (why_on && shift == 0) why[5]++;
+    return 1;
 }
 
 /* VGAME 1039:011A, scene_detail_level, as E2B6 keeps it in DS:48C4 (the fade by depth): 0 for an orthographic view, else the signed byte of the camera
