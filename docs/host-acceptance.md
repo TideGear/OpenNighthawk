@@ -117,6 +117,6 @@ reject parent-only, wrong-driver, stalled-SETUP and unsuccessful-child traces.
 
 **Status, 5 November 2026.** All twelve cases pass on the build with SDL 3.4.8 (the GPU present path and the threaded far-scenery choosing, both off or exact by default). Two checker defects, older than that build, were found and fixed
 on the way: the settings case drove the menu with row counts from before the Video, Audio and Advanced pages existed (the root page is now Video settings, six main settings, Audio, Advanced, Save, ..., Reset, Close: update
-`tools/settings_acceptance.py`'s key scripts whenever the root rows change; it also expects `present-line-width = auto` and the three Remastered settings in the reset defaults), and the renderer-workers case and `presentation_timing.py`
+`tools/settings_acceptance.py`'s key scripts whenever the root rows change; it also expects `present-line-width = auto` and the four Remastered settings (draw distance, dot distance, far object order, view) in the reset defaults), and the renderer-workers case and `presentation_timing.py`
 rejected `--present-log` rows with the seventh `cost_ns` column. Both now accept it (`tests/test_presentation_timing.py` covers it).
 

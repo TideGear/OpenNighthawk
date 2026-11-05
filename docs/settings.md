@@ -45,6 +45,10 @@ wraps complete descriptions and scrolls by their actual rendered height.
 
 Developer verification is documented in [host-acceptance.md](host-acceptance.md).
 
+Remastered view (Remastered only, applied at once): Wide (default) fills a wide window with a wider view of the world, the game's own picture
+(HUD, cockpit) staying at its size in the middle. 4:3 keeps the original's framing: the same Remastered redraw, without the original's road and
+coastline jitter, at 4:3 with black bars at the sides of a wide window. In a 4:3 window both settings give the same picture.
+
 Terrain dots (Remastered only, applied at once) sets how far the small dark dots that add detail to plain ground are drawn: Original keeps the game's own reach
 (default), Near, Far and Maximum draw them as far as the Draw distance setting reaches. Lit points (lights) always follow Draw distance.
 
