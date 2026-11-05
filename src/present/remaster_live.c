@@ -33,6 +33,7 @@ static int env_default_on(const char *name)
 /* F117_GPU_DUMP=FILE[,FROM] (diagnostic, with F117_REMASTER_THREADS=1): the first composite from clock FROM, as every raster call and the CPU result
  * (gpu_trace.h), for the GPU compositor's harness. */
 static FILE *g_trace_file; static gpu_trace_rec *g_trace_recs; static size_t g_trace_n, g_trace_cap;
+static char g_trace_path[1024]; static int g_trace_extra;      /* the replace section is still to be appended */
 static void gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors, uint32_t color, double width, int op, unsigned value)
 {
     if (g_trace_n == g_trace_cap) {
@@ -841,6 +842,8 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
                 fwrite(g_trace_recs, sizeof *g_trace_recs, g_trace_n, f);
                 fwrite(t.color, 4, (size_t)tw * h, f); fwrite(t.index, 2, (size_t)tw * h, f); fwrite(t.owner, 4, (size_t)tw * h, f);
                 fclose(f);
+                snprintf(g_trace_path, sizeof g_trace_path, "%s", path);
+                g_trace_extra = wide;               /* the replace section follows once the replace step has run (a wide picture only) */
                 fprintf(stderr, "[gpu-dump] %s: %d x %d, %zu raster calls from %zu primitives, clock %llu\n", path, tw, h, g_trace_n, r->done.n, (unsigned long long)m->cpu.icount);
             }
         }
@@ -933,6 +936,21 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         for (int k = 0; k < parts; k++) {
             replaced += rj.replaced[k];
             for (int g = 0; g < 64; g++) kept_hist[g] += rj.kept[k][g];
+        }
+        if (g_trace_extra && wide) {             /* F117_GPU_DUMP: the replace step's inputs and output, after the raster calls' section (gpu_trace.h) */
+            g_trace_extra = 0;
+            FILE *tf = fopen(g_trace_path, "ab");
+            if (tf) {
+                gpu_trace_replace rp; memset(&rp, 0, sizeof rp);
+                rp.w = w; rp.h = h; rp.tw = tw; rp.xoff = xoff; rp.x0 = x0; rp.x1 = x1; rp.y0 = y0; rp.y1 = y1; rp.complete = complete;
+                for (int g = 0; g < 256; g++)
+                    rp.tagflags[g] = (uint8_t)((is_scene_tag((uint8_t)g) ? 1 : 0) | ((g == DT_OUTLINE_FINE || g == DT_OUTLINE_COARSE) ? 2 : 0) | (is_span_tag((uint8_t)g) ? 4 : 0));
+                fwrite(&rp, sizeof rp, 1, tf);
+                fwrite(src, 1, (size_t)w * h, tf); fwrite(tag, 1, (size_t)w * h, tf); fwrite(dac, 1, 768, tf);
+                fwrite(wide_out, 4, (size_t)tw * h, tf);
+                fclose(tf);
+                fprintf(stderr, "[gpu-dump] replace section appended to %s\n", g_trace_path);
+            }
         }
     }
     {   /* F117_REMASTER_KEPT=1: the pixels of the 3D window left as the original drew them, by origin tag, every 120th composite.

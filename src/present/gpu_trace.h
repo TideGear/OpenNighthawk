@@ -30,4 +30,13 @@ typedef struct {
     uint16_t paint_index, pad;
 } gpu_trace_rec;
 
+
+/* Appended after the three buffers when the trace was recorded in the wide Remastered picture: the replace step's inputs and its output (docs/gpu-compositor.md, stage 5).
+ * Then follow src (w * h bytes: the game's own picture as palette indices), tag (w * h origin tags), dac (768 six-bit palette bytes) and wide_out (tw * h uint32: the
+ * final picture). tagflags: bit 0 a scene tag, bit 1 an outline tag, bit 2 a span tag (is_scene_tag, the outline tags, is_span_tag). */
+typedef struct {
+    int32_t w, h, tw, xoff, x0, x1, y0, y1, complete;
+    uint8_t tagflags[256];
+} gpu_trace_replace;
+
 #endif
