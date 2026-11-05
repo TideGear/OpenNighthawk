@@ -80,7 +80,8 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
   - *Remastered*: the 3-D view redrawn by this project's own renderer, with a
     widescreen view, depth-correct drawing, scenery drawn far past the
     original's reach (Draw distance, Terrain dots, Far object order) and
-    smooth motion between the game's steps.
+    smooth motion between the game's steps. Road and coastline jitter is
+    gone, and `--remaster-view 4:3` keeps the original's framing with it.
   - *GPU compositor and GPU present path* for 4K Remastered on Windows with a
     Direct3D 12 GPU (`F117_GPU_COMPOSE=1`, `F117_GPU_PRESENT=1`).
   - *CRT look* (scanlines, phosphor mask, glow).
@@ -247,6 +248,7 @@ set (and, for Munt, `mt32-roms`).
 | `--present-log FILE` | write one line per displayed frame (host time, game clock, picture ages and the work per frame in nanoseconds) for timing |
 | `--draw-distance maximum\|far\|near\|original\|N` | Remastered: how far scenery is drawn; `original` keeps the game's short reach, `maximum` draws every ring to the limit of the game's arithmetic, N is in world units. Farther costs picture rate |
 | `--dot-distance original\|near\|far\|maximum` | Remastered: how far the small dark dots on plain ground are drawn (default `original`); lit points follow `--draw-distance` |
+| `--remaster-view wide\|4:3` | Remastered: `wide` (default) fills a wide window with a wider view; `4:3` keeps the original's framing, with black bars in a wide window. Either way the picture is redrawn without the original's road and coastline jitter |
 | `--pick-order exact\|fast` | Remastered: the order far objects are sorted in. `exact` (default) is the order every picture comparison was made against; `fast` is cheaper by about 0.8 ms a frame at Maximum and lets objects tied on distance swap places, changing a few edge pixels in some frames |
 | `--crt`, `--crt-mask`, `--crt-glow` | a CRT look: dark scanlines, a coloured phosphor mask, and a soft glow around bright parts (settings menu: Video) |
 
