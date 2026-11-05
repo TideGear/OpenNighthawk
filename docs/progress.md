@@ -214,7 +214,7 @@ A rounded display of 100.00% is insufficient if any bytes or closing requirement
   `%d`) 900, constant-argument arms 91, text-mode write arms (every `fopen` mode is binary) 61, guarded signature
   hooks 31, alternate library entries 12, exit epilogues after a call that never returns 11, padding 8, empty
   `_initterm` tables 8. **The copy-protection quiz in START (633 bytes) is not listed** (owner, 20 October:
-  functional but off by default): `--fix QUIZ` restores the call GOG patched out, so the quiz code is reachable and
+  functional but off by default): `--fix QUIZ` restores the call the GOG and Steam builds patched out, so the quiz code is reachable and
   stays in the denominator; the routes `quiz_right` and `quiz_wrong` run it. Error paths (missing files, memory,
   usage, assert and fatal messages) are never listed: they stay in the denominator and are run on damaged-install
   routes or proved with test inputs. Only the never-run bytes leave: a byte a route ran or a body covers stays credited.

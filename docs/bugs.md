@@ -1,7 +1,7 @@
 # Bugs in the original game
 
 The defects of the original DOS release of *F-117A Nighthawk Stealth Fighter
-2.0*, as GOG ships it (with MicroProse's final 473.04 update applied), and
+2.0*, as GOG and Steam ship it (with MicroProse's final 473.04 update applied; the two releases' game files are byte-identical), and
 this project's fixes. It is for anyone deciding which bugs to fix and how.
 
 **Confirmed defects in the shipped DOS code are preserved deliberately.** The
@@ -1084,10 +1084,10 @@ routine stand aside in normal play.
 
 ## The copy-protection quiz option
 
-GOG's START.EXE has the aircraft-identification quiz (the copy protection)
+The START.EXE in the GOG and Steam releases has the aircraft-identification quiz (the copy protection)
 disabled: the three bytes at `0x0001D` are NOPs where the retail copy has
 a near call to `0x0703`. This recompilation translates whichever
-START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
+START.EXE the user owns, so a retail copy asks the quiz and the GOG and Steam builds do not.
 The option **`--fix QUIZ`** restores it on GOG's and Steam's copies (their START.EXE is byte-identical; an override at START
 `0x001D` pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail
 `call` does). It is an option, not a repair (owner, 20 October 2026:

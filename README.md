@@ -147,7 +147,7 @@ is still sold; please buy it.
 Every result here was measured on GOG's installer
 `setup_f-117a_nighthawk_stealth_fighter_2.0_1.0_(28044).exe`, which ships
 MicroProse's final 473.04 update already applied (its VGAME.EXE is
-byte-identical to the one in `f11704 (473.04 Update).zip`).
+byte-identical to the one in `f11704 (473.04 Update).zip`). Steam's game files are byte-identical to GOG's.
 `py tools/verify_install.py --data "C:\GOG Games\F-117A"` checks your copy
 against the SHA-256 of every file the project reads.
 
