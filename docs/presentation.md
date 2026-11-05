@@ -77,7 +77,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
   the projection divides into an integer pixel, and the clip, edge accumulation, span tables and fill all work in
   whole pixels. Sub-pixel information exists only before the divide.
 - **The resident world is small.** Four rings of 32 tile slots (`DS:E330`, counts at `DS:061E`; 18-25 populated in
-  one capture): a longer view (planned for Remastered) needs this project's own world loader.
+  one capture): a longer view needed this project's own world loader, which Remastered now has (`world_build` in `rerun.c`, `tools/world_decode.py`).
 
 ## Decisions that constrain the work
 
@@ -121,7 +121,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
 - **Safety proof required:** guest checkpoints and final hash unchanged on every route, plus a check that the real
   machine's memory is byte-identical before and after each extra draw; nothing in the copy may reach files, sound or
   devices. Met: [the rerun mode](#the-rerun-mode-in-between-pictures-drawn-by-the-original).
-- **In reserve:** camera reprojection of one step's own draw list. This project's own scene renderer is not the main
+- **In reserve (now the plan for Remastered, 4 November 2026):** camera reprojection of one step's own draw list: the owner's stage 2 captures the scene once per game step from a render copy and the GPU redraws it from the interpolated camera every frame ([gpu-compositor.md](gpu-compositor.md), last section). This project's own scene renderer is not the main
   path ([world geometry](#world-geometry-and-the-scene-input-capture)).
 
 ## Settings and switches
@@ -131,7 +131,7 @@ without its dashes (`present = rerun`).
 
 | Setting | Effect |
 |---|---|
-| `--presentation original\|enhanced` | app only: `scan`, or `rerun` at the display height's scale ([in short](#in-short)) |
+| `--presentation original\|enhanced\|remastered` | app only: `scan`, `rerun` at the display height's scale, or the Remastered renderer ([in short](#in-short)) ||enhanced` | app only: `scan`, or `rerun` at the display height's scale ([in short](#in-short)) |
 | `--present scan` | the scanned-out picture, the original at every scale (default) |
 | `--present replay` | the replayed display, one logic frame at a time ([live path](#the-live-path-feed-replay-pacing-and-picture-age)) |
 | `--present interp` | in-between pictures by moving paired primitives ([Stage 3](#stage-3-interpolation-between-logic-frames)), drawn on a worker thread in the app |

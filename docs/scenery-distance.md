@@ -138,7 +138,7 @@ The unmatched candidates and broader replay parity still need checking.
 A separate Maximum software replay over clocks 3.9–4.8 billion measured
 19.04 ms p95 over 682 frames. At 300 copies, placement averaged 5.97 ms,
 with about two guest placements per copy taking 0.08 ms. The earlier
-baseline measured 40.58 ms p95. The refresh remains experimental.
+baseline measured 40.58 ms p95. The refresh remained experimental then; it has been on by default since 4 November.
 
 The default decal renderer now rasterizes strokes once. The former two
 passes used the same depth and ordering rules. The legacy F117_LINES=old

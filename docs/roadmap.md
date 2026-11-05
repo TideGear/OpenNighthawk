@@ -201,7 +201,7 @@ not the recompilation:
 
       **What is left** (owner, 21 Oct: no meaningful game code may be missed):
 
-      - 1,967 executed bytes are unmatched, most in the sound drivers; by module:
+      - 1,261 executed bytes are unmatched (5 November), most in the sound drivers; by module:
         `py tools/progress.py`. They include the declined routines (owner,
         23 Oct: still Phase 2 work, not exclusions): VGAME `0010` (`main`),
         START `8427` and END `4393` (wait loops routes cannot finish) and
@@ -209,7 +209,7 @@ not the recompilation:
         batch bj) and ASOUND.117 `025A` (blocked in batch bl). Leads:
         [../handoff.md](../handoff.md); the private list is
         `D:/f117-gate/kit/DECLINED.tsv`.
-      - 31,590 matched bytes that only fixtures reach, to be sorted into
+      - 31,857 matched bytes that only fixtures reach, to be sorted into
         routed or reviewed.
       - The checklist has 2 bytes left: VGAME `04E92-04E93`, held as
         `probable-dead` until a current-image certificate closes alternate and
@@ -277,7 +277,7 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Batch table
 
-Batches e to bw (16-30 October 2026); the routines of earlier batches are
+Batches e to bz (16 October to 1 November 2026); the routines of earlier batches are
 listed by area in the sections after the table. Every batch passed the same
 proof (see above): five private seeds per routine with every instruction
 reached (more where a row says so), all mutations caught, exact boot (26

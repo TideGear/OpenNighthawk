@@ -94,7 +94,7 @@ single request of those is a blip.
 MIDI; ROM folder `C:\Users\Tideg\f117-recomp-local\roms`), trims silence and encodes. `tools/sound_board_page.py` with
 `tools/sound_board_template.html` builds one self-contained HTML page (`--board`, `--board-long` for 20 s renders of the
 music-length ids, `--board-held` for held versions, `--mac`, `--speech`, `--out`). The page is a private artifact
-(https://claude.ai/artifact/F1L8R5uFN1BPhf4aiuCfFK, republished by passing the URL to the Artifact tool): a "Needs your
+(https://claude.ai/artifact/1jdGUvk4aD8bsCSxDvJbta, republished by passing the URL to the Artifact tool): a "Needs your
 decision" section on top, everything handled in a collapsed section, a "Plays by default" column that follows the rule
 below, and marks (kind, best source, note) saved through `db`, collection `marks`, one document per row key (`dos-<id>`,
 `speech-<n>`, `mac-<resource>`). The audio is generated and never committed. Recipe: `boot_to_flight` with the SETUP

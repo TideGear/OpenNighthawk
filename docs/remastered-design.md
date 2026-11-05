@@ -68,6 +68,8 @@ Each stage is its own branch and gate; none is credited before its proof, and th
 
 ## Output: its own resolution and frame rate
 
+*Superseded in part (31 October 2026): Remastered did not become a renderer that draws from state alone. The owner chose the safe route, a render copy of the machine redrawn per displayed frame ("Plan: Remastered from the rerun copy", below), with the project's own rasteriser and compositor on top. The owner's 4 November goal moves it back toward this section's idea in two stages: one capture of the scene per game step drawn by the GPU every frame, see [gpu-compositor.md](gpu-compositor.md), last section.*
+
 Remastered does not replay or re-run the original's draw. It draws the scene from world and object state (R1-R2)
 with its own rasteriser (R3-R4), so resolution and frame rate belong to it, not to the original's 320x200 draw:
 
@@ -97,7 +99,7 @@ with its own rasteriser (R3-R4), so resolution and frame rate belong to it, not 
 - **Observer only.** Remastered reads machine memory through the same snapshot path as `rerun` and never writes
   to it; it runs from a copy where a draw needs the guest.
 - **Off by default.** `--presentation remastered` stays refused until R3 passes, then is offered as an
-  experimental setting; the shipped default is unchanged.
+  experimental setting; the shipped default is unchanged. (It has been offered as an experimental setting since 31 October; the default is still Original.)
 - **No one-off clipping exceptions** (owner, 15 October 2026): faces and clipping follow the same rules for
   coastlines and everything else.
 - **Cost.** R1 and R2 are research with a hard oracle (the guest). R3 to R6 are rendering work whose last step,
@@ -181,7 +183,7 @@ integer arithmetic. So the live Remastered path is read-only, in the same spirit
 What this removes: the pose-preparation rewrite and its oracle harness. What it leaves: the new callback (small), a frame
 assembler that gathers a frame's requests between two `frame_phase` events, the projection fit, shading and materials
 (`scene_mesh_materials` decodes the original's material commands), widescreen framing, the longer reach (needs the
-world loader beyond the resident rings, R1), and the settings entry. Nothing here is built yet.
+world loader beyond the resident rings, R1), and the settings entry. Nothing here was built yet on 30 October; all of it has been since (`remaster_scene.c`, `remaster_live.c`, `remaster_raster.c`, the settings entry).
 
 - **R3, the projection is known exactly (30 October 2026).** `src/present/remaster_project.c` implements the game's
   perspective projection (VGAME `0x129A2`, as documented in `matched.c`): for a vertex whose z has a high word of at least
@@ -258,7 +260,7 @@ picture beside it as `FILE.ppm.orig.ppm`. Not yet: the runway and terrain from t
   outside `compose_emit_object`/`compose_walk`) or part of the ground bands' neighbourhood. Next: list the polygon fills of a
   frame that happen outside any model request, with their colour words, and match them to the missing regions.
 
-## Handoff state (30 October 2026, late)
+## Handoff state (30 October 2026, late; historical: its "first task" and "to check" lists were done in the following days)
 
 Built and unit-tested (3/3 remaster tests), **not yet verified in a flight**: the AND, OR and stipple fills (`remaster_polygon_logic`,
 palette indices carried in `remaster_target.index`, `word_style()` in `remaster_live.c`). They are meant to fix two visible

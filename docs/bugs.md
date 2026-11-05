@@ -1179,7 +1179,7 @@ recordings and raw logs stay outside git.
   is right. The game sorts whole objects back to front, which large
   overlapping objects at an angle can defeat. The owner places this with the
   Remastered presentation's depth-correct drawing
-  ([roadmap.md](roadmap.md)); the sort key itself has not been examined.
+  ([roadmap.md](roadmap.md); built in the app since, owner issues R17, R21 and R22); the sort key itself has not been examined.
 
 ## What a fix needs (rule, 1 Nov 2026)
 

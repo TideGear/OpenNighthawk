@@ -653,7 +653,7 @@ undocumented historical fixed target or equate virtual MIPS with a period
 CPU. They ran before the default changed, with no runtime change, and with
 the fifteen fixes normal play had then (D1, D1TTL, D1SLOT, D1PROX, D1REAL,
 D1ACCEL, D2, D3, D4, D5, D6, D8, D11, D12, D34); the nineteen added on 25
-October, which bring normal play to thirty-four ([bugs.md](bugs.md)), were
+October, which brought normal play to thirty-four ([bugs.md](bugs.md); thirty-three since Q11 was retired on 1 November), were
 not part of them. The previous eight/20 mode stays available
 (`--sim-hz 8 --ips 20000000`); reference runners and legacy recordings keep
 their own defaults. 15/40 is not used: its undamaged compressed North Cape

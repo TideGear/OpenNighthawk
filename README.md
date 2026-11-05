@@ -98,9 +98,9 @@ titles start with the current figures (`py tools/progress.py --title`);
 - **Optional sharper and smoother pictures:** finer polygon geometry and HUD
   strokes up to 4K, with the original bitmap text and artwork kept; see
   [Presentation](#presentation).
-- **What is left:** matching the remaining 1,878 route-executed bytes (most
+- **What is left:** matching the remaining 1,261 route-executed bytes (most
   of them in the sound drivers) and the code no route runs, reviewed entries
-  for the two bytes outside the routes that have none, and a closing review
+  for the 218 bytes outside the routes that have none (`py tools/progress.py`), and a closing review
   of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));
   the re-release features below. Not scored: play by a person at the
   keyboard, rendered Roland output against an independent reference and
@@ -268,7 +268,7 @@ only does anything in the menu while the menu is open. `Ctrl+Alt+S` and `Ctrl+Al
 game keys are listed; changed mappings appear in blue. Backspace restores one key, and Page Up/Down or Home/End moves through the list.
 Assignments are live and saved immediately; *Clear key remaps* removes them all. The Keys tab lists the game's default commands.
 
-**Settings pages.** Audio and Advanced pages group sound controls and machine/simulation controls. Nondefault values are blue;
+**Settings pages.** Video, Audio and Advanced pages group the picture controls, the sound controls and the machine/simulation controls. Nondefault values are blue;
 each setting has a description. *Reset all settings to default* takes effect when you Save and keeps game/sound folders.
 See the [settings guide](docs/settings.md) for restart, reset and key-mapping behavior.
 
@@ -296,7 +296,7 @@ command line still wins (any Roland option there replaces all of the file's).
 **Enhanced and Remastered are experimental.** *Original* (`--presentation original`) is the verified picture, exactly what the
 emulated VGA scans out. *Enhanced* (a finer, smoother redraw of the same picture) and *Remastered* (the 3-D view redrawn at full
 resolution, with a widescreen view that shows more at the sides) are still being developed: expect objects that appear or vanish at the
-edges of the view, depth and drawing glitches, and a draw distance no longer than the original's. They never change the game itself, and
+edges of the view, depth and drawing glitches, and, unless you raise Draw distance (Near, Far or Maximum, which costs picture rate), a draw distance no longer than the original's. They never change the game itself, and
 reports of what looks wrong are welcome.
 
 By default (`--present scan`) you see exactly what the emulated VGA scanned
@@ -316,6 +316,10 @@ itself:
 - `--present interp` adds in-between pictures by moving matched shapes
   between two frames; anything without a match holds and then switches
   halfway. Superseded by `rerun`; kept as an experiment.
+- `--presentation remastered` rebuilds the 3-D view with this project's own renderer from a render copy of the machine: a wide view in a widescreen window, depth-correct drawing, and
+  far scenery out to the whole map (the *Draw distance*, *Terrain dots* and *Far object order* settings), drawn at the display's refresh rate. It is experimental. An optional GPU compositor and
+  GPU present path (`F117_GPU_COMPOSE=1`, `F117_GPU_PRESENT=1`; both off by default, Windows with a Direct3D 12 GPU) give 4K frame times of 14.5 to 17.1 ms on the author's machine against 32 to 40 ms
+  for the CPU path; see [docs/gpu-compositor.md](docs/gpu-compositor.md) and [docs/remaster-performance.md](docs/remaster-performance.md).
 
 **Higher resolution (`--present-scale` above 1) and higher frame rates
 (`interp`, `rerun`) are experimental.** Both redraw what the original draws,
@@ -459,7 +463,7 @@ Every process the project repeats, and what it costs, is listed in
 | `src/matched/` | the named, matched C routines |
 | `src/fixes/` | the switchable fixes for the original's bugs |
 | `src/host/` | the SDL3 window, audio and input; the headless runner |
-| `src/present/` | the optional sharper and smoother pictures (`replay`, `interp`, `rerun`) |
+| `src/present/` | the optional sharper and smoother pictures (`replay`, `interp`, `rerun`) and the Remastered renderer with its optional GPU compositor |
 | `recompiler/` | the translator (Python) |
 | `third_party/` | DOSBox DBOPL and Nuked OPL3, the two OPL synthesizers |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |

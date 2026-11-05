@@ -262,9 +262,7 @@ nothing.
   for 1,387 routines, Q11, `D:/f117-gate/q11-20261025/precheck-*-process.json`);
   two on 16 workers together took 494 s (batch be). Running three seeds at once
   gave identical tallies and per-routine lines in 659-667 s against 1,090 s in
-  series (batch at), but `D:/f117-gate/precheck_parallel.py`, which does that,
-  still runs the old `My Drive` working copy: until its `repo` path is updated,
-  run `func_lockstep_par.py` from `C:\Dev\F-117A Recomp`.
+  series (batch at), and `D:/f117-gate/precheck_parallel.py` does that from `C:/Dev/F-117A Recomp` (its `repo` path was updated on 27 October, after the move off Google Drive).
 - When a batch adds a route, run it once with `--engine recomp` and look for
   `[matched] OVERRUN`.
 - Every older per-routine report must equal the previous batch's at the common
