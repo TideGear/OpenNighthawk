@@ -52,7 +52,7 @@ only when named explicitly; `--fix all` does not enable it.
 
 ## Status
 
-Progress: **P1 100.00%, P2 96.93%, P3 93.84%, All 97.51%**. Work commit
+Progress: **P1 100.00%, P2 96.93%, P3 94.03%, All 97.55%**. Work commit
 titles start with the current figures (`py tools/progress.py --title`);
 [docs/progress.md](docs/progress.md) says what they measure and
 [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
@@ -149,8 +149,10 @@ please open an issue: that is a bug, and a serious one.
 
 Requirements: Windows, Visual Studio 2026 Build Tools with the C++ tools and
 Windows SDK, CMake 3.24+, Ninja, Git, and Python 3.12. CMake, Ninja, Git and
-Python must be available in the terminal. The build fetches SDL 3.2.10 (and
+Python must be available in the terminal. The build fetches SDL 3.4.8 (and
 Munt, below) on its first configure; it needs an internet connection then.
+The optional GPU compositor's shaders are compiled with the Windows SDK's `dxc`;
+when CMake does not find it they are skipped and the CPU compositor is used.
 
 From a new PowerShell terminal, in the directory where you keep source:
 

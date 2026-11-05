@@ -6,6 +6,10 @@ optional presentation modes, the rules each part follows, the decisions that con
 behind them. None of it can change the emulated machine. Commands, costs and retained evidence of the checks are in
 [repeated-processes.md](repeated-processes.md); the latest gate tallies are in the handoff.
 
+**Current target (owner, 4 November 2026):** the Remastered renderer independent of resolution and refresh rate, native 4K at 144 fps and 1080p well past 120 on a
+Ryzen 9 7950X with an RTX card, in two stages (4K 60 through the GPU compositor, then one capture of the scene per game step drawn by the GPU every frame). The plan, the
+measurements so far and the guards are in [gpu-compositor.md](gpu-compositor.md), last section, and at the top of [../handoff.md](../handoff.md). The 4K 60 Hz target below is the first stage.
+
 ## In short
 
 | Mode | What you see | Frame rate | Status |

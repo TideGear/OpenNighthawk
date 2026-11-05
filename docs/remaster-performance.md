@@ -138,7 +138,9 @@ Enhanced results as Remastered acceptance would not complete this requirement.
 | 3840 x 2160 / 9 | Maximum | 34.1 ms | as Near |
 
 With the GPU renderer the 4K upload and present are no longer the problem (about 1 ms together); the CPU compositor is. 4K at 60 fps with headroom
-needs the compositor's pixel work on the GPU. Toolchain present: SDL 3.2.10's GPU API (D3D12, Vulkan) and the Windows SDK's `dxc`.
+needs the compositor's pixel work on the GPU. Toolchain: SDL 3.4.8's GPU API (D3D12, Vulkan) and the Windows SDK's `dxc`. The figures above were taken
+before the GPU compositor and the GPU present path (no readback) were merged and before the far scenery's choosing was threaded; the current 1080p and 4K
+figures, with utilization, are in [gpu-compositor.md](gpu-compositor.md), last section.
 
 Clean GPU-renderer runs (hidden direct3d11 window, 1920 x 1080 / scale 3, same replay, no timing switches; the exe was rebuilt with a NULL trace hook
 partway through the batch, which costs one pointer test per raster call), p95 (p99) ms, two runs: Near 9.20 (10.73) and 10.21 (11.72); Far 11.88 (14.03)

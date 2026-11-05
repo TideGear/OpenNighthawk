@@ -1,5 +1,8 @@
 # Current checklist: coastline, settings, and scenery distance (3 November 2026)
 
+This checklist is dated 3 November. For the renderer's speed work and the owner's 4 November goal, the section at the top of `handoff.md` and the last section of
+[gpu-compositor.md](gpu-compositor.md) are newer and take precedence.
+
 Stopped at the owner's request for a handoff to a new conversation. Phase 3
 remains incomplete. Read `handoff.md` before resuming. The latest draw-distance
 work is recorded below and in [scenery-distance.md](scenery-distance.md).

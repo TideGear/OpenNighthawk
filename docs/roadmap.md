@@ -836,7 +836,9 @@ Each is fixed; the named regressions keep the failing seed or case.
       control timing are unchanged; its bitmap text, sprites and artwork are
       kept and integer-scaled; N=1 stays the exact original; an old path is
       retired only when its replacement passes N=1 equality. Target: 4K at
-      60 Hz, and any scale and refresh rate, lower or higher. Higher
+      60 Hz, and any scale and refresh rate, lower or higher (the owner's
+      4 November goal for the Remastered renderer raises it to 4K at 144 fps and
+      1080p well past 120, in two stages: [gpu-compositor.md](gpu-compositor.md), last section). Higher
       resolution and higher frame rates are experimental and keep the
       original renderer's quirks (road and coastline jitter, which the
       original shows too; drawing-order mistakes; lines of one width at any

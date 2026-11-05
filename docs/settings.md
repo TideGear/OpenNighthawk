@@ -45,6 +45,12 @@ wraps complete descriptions and scrolls by their actual rendered height.
 
 Developer verification is documented in [host-acceptance.md](host-acceptance.md).
 
+Terrain dots (Remastered only, applied at once) sets how far the small dark dots that add detail to plain ground are drawn: Original keeps the game's own reach
+(default), Near, Far and Maximum draw them as far as the Draw distance setting reaches. Lit points (lights) always follow Draw distance.
+
+Far object order (Remastered only, applied at once): Exact (default) sorts far scenery with the order every picture comparison was made against; Fast uses a cheaper sort
+(about 0.8 ms less work per frame at Maximum) that lets objects tied on distance swap places, which changes a few edge pixels in some frames.
+
 Draw distance (Remastered only, applied at once) sets how far scenery is drawn: Maximum draws every ring out to the limit of the game's own arithmetic, Far
 and Near shorten the reach of the smallest objects, and Original keeps the game's short reach. Farther costs picture rate; see
 [scenery-distance.md](scenery-distance.md).

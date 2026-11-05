@@ -1,264 +1,87 @@
 # Handoff
 
-## Ready for a new conversation: 3 November Remastered scenery distance
+## Ready for a new conversation: 5 November, presentation independent of resolution and refresh rate
 
-The owner requested a handoff, commit, push and stop. Phase 3 remains
-incomplete. The draw-distance implementation and evidence are recorded in
-`docs/scenery-distance.md`; the current checklist is
-`docs/p3-current-work.md`.
+The owner asked to find a stopping place, hand off, commit and push. Phase 3 remains incomplete; this session was all renderer speed. Full figures, switches and the plan:
+[docs/gpu-compositor.md](docs/gpu-compositor.md), last section ("Two-stage plan, stage 1 so far"); the older material below and in [docs/p3-handoff.md](docs/p3-handoff.md) still holds.
+**Read this section to the end before changing a default** (the last session flipped three defaults against the newest handoff text once).
 
-Remastered wide views now make a default three-cell terrain pass in the private
-render copy. A fresh airborne North Cape land/coast replay shows 177 added
-pixels at the widened edge. The default capture matches an explicit three-cell
-capture exactly. Six and twelve cells added no visible pixels in that view.
-The later post-turn view was sky-only and remained pixel-identical. The extra
-walk uses the full eight-word camera call and now fits alongside the aircraft
-hook even when all eight live hooks are occupied. The live hook limit stays
-eight; Original and Enhanced drawing paths are unchanged.
+**The goal in force when the session ended** (owner's words, 4 Nov 23:13): make the Remastered renderer independent of resolution and refresh rate, so a system like the owner's (Ryzen 9 7950X, RTX) runs
+native 4K at 144 fps and 1080p well past 120, without touching game logic. The CPU decides what to draw once per game step; the GPU does all pixel work every displayed frame.
+Stage 1 (4K 60, per-frame copy kept): (1) merge the GPU present path and measure; (2) a bit-exact GPU compositor against the CPU one; (3) the remaining per-pixel CPU work onto the GPU. Pass line: hidden 3840x2160
+GPU-renderer window, runway replay, p95 work per frame under 16.7 ms at Near, Far and Maximum, two runs each, checksums identical to the CPU compositor, then a `--present-log` from the owner's own 4K window.
+Stage 2 (decouple from the display rate): run the game's drawing once per game step, capture the scene as 3D primitives with a view wide enough for the camera's motion, draw it on the GPU every frame from the
+interpolated camera, retire the per-frame copy only after: game-step frames byte-identical to the copy's, in-between frames with static-scenery vertices within half a game pixel, at most 0.5% of pixels differing
+on average and 2% in any frame, moving objects and per-step detail decisions reported separately, a screenshot review by the owner at the first working version, and the owner flying it and judging the motion
+smooth. Pass line: p95 under 6.9 ms (144 fps) at 4K at Near, Far and Maximum, two runs each; 1080p reported the same way. Guards on every step: the end-of-run machine hash and the picture checksums identical,
+commit and push each verified step, stop and report rather than ship an approximation. (The owner's decisions behind it: never cut corners, aim for 4K 144 as headroom, higher than 60 Hz is by measurement
+since the owner's monitor is 60 Hz.)
 
-This earns 0.25 of the 1.0 R6 distance estimate. Distant buildings, multiple
-land routes, continuous ground views through turning, ring transitions,
-coastline interaction and representative performance are still open. The
-single land replay raised model requests by about 11% and primitives by about
-30%; one process-time comparison is not enough to certify performance. No full
-machine gate was run and ONTests was not refreshed for this change. Current
-candidate `build/f117a.exe` SHA-256:
-`858d3f00f6a307bba891d36b86a032caf25fb1ca2eb162b7d5aae044c5529ad3`.
+**State at the end** (master `e79203e` and the commit that carries this note, everything pushed):
 
-**Next conversation:** read this file, `docs/p3-current-work.md`,
-`docs/coastline-reconstruction.md`, `docs/scenery-distance.md`,
-`docs/progress.md` and `docs/roadmap.md`. Do not use the older renderer shots
-for distance conclusions; the evidence directory above contains new captures
-from the current candidate. The settings/coast executable already installed in
-ONTests remains SHA-256
-`7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
+- Done: the GPU present path merged (SDL 3.4.8, behind `F117_GPU_PRESENT=1`; both GPU switches default off); the far scenery's choosing threaded and proven exact; the Far object order setting (Exact default,
+  Fast opt-in); the owner's first own-window log (1080p Maximum, p95 about 13 ms, 60 fps locked).
+- Measured, p95 work per frame, hidden window: 1080p CPU path 7.9 to 11.2 ms at all three distances (under 12); 4K CPU path 32 to 40 ms; 4K GPU path 14.5 to 17.1 ms (stage 1's 16.7 met in five of six runs,
+  checksum-identical to the CPU compositor not yet).
+- The finding that sets the next step: at 4K the CPU is about 1.5 of 32 threads busy and the GPU close to idle; the frame is a chain, the main thread waiting on the **worker** about 6 ms and then the copy about 5 ms.
+  The worker, not the copy, is the critical path at 4K. **Next: instrument the worker by stage at 4K, then step 2 (bit-exact GPU compositing), then step 3.**
+- Not done: the native terrain walk (still about 200 pixels off the game's picture at 4.0 and 4.4 billion clocks; stays off; models 37, 39, 40 and 44 under-counted); threading the placing (about 2.5 ms at
+  Maximum; needs private template copies per thread); overlapping the emulator with the copy (needs a thread-local observer in `src/matched/observe.c`: the owner approved editing it); both only matter for the
+  per-frame copy that stage 2 retires.
+- Owner action pending: an own-window `--present-log` at 4K (and again at 1080p) with a build that carries today's changes. `Desktop\ONTests` still holds the earlier build (before the threading, the Far object order
+  setting and the SDL merge) plus the launchers `ON-presentlog.bat` and `ON-presentlog-gpu.bat`; refresh `f117a.exe`, `SDL3.dll` (3.4.8 now) and the `gpu_*.dxil` shader files together, then make a 4K launcher
+  (`F117_WINDOW=3840x2160`, `F117_GPU_PRESENT=1`, `F117_GPU_COMPOSE=1`). The backup of the pre-refresh exe is `private/ontests-20261104/`; the two logs are in `private/present-logs-20261104/`.
+- Guards you can reuse: `C:\Dev\f117-bench\base.sh`, `cmpbase.sh`, `statehash.sh`, `gbench.sh` (described in docs/gpu-compositor.md). The checksum baseline is `hash_base_*.txt` there (taken at `03c6631`); if those
+  are gone, regenerate from a build at or before `85ec934`. The final machine hash of the replay is `600306c77cb04481`.
+- Traps met this session: `ctest` with no filter starts the long machine gates (use `ctest -R "host_|remaster|presentation"`); a benchmark script that passes an option it never reads runs the old setting (check the
+  "fast" run really differs); the GPU utilization counter must include the compute engine; with vsync on the GPU renderer blocks in its draw calls, so benchmark with `F117_NO_VSYNC=1`.
+- Untouched on purpose: the owner's `tools/sound_board_page.py` and `tools/sound_board_template.html` edits, and the untracked `4k60.bat`, `original-fixed.bat`, `docs/p2-completion-plan.md` and strays.
 
-The user's earlier coastline/crash-on taxi feedback was tested in the recomp,
-not GOG; it is not proof of Original gameplay collision behavior. Preserve the
-simulation boundary: Remastered changes remain presentation overrides. No
-settings-menu, shoreline or unrelated owner files are included in the scenery
-change.
+---
 
-Scores use `tools/progress.py --title`; the current estimate grants only the
-partial R6 credit described above. Do not claim Phase 3 completion. Preserve
-the owner's sound-board edits and untracked files; only the scenery source,
-focused regression and related documentation belong to this handoff.
+## Standing state (P2, P3, housekeeping)
 
-## Accepted settings and shoreline
-
-**Verified and installed in ONTests:** SHA-256 `7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
-The prior coast build is backed up at `private/settings-20261103/ONTests-before-settings.exe`.
-All twelve host acceptance cases pass, including eight real-menu settings
-subcases and an actual fresh-process restart. Eleven focused native tests,
-twelve ROM-free defaults/precedence tests and 25 Python checker/presentation/
-title tests pass. The report verifies against this executable and both checker
-files: `private/settings-20261103/settings-release-verified/report.json`.
-The gallery includes the actual Audio, Advanced, binding/output-key lists and
-reset screens; they were visually reviewed. No full machine gate was run.
-
-**Settings completed in code and integration checks:** active sound survives
-saving/restart and SETUP advances through its normal typed N/driver answers;
-saved edits supersede conflicting launch arguments; Reset writes every menu
-default, clears custom bindings/fixes, cancels without changes and keeps resource
-folders. Sound intentionally returns to Ask on factory reset. Advanced and
-Audio pages group the requested controls without removing capabilities.
-All 101 supported keys are listed with blue nondefault mappings, output-key
-selection (including Escape/punctuation), individual restore and paging.
-Remap persistence is canonical and supports more than the old 64-pair/400-byte
-limits. Custom numeric launch values remain visible/preserved. Prior blue
-option values, wrapped fix descriptions and setting help remain intact.
-See [settings guide](docs/settings.md). The original code's fix default policy is queried read-only;
-Reset does not accidentally enable the optional quiz. Original presentation
-also correctly overrides a Remastered configuration; a ROM-free process test
-checks that actual parser path.
-
-**Owner shoreline feedback:** the installed 81e0e11 coast build seems fixed in
-the owner's quick recomp check. They then tested crashes on: slow dirt and
-water taxiing worked, accelerating on either crashed. These were explicitly
-**recomp tests, not a GOG gameplay comparison**. They agree with the matched
-original taxi-ground branch and its instruction bytes (this off-field check
-becomes eligible above 50 knots). There is no water test in that branch.
-The Remastered correction changes drawing only. Broader coast/road/mission
-review remains open; do not convert this feedback into blanket renderer approval.
-
-**Full scope still open:** renderer throughput (measured native 4K remains
-below 60 fps), longer scenery reach, road-motion/terrain transitions, broader
-depth/visibility and interpolation checks, widescreen HUD/cockpit work, and
-the remaining controls, accessibility, replay-camera and hybrid-audio rows in
-`docs/progress.json`/the roadmap. Physical controls, explicit joystick-answer
-coverage, original mouse interaction, clipboard/folder interaction, broader
-sound-driver listening/reference checks and owner approval remain applicable.
-Do not mark 100% from the settings tests. Broader requirements remain open; the
-distance item has only the partial credit recorded in `docs/progress.json`.
-Commit titles use `tools/progress.py --title`.
-
-Continue from [current checklist](docs/p3-current-work.md) and the roadmap.
-Next renderer tasks are broader terrain/building reach, coastline and motion
-coverage, and measured cost. See [distance evidence](docs/scenery-distance.md).
-Keep all simulation and Original renderer behavior intact. Honor the standing
-limit: no additional full machine gate without authorization.
-
-**Preserved owner work:** sound-board tool edits and the existing untracked
-files remain excluded. The old ignored `unfinished-snapshot` patches are now
-superseded by accepted coast/settings source; do not apply them over this code.
-
-Older sections below are historical; this section takes precedence.
-
-For the next conversation on this repository. Read this, then
+For the next conversation on this repository. Read the section above, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left, the batch table),
 [docs/progress.md](docs/progress.md) (what the scores measure),
 [docs/architecture.md](docs/architecture.md) (how parity is built and checked),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every repeated process, its command and cost),
-[docs/bugs.md](docs/bugs.md) (the original's bugs and our fixes) and
-[docs/presentation.md](docs/presentation.md) (60+ fps and 4K).
-This file holds only the current state, how to resume, open decisions and traps; history is in `git log`
-and in the roadmap's batch table. Keep it that way: replace, do not append.
+[docs/bugs.md](docs/bugs.md) (the original's bugs and our fixes),
+[docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and, for Phase 3,
+[docs/p3-handoff.md](docs/p3-handoff.md), [docs/p3-current-work.md](docs/p3-current-work.md) and
+[docs/scenery-distance.md](docs/scenery-distance.md). This file holds only the current state, how to resume, open decisions and traps; dated history is in `git log` and in the
+roadmap's batch table. Keep it that way: replace, do not append.
+**The owner's reported issues are tracked one by one in [docs/owner-issues.md](docs/owner-issues.md) (status and evidence for each; do not drop an item until the owner agrees). Read it before anything else.**
 
-## Latest: Remastered throughput (2 November 2026)
+**Scoreboard:** P1 100.00%, P2 96.93%, P3 94.03%, All 97.55% (`py tools/progress.py --title`; never copy a title from an older commit). Do not claim Phase 3 completion.
 
-**Latest owner direction:** the owner confirmed the coastline issue also happens in GOG and wants Remastered to fix it. An independent GOG reproduction is no longer a prerequisite for that diagnosis. The desired shoreline should align with the game's water collision boundary if one exists; do not invent one or alter simulation behavior. All twelve latest screenshots are the previously identified session 154150 sequence. Current evidence and investigation: [docs/coastline-reconstruction.md](docs/coastline-reconstruction.md). The moving shoreline itself remains unfixed; only the separate wide-margin cutoff is fixed. This supersedes the older pending-GOG-comparison wording below.
+**Two threads run side by side** on `master`: Phase 2 (matched code, separate session) and Phase 3 (host and presentation). Phase 3 work stays out of `src/matched`, `src/machine`, `tests/func_lockstep.c` and core
+CMake, with one exception the owner approved: making the observer in `src/matched/observe.c` thread-local, for the render copy. `git fetch` before every push and check for a running gate before a heavy job.
 
-Continuing the active Phase 3 goal, large Remastered rasters now use eight workers on machines with at least 16 logical CPUs, sharing 64-row groups instead of leaving the busy horizon in one worker band. Smaller rasters retain four workers. Two repeated runs per configuration at scale 9 in a 3840x2160 software-renderer window measured 13.36/13.13 fps with four workers versus 18.00/17.83 with eight balanced workers; compositor cost fell from about 39 to 22 ms. This is still below 60 fps and is not physical-display pacing evidence. The prior unused 4:3 upload removal remains. All 167 moving scale-9 pictures across airborne, hangar, water and 4:3 views match the single-worker render pixel for pixel. Shared timer accumulators were replaced with per-worker counters, combined after stage barriers; diagnostics are off in normal play. Details: [docs/remaster-performance.md](docs/remaster-performance.md), evidence `D:/f117-gate/remaster-workers-20261102/`.
+**Phase 2 (96.93%, 1,261 route-executed unmatched bytes).** Batches up to `bz` are accepted. The grouped `ca` batch (four sound tails, 80 route bytes, and seven SETUP wrappers, 207 static bytes) is integrated but
+unaccepted and earns no credit; the 34 VGAME loader-patched thunks were removed because 29 of them overlap the graphics observers (a matched thunk would stop the observer capturing the entry; see
+[docs/p2-brief-ci-failure.md](docs/p2-brief-ci-failure.md)). ASOUND.117 `09F2` stays excluded pending the D2-fix decision; ISOUND.LOG `0581` needs an exact invalid-range certificate. The all-code gap is 17,361 bytes;
+reconcile `docs/static-code-review.md`'s 10,301-byte report with the current census before calling that review complete. Known failure on a clean checkout, not from Phase 3: `func_lockstep` fails four sound routines
+(RSOUND.LOG `03A2`, RSOUND.117 `0D07` and `0ACE`, ASOUND.117 `005E`: "with N clocks of room the body declined"). A batch aims for 1,000 to 1,500 newly proved route bytes: count only exact new route-executed credit.
+Next for `ca`: the combined `func_lockstep` fixture body is too large to compile in the memory available (an MSVC compile was interrupted and left a zero-byte object, since removed): find a
+lower-memory compile path or split the fixture body, then run the grouped gate before any credit.
 
-The rebuilt candidate SHA-256 is `012D6A61D1FEF5D43F63CE31C3D327F65A760AE82DE8332C811651A389591BD5`. All ten host acceptance cases passed in 125.8 seconds at two jobs; the bound report verifies at `D:/f117-gate/host-acceptance-coast-scope-20261102/report.json`. The new mandatory worker case compares 42 moving wide and 42 moving 4:3 frames against one worker, with zero differing pixels. Thirteen checker tests, seven presentation-check tests and eleven focused native CTests pass. Older nine-case reports are historical and cannot verify against the expanded checker/manifest. This handoff accompanies the verified Phase 3 code/test commit. No full machine gate or new deployment was performed; ONTests retains the earlier installed coastline/audio build. Commit 1560096 installs the scored-title guard; 16 earlier unscored titles were audited and left unchanged. Phase 3 remains active and incomplete: improve measured renderer throughput, complete scenery reach/coastline stability and broader motion coverage, then the other feature requirements and owner's final checks; do not shrink the completion scope to these local tests. The engine cutoff and false brown water-margin strip are fixed in ONTests, awaiting owner confirmation; the moving shoreline is an owner-confirmed original/GOG issue that Remastered must correct.
+**Phase 3 (94.03%).** In: the in-app Remastered path (`src/present/remaster_live.c`, `rerun.c`, the CPU and GPU compositors), the settings menu and Keys tab ([docs/settings.md](docs/settings.md), checked by
+[docs/host-acceptance.md](docs/host-acceptance.md)), hybrid sound, the adjustable draw distance, Terrain dots and Far object order settings. Open: the native renderer (see the section above), interpolation and road motion,
+widescreen HUD and cockpit, controller or HOTAS and button remapping, replay cameras, accessibility (a colourblind-safe HUD, subtitles under AdLib), the remaining settings gaps, hybrid-sound listening checks and the
+owner's approval of what they have not yet looked at. Remastered changes are presentation overrides; the simulation boundary stays intact. The owner's coastline and taxi tests were on the recomp, not GOG, so they
+say nothing about the original's collision behaviour. Renderer shots go to `Desktop\ONShots` named `YYYYMMDD-HHMMSS-name.png`; gradients smooth, no visible bands; depth-correct drawing is the point; read
+`src/matched/matched.c` before guessing and say what was read.
 
-## Host acceptance implemented (2 November 2026)
+**Build and run.** `.\build.cmd` from PowerShell; headless runs with `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`. The bash tool eats backslashes and a Python heredoc turns `\n` in C strings into real
+newlines: write patch scripts with the Write tool, fix single lines with Edit, and encode a script's whole output before opening a file for writing (a failed write truncates). A worktree needs
+`build.cmd "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` or the lockstep tests are not registered.
 
-The owner authorized prevention work after the hybrid engine-sound regression escaped the earlier gates. The new [host integration suite](docs/host-acceptance.md) supplements existing machine parity; neither its inputs nor its requirements were weakened. Windows CI runs the ROM-free verdict tests, and `present_light_check.py` now requires the recorded-flight suite for host/presentation source changes. The suite checks actual sound forwarding, OPL pitch and rendered/mixed PCM; moving hangar/aircraft/coast scenes; and real screenshot/menu event dispatch. Reports bind the executable, checker, manifest and recording hashes; missing evidence and partial suites cannot certify deployment.
-
-The final healthy run passed all nine cases in 116 seconds at two jobs: `D:/f117-gate/host-acceptance-final-20261102/report.json` and `index.html`. Tested build SHA-256: `813a99687f232a5182a6c164c19cd138cff466d30fa0f234c991fe23f1dfd7ea`. Twelve checker tests, seven presentation-check tests and eleven focused native CTests passed. Two actual faulty builds (dropped speed argument; removed continuous-speed routing) both failed the sound acceptance, with diagnostics still enabled; evidence is `D:/f117-gate/host-acceptance-faults-20261102/`. Source was restored and the healthy build retested afterward. Observer-on/off replay RAM hashes match. These results are host integration evidence, not a new full machine gate or a GOG fidelity verdict.
-
-No full machine gate was launched, and no commit, push or ONTests replacement was performed for this prevention work. ONTests retains the previously installed coastline/audio fixes at SHA-256 `507D03C37566D8E64852625C5BC5814360C57B82C4A427258F5CDA38155F1516`. Owner listening/visual acceptance and the GOG hangar/coast comparison remain pending; broader renderer work is still open. The feedback-only restriction quoted below was superseded by the owner's later continuation and prevention requests.
-
-## Earlier owner feedback (2 November 2026, after renderer commit d748bdc)
-
-The owner reports that the latest Remastered build looks much better. This update supersedes older renderer/culling notes below. Detailed implementation, installed build hash and prior validation are in [docs/p3-handoff.md](docs/p3-handoff.md), under "Start here: 2 November 2026 stopping point". The latest feedback is not confirmation that every individual renderer issue is resolved.
-
-- **Priority: coastline motion and its relationship to buildings.** In the latest flight the backs of the hangars appear to stand in water; as the player moves forward, the coastline moves underneath them and farther away. Inspect the changing coastline relative to fixed hangar geometry, rather than treating this only as ordinary pixel jitter. Once the player enters the water, land/coastline remains at the bottom of the widescreen margins until takeoff. The owner thinks crashes were disabled; that setting is not yet verified. Both behaviors remain OPEN, with no established cause or fix.
-- **Screenshot evidence:** `C:/Users/Tideg/AppData/Roaming/F117Recomp/F-117A/screenshots/session-20261102-154150-clock*.bmp` (12 captures, clocks 12391636686 through 16896927060). Representative captures were inspected: 12391636686 and 13296691572 show blue water against/under the hangar backs; 14733785897 shows the shoreline farther down the view as the hangars pass to the right; 16283883318 shows water filling the forward view while brown land remains low in the side margins; 16896927060 shows the later airborne view. These stills support the reported spatial inconsistency; they do not establish its rendering cause. Use the corresponding `sessions/session-20261102-154150/input.log` and a private save-start copy for a moving comparison with Original and Remastered. Retain `--adlib-effects` when reproducing the Roland launcher's routing. Compare the center and the wide extensions, terrain/sea geometry and composition at the same recorded clocks before proposing a fix.
-- **Engine noise at zero thrust: OPEN sound/parity question.** The owner reports that engine noise in the recomp stops after a moment at 0 thrust, whereas it continues in the GOG release. They ask why. Cause is not investigated or established; do not describe the cutoff as intended behavior or claim a fix. A future investigation should compare sustained zero-thrust behavior with GOG, matching sound driver/routing and relevant settings, then distinguish the game's engine-sound requests from host playback/loop lifetime. Screenshots alone cannot verify this audio difference.
-- **Aircraft culling baseline corrected by the owner:** parked aircraft disappearing too early when very close and near the screen edge also happens in the original GOG release. It is therefore not a widescreen-only recomp regression. Keep the original behavior and any desired Remastered visibility improvement distinct when assessing this issue. General object-size-aware visibility may still be an enhancement, but do not use this observation as proof that our widescreen renderer introduced the culling defect.
-
-The owner explicitly limited this turn to reviewing screenshots and updating `handoff.md`, with very little five-hour ChatGPT usage remaining. No implementation, replay, build, test, deployment, commit or push was requested for this feedback-only update. Continue investigation only when requested in the next conversation.
-
-## Follow-up work resumed here (2 November 2026)
-
-The owner's later "Continue work here" supersedes the feedback-only restriction above. See the final "2 Nov follow-up: coastline and zero-thrust sound" section in [docs/p3-handoff.md](docs/p3-handoff.md) for current evidence and limits. The margin's horizontal water cutoff has a tested ground near-clipping fix; genuine sloping coast is retained. Hangar/coast alignment was also reproduced in our Original presentation, but a GOG comparison is still needed. ONTests now has the fixes (SHA-256 `507D03C37566D8E64852625C5BC5814360C57B82C4A427258F5CDA38155F1516`); ten focused tests and the real-driver probe pass, with zero differences in at least 481 four-thread comparison pictures. The owner confirmed GOG uses AdLib/Sound Blaster. The hybrid engine repair now includes both the missing speed argument and interception of continuous speed calls at the bound driver entry (they bypass the old library-slot hook). Actual replay preserves nonzero speed updates while coasting at zero throttle; ordinary minus presses do not themselves issue engine-off command 25. The fix is installed and awaits the owner's listening check. Before/after guest RAM is identical. The aircraft edge-culling observation remains inherited GOG behavior, not a newly introduced widescreen defect.
-
-## Current state (1 November 2026)
-
-- **P2 procedure update:** use the revised [proof work order](docs/repeated-processes.md#order-work-to-avoid-repeated-proof-cycles-1-november-2026): review proof inputs before compiling, smoke-test at 64 states across five seeds, retain every full proof and acceptance check, time-box stalled diagnosis, bundle independent ready candidates, and check for stale named-coverage registry entries before the expensive gate. Preserve accepted coverage and validate refreshes as separate hashed addenda. No proof workers during the gate.
-
-- **Active branch:** `master` remains the main branch. Batch `bz` passed acceptance and its code/docs are integrated from a clean worktree based on fetched `origin/master` at `b40dbba`; the shared checkout's P3 edits remain separate. The Phase 3 branches are merged (2adbdad); see "Resume here" before continuing that work.
-- **Scoreboard:** P1 100.00%, P2 96.93%, P3 93.84%, All 97.51% (`py tools/progress.py --title`). Refreshed with census `D:/f117-gate/census.tsv`, named cover `D:/f117-gate/p2-batch-bz-accept/named-cover`, and route cover `D:/f117-gate/route-cover-20261020b`. Gameplay is 99.23% (160,015 named bytes plus 2,631 reviewed design-rule bytes of 163,907). The named-code all-code measure is 191,937 / 209,298 bytes (91.71%). Reviewed references cover 47,734 / 47,952 outside-route bytes. There are 1,261 route-executed unmatched bytes: ASOUND.117 166, ASOUND.LOG 135, ISOUND.117 28, ISOUND.LOG 158, VGAME 324, PLAYER 156, RSOUND.117 5, RSOUND.LOG 83, START 66, SETUP 57, END 63, MPS_LOGO 18, DSWAP 2.
-- **Latest accepted batch:** `bz` bundles ASOUND.117 `01B6:0A48`, `0A5B`, `0B01`, and the ASOUND.LOG `0000:008A` timer-uninstall prefix. It contributes 244 new route-executed named bytes, 118 fully covered instructions, and 88 private mutations caught, with zero claimed-but-uncredited bytes. Evidence is `D:/f117-gate/p2-batch-bz-accept/`; prior batch `by` remains documented below.
-- **Gate:** the `bz` final verdict passed: 831 tests, 63 routes, 62 fresh interpreter sessions; 1,646 routines checked at three seeds; both timing profiles, the whole-table checks, 20 optimized seeds, and sequential fresh-baseline audit passed. Route parity covered 90,168 instruction starts / 5,764,032 states with zero mismatches. All 63 N=1 presentation results and boot N=4/9 were exact. The clean mainline integration build and all five targeted tests also passed. Core gate 1,555.53 s; full acceptance 2,503.42 s. The finalizer recorded 244 added named bytes and zero claimed-but-uncredited bytes. Its separate refresh addendum covers `VGAME.EXE 0FB2:04DD`, registered after the accepted `by` base; `by`'s original coverage was left byte-for-byte unchanged. Evidence and logs: `D:/f117-gate/p2-batch-bz-accept/` and `D:/f117-gate/p2-accept-master-2e4287e/acceptance-logs/`.
-- **Saved owner docs:** `stash@{0}` (`preserve owner docs before P3 acceptance merge`) was applied; its round-10 PLAYER reference and decision are included in the documentation commit. The stash remains as a backup and has not been dropped.
-- **Still-local owner work:** `tools/sound_board_page.py` and `tools/sound_board_template.html` have unrelated edits. Preserve these and the untracked `.ppm`, `100`, `4k60.bat`, `original-fixed.bat`, and `x.slice(0` files; they are excluded from the P2 acceptance commit.
-- **P2 gaps and decisions:** the route-executed unmatched total is 1,261 bytes (module breakdown above). ASOUND.117 `09F2` remains excluded pending the D2-fix interaction decision; ISOUND.LOG `0581` needs an exact invalid-range certificate that does not exclude real timer-handler bytes; the 29-Oct protected note is stale on five units. The current-image Q6 audit is under `D:/f117-gate/checklist-full-20261026/round9-q6-cert-20261030/`; review its entry/dead-certificate closure before changing status. PLAYER `00D5F-00DAF` remains matching work as `needs-route` until a route selects the grayscale arm. Round-10 evidence is under `D:/f117-gate/checklist-full-20261026/round10-q3-needsroute-20261030/`.
-- **Remaining naming and closure work:** the all-code gap is 17,361 bytes, including the 1,261 route-executed bytes above; additional static-code naming and closure work remains. Reconcile `docs/static-code-review.md`'s 10,301-byte report with the current census before calling that review complete. The broad indirect-call/dispatch/callback/vector/overlay/self-modifying-code closure still needs a final review. The historical probable-dead tally (12 rows / 831 bytes) is stale: ten rows / 477 bytes were upgraded to dead in the 21-Oct-2026 review, while current reference rows show no probable-dead entries; reconcile the residual 354 bytes against current named coverage.
-- **Phase 3:** use [docs/p3-handoff.md](docs/p3-handoff.md) for remaining features. P3 is 93.84%; the settings, controls, Remastered rendering, replay, hybrid-sound and accessibility work remains at the percentages in the roadmap.
-
-## Resume here
-
-**P2 status (1 November 2026, evening Pacific):** accepted batch `bz` remains P2 96.93% with 1,261 route-executed unmatched bytes. The candidate integration is based on `fed0186` (`28728bf` is the tested full-gate base); `origin/master` matched `fed0186` before this handoff commit. The unaccepted `ca` candidate adds no P2 credit yet.
-The grouped ca batch now retains 11 private-ready entries: four sound tails (80 route bytes) and seven SETUP wrappers (207 static bytes), totaling 287 body bytes. The 34 VGAME loader-patched thunks were parked on 2 November because 29 overlap graphics observers; they remain unaccepted and earn no credit. The remaining-entry private audit passed for 135 instructions and 256 mutations, and the parity-only route check passed all 62 groups (41 cached and 21 fresh interpreter runs) with no event overruns. The 276-byte ISOUND.117 019C:026C result belongs to accepted batch by, so it is not counted again here.
-The remaining sound/SETUP candidate source and CTest registrations are integrated but unaccepted; the combined func_lockstep target has not been freshly compiled and the grouped ca gate has not run. The VGAME thunk family and its candidate test were removed to preserve observer capture. The P2 session's isolated harness extraction and revised acceptance packet are separate preparatory work and remain unbuilt/unaccepted. No candidate credit is claimed. Do not run private proof builds during another session's full gate. P3's separate steps below remain intact. Retain the owner's sound-board edits and five untracked files listed above.
-
-
-Two threads. `master` is the active main branch. P2 batch `bz` is accepted at 96.93%; P3 is 93.03% after the latest progress commits.
-
-**Phase 3 (merged into `master` on 31 October 2026, at `2adbdad`).** `master` now contains the in-app Remastered work (branch `p3-remaster-live`), hybrid sound (`p3-hybrid-sound`) and the docs pass; the branches stay as history. Read [docs/remastered-design.md](docs/remastered-design.md) and [docs/p3-handoff.md](docs/p3-handoff.md).
-- **What is in:** `--presentation remastered` (`src/host/main.c` and a settings-menu row): the Enhanced picture with the 3-D view redrawn by `src/present/remaster_live.c` from the model requests, composited by origin tag; the machine-loop exec-hook table (`machine_t.exec_hook`, `src/machine/pc.c` and `machine.h`: one comparison per instruction when off); hybrid sound (`src/host/macsound.c`, `--mac-sounds DIR`, `--music-source`, `--sound-source`, `tests/test_macsound.c`).
-- **Acceptance of the merge:** gate `D:/f117-gate/p3-merge-gate2-20261031/` (827 tests; 63 routes identical with 62 fresh interpreter sessions; 5,764,032 translated-instruction states under both timing profiles, 0 mismatching; 1,641 matched routines at three seeds, about 6.87 million states each, 0 mismatching; reachability and event limits clean) and the presentation checks beside it (`present-n1.log`: N=1 exact on 63 routes; `present-boot.log`: boot_to_flight N=4 and N=9 exact). The first gate attempt (`gate-attempt1-hung.log`) hung on a latent lockstep defect (below), not on the merge.
-- **Score split (owner decision, 31 Oct 2026):** the Remastered item (weight 10) and the hybrid sound item (weight 3) were split into sub-items in `docs/progress.json`, each credited only for what is built, run and (where it applies) gated: Remastered 5.5 of 10, hybrid sound 2.11 of 3, P3 85.42% to 91.23%. The sub-items for the owner's own look (Remastered 1.0, hybrid sound 0.3), longer draw distance, road and coastline jitter and interpolation stay at 0.
-- **The headless tool I built is retired** (`remaster_view`, `f117run --remaster-shot`, `tools/remaster_wide_check.py`): code at git tag `remaster-view-tool-20261031`, findings in the design doc ("Findings from the headless shot tool"). Ported into `remaster_scene.c`: a fallback for edge sets that do not chain (angular order) and a three-vertex rule. Not in the live code: skipping requests made while the viewport (`DS:85FA..8600`) is under 300 wide (the cockpit's map display), and the frame boundary from the flip bit `DS:0346`.
-- **Next, in order:** (1) run the merged in-app path in a real flight against the Enhanced baseline (**first run done 31 Oct 2026**: the scripted `boot_to_flight` route recorded with `f117run --record` (inputs in `D:/f117-gate/remaster-flight-20261031/rec/`, start save `save-start`), replayed in the app with `--fixes original --presentation enhanced|remastered --present-scale 3`, frames at clock 2.45 billion. Result: no region fails `remaster_diff.py` (largest 108 fine pixels); 2,931 of 576,000 pixels differ (all inside the 3D view; the HUD and cockpit are identical); the sky column has 74 distinct colours against Enhanced's 10 bands (smooth); the sea strip is redrawn. Not yet judged: hangar detail, depth ordering in motion, a flight with real flying inputs. Shots are in `Desktop/ONShots`; the recorded sessions in `%APPDATA%/F117Recomp/F-117A/sessions` are all front-end browsing, not flights, so a takeoff must be recorded this way), original recipe (takeoff replay, `--presentation remastered --present-scale 3`, `F117_PRESENT_SHOTS`, `py tools/remaster_diff.py ENHANCED.ppm REMASTERED.ppm`); (2) the live branch's open list: face shade `[7D8A]` (**closed 31 Oct: the original never reads it; see docs/remastered-design.md**), validator mismatches (models 3, 30, 51, 50: **explained 31 Oct, a stale-record artifact of the game's lazy vertex projection, not a placement error**; docs/remastered-design.md), interpolation between logic steps, widescreen, longer reach (R6); (3) the fit rule (**built 31 Oct: widescreen Remastered, `remaster_live_wide`; the cockpit and HUD block keeps its size in the middle, the world fills the window, crosshair centred; checked at 1920 x 1080, docs/remastered-design.md; the mouse maps through the wide view (worked out and built, not tried with a real mouse); still to do: objects outside the game's own field of view**); (4) hybrid sound (the owner's stated order, 31 Oct: finish it right after the remastered renderer, before anything else in Phase 3; the `p3-hybrid-sound` branch is now recorded as merged (`bd58bc2`, no content change): **done 31 Oct 2026, gated at `59cf216` (827 tests, 63 routes, 1,642 routines at three seeds, 0 mismatching): the AdLib sidecar (`src/host/sidecar.c`, `--sound roland --adlib-effects`: flight effects ids 4-20 and 23-25 on a second AdLib driver with its own chip, Roland keeps the music and everything the front end polls) and the START and END thunk hooks (`docs/sound-board.md`)**. What is left: listening to it (every run used the dummy audio device), an ini key and a menu row for `--adlib-effects` (and the owner's call on making it the default with Roland), Mac recordings for START's and END's ids (none maps today), sidecars for RSOUND/ISOUND if wanted, a generated-code build check of the exec hook, the owner's marks on the sound-board page, the id mapping heard by ear; (5) the owner's credit decision.
-- **Owner instructions to keep:** renderer shots go to `Desktop\ONShots` named `YYYYMMDD-HHMMSS-name.png` (leave the `Prenaming` folder alone); gradients smooth with no visible bands; depth-correct drawing is the point; read `src/matched/matched.c` before guessing and say what was read.
-- **Build and run:** `.\build.cmd` from PowerShell; headless runs with `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`; a Python heredoc in Bash turns `\n` in C strings into real newlines, so use the Edit tool for such lines. Research switches on the live path: `F117_REMASTER_FRAME=N:FILE.ppm`, `F117_REMASTER_DEBUG=1`, `F117_REMASTER_VALIDATE`.
-
-**Phase 2.** Batches `by` and `bz` are accepted on `master`. The latest batch `bz` adds four sound routines totaling 244 newly route-executed named bytes (all four bodies are bundled because no other candidate was private-ready), 118 fully covered instructions and 88 caught mutants. P2 is 96.93% with 1,261 route-executed bytes remaining. The full acceptance packet is `D:/f117-gate/p2-batch-bz-accept/`; the VGAME baseline refresh is recorded as a separate addendum without altering `by` coverage. Ghidra exports reused for the batch are in `D:/ghidra-trial/sound-analysis-20261031/resume-20261031/exports/ASOUND117-correctmap/` and `ASOUNDLOG-correctmap/`. Follow [docs/repeated-processes.md](docs/repeated-processes.md#phase-2-batch-acceptance) for the next batch, and never run private proof builds during a full gate.
-
-- **Normal batch target:** aim for 1,000-1,500 newly proved route bytes. Count only exact new route-executed credit; bundle independently proven small routines when they pass the same lockstep, mutation, audit and gate standards. Do not pad batches with raw census extents or already-covered code.
-- **Accepted ISOUND.117 `019C:026C`:** 336 bytes, 111/111 instructions, five lockstep seeds and all 74 mutants passed. It passed whole-table and route prechecks and the full acceptance as part of `by`; credit audit attributes 276 bytes as newly route-executed, with the rest overlapping existing named credit. Evidence is under `D:/f117-gate/p2-batch-by-accept/`.
-- **ASOUND.117 `0B01`:** the first proof attempt had a fixture nontermination, later traced to using randomized `seg[S_CS]`; the repaired fixture captures `cs` explicitly and the 86-byte routine passed all five seeds, coverage, mutations and `bz` acceptance. Preserve the earlier failed evidence as history; it is superseded by the accepted proof in `D:/f117-gate/p2-asound-117-0b01-refresh-9fce9a0/`.
-- **Other sound candidates:** ASOUND.117 `0A5B` is accepted as the 105-byte prefix ending at the PIT wake `0AC4`; the continuation remains original code. ASOUND.LOG `008A` is accepted only as `[008A,00AC)`, handing back immediately after the PIT control-word OUT. ASOUND.LOG `03F8-042F` still earns zero new bytes because its instructions are already covered by accepted `0344`, `0423`, and `042C` scopes.
-- **Ghidra:** Ghidra 12.2 assisted the accepted SETUP `0000:0CB2` wrapper and the sound batch used the corrected base-0 ASOUND.117 / ASOUND.LOG exports to review instruction boundaries, wake points and the LOG caller. Keep the exports at `D:/ghidra-trial/sound-analysis-20261031/resume-20261031/exports/`; decompilation remains a lead, not proof.
-- **SETUP pilot:** `0000:0CB2` is accepted. SETUP `0CE5` and `0D1B` have complete private proofs and are integrated with the unaccepted `ca` group; they receive no credit until grouped acceptance. The unrelated local owner edits in `tools/sound_board_page.py`, `tools/sound_board_template.html`, and untracked `.ppm`, `100`, `4k60.bat`, `original-fixed.bat`, and `x.slice(0` files are intentionally excluded from the P2 commit.
-**The owner's reported issues are tracked one by one in [docs/owner-issues.md](docs/owner-issues.md) (status and evidence for each; do not drop an item until the owner agrees). Read it before anything below.**
-
-## Open work list (31 October 2026, late evening; the owner's priority is the Remastered renderer first, then hybrid sound)
-
-**P2 runs in a separate session at the same time**: this Phase 3 session touches only `src/host`, `src/present`, `docs`, P3 tools; never `src/matched`, `src/machine`, `tests/func_lockstep.c` or core CMake; `git fetch` before every push; check for a running gate before a heavy job; build in worktrees under `C:/Users/Tideg/f117-recomp-local`; stop only processes you started (by PID or path), never `Stop-Process -Name f117a` (the owner may be testing).
-
-*Owner's live test, 31 Oct (Desktop `ONTests\ON-roland.bat`, `ON-mac.bat`; a copy of a build plus `f117a.ini` with the MT-32 ROM path; the copy needs refreshing from a newer build):*
-1. **Intro and launch cutscenes lag.** Being measured: `D:/f117-gate/remaster-flight-20261031/lag2.sh` times the same replay (boot to the flight, `rec/input-go.log`) in the original, Enhanced and Remastered presentations (`lag2.txt`). Cause unknown; suspects: the Remastered path's per-pixel origin tags, the fine picture at scale 3, the sidecar's tick loop.
-2. **A dark bar across the hangars** (screenshot in the owner's message; not reproduced). Trace with `F117_REMASTER_PROBE=X,Y` and `F117_REMASTER_KEPT=2`.
-3. **A second image lagging behind when moving.** Believed to be the missing interpolation: the composite takes its mask from Enhanced's interpolated picture and its fill from the last completed logic frame. Fix is the "interpolation between logic steps" item.
-4. **Mac sounds did not play at the hangar**: the tested build predates the Mac mappings added since (intro music 3 to 200, weapons page 29 to 323 and 30 to 325, the flight program's 31 to 323, `macsound.c`) and the PLAYER thunk hook (`PLAYER.EXE 02A3:13B9`).
-5. Opening jingle: heard once `f117a.ini` pointed at the ROMs (`roland = munt`, `mt32-roms`). Confirmed by the owner.
-6. Hangar-door lights: now full squares; they sit about 3 px from the original's because the original's lines and lights use projection records that lag one logic step (the polygons' do not): Remastered draws them where the geometry puts them (a flaw of the original fixed, not an error). Two black dots and some blue bits behind the doors showed through the "whole line" layer; the fix (bright lines only, `remaster_live.c` composite) is written but was not yet built and gated at the time of this note.
-
-*Remastered renderer, open:* interpolation (3 above); longer draw distance (R6); objects wholly outside the game's own view are not drawn in the widescreen margins (the game culls before asking; fix by running the scene walk on a hidden render-only machine copy with a wider view, the same job as R6; the old `draw-rerun-probe` branch, `8849ce4` and its three children in `D:/f117-archive/orphans-20261031.bundle`, tried re-running the view compose on a machine copy); about 1,000 original pixels a frame still kept (thin lines around the distant aircraft, taxiway edges: `F117_REMASTER_KEPT=1`); the leftover-pixel check and the zoomed-crop review on other scenes (air-to-air, ground targets, other theatres, night): so far one takeoff at dusk; lines and dots have no per-model accounting yet (polygons do); a fresh full gate (the last full gate predates the door fixes, the line layer and the logic-fill change).
-
-*Hybrid sound, open:* the code proof of ids across the drivers is `tools/sound_id_proof.py` and `docs/sound-id-table.md` (all three drivers have a handler for every id 0 to 45; the PC speaker's id 39 is a bare RET; it does not prove the sounds are alike); the Mac-to-DOS mapping is still partly by ear or by the Mac code's own calls (`mac-extract/dis`, calls through `jsr $54a`): unproven: hangar door 324, engine loop 500 (Mac plays one loop for 311 and 312), START's 31 (launch animation), speech phrases 41 to 45 (the Mac has nine separate words), the Mac's own ids 27 and 28; the owner has to listen (Mac recordings, the AdLib effects beside Roland).
-
-*Other Phase 3 items:* settings menu gaps (custom fix sets, folders and ROM paths, speed numbers, the joystick answer, mouse use); a real controller or HOTAS and button remapping; replays (jump to a time or marker, other cameras in Remastered); accessibility (a colourblind-safe HUD option, subtitles under AdLib).
-
-*Housekeeping:* the three old presentation branches (`draw-rerun-probe`, `present-horizon`, `present-hud2`) and their worktrees were removed on the owner's say-so (31 Oct); about 26 other worktree folders remain under `D:/f117-wt` on branches already contained in `master` (ask before removing them); the app copy in `ONTests` is about 64 MB (`f117a.exe` 60 MB, SDL, Munt); the two tooling DLLs (`f117machine_api.dll`, `f117cpu_api.dll`, 55 MB and 0.2 MB) are not needed to play.
-
-## Unmerged branches and uncommitted worktrees (scan of 30 October 2026, 23:45)
-
-Nothing below was changed or deleted; ask the owner before deleting anything. `p3-remaster-live` and `p3-hybrid-sound` were live Phase 3 work and are now merged into `master` (`p3-hybrid-sound` was recorded as merged in `bd58bc2`; its last commit, `4e2f274`, removed a hook edit master never had). The rest:
-- **Old WIP branches, one commit each, not in `master`:** `present-horizon` and `present-hud2` (14 Oct, "stopped mid-task for a conversation handoff, unverified"), `wip-view-compose-2f9d` (12 Oct), `origin/p2-batch-setup-logo` (15 Oct, WIP SETUP `19B6`), `origin/p2-wt-batch` (10 Oct, a draft `vgame_camimage_background_raster`), `draw-rerun-probe` (4 commits, 15 Oct, an experiment). `docs-pass` has 3 commits dated 30 Oct that are not in `master` (docs text: "state what was ob...") worth a look before the doc pass.
-- **Worktrees with uncommitted changes (the work exists only on disk):** `C:/Users/Tideg/f117-recomp-local/wt` (detached HEAD, **24 files, +1958/-103**, touching `CMakeLists.txt`, `config.c`, `headless.c`, `main.c`, `matched.c` and more: the largest unrecorded change, inspect first); `D:/f117-wt/credit` (4 files: `progress.py`, `progress.md`, tests, `func_lockstep.c`); `D:/f117-wt/gate-h` (`main.c`, `rerun.c`, +76); `D:/f117-wt/experimental-livebp-20261030` and the two `.claude/worktrees/agent-*` worktrees (a few lines each in `src/matched/matched.c`, probably experiments); also `D:/f117-wt/wake-bug` (detached, 6 files), `D:/f117-wt/mission-generation-4239` (5 files) and `D:/f117-wt/setup-main-0010` (3 files; both carry the private /Od overrides: never merge wholesale), `D:/f117-wt/thunk-candidate-check` (detached, 3 files) and `D:/f117-wt/harness-rules` (detached, 1 file). No detached-HEAD commit is stranded: every one is reachable from a branch. One registered worktree, `C:/Users/Tideg/My Drive/Development/F-117A Recomp/.claude/worktrees/agent-ada5a0330bc7d4569` (locked), no longer exists on disk.
-- **Stashes:** five (`git stash list`), the first being `preserve owner docs before P3 acceptance merge`; not dropped.
-
-## Orphan triage (31 October 2026): what each rescue snapshot held
-
-Every worktree with uncommitted changes was pinned, without touching it, as a local `rescue/<name>-20261031` branch (not pushed:
-some carry private overrides and the repository is public). Each was then measured (share of its added lines already on the tree) and
-read. Result: nothing is lost by tossing any of them except the one P2 candidate below. Deleting a worktree or branch is the owner's call.
-
-| Snapshot (worktree) | Already on the tree | What is left, and the verdict |
-|---|---|---|
-| `agent-a7d0...`, `agent-ace3...`, `experimental-livebp-20261030` | 100% | nothing: toss |
-| `mission-generation-4239`, `setup-main-0010` | 99-100% | only the private `/Od /Ob0` override and fixture-iteration rows: toss (never merge wholesale) |
-| `thunk-candidate-check` | 99% | the private ISOUND `026C` clamp-probe harness; the routine was accepted in `48869f4`: toss |
-| `harness-rules` | 97% | the origin of `body_overrun` (the tree has the refined form): toss |
-| `wake-bug` | 99% | an early draft of the stale-override entry-opcode check; the tree has it (`recomp.c` `in->img` check, `tests/test_stale_override.c`): toss |
-| `credit` | 59% | the 16 Oct byte-credit design of `tools/progress.py`; the tree has the evolved form (`--named-cover`, `--route-cover`): toss |
-| `gate-h` | 1% | private 4K stage-timing instrumentation (Windows-only calls, hidden 4K window, refuses to start without `F117_PROFILE_LOG`): toss; the supported route is `--present-log` plus `tools/presentation_timing.py`. Idea worth remembering: per-stage columns (sim, wait, worker, convert, publish, plan, prepare, upload, present) |
-| `wt` (detached, base 10 Oct) | 89% | 35 of the 36 routines it added are on the tree. **Keep: `vgame_clip_divide_fault`, VGAME `0FB2:04DD`** (the clipper's INT 0 saturation handler; a one-line wrapper `vgame_raster_divide_fault(m, 0)` registered with level 3, plus lockstep rows `{ 0x0FB2, 0x04DD, 4, 0x046E }` and planted states that clear IF and TF and set `int_depth`; see the `matched.c` and `func_lockstep.c` hunks in `rescue/wt-20261031`). It exists nowhere else in git history. The tree has the sibling `084E`. `docs/progress.md` calls it "the line-clipper divide-error handler that no route reaches"; under the 29 Oct rule static code is matchable on lockstep alone, so it is a proof-and-gate candidate for the next P2 batch. The rest (model-seam repair `drawlist_finish_models`, a 17-field `'G'` snapshot record) is superseded presentation work from before the Enhanced consolidation (still in history: `5361129`, `571a490`). Its five untracked files (`nearclip.c/h` and three tests) are early drafts of what the tree has, copied to `C:/Users/Tideg/f117-recomp-local/rescue-20261031/wt-untracked/` |
-
-Old WIP branches (not in `master`, nothing running on them): `present-horizon`, `present-hud2` (their band and HUD tests exist on the tree and pass), `wip-view-compose-2f9d` (`0x2F9D` is matched and hooked), `draw-rerun-probe` (the rerun path exists), `origin/p2-batch-setup-logo`, `origin/p2-wt-batch`. All superseded; safe to delete when the owner agrees. `docs-pass`, `p3-remaster-live` and (except one moot cleanup commit) `p3-hybrid-sound` are contained in the merge.
-
-### Done: the `0FB2:04DD` job (31 October 2026; the owner asked that no useful work be lost)
-
-`04DD` (the clipper's INT 0 saturation handler: `push bp; mov bp,sp; cmp word [bp+2],046Eh; mov ax,[228Dh]; je; mov ax,[228Bh];
-xor dx,ax; mov ax,7F00h; jns; neg ax; add word [bp+2],4; sub dx,dx; pop bp; iret`, 33 bytes, 14 instructions) has the same shape as the
-accepted `084E`. It is now registered as `vgame_clip_divide_fault` (`vgame_raster_divide_fault(m, 0)`, level 3) with the
-`INTERRUPT_FRAMES` row `{ 0x0FB2, 0x04DD, 4, 0x046E }`; no new body was written, the shared body already existed. Evidence:
-`func_lockstep --only VGAME.EXE:4DD` at six seeds, 3,992-4,000 states each, 0 mismatching (`084E` runs the same size); four mutants
-of the `spans = 0` arm (compare constant, denominator, IP advance, clock charge) each give 1 mismatching; full gate on the tree
-(827 tests, 63 routes identical, 1642 routines at three seeds, 0 mismatching, steps 8 and 9 clean). Landed from branch
-`p2-clip-04dd` (`dea8936`). The percentage was not refreshed: run `tools/progress.py --census` with the next batch to credit the 33 bytes.
-The old snapshot `rescue/wt-20261031` is now redundant (its body used a replaced trap-flag line) and is also in
-`D:/f117-archive/orphans-20261031.bundle`.
-
-### Fixed: the lockstep hang at `START.EXE:8A32`, state 1627 (31 October 2026)
-
-The first full gate of the merge (commit `863898e`, seed `0x863898e40efa`) never finished: matched-routine lockstep shard 7/8 sat
-on one `func_lockstep.exe` for over two hours. Reproduction was `func_lockstep.exe --states 1628 --seed 0x863898e40efa --only
-START.EXE:8A32` (`1627` finished, `1628` hung). It was not caused by the merge: the `master` build (`48869f4`) hung the same way.
-**Root cause** (an earlier note here blamed `st2_fill_rect`'s 64K-row run; that was wrong): the planted state made the original code
-slide along a chain of instruction-prefix bytes, and `cpu_step`'s prefix loop (`src/cpu/cpu.c`) has no bound, so a single step never
-returned and the per-state step limit never fired. **Fix** (commit `7967b67`, `tests/func_lockstep.c` only; the core was left alone,
-it would need the full gate for no gain): `prefix_runaway()` stops a state whose bytes at CS:IP are more than 64 consecutive prefixes
-(no instruction can complete), counted and reported as `prefix-run guard: N state(s) stopped as long runs`; plus an opt-in watchdog,
-`F117_LOCKSTEP_WATCHDOG=N` (seconds), that prints the stuck state and exits 3. Evidence: the full table at the hanging seed finished in
-15 minutes (1641 routines, 6,873,385 states, 0 mismatching, guard stopped a handful of states per shard); the full gate on the fix
-tree passed (827 tests, 63 routes identical, 1641 routines at three seeds, 0 mismatching).
+**Housekeeping (nothing here is deleted without the owner).** About 26 worktree folders remain under `D:/f117-wt` on branches already in `master`; `private/` holds the ONTests backups and the own-window logs. The local
+`rescue/<name>-20261031` branches are unpushed snapshots of old worktrees (some carry private overrides and the repository is public, so never push them); every one is superseded except that the 31 October `04DD`
+job has since landed (`dea8936`) and `rescue/wt-20261031` is also in `D:/f117-archive/orphans-20261031.bundle`. Five stashes exist (`git stash list`), the first `preserve owner docs before P3 acceptance merge`: not
+dropped. Old WIP branches (`present-horizon`, `present-hud2`, `wip-view-compose-2f9d`, `draw-rerun-probe`, `origin/p2-batch-setup-logo`, `origin/p2-wt-batch`) are superseded and safe to delete when the owner agrees.
+The lockstep hang at `START.EXE:8A32` was a cpu_step prefix runaway, fixed in `tests/func_lockstep.c` (`7967b67`: a 64-prefix guard and `F117_LOCKSTEP_WATCHDOG=N`).
 
 ## Owner decisions in force
 
@@ -343,6 +166,10 @@ Lockstep and harness:
 - `kit.py checkpoints` needs the interpreter cache for the current key: after any `src/` change outside
   `matched.c`, run a gate first. A failed gate's directory blocks a rerun: archive it and recreate.
 - `matched.c` compiles with `/Os` (at `/O2` it took 90+ minutes).
+- The lockstep machine runs at zero IPS unless a fixture sets it (so IO_SLACK is zero) and stubs the production bus delays: a fixture that probes room must set `MACHINE_APP_IPS`, and the clocks it sees are the
+  harness's, not production estimates. ASOUND.117 `0A5B` must hand back right after the PIT0 control-word wake at `0AC4`: the old 165-byte claim ran across it; never restore a claim by size.
+- Ghidra 12.2's headless launcher needs the installed JDK 25 override, not the default JDK 8. Reuse the existing base-0 exports (`D:/ghidra-trial/sound-analysis-20261031/resume-20261031/exports/ASOUND117-correctmap/`
+  and `ASOUNDLOG-correctmap/`) before importing again; the earlier wrongly mapped ASOUND export is not authoritative. Disassembly evidence never replaces lockstep, mutations or acceptance.
 
 Tools and shells:
 - `build.cmd` runs from PowerShell (through Bash it hangs; PowerShell `*>` writes UTF-16 logs).

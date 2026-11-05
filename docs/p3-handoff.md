@@ -99,7 +99,7 @@ The owner requested a handoff, commit, push and stop. Renderer work is at a test
 ## Where this stopped (night of 1 November 2026): start here
 
 **Read first:** [owner-issues.md](owner-issues.md) (every owner report with status and evidence, the owner decisions, the gates) and
-[bugs.md](bugs.md) ("What a fix needs", "Fix audit"). P3 is 93.84% (`py tools/progress.py --title`); what is left needs the owner's look, ears
+[bugs.md](bugs.md) ("What a fix needs", "Fix audit"). P3 is 94.03% (`py tools/progress.py --title`); what is left needs the owner's look, ears
 or hardware, or recordings (below). `master` is pushed. The last full gate (11, the owner's limit for 1 Nov) passed on a branch of the P3
 commits (`p3-gate` in the `gate-master` worktree, without the P2 session's staged `5cd50d8`); later host-only commits were checked with the
 unit tests only (832 of 832).
@@ -569,11 +569,11 @@ R24 are owner-confirmed. Not gated; presentation and host changes only. Owner to
 
 The owner's first look at the CRT filter (`crt.c`, `crt = yes`, `crt-mask`, `crt-glow`) is that it does not look good. Tracked as R25 in [owner-issues.md](owner-issues.md). Not started. It applies to the displayed copy only, so it cannot touch the game or the machine. To settle with the owner before building: the look they want (sharp slot mask, soft aperture grille, plain scanlines), how much brightness to give up, curvature or none, and the cost at 4K and 60 fps.
 
-## Draw distance, native renderer: where it stands (3 Nov, late; read this first)
+## Draw distance, native renderer: where it stands (3 Nov, late; the 5 Nov handoff at the top of handoff.md supersedes it where they differ)
 
 The owner's goal at the end of the session: **a native Remastered renderer** (the game keeps simulating; each presented frame is built natively from its state; the rerun copy becomes the oracle), proven one subsystem
 at a time against the game's own output, game logic untouched, with the runway replay at 1920 x 1080 holding **p95 work per frame under 12 ms at Near and Far, and at Maximum through a GPU or equivalent path**.
-(Decision recorded in memory: f117-native-renderer-target.) Not met: Far is at 12.4 to 12.7 ms, Maximum at 39 to 40, no GPU path. Figures and method: [scenery-distance.md](scenery-distance.md), "Cost".
+(Decision recorded in memory: f117-native-renderer-target.) Not met at the time (Far 12.4 to 12.7 ms, Maximum 39 to 40, no GPU path); since then the 1080p replay measures under 12 ms p95 at Near, Far and Maximum in a hidden window and the GPU path exists: [gpu-compositor.md](gpu-compositor.md), last section. Figures and method: [scenery-distance.md](scenery-distance.md), "Cost".
 
 Done, committed and pushed:
 - The cause of the building pop-in (R26): every terrain model is drawn only while its camera depth is under 8191 units of its own ring (VGAME `120A:02B2`; `[7D5E]` is 16383), so ring-1 buildings stop at about 8,000 real
@@ -612,7 +612,7 @@ Build note: a worktree needs `build.cmd "-DF117R_GEN_DIR=C:/Users/Tideg/f117-rec
   134 of 137 frames at or above 12 ms fell on the same one-in-four clock
   phase. Inspect live game draw work and render-copy preparation on that
   phase next. Earlier wall-clock Near and Far measured 10.61 and 10.56 ms
-  p95. Keep the performance switches opt-in pending further validation.
+  p95. (Superseded: after three-flight validation the three native options are on by default on 4 Nov; `=0` turns each off, see scenery-distance.md "Terrain dots setting and native options default-on".)
 - Replay session 20261103-154444, clocks 3.9–4.8 billion, picture detail 3.
   Use copied save-start, --adlib-effects --roland off, --seek 65, and
   --exit-after 4800000000. F117_REPLAY_FIXED_CADENCE=1 fixes the clock
@@ -629,3 +629,9 @@ Build note: a worktree needs `build.cmd "-DF117R_GEN_DIR=C:/Users/Tideg/f117-rec
   changes still need visual confirmation. Prior isolated white dots
   traced to the guest distant-aircraft routine. Banking looked stable
   to the owner. The Desktop ONTests executable predates this handoff.
+
+## Renderer handoff, 5 Nov 2026
+
+Superseded in part by the "Ready for a new conversation: 5 November" section at the top of [handoff.md](../handoff.md) and the last section of [gpu-compositor.md](gpu-compositor.md): the GPU present path is
+on master (SDL 3.4.8, behind `F117_GPU_PRESENT=1`), the far scenery's choosing is threaded, the Far object order is a setting, and the goal is now the two-stage "independent of resolution and refresh rate" plan.
+The 4 Nov note above that says the Desktop ONTests executable predates the handoff is still true (it predates 5 Nov too); R27 (terrain dots) is fixed in code as the Terrain dots setting.
