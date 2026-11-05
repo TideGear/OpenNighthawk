@@ -47,6 +47,8 @@ void rerun_list_free(rerun_list *l);
  * records into out. Returns 1 when the copy presented and its frame closed. Call only on the thread that runs the machine. */
 /* The Far object order (Video settings): 0 exact, the game-order qsort of the far-scenery picks; 1 fast, a radix sort 0.65 ms cheaper that orders objects tied on distance by their listing order. */
 void rerun_set_pick_order(int fast);
+/* A thread pool for the far scenery's choosing (a pool of its own: the composite's runs at the same time); parts threads including the caller. */
+void rerun_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts);
 int rerun_why_model(unsigned model);   /* diagnostic: F117_FAR_WHY lists the model */
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
 

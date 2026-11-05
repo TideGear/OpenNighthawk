@@ -641,16 +641,26 @@ int rerun_why_model(unsigned model)               /* F117_FAR_WHY=M0,M1,...: is 
     return 0;
 }
 static const uint16_t *g_allow_saved;            /* the across-test table as the copy had it (the wide copy raises it), before far_scenery lowers it for the coarser levels */
-static int g_cull_reason;                       /* which check of the last far_cull call rejected the object (1 far plane, 2 near plane, 3 across, 4 up, 5 metric), diagnostic */
+static F117_TLS int g_cull_reason;                       /* which check of the last far_cull call rejected the object (1 far plane, 2 near plane, 3 across, 4 up, 5 metric), diagnostic */
+/* The environment switches far_cull and the choosing read, taken once before the choosing runs on several threads. */
+static int why_on, nskip, skip, force_base;
+static void far_cull_init(void)
+{
+    static int done;
+    if (done) return;
+    why_on = getenv("F117_CULL_WHY") != NULL;
+    nskip = getenv("F117_CULL_SKIP_NEAR") != NULL;                       /* diagnostic: own-level objects ignore the per-class near plane */
+    { const char *e = getenv("F117_CULL_SKIP"); skip = e ? atoi(e) : 0; }  /* diagnostic mask: 1 across test, 2 up test, 4 metric test (own-level objects only) */
+    force_base = getenv("F117_NATIVE_FORCE_BASE") != NULL;               /* experiment, native-walk: ring 4's first entry of a tile is never culled */
+    done = 1;
+}
 static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t matrix[9],
                     int16_t x, int16_t y, int16_t z, int16_t zh, unsigned lod, int shift)
 {
-    static unsigned why[7]; static int why_on = -1;                  /* F117_CULL_WHY: which check first rejects an own-level object (shift 0), printed every 20000 */
-    if (why_on < 0) why_on = getenv("F117_CULL_WHY") != NULL;
+    static unsigned why[7];                  /* F117_CULL_WHY: which check first rejects an own-level object (shift 0), printed every 20000 */
 #define CULL_FAIL(k) do { g_cull_reason = (k) + 1; if (why_on && shift == 0) { why[k]++; if ((why[0] + why[1] + why[2] + why[3] + why[4] + why[5] + why[6]) % 20000 == 0) fprintf(stderr, "[cull-why] own-level objects: far plane %u, near plane %u, across %u, up %u, metric %u, visible %u, early-visible %u\n", why[0], why[1], why[2], why[3], why[4], why[5], why[6]); } return 0; } while (0)
     if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(0);
     const uint16_t lod2 = (uint16_t)(lod << 1);
-    static int nskip = -1; if (nskip < 0) nskip = getenv("F117_CULL_SKIP_NEAR") != NULL;   /* diagnostic: own-level objects ignore the per-class near plane */
     if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6)) && !(nskip && shift == 0)) CULL_FAIL(1);
     if (rd16(m->mem, ds, 0x438E) != 0) return 1;
     const int16_t xh = far_axis(matrix, 0, x, y, z), yh = far_axis(matrix, 1, x, y, z);
@@ -661,7 +671,6 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     const int16_t across_word = g_allow_saved && shift == 0 && lod < 8 ? (int16_t)g_allow_saved[lod] : (int16_t)rd16(m->mem, ds, t_across);
     int16_t ax = (int16_t)((int16_t)(di + (across_word >> shift)) >> cl);
     const int16_t si = (int16_t)(ax + (ax >> 2));
-    static int skip = -1; if (skip < 0) { const char *e = getenv("F117_CULL_SKIP"); skip = e ? atoi(e) : 0; }   /* diagnostic mask: 1 across test, 2 up test, 4 metric test (own-level objects only) */
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
     if (axx > si && !((skip & 1) && shift == 0)) CULL_FAIL(2);
     ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
@@ -753,6 +762,149 @@ static void far_sort_picks(far_pick *p, size_t n)
 
 static int g_native_walk;                                 /* F117_NATIVE_WALK=1: the game's own terrain walk is skipped in the copy and its cells placed natively too */
 static int g_far_native = 1;                              /* the far scenery is placed natively (docs/scenery-distance.md); F117_FAR_WALKER=1 returns to the extra terrain walks */
+
+/* ---- The far scenery's choosing, one row of cells at a time, so that rows can run on several threads. Each row writes its own list; the lists are joined in row order,
+ * which is the order the single loop produced them in, so the picks (and qsort's result on them) are the same. ---- */
+typedef struct {
+    int ring_i, lo;
+    int64_t cx0, cx1, lower[5][3], upper[5][3];
+} choose_ring;
+typedef struct { int ring; int64_t cy; } choose_row;
+typedef struct { far_pick *p; size_t n, cap; unsigned seen, culled, deep; int fail; } choose_buf;
+typedef struct {
+    machine_t *m;
+    uint16_t ds, ss;
+    const int16_t *matrix;
+    const uint16_t *model_by_type;
+    const uint8_t *class_by_type;
+    int64_t (*eye_l)[3];
+    int64_t (*base)[2];
+    int extra_levels, reach;
+    const int *game_would, *game_draws, *step_lo, *step_hi, *own_x, *own_y;
+    const choose_ring *rings;
+    const choose_row *rows;
+    choose_buf *bufs;
+    int nrows, parts;
+} choose_ctx;
+
+static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t cy, choose_buf *o)
+{
+    machine_t *m = cc->m;
+    const uint16_t ds = cc->ds, ss = cc->ss;
+    const cpu_t *c = &m->cpu;
+    const int16_t *matrix = cc->matrix;
+    const uint16_t *model_by_type = cc->model_by_type;
+    const uint8_t *class_by_type = cc->class_by_type;
+    int64_t (*eye_l)[3] = cc->eye_l;
+    int64_t (*base)[2] = cc->base;
+    const int extra_levels = cc->extra_levels, reach = cc->reach;
+    const int *game_would = cc->game_would, *game_draws = cc->game_draws, *step_lo = cc->step_lo, *step_hi = cc->step_hi, *own_x = cc->own_x, *own_y = cc->own_y;
+    const int64_t (*lower)[3] = rg->lower, (*upper)[3] = rg->upper;
+    const int ring_i = rg->ring_i, lo = rg->lo, side = g_cell_side[ring_i];
+    const int64_t cx0 = rg->cx0, cx1 = rg->cx1;
+    unsigned tr_seen = 0, tr_culled = 0, tr_deep = 0;
+    (void)ring_i;
+    {
+          const size_t first_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx0 - lo)], last_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx1 - lo) + 1];
+          for (size_t i = first_i; i < last_i; i++) {
+        const far_inst *f = &g_inst[i];
+        const int r = f->ring;
+        tr_seen++;
+        const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
+        far_pick pk; int chosen = 0, resolved = 0, same_type = 0, last_reason = 0;
+        pk.own_k = -1; pk.entry = f->entry;
+        uint16_t w = 0; uint8_t klass = 0;
+        for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
+            if (eye_l[l][2] >= 0x7FFF || eye_l[l][2] < 0) continue;
+            const int s = 2 * (l - r);
+            if (f->x < lower[l][0] || f->x >= upper[l][0] ||
+                f->y < lower[l][1] || f->y >= upper[l][1] ||
+                f->z < lower[l][2] || f->z >= upper[l][2]) continue;
+            const int64_t half = s ? ((int64_t)1 << (s - 1)) : 0;
+            const int64_t qx = (f->x + half) >> s, qy = (f->y + half) >> s, qz = (f->z + half) >> s;
+            const int64_t ez = eye_l[l][2] < 2 ? 2 : eye_l[l][2];
+            const int64_t ddx = qx - eye_l[l][0], ddy = qy - eye_l[l][1], ddz = qz - ez;
+            pk.x = (int16_t)(uint16_t)qx; pk.y = (int16_t)(uint16_t)qy; pk.z = (int16_t)(uint16_t)qz;
+            pk.ox = (int16_t)(uint16_t)eye_l[l][0]; pk.oy = (int16_t)(uint16_t)eye_l[l][1]; pk.oz = (int16_t)(uint16_t)ez;
+            const int16_t x = (int16_t)(pk.x - pk.ox), y = (int16_t)(pk.y - pk.oy), z = (int16_t)(pk.z - pk.oz);
+            const int16_t zh = far_axis(matrix, 2, x, y, z);
+            if ((zh < 0 ? -(int)zh : (int)zh) >= reach) {
+                if (l == r + extra_levels || l == 4) tr_deep++;
+                continue;
+            }
+            if (!resolved) {
+                const int ov = far_override(m, ds, f);
+                const unsigned type = (ov < 0 ? f->type : (unsigned)ov) & 0x7F;
+                same_type = ov >= 0 && type == (f->type & 0x7Fu);
+                w = (uint16_t)(model_by_type[type] | (same_type ? 0x8000u : 0));
+                klass = class_by_type[type];
+                resolved = 1;
+            }
+            g_cull_reason = 0;
+            const int visible = (force_base && g_native_walk && f->ring == 4 && f->entry == 0) || far_cull(m, ds, ss, matrix, x, y, z, zh, klass & 7u, s);
+            last_reason = visible ? 0 : g_cull_reason;
+            chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
+            if (!visible) { chosen = -1; tr_culled++; break; }
+            pk.darken = far_detail(m, ds, zh, klass & 7u);
+            /* The comparator groups by ring first, so the ring's scale and
+             * the square root do not affect ordering within that group. */
+            pk.distance_squared = (uint32_t)(ddx * ddx + ddy * ddy + ddz * ddz);
+        }
+        {   /* F117_FAR_WHY=M0,M1,... (diagnostic): what the selection did with every object of those model numbers in the cells around the viewer, in the first copies */
+            static int why_init; static unsigned why_left; static int why_models[8], why_n;
+            if (!why_init) {
+                why_init = 1; const char *e = getenv("F117_FAR_WHY");
+                for (const char *q = e; q && *q && why_n < 8; ) { why_models[why_n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; }
+                { const char *mx = getenv("F117_FAR_WHY_MAX"); why_left = why_n ? (mx ? (unsigned)atoi(mx) : 200u) : 0; }
+            }
+            static unsigned long long why_from; static int why_from_init;
+            if (!why_from_init) { why_from_init = 1; const char *e2 = getenv("F117_FAR_WHY_FROM"); why_from = e2 ? strtoull(e2, NULL, 0) : 0; }
+            if (why_left && c->icount >= why_from && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
+                const unsigned mi = model_by_type[f->type & 0x7F] & 0x7F;
+                for (int q = 0; q < why_n; q++)
+                    if ((int)mi == why_models[q]) {
+                        why_left--;
+                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                                (int)(int16_t)(uint16_t)(f->x - eye_l[f->ring][0]), (int)(int16_t)(uint16_t)(f->z - (eye_l[f->ring][2] < 2 ? 2 : eye_l[f->ring][2])), (int)(int16_t)(uint16_t)-(f->y - eye_l[f->ring][1]),
+                                chosen == 1 ? "chosen" : chosen == -1 ? (last_reason == 1 ? "culled by the game's visibility test, check 1 far plane" : last_reason == 2 ? "culled by the game's visibility test, check 2 near plane" : last_reason == 3 ? "culled by the game's visibility test, check 3 across" : last_reason == 4 ? "culled by the game's visibility test, check 4 up" : last_reason == 5 ? "culled by the game's visibility test, check 5 metric" : "culled by the game's visibility test, check ?") : "no level within reach or bounds");
+                    }
+            }
+        }
+        if (chosen != 1) continue;
+        if (pk.level == r && game_would[r]) {                                     /* the game's own cells */
+            int own = 0, own_k = -1;
+            for (int k = step_lo[r]; k < step_hi[r]; k++) if (own_x[k] == dcx && own_y[k] == dcy) { own = 1; if (own_k < 0) own_k = k; }
+            if (own && game_draws[r]) continue;
+            pk.own = (uint8_t)own; pk.own_k = (int8_t)own_k;
+        }
+        pk.idx = (int)i; pk.ring = r;
+        pk.idx = (int)i; pk.ring = r;
+        if (o->n == o->cap) {
+            const size_t nc = o->cap ? o->cap * 2 : 256;
+            far_pick *q = (far_pick *)realloc(o->p, nc * sizeof *q);
+            if (!q) { o->fail = 1; return; }
+            o->p = q; o->cap = nc;
+        }
+        o->p[o->n++] = pk;
+          }
+    }
+    o->seen += tr_seen; o->culled += tr_culled; o->deep += tr_deep;
+}
+
+static void far_choose_part(void *arg, int part)
+{
+    const choose_ctx *cc = (const choose_ctx *)arg;
+    for (int j = part; j < cc->nrows; j += cc->parts) {
+        choose_buf *o = &cc->bufs[j];
+        o->n = 0; o->seen = o->culled = o->deep = 0; o->fail = 0;
+        far_choose_row(cc, &cc->rings[cc->rows[j].ring - 1], cc->rows[j].cy, o);
+    }
+}
+
+static void (*g_choose_par)(void (*fn)(void *, int), void *arg, int parts);
+static int g_choose_parts;
+void rerun_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts) { g_choose_par = run; g_choose_parts = parts; }
+
 static int far_scenery_body(machine_t *m);
 static int far_scenery(machine_t *m)
 {
@@ -842,6 +994,9 @@ static int far_scenery_body(machine_t *m)
     size_t npick = 0;
     const int level_lim = 24000, reach = 8000;
     unsigned tr_seen = 0, tr_culled = 0, tr_deep = 0;
+    static choose_row *rows; static choose_buf *bufs; static size_t rows_cap;
+    choose_ring rings[4];
+    int nrows = 0;
     for (int ring_i = 1; ring_i <= 4; ring_i++) {
         if (!enable[ring_i] || !g_cell_side[ring_i]) continue;
         /* the cells an object of this ring can be drawn from: its coarsest allowed level reaches 8000 units of that level, plus a margin for the object's own offset */
@@ -863,85 +1018,41 @@ static int far_scenery_body(machine_t *m)
         int64_t cx0 = base[ring_i][0] - rad, cx1 = base[ring_i][0] + rad, cy0 = base[ring_i][1] - rad, cy1 = base[ring_i][1] + rad;
         if (cx0 < lo) cx0 = lo; if (cy0 < lo) cy0 = lo;
         if (cx1 > lo + side - 1) cx1 = lo + side - 1; if (cy1 > lo + side - 1) cy1 = lo + side - 1;
+        choose_ring *rg = &rings[ring_i - 1];
+        rg->ring_i = ring_i; rg->lo = lo; rg->cx0 = cx0; rg->cx1 = cx1;
+        memcpy(rg->lower, lower, sizeof lower); memcpy(rg->upper, upper, sizeof upper);
         for (int64_t cy = cy0; cy <= cy1; cy++) {
-          const size_t first_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx0 - lo)], last_i = g_cell_first[ring_i][(size_t)(cy - lo) * side + (size_t)(cx1 - lo) + 1];
-          for (size_t i = first_i; i < last_i; i++) {
-        const far_inst *f = &g_inst[i];
-        const int r = f->ring;
-        tr_seen++;
-        const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
-        far_pick pk; int chosen = 0, resolved = 0, same_type = 0, last_reason = 0;
-        pk.own_k = -1; pk.entry = f->entry;
-        uint16_t w = 0; uint8_t klass = 0;
-        for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
-            if (eye_l[l][2] >= 0x7FFF || eye_l[l][2] < 0) continue;
-            const int s = 2 * (l - r);
-            if (f->x < lower[l][0] || f->x >= upper[l][0] ||
-                f->y < lower[l][1] || f->y >= upper[l][1] ||
-                f->z < lower[l][2] || f->z >= upper[l][2]) continue;
-            const int64_t half = s ? ((int64_t)1 << (s - 1)) : 0;
-            const int64_t qx = (f->x + half) >> s, qy = (f->y + half) >> s, qz = (f->z + half) >> s;
-            const int64_t ez = eye_l[l][2] < 2 ? 2 : eye_l[l][2];
-            const int64_t ddx = qx - eye_l[l][0], ddy = qy - eye_l[l][1], ddz = qz - ez;
-            pk.x = (int16_t)(uint16_t)qx; pk.y = (int16_t)(uint16_t)qy; pk.z = (int16_t)(uint16_t)qz;
-            pk.ox = (int16_t)(uint16_t)eye_l[l][0]; pk.oy = (int16_t)(uint16_t)eye_l[l][1]; pk.oz = (int16_t)(uint16_t)ez;
-            const int16_t x = (int16_t)(pk.x - pk.ox), y = (int16_t)(pk.y - pk.oy), z = (int16_t)(pk.z - pk.oz);
-            const int16_t zh = far_axis(matrix, 2, x, y, z);
-            if ((zh < 0 ? -(int)zh : (int)zh) >= reach) {
-                if (l == r + extra_levels || l == 4) tr_deep++;
-                continue;
+            if ((size_t)nrows == rows_cap) {
+                const size_t nc = rows_cap ? rows_cap * 2 : 512;
+                choose_row *r2 = (choose_row *)realloc(rows, nc * sizeof *r2);
+                choose_buf *b2 = (choose_buf *)realloc(bufs, nc * sizeof *b2);
+                if (r2) rows = r2;
+                if (b2) { memset(b2 + rows_cap, 0, (nc - rows_cap) * sizeof *b2); bufs = b2; }
+                if (!r2 || !b2) return 0;
+                rows_cap = nc;
             }
-            if (!resolved) {
-                const int ov = far_override(m, ds, f);
-                const unsigned type = (ov < 0 ? f->type : (unsigned)ov) & 0x7F;
-                same_type = ov >= 0 && type == (f->type & 0x7Fu);
-                w = (uint16_t)(model_by_type[type] | (same_type ? 0x8000u : 0));
-                klass = class_by_type[type];
-                resolved = 1;
-            }
-            static int force_base = -1;                          /* F117_NATIVE_FORCE_BASE=1 (experiment, native-walk): ring 4's first entry of a tile is never culled */
-            if (force_base < 0) force_base = getenv("F117_NATIVE_FORCE_BASE") != NULL;
-            g_cull_reason = 0;
-            const int visible = (force_base && g_native_walk && f->ring == 4 && f->entry == 0) || far_cull(m, ds, ss, matrix, x, y, z, zh, klass & 7u, s);
-            last_reason = visible ? 0 : g_cull_reason;
-            chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
-            if (!visible) { chosen = -1; tr_culled++; break; }
-            pk.darken = far_detail(m, ds, zh, klass & 7u);
-            /* The comparator groups by ring first, so the ring's scale and
-             * the square root do not affect ordering within that group. */
-            pk.distance_squared = (uint32_t)(ddx * ddx + ddy * ddy + ddz * ddz);
+            rows[nrows].ring = ring_i; rows[nrows].cy = cy; nrows++;
         }
-        {   /* F117_FAR_WHY=M0,M1,... (diagnostic): what the selection did with every object of those model numbers in the cells around the viewer, in the first copies */
-            static int why_init; static unsigned why_left; static int why_models[8], why_n;
-            if (!why_init) {
-                why_init = 1; const char *e = getenv("F117_FAR_WHY");
-                for (const char *q = e; q && *q && why_n < 8; ) { why_models[why_n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; }
-                { const char *mx = getenv("F117_FAR_WHY_MAX"); why_left = why_n ? (mx ? (unsigned)atoi(mx) : 200u) : 0; }
-            }
-            static unsigned long long why_from; static int why_from_init;
-            if (!why_from_init) { why_from_init = 1; const char *e2 = getenv("F117_FAR_WHY_FROM"); why_from = e2 ? strtoull(e2, NULL, 0) : 0; }
-            if (why_left && c->icount >= why_from && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
-                const unsigned mi = model_by_type[f->type & 0x7F] & 0x7F;
-                for (int q = 0; q < why_n; q++)
-                    if ((int)mi == why_models[q]) {
-                        why_left--;
-                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
-                                (int)(int16_t)(uint16_t)(f->x - eye_l[f->ring][0]), (int)(int16_t)(uint16_t)(f->z - (eye_l[f->ring][2] < 2 ? 2 : eye_l[f->ring][2])), (int)(int16_t)(uint16_t)-(f->y - eye_l[f->ring][1]),
-                                chosen == 1 ? "chosen" : chosen == -1 ? (last_reason == 1 ? "culled by the game's visibility test, check 1 far plane" : last_reason == 2 ? "culled by the game's visibility test, check 2 near plane" : last_reason == 3 ? "culled by the game's visibility test, check 3 across" : last_reason == 4 ? "culled by the game's visibility test, check 4 up" : last_reason == 5 ? "culled by the game's visibility test, check 5 metric" : "culled by the game's visibility test, check ?") : "no level within reach or bounds");
-                    }
-            }
+    }
+    {
+        far_cull_init();
+        static int serial = -1;            /* the diagnostics that print or count while choosing keep it on one thread */
+        if (serial < 0) serial = getenv("F117_FAR_WHY") != NULL || getenv("F117_CULL_WHY") != NULL || getenv("F117_NATIVE_FORCE_BASE") != NULL ? 1 : 0;
+        choose_ctx cx = { m, ds, ss, matrix, model_by_type, class_by_type, eye_l, base, extra_levels, reach, game_would, game_draws, step_lo, step_hi, own_x, own_y, rings, rows, bufs, nrows, 1 };
+        if (!serial && g_choose_par && g_choose_parts > 1 && nrows >= 8) { cx.parts = g_choose_parts; g_choose_par(far_choose_part, &cx, cx.parts); }
+        else far_choose_part(&cx, 0);
+        size_t total = 0;
+        for (int j = 0; j < nrows; j++) { if (bufs[j].fail) return 0; total += bufs[j].n; }
+        if (total > pick_cap) {
+            size_t nc = pick_cap ? pick_cap : 1024;
+            while (nc < total) nc *= 2;
+            far_pick *q = (far_pick *)realloc(picks, nc * sizeof *picks);
+            if (!q) { pick_cap = npick = 0; return 0; }
+            picks = q; pick_cap = nc;
         }
-        if (chosen != 1) continue;
-        if (pk.level == r && game_would[r]) {                                     /* the game's own cells */
-            int own = 0, own_k = -1;
-            for (int k = step_lo[r]; k < step_hi[r]; k++) if (own_x[k] == dcx && own_y[k] == dcy) { own = 1; if (own_k < 0) own_k = k; }
-            if (own && game_draws[r]) continue;
-            pk.own = (uint8_t)own; pk.own_k = (int8_t)own_k;
-        }
-        pk.idx = (int)i; pk.ring = r;
-        if (npick == pick_cap) { pick_cap = pick_cap ? pick_cap * 2 : 1024; picks = (far_pick *)realloc(picks, pick_cap * sizeof *picks); if (!picks) { pick_cap = npick = 0; return 0; } }
-        picks[npick++] = pk;
-          }
+        for (int j = 0; j < nrows; j++) {
+            if (bufs[j].n) memcpy(picks + npick, bufs[j].p, bufs[j].n * sizeof *picks);
+            npick += bufs[j].n; tr_seen += bufs[j].seen; tr_culled += bufs[j].culled; tr_deep += bufs[j].deep;
         }
     }
     const double sort_t0 = walk_ms();

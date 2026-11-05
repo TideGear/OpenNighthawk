@@ -589,6 +589,7 @@ typedef struct {
     int part, quit;
 } par_helper;
 static par_helper g_par[PAR_HELPERS];
+static par_helper g_cpar[PAR_HELPERS];                /* the render copy's own helpers (the far scenery's choosing), apart from the composite's */
 
 static int par_helper_main(void *u)
 {
@@ -602,11 +603,11 @@ static int par_helper_main(void *u)
     return 0;
 }
 
-static void par_run(void (*fn)(void *, int), void *arg, int parts)
+static void par_run_on(par_helper *pool, void (*fn)(void *, int), void *arg, int parts)
 {
     int used = 0;
     for (int h = 0; h < PAR_HELPERS && h + 1 < parts; h++) {
-        par_helper *p = &g_par[h];
+        par_helper *p = &pool[h];
         if (!p->thread) { fn(arg, h + 1); continue; }          /* no helper: this share is done here */
         p->fn = fn; p->arg = arg; p->part = h + 1;
         SDL_SignalSemaphore(p->go);
@@ -614,8 +615,10 @@ static void par_run(void (*fn)(void *, int), void *arg, int parts)
     }
     fn(arg, 0);
     for (int h = 0; h < PAR_HELPERS; h++)
-        if (used & (1 << h)) SDL_WaitSemaphore(g_par[h].done);
+        if (used & (1 << h)) SDL_WaitSemaphore(pool[h].done);
 }
+static void par_run(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_par, fn, arg, parts); }
+static void par_run_copy(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_cpar, fn, arg, parts); }
 
 /* The fine picture through the frame's palette, in bands on the helpers. */
 static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, size_t n)
@@ -1892,6 +1895,18 @@ int main(int argc, char **argv)
                     if (g_par[k].go && g_par[k].done) { g_par[k].thread = SDL_CreateThread(par_helper_main, "remaster-rows", &g_par[k]); made += g_par[k].thread != NULL; }
                 }
                 if (made + 1 == parts) remaster_live_set_parallel(par_run, parts);
+                {   /* the copy's own pool, for the far scenery's choosing: F117_CHOOSE_THREADS (1 turns it off), default 4 */
+                    int cparts = 4;
+                    const char *ct = getenv("F117_CHOOSE_THREADS");
+                    if (ct && atoi(ct) >= 1 && atoi(ct) <= 1 + PAR_HELPERS) cparts = atoi(ct);
+                    int cmade = 0;
+                    for (int k = 0; k + 1 < cparts; k++) {
+                        g_cpar[k].go = SDL_CreateSemaphore(0);
+                        g_cpar[k].done = SDL_CreateSemaphore(0);
+                        if (g_cpar[k].go && g_cpar[k].done) { g_cpar[k].thread = SDL_CreateThread(par_helper_main, "copy-scenery", &g_cpar[k]); cmade += g_cpar[k].thread != NULL; }
+                    }
+                    if (cparts > 1 && cmade + 1 == cparts) rerun_set_parallel(par_run_copy, cparts);
+                }
             }
         }
     }
@@ -3025,12 +3040,18 @@ int main(int argc, char **argv)
             SDL_SignalSemaphore(g_pal[k].go);
             SDL_WaitThread(g_pal[k].thread, NULL);
         }
-    for (int k = 0; k < PAR_HELPERS; k++)
+    for (int k = 0; k < PAR_HELPERS; k++) {
+        if (g_cpar[k].thread) {
+            g_cpar[k].quit = 1;
+            SDL_SignalSemaphore(g_cpar[k].go);
+            SDL_WaitThread(g_cpar[k].thread, NULL);
+        }
         if (g_par[k].thread) {
             g_par[k].quit = 1;
             SDL_SignalSemaphore(g_par[k].go);
             SDL_WaitThread(g_par[k].thread, NULL);
         }
+    }
     if (H.record) fclose(H.record);
     if (g_present_log) fclose(g_present_log);
     inputlog_close(player);
