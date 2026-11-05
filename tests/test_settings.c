@@ -23,7 +23,7 @@ int main(void)
     int n;
     settings_defs(&n);
     const int pres = find("presentation"), fixes = find("fixes"), full = find("fullscreen"), scale = find("scale");
-    CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= 32);
+    CHECK(pres >= 0 && fixes >= 0 && full >= 0 && scale >= 0 && n <= SETTINGS_MAX_DEFS);
     {
         const setting_def *defs = settings_defs(NULL);
         for (int i = 0; i < n; ++i) CHECK(strlen(settings_description(defs[i].key)) > 20);

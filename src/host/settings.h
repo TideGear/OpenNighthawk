@@ -20,6 +20,7 @@ typedef struct {
 } setting_def;
 
 #define SETTINGS_MAX_FIXES 48
+#define SETTINGS_MAX_DEFS 48         /* the most settings the menu can hold: the per-setting arrays below are this long */
 
 typedef enum { SKEY_UP, SKEY_DOWN, SKEY_LEFT, SKEY_RIGHT, SKEY_ENTER, SKEY_ESC, SKEY_BACKSPACE,
     SKEY_PAGEUP, SKEY_PAGEDOWN, SKEY_HOME, SKEY_END } settings_key;
@@ -39,10 +40,10 @@ typedef struct {
     int key_picker, key_target, key_cursor, key_top, key_from, key_source_top, key_count;
     int key_assign, remap_to;
     struct { int physical, target; char name[32], target_name[32]; } keys[128];
-    int value[32];                 /* the choice index per setting */
-    int saved[32];                 /* what the file holds */
-    char custom[32][64], saved_custom[32][64]; /* valid launch values outside the menu's presets */
-    int at_open[32];               /* live settings as they were when the menu opened (the window's state) */
+    int value[SETTINGS_MAX_DEFS];               /* the choice index per setting */
+    int saved[SETTINGS_MAX_DEFS];               /* what the file holds */
+    char custom[SETTINGS_MAX_DEFS][64], saved_custom[SETTINGS_MAX_DEFS][64]; /* valid launch values outside the menu's presets */
+    int at_open[SETTINGS_MAX_DEFS];             /* live settings as they were when the menu opened (the window's state) */
     int changed_live;              /* a live setting changed since the host last looked */
     int saved_now;                 /* the menu was closed with Save: the host writes the file */
     int remap_from;                /* the key chosen at stage 1 (an SDL scancode, set by the host) */

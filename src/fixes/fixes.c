@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-/* The files GOG ships: MicroProse's final 473.04 update. */
+/* The files the GOG and Steam releases ship (byte-identical): MicroProse's final 473.04 update. */
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
 #define ASOUND_47304 0x9CD012D9D4A2CF30ULL
@@ -630,7 +630,7 @@ static int fix_d3_keypad(machine_t *m)
     return 0;                        /* the original compare, on the digit */
 }
 
-/* QUIZ. START's aircraft-identification quiz (the copy protection). GOG's START.EXE has the call at 001D patched to three
+/* QUIZ. START's aircraft-identification quiz (the copy protection). The GOG and Steam START.EXE has the call at 001D patched to three
  * NOPs (`74 03 90 90 90`, retail `74 03 E8 E3 06`), so the quiz code (0583 and its helpers) never runs. This option
  * restores the call: at 001D, reached when the `je` at 001B is not taken, the return address 0020 is pushed and the
  * quiz routine at 0703 runs (it draws the silhouette screen, reads the answer, stores 1 or 0 in the pilot record's
@@ -1047,7 +1047,7 @@ static const recomp_override OVERRIDES[] = {
     { "Q7", "VGAME.EXE", VGAME_47304, 0x0000, 0xE4AC, fix_q7_range, "zoomed-view range uses absolute camera coordinates" },
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
-    { "QUIZ", "START.EXE", START_47304, 0x0000, 0x001D, fix_quiz, "the aircraft-identification quiz call GOG patched out" },
+    { "QUIZ", "START.EXE", START_47304, 0x0000, 0x001D, fix_quiz, "the aircraft-identification quiz call the GOG and Steam builds patched out" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0xD441, fix_d1real_rates, "selected simulation rates" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x4359, fix_d1real_frame, "selected real-time simulation cadence" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, fix_d1real_pause, "pause resets simulation deadline" },
