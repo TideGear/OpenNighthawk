@@ -183,6 +183,7 @@ if(F117R_BUILD_APP)
     target_link_libraries(gpu_probe PRIVATE SDL3::SDL3)
     add_dependencies(gpu_probe gpu_shaders)
     add_test(NAME gpu_compositor_probe COMMAND gpu_probe ${CMAKE_CURRENT_BINARY_DIR}/gpu_probe.dxil)
+    set_tests_properties(gpu_compositor_probe PROPERTIES SKIP_RETURN_CODE 77)
   endif()
   add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
     copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.example.ini $<TARGET_FILE_DIR:f117a>)

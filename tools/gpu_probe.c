@@ -16,7 +16,7 @@ int main(int argc, char **argv)
     if (!code) { fprintf(stderr, "cannot read %s: %s\n", argv[1], SDL_GetError()); return 2; }
     if (!SDL_Init(SDL_INIT_VIDEO)) {     /* SDL 3.2 creates GPU devices through the video subsystem; no window is made */ fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
     SDL_GPUDevice *dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, NULL);
-    if (!dev) { fprintf(stderr, "SDL_CreateGPUDevice: %s\n", SDL_GetError()); return 1; }
+    if (!dev) { fprintf(stderr, "no GPU device (skipped): %s\n", SDL_GetError()); return 77; }   /* CTest SKIP_RETURN_CODE: no D3D12 here */
     printf("device: %s\n", SDL_GetGPUDeviceDriver(dev));
 
     const Uint32 w = 3840, h = 2160, n = w * h, bytes = n * 4;
