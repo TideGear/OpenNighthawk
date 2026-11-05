@@ -530,3 +530,18 @@ open question (a per-copy count of model 37 primitives by source has not been ta
 
 Also tried, no effect on the picture or the counts (81, 51, 10, 20 for models 37, 39, 40, 44; total 494): setting the drawing-flag words `[C070]` and `[C06E]` from `[98A4]` before each guest placement, as the game's walk does
 before each entry (`F117_NATIVE_C06E=1`, experiment). Remaining unexamined for the own-cell deferring objects: the per-copy count of their primitives by source, and the deferred list's contents at the moment the game draws it.
+
+## Far object order setting (4 November 2026)
+
+Video settings row "Far object order" (`pick-order` in f117a.ini, `--pick-order exact|fast`), default Exact. Exact is the qsort of the far-scenery picks every picture comparison was made
+against; Fast is the stable radix sort (formerly only `F117_PICK_RADIX=1`), which orders objects tied on distance by their listing order. Neither is proven to be the original's tie order.
+Runway replay, 1080p Maximum, hidden window, CPU compositor, work per frame (`cost_ns`) over 901 frames:
+
+| | mean | p50 | p95 | p99 |
+|---|---|---|---|---|
+| Exact, run 1 | 7.61 | 7.86 | 9.70 | 10.21 |
+| Exact, run 2 | 7.44 | 6.38 | 11.82 | 12.53 |
+| Fast, run 1 | 6.71 | 5.59 | 11.14 | 11.74 |
+| Fast, run 2 | 6.72 | 5.59 | 11.16 | 11.85 |
+
+Fast lowers the mean by about 0.8 ms; the p95 moves run to run by more than that (9.7 to 11.8 ms for Exact), so the p95 does not show the saving.

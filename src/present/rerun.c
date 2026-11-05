@@ -721,11 +721,14 @@ static int far_pick_cmp(const void *a, const void *b)
  * descending in 11, 11 and 10 bits, then the level descending) instead of qsort's comparator calls, which took 0.74 ms for 9,800 picks. Equal keys keep
  * their listing order (qsort's order for them was unspecified). Opt-in (F117_PICK_RADIX=1): it changed 5 pixels of 42 of 1,401 Maximum frames (9 at Far) of the banked
  * flight against qsort's tie order, with the other two flights identical (docs/scenery-distance.md). */
+static int g_pick_fast = -1;                      /* the Far object order setting: 0 exact (qsort), 1 fast (radix); -1 not set: F117_PICK_RADIX decides */
+void rerun_set_pick_order(int fast) { g_pick_fast = fast ? 1 : 0; }
+
 static void far_sort_picks(far_pick *p, size_t n)
 {
     static far_pick *tmp; static size_t cap;
-    static int use_qsort = -1;
-    if (use_qsort < 0) use_qsort = getenv("F117_PICK_RADIX") == NULL;
+    if (g_pick_fast < 0) g_pick_fast = getenv("F117_PICK_RADIX") != NULL;        /* the Far object order setting wins once it has been set */
+    const int use_qsort = !g_pick_fast;
     if (n < 2) return;
     if (use_qsort || n > 0x7FFFFFFF) { qsort(p, n, sizeof *p, far_pick_cmp); return; }
     if (cap < n) { far_pick *q = (far_pick *)realloc(tmp, n * sizeof *tmp); if (!q) { qsort(p, n, sizeof *p, far_pick_cmp); return; } tmp = q; cap = n; }

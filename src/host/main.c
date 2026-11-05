@@ -741,6 +741,7 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
 
 /* A draw-distance choice as world units: original turns the extra walks off, maximum is every ring to the limit of the guest's 16-bit cell offsets. -1: not a choice. */
 static const char *g_draw_choice = "original";           /* the draw distance in force, for the menu */
+static const char *g_pick_choice = "exact";             /* the far object order in force, for the menu */
 static const char *g_dot_choice = "original";            /* the terrain-dot distance in force, for the menu */
 static int dot_levels(const char *v) { return !strcmp(v, "maximum") ? 3 : !strcmp(v, "far") ? 2 : !strcmp(v, "near") ? 1 : !strcmp(v, "original") ? 0 : -1; }
 static int draw_distance_units(const char *v)
@@ -1452,6 +1453,10 @@ int main(int argc, char **argv)
             else if (!strcmp(v, "custom")) { /* the set the --fix options name, started from none above */ }
             else { fprintf(stderr, "--fixes takes original, recommended or custom\n"); return 2; }
             i++;
+        }
+        else if (!strcmp(a, "--pick-order") && v) {                     /* Remastered: exact (the game's order) or fast (radix sort of the far-scenery picks) */
+            if (strcmp(v, "exact") && strcmp(v, "fast")) { fprintf(stderr, "--pick-order takes exact or fast\n"); return 2; }
+            rerun_set_pick_order(!strcmp(v, "fast")); g_pick_choice = v; i++;
         }
         else if (!strcmp(a, "--dot-distance") && v) {                  /* Remastered: how far the small dark ground dots are drawn (original, near, far, maximum) */
             if (dot_levels(v) < 0) { fprintf(stderr, "--dot-distance takes original, near, far or maximum\n"); return 2; }
@@ -2263,6 +2268,7 @@ int main(int argc, char **argv)
                         settings_mark_saved(&g_set, "engine", H.m.engine == ENGINE_INTERP ? "interp" : "recomp");
                         settings_mark_saved(&g_set, "draw-distance", g_draw_choice);
                         settings_mark_saved(&g_set, "dot-distance", g_dot_choice);
+                        settings_mark_saved(&g_set, "pick-order", g_pick_choice);
                     }
                     fill_fix_picker(&g_set);
                     fill_bindings(&g_set);
@@ -2375,6 +2381,7 @@ int main(int argc, char **argv)
                             g_set.changed_live = 0;
                             int n; const setting_def *d = settings_defs(&n);
                             for (int i = 0; i < n; i++) {
+                                if (!strcmp(d[i].key, "pick-order")) { rerun_set_pick_order(!strcmp(settings_value(&g_set, i), "fast")); g_pick_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "dot-distance")) { remaster_live_set_dot_levels(dot_levels(settings_value(&g_set, i))); g_dot_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "draw-distance")) { rerun_set_distance(draw_distance_units(settings_value(&g_set, i))); g_draw_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "fullscreen")) {

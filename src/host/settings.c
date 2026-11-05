@@ -28,6 +28,7 @@ static const char *const C_PSCALE[] = { "auto", "1", "2", "3", "4", "5", "6", "9
 static const char *const C_IPS[] = { "9000000", "20000000", "40000000", "60000000", "90000000", NULL };
 static const char *const C_DRAW[] = { "original", "near", "far", "maximum", NULL };
 static const char *const C_DOTS[] = { "original", "near", "far", "maximum", NULL };
+static const char *const C_PICKORD[] = { "exact", "fast", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* The folders the Folders screen edits, typed or pasted. */
@@ -60,7 +61,8 @@ static const setting_def DEFS[] = {
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
     { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
-    { "dot-distance", "Terrain dots",     C_DOTS,         0, 1 },     /* Remastered: how far the small dark ground dots are drawn; applied at once */
+    { "dot-distance", "Terrain dots",     C_DOTS,         0, 1 },
+    { "pick-order", "Far object order", C_PICKORD,    0, 1 },     /* Remastered: exact (the game's own order) or fast (cheaper by about 0.65 ms a frame); applied at once */     /* Remastered: how far the small dark ground dots are drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
     { "present-line-width", "Line width",  C_WIDTH,        0, 0 },
     { "present-age",  "Picture delay",    C_AGE,          0, 0 },
@@ -101,6 +103,7 @@ const char *settings_description(const char *key)
         { "opl", "Chooses the AdLib synthesizer. DBOPL is faster; Nuked favors chip emulation accuracy." },
         { "no-aspect", "Stretches the original pixels without correcting their intended 4:3 display shape." },
         { "draw-distance", "Remastered only: how far scenery is drawn. The game stops drawing each object at a fixed depth, so buildings appear suddenly; each step here draws far objects one scale coarser, four times farther: Near one step (the default, almost free), Far two, Maximum the whole map. Original keeps the game's own reach. Farther costs picture rate." },
+        { "pick-order", "Remastered only: the order far objects are drawn in. Exact keeps the game's own order for objects the same distance away. Fast sorts them with a cheaper method that saves about 0.65 ms a frame at Maximum draw distance and lets objects tied on distance swap places, which changes a few edge pixels in some frames." },
         { "dot-distance", "Remastered only: how far the small dark dots that add detail to plain ground are drawn. Original keeps the game's own reach; each step reaches one scale coarser, up to Maximum. Far lights and buildings follow Draw distance instead." },
         { "present-scale", "Sets render resolution. 3 draws three pixels per original pixel on each axis. Auto fits the display. Higher values cost more CPU time." },
         { "present-line-width", "Changes fine-line thickness. Auto scales the width with resolution." },
@@ -149,7 +152,7 @@ static int fix_height(const settings_state *s, int index)
 int settings_group(const char *key)
 {
     static const char *const audio[] = { "sound", "music-source", "sound-source", "roland", "adlib-effects", "speaker", "opl", NULL };
-    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "present-scale", "present-line-width", "present-age", NULL };
+    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "pick-order", "present-scale", "present-line-width", "present-age", NULL };
     for (int i = 0; video[i]; ++i) if (!strcmp(key, video[i])) return SETTINGS_VIDEO;
     static const char *const advanced[] = { "timing", "ips", "sim-hz", "engine", NULL };
     for (int i = 0; audio[i]; ++i) if (!strcmp(key, audio[i])) return SETTINGS_AUDIO;
