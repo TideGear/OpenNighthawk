@@ -613,16 +613,26 @@ static void pal_note(pal_set *s, const uint8_t *dac)
 static int present_worker_main(void *u)
 {
     present_worker *w = (present_worker *)u;
+    /* Diagnostic CPU elapsed times; GPU execution overlaps these stages. */
+    const char *timing_path = getenv("F117_WORKER_TIMING");
+    FILE *timing = timing_path && *timing_path ? fopen(timing_path, "w") : NULL;
+    unsigned long long timing_frame = 0;
+    if (timing_path && *timing_path && !timing)
+        fprintf(stderr, "[worker-timing] cannot open %s\n", timing_path);
+    if (timing) fprintf(timing, "frame,got,composed,gpu_begin_ns,picture_ns,compose_ns,total_ns\n");
     for (;;) {
         SDL_WaitSemaphore(w->go);
         if (w->quit) break;
+        const Uint64 wt0 = timing ? SDL_GetTicksNS() : 0;
         if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && (w->plan.rerun_ready || w->plan.rerun_inline) && !getenv("F117_GPU_NO_OVERLAP")) {
             /* the GPU draws the scene (it needs none of the game's own picture) while this thread makes that picture below */
             remaster_live_set_palette(w->frame.dac);
             remaster_live_gpu_begin(g_rlive_copy, &H.m, g_scale, w->ww);
             remaster_live_set_palette(NULL);
         }
+        const Uint64 wt1 = timing ? SDL_GetTicksNS() : 0;
         w->got = drawlive_render(&g_live, &w->plan, &w->frame);
+        const Uint64 wt2 = timing ? SDL_GetTicksNS() : 0;
         w->composed = 0;
         if (w->got && g_pw_compose) {
             /* The Remastered composite of this picture, here and not on the machine's thread: it reads the rerun copy's frame (which no copy touches until the
@@ -632,8 +642,15 @@ static int present_worker_main(void *u)
             remaster_live_set_palette(NULL);
             w->composed = w->fine != NULL;
         }
+        if (timing) {
+            const Uint64 wt3 = SDL_GetTicksNS();
+            fprintf(timing, "%llu,%d,%d,%llu,%llu,%llu,%llu\n", ++timing_frame, w->got, w->composed,
+                    (unsigned long long)(wt1 - wt0), (unsigned long long)(wt2 - wt1),
+                    (unsigned long long)(wt3 - wt2), (unsigned long long)(wt3 - wt0));
+        }
         SDL_SignalSemaphore(w->done);
     }
+    if (timing) fclose(timing);
     return 0;
 }
 

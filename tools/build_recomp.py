@@ -103,9 +103,9 @@ def recompile(data, gen, coverage_files):
 
 def build(gen, unit_jobs=8, run_tests=True):
     # A prior core-only build must not silently omit the five host tests.
-    r = run(["cmd", "/c", os.path.join(ROOT, "build.cmd"), "-DF117R_BUILD_APP=ON",
+    r = run(["cmd", "/c", ".\\build.cmd", "-DF117R_BUILD_APP=ON",
              "-DF117R_GEN_DIR=" + gen.replace("\\", "/")],
-            capture_output=True, text=True)
+            capture_output=True, text=True, cwd=ROOT)
     tail = (r.stdout or "")[-1500:]
     if r.returncode != 0 or "BUILD OK" not in tail:
         print(tail)

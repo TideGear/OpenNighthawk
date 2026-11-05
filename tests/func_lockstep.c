@@ -4180,6 +4180,8 @@ int main(int argc, char **argv)
         unsigned arms_branches = 0;
         unsigned long long arms_returning = 0, arms_actual = 0;
         g_dos = 0; g_dos_script_n = 0; memset(g_dos_script, 0, sizeof g_dos_script); g_kbd_force = 0; g_int10_force = 0; g_io_salt = 0; g_io_force_n = 0; g_io_force_bit7 = 0; g_io_force_after = 0; g_probe_tail = 0; g_decline_floor = 0; g_probe_steps = 0; g_probe_sweep = 0; g_probe_sweep_all = 0; g_room_n = 0; g_room_probe_n = 0; g_int1a_by_vector = 0;
+        /* Fixtures opt into app-rate IO_SLACK explicitly; do not carry that rate into the next routine. */
+        g_m.ips = 0;
         g_ipf_n = 0; g_port_script.n = 0; g_strict_limit = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -54587,7 +54589,14 @@ g_probe_sweep_all=1; /* sweep every stop clock on one state in sixteen */
                 for(unsigned j=1;j<8;j++)XW8(tseg_,(uint16_t)(tptr+tlen+j),XPICK(2)?'x':XRAND());
                 uint16_t lim=(uint16_t)(room_state?0xFFFF:low_limit_state?1+XPICK(70):71+XPICK(121));
                 for(unsigned j=0;j<32;j++)XW16(dg,0xF400+2*j,(XPICK(5)==0)?0:(uint16_t)(1+XPICK(12)));
-                (void)0;
+                /* Force the 07A4 hyphen-retention arm for every seed: with
+                 * unit character widths and limit 2, "a-b" backs up to '-'. */
+                if ((s & 15) == 2) {
+                    XW8(tseg_,tptr,'a'); XW8(tseg_,(uint16_t)(tptr+1),'-');
+                    XW8(tseg_,(uint16_t)(tptr+2),'b'); XW8(tseg_,(uint16_t)(tptr+3),0);
+                    lim=2;
+                    for(unsigned j=0;j<32;j++) XW16(dg,0xF400+2*j,1);
+                }
                 { const uint16_t w=rec; XW16(seg[S_SS],(uint16_t)(r[R_SP]+0),w); small[0]=w; }
                 { const uint16_t w=tptr; XW16(seg[S_SS],(uint16_t)(r[R_SP]+2),w); small[1]=w; }
                 { const uint16_t w=lim; XW16(seg[S_SS],(uint16_t)(r[R_SP]+4),w); small[2]=w; }
@@ -55799,6 +55808,8 @@ if (!strcmp(o->module, "ASOUND.LOG") && o->seg == 0x0000 && o->ip == 0x00B4) {
             g_self_written = 0;
             if (g_cov >= 0) { memset(g_cov_seen, 0, sizeof g_cov_seen); memset(g_cov_nsp, 0, sizeof g_cov_nsp); }
             if (nc_out) nc_begin(g_nc_orig);
+            const char *trace_state = getenv("F117_LOCKSTEP_TRACE_STATE");
+            g_trace = trace_state && s == atoi(trace_state);
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             g_nc_track = NULL;
             if (zero_loops && s == 1 && (returned != 1 || g_self_written)) {
@@ -55807,7 +55818,7 @@ if (!strcmp(o->module, "ASOUND.LOG") && o->seg == 0x0000 && o->ip == 0x00B4) {
             }
             if (returned == 2 && !g_self_written) {
                 g_side[0].overflow = g_side[1].overflow = 1;
-                g_lost = 0; g_ncalls = 0; g_callover = 0;
+                g_lost = 0; g_ncalls = 0; g_callover = 0; g_stopped = 0;
                 wake_arm();
                 const int ran = o->fn(&g_m);
                 if (wake_overrun(o, ip, ran, " (fault state)")) { mb++; restore(); break; }
@@ -55836,8 +55847,21 @@ if (!strcmp(o->module, "ASOUND.LOG") && o->seg == 0x0000 && o->ip == 0x00B4) {
                     g_ctx = ""; restore(); continue;
                 }
                 if (g_traffic_fixture) {
+                    /* As in the normal-return comparison, an event can yield inside an
+                     * original callee before the later divide fault. Resume only that
+                     * event stop; require the same fault and full state below. */
+                    if (ran && !g_lost && g_stopped && !g_m.cpu.stop_at && !g_m.cpu.int_depth) {
+                        int more = 0;
+                        const int continued = run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip);
+                        if (continued != 2 || g_m.cpu.op_ip != a->op_ip) {
+                            fprintf(stderr, "aircraft event continuation missed original fault (state %d)\n", s);
+                            mc++; mb++; restore(); continue;
+                        }
+                    }
                     if (!ran || g_lost || !g_m.cpu.int_depth) {
-                        fprintf(stderr, "aircraft traffic missed divide fault (state %d)\n", s);
+                        fprintf(stderr, "aircraft traffic missed divide fault (state %d, original %04X, named %04X:%04X, depth %d, lost %d, ran %d)\n", s, a->op_ip, g_m.cpu.seg[S_CS], g_m.cpu.ip, g_m.cpu.int_depth, g_lost, ran);
+                        g_cpu[1] = g_m.cpu;
+                        (void)compare(o->module, ip, cs, ip, 0);
                         mc++; mb++; restore(); continue;
                     }
                     for (unsigned k = 0; k < sizeof TRAFFIC_DIVIDES / sizeof TRAFFIC_DIVIDES[0]; k++)
