@@ -494,3 +494,9 @@ its Nth HUD pass), `F117_FAR_WHY`, `F117_FAR_WHY_FROM`. The data-segment diff of
 first copies of the run (early hangar frames), not the runway window. With the print restricted to the runway window (`F117_FAR_WHY_FROM` on the copy machine's clock, about 3.4 billion there, and the copy
 instance only), native-walk copy frames hold 385 primitives and none of models 0, 3 and 6 against 549 primitives and 13 of them with the game's walk. So at the runway those objects are not placed at all, and the
 open question is why the native selection does not pick them there; the "chosen" verdicts and the native-placement counts above belong to earlier frames and say nothing about it.
+
+**Cause found for most of the native walk's horizon mismatch (4 November, night).** Reading the selection verdicts over time (`F117_FAR_WHY=3 F117_FAR_WHY_FROM=3400000000 F117_FAR_WHY_MAX=100000`): from copy
+clock about 3.467 billion the native selection says "culled" for model 3 at the base cell (ring 4, entry 0) on every copy, while the game's own walk draws it. The native emulation of the game's visibility test
+(`far_cull`) disagrees with the game for ring 4's first entry of a tile (the huge ground and sea base tiles, models 0, 3 and 6). Experiment `F117_NATIVE_FORCE_BASE=1` (with `F117_NATIVE_WALK=1`): those entries are never culled.
+Pixels that differ from the game's walk, runway replay, fixed cadence, one worker: 4.0 billion 2,625 to 205; 4.4 billion 1,967 to 185. Not a fix yet (it is an override, not an emulation of the game's rule: the game
+probably does not apply that test to these entries at all, see the walk's `centre_tile` and `tile_marker` paths at VGAME 0638 to 0761), and about 200 pixels remain (models 37, 39, 40 and 44 were also short by about 40%).

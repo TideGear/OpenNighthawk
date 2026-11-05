@@ -1608,14 +1608,19 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
         if (++t_n % 20000 == 0) fprintf(stderr, "[native-timing] per object: patch %.2f us, scene add %.2f us, finish %.2f us (%u objects), fallback: %u no template, %u unsupported, %u stale\n", t_patch * 1000.0 / t_n, t_add * 1000.0 / t_n, t_fin * 1000.0 / t_n, t_n, no_template, unsupported, stale);
     }
     m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = keep48c4;
+    static unsigned long long nw_from; static int nw_init, nw_on;
+    if (!nw_init) { nw_init = 1; const char *e = getenv("F117_FAR_WHY"); nw_on = e != NULL; const char *f = getenv("F117_FAR_WHY_FROM"); nw_from = f ? strtoull(f, NULL, 0) : 0; }
+    if (added < 0 && nw_on && m->cpu.icount >= nw_from && (n->model == 0 || n->model == 3 || n->model == 6)) {
+        static unsigned shown; if (shown++ < 20) fprintf(stderr, "[why] native placement of model %u refused by the scene reader (added %d)\n", (unsigned)n->model, added);
+    }
     if (added < 0) { r->refused++; return 0; }
     r->added++; r->native_drawn++;
     {   /* F117_FAR_WHY (diagnostic): what the native path made of the models the walk comparison misses */
         static int wl = -1; static unsigned left = 120;
         if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
-        if (wl && left && (n->model == 0 || n->model == 3 || n->model == 6)) {
+        if (wl && left && m->cpu.icount >= nw_from && (n->model == 0 || n->model == 3 || n->model == 6)) {
             left--;
-            fprintf(stderr, "[why] native placement of model %u bank %u level %d: %zu primitives added (frame now %zu)\n", (unsigned)n->model, (unsigned)n->bank, n->level, target->n - first, target->n);
+            fprintf(stderr, "[why] clock %llu native placement of model %u bank %u level %d: %zu primitives added (frame now %zu), first labelled model %u kind %d\n", (unsigned long long)m->cpu.icount, (unsigned)n->model, (unsigned)n->bank, n->level, target->n - first, target->n, target->n > first ? (unsigned)target->prim[first].model : 0u, target->n > first ? target->prim[first].kind : -1);
         }
     }
     static int want_sizes = -1;

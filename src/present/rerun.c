@@ -876,7 +876,9 @@ static int far_scenery_body(machine_t *m)
                 klass = class_by_type[type];
                 resolved = 1;
             }
-            const int visible = far_cull(m, ds, ss, matrix, x, y, z, zh, klass & 7u, s);
+            static int force_base = -1;                          /* F117_NATIVE_FORCE_BASE=1 (experiment, native-walk): ring 4's first entry of a tile is never culled */
+            if (force_base < 0) force_base = getenv("F117_NATIVE_FORCE_BASE") != NULL;
+            const int visible = (force_base && g_native_walk && f->ring == 4 && f->entry == 0) || far_cull(m, ds, ss, matrix, x, y, z, zh, klass & 7u, s);
             chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
             if (!visible) { chosen = -1; tr_culled++; break; }
             pk.darken = far_detail(m, ds, zh, klass & 7u);
@@ -889,7 +891,7 @@ static int far_scenery_body(machine_t *m)
             if (!why_init) {
                 why_init = 1; const char *e = getenv("F117_FAR_WHY");
                 for (const char *q = e; q && *q && why_n < 8; ) { why_models[why_n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; }
-                why_left = why_n ? 200 : 0;
+                { const char *mx = getenv("F117_FAR_WHY_MAX"); why_left = why_n ? (mx ? (unsigned)atoi(mx) : 200u) : 0; }
             }
             static unsigned long long why_from; static int why_from_init;
             if (!why_from_init) { why_from_init = 1; const char *e2 = getenv("F117_FAR_WHY_FROM"); why_from = e2 ? strtoull(e2, NULL, 0) : 0; }
@@ -898,7 +900,7 @@ static int far_scenery_body(machine_t *m)
                 for (int q = 0; q < why_n; q++)
                     if ((int)mi == why_models[q]) {
                         why_left--;
-                        fprintf(stderr, "[why] model %u ring %d cell %d,%d entry %d: %s\n", mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
                                 chosen == 1 ? "chosen" : chosen == -1 ? "culled by the game's visibility test" : "no level within reach or bounds");
                     }
             }
