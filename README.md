@@ -207,19 +207,36 @@ set (and, for Munt, `mt32-roms`).
 | `--mt32-control FILE --mt32-pcm FILE` | name the two ROM files instead of a folder |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
+| `--sound ask\|adlib\|roland\|speaker` | the sound driver SETUP is answered with; `ask` (default) shows SETUP's own questions |
+| `--adlib-effects`, `--no-adlib-effects` | with Roland music, whether the AdLib effects driver plays the effects beside it |
+| `--mac-sounds DIR` | use the Macintosh recordings (`NNN.wav`) in DIR where the Mac version has one |
+| `--music-source`, `--sound-source default\|mac\|dos` | which version's music or effects play: the best available (default), the Macintosh recordings, or the DOS drivers |
+| `--mt32-seed N` | a fixed random seed for Munt, so the same input renders the same audio (needs `--mt32-control` and `--mt32-pcm`) |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
-| `--presentation original\|enhanced` | the picture as a single choice: `original` is the exact 320x200 picture, sharp, at 4:3 (the default); `enhanced` draws in-between frames at the display's refresh rate, as fine as the display's height allows at 4:3 (`--present rerun` with a matching `--present-scale`). A later `--present` option refines it. `remastered` is planned ([roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)) |
+| `--presentation original\|enhanced\|remastered` | the picture as a single choice: `original` is the exact 320x200 picture, sharp, at 4:3 (the default); `enhanced` draws in-between frames at the display's refresh rate, as fine as the display's height allows at 4:3 (`--present rerun` with a matching `--present-scale`). A later `--present` option refines it. `remastered` is planned ([roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)) `remastered` redraws the 3-D view natively with a wide view, far scenery and smooth motion between the game's steps ([Presentation](#presentation)); it needs the Remastered renderer and is experimental. |
 | `--present scan\|replay\|interp\|rerun` | the picture in flight; see [Presentation](#presentation) |
 | `--present-scale N` | with `replay`, `interp` or `rerun`: the picture N times finer, 1-16 |
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp` or `rerun`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
+| `--present-log FILE` | write one line per displayed frame (host time, game clock, picture ages and the work per frame in nanoseconds) for timing |
+| `--draw-distance maximum\|far\|near\|original\|N` | Remastered: how far scenery is drawn; `original` keeps the game's short reach, `maximum` draws every ring to the limit of the game's arithmetic, N is in world units. Farther costs picture rate |
+| `--dot-distance original\|near\|far\|maximum` | Remastered: how far the small dark dots on plain ground are drawn (default `original`); lit points follow `--draw-distance` |
+| `--pick-order exact\|fast` | Remastered: the order far objects are sorted in. `exact` (default) is the order every picture comparison was made against; `fast` is cheaper by about 0.8 ms a frame at Maximum and lets objects tied on distance swap places, changing a few edge pixels in some frames |
+| `--crt`, `--crt-mask`, `--crt-glow` | a CRT look: dark scanlines, a coloured phosphor mask, and a soft glow around bright parts (settings menu: Video) |
+| `--colourblind off\|protanopia\|deuteranopia\|tritanopia` | a colour-vision aid for the HUD colours |
+| `--subtitles` | show radio calls as text so they can be read as well as heard |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-four normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
 | `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-four normal-play fixes, `none` clears the set. Normal play starts with all thirty-four enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
+| `--remap A:B` | swap two keys, in SDL key names (`Q:W`, `Left Shift`, `F5`, `Keypad 4`); repeatable. The Keys tab in the settings menu does the same |
+| `--pad-deadzone N`, `--pad-fire1 N`, `--pad-fire2 N`, `--pad-invert-x`, `--pad-invert-y`, `--pad-keys B:KEY,...` | controller options: the stick dead zone (0 to 50), the fire buttons, axis inversion, and extra buttons sent as keys (for example `2:G,3:Left Shift`) |
+| `--watch latest\|SESSION`, `--seek SECONDS`, `--replay-fixes log\|cli` | play a recorded session again (from the sessions folder beside the save folder), starting this many seconds in; use the fix set recorded in the log, or this command line's |
 
 Any option the app does not recognise (for example `--help`) prints a usage
-summary, which also lists diagnostic options not shown here.
+summary. Diagnostic options not in the table: `--log FILE` (the machine log, ending with the final state hash),
+`--exit-after CLOCKS` (stop at that instruction clock), `--time-us N` (the DOS clock's start, in microseconds),
+`--coverage FILE` (record which instructions ran), `--audio-dump FILE` (the mixed audio) and `--audio-queue-log FILE` (the audio queue's fill).
 
 The default D1REAL fix replaces the original adaptive simulation cadence with
 fifteen simulation steps per real second, thirty during 2x time compression;
