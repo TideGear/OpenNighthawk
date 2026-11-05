@@ -935,8 +935,8 @@ jitter is the original's; no smoothing", "Do not extend the draw distance").
       2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
       because it deformed objects; in-between pictures come from `rerun`).
 - [ ] **A longer draw distance** in the original renderer (owner, 15 Oct 2026). Planned for Remastered instead (Phase 3, 24 Oct 2026).
-      Remastered R6 is in progress: a three-cell terrain pass reaches the wide-view land edge in one fresh airborne route; broader
-      buildings, motion, coastline and performance checks remain. See [scenery-distance.md](scenery-distance.md).
+      Remastered R6 is built and adjustable (Draw distance: Original, Near, Far, Maximum, out to the whole map; the building pop-in R26 is fixed in code); the owner's judgement of
+      distance and the native terrain walk's exactness remain. See [scenery-distance.md](scenery-distance.md).
 
 ## Phase 4 - checked by people and independent references
 
@@ -955,7 +955,8 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       needs parallel copies, which need the observer, the recompiled-code
       runtime and the fix state per machine ([presentation.md](presentation.md)).
       Moved here on 17 Oct 2026: the owner has no convenient high-refresh
-      display to test on, so it cannot be judged by the people who would use it.
+      display to test on, so it cannot be judged by the people who would use it. (4 November 2026: the owner's goal for Remastered is now 4K at 144 fps and 1080p well past 120,
+      checked by measurement, by capturing the scene once per game step instead of running parallel copies: [gpu-compositor.md](gpu-compositor.md), last section.)
 - [ ] **Coastline transitions:** the coastline's topology transitions are an
       issue of the original game itself (the owner, 17 Oct 2026; its jitter
       shows in the GOG DOSBox release too). Not planned for Original or Enhanced;
