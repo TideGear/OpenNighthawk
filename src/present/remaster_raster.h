@@ -104,4 +104,10 @@ long remaster_polygon_shaded(remaster_target *t, const remaster_v3 *v, const uin
  * and near-plane clip as the polygons. Returns the pixels written. */
 long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double width_px, uint32_t color);
 
+/* Tracing (docs/gpu-compositor.md): when remaster_trace_hook is set, each call above reports itself first, with its arguments and the
+ * target's state, so a frame's drawing can be recorded and replayed (the GPU compositor's oracle). NULL: one pointer test per call. */
+enum { REMASTER_T_CLEAR, REMASTER_T_POLYGON, REMASTER_T_SHADED, REMASTER_T_LOGIC, REMASTER_T_LINE };
+extern void (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
+                                   uint32_t color, double width, int op, unsigned value);
+
 #endif

@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "gpu_trace.h"
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -27,6 +28,24 @@ static int env_default_on(const char *name)
 {
     const char *e = getenv(name);
     return !(e && e[0] == '0');
+}
+
+/* F117_GPU_DUMP=FILE[,FROM] (diagnostic, with F117_REMASTER_THREADS=1): the first composite from clock FROM, as every raster call and the CPU result
+ * (gpu_trace.h), for the GPU compositor's harness. */
+static FILE *g_trace_file; static gpu_trace_rec *g_trace_recs; static size_t g_trace_n, g_trace_cap;
+static void gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors, uint32_t color, double width, int op, unsigned value)
+{
+    if (g_trace_n == g_trace_cap) {
+        g_trace_cap = g_trace_cap ? g_trace_cap * 2 : 4096;
+        g_trace_recs = (gpu_trace_rec *)realloc(g_trace_recs, g_trace_cap * sizeof *g_trace_recs);
+        if (!g_trace_recs) { g_trace_cap = g_trace_n = 0; return; }
+    }
+    gpu_trace_rec *r = &g_trace_recs[g_trace_n++];
+    memset(r, 0, sizeof *r);
+    r->kind = kind; r->n = n; r->op = op; r->color = color; r->value = value; r->width = width;
+    for (int i = 0; i < n && i < 16; i++) { r->v[i] = v[i]; if (colors) r->colors[i] = colors[i]; }
+    r->cx = t->cx; r->cy = t->cy; r->sx = t->sx; r->sy = t->sy; r->inv_depth_scale = t->inv_depth_scale; r->line_bias = t->line_bias;
+    r->near_z = t->near_z; r->line_decal = t->line_decal; r->line_order = t->line_order; r->paint_owner = t->paint_owner; r->paint_index = t->paint_index;
 }
 
 /* Milliseconds from an arbitrary start, for F117_REMASTER_TIMING. */
@@ -797,8 +816,30 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         const char *tile = getenv("F117_REMASTER_ROW_TILE");
         sj.row_tile = tile ? atoi(tile) : parts >= 8 && h >= 1200 ? 64 : 0;
         if (sj.row_tile < 16 || sj.row_tile > 1024) sj.row_tile = 0;
+        static int trace_done; const char *trace_spec = trace_done ? NULL : getenv("F117_GPU_DUMP");
+        int tracing = 0;
+        if (trace_spec && parts == 1 && r->done.n > 50) {
+            const char *comma = strchr(trace_spec, ',');
+            if (!comma || m->cpu.icount >= strtoull(comma + 1, NULL, 0)) { tracing = 1; g_trace_n = 0; remaster_trace_hook = gpu_trace_hook; }
+        }
         if (parts > 1) for (sj.stage = 1; sj.stage <= 3; sj.stage++) run_parts(scene_rows_part, &sj, parts);       /* a barrier between the stages */
         else run_parts(scene_rows_part, &sj, 1);
+        if (tracing) {
+            remaster_trace_hook = NULL; trace_done = 1;
+            char path[1024]; const char *comma = strchr(trace_spec, ',');
+            snprintf(path, sizeof path, "%.*s", comma ? (int)(comma - trace_spec) : (int)strlen(trace_spec), trace_spec);
+            FILE *f = fopen(path, "wb");
+            if (f) {
+                gpu_trace_header hd; memset(&hd, 0, sizeof hd);
+                hd.magic = GPU_TRACE_MAGIC; hd.w = tw; hd.h = h; hd.nrec = (uint32_t)g_trace_n;
+                for (unsigned i = 0; i < 256; i++) hd.palette[i] = dac_colour(m, i);
+                fwrite(&hd, sizeof hd, 1, f);
+                fwrite(g_trace_recs, sizeof *g_trace_recs, g_trace_n, f);
+                fwrite(t.color, 4, (size_t)tw * h, f); fwrite(t.index, 2, (size_t)tw * h, f); fwrite(t.owner, 4, (size_t)tw * h, f);
+                fclose(f);
+                fprintf(stderr, "[gpu-dump] %s: %d x %d, %zu raster calls, clock %llu\n", path, tw, h, g_trace_n, (unsigned long long)m->cpu.icount);
+            }
+        }
     }
     const double tm1 = timed ? now_ms() : 0.0;
     {                                           /* F117_REMASTER_DUMP=FILE.ppm: the render itself, once, for a look */

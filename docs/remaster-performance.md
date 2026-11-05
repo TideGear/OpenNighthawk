@@ -139,3 +139,9 @@ Enhanced results as Remastered acceptance would not complete this requirement.
 
 With the GPU renderer the 4K upload and present are no longer the problem (about 1 ms together); the CPU compositor is. 4K at 60 fps with headroom
 needs the compositor's pixel work on the GPU. Toolchain present: SDL 3.2.10's GPU API (D3D12, Vulkan) and the Windows SDK's `dxc`.
+
+Clean GPU-renderer runs (hidden direct3d11 window, 1920 x 1080 / scale 3, same replay, no timing switches; the exe was rebuilt with a NULL trace hook
+partway through the batch, which costs one pointer test per raster call), p95 (p99) ms, two runs: Near 9.20 (10.73) and 10.21 (11.72); Far 11.88 (14.03)
+and 9.76 (11.50); **Maximum 12.12 (14.46) and 13.00 (14.70)**. So with the GPU renderer Maximum misses 12 ms at 1080p, unlike the software-renderer
+runs (11.1 to 11.3): the present call and vsync wait shape the tail, and run-to-run spread is about 1 ms. This is the 1080p finish line the GPU
+compositor work (docs/gpu-compositor.md) has to move.
