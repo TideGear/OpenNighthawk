@@ -1857,11 +1857,11 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
         r->done_hud_at = r->hud_at; r->hud_at = -1;
         {   /* F117_FAR_WHY (diagnostic): the frame being completed, and how many primitives of models 0, 3 and 6 it holds */
-            static int wl = -1; static unsigned left = 30;
+            static int wl = -1; static unsigned left = 40;
             if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
             static unsigned long long why_from; static int why_from_init;
             if (!why_from_init) { why_from_init = 1; const char *e = getenv("F117_FAR_WHY_FROM"); why_from = e ? strtoull(e, NULL, 0) : 0; }
-            if (wl && left && r->frame.n > 50 && m->cpu.icount >= why_from) {
+            if (wl && left && r->replay_copy && r->frame.n >= 50 && m->cpu.icount >= why_from) {
                 unsigned c036 = 0;
                 for (size_t i = 0; i < r->frame.n; i++) { const unsigned md = r->frame.prim[i].model & 1023; if (md == 0 || md == 3 || md == 6) c036++; }
                 left--;
