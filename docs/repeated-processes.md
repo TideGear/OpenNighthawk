@@ -450,7 +450,7 @@ establishes is in [architecture.md](architecture.md#verification-why-11-is-a-cla
 --seed-coverage C:/Users/Tideg/f117-recomp-local/coverage --jobs 16
 --verify-interp-cache`.
 
-**Fix selection.** Normal application play starts with all 34 switches on (32
+**Fix selection.** Normal application play starts with all 33 switches on (31
 repairs plus the D1REAL and D1PROX options; `--fix QUIZ` restores the
 copy-protection quiz, off by default); the headless runner starts with none, and
 `build_recomp.py` and `run_route.py` prepend `--fix none`, so ordinary parity

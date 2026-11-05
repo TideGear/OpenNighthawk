@@ -14,7 +14,7 @@ conclusion and where the evidence is. Private evidence lives under
   compressed updates/s
   ([production candidate](#production-fifteen-step-candidate-accepted-18-october),
   [broader validation](#fifteen-step-play-mode-validation)). Normal play enables every
-  fix, D1REAL and D1PROX included (owner, 17 October; thirty-four now). With
+  fix, D1REAL and D1PROX included (owner, 17 October; thirty-three now: Q11 was retired on 1 November). With
   D1REAL the world clock runs at real time while the emulated CPU keeps up:
   60 MIPS does in every validated scene; 40 falls behind in North Cape's
   compressed flight.

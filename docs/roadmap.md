@@ -155,7 +155,7 @@ not the recompilation:
       then D101 and Q12's marker-size sibling Q12b were measured and fixed,
       passing combined acceptance with batch be
       (`D:/f117-gate/p2-batch-be-accept/combined-final-verdict.json`). That
-      makes 34 normal-play switches (the Phase 3 table). Ten code quirks with
+      made 34 normal-play switches then (the Phase 3 table); 33 since Q11 was retired on 1 November. Ten code quirks with
       no effect and four rows that were never the original's defects stay
       documented in bugs.md. The fixes add no matching credit.
 - [ ] **Name the translated routines and data**, with explanations, drawing on
@@ -756,7 +756,7 @@ Each is fixed; the named regressions keep the failing seed or case.
       34; core/headless and ordinary parity keep them off. `--fix none`
       restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
-- [x] **Fixes for the original's bugs**: 34 normal-play switches, individually
+- [x] **Fixes for the original's bugs**: 33 normal-play switches (34 table rows: Q11 is retired), individually
       selectable; recordings retain the selected set. Each linked entry gives
       the implementation and its focused evidence. D10, D35 and D36 remain
       closed ([closed historical reports](bugs.md#closed-historical-reports)); `QUIZ` is a separate

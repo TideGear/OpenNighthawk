@@ -104,7 +104,7 @@ Scoring decisions with dates are in [docs/progress.md](docs/progress.md); this i
   Keep all original graphics; no vector replacements.
 - **Phase 3 features are off or inert unless asked for:** `--crt`, `--subtitles`, `--sound`, `--remap`, `pad-*`, `--watch` and the
   settings menu (Ctrl+Alt+S) change nothing in the game's logic; the owner has not yet looked at any of them.
-- **Normal play:** 15 Hz / 60 MIPS, all 34 fixes on (`--fix QUIZ` restores the quiz, off by default). Parity
+- **Normal play:** 15 Hz / 60 MIPS, all 33 normal-play fixes on (`--fix QUIZ` adds the quiz option, off by default; Q11 was retired on 1 November). Parity
   commands use `--fix none`.
 - **Never weaken a check to go faster.** Safe optimisation and parallelism are approved; batches of 30-50 routines
   per gate; no proof agents during a gate.

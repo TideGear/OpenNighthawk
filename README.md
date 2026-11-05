@@ -42,7 +42,7 @@ machines is a game-preservation job, and this project treats it as one.
 **1:1 parity with the original is the first priority.** With fixes off, the
 game does exactly what the DOS original does, including its bugs, which are
 tracked in [docs/bugs.md](docs/bugs.md) so they can be fixed as switchable
-options. Thirty-four catalogued fixes and balance options are enabled by
+options. Thirty-three catalogued fixes and balance options are enabled by
 default for normal play, including D1REAL and D1PROX. `--fix none` restores
 the original behavior. The headless reference runner and ordinary parity
 gates keep fixes off; recorded sessions restore their recorded fix set
@@ -226,8 +226,8 @@ set (and, for Munt, `mt32-roms`).
 | `--colourblind off\|protanopia\|deuteranopia\|tritanopia` | a colour-vision aid for the HUD colours |
 | `--subtitles` | show radio calls as text so they can be read as well as heard |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
-| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-four normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
-| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-four normal-play fixes, `none` clears the set. Normal play starts with all thirty-four enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
+| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-three normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
+| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-three normal-play fixes, `none` clears the set. Normal play starts with all thirty-three enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 | `--remap A:B` | swap two keys, in SDL key names (`Q:W`, `Left Shift`, `F5`, `Keypad 4`); repeatable. The Keys tab in the settings menu does the same |
 | `--pad-deadzone N`, `--pad-fire1 N`, `--pad-fire2 N`, `--pad-invert-x`, `--pad-invert-y`, `--pad-keys B:KEY,...` | controller options: the stick dead zone (0 to 50), the fire buttons, axis inversion, and extra buttons sent as keys (for example `2:G,3:Left Shift`) |

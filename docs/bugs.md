@@ -9,7 +9,7 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)). The app's normal play enables all
-34 fixes in the summary's Fix column, including the D1REAL timing and D1PROX
+33 fixes in the summary's Fix column (34 registered including the `QUIZ` option; Q11 was retired), including the D1REAL timing and D1PROX
 balance choices (owner's decision, 17 October 2026). In the app,
 `--fixes original` turns them all off and `--fixes recommended` restores the
 set; `--fix none` clears it and a following `--fix ID` selects a subset;
