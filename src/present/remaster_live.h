@@ -40,7 +40,11 @@ void remaster_live_set_palette(const uint8_t *dac);
 /* The GPU compositor (gpu_compose.h), registered by the app: given a composite's raster calls and the replace step's inputs it writes the wide picture and returns 1, or
  * returns 0 and the CPU compositor is used. NULL: always the CPU. F117_GPU_COMPOSE_CHECK also runs the CPU compositor and compares. */
 typedef int (*remaster_gpu_fn)(const gpu_compose_in *in, uint32_t *wide_out);
-void remaster_live_set_gpu(remaster_gpu_fn fn);
+typedef int (*remaster_gpu_begin_fn)(const gpu_compose_in *in);
+typedef int (*remaster_gpu_finish_fn)(const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out);
+void remaster_live_set_gpu(remaster_gpu_fn run, remaster_gpu_begin_fn begin, remaster_gpu_finish_fn finish);
+/* Starts the GPU compositor on the scene before the game's own picture exists, so the two overlap; the next remaster_live_compose of this scene finishes it. 1 when started. */
+int remaster_live_gpu_begin(remaster_live *r, const machine_t *m, int n, int wide_w);
 /* Terrain dots: how many coarser levels beyond its own ring an object's dark dots are drawn (0 the original's reach .. 3 the whole map). */
 void remaster_live_set_dot_levels(int levels);
 /* A static terrain object drawn without the game's placement (rerun.h, rerun_native): 1 when drawn, 0 when no template of its model exists yet

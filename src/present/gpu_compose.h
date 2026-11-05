@@ -30,7 +30,13 @@ typedef struct {
 gpu_compose *gpu_compose_create(const char *shader_dir);
 void gpu_compose_destroy(gpu_compose *g);
 
-/* The wide picture, tw * h pixels, into wide_out; 1 on success, 0 when the CPU compositor has to be used (the reason is on stderr once). */
+/* In two halves, so the CPU can make the game's own picture while the GPU draws: begin takes everything but src, tag and dac (which it ignores), uploads and runs the bands,
+ * polygons and strokes and returns without waiting; finish takes the game's picture, its tags and its palette, runs the replace step and writes the wide picture. 1 on success; 0 when
+ * the CPU compositor has to be used (the reason is on stderr once). Finish without a successful begin returns 0. */
+int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in);
+int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out);
+
+/* Both, one after the other: the wide picture, tw * h pixels, into wide_out. */
 int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out);
 
 /* Milliseconds of the last run: CPU setup, upload and compute (to the end of the submission), readback. For diagnostics. */

@@ -198,6 +198,22 @@ static int gpu_compose_cb(const gpu_compose_in *in, uint32_t *wide_out)
     SDL_UnlockMutex(g_gpu_lock);
     return ok;
 }
+static int gpu_compose_begin_cb(const gpu_compose_in *in)
+{
+    if (!g_gpu) return 0;
+    SDL_LockMutex(g_gpu_lock);
+    const int ok = gpu_compose_begin(g_gpu, in);
+    SDL_UnlockMutex(g_gpu_lock);
+    return ok;
+}
+static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out)
+{
+    if (!g_gpu) return 0;
+    SDL_LockMutex(g_gpu_lock);
+    const int ok = gpu_compose_finish(g_gpu, src, tag, dac, wide_out);
+    SDL_UnlockMutex(g_gpu_lock);
+    return ok;
+}
 static void gpu_compose_start(void)
 {
     if (g_gpu || !getenv("F117_GPU_COMPOSE")) return;
@@ -205,7 +221,7 @@ static void gpu_compose_start(void)
     g_gpu = gpu_compose_create(base ? base : ".");
     if (!g_gpu) { fprintf(stderr, "[gpu-compose] no usable GPU device or shaders beside the executable: the CPU compositor is used\n"); return; }
     g_gpu_lock = SDL_CreateMutex();
-    remaster_live_set_gpu(gpu_compose_cb);
+    remaster_live_set_gpu(gpu_compose_cb, gpu_compose_begin_cb, gpu_compose_finish_cb);
     fprintf(stderr, "[gpu-compose] on\n");
 }
 static const uint8_t *remaster_apply(const uint8_t *hi) { return remaster_apply_ex(hi, H.frame.dac, -1, 0); }
@@ -518,6 +534,12 @@ static int present_worker_main(void *u)
     for (;;) {
         SDL_WaitSemaphore(w->go);
         if (w->quit) break;
+        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && (w->plan.rerun_ready || w->plan.rerun_inline) && !getenv("F117_GPU_NO_OVERLAP")) {
+            /* the GPU draws the scene (it needs none of the game's own picture) while this thread makes that picture below */
+            remaster_live_set_palette(w->frame.dac);
+            remaster_live_gpu_begin(g_rlive_copy, &H.m, g_scale, w->ww);
+            remaster_live_set_palette(NULL);
+        }
         w->got = drawlive_render(&g_live, &w->plan, &w->frame);
         w->composed = 0;
         if (w->got && g_pw_compose) {

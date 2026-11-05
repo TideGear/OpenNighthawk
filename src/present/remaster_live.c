@@ -35,7 +35,10 @@ static int env_default_on(const char *name)
 static FILE *g_trace_file; static F117_TLS gpu_trace_rec *g_trace_recs; static F117_TLS size_t g_trace_n, g_trace_cap;
 static F117_TLS int g_record_only, g_record_failed;      /* the GPU compositor: record the raster calls and skip the CPU drawing */
 static remaster_gpu_fn g_gpu_fn;
-void remaster_live_set_gpu(remaster_gpu_fn fn) { g_gpu_fn = fn; }
+static remaster_gpu_begin_fn g_gpu_begin_fn;
+static remaster_gpu_finish_fn g_gpu_finish_fn;
+void remaster_live_set_gpu(remaster_gpu_fn run, remaster_gpu_begin_fn begin, remaster_gpu_finish_fn finish)
+{ g_gpu_fn = run; g_gpu_begin_fn = begin; g_gpu_finish_fn = finish; }
 static char g_trace_path[1024]; static int g_trace_extra;      /* the replace section is still to be appended */
 static int gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors, uint32_t color, double width, int op, unsigned value)
 {
@@ -116,6 +119,7 @@ struct remaster_live {
     unsigned nunits;
     int frame_complete, done_complete;
     int replay_copy;
+    int gpu_begun;                      /* remaster_live_gpu_begin ran for the picture being made and its compose has not finished it */
     ring_correction native_correction[4];
     unsigned frames, want_frame;
     int w, h;
@@ -481,7 +485,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         t->line_order = 1;
         for (int pass = any_bright ? 0 : 1; pass < 2; pass++) {
             if (pass == 0 ? !do2 : !do3) continue;
-            if (t->stroke_z) memset(t->stroke_z + off, 0, px * sizeof *t->stroke_z);
+            if (t->stroke_z && !g_record_only) memset(t->stroke_z + off, 0, px * sizeof *t->stroke_z);
             uint32_t *c0 = t->color; float *z0 = t->inv_z;
             if (pass == 0) { t->color = t->line_strong; t->inv_z = t->line_tmp_z; t->line_ref_z = z0; }
             else { t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_decal = 0; }   /* the ordinary pass has no slope allowance */
@@ -517,7 +521,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             t->color = c0; t->inv_z = z0;
         }
         t->line_bias = 0.0; t->line_slope = 0.0; t->line_ref_z = NULL; t->line_order = 0; t->line_decal = 0;
-        if (!any_bright && do3) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
+        if (!any_bright && do3 && !g_record_only) memcpy(t->line_strong + off, t->color + off, px * 4);   /* no whole lines: equal to the final picture, so nothing is taken from it */
     }
     if (timing) timing[3] += now_ms() - tq3;
     if (!wide && do3) {                         /* nothing outside the game's clip window */
@@ -773,14 +777,9 @@ static void replace_part(void *arg, int part)
     memcpy(j->kept[part], kept_hist, sizeof kept_hist);
 }
 
-int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
-                          const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask, int wide_w, uint32_t *wide_out)
+/* Whether the scene owns its background as well as its surfaces (a complete reconstruction: the sky and ground bands can be rebuilt from the recorded state). */
+static int scene_is_complete(const remaster_live *r)
 {
-    if (!r || !r->have_done || n < 1 || !src || !tag || !dac || !dst) return 0;
-    const int w = 320 * n, h = 200 * n;
-    /* A wide picture (wide_w > w) is drawn once, on a canvas wide_w across with the game's own picture xoff pixels in: the composite
-     * reads its centre, and the margins and the centre together are the wide picture (wide_out). */
-    const int tw = wide_w > w && mask && rgb && wide_out ? wide_w : w, xoff = (tw - w) / 2, wide = tw > w;
     int complete = r->done_complete && r->done_have_band && !getenv("F117_REMASTER_NATIVE_FOOTPRINT");
     if (complete) {
         band_state background;
@@ -789,6 +788,68 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         complete = band_state_load(r->done_band, BAND_REC_BASE, &background) &&
             !band_exact(&background, &exact) && !band_fine(&background, &exact, &fine) && fine.n > 0;
     }
+    return complete;
+}
+
+/* The GPU compositor's inputs from the scene alone (not the game's picture, tags or palette): the scene's raster calls are recorded by running its drawing with the per-thread
+ * hook set to skip the CPU's fill, and the window and flags are filled in. The drawing never touches the target's buffers while recording, so a stand-in target serves. 0 when
+ * recording failed. palette receives the 256 colours the AND, OR and stipple fills read (the current palette). */
+static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h, int tw, int xoff, int complete, gpu_compose_in *gin, uint32_t *palette)
+{
+    static uint8_t stand_in[64];
+    remaster_target t;
+    memset(&t, 0, sizeof t);
+    t.w = tw; t.h = h;
+    t.color = (uint32_t *)stand_in; t.inv_z = (float *)stand_in; t.index = (uint16_t *)stand_in; t.owner = (uint32_t *)stand_in;
+    t.line_strong = (uint32_t *)stand_in; t.line_tmp_z = (float *)stand_in;
+    t.stroke_z = (float *)stand_in; t.stroke_aux_x = (float *)stand_in; t.stroke_aux_y = (float *)stand_in; t.stroke_owner = (uint32_t *)stand_in;
+    t.inv_depth_scale = 1.0;
+    scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, 1, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+    sj.timing = NULL; sj.row_tile = 0;
+    g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+    run_parts(scene_rows_part, &sj, 1);
+    remaster_trace_hook = NULL; g_record_only = 0;
+    if (g_record_failed) return 0;
+    for (unsigned i = 0; i < 256; i++) palette[i] = dac_colour(m, i);
+    static uint8_t flags[256]; static int flags_done;
+    if (!flags_done) {
+        for (int g = 0; g < 256; g++)
+            flags[g] = (uint8_t)((is_scene_tag((uint8_t)g) ? 1 : 0) | ((g == DT_OUTLINE_FINE || g == DT_OUTLINE_COARSE) ? 2 : 0) | (is_span_tag((uint8_t)g) ? 4 : 0));
+        flags_done = 1;
+    }
+    memset(gin, 0, sizeof *gin);
+    gin->recs = g_trace_recs; gin->nrec = (uint32_t)g_trace_n; gin->palette = palette;
+    gin->w = w; gin->h = h; gin->tw = tw; gin->xoff = xoff;
+    gin->x0 = (int)(r->done_window[0] * n); gin->x1 = (int)((r->done_window[2] + 1) * n);
+    gin->y0 = (int)(r->done_window[1] * n); gin->y1 = (int)((r->done_window[3] + 1) * n);
+    gin->complete = complete; gin->tagflags = flags;
+    return 1;
+}
+
+/* Starts the GPU compositor's drawing of the picture about to be made from this scene, before the game's own picture exists (that is made on the CPU meanwhile): the compose that
+ * follows finishes it. 0 when there is no GPU compositor, the picture is not wide, or the scene cannot be handled. */
+int remaster_live_gpu_begin(remaster_live *r, const machine_t *m, int n, int wide_w)
+{
+    if (!g_gpu_begin_fn || !g_gpu_finish_fn || !r || !r->have_done || n < 1) return 0;
+    const int w = 320 * n, h = 200 * n;
+    r->gpu_begun = 0;
+    if (!(wide_w > w)) return 0;
+    uint32_t palette[256];
+    gpu_compose_in gin;
+    if (!gpu_prepare(r, m, n, w, h, wide_w, (wide_w - w) / 2, scene_is_complete(r), &gin, palette)) return 0;
+    r->gpu_begun = g_gpu_begin_fn(&gin);
+    return r->gpu_begun;
+}
+
+int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
+                          const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask, int wide_w, uint32_t *wide_out)
+{
+    if (!r || !r->have_done || n < 1 || !src || !tag || !dac || !dst) return 0;
+    const int w = 320 * n, h = 200 * n;
+    /* A wide picture (wide_w > w) is drawn once, on a canvas wide_w across with the game's own picture xoff pixels in: the composite
+     * reads its centre, and the margins and the centre together are the wide picture (wide_out). */
+    const int tw = wide_w > w && mask && rgb && wide_out ? wide_w : w, xoff = (tw - w) / 2, wide = tw > w;
+    int complete = scene_is_complete(r);
     remaster_target t;
     t.w = tw; t.h = h;
     /* The buffers are kept between pictures (grown, never freed): allocating and freeing about 13 MB every picture made the
@@ -819,38 +880,28 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     const int parts = g_par ? g_par_parts : 1;
     t.y_lo = t.y_hi = 0;
     uint32_t *gpu_check = NULL;                  /* F117_GPU_COMPOSE_CHECK: the GPU's wide picture, kept to compare with the CPU's */
-    if (g_gpu_fn && wide) {                      /* the GPU compositor (gpu_compose.h): the same raster calls, recorded and not drawn here */
+    if (g_gpu_fn && wide) {                      /* the GPU compositor (gpu_compose.h): the scene's raster calls, recorded and not drawn here */
         static int check = -1;
         if (check < 0) check = getenv("F117_GPU_COMPOSE_CHECK") != NULL;
-        scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
-        sj.timing = NULL; sj.row_tile = 0;
-        const double gt0 = timed ? now_ms() : 0.0;
-        g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
-        run_parts(scene_rows_part, &sj, 1);
-        remaster_trace_hook = NULL; g_record_only = 0;
-        const double gt1 = timed ? now_ms() : 0.0;
-        uint32_t palette[256];
-        for (unsigned i = 0; i < 256; i++) palette[i] = dac_colour(m, i);
-        static uint8_t flags[256]; static int flags_done;
-        if (!flags_done) {
-            for (int g = 0; g < 256; g++)
-                flags[g] = (uint8_t)((is_scene_tag((uint8_t)g) ? 1 : 0) | ((g == DT_OUTLINE_FINE || g == DT_OUTLINE_COARSE) ? 2 : 0) | (is_span_tag((uint8_t)g) ? 4 : 0));
-            flags_done = 1;
-        }
-        gpu_compose_in gin;
-        memset(&gin, 0, sizeof gin);
-        gin.recs = g_trace_recs; gin.nrec = (uint32_t)g_trace_n; gin.palette = palette;
-        gin.w = w; gin.h = h; gin.tw = tw; gin.xoff = xoff;
-        gin.x0 = (int)(r->done_window[0] * n); gin.x1 = (int)((r->done_window[2] + 1) * n);
-        gin.y0 = (int)(r->done_window[1] * n); gin.y1 = (int)((r->done_window[3] + 1) * n);
-        gin.complete = complete; gin.src = src; gin.tag = tag; gin.dac = dac; gin.tagflags = flags;
         uint32_t *target = wide_out;
         if (check) { gpu_check = (uint32_t *)malloc((size_t)tw * h * 4); target = gpu_check; }
-        const int gpu_ok = !g_record_failed && target && g_gpu_fn(&gin, target);
+        const double gt0 = timed ? now_ms() : 0.0;
+        int gpu_ok = 0;
+        if (target) {
+            if (r->gpu_begun) {                  /* started before the game's picture was made: finish it with that picture */
+                r->gpu_begun = 0;
+                gpu_ok = g_gpu_finish_fn && g_gpu_finish_fn(src, tag, dac, target);
+            }
+            if (!gpu_ok) {                       /* not begun (or its finish declined): record, draw and finish in one go */
+                uint32_t palette[256];
+                gpu_compose_in gin;
+                if (gpu_prepare(r, m, n, w, h, tw, xoff, complete, &gin, palette)) { gin.src = src; gin.tag = tag; gin.dac = dac; gpu_ok = g_gpu_fn(&gin, target); }
+            }
+        }
         if (timed) {
-            static double a_rec, a_run; static unsigned an;
-            a_rec += gt1 - gt0; a_run += now_ms() - gt1; an++;
-            if (an % 120 == 0) fprintf(stderr, "[gpu-compose] mean of %u: recording the calls %.2f ms, the GPU run (setup, compute, readback) %.2f ms\n", an, a_rec / an, a_run / an);
+            static double a_run; static unsigned an;
+            a_run += now_ms() - gt0; an++;
+            if (an % 120 == 0) fprintf(stderr, "[gpu-compose] mean of %u: the compose's GPU part %.2f ms\n", an, a_run / an);
         }
         if (gpu_ok) {
             if (!check) {
