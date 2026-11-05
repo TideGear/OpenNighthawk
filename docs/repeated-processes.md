@@ -721,6 +721,9 @@ regeneration/raster p99 below 5 ms, with occasional roughly 100 ms upload
 stalls; uncapped numbers do not prove refresh pacing. Evidence:
 `D:/f117-gate/present-v2/band-finish`, `D:/f117-gate/present-v2/hud2`.
 
+This check is for the Enhanced presentation (`--present interp`/`rerun`). The Remastered renderer is measured by the work per frame (`cost_ns` in `--present-log`) over the runway replay, with fixed-cadence
+picture checksums and the end-of-run machine hash as guards: [gpu-compositor.md](gpu-compositor.md), last section.
+
 ## Phase 2 proofs (matched routines)
 
 **Process.** Each proof uses its own `D:/f117-gate/p2-*` directory and
