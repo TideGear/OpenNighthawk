@@ -50,72 +50,84 @@ gates keep fixes off; recorded sessions restore their recorded fix set
 original aircraft-identification quiz. It is off by default and is enabled
 only when named explicitly; `--fix all` does not enable it.
 
+**On top of that parity, OpenNighthawk adds** (none of it changes the game's
+logic unless it says it is a fix; "optional" means off until you ask for it):
+
+- **On by default**
+  - *Real-time pace*: fifteen simulation steps a second whatever the PC's speed
+    (the D1REAL fix), so the world no longer runs faster on a fast machine.
+  - *Thirty-three switchable fixes* for the original's bugs (missiles, speech
+    hangs, supply-drop credit, secret airstrips, the table overrun). `--fixes
+    original` plays the shipped game, bugs included. Saves remember their fix
+    set and warn once if you switch.
+  - *Works from your GOG or Steam install* without ever writing to it; saves
+    live in `%APPDATA%\F117Recomp`.
+  - *Every flight is recorded* (input log plus the starting save) and can be
+    watched again with `--watch`, with seek, speed and jump keys.
+  - *An in-game settings menu* (the ` key) with a description for every
+    option, changed values in blue, and a Keys tab.
+  - *Key remapping* (all 101 game keys) and *controller support* (dead zone,
+    inversion, fire buttons, any button sent as a key).
+  - *Sound*: AdLib through an OPL emulator, the PC speaker with smoothed
+    digitised speech, and Roland music through Munt using your own MT-32 ROMs
+    (or Windows MIDI).
+  - *Screenshots* with Tab, a settings file (`f117a.ini`), and a windowed or
+    fullscreen picture at 4:3 or with square pixels.
+- **Optional pictures** (experimental; the original picture stays the verified
+  one)
+  - *Enhanced*: the same picture redrawn up to 4K, with in-between frames at
+    your display's refresh rate.
+  - *Remastered*: the 3-D view redrawn by this project's own renderer, with a
+    widescreen view, depth-correct drawing, scenery drawn far past the
+    original's reach (Draw distance, Terrain dots, Far object order) and
+    smooth motion between the game's steps.
+  - *GPU compositor and GPU present path* for 4K Remastered on Windows with a
+    Direct3D 12 GPU (`F117_GPU_COMPOSE=1`, `F117_GPU_PRESENT=1`).
+  - *CRT look* (scanlines, phosphor mask, glow).
+- **Optional sound**
+  - *Hybrid sound*: Roland music with AdLib effects together, or the Macintosh
+    version's recordings in place of the DOS sounds, from files you supply.
+  - *A fixed Munt seed* so the same input renders the same audio.
+- **Optional accessibility and play options**
+  - *Subtitles* for the radio calls and a *colour-vision aid* for the HUD.
+  - *`--fix QUIZ`* brings back the aircraft-identification quiz on GOG's copy.
+  - *A 386DX/33 timing profile* to play at a 1991 PC's pace.
+
+## Quick start
+
+1. **Own the game.** Buy F-117A on [Steam](https://store.steampowered.com/app/328920/) or
+   [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20) and install it
+   ([why](#you-need-your-own-copy-of-the-game)).
+2. **Build.** Windows with Visual Studio 2026 Build Tools, CMake, Ninja, Git and Python 3.12:
+
+   ```powershell
+   git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
+   Set-Location OpenNighthawk
+   py -m pip install capstone Pillow numpy
+   py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
+   ```
+
+   Details and what that command does: [Building](#building).
+3. **Play.** `build\f117a.exe --data "C:\GOG Games\F-117A"`. Answer SETUP's questions as in 1991
+   (2 for AdLib). Press the ` key for the settings menu. All options: [Running](#running).
+
 ## Status
 
-Progress: **P1 100.00%, P2 96.93%, P3 94.03%, All 97.55%**. Work commit
-titles start with the current figures (`py tools/progress.py --title`);
-[docs/progress.md](docs/progress.md) says what they measure and
-[docs/roadmap.md](docs/roadmap.md) what is done and what is left.
+Progress: **P1 100.00%, P2 96.93%, P3 94.03%, All 97.55%**. Work commit titles start with the
+current figures (`py tools/progress.py --title`); [docs/progress.md](docs/progress.md) says what
+they measure and [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
 
-**The Enhanced and Remastered presentations are experimental** (see [Presentation](#presentation)); the original picture is the verified one.
-
-- **The whole game loop runs**: SETUP, the MicroProse logo, the intro, the
-  front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
-  the debriefing (END) and back to the front end. All three sound drivers
-  work: AdLib (music and digitised speech through an OPL emulator), the PC
-  speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
-  MIDI; exact rendered Roland parity is still open).
-- **Translated:** all 17 code files and the LZEXE decompressor, 89,443
-  instruction starts, 96% of the bytes of the code areas; the rest is
-  strings, tables and variables. On the scripted sessions no game
-  instruction is interpreted under the default timing profile; only the
-  emulated BIOS's own stubs are.
-- **Named and matched:** 1,646 routines have named, explained C equivalents
-  proved against the original's instructions. They run 160,015 of the
-  163,907 instruction bytes the scripted routes execute; with 2,631 bytes of
-  reviewed code that stays original by design, that is the gameplay score,
-  99.23%. Across all 17 code files, named code covers 191,937 of 209,298
-  creditable bytes (91.71%). Reviewed references now account for 47,734 of
-  47,952 previous-scope bytes outside routes.
-- **Parity, measured:** 63 scripted routes, run as 62 sessions, end in
-  identical state under the reference interpreter and the recompiled code -
-  all of memory, the registers and every byte sent to the sound card, the
-  palette, MIDI and the disk - checked every 50 million clocks along the
-  way. They cover boot to flight, full sorties through the debriefing, all
-  three sound drivers, all nine theatres, every primary objective type, the
-  pilot roster and the career to retirement
-  ([every route](tools/routes/README.md)).
-  Every translated instruction, reached or not, is also compared from random
-  machine states (0 differences), the translator is checked against 8088 and
-  80286 silicon test vectors, and planted defects in the generated code are
-  caught.
-- **The emulated PC is held to other machines:** GOG's DOSBox (the machine
-  the game is sold on; the machine probe, the intro's pictures and music),
-  DOSBox-X, and 86Box running a 386DX/33 with MS-DOS 5.00. The 386DX/33
-  timing profile plays at a period PC's pace.
-- **Steam's release works too:** its game files are byte-identical to GOG's
-  (`tools/verify_install.py`), and the app finds its install.
-- **Optional sharper and smoother pictures:** finer polygon geometry and HUD
-  strokes up to 4K, with the original bitmap text and artwork kept; see
-  [Presentation](#presentation).
-- **What is left:** matching the remaining 1,261 route-executed bytes (most
-  of them in the sound drivers) and the code no route runs, reviewed entries
-  for the 218 bytes outside the routes that have none (`py tools/progress.py`), and a closing review
-  of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code));
-  the re-release features below. Not scored: play by a person at the
-  keyboard, rendered Roland output against an independent reference and
-  listening checks, refresh rates above 60 Hz and other hardware
-  ([Phase 4](docs/roadmap.md#phase-4---checked-by-people-and-independent-references)).
-- **Re-release features** (partly built;
-  [roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)):
-  two settings, *Presentation* (Original, Enhanced, or a widescreen
-  Remastered without the original's jitter) and *Fixes* (Original,
-  Recommended with credited fan-community patches, or Custom); an in-game
-  settings menu, controllers and HOTAS, a hybrid of MT-32 music with AdLib
-  effects, flight replays and accessibility options. Built so far:
-  `--presentation original|enhanced|remastered` (Remastered is experimental), `--fixes original|recommended`, the in-game settings menu, a first controller and key-remapping layer, hybrid sound with Macintosh recordings you supply, and
-  saves that remember their fix set (below). The game's logic is the same
-  under every presentation.
+| Area | Where it stands |
+|---|---|
+| **The game loop** | All of it runs: SETUP, the MicroProse logo, the intro, the front end (roster, pilot form, briefing, arming, hangar), takeoff, flight, the debriefing (END) and back. All three sound drivers work: AdLib (music and digitised speech through an OPL emulator), the PC speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows MIDI; exact rendered Roland parity is still open). |
+| **Translated** | All 17 code files and the LZEXE decompressor: 89,443 instruction starts, 96% of the bytes of the code areas (the rest is strings, tables and variables). On the scripted sessions no game instruction is interpreted under the default timing profile; only the emulated BIOS's own stubs are. |
+| **Named and matched** | 1,646 routines have named, explained C equivalents proved against the original's instructions. They run 160,015 of the 163,907 instruction bytes the scripted routes execute; with 2,631 bytes of reviewed code that stays original by design, that is the **gameplay score, 99.23%**. Across all 17 code files, named code covers 191,937 of 209,298 creditable bytes (91.71%). Reviewed references account for 47,734 of 47,952 previous-scope bytes outside routes. |
+| **Parity, measured** | 63 scripted routes, run as 62 sessions, end in identical state under the reference interpreter and the recompiled code (all of memory, the registers and every byte sent to the sound card, the palette, MIDI and the disk), checked every 50 million clocks. They cover boot to flight, full sorties through the debriefing, all three sound drivers, all nine theatres, every primary objective type, the pilot roster and the career to retirement ([every route](tools/routes/README.md)). Every translated instruction, reached or not, is also compared from random machine states (0 differences), the translator is checked against 8088 and 80286 silicon test vectors, and planted defects in the generated code are caught. |
+| **Other machines** | The emulated PC is held to GOG's DOSBox (the machine the game is sold on: the machine probe, the intro's pictures and music), DOSBox-X, and 86Box running a 386DX/33 with MS-DOS 5.00. The 386DX/33 timing profile plays at a period PC's pace. |
+| **Releases** | Steam's game files are byte-identical to GOG's (`tools/verify_install.py`), and the app finds its install. |
+| **Pictures** | Optional sharper and smoother pictures (finer polygon geometry and HUD strokes up to 4K, original bitmap text and artwork kept) are **experimental**; the original picture is the verified one. See [Presentation](#presentation). |
+| **What is left** | The remaining 1,261 route-executed unmatched bytes (most in the sound drivers) and the code no route runs; reviewed entries for the 218 bytes outside the routes that have none (`py tools/progress.py`); a closing review of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code)). Not scored: play by a person at the keyboard, rendered Roland output against an independent reference and listening checks, refresh rates above 60 Hz and other hardware ([Phase 4](docs/roadmap.md#phase-4---checked-by-people-and-independent-references)). |
+| **Re-release features** | Partly built: see the list above and the [roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable). The game's logic is the same under every presentation. |
 
 How the parity claim is built and checked:
 [docs/architecture.md](docs/architecture.md). The
@@ -169,8 +181,7 @@ picture and sound comparators (`tools/pc_parity.py`). Generated C, coverage
 and saves go in the work directory (default `%USERPROFILE%\f117-recomp-local`).
 On first build, `build.cmd` creates a `build` junction to a local directory
 under `%USERPROFILE%\f117-recomp-local`, with a separate CMake cache for each
-checkout. No generated files or game assets belong in the source tree. This
-sequence was last verified from a fresh public clone on 4 October 2026.
+checkout. No generated files or game assets belong in the source tree.
 Translation counts depend on accumulated coverage, so a first build can
 translate slightly fewer instruction starts than the figures above.
 
@@ -193,6 +204,8 @@ The game asks its original SETUP questions at each start (joystick, sound
 card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `roland`
 set (and, for Munt, `mt32-roms`).
 
+**Game and fixes**
+
 | Option | Meaning |
 |---|---|
 | `--data DIR` | the game's folder (found automatically for common GOG/Steam paths) |
@@ -201,6 +214,14 @@ set (and, for Munt, `mt32-roms`).
 | `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` models a 1991 386DX/33 (original flight typically 5-9 fps with fixes off) |
 | `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (60,000,000 in `f117a`; 9,000,000 in `f117run` and route checks, GOG DOSBox's `cycles=9000`). Default D1REAL separately targets fifteen simulation steps per second |
 | `--sim-hz 8\|15` | the D1REAL simulation rate (below): 15 (default) or the earlier 8; `--sim-hz 8 --ips 20000000` is the previous play mode. Replays restore their recorded rate; logs without one use 8 |
+| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-three normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
+| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-three normal-play fixes, `none` clears the set. Normal play starts with all thirty-three enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
+| `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
+
+**Sound**
+
+| Option | Meaning |
+|---|---|
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer (General MIDI: wrong instruments), or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
@@ -212,8 +233,13 @@ set (and, for Munt, `mt32-roms`).
 | `--mac-sounds DIR` | use the Macintosh recordings (`NNN.wav`) in DIR where the Mac version has one |
 | `--music-source`, `--sound-source default\|mac\|dos` | which version's music or effects play: the best available (default), the Macintosh recordings, or the DOS drivers |
 | `--mt32-seed N` | a fixed random seed for Munt, so the same input renders the same audio (needs `--mt32-control` and `--mt32-pcm`) |
+
+**Picture**
+
+| Option | Meaning |
+|---|---|
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
-| `--presentation original\|enhanced\|remastered` | the picture as a single choice: `original` is the exact 320x200 picture, sharp, at 4:3 (the default); `enhanced` draws in-between frames at the display's refresh rate, as fine as the display's height allows at 4:3 (`--present rerun` with a matching `--present-scale`). A later `--present` option refines it. `remastered` redraws the 3-D view natively with a wide view, far scenery and smooth motion between the game's steps ([Presentation](#presentation)); it needs the Remastered renderer and is experimental. |
+| `--presentation original\|enhanced\|remastered` | the picture as a single choice: `original` is the exact 320x200 picture, sharp, at 4:3 (the default); `enhanced` draws in-between frames at the display's refresh rate, as fine as the display's height allows at 4:3 (`--present rerun` with a matching `--present-scale`). A later `--present` option refines it. `remastered` redraws the 3-D view natively with a wide view, far scenery and smooth motion between the game's steps ([Presentation](#presentation)); it needs the Remastered renderer. |
 | `--present scan\|replay\|interp\|rerun` | the picture in flight; see [Presentation](#presentation) |
 | `--present-scale N` | with `replay`, `interp` or `rerun`: the picture N times finer, 1-16 |
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
@@ -223,15 +249,17 @@ set (and, for Munt, `mt32-roms`).
 | `--dot-distance original\|near\|far\|maximum` | Remastered: how far the small dark dots on plain ground are drawn (default `original`); lit points follow `--draw-distance` |
 | `--pick-order exact\|fast` | Remastered: the order far objects are sorted in. `exact` (default) is the order every picture comparison was made against; `fast` is cheaper by about 0.8 ms a frame at Maximum and lets objects tied on distance swap places, changing a few edge pixels in some frames |
 | `--crt`, `--crt-mask`, `--crt-glow` | a CRT look: dark scanlines, a coloured phosphor mask, and a soft glow around bright parts (settings menu: Video) |
-| `--colourblind off\|protanopia\|deuteranopia\|tritanopia` | a colour-vision aid for the HUD colours |
-| `--subtitles` | show radio calls as text so they can be read as well as heard |
-| `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
-| `--fixes original\|recommended` | the fix set as a single choice: `original` plays the shipped game with every fix off; `recommended` enables the thirty-three normal-play fixes (the default). Later `--fix ID` options make a custom set. The saves remember the set that last wrote them (a `.fixset` file beside the save folder), and the app warns once when a session switches between the original game and a fixed set on the same saves |
-| `--fix ID`, `--list-fixes` | enable a fix; `all` enables the thirty-three normal-play fixes, `none` clears the set. Normal play starts with all thirty-three enabled; `--fix none --fix D5` selects only D5. `QUIZ` requires its own explicit selection. Listing prints the current selection |
+
+**Recording, replay, controls and accessibility**
+
+| Option | Meaning |
+|---|---|
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
+| `--watch latest\|SESSION`, `--seek SECONDS`, `--replay-fixes log\|cli` | play a recorded session again (from the sessions folder beside the save folder), starting this many seconds in; use the fix set recorded in the log, or this command line's |
 | `--remap A:B` | swap two keys, in SDL key names (`Q:W`, `Left Shift`, `F5`, `Keypad 4`); repeatable. The Keys tab in the settings menu does the same |
 | `--pad-deadzone N`, `--pad-fire1 N`, `--pad-fire2 N`, `--pad-invert-x`, `--pad-invert-y`, `--pad-keys B:KEY,...` | controller options: the stick dead zone (0 to 50), the fire buttons, axis inversion, and extra buttons sent as keys (for example `2:G,3:Left Shift`) |
-| `--watch latest\|SESSION`, `--seek SECONDS`, `--replay-fixes log\|cli` | play a recorded session again (from the sessions folder beside the save folder), starting this many seconds in; use the fix set recorded in the log, or this command line's |
+| `--colourblind off\|protanopia\|deuteranopia\|tritanopia` | a colour-vision aid for the HUD colours |
+| `--subtitles` | show radio calls as text so they can be read as well as heard |
 
 Any option the app does not recognise (for example `--help`) prints a usage
 summary. Diagnostic options not in the table: `--log FILE` (the machine log, ending with the final state hash),
@@ -294,10 +322,9 @@ command line still wins (any Roland option there replaces all of the file's).
 ### Presentation
 
 **Enhanced and Remastered are experimental.** *Original* (`--presentation original`) is the verified picture, exactly what the
-emulated VGA scans out. *Enhanced* (a finer, smoother redraw of the same picture) and *Remastered* (the 3-D view redrawn at full
-resolution, with a widescreen view that shows more at the sides) are still being developed: expect objects that appear or vanish at the
-edges of the view, depth and drawing glitches, and, unless you raise Draw distance (Near, Far or Maximum, which costs picture rate), a draw distance no longer than the original's. They never change the game itself, and
-reports of what looks wrong are welcome.
+emulated VGA scans out. Expect objects that appear or vanish at the edges of the view, depth and drawing glitches, and, unless you
+raise Draw distance (Near, Far or Maximum, which costs picture rate), a draw distance no longer than the original's. They never
+change the game itself, and reports of what looks wrong are welcome.
 
 By default (`--present scan`) you see exactly what the emulated VGA scanned
 out, at 320x200. The other modes are optional and never change the game
@@ -360,40 +387,11 @@ missing ROMs fail explicitly.
 
 ### MT-32 ROMs
 
-You supply two ROM files from a Roland MT-32 (or CM-32L): the **control ROM**
-(the unit's firmware) and the **PCM ROM** (its sampled sounds). Put them in
-one folder and point `mt32-roms` at it. The files are recognised by their
-SHA-1 (Munt's own table), so their names do not matter; with several in the
-folder, the first match in this order is used. F-117A (1991) wants the
-first-generation ("old") MT-32 with control ROM 1.0x. Rendering
-this game's own MIDI (a run from boot into flight) agrees: control ROMs 1.04
-and 1.07 give bit-identical output, while 2.04 plays the music much the same
-but the in-flight effects about 5 dB quieter and 5-7 dB duller above 3 kHz.
-Any 1.0x ROM is right; 2.0x and the CM-32L are accepted as fallbacks.
-
-| Control ROM | Size | SHA-1 |
-|---|---|---|
-| MT-32 1.07 | 64 KB | `b083518fffb7f66b03c23b7eb4f868e62dc5a987` |
-| MT-32 1.06 | 64 KB | `a553481f4e2794c10cfe597fef154eef0d8257de` |
-| MT-32 1.05 | 64 KB | `e17a3a6d265bf1fa150312061134293d2b58288c` |
-| MT-32 1.04 | 64 KB | `5a5cb5a77d7d55ee69657c2f870416daed52dea7` |
-| MT-32 BlueRidge | 64 KB | `7b8c2a5ddb42fd0732e2f22b3340dcf5360edf92` |
-| MT-32 2.07 | 128 KB | `47b52adefedaec475c925e54340e37673c11707c` |
-| MT-32 2.06 | 128 KB | `2869cf4c235d671668cfcb62415e2ce8323ad4ed` |
-| MT-32 2.04 | 128 KB | `2c16432b6c73dd2a3947cba950a0f4c19d6180eb` |
-| MT-32 2.03 | 128 KB | `5837064c9df4741a55f7c4d8787ac158dff2d3ce` |
-| CM-32L 1.02 | 64 KB | `a439fbb390da38cada95a7cbb1d6ca199cd66ef8` |
-| CM-32L 1.00 | 64 KB | `73683d585cd6948cc19547942ca0e14a0319456d` |
-| CM-32LN 1.00 | 64 KB | `dc1c5b1b90a4646d00f7daf3679733c7badc7077` |
-
-| PCM ROM | Size | SHA-1 | Goes with |
-|---|---|---|---|
-| MT-32 | 512 KB | `f6b1eebc4b2d200ec6d3d21d51325d5b48c60252` | every MT-32 control ROM |
-| CM-32L | 1 MB | `289cc298ad532b702461bfc738009d9ebe8025ea` | the CM-32L and CM-32LN control ROMs |
-
-Each ROM must be a single whole file; the split halves some dumps come as
-(`..._a` / `..._b`, `..._l` / `..._h`) are not combined. On Windows,
-`certutil -hashfile FILE SHA1` shows a file's SHA-1.
+You supply two ROM files from a Roland MT-32 (or CM-32L): the **control ROM** (the unit's firmware) and the
+**PCM ROM** (its sampled sounds). Put them in one folder and point `mt32-roms` at it. The files are recognised by
+their SHA-1, so their names do not matter. F-117A (1991) wants the first-generation MT-32 with a 1.0x control ROM;
+2.0x and the CM-32L are accepted as fallbacks. The accepted ROMs, their SHA-1 values and how they were compared
+are in [docs/mt32-roms.md](docs/mt32-roms.md).
 
 ## Verifying parity yourself
 
@@ -468,7 +466,7 @@ Every process the project repeats, and what it costs, is listed in
 | `third_party/` | DOSBox DBOPL and Nuked OPL3, the two OPL synthesizers |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |
 | `tests/` | silicon-vector harnesses for the interpreter and for generated code; lockstep and unit tests |
-| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [progress scoring](docs/progress.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md), [other versions](docs/other-versions.md) (Macintosh, Amiga) |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [progress scoring](docs/progress.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md), [other versions](docs/other-versions.md) (Macintosh, Amiga), [MT-32 ROMs](docs/mt32-roms.md) |
 
 ## Licence
 
