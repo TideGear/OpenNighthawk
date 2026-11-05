@@ -90,7 +90,7 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
   - *A fixed Munt seed* so the same input renders the same audio.
 - **Optional accessibility and play options**
   - *Subtitles* for the radio calls and a *colour-vision aid* for the HUD.
-  - *`--fix QUIZ`* brings back the aircraft-identification quiz on GOG's copy.
+  - *`--fix QUIZ`* brings back the aircraft-identification quiz on the GOG and Steam releases (both ship the same START.EXE, with the quiz switched off).
   - *A 386DX/33 timing profile* to play at a 1991 PC's pace.
 
 ## Quick start

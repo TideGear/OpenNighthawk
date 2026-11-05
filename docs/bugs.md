@@ -1088,7 +1088,7 @@ GOG's START.EXE has the aircraft-identification quiz (the copy protection)
 disabled: the three bytes at `0x0001D` are NOPs where the retail copy has
 a near call to `0x0703`. This recompilation translates whichever
 START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
-The option **`--fix QUIZ`** restores it on GOG's copy (an override at START
+The option **`--fix QUIZ`** restores it on GOG's and Steam's copies (their START.EXE is byte-identical) (an override at START
 `0x001D` pushes `0x0020` and runs the quiz routine at `0x0703`, as the retail
 `call` does). It is an option, not a repair (owner, 20 October 2026:
 functional but off by default): **off unless named, and neither `--fix all`
