@@ -126,6 +126,7 @@ struct remaster_live {
     unsigned nunits;
     int frame_complete, done_complete;
     int replay_copy;
+    size_t src_native_prims, src_native_objs;   /* this frame: primitives and objects placed natively (F117_SRC_SPLIT) */
     int gpu_begun;                      /* remaster_live_gpu_begin ran for the picture being made and its compose has not finished it */
     ring_correction native_correction[4];
     unsigned frames, want_frame;
@@ -1622,6 +1623,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     }
     if (added < 0) { r->refused++; return 0; }
     r->added++; r->native_drawn++;
+    r->src_native_prims += target->n - first; r->src_native_objs++;
     {   /* F117_FAR_WHY (diagnostic): what the native path made of the models the walk comparison misses */
         static int wl = -1; static unsigned left = 120;
         if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
@@ -1866,6 +1868,16 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         {   static int diag = -1;
             if (diag < 0) diag = getenv("F117_HUD_ORDER") != NULL;
             if (diag) fprintf(stderr, "[hud-order] clock %llu: %zu primitives, HUD pass after %ld\n", (unsigned long long)m->cpu.icount, r->frame.n, r->hud_at);
+        }
+        {   /* F117_SRC_SPLIT=1 (diagnostic, the render copy): how much of the completed frame was placed natively and how much the game drew */
+            static int on = -1; static unsigned long long fr_total, fr_native, objs; static unsigned calls;
+            if (on < 0) on = getenv("F117_SRC_SPLIT") != NULL;
+            if (on && r->replay_copy && r->frame.n > 50) {
+                fr_total += r->frame.n; fr_native += r->src_native_prims; objs += r->src_native_objs;
+                if (++calls % 120 == 1) fprintf(stderr, "[src-split] %u copy frames: %.1f%% of their primitives placed natively (%.0f objects a frame, %.0f primitives of %.0f)\n", calls, 100.0 * (double)fr_native / (double)fr_total,
+                                                (double)objs / calls, (double)fr_native / calls, (double)fr_total / calls);
+            }
+            r->src_native_prims = 0; r->src_native_objs = 0;
         }
         r->done_hud_at = r->hud_at; r->hud_at = -1;
         {   /* F117_FAR_WHY (diagnostic): the frame being completed, and how many primitives of models 0, 3 and 6 it holds */
