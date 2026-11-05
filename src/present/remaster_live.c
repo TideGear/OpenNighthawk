@@ -821,8 +821,10 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
         static int trace_done; const char *trace_spec = trace_done ? NULL : getenv("F117_GPU_DUMP");
         int tracing = 0;
         if (trace_spec && parts == 1 && r->done.n > 50) {
-            const char *comma = strchr(trace_spec, ',');
-            if (!comma || m->cpu.icount >= strtoull(comma + 1, NULL, 0)) { tracing = 1; g_trace_n = 0; remaster_trace_hook = gpu_trace_hook; }
+            const char *comma = strchr(trace_spec, ',');                 /* FILE,FROM[,MIN]: from that clock, with at least MIN primitives (a render-copy frame with far scenery) */
+            const char *comma2 = comma ? strchr(comma + 1, ',') : NULL;
+            const size_t min_prims = comma2 ? (size_t)strtoull(comma2 + 1, NULL, 0) : 0;
+            if ((!comma || m->cpu.icount >= strtoull(comma + 1, NULL, 0)) && r->done.n >= min_prims) { tracing = 1; g_trace_n = 0; remaster_trace_hook = gpu_trace_hook; }
         }
         if (parts > 1) for (sj.stage = 1; sj.stage <= 3; sj.stage++) run_parts(scene_rows_part, &sj, parts);       /* a barrier between the stages */
         else run_parts(scene_rows_part, &sj, 1);
@@ -839,7 +841,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
                 fwrite(g_trace_recs, sizeof *g_trace_recs, g_trace_n, f);
                 fwrite(t.color, 4, (size_t)tw * h, f); fwrite(t.index, 2, (size_t)tw * h, f); fwrite(t.owner, 4, (size_t)tw * h, f);
                 fclose(f);
-                fprintf(stderr, "[gpu-dump] %s: %d x %d, %zu raster calls, clock %llu\n", path, tw, h, g_trace_n, (unsigned long long)m->cpu.icount);
+                fprintf(stderr, "[gpu-dump] %s: %d x %d, %zu raster calls from %zu primitives, clock %llu\n", path, tw, h, g_trace_n, r->done.n, (unsigned long long)m->cpu.icount);
             }
         }
     }

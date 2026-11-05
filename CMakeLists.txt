@@ -189,6 +189,14 @@ if(F117R_BUILD_APP)
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl)
     add_custom_target(gpu_shaders_bands ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl)
+    add_custom_target(gpu_shaders_polys ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil)
+    add_executable(gpu_polys tools/gpu_polys.c src/present/remaster_raster.c)
+    target_include_directories(gpu_polys PRIVATE src/present)
+    target_link_libraries(gpu_polys PRIVATE SDL3::SDL3)
+    add_dependencies(gpu_polys gpu_shaders_polys)
     add_executable(gpu_stage tools/gpu_stage.c src/present/remaster_raster.c)
     target_include_directories(gpu_stage PRIVATE src/present)
     target_link_libraries(gpu_stage PRIVATE SDL3::SDL3)
