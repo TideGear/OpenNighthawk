@@ -15,6 +15,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include "gpu_trace.h"
+
+/* A deep copy of a frame's primitives (the piece-2 blend check, below). */
+struct remaster_frame_copy {
+    remaster_prim *prim;
+    size_t n, cap;
+    int origin[2];
+};
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -1873,6 +1880,17 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 fprintf(stderr, "[why] frame completed at clock %llu: %zu primitives, %u of models 0, 3 and 6\n", (unsigned long long)m->cpu.icount, r->frame.n, c036);
             }
         }
+        {   /* F117_BLEND_CHECK: the live instance's completed steps, newest last, to find the ones the game's copy at t = 0 and t = 1 reproduces */
+            static int on = -1;
+            if (on < 0) on = getenv("F117_BLEND_CHECK") != NULL;
+            if (on && !r->replay_copy && r->frame.n > 0) {
+                extern remaster_frame_copy *g_live_ring[8]; extern unsigned long long g_live_ring_steps;
+                remaster_frame_copy *c = g_live_ring[g_live_ring_steps % 8];
+                if (!c) c = g_live_ring[g_live_ring_steps % 8] = remaster_frame_copy_new();
+                if (c->cap < r->frame.n) { remaster_prim *q = (remaster_prim *)realloc(c->prim, r->frame.n * sizeof *q); if (q) { c->prim = q; c->cap = r->frame.n; } }
+                if (c->cap >= r->frame.n) { memcpy(c->prim, r->frame.prim, r->frame.n * sizeof *c->prim); c->n = r->frame.n; c->origin[0] = r->origin[0]; c->origin[1] = r->origin[1]; g_live_ring_steps++; }
+            }
+        }
         {   /* F117_STEP_PAIR=1 (diagnostic, the live instance only): how well the primitives of one logic step pair with the previous step's, by index and by (model, kind, vertex count) */
             static int on = -1;
             if (on < 0) on = getenv("F117_STEP_PAIR") != NULL;
@@ -1941,12 +1959,6 @@ unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }
 
 /* ---- Piece 2: the blend check (F117_BLEND_CHECK=1, docs/gpu-compositor.md) ---- */
 
-struct remaster_frame_copy {
-    remaster_prim *prim;
-    size_t n, cap;
-    int origin[2];
-};
-
 remaster_frame_copy *remaster_frame_copy_new(void) { return (remaster_frame_copy *)calloc(1, sizeof(remaster_frame_copy)); }
 void remaster_frame_copy_free(remaster_frame_copy *c) { if (c) { free(c->prim); free(c); } }
 
@@ -1975,8 +1987,9 @@ static void pair_by_key(const remaster_frame_copy *x, const remaster_frame_copy 
 {
     /* For each primitive of x, the unused primitive of y with the same (model, kind, vertex count, colour word) whose first vertex is nearest on the screen: the first of several identical
      * ones (the windows of one building) is not necessarily the right one. F117_BLEND_FIRST=1 takes the first, as the step-pair diagnostic does. */
-    static int first = -1;
+    static int first = -1, face_key = -1;
     if (first < 0) first = getenv("F117_BLEND_FIRST") != NULL;
+    if (face_key < 0) face_key = getenv("F117_BLEND_NO_FACE") == NULL;
     unsigned char *used = (unsigned char *)calloc(y->n ? y->n : 1, 1);
     for (size_t i = 0; i < x->n; i++) {
         match[i] = -1;
@@ -1985,6 +1998,7 @@ static void pair_by_key(const remaster_frame_copy *x, const remaster_frame_copy 
         const double xa = blend_pos(&x->prim[i], 0), ya = blend_pos(&x->prim[i], 1);
         for (size_t j = 0; j < y->n; j++) {
             if (used[j] || y->prim[j].model != x->prim[i].model || y->prim[j].kind != x->prim[i].kind || y->prim[j].n != x->prim[i].n || y->prim[j].colour_word != x->prim[i].colour_word) continue;
+            if (face_key && y->prim[j].face != x->prim[i].face) continue;        /* the same face of the same model: F117_BLEND_NO_FACE=1 leaves it out */
             if (first) { bj = (int)j; break; }
             const double dx = blend_pos(&y->prim[j], 0) - xa, dy = blend_pos(&y->prim[j], 1) - ya, d = dx * dx + dy * dy;
             if (d < best) { best = d; bj = (int)j; }
@@ -2045,3 +2059,102 @@ void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_co
     }
     free(ab); free(aat);
 }
+
+/* The picture-space check: the scene the copy produced at t (r's completed frame) and the scene built by blending the copies at t = 0 and t = 1, each drawn by the same CPU scene renderer into
+ * the wide canvas, and compared pixel for pixel. Unpaired primitives of the first step are kept when t is under a half, those of the second added when it is not. */
+void remaster_blend_picture_check(remaster_live *r, const machine_t *m, int n, int tw, const remaster_frame_copy *a, const remaster_frame_copy *b, double t)
+{
+    if (!r || !r->have_done || !a->n || tw < 320 * n) return;
+    const int h = 200 * n, xoff = (tw - 320 * n) / 2;
+    const size_t px = (size_t)tw * h;
+    int *ab = (int *)malloc(a->n * sizeof *ab);
+    unsigned char *bused = (unsigned char *)calloc(b->n ? b->n : 1, 1);
+    remaster_frame bf; memset(&bf, 0, sizeof bf);
+    bf.prim = (remaster_prim *)malloc((a->n + b->n + 1) * sizeof *bf.prim);
+    uint32_t *col1 = (uint32_t *)malloc(px * 4), *col2 = (uint32_t *)malloc(px * 4);
+    if (!ab || !bused || !bf.prim || !col1 || !col2) { free(ab); free(bused); free(bf.prim); free(col1); free(col2); return; }
+    pair_by_key(a, b, ab);
+    for (size_t i = 0; i < a->n; i++) {
+        remaster_prim p = a->prim[i];
+        if (ab[i] >= 0) {
+            const remaster_prim *q = &b->prim[ab[i]];
+            bused[ab[i]] = 1;
+            for (int v = 0; v < p.n && v < q->n; v++) {
+                p.v[v].x = (int32_t)((double)p.v[v].x + t * ((double)q->v[v].x - p.v[v].x));
+                p.v[v].y = (int32_t)((double)p.v[v].y + t * ((double)q->v[v].y - p.v[v].y));
+                p.v[v].z = (int32_t)((double)p.v[v].z + t * ((double)q->v[v].z - p.v[v].z));
+            }
+            p.inv_depth_scale = a->prim[i].inv_depth_scale + t * (q->inv_depth_scale - a->prim[i].inv_depth_scale);
+            bf.prim[bf.n++] = p;
+        } else if (t < 0.5) bf.prim[bf.n++] = p;
+    }
+    if (t >= 0.5) for (size_t j = 0; j < b->n; j++) if (!bused[j]) bf.prim[bf.n++] = b->prim[j];
+    bf.cap = bf.n;
+
+    static struct { void *p; size_t cap; } pool[9];
+    const size_t need = px * 4;
+    for (int k = 0; k < 9; k++) {
+        if (pool[k].cap < need) { void *q = realloc(pool[k].p, need); if (!q) goto done; pool[k].p = q; pool[k].cap = need; }
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        remaster_target tg;
+        memset(&tg, 0, sizeof tg);
+        tg.w = tw; tg.h = h;
+        tg.color = (uint32_t *)pool[0].p; tg.inv_z = (float *)pool[1].p; tg.index = (uint16_t *)pool[2].p; tg.owner = (uint32_t *)pool[5].p;
+        tg.line_strong = (uint32_t *)pool[3].p; tg.line_tmp_z = (float *)pool[4].p;
+        tg.stroke_z = (float *)pool[6].p; tg.stroke_owner = (uint32_t *)pool[7].p; tg.stroke_aux_x = (float *)pool[8].p; tg.stroke_aux_y = (float *)pool[8].p;
+        tg.inv_depth_scale = 1.0;
+        const remaster_frame *fr = pass ? &bf : &r->done;
+        scene_job sj = { m, tg, fr, r->done_band, r->done_have_band, 1, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+        sj.timing = NULL; sj.row_tile = 0;
+        run_parts(scene_rows_part, &sj, 1);
+        memcpy(pass ? col2 : col1, tg.color, px * 4);
+    }
+    {
+        static unsigned calls; static unsigned long long total, differ, big; static unsigned long long frames_clean;
+        size_t d = 0, bg = 0;
+        for (size_t i = 0; i < px; i++)
+            if (col1[i] != col2[i]) {
+                d++;
+                int mx = 0;
+                for (int sh = 0; sh < 24; sh += 8) { int dd = (int)(col1[i] >> sh & 255) - (int)(col2[i] >> sh & 255); if (dd < 0) dd = -dd; if (dd > mx) mx = dd; }
+                if (mx > 32) bg++;
+            }
+        total += px; differ += d; big += bg; if (d * 1000 < px) frames_clean++;
+        if (++calls % 30 == 1)
+            fprintf(stderr, "[blend-picture] %u frames (t %.2f, %zu blended primitives against %zu): the blended scene differs from the copy's in %.3f%% of pixels over all frames (%.3f%% by more than 32 levels); "
+                            "this frame %zu of %zu; %.0f%% of frames differ in under 0.1%% of their pixels\n",
+                    calls, t, bf.n, r->done.n, 100.0 * (double)differ / (double)total, 100.0 * (double)big / (double)total, d, px, 100.0 * (double)frames_clean / calls);
+    }
+done:
+    free(ab); free(bused); free(bf.prim); free(col1); free(col2);
+}
+
+remaster_frame_copy *g_live_ring[8];
+unsigned long long g_live_ring_steps;
+
+/* How many of the live steps kept (the newest first, 0 the latest) the copy `c` reproduces exactly (same primitive count, models, colours and vertices); -1 when none. */
+int remaster_live_ring_match(const remaster_frame_copy *c, int *which_similar, size_t *similar_prims)
+{
+    int best_sim = -1; size_t best_n = 0;
+    for (unsigned age = 0; age < 8 && age < g_live_ring_steps; age++) {
+        const remaster_frame_copy *l = g_live_ring[(g_live_ring_steps - 1 - age) % 8];
+        if (!l) continue;
+        size_t same = 0;
+        for (size_t i = 0; i < c->n; i++) {                              /* the copy's primitive i exists in the live step, vertex for vertex, wherever it sits */
+            const remaster_prim *p = &c->prim[i];
+            for (size_t j = 0; j < l->n; j++) {
+                const remaster_prim *q = &l->prim[j];
+                if (q->model != p->model || q->n != p->n || q->colour_word != p->colour_word || q->kind != p->kind) continue;
+                if (!memcmp(q->v, p->v, sizeof(remaster_v3) * (size_t)(p->n < 16 ? p->n : 16))) { same++; break; }
+            }
+        }
+        if (l->n == c->n && same == c->n) return (int)age;
+        if (same > best_n) { best_n = same; best_sim = (int)age; }
+    }
+    if (which_similar) *which_similar = best_sim;
+    if (similar_prims) *similar_prims = best_n;
+    return -1;
+}
+
+size_t remaster_frame_copy_prims(const remaster_frame_copy *c) { return c ? c->n : 0; }

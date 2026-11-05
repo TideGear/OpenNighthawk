@@ -2724,7 +2724,15 @@ int main(int argc, char **argv)
                         drawlive_prepare_rerun(&g_live, &p0); const int oka = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, ca);
                         drawlive_prepare_rerun(&g_live, &p1); const int okb = p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, cb);
                         drawlive_prepare_rerun(&g_live, &plan);
-                        if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) remaster_blend_report(ca, cb, cc, plan.t);
+                        if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) { remaster_blend_report(ca, cb, cc, plan.t);
+                            {   /* is the copy at t = 0 / t = 1 one of the live game's own recorded steps? */
+                                static unsigned long long total, exact_a, exact_b; int sim = -1; size_t simn = 0;
+                                const int ma = remaster_live_ring_match(ca, &sim, &simn), mb = remaster_live_ring_match(cb, &sim, &simn);
+                                total++; exact_a += ma >= 0; exact_b += mb >= 0;
+                                if (total % 60 == 1) fprintf(stderr, "[blend-ring] closest live step: age %d, %zu of the copy's %zu primitives identical in place (copy at t = 0: %zu primitives)\n", sim, simn, remaster_frame_copy_prims(ca), remaster_frame_copy_prims(ca));
+                                if (total % 60 == 1) fprintf(stderr, "[blend-ring] %llu frames: the copy at t = 0 is one of the live steps (newest 8) in %.1f%%, at t = 1 in %.1f%%; this one: ages %d and %d\n", total, 100.0 * (double)exact_a / (double)total, 100.0 * (double)exact_b / (double)total, ma, mb);
+                            }
+ if (g_pw.ww > 0 && getenv("F117_BLEND_PICTURE")) remaster_blend_picture_check(g_rlive_copy, &H.m, g_scale, g_pw.ww, ca, cb, plan.t); }
                     } else
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }

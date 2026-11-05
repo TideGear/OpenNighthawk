@@ -87,6 +87,10 @@ remaster_frame_copy *remaster_frame_copy_new(void);
 void remaster_frame_copy_free(remaster_frame_copy *c);
 int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
+/* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */
+size_t remaster_frame_copy_prims(const remaster_frame_copy *c);
+int remaster_live_ring_match(const remaster_frame_copy *c, int *which_similar, size_t *similar_prims);
+void remaster_blend_picture_check(remaster_live *r, const machine_t *m, int n, int tw, const remaster_frame_copy *a, const remaster_frame_copy *b, double t);
 unsigned remaster_live_frames(const remaster_live *r);
 
 #endif
