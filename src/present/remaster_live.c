@@ -1618,7 +1618,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = keep48c4;
     static unsigned long long nw_from; static int nw_init, nw_on;
     if (!nw_init) { nw_init = 1; const char *e = getenv("F117_FAR_WHY"); nw_on = e != NULL; const char *f = getenv("F117_FAR_WHY_FROM"); nw_from = f ? strtoull(f, NULL, 0) : 0; }
-    if (added < 0 && nw_on && m->cpu.icount >= nw_from && (n->model == 0 || n->model == 3 || n->model == 6)) {
+    if (added < 0 && nw_on && m->cpu.icount >= nw_from && rerun_why_model(n->model)) {
         static unsigned shown; if (shown++ < 20) fprintf(stderr, "[why] native placement of model %u refused by the scene reader (added %d)\n", (unsigned)n->model, added);
     }
     if (added < 0) { r->refused++; return 0; }
@@ -1627,7 +1627,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     {   /* F117_FAR_WHY (diagnostic): what the native path made of the models the walk comparison misses */
         static int wl = -1; static unsigned left = 120;
         if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
-        if (wl && left && m->cpu.icount >= nw_from && (n->model == 0 || n->model == 3 || n->model == 6)) {
+        if (wl && left && m->cpu.icount >= nw_from && rerun_why_model(n->model)) {
             left--;
             fprintf(stderr, "[why] clock %llu native placement of model %u bank %u level %d: %zu primitives added (frame now %zu), first labelled model %u kind %d\n", (unsigned long long)m->cpu.icount, (unsigned)n->model, (unsigned)n->bank, n->level, target->n - first, target->n, target->n > first ? (unsigned)target->prim[first].model : 0u, target->n > first ? target->prim[first].kind : -1);
         }

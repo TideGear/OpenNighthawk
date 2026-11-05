@@ -511,3 +511,19 @@ the native verdicts) has not been done.
 metric 0, visible 89,488. The across test rejects the most objects, but skipping it (or the up or metric test: `F117_CULL_SKIP`) does not change models 37, 39, 40 and 44, so those are held back by the near plane (`zh` below
 `[48F6 + 2 lod]`, the per-class value the wide copy has moved back by up to 12,000) or by the selection's range and bounds gates before `far_cull`. Not yet tried: skipping the near-plane check for own-level objects, or
 comparing the near-plane words as the game's own walk sees them with the ones the selection reads.
+
+## Native walk: the across test was reading the lowered table (4 November, late night)
+
+**Per-object comparison** (default mode, runway replay, clocks 3.5 to 3.6 billion; `F117_FAR_WHY=37,39,40,44` with `F117_REMASTER_PLACEMENT_LOG_ALL=1`: the game's own walk places objects while the native
+selection computes a verdict for every object in the cells around the viewer; matched by ring, model and position within a copy). Of the ring-1 objects **the game really placed**, the native selection culled
+**50% of model 37 (1,430 of 2,848) and 33% of model 39 (204 of 623)**, every one of them by check 3 of `far_cull`, the across test (`F117_FAR_WHY` now prints the check; `F117_CULL_WHY` counts them).
+
+**Cause.** The wide copy raises the game's across-test table (`[E56A + 2 lod]`) to 18,000; `far_scenery` temporarily lowers the same entries to 32,600 minus the far plane (2,600) while it selects, so the coarser
+levels' sums stay under 8000h, and the native across test read the lowered word for own-level objects as well, rejecting objects the game keeps. Fix (native-walk mode only, so default pictures are unchanged):
+own-level objects read the saved original word (`g_allow_saved`). Same comparison afterwards: of the game-placed model-37 objects 2,452 are chosen (86%, was 50%), 256 culled by the across test, 140 by the up test (check 4),
+800 have no verdict line (outside the logged cells); model 39: 534 chosen, 89 culled by the up test, 175 without a verdict line.
+
+**Not yet effective in the picture.** Native walk with the base tiles forced and this fix: 223 and 202 pixels differ from the game's walk at 4.0 and 4.4 billion (205 and 185 before), and models 37, 39, 40 and 44 stay at
+81, 51, 10 and 20 polygons (the game: 129, 77, 20 and 40), although the frame total rose from 421 to 494 primitives. The chosen own-cell objects of those models are the deferring class (`own 1 defers 1`: placed by the
+game's own placement, which defers them into its 50-entry list for the caller to draw), 32 guest placements a copy, with at most 2 in the list when sampled; where those objects' primitives go afterwards is the
+open question (a per-copy count of model 37 primitives by source has not been taken). The across-test fix is a correctness fix of the selection and stands on its own evidence; it is not the whole explanation of the picture.

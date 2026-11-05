@@ -45,6 +45,7 @@ void rerun_list_free(rerun_list *l);
 
 /* Run a copy of a with its inputs moved the fraction t (0..1) towards b (b NULL or t 0: unchanged), and collect its
  * records into out. Returns 1 when the copy presented and its frame closed. Call only on the thread that runs the machine. */
+int rerun_why_model(unsigned model);   /* diagnostic: F117_FAR_WHY lists the model */
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
 
 /* An optional collector for the copies (Remastered's, docs/remastered-design.md "Plan: Remastered from the rerun copy"): a

@@ -633,21 +633,33 @@ static int16_t far_axis(const int16_t matrix[9], int axis, int16_t x, int16_t y,
 }
 
 /* Side allowances are in the object's own ring units. */
+int rerun_why_model(unsigned model)               /* F117_FAR_WHY=M0,M1,...: is this model one of the listed (diagnostic) */
+{
+    static int init, n, list[8];
+    if (!init) { init = 1; const char *e = getenv("F117_FAR_WHY"); for (const char *q = e; q && *q && n < 8; ) { list[n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; } }
+    for (int i = 0; i < n; i++) if ((int)model == list[i]) return 1;
+    return 0;
+}
+static const uint16_t *g_allow_saved;            /* the across-test table as the copy had it (the wide copy raises it), before far_scenery lowers it for the coarser levels */
+static int g_cull_reason;                       /* which check of the last far_cull call rejected the object (1 far plane, 2 near plane, 3 across, 4 up, 5 metric), diagnostic */
 static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t matrix[9],
                     int16_t x, int16_t y, int16_t z, int16_t zh, unsigned lod, int shift)
 {
     static unsigned why[7]; static int why_on = -1;                  /* F117_CULL_WHY: which check first rejects an own-level object (shift 0), printed every 20000 */
     if (why_on < 0) why_on = getenv("F117_CULL_WHY") != NULL;
-#define CULL_FAIL(k) do { if (why_on && shift == 0) { why[k]++; if ((why[0] + why[1] + why[2] + why[3] + why[4] + why[5] + why[6]) % 20000 == 0) fprintf(stderr, "[cull-why] own-level objects: far plane %u, near plane %u, across %u, up %u, metric %u, visible %u, early-visible %u\n", why[0], why[1], why[2], why[3], why[4], why[5], why[6]); } return 0; } while (0)
+#define CULL_FAIL(k) do { g_cull_reason = (k) + 1; if (why_on && shift == 0) { why[k]++; if ((why[0] + why[1] + why[2] + why[3] + why[4] + why[5] + why[6]) % 20000 == 0) fprintf(stderr, "[cull-why] own-level objects: far plane %u, near plane %u, across %u, up %u, metric %u, visible %u, early-visible %u\n", why[0], why[1], why[2], why[3], why[4], why[5], why[6]); } return 0; } while (0)
     if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(0);
     const uint16_t lod2 = (uint16_t)(lod << 1);
-    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6))) CULL_FAIL(1);
+    static int nskip = -1; if (nskip < 0) nskip = getenv("F117_CULL_SKIP_NEAR") != NULL;   /* diagnostic: own-level objects ignore the per-class near plane */
+    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(lod2 + 0x48F6)) && !(nskip && shift == 0)) CULL_FAIL(1);
     if (rd16(m->mem, ds, 0x438E) != 0) return 1;
     const int16_t xh = far_axis(matrix, 0, x, y, z), yh = far_axis(matrix, 1, x, y, z);
     const int16_t di = (int16_t)(zh < 0 ? (uint16_t)(-zh) : (uint16_t)zh);   /* |z|, 8000h staying 8000h */
     const uint16_t t_across = (uint16_t)(rd16(m->mem, ds, 0xE56A) + lod2), t_up = (uint16_t)(rd16(m->mem, ds, 0xE570) + lod2);
     const unsigned cl = (m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] ^ 1) & 31;
-    int16_t ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ds, t_across) >> shift)) >> cl);
+    /* Own-level objects in native-walk mode: the original table value, not the lowered one (the lowering keeps the coarser levels' sums under 8000h and would reject objects the game keeps). */
+    const int16_t across_word = g_allow_saved && shift == 0 && lod < 8 ? (int16_t)g_allow_saved[lod] : (int16_t)rd16(m->mem, ds, t_across);
+    int16_t ax = (int16_t)((int16_t)(di + (across_word >> shift)) >> cl);
     const int16_t si = (int16_t)(ax + (ax >> 2));
     static int skip = -1; if (skip < 0) { const char *e = getenv("F117_CULL_SKIP"); skip = e ? atoi(e) : 0; }   /* diagnostic mask: 1 across test, 2 up test, 4 metric test (own-level objects only) */
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
@@ -659,6 +671,7 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     if (ayy > up && !((skip & 2) && shift == 0)) CULL_FAIL(3);
     const int16_t metric = (int16_t)(((int16_t)(axx + ayy) >> 2) + di);
     if (!((skip & 4) && shift == 0) && metric > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(4);
+    g_cull_reason = 0;
     if (why_on && shift == 0) why[5]++;
     return 1;
 }
@@ -802,6 +815,7 @@ static int far_scenery_body(machine_t *m)
     const uint16_t base_w = rd16(m->mem, ds, 0xE56A), far_was = rd16(m->mem, ds, 0x48E6), e328 = rd16(m->mem, ds, 0xE328);
     uint16_t allow[8], org[3];
     for (int md = 0; md < 8; md++) allow[md] = rd16(m->mem, ds, (uint16_t)(base_w + 2 * md));
+    g_allow_saved = g_native_walk ? allow : NULL;
     for (int i = 0; i < 3; i++) org[i] = rd16(m->mem, ds, (uint16_t)(0x49AC + 2 * i));
     static int far_plane = -1;
     if (far_plane < 0) { const char *e = getenv("F117_WIDE_SCENERY_FAR"); far_plane = e ? atoi(e) : 30000; if (far_plane > 32000) far_plane = 32000; }
@@ -853,7 +867,7 @@ static int far_scenery_body(machine_t *m)
         const int r = f->ring;
         tr_seen++;
         const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
-        far_pick pk; int chosen = 0, resolved = 0, same_type = 0;
+        far_pick pk; int chosen = 0, resolved = 0, same_type = 0, last_reason = 0;
         pk.own_k = -1; pk.entry = f->entry;
         uint16_t w = 0; uint8_t klass = 0;
         for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
@@ -884,7 +898,9 @@ static int far_scenery_body(machine_t *m)
             }
             static int force_base = -1;                          /* F117_NATIVE_FORCE_BASE=1 (experiment, native-walk): ring 4's first entry of a tile is never culled */
             if (force_base < 0) force_base = getenv("F117_NATIVE_FORCE_BASE") != NULL;
+            g_cull_reason = 0;
             const int visible = (force_base && g_native_walk && f->ring == 4 && f->entry == 0) || far_cull(m, ds, ss, matrix, x, y, z, zh, klass & 7u, s);
+            last_reason = visible ? 0 : g_cull_reason;
             chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
             if (!visible) { chosen = -1; tr_culled++; break; }
             pk.darken = far_detail(m, ds, zh, klass & 7u);
@@ -906,8 +922,9 @@ static int far_scenery_body(machine_t *m)
                 for (int q = 0; q < why_n; q++)
                     if ((int)mi == why_models[q]) {
                         why_left--;
-                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
-                                chosen == 1 ? "chosen" : chosen == -1 ? "culled by the game's visibility test" : "no level within reach or bounds");
+                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                                (int)(int16_t)(uint16_t)(f->x - eye_l[f->ring][0]), (int)(int16_t)(uint16_t)(f->z - (eye_l[f->ring][2] < 2 ? 2 : eye_l[f->ring][2])), (int)(int16_t)(uint16_t)-(f->y - eye_l[f->ring][1]),
+                                chosen == 1 ? "chosen" : chosen == -1 ? (last_reason == 1 ? "culled by the game's visibility test, check 1 far plane" : last_reason == 2 ? "culled by the game's visibility test, check 2 near plane" : last_reason == 3 ? "culled by the game's visibility test, check 3 across" : last_reason == 4 ? "culled by the game's visibility test, check 4 up" : last_reason == 5 ? "culled by the game's visibility test, check 5 metric" : "culled by the game's visibility test, check ?") : "no level within reach or bounds");
                     }
             }
         }
@@ -1007,7 +1024,7 @@ static int far_scenery_body(machine_t *m)
         {   /* F117_FAR_WHY (diagnostic): a pick of one of those models went through the game's own placement */
             static int wl = -1; static unsigned left = 200;
             if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
-            if (wl && left && ((pk->model & 0x7F) == 0 || (pk->model & 0x7F) == 3 || (pk->model & 0x7F) == 6)) {
+            if (wl && left && rerun_why_model(pk->model & 0x7F)) {
                 left--;
                 fprintf(stderr, "[why] model %u ring %d level %d own %d defers %d: placed by the game, result %s\n", (unsigned)(pk->model & 0x7F), pk->ring, pk->level, pk->own, pk->defers, rc == RUN_TRAP ? "returned" : "did not return");
             }
