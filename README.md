@@ -73,7 +73,7 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
     (or Windows MIDI).
   - *Screenshots* with Tab, a settings file (`f117a.ini`), and a windowed or
     fullscreen picture at 4:3 or with square pixels.
-- **Optional pictures** (experimental; the original picture stays the verified
+- **Optional visuals** (experimental; the original picture stays the verified
   one)
   - *Enhanced*: the same picture redrawn up to 4K, with in-between frames at
     your display's refresh rate.
@@ -125,7 +125,7 @@ they measure and [docs/roadmap.md](docs/roadmap.md) what is done and what is lef
 | **Parity, measured** | 63 scripted routes, run as 62 sessions, end in identical state under the reference interpreter and the recompiled code (all of memory, the registers and every byte sent to the sound card, the palette, MIDI and the disk), checked every 50 million clocks. They cover boot to flight, full sorties through the debriefing, all three sound drivers, all nine theatres, every primary objective type, the pilot roster and the career to retirement ([every route](tools/routes/README.md)). Every translated instruction, reached or not, is also compared from random machine states (0 differences), the translator is checked against 8088 and 80286 silicon test vectors, and planted defects in the generated code are caught. |
 | **Other machines** | The emulated PC is held to GOG's DOSBox (the machine the game is sold on: the machine probe, the intro's pictures and music), DOSBox-X, and 86Box running a 386DX/33 with MS-DOS 5.00. The 386DX/33 timing profile plays at a period PC's pace. |
 | **Releases** | Steam's game files are byte-identical to GOG's (`tools/verify_install.py`), and the app finds its install. |
-| **Pictures** | Optional sharper and smoother pictures (finer polygon geometry and HUD strokes up to 4K, original bitmap text and artwork kept) are **experimental**; the original picture is the verified one. See [Presentation](#presentation). |
+| **Visuals** | Optional sharper and smoother visuals (finer polygon geometry and HUD strokes up to 4K, original bitmap text and artwork kept) are **experimental**; the original picture is the verified one. See [Presentation](#presentation). |
 | **What is left** | The remaining 1,261 route-executed unmatched bytes (most in the sound drivers) and the code no route runs; reviewed entries for the 218 bytes outside the routes that have none (`py tools/progress.py`); a closing review of indirect entries ([Phase 2](docs/roadmap.md#phase-2---understood-code)). Not scored: play by a person at the keyboard, rendered Roland output against an independent reference and listening checks, refresh rates above 60 Hz and other hardware ([Phase 4](docs/roadmap.md#phase-4---checked-by-people-and-independent-references)). |
 | **Re-release features** | Partly built: see the list above and the [roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable). The game's logic is the same under every presentation. |
 
@@ -461,7 +461,7 @@ Every process the project repeats, and what it costs, is listed in
 | `src/matched/` | the named, matched C routines |
 | `src/fixes/` | the switchable fixes for the original's bugs |
 | `src/host/` | the SDL3 window, audio and input; the headless runner |
-| `src/present/` | the optional sharper and smoother pictures (`replay`, `interp`, `rerun`) and the Remastered renderer with its optional GPU compositor |
+| `src/present/` | the optional sharper and smoother visuals (`replay`, `interp`, `rerun`) and the Remastered renderer with its optional GPU compositor |
 | `recompiler/` | the translator (Python) |
 | `third_party/` | DOSBox DBOPL and Nuked OPL3, the two OPL synthesizers |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |
