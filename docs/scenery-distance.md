@@ -469,3 +469,9 @@ Copy profile at Maximum (`F117_PROFILE=1`, mean 6.9 ms): copy start 0.75, game t
 radix against qsort (fixed cadence, eight workers): identical at Near, Far and Maximum on the runway (901 frames) and latest (401) flights; on the banked flight Far differs in
 9 of 1,401 frames and Maximum in 42, in the one frame inspected by 5 pixels (a 4 x 4 patch at x 1084 to 1087, y 45 to 48). Kept opt-in under the accuracy-first rule.
 Timing at Maximum, p95 ms, interleaved runs: default 11.57 and 15.15, radix 9.81 and 12.20 (run to run spread is large; the 15.15 looks disturbed).
+
+Correction and more breakdown (same replay, GPU renderer). The first slow-frame breakdown above counted every frame since launch; filtered to the runway window (clock over 3.9 billion) the default
+build's 62 frames over 12 ms average 12.7 ms: copy 6.5, machine step 5.8, worker wait 0.0, so the conclusion stands. A later run: 128 such frames, 13.6 ms = wait 1.6 + copy 7.9 + step 3.8, of
+which 1.5 ms is the draw-feed collection (`drawlive_collect`, inside the step). `F117_COLLECT_PROBE=1`: `close_frame` 0.605 ms per closed logic frame (one in four presented), replay of the
+open frame's records 0.028 ms a slice (about 17 slices a presented frame), so collection averages about 0.65 ms a frame with no single large piece. Run-to-run spread of p95 on identical builds
+at Maximum is large (default 11.6, 15.2, 14.1, 12.9, 15.2: median 14.1; radix 9.8, 12.2, 12.0, 11.3, 11.3: median 11.3); `cam_helper` (NZXT CAM) was using CPU in the background and may add noise.

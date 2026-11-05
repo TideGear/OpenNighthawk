@@ -6,6 +6,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+/* F117_COLLECT_PROBE (diagnostic): where drawlive_collect's time goes, printed every 600 closed frames. */
+static double probe_ms(void)
+{
+#ifdef _WIN32
+    static LARGE_INTEGER freq; LARGE_INTEGER now;
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
+    return (double)now.QuadPart * 1000.0 / (double)freq.QuadPart;
+#else
+    return 0.0;
+#endif
+}
+static double g_probe_replay, g_probe_close, g_probe_open; static unsigned g_probe_n, g_probe_calls;
 
 /* a frame with no present closes after this many phases all the same */
 #define MAX_PHASES 8
@@ -460,15 +477,21 @@ int drawlive_collect(drawlive *r, drawfeed *f)
     const drawfeed_frame *fr;
     while ((fr = drawfeed_oldest(f))) {
         if (free_step(r) < 0 || r->nqueue >= DRAWLIVE_QUEUE - 1) return taken;   /* wait for a publish */
+        const double pr0 = probe_ms();
         replay_available(r, fr);
+        const double pr1 = probe_ms();
         close_frame(r, f, fr);
+        const double pr2 = probe_ms();
+        g_probe_replay += pr1 - pr0; g_probe_close += pr2 - pr1;
+        if (++g_probe_n % 600 == 0 && getenv("F117_COLLECT_PROBE"))
+            fprintf(stderr, "[collect] per closed frame: replay of its last records %.3f ms, close_frame %.3f ms; open-frame replays (every slice) %.3f ms a call over %u calls\n", g_probe_replay / g_probe_n, g_probe_close / g_probe_n, g_probe_open / (g_probe_calls ? g_probe_calls : 1), g_probe_calls);
         drawfeed_pop(f);
         r->next_seq = fr->seq + 1;
         r->pending_active = 0;
         taken++;
     }
     const drawfeed_frame *current = open_frame(f);
-    if (current->len) replay_available(r, current);
+    if (current->len) { const double po0 = probe_ms(); replay_available(r, current); g_probe_open += probe_ms() - po0; g_probe_calls++; }
     return taken;
 }
 
