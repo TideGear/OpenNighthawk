@@ -28,7 +28,12 @@ typedef struct { void *p; size_t n, cap; } vec;     /* a growing array of bytes 
 
 struct gpu_compose {
     SDL_GPUDevice *dev;
-    SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace;
+    SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present;
+    int own_device;
+    SDL_GPUTexture *targets[2];
+    int cur_write, last_written;
+    int tgt_w, tgt_h;
+    SDL_GPUTransferBuffer *tgt_down;
     gbuf bt, pt, pe, po, pal, st, se, so, sw, hid, tf, src, tag, dac;
     gbuf colour, index_, invz, owner, strokez, outpix;
     Uint32 pix_cap;
@@ -74,7 +79,7 @@ static int gbuf_ensure(SDL_GPUDevice *dev, gbuf *b, SDL_GPUBufferUsageFlags usag
     return b->buf != NULL;
 }
 
-static SDL_GPUComputePipeline *load_pipeline(SDL_GPUDevice *dev, const char *dir, const char *name, Uint32 ro, Uint32 rw, Uint32 tx, Uint32 ty)
+static SDL_GPUComputePipeline *load_pipeline(SDL_GPUDevice *dev, const char *dir, const char *name, Uint32 ro, Uint32 rw, Uint32 rw_tex, Uint32 tx, Uint32 ty)
 {
     char path[1024];
     snprintf(path, sizeof path, "%s/%s", dir, name);
@@ -84,26 +89,41 @@ static SDL_GPUComputePipeline *load_pipeline(SDL_GPUDevice *dev, const char *dir
     SDL_GPUComputePipelineCreateInfo ci;
     memset(&ci, 0, sizeof ci);
     ci.code = (const Uint8 *)code; ci.code_size = size; ci.entrypoint = "main"; ci.format = SDL_GPU_SHADERFORMAT_DXIL;
-    ci.num_readonly_storage_buffers = ro; ci.num_readwrite_storage_buffers = rw; ci.num_uniform_buffers = 1;
+    ci.num_readonly_storage_buffers = ro; ci.num_readwrite_storage_buffers = rw; ci.num_readwrite_storage_textures = rw_tex; ci.num_uniform_buffers = 1;
     ci.threadcount_x = tx; ci.threadcount_y = ty; ci.threadcount_z = 1;
     SDL_GPUComputePipeline *p = SDL_CreateGPUComputePipeline(dev, &ci);
     SDL_free(code);
     return p;
 }
 
+static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, int own)
+{
+    gpu_compose *g = (gpu_compose *)calloc(1, sizeof *g);
+    if (!g) return NULL;
+    g->dev = device;
+    g->own_device = own;
+    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_fast.dxil", 1, 4, 0, 64, 1);
+    g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys.dxil", 4, 4, 0, 16, 16);
+    g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes.dxil", 4, 6, 0, 16, 16);
+    g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 0, 16, 16);
+    g->p_present = load_pipeline(g->dev, shader_dir, "gpu_present.dxil", 1, 0, 1, 16, 16);
+    if (!g->p_bands || !g->p_polys || !g->p_strokes || !g->p_replace) { gpu_compose_destroy(g); return NULL; }
+    return g;
+}
+
 gpu_compose *gpu_compose_create(const char *shader_dir)
 {
     if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_InitSubSystem(SDL_INIT_VIDEO)) return NULL;
-    gpu_compose *g = (gpu_compose *)calloc(1, sizeof *g);
-    if (!g) return NULL;
-    g->dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, NULL);
-    if (!g->dev) { free(g); return NULL; }
-    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_fast.dxil", 1, 4, 64, 1);
-    g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys.dxil", 4, 4, 16, 16);
-    g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes.dxil", 4, 6, 16, 16);
-    g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 16, 16);
-    if (!g->p_bands || !g->p_polys || !g->p_strokes || !g->p_replace) { gpu_compose_destroy(g); return NULL; }
+    SDL_GPUDevice *dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, NULL);
+    if (!dev) return NULL;
+    gpu_compose *g = compose_new(dev, shader_dir, 1);
+    if (!g) SDL_DestroyGPUDevice(dev);
     return g;
+}
+
+gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir)
+{
+    return device ? compose_new(device, shader_dir, 0) : NULL;
 }
 
 void gpu_compose_destroy(gpu_compose *g)
@@ -120,7 +140,10 @@ void gpu_compose_destroy(gpu_compose *g)
         if (g->p_polys) SDL_ReleaseGPUComputePipeline(g->dev, g->p_polys);
         if (g->p_strokes) SDL_ReleaseGPUComputePipeline(g->dev, g->p_strokes);
         if (g->p_replace) SDL_ReleaseGPUComputePipeline(g->dev, g->p_replace);
-        SDL_DestroyGPUDevice(g->dev);
+        if (g->p_present) SDL_ReleaseGPUComputePipeline(g->dev, g->p_present);
+        for (int k = 0; k < 2; k++) if (g->targets[k]) SDL_ReleaseGPUTexture(g->dev, g->targets[k]);
+        if (g->tgt_down) SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down);
+        if (g->own_device) SDL_DestroyGPUDevice(g->dev);
     }
     free(g->polys.t); free(g->strokes.t);
     free(g->band_words.p); free(g->poly_words.p); free(g->poly_ents.p); free(g->poly_off.p);
@@ -511,7 +534,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 
 int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out)
 {
-    if (!g || !g->begun || !src || !tag || !dac || !wide_out) return 0;
+    if (!g || !g->begun || !src || !tag || !dac) return 0;
     g->begun = 0;
     const int w = g->params.w, h = g->params.h, tw = g->params.tw;
     const Uint32 pbytes = g->pbytes, game_bytes = g->game_bytes;
@@ -550,18 +573,52 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
         SDL_EndGPUComputePass(c);
     }
-    cp = SDL_BeginGPUCopyPass(cb);
-    { SDL_GPUBufferRegion bk = { b_out, 0, pbytes }; SDL_GPUTransferBufferLocation into = { g->down, 0 }; SDL_DownloadFromGPUBuffer(cp, &bk, &into); }
-    SDL_EndGPUCopyPass(cp);
+    static int split = -1; if (split < 0) split = getenv("F117_GPU_PRESENT_SPLIT") != NULL;     /* diagnostic: the present pass in a command buffer of its own after the first one finished */
+    if (split && g->targets[0] && g->p_present) {
+        SDL_GPUFence *f1 = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
+        if (!f1) return 0;
+        SDL_WaitForGPUFences(g->dev, true, &f1, 1);
+        SDL_ReleaseGPUFence(g->dev, f1);
+        cb = SDL_AcquireGPUCommandBuffer(g->dev);
+        if (!cb) return 0;
+    }
+    if (g->targets[0] && g->p_present) {        /* piece 3: the picture into the wrapped texture, on the GPU */
+        SDL_GPUStorageTextureReadWriteBinding tb = { g->targets[g->cur_write], 0, 0, false };
+        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, 0, 0 };
+        SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, &tb, 1, NULL, 0);
+        SDL_BindGPUComputePipeline(c, g->p_present);
+        SDL_BindGPUComputeStorageBuffers(c, 0, &b_out, 1);
+        SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
+        SDL_DispatchGPUCompute(c, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
+        SDL_EndGPUComputePass(c);
+        static int twice = -1; if (twice < 0) twice = getenv("F117_GPU_PRESENT_TWICE") != NULL;     /* diagnostic: the same pass again into the other texture, to compare the two */
+        if (twice) {
+            SDL_GPUStorageTextureReadWriteBinding tb2 = { g->targets[g->cur_write ^ 1], 0, 0, false };
+            SDL_GPUComputePass *c2 = SDL_BeginGPUComputePass(cb, &tb2, 1, NULL, 0);
+            SDL_BindGPUComputePipeline(c2, g->p_present);
+            SDL_BindGPUComputeStorageBuffers(c2, 0, &b_out, 1);
+            SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
+            SDL_DispatchGPUCompute(c2, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
+            SDL_EndGPUComputePass(c2);
+        }
+    }
+    if (wide_out) {
+        cp = SDL_BeginGPUCopyPass(cb);
+        SDL_GPUBufferRegion bk = { b_out, 0, pbytes }; SDL_GPUTransferBufferLocation into = { g->down, 0 }; SDL_DownloadFromGPUBuffer(cp, &bk, &into);
+        SDL_EndGPUCopyPass(cp);
+    }
     SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
     if (!fence) return 0;
     SDL_WaitForGPUFences(g->dev, true, &fence, 1);
     SDL_ReleaseGPUFence(g->dev, fence);
     const Uint64 t_gpu = SDL_GetTicksNS();
-    const void *got = SDL_MapGPUTransferBuffer(g->dev, g->down, false);
-    if (!got) return 0;
-    memcpy(wide_out, got, pbytes);
-    SDL_UnmapGPUTransferBuffer(g->dev, g->down);
+    if (g->targets[0]) { g->last_written = g->cur_write; g->cur_write ^= 1; }
+    if (wide_out) {
+        const void *got = SDL_MapGPUTransferBuffer(g->dev, g->down, false);
+        if (!got) return 0;
+        memcpy(wide_out, got, pbytes);
+        SDL_UnmapGPUTransferBuffer(g->dev, g->down);
+    }
     g->gpu_ms = (double)(t_gpu - g->t_begin) / 1e6;       /* from the end of the first half: the raster passes overlap what the caller did meanwhile */
     g->copy_ms = (double)(SDL_GetTicksNS() - t_gpu) / 1e6;
     return 1;
@@ -570,4 +627,56 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
 int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out)
 {
     return gpu_compose_begin(g, in) && gpu_compose_finish(g, in->src, in->tag, in->dac, wide_out);
+}
+
+int gpu_compose_make_targets(gpu_compose *g, int w, int h)
+{
+    if (!g || !g->p_present || w < 1 || h < 1) return 0;
+    for (int k = 0; k < 2; k++) if (g->targets[k]) { SDL_ReleaseGPUTexture(g->dev, g->targets[k]); g->targets[k] = NULL; }
+    if (g->tgt_down) { SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down); g->tgt_down = NULL; }
+    SDL_GPUTextureCreateInfo ti;
+    memset(&ti, 0, sizeof ti);
+    ti.type = SDL_GPU_TEXTURETYPE_2D;
+    ti.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    ti.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+    ti.width = (Uint32)w; ti.height = (Uint32)h; ti.layer_count_or_depth = 1; ti.num_levels = 1;
+    for (int k = 0; k < 2; k++) {
+        g->targets[k] = SDL_CreateGPUTexture(g->dev, &ti);
+        if (!g->targets[k]) { for (int j = 0; j < 2; j++) if (g->targets[j]) { SDL_ReleaseGPUTexture(g->dev, g->targets[j]); g->targets[j] = NULL; } return 0; }
+    }
+    g->tgt_w = w; g->tgt_h = h; g->cur_write = 0; g->last_written = 0;
+    return 1;
+}
+
+SDL_GPUTexture *gpu_compose_target(gpu_compose *g, int i) { return g && i >= 0 && i < 2 ? g->targets[i] : NULL; }
+int gpu_compose_last_written(const gpu_compose *g) { return g ? g->last_written : 0; }
+
+int g_read_other;
+int gpu_compose_read_target(gpu_compose *g, uint32_t *out)
+{
+    if (!g || !g->targets[0] || !out) return 0;
+    const Uint32 bytes = (Uint32)((size_t)g->tgt_w * g->tgt_h * 4);
+    if (!g->tgt_down) {
+        SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, bytes, 0 };
+        g->tgt_down = SDL_CreateGPUTransferBuffer(g->dev, &ti);
+        if (!g->tgt_down) return 0;
+    }
+    SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
+    if (!cb) return 0;
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
+    SDL_GPUTextureRegion tr;
+    memset(&tr, 0, sizeof tr);
+    tr.texture = g->targets[g_read_other ? g->last_written ^ 1 : g->last_written]; tr.w = (Uint32)g->tgt_w; tr.h = (Uint32)g->tgt_h; tr.d = 1;
+    SDL_GPUTextureTransferInfo xi = { g->tgt_down, 0, 0, 0 };
+    SDL_DownloadFromGPUTexture(cp, &tr, &xi);
+    SDL_EndGPUCopyPass(cp);
+    SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
+    if (!fence) return 0;
+    SDL_WaitForGPUFences(g->dev, true, &fence, 1);
+    SDL_ReleaseGPUFence(g->dev, fence);
+    const uint8_t *p = (const uint8_t *)SDL_MapGPUTransferBuffer(g->dev, g->tgt_down, false);
+    if (!p) return 0;
+    for (size_t i = 0; i < (size_t)g->tgt_w * g->tgt_h; i++) out[i] = (uint32_t)p[4 * i + 3] << 24 | (uint32_t)p[4 * i] << 16 | (uint32_t)p[4 * i + 1] << 8 | p[4 * i + 2];
+    SDL_UnmapGPUTransferBuffer(g->dev, g->tgt_down);
+    return 1;
 }

@@ -147,6 +147,15 @@ static uint32_t *g_wpix;
 static int g_ww, g_wh;
 static int g_wide_shown;               /* the last presented picture was the wide one: the mouse maps through it */
 static int g_wide_filled;              /* g_wpix holds the picture composed this time */
+/* Piece 3 (F117_GPU_PRESENT=1, docs/gpu-compositor.md): the renderer is an SDL GPU renderer on the compositor's own device and the compositor writes the finished picture into two
+ * textures that are wrapped as renderer textures and drawn with no readback; g_wpix then holds nothing unless a readback is asked for (hash, shots, CRT filters, verification). */
+static gpu_compose *g_gpu;
+static SDL_Texture *g_gtex[2];           /* the two targets, wrapped */
+static SDL_Texture *g_wshow;             /* the wide texture to draw this time: g_wtex (g_wpix uploaded) or one of g_gtex */
+static int g_gpu_present;                /* the renderer is a GPU renderer and the compositor is on its device */
+static int g_gpu_tex_fresh;              /* the picture composed this time is in a wrapped texture */
+static int gpu_tex_mode(void);           /* 0 the readback path, 1 texture only, 2 texture and readback into g_wpix */
+#define WIDE_IS(t) ((t) == g_wtex || (t) == g_gtex[0] || (t) == g_gtex[1])
 
 /* The width, in fine pixels, of the wide picture the window wants, or 0 when it is not wider than 4:3 (then the 4:3 picture is used). */
 static int wide_width(void)
@@ -171,6 +180,21 @@ static int wide_prepare(int wide_w)
     g_ww = wide_w; g_wh = 200 * g_scale;
     g_wtex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, g_ww, g_wh);
     g_wpix = (uint32_t *)malloc(sizeof *g_wpix * (size_t)g_ww * g_wh);
+    for (int k = 0; k < 2; k++) if (g_gtex[k]) { SDL_DestroyTexture(g_gtex[k]); g_gtex[k] = NULL; }
+    if (g_gpu_present && g_gpu && gpu_compose_make_targets(g_gpu, g_ww, g_wh)) {
+        for (int k = 0; k < 2; k++) {
+            SDL_PropertiesID pr = SDL_CreateProperties();
+            SDL_SetPointerProperty(pr, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_compose_target(g_gpu, k));
+            SDL_SetNumberProperty(pr, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, g_ww);
+            SDL_SetNumberProperty(pr, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, g_wh);
+            SDL_SetNumberProperty(pr, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
+            SDL_SetNumberProperty(pr, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+            g_gtex[k] = SDL_CreateTextureWithProperties(g_ren, pr);
+            SDL_DestroyProperties(pr);
+            if (!g_gtex[k]) { fprintf(stderr, "[gpu-present] cannot wrap the compositor's texture: %s\n", SDL_GetError()); break; }
+        }
+        if (!g_gtex[0] || !g_gtex[1]) { for (int k = 0; k < 2; k++) if (g_gtex[k]) { SDL_DestroyTexture(g_gtex[k]); g_gtex[k] = NULL; } }
+    }
     return g_wtex && g_wpix;
 }
 
@@ -181,7 +205,6 @@ static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, i
 
 /* The GPU compositor (F117_GPU_COMPOSE=1; docs/gpu-compositor.md): compute passes on a device of its own, the wide Remastered picture read back into the same buffer the CPU
  * compositor fills. It declines a frame it cannot handle and the CPU compositor takes it. F117_GPU_COMPOSE_CHECK=1 runs both and compares. */
-static gpu_compose *g_gpu;
 static SDL_Mutex *g_gpu_lock;
 static int gpu_compose_cb(const gpu_compose_in *in, uint32_t *wide_out)
 {
@@ -210,7 +233,47 @@ static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const u
 {
     if (!g_gpu) return 0;
     SDL_LockMutex(g_gpu_lock);
-    const int ok = gpu_compose_finish(g_gpu, src, tag, dac, wide_out);
+    const int tex = g_gpu_present && g_gtex[0] && g_gtex[1] && gpu_tex_mode() != 0 && !getenv("F117_GPU_COMPOSE_CHECK");
+    const int both = tex && gpu_tex_mode() == 2;                           /* texture and readback: hash, shots, CRT filters */
+    const int check = g_gpu_present && getenv("F117_GPU_PRESENT_CHECK") && g_gtex[0];
+    const int ok = gpu_compose_finish(g_gpu, src, tag, dac, tex && !both ? NULL : wide_out);
+    if (ok && (tex || (check && wide_out))) g_gpu_tex_fresh = 1;
+    if (ok && check && wide_out) {                                           /* the texture against the readback buffer, every 60th picture */
+        static uint32_t *back; static size_t cap; static unsigned n, bad_total;
+        const size_t px = (size_t)g_ww * g_wh;
+        if (cap < px) { free(back); back = (uint32_t *)malloc(px * 4); cap = back ? px : 0; }
+        if (back && gpu_compose_read_target(g_gpu, back)) {
+            size_t bad = 0, shown = 0;
+            for (size_t i = 0; i < px; i++)
+                if (back[i] != wide_out[i]) { bad++; if (n == 0 && shown < 8) { shown++; fprintf(stderr, "[gpu-present] differs at %zu,%zu: texture %08X, readback %08X\n", i % (size_t)g_ww, i / (size_t)g_ww, back[i], wide_out[i]); } }
+            {   /* is the texture the previous picture? */
+                static uint32_t *prev; static size_t pcap; size_t lag = 0;
+                if (pcap < px) { free(prev); prev = (uint32_t *)calloc(px, 4); pcap = prev ? px : 0; }
+                static uint32_t *prevtex; static size_t ptcap; size_t lead = 0;
+                if (ptcap < px) { free(prevtex); prevtex = (uint32_t *)calloc(px, 4); ptcap = prevtex ? px : 0; }
+                if (prevtex) { for (size_t i = 0; i < px; i++) lead += prevtex[i] != wide_out[i]; memcpy(prevtex, back, px * 4); }
+                if (n < 4) fprintf(stderr, "[gpu-present] picture %u: the previous texture differs from this readback in %zu pixels\n", n, lead);
+                if (prev) { for (size_t i = 0; i < px; i++) lag += back[i] != prev[i]; memcpy(prev, wide_out, px * 4); }
+                if (n < 3) fprintf(stderr, "[gpu-present] picture %u: texture differs from this readback in %zu pixels, from the previous readback in %zu\n", n, bad, lag);
+            }
+            if (n == 1 && getenv("F117_GPU_PRESENT_DUMP")) {                /* both pictures as PPM, for a look */
+                for (int w2 = 0; w2 < 2; w2++) {
+                    char fp[1024]; snprintf(fp, sizeof fp, "%s-%s.ppm", getenv("F117_GPU_PRESENT_DUMP"), w2 ? "readback" : "texture");
+                    FILE *df = fopen(fp, "wb");
+                    if (df) { fprintf(df, "P6\n%d %d\n255\n", g_ww, g_wh); const uint32_t *q = w2 ? wide_out : back; for (size_t i = 0; i < px; i++) { fputc(q[i] >> 16 & 255, df); fputc(q[i] >> 8 & 255, df); fputc(q[i] & 255, df); } fclose(df); }
+                }
+            }
+            if (n < 4 && getenv("F117_GPU_PRESENT_TWICE")) {
+                extern int g_read_other; static uint32_t *other; static size_t ocap;
+                if (ocap < px) { free(other); other = (uint32_t *)malloc(px * 4); ocap = other ? px : 0; }
+                g_read_other = 1; const int okr = other && gpu_compose_read_target(g_gpu, other); g_read_other = 0;
+                size_t dd = 0; if (okr) for (size_t i = 0; i < px; i++) dd += other[i] != back[i];
+                fprintf(stderr, "[gpu-present] picture %u: the two copies of the same present pass differ in %zu pixels\n", n, dd);
+            }
+            bad_total += (unsigned)bad;
+            if (++n % 60 == 1) fprintf(stderr, "[gpu-present] %u pictures checked: the wrapped texture differs from the readback in %u pixels in all (this one %zu of %zu)\n", n, bad_total, bad, px);
+        }
+    }
     SDL_UnlockMutex(g_gpu_lock);
     return ok;
 }
@@ -218,7 +281,9 @@ static void gpu_compose_start(void)
 {
     if (g_gpu || !getenv("F117_GPU_COMPOSE")) return;
     const char *base = SDL_GetBasePath();
-    g_gpu = gpu_compose_create(base ? base : ".");
+    SDL_GPUDevice *rdev = g_gpu_present && g_ren ? SDL_GetGPURendererDevice(g_ren) : NULL;
+    g_gpu = rdev ? gpu_compose_create_on(rdev, base ? base : ".") : gpu_compose_create(base ? base : ".");
+    if (g_gpu_present && !rdev) fprintf(stderr, "[gpu-compose] F117_GPU_PRESENT needs the GPU renderer; the readback path is used\n");
     if (!g_gpu) { fprintf(stderr, "[gpu-compose] no usable GPU device or shaders beside the executable: the CPU compositor is used\n"); return; }
     g_gpu_lock = SDL_CreateMutex();
     remaster_live_set_gpu(gpu_compose_cb, gpu_compose_begin_cb, gpu_compose_finish_cb);
@@ -297,7 +362,15 @@ static int wide_make(SDL_Renderer *ren, int aspect)
 {
     (void)ren; (void)aspect;
     if (!g_wide_filled || !g_wtex || !g_wpix) return 0;
+    if (g_gpu_tex_fresh && g_gtex[0] && g_gtex[1]) {                         /* drawn straight from the compositor's texture */
+        g_gpu_tex_fresh = 0;
+        if (gpu_tex_mode() == 2 && !getenv("F117_GPU_PRESENT_CHECK")) gpu_compose_read_target(g_gpu, g_wpix);
+        g_wshow = g_gtex[gpu_compose_last_written(g_gpu)];
+        return 1;
+    }
+    g_gpu_tex_fresh = 0;
     SDL_UpdateTexture(g_wtex, NULL, g_wpix, g_ww * 4);
+    g_wshow = g_wtex;
     return 1;
 }
 
@@ -473,6 +546,15 @@ static controls_config g_pad;         /* controller mapping (controls.h), from t
 static uint32_t *g_crt_buf; static size_t g_crt_cap;
 
 /* The picture as the display should get it: with --crt, the scanline filter, and with --colourblind the colour filter, applied to a copy. */
+/* 0: the readback path (no GPU renderer, or the compositor off); 1: draw the compositor's texture with no readback; 2: the same and also read it back into g_wpix, because something reads
+ * the pixels (a CRT filter, the colour-blind filter, a frame hash, F117_PRESENT_SHOTS, the verification) */
+static int gpu_tex_mode(void)
+{
+    if (!g_gpu_present) return 0;
+    if (g_crt || g_crt_mask || g_crt_glow || g_colourblind || getenv("F117_PRESENT_HASH_FROM") || getenv("F117_PRESENT_SHOTS") || getenv("F117_GPU_PRESENT_READBACK")) return 2;
+    return 1;
+}
+
 static const uint32_t *crt_view(const uint32_t *px, int w, int h)
 {
     if (!g_crt && !g_crt_mask && !g_crt_glow && !g_colourblind) return px;
@@ -1633,15 +1715,19 @@ int main(int argc, char **argv)
         int ww = 0, wh = 0;
         if (spec && sscanf(spec, "%dx%d", &ww, &wh) == 2 && ww >= 320 && wh >= 240 && ww <= 8192 && wh <= 8192) { win_w = ww; win_h = wh; }
     }
-    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0",
-                                     win_w, win_h,
-                                     SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
-                                     (getenv("F117_HIDDEN_WINDOW") ? SDL_WINDOW_HIDDEN : 0),   /* diagnostic: a real renderer (GPU) without showing a window, for timing */
-                                     &win, &ren)) {
+    const Uint64 win_flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                             (getenv("F117_HIDDEN_WINDOW") ? SDL_WINDOW_HIDDEN : 0);   /* diagnostic: a real renderer (GPU) without showing a window, for timing */
+    if (getenv("F117_GPU_PRESENT")) {          /* piece 3: SDL's own GPU renderer, its device shared with the GPU compositor */
+        win = SDL_CreateWindow("F-117A Nighthawk Stealth Fighter 2.0", win_w, win_h, win_flags);
+        ren = win ? SDL_CreateGPURenderer(NULL, win) : NULL;
+        if (win && !ren) { fprintf(stderr, "[gpu-present] no GPU renderer (%s): the ordinary renderer is used\n", SDL_GetError()); SDL_DestroyWindow(win); win = NULL; }
+        else if (ren) g_gpu_present = 1;
+    }
+    if (!win && !SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", win_w, win_h, win_flags, &win, &ren)) {
         fprintf(stderr, "SDL_CreateWindowAndRenderer: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_SetRenderVSync(ren, 1);
+    SDL_SetRenderVSync(ren, getenv("F117_NO_VSYNC") ? 0 : 1);   /* F117_NO_VSYNC=1 (benchmarks only): with vsync the GPU renderer blocks in its draw calls for the next swapchain image, which the work-per-frame column counts */
     g_ren = ren; g_aspect_on = aspect;
     if (g_fit_scale) {
         /* Enhanced: as fine as the display's height allows at 4:3 (2160 lines: 9, 1440: 6, 1080: 4) */
@@ -2791,7 +2877,7 @@ int main(int argc, char **argv)
              * Converting and uploading a separate 4:3 texture here would be
              * unused work whenever that complete wide picture is displayed. */
             if (wide_make(ren, aspect)) {
-                show = g_wtex; w = g_ww; h = g_wh; wide = 1;
+                show = g_wshow ? g_wshow : g_wtex; w = g_ww; h = g_wh; wide = 1;
             } else {
                 if (!fine_ready) {
                     convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
@@ -2808,7 +2894,7 @@ int main(int argc, char **argv)
         }
         if (g_loop_timing) g_lt_upload += SDL_GetTicksNS() - lt_upload0;
         if (frame_hash_from && got && H.m.cpu.icount >= frame_hash_clock) {
-            const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
             uint64_t hash = 14695981039346656037ull;
             for (size_t i = 0; i < (size_t)w * h; ++i)
                 hash = (hash ^ (px[i] & 0xFFFFFFu)) * 1099511628211ull;
@@ -2829,7 +2915,7 @@ int main(int argc, char **argv)
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {
-                    const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);   /* as the window shows it: filters included */
+                    const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);   /* as the window shows it: filters included */
                     fprintf(sf, "P6\n%d %d\n255\n", w, h);
                     for (int k = 0; k < w * h; k++) { const uint8_t rgb[3] = { (uint8_t)(px[k] >> 16), (uint8_t)(px[k] >> 8), (uint8_t)px[k] }; fwrite(rgb, 1, 3, sf); }
                     fclose(sf); left--;
@@ -2852,7 +2938,7 @@ int main(int argc, char **argv)
             SDL_PathInfo info;
             for (unsigned suffix = 1; SDL_GetPathInfo(path, &info); ++suffix)
                 snprintf(path, sizeof path, "%s/%s-clock%llu-%u.bmp", g_shots_dir, g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount, suffix);
-            const uint32_t *px = crt_view(show == g_wtex ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
             SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
             const int ok = sf && SDL_SaveBMP(sf, path);
             if (sf) SDL_DestroySurface(sf);

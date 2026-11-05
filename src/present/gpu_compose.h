@@ -26,8 +26,12 @@ typedef struct {
     const uint8_t *tagflags;        /* 256: bit 0 scene tag, bit 1 outline tag, bit 2 span tag */
 } gpu_compose_in;
 
-/* shader_dir holds gpu_bands_fast.dxil, gpu_polys.dxil, gpu_strokes.dxil and gpu_replace.dxil. NULL when there is no usable GPU device. */
+/* shader_dir holds gpu_bands_fast.dxil, gpu_polys.dxil, gpu_strokes.dxil, gpu_replace.dxil and gpu_present.dxil. NULL when there is no usable GPU device. */
 gpu_compose *gpu_compose_create(const char *shader_dir);
+/* The same on a device the caller owns (the app's GPU renderer's, SDL_GetGPURendererDevice): it is not destroyed with the compositor. */
+struct SDL_GPUDevice;
+struct SDL_GPUTexture;
+gpu_compose *gpu_compose_create_on(struct SDL_GPUDevice *device, const char *shader_dir);
 void gpu_compose_destroy(gpu_compose *g);
 
 /* In two halves, so the CPU can make the game's own picture while the GPU draws: begin takes everything but src, tag and dac (which it ignores), uploads and runs the bands,
@@ -35,6 +39,15 @@ void gpu_compose_destroy(gpu_compose *g);
  * the CPU compositor has to be used (the reason is on stderr once). Finish without a successful begin returns 0. */
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in);
 int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out);
+
+/* Piece 3 (no readback): two w x h RGBA textures (double-buffered: finish writes one while the caller draws the other) that the compositor writes the finished picture into itself
+ * (a compute pass after the replace step). The caller wraps them as textures of its own renderer (SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, SDL_PIXELFORMAT_RGBA32) and draws the one
+ * gpu_compose_last_written names. gpu_compose_make_targets returns 1 on success; gpu_compose_target(g, i) the i-th texture. With targets set, finish may be given a NULL wide_out
+ * to skip the readback; with both, the readback still happens (verification). gpu_compose_read_target downloads the last written one as 0xAARRGGBB words (verification only). */
+int gpu_compose_make_targets(gpu_compose *g, int w, int h);
+struct SDL_GPUTexture *gpu_compose_target(gpu_compose *g, int i);
+int gpu_compose_last_written(const gpu_compose *g);
+int gpu_compose_read_target(gpu_compose *g, uint32_t *out);
 
 /* Both, one after the other: the wide picture, tw * h pixels, into wide_out. */
 int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out);
