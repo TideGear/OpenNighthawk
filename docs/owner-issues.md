@@ -74,28 +74,15 @@ checked), EXPLAINED (not a defect: the reason is written down).
 - The Remastered renderer is the first priority, then hybrid sound; the owner's own look and listen come last.
 - Tell the owner when something cannot be matched; do not guess.
 
-## Where this stopped (1 November 2026, about 00:30)
+## Open items (5 November 2026)
 
-Built and unit-tested in `clip04dd` (a worktree under `C:/Users/Tideg/f117-recomp-local`), committed to `master`: the rerun-copy collector, the line layer, the band-edge fix, the single-pass wide composition, the faster fill, the mouse follow, the all-effects routing to the AdLib driver. The owner's test copy is `C:/Users/Tideg/Desktop/ONTests` (`ON-roland.bat`, `ON-mac.bat`; a copy of `f117a.exe` plus `f117a.ini` with the MT-32 ROM path); it must be refreshed from the newest build before the owner tests again (the owner asked to test only after the mouse jump and the quiet effects were fixed). Not gated since `5906fb1` (the last full gate was at `59cf216`): run a full gate on `master` from a worktree before calling this accepted (`gate-gatemaster2.ps1` in `C:/Users/Tideg/f117-recomp-local` is the pattern).
+Generated from the status column above; the table is the record. The older "where this stopped" notes of 1 November, which said R7 and R10 still needed work, were removed: both are fixed (rows R7, R10); the history is in `git log`.
 
-Next, in order: (1) refresh `ONTests` and have the owner test R1 to R11, M1, S3 to S5; (2) the sky and ground bands' cost (R10), then measure pictures per second against Enhanced; (3) S6: the Mac call sites and the speech phrases, by code, with the unmatched list; (4) R4 (the dark bar across the hangars) and R7 (the missing jet): not reproduced; (5) R8, R9 (the rerun copy with a wider view).
-
-## Where this stopped, second note (1 November 2026, 01:05)
-
-After the commit `c772be1` the owner tested the new build and reported: lights behind hangars showing through in the widescreen areas (R12), cutscenes still lagging in the visuals too (R10 reopened), the two jets near the tower invisible but still collidable (R7), and the MFD map still pixelated (R13). Nothing of these is investigated yet. Order: R7 (it hides real objects), R12 (small, in the margin line layer), R10 (measure in the app), R13 (decide). The routing, mouse and quiet-effects fixes were not commented on: ask whether they are accepted.
-
-## Where this stopped, third note (1 November 2026, about 11:45)
-
-Done: R12 (reproduced, fixed, committed), R10 (cause found, in the machine: see its row), R13 narrowed to a located bug, R7 not reproduced (needs the mission and the moment from the owner). A new tool: `F117_LOOP_TIMING=1` on `f117a` prints where each 2 seconds of wall time went and where slow machine slices ended. Next: R13 (origin tags of the map rectangle on the ground roll), then the P3 rows by weight.
-
-## Where this stopped, fourth note (1 November 2026, about 13:00)
-
-Done since the third note: P3 went 91.23% to 92.15% (the settings picker corrected and extended, the colour-blind aid, the key list's fifth page, the Picture detail and Machine clock rows). The owner's test copy (`Desktop/ONTests`) has the newest build (R12's fix, `F117_LOOP_TIMING`). What waits:
-
-- **The owner:** look at R12 (lights through hangars in the margins: should be gone), M1 and S4 (quiet effects, with headphones), S3 (the pull-out song stops on skip). R7 needs the mission and the moment (before take-off, in the roll, in the air) of the two invisible jets at the tower. R13 needs a screenshot of the pixelated map and whether Enhanced shows it the same way (the measurement says the terrain is as sharp as its grid).
-- **The P2 session:** R10. The cutscene lag is the machine running the DOS-poll stub (`0060:00C4`, the `LOOP $` of the DOS overhead) at about a fifth of its normal speed per instruction, in every presentation. Details in the R10 row; it needs a machine-core change with identical clocks and state.
-- **P3, not started or only partly:** longer draw distance (R8/R9, the rerun copy with a wider view), road and coastline jitter, interpolation between logic steps (needs a measurement of pictures per second against Enhanced), controller-button remapping in the menu and a real controller, accessibility for AdLib speech, folders and ROM paths in the menu, jumping to a typed time in a watched flight, Mac call sites and speech phrases (S6), the full gate on `master` (last full gate at `59cf216`).
-- **A lesson:** `build-app.bat` launched with `Start-Process cmd /c` from this shell silently did nothing twice and the stale log looked like a success; launch it with `cmd /c "C:/Users/Tideg/f117-recomp-local/build-app.bat"` from PowerShell and check the exe's timestamp.
+- **Not yet fixed (OPEN, INVESTIGATING, CAUSE FOUND or mostly done):** R4, R8, R19, R25, R28, S1, S2, S6, S9; partly fixed: S3 (the Mac recordings only; Roland not reproduced) and S5.
+- **Fixed in code or built, awaiting the owner's confirmation:** M2, R1, S4, S7, R3, R5, R6, R9, R11, R12, R14, R15, R16, R17, R20, R21, R22, R26, R27, S10, T1.
+- **Settled (confirmed, explained or withdrawn):** M1, R2, R7, R10, R13, S8, and owner-confirmed on 3 Nov: R18, R23, R24.
+- **P3 not started or partly started:** road and coastline jitter, interpolation between logic steps, a real controller and button remapping in the menu, accessibility for AdLib speech, jumping to a typed time in a watched flight, the remaining hybrid-sound listening checks. The renderer's speed work is in [gpu-compositor.md](gpu-compositor.md), last section.
+- **A lesson kept from the old notes:** `build-app.bat` launched with `Start-Process cmd /c` from this shell silently did nothing twice and the stale log looked like a success; launch it with `cmd /c "C:/Users/Tideg/f117-recomp-local/build-app.bat"` from PowerShell and check the exe's timestamp.
 
 ## Pictures per second (1 November 2026, 13:30)
 
