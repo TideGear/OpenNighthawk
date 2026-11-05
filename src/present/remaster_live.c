@@ -1873,6 +1873,41 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 fprintf(stderr, "[why] frame completed at clock %llu: %zu primitives, %u of models 0, 3 and 6\n", (unsigned long long)m->cpu.icount, r->frame.n, c036);
             }
         }
+        {   /* F117_STEP_PAIR=1 (diagnostic, the live instance only): how well the primitives of one logic step pair with the previous step's, by index and by (model, kind, vertex count) */
+            static int on = -1;
+            if (on < 0) on = getenv("F117_STEP_PAIR") != NULL;
+            if (on && !r->replay_copy && r->frame.n > 50) {
+                static remaster_prim *prev; static size_t pn, pcap; static unsigned steps; static double sum_idx, sum_key, sum_move; static unsigned long long moved_n;
+                size_t same_idx = 0, same_key = 0;
+                const size_t n = r->frame.n < pn ? r->frame.n : pn;
+                for (size_t i = 0; i < n; i++) {
+                    const remaster_prim *a2 = &r->frame.prim[i], *b2 = &prev[i];
+                    if (a2->model == b2->model && a2->kind == b2->kind && a2->n == b2->n) {
+                        same_idx++;
+                        double d = 0; for (int v = 0; v < a2->n; v++) d += fabs((double)a2->v[v].x - b2->v[v].x) / 256.0;
+                        sum_move += d / (a2->n ? a2->n : 1); moved_n++;
+                    }
+                }
+                /* by key, in order within the key: a greedy match of each primitive to the first unused previous one with the same (model, kind, n, colour word) */
+                static unsigned char *used; static size_t ucap;
+                if (ucap < pn) { free(used); used = (unsigned char *)malloc(pn); ucap = used ? pn : 0; }
+                if (used) {
+                    memset(used, 0, pn);
+                    size_t from = 0;
+                    for (size_t i = 0; i < r->frame.n; i++) {
+                        const remaster_prim *a2 = &r->frame.prim[i];
+                        for (size_t j = from; j < pn; j++)
+                            if (!used[j] && prev[j].model == a2->model && prev[j].kind == a2->kind && prev[j].n == a2->n && prev[j].colour_word == a2->colour_word) { used[j] = 1; same_key++; if (j == from) from++; break; }
+                    }
+                }
+                steps++; sum_idx += pn ? (double)same_idx / (double)(r->frame.n > pn ? r->frame.n : pn) : 0; sum_key += pn ? (double)same_key / (double)(r->frame.n > pn ? r->frame.n : pn) : 0;
+                if (steps % 20 == 1)
+                    fprintf(stderr, "[step-pair] step %u: %zu primitives (previous %zu): %zu pair by index, %zu by key; means over %u steps: %.1f%% by index, %.1f%% by key; mean x movement of index pairs %.2f game pixels\n",
+                            steps, r->frame.n, pn, same_idx, same_key, steps, 100.0 * sum_idx / steps, 100.0 * sum_key / steps, moved_n ? sum_move / (double)moved_n : 0.0);
+                if (pcap < r->frame.n) { prev = (remaster_prim *)realloc(prev, r->frame.n * sizeof *prev); pcap = prev ? r->frame.n : 0; }
+                if (prev) { memcpy(prev, r->frame.prim, r->frame.n * sizeof *prev); pn = r->frame.n; }
+            }
+        }
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
         {                                       /* the completed frame becomes the one a composite uses */
