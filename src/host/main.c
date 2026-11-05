@@ -97,6 +97,7 @@ static host_t H;
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
 static uint64_t g_bt[6];                 /* F117_LOOP_TIMING: the build's steps (collect, wait for the worker, apply the picture, publish and plan, the copy, other) */
+static uint64_t g_iter_run_ns;            /* this loop iteration's machine step (F117_SLOW_FRAME_TRACE) */
 static uint64_t g_iter_ns, g_cost_ns;     /* the loop iteration's start, and its work before the present call (the --present-log cost column) */
 static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
@@ -2478,7 +2479,8 @@ int main(int argc, char **argv)
                     break;
                 }
             }
-            g_lt_run += SDL_GetTicksNS() - lt_run0;
+            g_iter_run_ns = SDL_GetTicksNS() - lt_run0;
+            g_lt_run += g_iter_run_ns;
             mouse_follow_game(win, ren, aspect, replay != NULL || g_set.open);
             if (H.audio) {
                 audio_advance(H.audio, H.m.cpu.icount);
@@ -2871,9 +2873,9 @@ int main(int argc, char **argv)
         SDL_RenderPresent(ren);
         g_lt_present += SDL_GetTicksNS() - lt_pr0;
         if (slow_frame_trace && got && g_cost_ns >= 12000000ull)
-            fprintf(stderr, "[slow-frame] clock %llu total %.3f ms, worker wait %.3f, render copy %.3f\n",
+            fprintf(stderr, "[slow-frame] clock %llu total %.3f ms, worker wait %.3f, render copy %.3f, machine step %.3f\n",
                     (unsigned long long)H.m.cpu.icount, (double)g_cost_ns / 1e6,
-                    (double)frame_wait_ns / 1e6, (double)frame_copy_ns / 1e6);
+                    (double)frame_wait_ns / 1e6, (double)frame_copy_ns / 1e6, (double)g_iter_run_ns / 1e6);
         if (g_loop_timing) {                                  /* F117_LOOP_TIMING: where the loop's wall time goes, every 2 s */
             const uint64_t now = SDL_GetTicksNS();
             if (!g_lt_last) { g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; }

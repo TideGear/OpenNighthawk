@@ -693,6 +693,37 @@ static int far_pick_cmp(const void *a, const void *b)
     return p->distance_squared < q->distance_squared ? 1 : p->distance_squared > q->distance_squared ? -1 : 0;
 }
 
+/* The picks' order, far_pick_cmp's (coarsest level first, then the farthest first), by a stable radix sort: four counting passes (the squared distance
+ * descending in 11, 11 and 10 bits, then the level descending) instead of qsort's comparator calls, which took 0.74 ms for 9,800 picks. Equal keys keep
+ * their listing order (qsort's order for them was unspecified). Opt-in (F117_PICK_RADIX=1): it changed 5 pixels of 42 of 1,401 Maximum frames (9 at Far) of the banked
+ * flight against qsort's tie order, with the other two flights identical (docs/scenery-distance.md). */
+static void far_sort_picks(far_pick *p, size_t n)
+{
+    static far_pick *tmp; static size_t cap;
+    static int use_qsort = -1;
+    if (use_qsort < 0) use_qsort = getenv("F117_PICK_RADIX") == NULL;
+    if (n < 2) return;
+    if (use_qsort || n > 0x7FFFFFFF) { qsort(p, n, sizeof *p, far_pick_cmp); return; }
+    if (cap < n) { far_pick *q = (far_pick *)realloc(tmp, n * sizeof *tmp); if (!q) { qsort(p, n, sizeof *p, far_pick_cmp); return; } tmp = q; cap = n; }
+    static unsigned count[2048];
+    far_pick *from = p, *to = tmp;
+    for (int pass = 0; pass < 4; pass++) {
+        const int buckets = pass == 3 ? 4 : 2048;
+        memset(count, 0, (size_t)buckets * sizeof *count);
+        for (size_t i = 0; i < n; i++) {
+            const uint32_t d = ~from[i].distance_squared;
+            count[pass == 0 ? d & 2047u : pass == 1 ? (d >> 11) & 2047u : pass == 2 ? d >> 22 : (unsigned)(4 - from[i].level) & 3u]++;
+        }
+        unsigned sum = 0;
+        for (int b = 0; b < buckets; b++) { const unsigned c = count[b]; count[b] = sum; sum += c; }
+        for (size_t i = 0; i < n; i++) {
+            const uint32_t d = ~from[i].distance_squared;
+            to[count[pass == 0 ? d & 2047u : pass == 1 ? (d >> 11) & 2047u : pass == 2 ? d >> 22 : (unsigned)(4 - from[i].level) & 3u]++] = from[i];
+        }
+        far_pick *t = from; from = to; to = t;
+    }
+}
+
 static int g_native_walk;                                 /* F117_NATIVE_WALK=1: the game's own terrain walk is skipped in the copy and its cells placed natively too */
 static int g_far_native = 1;                              /* the far scenery is placed natively (docs/scenery-distance.md); F117_FAR_WALKER=1 returns to the extra terrain walks */
 static int far_scenery_body(machine_t *m);
@@ -853,7 +884,9 @@ static int far_scenery_body(machine_t *m)
           }
         }
     }
-    qsort(picks, npick, sizeof *picks, far_pick_cmp);
+    const double sort_t0 = walk_ms();
+    far_sort_picks(picks, npick);
+    { static double acc; static unsigned nn; acc += walk_ms() - sort_t0; if (++nn % 600 == 0 && getenv("F117_SORT_PROBE")) fprintf(stderr, "[sort] %.3f ms a copy to sort %zu picks\n", acc / nn, npick); }
     {   /* F117_FAR_TRACE=FROM: one line a copy from that clock: the attitude, and what the far scenery chose */
         static int tr = -1; static unsigned long long tr_from;
         if (tr < 0) { const char *e = getenv("F117_FAR_TRACE"); tr = e != NULL; tr_from = e ? strtoull(e, NULL, 0) : 0; }

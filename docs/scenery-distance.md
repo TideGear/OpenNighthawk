@@ -455,3 +455,17 @@ Timing of the final default-on build (commit 0293cd5's source), runway session 2
 via `--config`, work per frame (`cost_ns`), two runs each, p95 ms (p99 in brackets): Near 9.04 (10.75) and 8.63 (9.99); Far 9.55 (11.44) and 8.52 (9.55);
 Maximum 11.27 (13.39) and 11.08 (14.32). All under 12 ms p95; Maximum's p99 is not. A software-renderer proxy: the owner's GPU window has not been measured (`--present-log`
 from a real flight is the missing evidence).
+
+## Where the copy's time goes at Maximum, and the pick sort (4 November 2026)
+
+GPU renderer (hidden direct3d11 window), 1920 x 1080, runway replay. In the frames over 12 ms (`F117_SLOW_FRAME_TRACE`, which now also prints the machine step) the
+main thread spends 13.1 ms: worker wait 0.3, **render copy 7.4, live machine step 4.9**, other 0.4. The worker's composite is already finished by then, so overlapping
+the copy with the composite would not help; overlapping it with the live step would, and is blocked: the copy swaps the global observer pointer
+(`g_f117_observer`, `src/matched/observe.c`, outside this phase's scope). Slow frames are not the frames where a new logic step arrives (those average 7.5 ms against 8.9).
+Copy profile at Maximum (`F117_PROFILE=1`, mean 6.9 ms): copy start 0.75, game terrain walk plus far scenery 3.75 (choosing 1.65 ms from 74,005 listed objects, placing about
+9,300 survivors 2.2 ms), HUD pass and the rest 2.4. The far-scenery pick sort alone was 0.74 ms a copy (`F117_SORT_PROBE=1`).
+
+`F117_PICK_RADIX=1` (opt-in) sorts the picks by a stable radix sort: 0.09 ms. It breaks ties differently from `qsort`, whose order for ties is unspecified. Checksums,
+radix against qsort (fixed cadence, eight workers): identical at Near, Far and Maximum on the runway (901 frames) and latest (401) flights; on the banked flight Far differs in
+9 of 1,401 frames and Maximum in 42, in the one frame inspected by 5 pixels (a 4 x 4 patch at x 1084 to 1087, y 45 to 48). Kept opt-in under the accuracy-first rule.
+Timing at Maximum, p95 ms, interleaved runs: default 11.57 and 15.15, radix 9.81 and 12.20 (run to run spread is large; the 15.15 looks disturbed).
