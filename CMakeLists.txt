@@ -210,6 +210,10 @@ if(F117R_BUILD_APP)
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_replace.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/replace.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/replace.hlsl)
     add_custom_target(gpu_shaders_replace ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_replace.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_present.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_present.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/present_tex.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/present_tex.hlsl)
+    add_custom_target(gpu_shaders_present ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_present.dxil)
     add_executable(gpu_replace tools/gpu_replace.c src/present/remaster_raster.c)
     target_include_directories(gpu_replace PRIVATE src/present)
     target_link_libraries(gpu_replace PRIVATE SDL3::SDL3)
@@ -219,8 +223,8 @@ if(F117R_BUILD_APP)
     target_link_libraries(gpu_chain PRIVATE SDL3::SDL3)
     add_dependencies(gpu_chain gpu_shaders gpu_shaders_bands gpu_shaders_polys gpu_shaders_strokes gpu_shaders_replace)
     # the app loads the compositor's shaders from beside its executable
-    add_dependencies(f117a gpu_shaders gpu_shaders_bands gpu_shaders_polys gpu_shaders_strokes gpu_shaders_replace)
-    foreach(shader gpu_bands_fast gpu_polys gpu_strokes gpu_replace)
+    add_dependencies(f117a gpu_shaders gpu_shaders_bands gpu_shaders_polys gpu_shaders_strokes gpu_shaders_replace gpu_shaders_present)
+    foreach(shader gpu_bands_fast gpu_polys gpu_strokes gpu_replace gpu_present)
       add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/${shader}.dxil $<TARGET_FILE_DIR:f117a>)
     endforeach()
     add_executable(gpu_stage tools/gpu_stage.c src/present/remaster_raster.c)
