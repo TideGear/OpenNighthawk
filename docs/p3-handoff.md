@@ -8,7 +8,7 @@ The active goal remains **get Phase 3 to 100% safely**. The previous goal turn
 made verified progress (installed shoreline correction); this turn completes
 the requested settings batch. Neither local batch is completion of Phase 3.
 
-**Verified and installed in ONTests:** SHA-256 `7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`.
+**Verified and installed in ONTests:** SHA-256 `7A50EC412B89FE1B5E5F4B9D3728E478305298F0BF511FAF137E89F042C02974`. (Replaced since: the ONTests build was refreshed on 4 and 5 November; the top section of [../handoff.md](../handoff.md) says what it holds now.)
 The prior coast build is backed up at `private/settings-20261103/ONTests-before-settings.exe`.
 All twelve host acceptance cases pass, including eight real-menu settings
 subcases and an actual fresh-process restart. Eleven focused native tests,
@@ -59,7 +59,7 @@ is whether the normal true-color Remastered path still computes an unused
 paletted image; prove pixel equivalence and measure before claiming a gain.
 Scenery work must address which detail-ring cells are requested, not only
 raise the far plane. Keep all simulation and original renderer behavior intact.
-Honor the standing limit: no additional full machine gate without authorization.
+(The gate limit this sentence repeated was lifted by the owner on 3 November: "remove the gate limitation. do gates at will." Run a full gate when a change needs one.)
 
 **Preserved owner work:** sound-board tool edits and the existing untracked
 files remain excluded. The old ignored `unfinished-snapshot` patches are now
@@ -67,7 +67,7 @@ superseded by accepted coast/settings source; do not apply them over this code.
 
 Older sections below are historical; this section takes precedence.
 
-## Latest: renderer performance (2 November 2026)
+## Renderer performance (2 November 2026; historical, see remaster-performance.md for current figures)
 
 **Owner clarification:** GOG has the moving coastline too; Remastered must correct it, ideally matching an authoritative gameplay water boundary if one exists. No further GOG reproduction is needed merely to establish that baseline. See [coastline-reconstruction.md](coastline-reconstruction.md) for the twelve screenshots, Halfar departure location and collision/terrain investigation. The shoreline correction remains open; the earlier margin cutoff is a separate installed fix. Older GOG-pending statements below are superseded.
 
@@ -117,7 +117,7 @@ owner offered their recent flight `session-20261101-224822`), the Remastered dep
 real hardware.
 
 **Owner decisions (1 Nov):** the 22 repairs that reach no route stay on by default; Esc stays the game's (it cancels the flight's Alt+Q dialog,
-skips PLAYER's animation, cancels START text entry); the menu is the tilde key; no more full gates without approval (they authorised one more
+skips PLAYER's animation, cancels START text entry); the menu is the tilde key; no more full gates without approval (lifted on 3 November: gates at will) (they authorised one more
 after the R16 to R19 fixes "if you deem it necessary"); no AI attribution in commits.
 
 **Update, 2 November 2026 (morning), after the owner's second look at the build of 23:50:** R16 (hangars) is confirmed better by the owner;
@@ -152,7 +152,7 @@ the jets at the runway's far end, and close to a hangar with its pole; compare `
 altitude; (4) the Remastered depth-correct and interpolation rows from crowded and fast-turning frames; (5) flights that reach the 22 untested
 repairs.
 
-## State on 1 November 2026
+## State on 1 November 2026 (historical)
 
 Read [owner-issues.md](owner-issues.md) first: every issue the owner reported, with status and evidence, and "Where this stopped" notes. Scoreboard 93.0% for P3 (`py tools/progress.py --title`). The owner's test copy is `C:/Users/Tideg/Desktop/ONTests` (a copy of `f117a.exe` plus `ON-roland.bat` and `ON-mac.bat`; refresh it from the newest build when nobody is running it). The scratch build tree is `C:/Users/Tideg/f117-recomp-local/clip04dd` (copy the changed files in, then `cmd /c "C:/Users/Tideg/f117-recomp-local/build-app.bat"` from PowerShell and check the exe's timestamp; `ct4.bat` builds everything and runs the host and presentation tests). Evidence and recordings: `D:/f117-gate/remaster-flight-20261031/` (the owner's sessions are under `%APPDATA%/F117Recomp/F-117A/sessions`).
 
@@ -177,7 +177,7 @@ N=4/9), which the Remastered composite touches only when `--presentation remaste
 The hybrid sound and Remastered work on `p3-remaster-live` changes `src/machine` (`machine.h`, `pc.c`); the gate above covers it.
 Everything else listed here is host-side (`src/host/`, `src/present/`, `tools/`, `docs/`, `tests/`).
 
-## Items
+## Items (30 October snapshot; the current credits are in `py tools/progress.py`)
 
 | Item (weight) | Credit | What exists | What is missing |
 |---|---|---|---|
@@ -205,7 +205,7 @@ menu, CRT, controls, remap, key list, subtitles (needs `F117_SPEECH_117`), confi
   identical exit clock and save files), the rasteriser tests (polygons, lines, dots).
 - `docs-pass` and `p3-hybrid-sound`: older tips of the same work; `p3-remaster` is merged to master.
 
-## Remastered: what the live frame does, and the app wiring still to do
+## Remastered: what the live frame does, and the app wiring still to do (30 October; historical)
 
 The first live frame (recorded takeoff, frame 150) matches the original's horizon, hangars, antennas, runway centre dots and
 dusk colours. Missing from it: the face shade in the colours, the runway edge strips close to the eye, hangar detail.
@@ -219,7 +219,7 @@ real flight compared with the Enhanced baseline (takeoff replay, `--presentation
 ENHANCED.ppm REMASTERED.ppm`); interpolation between the two latest steps; widescreen and longer reach; the fit rule for the cockpit and HUD
 (see `docs/remastered-design.md`). The Remastered item stays at 0.0 in `docs/progress.json` until the owner decides.
 
-## Remastered: R1 and R2 done, R3 next
+## Remastered: R1 and R2 done, R3 next (30 October; historical)
 
 Design and progress: [remastered-design.md](remastered-design.md). Decoders (`tools/world_decode.py`, `world_check.py`)
 read `*.3DG`, `*.3DT` and `*.WLD` from the layouts START's matched loaders use (`matched.c`, START `0x07D71` and
@@ -256,7 +256,7 @@ saved: copy `D:\GOG\F-117A` and never run from the install itself.
 `matched.c` or in `observe.c` called from it therefore could not be tested. Host hooks went into the machine layer
 (`machine_t.exec_hook`); the alternative is the generated-code build (`tools/build_recomp.py`, hours).
 
-## Planned: asset library and setup wizard (owner-approved, 30 October 2026)
+## Planned: asset library and setup wizard (owner-approved, 30 October 2026; still planned)
 
 One library folder with a subfolder each for the DOS game, the Mac sounds (converted to WAV at import) and the Roland
 ROMs. A first-run wizard detects a GOG or Steam install or a GOG installer, copies what it needs into the library (the
@@ -266,7 +266,7 @@ availability); nothing from the Mac release or the ROMs goes into the repository
 a command-line mode for tests. Unchecked: whether a GOG installer unpacks without an extra tool, and whether Steam sells
 this game. Start after hybrid sound is proven.
 
-## Blocked or waiting
+## Blocked or waiting (30 October; historical)
 
 - **Hybrid sound:** done 31 Oct 2026: a real flight fires a recorded sound. The recorded takeoff of the Remastered check
   (handoff.md, item 1) with two cannon bursts added (`K 2500000000 0E` ... `8E`, Backspace), replayed with

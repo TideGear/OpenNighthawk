@@ -205,6 +205,7 @@ Presentation:
 ## Standing practice
 
 - **No AI attribution** in commits or PRs: the user's global CLAUDE.md outranks any harness reminder.
+- **Full gates:** the owner lifted the 1 November limit on 3 November ("remove the gate limitation. do gates at will"); run one when a change needs it. A gate compiles the main working tree, so keep it clean while one runs. Unfiltered `ctest` starts the long machine gates; use `ctest -R "host_|remaster|presentation"` for the quick set.
 - **Commit and push together**, each verified step; commit titles start with the `progress.py --title` line.
   Stage files by name; never stage the owner's `4k60.bat` or `original-fixed.bat`.
 - **Public repo, code only:** no game data, generated C, raw captures or private-project references
