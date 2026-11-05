@@ -24,7 +24,8 @@ verification) is not an optimisation; it needs the owner's approval.
   took 80 seconds for four repeated configurations at scale 9, including seeks
   and eleven simulated seconds per case. Run cases sequentially without other heavy work;
   exclude seek/startup from `--present-log` statistics and pin executable, recording,
-  detail and internal canvas size. Native scale-9 4K is still below 60 fps.
+  detail and internal canvas size. Native scale-9 4K: 32 to 40 ms p95 on the CPU path and 14.5 to 17.1 ms on the GPU path (5 November, hidden window; not yet bit-exact against the CPU compositor).
+  The guards used for renderer speed work (fixed-cadence picture checksums at Near, Far and Maximum, and the end-of-run machine hash) are in [gpu-compositor.md](gpu-compositor.md), last section.
 
 - **Host sound, rendering and input.** Run the [host integration suite](host-acceptance.md)
   in addition to the applicable existing parity checks, before deployment and release:
@@ -54,9 +55,8 @@ verification) is not an optimisation; it needs the owner's approval.
   (`py tests/test_fix_defaults.py --app build/f117a.exe --runner build/f117run.exe`:
   10 tests, 5.36 s), both whole-table seeds, the full gate and the presentation
   checks. Staged native checks cost seconds and need the generated build:
-  `build/check_q7 path/to/VGAME.EXE` (56 runs plus 149 event limits, 5.42 s) and
-  `build/check_q11 path/to/VGAME.EXE` (108 runs, eight branch-preservation checks,
-  358 paired event limits, 19.2 s). These focused checks supplement the gate.
+  `build/check_q7 path/to/VGAME.EXE` (56 runs plus 149 event limits, 5.42 s); the
+  `check_q11` tool was removed with the Q11 fix on 1 November. These focused checks supplement the gate.
   Owner, 25 Oct, conditional on unchanged P2 accuracy: several fixes may share
   one gate; test each in order, then run both whole-table seeds and the
   unchanged full gate, defaults/replay and presentation on the final combined
