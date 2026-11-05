@@ -475,3 +475,17 @@ build's 62 frames over 12 ms average 12.7 ms: copy 6.5, machine step 5.8, worker
 which 1.5 ms is the draw-feed collection (`drawlive_collect`, inside the step). `F117_COLLECT_PROBE=1`: `close_frame` 0.605 ms per closed logic frame (one in four presented), replay of the
 open frame's records 0.028 ms a slice (about 17 slices a presented frame), so collection averages about 0.65 ms a frame with no single large piece. Run-to-run spread of p95 on identical builds
 at Maximum is large (default 11.6, 15.2, 14.1, 12.9, 15.2: median 14.1; radix 9.8, 12.2, 12.0, 11.3, 11.3: median 11.3); `cam_helper` (NZXT CAM) was using CPU in the background and may add noise.
+
+## Native terrain walk: what the horizon mismatch is not (4 November 2026)
+
+`F117_NATIVE_WALK=1` still differs from the game's walk along the horizon: runway replay, fixed cadence, one worker, 4.0 and 4.4 billion, 2,625 and 1,967 pixels; in the strip the game draws
+sea (20,36,85) where the native walk shows land (43,35,15). The frame at 4.4 billion holds 625 primitives with the game's walk and 404 with the native one; by model the native walk has none of
+models 0, 3 and 6 (the game: 5, 4 and 4 polygons) and about 60% of models 37, 39, 40 and 44. Tried, each leaving the pixel counts and the primitive count unchanged:
+- **The game's cell visiting order** for its own cells (`F117_NATIVE_ORDER=1`: own cells last, in table order, entries in tile order): 2,625 to 2,608 and 1,967 to 1,966 pixels.
+- **The walk's step rules**, read from the matched code (VGAME 0581 to 05A1 and 0764 to 0775): ring 4 at detail `[990E]` of 2 or more continues to step 15 (reading the table's following entries), rings 1 to 3 at
+  detail below 2 skip steps 0 to 3. Both are now followed in native-walk mode (`own_x/own_y` hold 16 steps; default mode unchanged); no effect on the counts.
+- **The deferred list's drain** (the caller of the walk drains it, not the walk).
+Found: the missing models 0, 3 and 6 are ring 4's first entries (`F117_FAR_WHY=0,3,6` prints the selection's verdict: chosen for the cells at 0,0, 0,-2, 1,1, 0,1 and 1,-2; no level in reach for 0,2, 1,2 and 2,2; culled for
+2,1 and 2,-2), are placed by the game once and natively after (the native path adds 4, 4 and 1 primitives each copy), and yet are not in the frame the compositor gets. Not yet found: where they are lost
+between the placement and the completed frame. Diagnostics (all env-gated, off by default): `F117_PRIM_HIST=FROM` (the first composites' primitive counts by model), `F117_DS_DUMP=N,C:/path` (the copy's data segment at
+its Nth HUD pass), `F117_FAR_WHY`, `F117_FAR_WHY_FROM`. The data-segment diff of the two walk modes at one copy is dominated by per-object scratch (1,322 differing words) and does not isolate a cause.

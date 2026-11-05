@@ -850,6 +850,18 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
      * reads its centre, and the margins and the centre together are the wide picture (wide_out). */
     const int tw = wide_w > w && mask && rgb && wide_out ? wide_w : w, xoff = (tw - w) / 2, wide = tw > w;
     int complete = scene_is_complete(r);
+    {   /* F117_PRIM_HIST=FROM (diagnostic): the primitives of the first composite from that clock, counted by model and kind (to diff one walk mode against another) */
+        static unsigned done_hist; const char *hs = done_hist >= 6 ? NULL : getenv("F117_PRIM_HIST");
+        if (hs && r->done.n > 50 && m->cpu.icount >= strtoull(hs, NULL, 0)) {
+            done_hist++;
+            static unsigned cnt[1024][3];
+            memset(cnt, 0, sizeof cnt);
+            for (size_t i = 0; i < r->done.n; i++) cnt[r->done.prim[i].model & 1023][r->done.prim[i].kind % 3]++;
+            fprintf(stderr, "[prim-hist] #%u clock %llu, %zu primitives, scene %p (model:polygons/lines/dots):", done_hist, (unsigned long long)m->cpu.icount, r->done.n, (void *)r->scene);
+            for (int k = 0; k < 1024; k++) if (cnt[k][0] || cnt[k][1] || cnt[k][2]) fprintf(stderr, " %d:%u/%u/%u", k, cnt[k][0], cnt[k][1], cnt[k][2]);
+            fprintf(stderr, "\n");
+        }
+    }
     remaster_target t;
     t.w = tw; t.h = h;
     /* The buffers are kept between pictures (grown, never freed): allocating and freeing about 13 MB every picture made the
@@ -1598,6 +1610,14 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
     m->mem[(((uint32_t)ds << 4) + 0x48C4) & 0xFFFFF] = keep48c4;
     if (added < 0) { r->refused++; return 0; }
     r->added++; r->native_drawn++;
+    {   /* F117_FAR_WHY (diagnostic): what the native path made of the models the walk comparison misses */
+        static int wl = -1; static unsigned left = 120;
+        if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
+        if (wl && left && (n->model == 0 || n->model == 3 || n->model == 6)) {
+            left--;
+            fprintf(stderr, "[why] native placement of model %u bank %u level %d: %zu primitives added (frame now %zu)\n", (unsigned)n->model, (unsigned)n->bank, n->level, target->n - first, target->n);
+        }
+    }
     static int want_sizes = -1;
     if (want_sizes < 0) want_sizes = getenv("F117_NATIVE_SIZES") != NULL;
     if (want_sizes && target->n > first) {   /* diagnostic: the projected radius, in the original's pixels (256 x / z), of the natively drawn objects */
@@ -1813,6 +1833,20 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
         rerun_prof_mark(4);
+        {   /* F117_DS_DUMP=N,FILE (diagnostic): the data segment as the Nth render copy reaches its HUD pass, to diff one walk mode against another */
+            static int want = -2; static const char *path; static unsigned seen;
+            { static unsigned dbg; if (getenv("F117_DS_DEBUG") && dbg++ < 3) fprintf(stderr, "[ds-dump] the HUD pass hook ran (%u)\n", dbg); }
+            if (want == -2) { const char *e = getenv("F117_DS_DUMP"); want = e ? atoi(e) : -1; const char *c = e ? strchr(e, ',') : NULL; path = c ? c + 1 : NULL; }
+            if (want >= 0 && path && ++seen == (unsigned)want) {
+                FILE *df = fopen(path, "wb");
+                if (df) {
+                    const uint32_t base = ((uint32_t)m->cpu.seg[S_DS] << 4) & 0xFFFFF;
+                    for (uint32_t i = 0; i < 65536; i++) fputc(m->mem[(base + i) & 0xFFFFF], df);
+                    fclose(df);
+                    fprintf(stderr, "[ds-dump] copy %u: data segment written to %s\n", seen, path);
+                }
+            }
+        }
         if (r->hud_at < 0) r->hud_at = (long)r->frame.n;
     } else if (k == 2) {                                    /* the per-frame draw routine: the last frame is complete */
         rerun_prof_mark(1);
@@ -1822,6 +1856,18 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             if (diag) fprintf(stderr, "[hud-order] clock %llu: %zu primitives, HUD pass after %ld\n", (unsigned long long)m->cpu.icount, r->frame.n, r->hud_at);
         }
         r->done_hud_at = r->hud_at; r->hud_at = -1;
+        {   /* F117_FAR_WHY (diagnostic): the frame being completed, and how many primitives of models 0, 3 and 6 it holds */
+            static int wl = -1; static unsigned left = 30;
+            if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
+            static unsigned long long why_from; static int why_from_init;
+            if (!why_from_init) { why_from_init = 1; const char *e = getenv("F117_FAR_WHY_FROM"); why_from = e ? strtoull(e, NULL, 0) : 0; }
+            if (wl && left && r->frame.n > 50 && m->cpu.icount >= why_from) {
+                unsigned c036 = 0;
+                for (size_t i = 0; i < r->frame.n; i++) { const unsigned md = r->frame.prim[i].model & 1023; if (md == 0 || md == 3 || md == 6) c036++; }
+                left--;
+                fprintf(stderr, "[why] frame completed at clock %llu: %zu primitives, %u of models 0, 3 and 6\n", (unsigned long long)m->cpu.icount, r->frame.n, c036);
+            }
+        }
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
         {                                       /* the completed frame becomes the one a composite uses */

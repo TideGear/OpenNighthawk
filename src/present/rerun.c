@@ -685,11 +685,16 @@ static int far_override(const machine_t *m, uint16_t ds, const far_inst *f)
     return -1;
 }
 
-typedef struct { int idx, level, ring; uint32_t distance_squared; int16_t x, y, z, ox, oy, oz; uint16_t model; uint8_t darken; uint8_t own, defers; } far_pick;
+typedef struct { int idx, level, ring; uint32_t distance_squared; int16_t x, y, z, ox, oy, oz; uint16_t model; uint8_t darken; uint8_t own, defers; int8_t own_k; uint8_t entry; } far_pick;
+static int g_order_own;
 static int far_pick_cmp(const void *a, const void *b)
 {
     const far_pick *p = (const far_pick *)a, *q = (const far_pick *)b;
     if (p->level != q->level) return q->level - p->level;                   /* coarsest (farthest) scale first */
+    if (g_order_own) {                                                      /* F117_NATIVE_ORDER=1 (with F117_NATIVE_WALK): the game's own cells last, in its visiting order, entries in tile order */
+        if ((p->own_k >= 0) != (q->own_k >= 0)) return p->own_k >= 0 ? 1 : -1;
+        if (p->own_k >= 0) return p->own_k != q->own_k ? p->own_k - q->own_k : (int)p->entry - (int)q->entry;
+    }
     return p->distance_squared < q->distance_squared ? 1 : p->distance_squared > q->distance_squared ? -1 : 0;
 }
 
@@ -745,6 +750,7 @@ static int far_scenery_body(machine_t *m)
         const char *s = getenv("F117_WIDE_SCENERY");
         if (s && atoi(s) == 0) g_distance = 0;
         g_native_walk = getenv("F117_NATIVE_WALK") != NULL;
+        g_order_own = g_native_walk && getenv("F117_NATIVE_ORDER") != NULL;
     }
     if (g_distance <= 0) return 0;
     const double ms0 = walk_ms();
@@ -762,9 +768,15 @@ static int far_scenery_body(machine_t *m)
     /* The game's own call: a ring is drawn when enabled and its eye height fits (0 .. 7FFEh in the ring's units); it draws nine cells a sector's
      * table names (or, below -60 degrees of pitch, the near tables [04CC]/[04DE]). Those cells are left to it. */
     const unsigned sector = ((uint16_t)(0x1000 - arguments[0])) >> 13, sector_y = (sector + 2) & 7;
-    int own_x[9], own_y[9];
+    int own_x[16], own_y[16];
     const int near_tables = (int16_t)arguments[1] < (int16_t)0xD555;
-    for (int i = 0; i < 9; i++) {
+    /* The walk's step rules (VGAME 0581 to 05A1 and 0764 to 0775): a ring takes steps 0 to 8 of the table, except that ring 4 at detail [990E] >= 2 goes on to step 15 (reading the
+     * table's following entries, as the game does) and rings 1 to 3 at detail < 2 skip steps 0 to 3. Followed only in native-walk mode (F117_NATIVE_WALK). */
+    const int detail = (int16_t)rd16(m->mem, ds, 0x990E);
+    const int nown = g_native_walk ? 16 : 9;
+    int step_lo[5], step_hi[5];
+    for (int r = 1; r <= 4; r++) { step_lo[r] = g_native_walk && r != 4 && detail < 2 ? 4 : 0; step_hi[r] = g_native_walk && r == 4 && detail >= 2 ? 16 : 9; }
+    for (int i = 0; i < nown; i++) {
         if (near_tables) { own_x[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x04CC + 2 * i)); own_y[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x04DE + 2 * i)); }
         else { own_x[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector * 9 + i))); own_y[i] = (int16_t)rd16(m->mem, ds, (uint16_t)(0x034C + 2 * (sector_y * 9 + i))); }
     }
@@ -836,6 +848,7 @@ static int far_scenery_body(machine_t *m)
         tr_seen++;
         const int64_t dcx = f->cx - base[r][0], dcy = f->cy - base[r][1];
         far_pick pk; int chosen = 0, resolved = 0, same_type = 0;
+        pk.own_k = -1; pk.entry = f->entry;
         uint16_t w = 0; uint8_t klass = 0;
         for (int l = r; l <= 4 && l <= r + extra_levels && !chosen; l++) {
             if (eye_l[l][2] >= 0x7FFF || eye_l[l][2] < 0) continue;
@@ -871,12 +884,29 @@ static int far_scenery_body(machine_t *m)
              * the square root do not affect ordering within that group. */
             pk.distance_squared = (uint32_t)(ddx * ddx + ddy * ddy + ddz * ddz);
         }
+        {   /* F117_FAR_WHY=M0,M1,... (diagnostic): what the selection did with every object of those model numbers in the cells around the viewer, in the first copies */
+            static int why_init; static unsigned why_left; static int why_models[8], why_n;
+            if (!why_init) {
+                why_init = 1; const char *e = getenv("F117_FAR_WHY");
+                for (const char *q = e; q && *q && why_n < 8; ) { why_models[why_n++] = atoi(q); const char *c2 = strchr(q, ','); q = c2 ? c2 + 1 : NULL; }
+                why_left = why_n ? 200 : 0;
+            }
+            if (why_left && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
+                const unsigned mi = model_by_type[f->type & 0x7F] & 0x7F;
+                for (int q = 0; q < why_n; q++)
+                    if ((int)mi == why_models[q]) {
+                        why_left--;
+                        fprintf(stderr, "[why] model %u ring %d cell %d,%d entry %d: %s\n", mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                                chosen == 1 ? "chosen" : chosen == -1 ? "culled by the game's visibility test" : "no level within reach or bounds");
+                    }
+            }
+        }
         if (chosen != 1) continue;
         if (pk.level == r && game_would[r]) {                                     /* the game's own cells */
-            int own = 0;
-            for (int k = 0; k < 9; k++) if (own_x[k] == dcx && own_y[k] == dcy) own = 1;
+            int own = 0, own_k = -1;
+            for (int k = step_lo[r]; k < step_hi[r]; k++) if (own_x[k] == dcx && own_y[k] == dcy) { own = 1; if (own_k < 0) own_k = k; }
             if (own && game_draws[r]) continue;
-            pk.own = (uint8_t)own;
+            pk.own = (uint8_t)own; pk.own_k = (int8_t)own_k;
         }
         pk.idx = (int)i; pk.ring = r;
         if (npick == pick_cap) { pick_cap = pick_cap ? pick_cap * 2 : 1024; picks = (far_pick *)realloc(picks, pick_cap * sizeof *picks); if (!picks) { pick_cap = npick = 0; return 0; } }
@@ -964,6 +994,14 @@ static int far_scenery_body(machine_t *m)
         if (g_collector.placement_return) g_collector.placement_return(g_collector.user, m, rc == RUN_TRAP);
         if (stats) guest_ms += walk_ms() - guest_start;
         if (rc != RUN_TRAP) bad++;
+        {   /* F117_FAR_WHY (diagnostic): a pick of one of those models went through the game's own placement */
+            static int wl = -1; static unsigned left = 200;
+            if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
+            if (wl && left && ((pk->model & 0x7F) == 0 || (pk->model & 0x7F) == 3 || (pk->model & 0x7F) == 6)) {
+                left--;
+                fprintf(stderr, "[why] model %u ring %d level %d own %d defers %d: placed by the game, result %s\n", (unsigned)(pk->model & 0x7F), pk->ring, pk->level, pk->own, pk->defers, rc == RUN_TRAP ? "returned" : "did not return");
+            }
+        }
         g_walk_busy = 0; g_scale_shift = 0;
     }
     g_walk_busy = 0; g_scale_shift = 0;
