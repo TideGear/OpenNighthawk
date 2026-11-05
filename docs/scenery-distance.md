@@ -358,7 +358,7 @@ some strokes, so compare final frames as well as captured geometry.
 
 ## Native terrain walk (experimental, off)
 
-*Update, 4 November: the across-test fix (last sections) cut the difference from these figures to about 200 pixels (223 and 202 at 4.0 and 4.4 billion). Still not exact, still off.*
+*Update, 4 November: with `F117_NATIVE_FORCE_BASE=1` (an experiment that forces ring 4's first entry of a tile visible, not a fix) the difference from these figures is about 200 pixels (205 and 185 at 4.0 and 4.4 billion; 223 and 202 after the later across-test fix, which corrected the selection but did not change the picture). Still not exact, still off: see the last sections.*
 
 `F117_NATIVE_WALK=1` skips the game's own terrain walk in the copy and places its nine cells a ring through the same native path (and the game's override table, `far_override`): the copy falls from 4.4 to 2.7 ms at Near.
 It is **not exact**: the picture differs from the game's walk by 2,770, 1,998 and 277 pixels at the three runway clocks 4.0, 4.4 and 4.7 billion, mostly a strip along the horizon where the original draws sea (12, 28, 85)
