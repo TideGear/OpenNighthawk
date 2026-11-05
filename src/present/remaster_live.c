@@ -371,6 +371,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 t->paint_index = fine.q[q].colour;      /* the flat band's palette index stands under the smooth colour */
                 remaster_polygon_shaded(t, v, cols, 4);
             }
+            if (remaster_trace_hook) remaster_trace_hook(REMASTER_T_ZRESET, t, NULL, 0, NULL, 0, 0.0, 0, 0);
             for (long i = (long)remaster_row_lo(t) * t->w; i < (long)remaster_row_hi(t) * t->w; i++) t->inv_z[i] = 0.0f;   /* the bands are behind everything */
         }
     }
@@ -516,6 +517,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
     if (!wide && do3) {                         /* nothing outside the game's clip window */
         const int x0 = (int)(window[0] * ux), x1 = (int)((window[2] + 1) * ux);
         const int y0 = (int)(window[1] * uy), y1 = (int)((window[3] + 1) * uy);
+        if (remaster_trace_hook) { const remaster_v3 box[2] = { { x0, y0, 0 }, { x1, y1, 0 } }; remaster_trace_hook(REMASTER_T_WINDOW, t, box, 2, NULL, 0, 0.0, 0, 0); }
         for (int y = remaster_row_lo(t); y < remaster_row_hi(t); y++)
             for (int x = 0; x < t->w; x++)
                 if (x < x0 || x >= x1 || y < y0 || y >= y1) t->color[(long)y * t->w + x] = 0xFF000000u;

@@ -106,7 +106,9 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
 
 /* Tracing (docs/gpu-compositor.md): when remaster_trace_hook is set, each call above reports itself first, with its arguments and the
  * target's state, so a frame's drawing can be recorded and replayed (the GPU compositor's oracle). NULL: one pointer test per call. */
-enum { REMASTER_T_CLEAR, REMASTER_T_POLYGON, REMASTER_T_SHADED, REMASTER_T_LOGIC, REMASTER_T_LINE };
+/* The last two are not raster calls but writes the composite makes between them: depth zeroed after the bands (v unused), and the black
+ * outside the game's clip window (v[0] = x0,y0 and v[1] = x1,y1 in pixels). */
+enum { REMASTER_T_CLEAR, REMASTER_T_POLYGON, REMASTER_T_SHADED, REMASTER_T_LOGIC, REMASTER_T_LINE, REMASTER_T_ZRESET, REMASTER_T_WINDOW };
 extern void (*remaster_trace_hook)(int kind, const remaster_target *t, const remaster_v3 *v, int n, const uint32_t *colors,
                                    uint32_t color, double width, int op, unsigned value);
 

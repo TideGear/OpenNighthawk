@@ -23,6 +23,12 @@ static void apply(remaster_target *t, const gpu_trace_rec *r, int *strokes_clear
     case REMASTER_T_SHADED: remaster_polygon_shaded(t, r->v, r->colors, r->n); break;
     case REMASTER_T_LOGIC: remaster_polygon_logic(t, r->v, r->n, r->op, r->value); break;
     case REMASTER_T_LINE: remaster_line(t, r->v[0], r->v[1], r->width, r->color); break;
+    case REMASTER_T_ZRESET: memset(t->inv_z, 0, (size_t)t->w * t->h * sizeof *t->inv_z); break;
+    case REMASTER_T_WINDOW:
+        for (int y = 0; y < t->h; y++)
+            for (int x = 0; x < t->w; x++)
+                if (x < r->v[0].x || x >= r->v[1].x || y < r->v[0].y || y >= r->v[1].y) t->color[(long)y * t->w + x] = 0xFF000000u;
+        break;
     }
 }
 
