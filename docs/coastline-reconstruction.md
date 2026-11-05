@@ -115,6 +115,6 @@ clock script, whose failure was a capture assertion rather than a game failure.
 `coast-diagnostic/process.log` and `original-ground-instructions.txt` establish
 the original eye floor. Research binaries and original game data stay ignored.
 
-Owner confirmation remains pending. Continue broader theatre/mission coverage
+The owner confirmed on 3 November that "the coastline seems good" (R24 in [owner-issues.md](owner-issues.md); the hangar and coast relationship was not independently compared). Continue broader theatre/mission coverage
 and fast turns, including centre/margin ground joins while banked and near the
 surface, before claiming every terrain/motion case is complete.
