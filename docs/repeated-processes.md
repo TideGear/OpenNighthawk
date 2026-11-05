@@ -459,12 +459,12 @@ add the fixes they test. Do not enable every fix for ordinary parity: original
 and repaired behaviour each need their own checks. The defaults' own checks:
 [Normal-play default changes](#current-practice-by-kind-of-change).
 
-**Latest figures (30 October 2026).** 811 CTests; 63 routes identical, 62
+**Latest figures (1 November 2026, batch bz).** 831 tests ran in the acceptance gate (846 CTests are registered now, with later additions); 63 routes identical, 62
 fresh interpreter sessions; 5,764,032 instruction states under each timing
-profile; 1,636 matched routines at three seeds; reachability and event limits
-clean. Batch bw's full acceptance took 1,912 s, including the fresh gate,
+profile; 1,646 matched routines at three seeds; reachability and event limits
+clean. Batch bz's full acceptance took 2,503.4 s (see Cost above), including the fresh gate,
 sequential route-baseline audit and both presentation groups. Evidence:
-`D:/f117-gate/p2-batch-bw-accept/`.
+`D:/f117-gate/p2-batch-bz-accept/`. The 30 October figures it replaces were 811 CTests, 1,636 routines and batch bw's 1,912 s.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|

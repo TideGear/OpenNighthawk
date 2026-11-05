@@ -32,8 +32,8 @@ measurements so far and the guards are in [gpu-compositor.md](gpu-compositor.md)
   nothing is replaced with new graphics. The finer modes keep the original renderer's quirks: road and coastline
   edges jitter as they do in the original, objects can overlap in the original's whole-object drawing order, and
   lines and dots keep one thickness at any distance. A picture without the jitter or the sort, widescreen and a
-  longer draw distance are planned as the Remastered presentation, a new renderer
-  ([decisions](#decisions-that-constrain-the-work)).
+  longer draw distance are the Remastered presentation, a new renderer, built in the app and experimental
+  ([decisions](#decisions-that-constrain-the-work); status in [gpu-compositor.md](gpu-compositor.md) and [../handoff.md](../handoff.md)).
 - **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
   selects fullscreen, `present = rerun` and scale 9.
 - **One setting.** The app's `--presentation original|enhanced` (`presentation =` in `f117a.ini`) chooses for you:
@@ -100,7 +100,7 @@ a copy, and is checked for exactly that ([below](#the-rerun-mode-in-between-pict
 - **Three presentation settings (owner, 24 October 2026).** *Original* is the validated default picture (320x200 at
   the original rate, nearest-neighbour 4:3); *Enhanced* is the finer 4:3 redraw with in-between pictures at 60+ fps
   (the modes on this page), which keeps the original's jitter and whole-object sort; both are built
-  (`--presentation`, [above](#in-short)). *Remastered*, not started, is a new renderer: widescreen with a widened
+  (`--presentation`, [above](#in-short)). *Remastered*, built and experimental, is a new renderer: widescreen with a widened
   field of view, a longer draw distance, depth-correct drawing instead of the original's whole-object sort, and no
   road or coastline jitter. Presentation never feeds the simulation. Details and the other re-release features:
   [roadmap.md](roadmap.md), "Re-release features".
@@ -930,9 +930,9 @@ switching mode (no exit or reload); a hold or fade over those frames is possible
 
 ## World geometry and the scene-input capture
 
-Background for the planned Remastered renderer ([roadmap.md](roadmap.md), "Re-release features"), not the path the
-current modes take ([the method](#the-method-for-60-fps-owner-15-october-2026)). This project's own scene renderer
-(`src/present/scene_mesh.c`, with a synthetic CTest) is an unconnected draft.
+Background for the Remastered renderer ([roadmap.md](roadmap.md), "Re-release features"), not the path the
+other modes take ([the method](#the-method-for-60-fps-owner-15-october-2026)). This project's own scene renderer
+(`src/present/scene_mesh.c`, with a synthetic CTest) was an unconnected draft when this was written (24 October); it is now used by `remaster_scene.c` and `remaster_live.c`.
 
 **The rule (owner, 15 October 2026):** no one-off clipping exceptions, for coastlines or anything else. A clip-only
 prototype was set aside because it cannot supply faces the original never submitted or stable model identity
@@ -1004,5 +1004,5 @@ These are correctness checks; they do not establish physical refresh or the look
 - **Real display.** `rerun`'s submitted-picture timing at 4K/60 passes on the owner's screen (18-19 October). What
   the panel shows (tearing, the look of motion at 60 and 144 Hz), fullscreen acceptance of the latest HUD batch,
   fullscreen cargo/career flights and slower machines remain owner (Phase 4) checks.
-- **Remastered** (planned 24 October 2026, not started) needs a new renderer, designed in [remastered-design.md](remastered-design.md) (stages R1-R6, nothing built); the
+- **Remastered** (planned 24 October 2026; built in the app since, experimental) is a new renderer, designed in [remastered-design.md](remastered-design.md) (stages R1-R6; what is credited is in `py tools/progress.py`); the
   roadmap's rule is that the simulation state stays equal across the three presentations on the same inputs.

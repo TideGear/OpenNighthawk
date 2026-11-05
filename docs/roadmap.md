@@ -893,18 +893,18 @@ Each is fixed; the named regressions keep the failing seed or case.
       `src/host/controls.c`; defaults reproduce the old fixed mapping) and the CRT scanline filter (`--crt`, `crt = yes`;
       `src/host/crt.c`, applied to the displayed copy only) and `--watch latest|SESSION` (replay a recorded flight from a scratch copy of its save; menu rows start it, the newest or any listed flight) and keyboard remapping (`remap = Q:W` / `--remap`; `src/host/remap.c`; a Remap a key screen in the settings menu) and an on-screen key reference (Ctrl+Alt+K; `src/host/keyref.c`) and radio subtitles (`--subtitles`; `src/host/subtitles.c`, Roland and PC speaker drivers). The menu does not yet cover controller or sound-driver answers.
       *Built so far* (24 Oct, `ab4256b`): `--presentation original|enhanced` and `--fixes original|recommended`, also as
-      `presentation =` and `fixes =` in f117a.ini (`remastered` is refused as not built; later `--fix` options make a custom set);
+      `presentation =` and `fixes =` in f117a.ini (on 24 Oct `remastered` was refused as not built; it is built now and `--presentation remastered` selects it; later `--fix` options make a custom set);
       saves tagged with the fix set that last wrote them (a `.fixset` file beside the save folder, never in it), warning once when
-      a session crosses between the original game and a fixed set. The picture default is still Original. Design notes, not built:
-      [setup-autoanswer.md](setup-autoanswer.md) (SETUP's answers from the settings) and
+      a session crosses between the original game and a fixed set. The picture default is still Original. Design notes, since built in part (merged 31 Oct):
+      [setup-autoanswer.md](setup-autoanswer.md) (SETUP's answers from the settings; the sound-driver answer is implemented) and
       [sound-board.md](sound-board.md) (every sound through each driver, with the Macintosh recordings as a fourth
-      column, deciding hybrid sound's split).
+      column, deciding hybrid sound's split; the source policy and Mac recording player are on master).
       *Two settings instead of preset modes.* **Presentation:** Original (320x200, original rate, nearest-neighbour 4:3, the validated
       default picture), Enhanced (the finer 4:3 redraw with in-between frames at 60+ fps; the final linear stretch is a setting with a
       sharp option; the original's road and coastline jitter stays) or Remastered (below). **Fixes:** Original (473.04, every fix off),
       Recommended (every fix: the final patch, the fan-community patches, credited, and OpenNighthawk's own) or Custom. Any presentation
       combines with any fix set; the shipped default is Enhanced with Recommended. Everything but Remastered stays 4:3.
-      *Remastered* (staged design, nothing built: [remastered-design.md](remastered-design.md)): widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
+      *Remastered* (built in the app and experimental; design in [remastered-design.md](remastered-design.md), state in [../handoff.md](../handoff.md); credit today per `py tools/progress.py`: widescreen 82%, depth-correct drawing 70%, longer draw distance 25%, interpolation 60%, no jitter not started, the owner's approval 0%): widescreen with a widened field of view, a longer draw distance, depth-correct drawing (the original sorts whole
       objects, so a far hangar's edge can be drawn over a nearer hangar until the camera is closer; owner's screenshots, 24 Oct) and no
       road or coastline jitter.
       *Also:* an in-game settings menu for every option now set on the command line or in an .ini, which also answers SETUP's

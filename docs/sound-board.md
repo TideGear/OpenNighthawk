@@ -1,8 +1,8 @@
 # Sound board and hybrid sound
 
-Status (30 October 2026): the sound board page, the render harness and the sound-id census are done. Hybrid sound is
-partly built on the branch `p3-hybrid-sound` (the Mac recording player, the source-choice policy and a machine-layer
-hook), unmerged and not yet checked in a flight that fires a recorded sound; see "Hybrid sound" below. Owner's
+Status (5 November 2026): the sound board page, the render harness and the sound-id census are done. Hybrid sound is
+partly built and merged into `master` on 31 October (the Mac recording player, the source-choice policy and a machine-layer
+hook; the branch `p3-hybrid-sound` stays as history); the owner's listening checks are tracked in [owner-issues.md](owner-issues.md); see "Hybrid sound" below. Owner's
 request, 24 October 2026.
 
 ## Purpose

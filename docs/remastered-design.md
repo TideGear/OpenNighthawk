@@ -1,11 +1,13 @@
 # Remastered presentation (design)
 
-Current status (2 November 2026): the renderer runs in the app, including widescreen,
+Current status (5 November 2026): the renderer runs in the app, including widescreen,
 depth-tested geometry and decorations, smooth bands and frames from the interpolated
-rerun copy. Moving host regressions now have [automated acceptance](host-acceptance.md).
-Longer scenery reach, coastline stability, broader motion/occlusion checks and owner
-approval remain incomplete. [Current throughput](remaster-performance.md) does not
-yet meet the native 4K/60 requirement. The historical stage descriptions below retain
+rerun copy, adjustable draw distance out to the whole map, and an optional GPU compositor and GPU
+present path. Moving host regressions now have [automated acceptance](host-acceptance.md).
+Coastline stability, road motion, broader motion/occlusion checks and owner
+approval remain incomplete, and the native terrain walk is not yet exact. Throughput: 1080p is under 12 ms p95 in
+the hidden-window replay; 4K is 14.5 to 17.1 ms on the GPU path and 32 to 40 ms on the CPU path
+([gpu-compositor.md](gpu-compositor.md), last section; [remaster-performance.md](remaster-performance.md)). The historical stage descriptions below retain
 the design and experiments; they are not current completion claims. See
 [p3-handoff.md](p3-handoff.md) for installed builds and current evidence.
 
@@ -17,8 +19,8 @@ about the game, above all its simulation, stays as it is.
 ## What exists
 
 - **Model geometry.** `src/present/scene_mesh.c` decodes a complete original model (parts, vertices, planes,
-  edges, faces, conditions) from a model bank, independent of the guest. It is a draft with a synthetic CTest
-  and is not connected to anything ([presentation.md](presentation.md#world-geometry-and-the-scene-input-capture)).
+  edges, faces, conditions) from a model bank, independent of the guest. When this was written (29 October) it was a draft with a synthetic CTest
+  and not connected to anything; `remaster_scene.c` and `remaster_live.c` use it now ([presentation.md](presentation.md#world-geometry-and-the-scene-input-capture)).
 - **Scene-input capture.** `F117R_OBSERVE_SCENE=N` with `f117run --observe` records each model request (model,
   position, orientation, camera) with the data segment and model bank; `tools/scene_capture.py` and
   `tools/scene_model.py` decode it. A research tool; the app never enables it.

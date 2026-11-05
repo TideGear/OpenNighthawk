@@ -106,14 +106,14 @@ titles start with the current figures (`py tools/progress.py --title`);
   keyboard, rendered Roland output against an independent reference and
   listening checks, refresh rates above 60 Hz and other hardware
   ([Phase 4](docs/roadmap.md#phase-4---checked-by-people-and-independent-references)).
-- **Re-release features** (mostly planned;
+- **Re-release features** (partly built;
   [roadmap](docs/roadmap.md#phase-3---fixes-and-enhancements-switchable)):
   two settings, *Presentation* (Original, Enhanced, or a widescreen
   Remastered without the original's jitter) and *Fixes* (Original,
   Recommended with credited fan-community patches, or Custom); an in-game
   settings menu, controllers and HOTAS, a hybrid of MT-32 music with AdLib
   effects, flight replays and accessibility options. Built so far:
-  `--presentation original|enhanced`, `--fixes original|recommended` and
+  `--presentation original|enhanced|remastered` (Remastered is experimental), `--fixes original|recommended`, the in-game settings menu, a first controller and key-remapping layer, hybrid sound with Macintosh recordings you supply, and
   saves that remember their fix set (below). The game's logic is the same
   under every presentation.
 
