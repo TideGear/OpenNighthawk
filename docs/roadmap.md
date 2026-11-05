@@ -169,15 +169,16 @@ not the recompilation:
       list. What the scores measure, and the full "P2 is done when" definition
       (owner, 23-24 and 27 Oct): [progress.md](progress.md#what-is-measured).
 
-      **Done:** 1,638 matched routines registered through batch bx (bm2 and bt
+      **Done:** 1,646 matched routines registered through batch bz (bm2 and bt
       were fix-only gates; see the [batch table](#batch-table)). Gameplay score
-      98.85%: 159,398 matched bytes a route runs plus 2,631 reviewed
-      design-rule original bytes, of 163,907 executed bytes. Every
+      99.23%: 160,015 matched bytes a route runs plus 2,631 reviewed
+      design-rule original bytes, of 163,907 executed bytes (1,261 executed bytes unmatched). Every
       route-executed byte of F117.COM, MGRAPHIC and MISC is matched or original
       by design. In the census, named code runs 160,739 of 165,548 creditable
       bytes (1,137 of 1,535 functions wholly, 293 in part).
 
-      **Accounted-for checklist:** 47,734 of 47,736 bytes (100.00%) outside the
+      **Accounted-for checklist (as of round 10, October; `py tools/progress.py` now prints 47,734 of 47,952 bytes, 99.55%, with 218 bytes without a reviewed entry: the denominator differs and the
+      difference is not yet reconciled here):** 47,734 of 47,736 bytes (100.00%) outside the
       routes have a second-read reference entry (`docs/reference-reviewed.tsv`,
       1,897 entries); 2 bytes remain. Blind-read rounds by independent readers
       adopted 46,952 bytes through round 10; earlier reviewed entries account for
