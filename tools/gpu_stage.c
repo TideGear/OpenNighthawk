@@ -118,7 +118,7 @@ int main(int argc, char **argv)
         if (!fcode) { fprintf(stderr, "cannot read %s\n", argv[3]); return 2; }
         SDL_GPUComputePipelineCreateInfo fci = { 0 };
         fci.code = (const Uint8 *)fcode; fci.code_size = fsz; fci.entrypoint = "main"; fci.format = SDL_GPU_SHADERFORMAT_DXIL;
-        fci.num_readonly_storage_buffers = 1; fci.num_readwrite_storage_buffers = 2; fci.num_uniform_buffers = 1;
+        fci.num_readonly_storage_buffers = 1; fci.num_readwrite_storage_buffers = 4; fci.num_uniform_buffers = 1;
         fci.threadcount_x = 64; fci.threadcount_y = 1; fci.threadcount_z = 1;
         SDL_GPUComputePipeline *fp = SDL_CreateGPUComputePipeline(dev, &fci);
         if (!fp) { fprintf(stderr, "fast pipeline: %s\n", SDL_GetError()); return 2; }
@@ -135,21 +135,21 @@ int main(int argc, char **argv)
         SDL_GPUBufferCreateInfo b1 = { SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, tbytes, 0 };
         SDL_GPUBuffer *tb = SDL_CreateGPUBuffer(dev, &b1);
         b1.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE; b1.size = fb;
-        SDL_GPUBuffer *ob[2] = { SDL_CreateGPUBuffer(dev, &b1), SDL_CreateGPUBuffer(dev, &b1) };
+        SDL_GPUBuffer *ob[4] = { SDL_CreateGPUBuffer(dev, &b1), SDL_CreateGPUBuffer(dev, &b1), SDL_CreateGPUBuffer(dev, &b1), SDL_CreateGPUBuffer(dev, &b1) };
         SDL_GPUTransferBufferCreateInfo t1 = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, tbytes, 0 };
         SDL_GPUTransferBuffer *tu = SDL_CreateGPUTransferBuffer(dev, &t1);
         t1.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD; t1.size = fb;
         SDL_GPUTransferBuffer *td[2] = { SDL_CreateGPUTransferBuffer(dev, &t1), SDL_CreateGPUTransferBuffer(dev, &t1) };
         void *m1 = SDL_MapGPUTransferBuffer(dev, tu, false); memcpy(m1, words, tbytes); SDL_UnmapGPUTransferBuffer(dev, tu);
         const Uint32 fparams[4] = { (Uint32)w, (Uint32)h, (Uint32)ntri, 0 };
-        SDL_GPUStorageBufferReadWriteBinding frw[2] = { { ob[0], false }, { ob[1], false } };
+        SDL_GPUStorageBufferReadWriteBinding frw[4] = { { ob[0], false }, { ob[1], false }, { ob[2], false }, { ob[3], false } };
         const char *e = getenv("GPU_STAGE_REPEAT"); const int reps = e ? atoi(e) : 1;
         SDL_GPUCommandBuffer *cbf = SDL_AcquireGPUCommandBuffer(dev);
         SDL_GPUCopyPass *cpf = SDL_BeginGPUCopyPass(cbf);
         SDL_GPUTransferBufferLocation fl = { tu, 0 }; SDL_GPUBufferRegion fr = { tb, 0, tbytes };
         SDL_UploadToGPUBuffer(cpf, &fl, &fr, false); SDL_EndGPUCopyPass(cpf);
         for (int rep = 0; rep < reps; rep++) {
-            SDL_GPUComputePass *cps = SDL_BeginGPUComputePass(cbf, NULL, 0, frw, 2);
+            SDL_GPUComputePass *cps = SDL_BeginGPUComputePass(cbf, NULL, 0, frw, 4);
             SDL_BindGPUComputePipeline(cps, fp); SDL_BindGPUComputeStorageBuffers(cps, 0, &tb, 1);
             SDL_PushGPUComputeUniformData(cbf, 0, fparams, sizeof fparams);
             SDL_DispatchGPUCompute(cps, ((Uint32)w + 63) / 64, (Uint32)h, 1); SDL_EndGPUComputePass(cps);

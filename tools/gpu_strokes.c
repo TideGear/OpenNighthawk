@@ -179,7 +179,7 @@ int main(int argc, char **argv)
     if (!dev) { fprintf(stderr, "no GPU device (skipped): %s\n", SDL_GetError()); return 77; }
     SDL_GPUComputePipelineCreateInfo pci = { 0 };
     pci.code = (const Uint8 *)code; pci.code_size = csz; pci.entrypoint = "main"; pci.format = SDL_GPU_SHADERFORMAT_DXIL;
-    pci.num_readonly_storage_buffers = 4; pci.num_readwrite_storage_buffers = 5; pci.num_uniform_buffers = 1;
+    pci.num_readonly_storage_buffers = 4; pci.num_readwrite_storage_buffers = 6; pci.num_uniform_buffers = 1;
     pci.threadcount_x = 16; pci.threadcount_y = 16; pci.threadcount_z = 1;
     SDL_GPUComputePipeline *pipe = SDL_CreateGPUComputePipeline(dev, &pci);
     if (!pipe) { fprintf(stderr, "pipeline: %s\n", SDL_GetError()); return 2; }
@@ -197,9 +197,10 @@ int main(int argc, char **argv)
     SDL_GPUBuffer *ro[4];
     for (int k = 0; k < 4; k++) { bi.size = ro_size[k]; ro[k] = SDL_CreateGPUBuffer(dev, &bi); }
     bi.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-    SDL_GPUBuffer *rw[5];
+    SDL_GPUBuffer *rw[6];
     for (int k = 0; k < 4; k++) { bi.size = pbytes; rw[k] = SDL_CreateGPUBuffer(dev, &bi); }
     bi.size = (Uint32)((nstrokes ? nstrokes : 1) * 4); rw[4] = SDL_CreateGPUBuffer(dev, &bi);
+    bi.size = pbytes; rw[5] = SDL_CreateGPUBuffer(dev, &bi);
     const Uint32 total_up = sz_t + sz_e + sz_o + sz_s + 4 * pbytes;
     SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, total_up, 0 };
     SDL_GPUTransferBuffer *up = SDL_CreateGPUTransferBuffer(dev, &ti);
@@ -223,13 +224,13 @@ int main(int argc, char **argv)
         for (int k = 0; k < 4; k++) { SDL_GPUTransferBufferLocation from = { up, at }; SDL_GPUBufferRegion to = { rw[k], 0, pbytes }; SDL_UploadToGPUBuffer(cp, &from, &to, false); at += pbytes; }
     }
     SDL_EndGPUCopyPass(cp);
-    SDL_GPUStorageBufferReadWriteBinding rwb[5];
-    for (int k = 0; k < 5; k++) { rwb[k].buffer = rw[k]; rwb[k].cycle = false; }
+    SDL_GPUStorageBufferReadWriteBinding rwb[6];
+    for (int k = 0; k < 6; k++) { rwb[k].buffer = rw[k]; rwb[k].cycle = false; }
     typedef struct { Uint32 mode, w, h, tilesx, nstrokes, p0, p1, p2; } params;
     for (int rep = 0; rep < reps; rep++) {
         for (int mode = 0; mode < 2; mode++) {
             params q = { (Uint32)mode, (Uint32)w, (Uint32)h, (Uint32)tilesx, nstrokes, 0, 0, 0 };
-            SDL_GPUComputePass *cps = SDL_BeginGPUComputePass(cb, NULL, 0, rwb, 5);
+            SDL_GPUComputePass *cps = SDL_BeginGPUComputePass(cb, NULL, 0, rwb, 6);
             SDL_BindGPUComputePipeline(cps, pipe);
             SDL_BindGPUComputeStorageBuffers(cps, 0, ro, 4);
             SDL_PushGPUComputeUniformData(cb, 0, &q, sizeof q);

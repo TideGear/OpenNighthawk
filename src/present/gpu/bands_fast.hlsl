@@ -5,6 +5,8 @@
 StructuredBuffer<uint> tri : register(t0, space0);
 RWStructuredBuffer<uint> colour : register(u0, space1);
 RWStructuredBuffer<uint> index_ : register(u1, space1);
+RWStructuredBuffer<uint> invz : register(u2, space1);     // zero after the bands (the CPU zeroes the depth after them)
+RWStructuredBuffer<uint> owner : register(u3, space1);    // zero: the bands have no owner
 
 cbuffer params : register(b0, space2)
 {
@@ -49,4 +51,6 @@ void main(uint3 id : SV_DispatchThreadID)
     }
     colour[y * w + x] = col;
     index_[y * w + x] = idx;
+    invz[y * w + x] = 0u;
+    owner[y * w + x] = 0u;
 }

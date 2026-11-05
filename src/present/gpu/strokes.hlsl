@@ -14,6 +14,7 @@ RWStructuredBuffer<uint> index_ : register(u1, space1);
 RWStructuredBuffer<uint> invz : register(u2, space1);     // the polygon pass's depth: read only here
 RWStructuredBuffer<uint> owner : register(u3, space1);    // the polygon pass's owner: read only here
 RWStructuredBuffer<uint> hidden : register(u4, space1);   // per stroke: 1 when a point is behind its own surface
+RWStructuredBuffer<uint> strokez : register(u5, space1);  // per pixel: the last stroke's depth (nonzero where a stroke was drawn), for the replace step
 
 cbuffer params : register(b0, space2)
 {
@@ -148,5 +149,5 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         col = strokes[sb + 0];
         idx = strokes[sb + 1];
     }
-    colour[at] = col; index_[at] = idx;
+    colour[at] = col; index_[at] = idx; strokez[at] = asuint(s_z);
 }
