@@ -3,7 +3,7 @@
 // order, with each triangle's two barycentric weights evaluated in double at the tile's first pixel (so a huge ground polygon whose vertices lie far off the
 // screen does not lose its precision); a thread walks its tile's list in order carrying the pixel's state (colour, palette index, depth, owner) in
 // registers, with remaster_raster.c's depth, owner and fill rules. Painter order and the later-wins tie are therefore the CPU's.
-StructuredBuffer<uint> tri : register(t0, space0);       // 32 words a triangle (see the exact coverage note below)
+StructuredBuffer<uint> tri : register(t0, space0);       // 40 words a triangle (see the exact coverage note below)
 StructuredBuffer<uint> ents : register(t1, space0);      // 9 words per (triangle, tile): triangle, L1 and L2 at the tile's first pixel centre, then the three exact edge values
 StructuredBuffer<uint> tileoff : register(t2, space0);   // tiles + 1 offsets into ents, in entries
 StructuredBuffer<uint> pal : register(t3, space0);       // 256 colours
@@ -26,7 +26,9 @@ cbuffer params : register(b0, space2)
 // pixel centre as int64 (entry words 3 to 8). A pixel is covered when all three edge values, origin plus steps times the pixel's offset in the tile, have
 // the area's sign or are zero: integers only, the decision remaster_raster.c's itri_covers makes.
 int64_t i64(uint lo, uint hi) { return (int64_t)(((uint64_t)hi << 32) | (uint64_t)lo); }
+uint64_t u64(uint lo, uint hi) { return ((uint64_t)hi << 32) | (uint64_t)lo; }
 
+// words 25 and 26: the depth plane's origin pixel (ox, oy); 27 to 32: its base, step in x, step in y (int64 each), inverse depth scaled by 2^52.
 // triangle words: 0 a1, 1 b1, 2 a2, 3 b2, 4 c.iz, 5 diz1, 6 diz2, 7 colour (a solid fill) or value (AND, OR, stipple), 8 paint index, 9 paint owner, 10 kind (0 solid, 1 AND, 2 OR, 3 stipple)
 
 [numthreads(16, 16, 1)]
@@ -42,7 +44,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
     const uint s = tileoff[tile], e = tileoff[tile + 1];
     for (uint j = s; j < e; j++) {
         const uint ti = ents[9 * j];
-        const uint b = ti * 32;
+        const uint b = ti * 40;
         const float l1 = asfloat(ents[9 * j + 1]) + asfloat(tri[b + 0]) * dx + asfloat(tri[b + 1]) * dy;
         const float l2 = asfloat(ents[9 * j + 2]) + asfloat(tri[b + 2]) * dx + asfloat(tri[b + 3]) * dy;
         const float l3 = 1.0 - l1 - l2;
@@ -57,7 +59,14 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
             inside = !(l1 < 0.0 || l2 < 0.0 || l3 < 0.0);
         }
         if (!inside) continue;
-        const float iz = asfloat(tri[b + 4]) + l1 * asfloat(tri[b + 5]) + l2 * asfloat(tri[b + 6]);
+        float iz;
+        if (exact != 0) {
+            const uint64_t ddx = (uint64_t)((int64_t)x - (int64_t)asint(tri[b + 25])), ddy = (uint64_t)((int64_t)y - (int64_t)asint(tri[b + 26]));
+            const uint64_t pz = u64(tri[b + 27], tri[b + 28]) + u64(tri[b + 29], tri[b + 30]) * ddx + u64(tri[b + 31], tri[b + 32]) * ddy;
+            iz = (float)((double)(int64_t)pz * asdouble(0u, 0x3CB00000u));      // 2^-52
+        } else {
+            iz = asfloat(tri[b + 4]) + l1 * asfloat(tri[b + 5]) + l2 * asfloat(tri[b + 6]);
+        }
         const uint kind = tri[b + 10];
         if (kind == 0) {
             const uint po = tri[b + 9];

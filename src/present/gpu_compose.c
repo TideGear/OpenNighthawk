@@ -22,6 +22,7 @@ typedef struct {
     uint32_t w7, paint_index, paint_owner, kind;
     double cx, cy, a1d, b1d, a2d, b2d;
     int bbox[4];
+    long long dbase, dpx, dpy, dox, doy;   /* exact depth: the inverse-depth plane (exact.h) */
     long long q[6], area;           /* exact coverage: the vertices snapped to 1/256 px (ax, ay, bx, by, cx, cy) and twice the signed area */
 } ctri;
 typedef struct { ctri *t; size_t n, cap; } clist;
@@ -224,6 +225,12 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     t->q[4] = llround(c.x * 256.0); t->q[5] = llround(c.y * 256.0);
     t->area = (t->q[2] - t->q[0]) * (t->q[5] - t->q[1]) - (t->q[4] - t->q[0]) * (t->q[3] - t->q[1]);
     if (exact_on() && t->area == 0) { l->n--; return 1; }      /* the CPU fill skips a triangle with no area */
+    if (t->area != 0) {
+        ex_tri et; memcpy(et.q, t->q, sizeof et.q); et.area = t->area;
+        const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+        ex_planes pl; ex_planes_make(&pl, &et, pv);
+        t->dbase = (long long)pl.base[0]; t->dpx = (long long)pl.px[0]; t->dpy = (long long)pl.py[0]; t->dox = pl.ox; t->doy = pl.oy;
+    }
     return 1;
 }
 
@@ -359,6 +366,8 @@ static void tri_words(uint32_t *wd, const ctri *tr)
     memcpy(&wd[0], &tr->a1, 4); memcpy(&wd[1], &tr->b1, 4); memcpy(&wd[2], &tr->a2, 4); memcpy(&wd[3], &tr->b2, 4);
     memcpy(&wd[4], &tr->ciz, 4); memcpy(&wd[5], &tr->diz1, 4); memcpy(&wd[6], &tr->diz2, 4);
     put_exact_steps(wd + 12, tr);
+    wd[25] = (uint32_t)(int32_t)tr->dox; wd[26] = (uint32_t)(int32_t)tr->doy;
+    put64(wd + 27, tr->dbase); put64(wd + 29, tr->dpx); put64(wd + 31, tr->dpy);
 }
 
 /* one band triangle (the fast form's 24 words); 0 when the CPU draws nothing from it */
@@ -462,15 +471,15 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     size_t npents = 0, nsents = 0;
     if (!bin_tiles(&g->polys, tilesx, tilesy, &g->poly_off, &g->poly_ents, &npents)) return 0;
     if (!bin_tiles(&g->strokes, tilesx, tilesy, &g->stroke_off, &g->stroke_ents, &nsents)) return 0;
-    uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 128);
-    uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 128);
+    uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 160);
+    uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 160);
     if (!pw || !stw) return 0;
-    memset(pw, 0, (g->polys.n ? g->polys.n : 1) * 128); memset(stw, 0, (g->strokes.n ? g->strokes.n : 1) * 128);
+    memset(pw, 0, (g->polys.n ? g->polys.n : 1) * 160); memset(stw, 0, (g->strokes.n ? g->strokes.n : 1) * 160);
     for (size_t k = 0; k < g->polys.n; k++) {
-        const ctri *tr = &g->polys.t[k]; uint32_t *wd = pw + k * 32;
+        const ctri *tr = &g->polys.t[k]; uint32_t *wd = pw + k * 40;
         tri_words(wd, tr); wd[7] = tr->w7; wd[8] = tr->paint_index; wd[9] = tr->paint_owner; wd[10] = tr->kind;
     }
-    for (size_t k = 0; k < g->strokes.n; k++) { const ctri *tr = &g->strokes.t[k]; uint32_t *wd = stw + k * 32; tri_words(wd, tr); wd[7] = tr->w7; }
+    for (size_t k = 0; k < g->strokes.n; k++) { const ctri *tr = &g->strokes.t[k]; uint32_t *wd = stw + k * 40; tri_words(wd, tr); wd[7] = tr->w7; }
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
@@ -482,11 +491,11 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 nstroke_b = (Uint32)((nstrokes ? nstrokes : 1) * 4);
     seg segs[] = {
         { &g->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
-        { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 128), RO },
+        { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 160), RO },
         { &g->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
         { &g->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &g->pal, in->palette, 1024, RO },
-        { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 128), RO },
+        { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
         { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
         { &g->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &g->sw, sw, (Uint32)((nstrokes ? nstrokes : 1) * 64), RO },

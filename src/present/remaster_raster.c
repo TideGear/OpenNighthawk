@@ -175,6 +175,11 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
+    ex_planes pl;
+    if (exact) {
+        const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+        ex_planes_make(&pl, &it, pv);
+    }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -197,7 +202,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
             const double l3 = 1.0 - l1 - l2;
             if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;        /* the pixel's centre is outside */
-            const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
+            const float iz = exact ? (float)((double)(int64_t)ex_eval(&pl, 0, x, y) * EX_INV_2_52) : (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
             float *d = &t->inv_z[(long)y * t->w + x];
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
@@ -333,6 +338,11 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
+    ex_planes pl;
+    if (exact) {
+        const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+        ex_planes_make(&pl, &it, pv);
+    }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -355,7 +365,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
             const double l3 = 1.0 - l1 - l2;
             if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;
-            const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
+            const float iz = exact ? (float)((double)(int64_t)ex_eval(&pl, 0, x, y) * EX_INV_2_52) : (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
             const long i = (long)y * t->w + x;
             if (iz < t->inv_z[i] * 0.9999f) continue;          /* something clearly nearer covers it */
             if (op == REMASTER_STIPPLE) {

@@ -22,6 +22,7 @@ RWStructuredBuffer<uint> strokez : register(u5, space1);  // per pixel: the last
 // pixel centre as int64 (entry words 3 to 8). A pixel is covered when all three edge values, origin plus steps times the pixel's offset in the tile, have
 // the area's sign or are zero: integers only, the decision remaster_raster.c's itri_covers makes.
 int64_t i64(uint lo, uint hi) { return (int64_t)(((uint64_t)hi << 32) | (uint64_t)lo); }
+uint64_t u64(uint lo, uint hi) { return ((uint64_t)hi << 32) | (uint64_t)lo; }
 
 cbuffer params : register(b0, space2)
 {
@@ -112,7 +113,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
     const uint s0 = tileoff[tile], e0 = tileoff[tile + 1];
     for (uint j = s0; j < e0; j++) {
         const uint ti = ents[9 * j];
-        const uint b = ti * 32;
+        const uint b = ti * 40;
         const float l1 = asfloat(ents[9 * j + 1]) + asfloat(tri[b + 0]) * dx + asfloat(tri[b + 1]) * dy;
         const float l2 = asfloat(ents[9 * j + 2]) + asfloat(tri[b + 2]) * dx + asfloat(tri[b + 3]) * dy;
         const float l3 = 1.0 - l1 - l2;
@@ -127,7 +128,14 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
             inside = !(l1 < 0.0 || l2 < 0.0 || l3 < 0.0);
         }
         if (!inside) continue;
-        const float iz = asfloat(tri[b + 4]) + l1 * asfloat(tri[b + 5]) + l2 * asfloat(tri[b + 6]);
+        float iz;
+        if (exact != 0) {
+            const uint64_t ddx = (uint64_t)((int64_t)x - (int64_t)asint(tri[b + 25])), ddy = (uint64_t)((int64_t)y - (int64_t)asint(tri[b + 26]));
+            const uint64_t pz = u64(tri[b + 27], tri[b + 28]) + u64(tri[b + 29], tri[b + 30]) * ddx + u64(tri[b + 31], tri[b + 32]) * ddy;
+            iz = (float)((double)(int64_t)pz * asdouble(0u, 0x3CB00000u));      // 2^-52
+        } else {
+            iz = asfloat(tri[b + 4]) + l1 * asfloat(tri[b + 5]) + l2 * asfloat(tri[b + 6]);
+        }
         const uint si = tri[b + 7];
         if (hidden[si] != 0u) continue;
         const uint sb = si * 16;
