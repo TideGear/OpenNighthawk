@@ -17,6 +17,34 @@ outputs and verdicts identical, and the proof is the same verdicts before and
 after. A change that alters what a check tests (different states, a skipped
 verification) is not an optimisation; it needs the owner's approval.
 
+## Setup tooling validation (in progress)
+
+Setup work is isolated in `D:/f117-wt/setup-wizard`. Cold-cache Zig
+configuration can launch internal workers beyond CMake's job limit: acquire
+`D:/f117-dl/HEAVY.lock` before configuring or building, use private Zig cache
+folders, and use at most three build jobs. See [Zig validation](zig-setup-validation.md).
+No clean Zig build time or complete gate result is recorded yet.
+
+- `tools/find-f117-install.ps1`: source the helper and call
+  `Get-F117InstallCandidates`. Candidates require `tools/verify_install.py`.
+  Both local GOG and Steam candidates passed 18/18 game-file hashes on
+  5 November. Steam lacks the optional GOG DOSBox reference files.
+- `tools/setup-python.ps1`: source the helper and call
+  `Initialize-F117Python -Destination NEW_FOLDER`; it downloads and checks
+  the private Python 3.12.10 embedded runtime. Cached-archive extraction,
+  startup, game verification and bad-checksum refusal passed. With an
+  existing Zig CPU DLL selected by `F117R_CPU_DLL`, embedded Python translated
+  MISC.EXE (34 instructions, 10 regions) in 0.3 seconds. Full translation and
+  a clean bootstrap have not been tested. No Capstone was installed in this runtime.
+- `tools/setup-sources.ps1`: source the helper and call
+  `Initialize-F117SourceDependencies -Destination NEW_FOLDER`; it downloads
+  pinned SDL/Munt source archives without Git. Cached-archive checksum and
+  extraction checks passed; a clean app build using them remains untested.
+- `py tools/package-source.py --ref COMMIT --out OUTSIDE_REPO.zip` packages
+  committed source and records its commit and SHA-256. Archive layout and a
+  negative game-executable check passed. This does not publish a release or
+  prove end-to-end setup success; provenance review remains required.
+
 ## Current practice by kind of change
 
 - **Remastered performance.** Keep throughput measurements separate from correctness
