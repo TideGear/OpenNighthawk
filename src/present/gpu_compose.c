@@ -190,12 +190,21 @@ static void put_exact_origin(uint32_t *en, const ctri *tr, int tx, int ty)
     const long long px = (long long)tx * TILE * 256 + 128, py = (long long)ty * TILE * 256 + 128;
     for (int k = 0; k < 3; k++) {
         const long long xi = tr->q[2 * k], yi = tr->q[2 * k + 1], xj = tr->q[(2 * k + 2) % 6], yj = tr->q[(2 * k + 3) % 6];
-        put64(en + 2 * k, (xj - xi) * (py - yi) - (yj - yi) * (px - xi));
+        put64(en + 2 * k, EX_SUB(EX_MUL(xj - xi, py - yi), EX_MUL(yj - yi, px - xi)));
     }
 }
 
 static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_owner, uint32_t kind, sv a, sv b, sv c, int w, int h)
 {
+    if (exact_on() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {       /* the same guard-band clip as remaster_raster.c, from the same exact.h code */
+        const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
+        ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o);
+        for (int k = 1; k + 1 < m; k++) {
+            const sv p = { o[0].x, o[0].y, o[0].a[0] }, q = { o[k].x, o[k].y, o[k].a[0] }, r = { o[k + 1].x, o[k + 1].y, o[k + 1].a[0] };
+            if (!c_add(l, w7, paint_index, paint_owner, kind, p, q, r, w, h)) return 0;
+        }
+        return 1;
+    }
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 1;
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
@@ -442,6 +451,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
                 rgb[k][0] = r->colors[k] >> 16 & 255; rgb[k][1] = r->colors[k] >> 8 & 255; rgb[k][2] = r->colors[k] & 255;
             }
             if (!ok) break;
+            if (exact_on()) for (int k = 0; k < r->n; k++) if (fabs(s[k].x) > EX_GUARD || fabs(s[k].y) > EX_GUARD) { say(g, "a band vertex outside the exact guard band"); return 0; }
             for (int k = 1; k + 1 < r->n; k++) {
                 const sv tr[3] = { s[0], s[k], s[k + 1] };
                 const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };

@@ -172,6 +172,15 @@ static float surface_slope(const remaster_target *t, int x, int y)
 
 static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
 {
+    if (exact_cov() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {      /* exact mode: clip to the guard band first (exact.h) */
+        const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
+        ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o); long w = 0;
+        for (int k = 1; k + 1 < m; k++) {
+            const sv p = { o[0].x, o[0].y, o[0].a[0] }, q = { o[k].x, o[k].y, o[k].a[0] }, r = { o[k + 1].x, o[k + 1].y, o[k + 1].a[0] };
+            w += fill_triangle(t, p, q, r, color);
+        }
+        return w;
+    }
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
@@ -268,6 +277,16 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
 
 static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const double ca[3], const double cb[3], const double cc[3])
 {
+    if (exact_cov() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {
+        const ex_vtx in[3] = { { a.x, a.y, { a.iz, ca[0], ca[1], ca[2] } }, { b.x, b.y, { b.iz, cb[0], cb[1], cb[2] } }, { c.x, c.y, { c.iz, cc[0], cc[1], cc[2] } } };
+        ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o); long w = 0;
+        for (int k = 1; k + 1 < m; k++) {
+            const sv p = { o[0].x, o[0].y, o[0].a[0] }, q = { o[k].x, o[k].y, o[k].a[0] }, r = { o[k + 1].x, o[k + 1].y, o[k + 1].a[0] };
+            const double pc[3] = { o[0].a[1], o[0].a[2], o[0].a[3] }, qc[3] = { o[k].a[1], o[k].a[2], o[k].a[3] }, rc[3] = { o[k + 1].a[1], o[k + 1].a[2], o[k + 1].a[3] };
+            w += fill_triangle_shaded(t, p, q, r, pc, qc, rc);
+        }
+        return w;
+    }
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
@@ -335,6 +354,15 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
 
 static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, unsigned value)
 {
+    if (exact_cov() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {
+        const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
+        ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o); long w = 0;
+        for (int k = 1; k + 1 < m; k++) {
+            const sv p = { o[0].x, o[0].y, o[0].a[0] }, q = { o[k].x, o[k].y, o[k].a[0] }, r = { o[k + 1].x, o[k + 1].y, o[k + 1].a[0] };
+            w += fill_triangle_logic(t, p, q, r, op, value);
+        }
+        return w;
+    }
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;

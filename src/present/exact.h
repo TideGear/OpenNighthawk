@@ -14,6 +14,10 @@
 #include <math.h>
 #include <stdint.h>
 
+/* Multiplication in unsigned 64-bit (wraps, defined) so no signed overflow is ever undefined; after the guard clip below nothing wraps anyway. */
+#define EX_MUL(a, b) ((long long)((unsigned long long)(a) * (unsigned long long)(b)))
+#define EX_SUB(a, b) ((long long)((unsigned long long)(a) - (unsigned long long)(b)))
+
 typedef struct { long long q[6]; long long area; } ex_tri;     /* q: ax, ay, bx, by, cx, cy in 1/256 px */
 
 static inline int ex_setup(ex_tri *t, double ax, double ay, double bx, double by, double cx, double cy)
@@ -21,23 +25,77 @@ static inline int ex_setup(ex_tri *t, double ax, double ay, double bx, double by
     t->q[0] = llround(ax * 256.0); t->q[1] = llround(ay * 256.0);
     t->q[2] = llround(bx * 256.0); t->q[3] = llround(by * 256.0);
     t->q[4] = llround(cx * 256.0); t->q[5] = llround(cy * 256.0);
-    t->area = (t->q[2] - t->q[0]) * (t->q[5] - t->q[1]) - (t->q[4] - t->q[0]) * (t->q[3] - t->q[1]);
+    t->area = EX_SUB(EX_MUL(t->q[2] - t->q[0], t->q[5] - t->q[1]), EX_MUL(t->q[4] - t->q[0], t->q[3] - t->q[1]));
     return t->area != 0;
 }
 
 static inline int ex_covers(const ex_tri *t, int x, int y)
 {
     const long long px = (long long)x * 256 + 128, py = (long long)y * 256 + 128;
-    const long long e0 = (t->q[2] - t->q[0]) * (py - t->q[1]) - (t->q[3] - t->q[1]) * (px - t->q[0]);
-    const long long e1 = (t->q[4] - t->q[2]) * (py - t->q[3]) - (t->q[5] - t->q[3]) * (px - t->q[2]);
-    const long long e2 = (t->q[0] - t->q[4]) * (py - t->q[5]) - (t->q[1] - t->q[5]) * (px - t->q[4]);
+    const long long e0 = EX_SUB(EX_MUL(t->q[2] - t->q[0], py - t->q[1]), EX_MUL(t->q[3] - t->q[1], px - t->q[0]));
+    const long long e1 = EX_SUB(EX_MUL(t->q[4] - t->q[2], py - t->q[3]), EX_MUL(t->q[5] - t->q[3], px - t->q[2]));
+    const long long e2 = EX_SUB(EX_MUL(t->q[0] - t->q[4], py - t->q[5]), EX_MUL(t->q[1] - t->q[5], px - t->q[4]));
     return t->area > 0 ? (e0 >= 0 && e1 >= 0 && e2 >= 0) : (e0 <= 0 && e1 <= 0 && e2 <= 0);
 }
 
+#define EX_PLANES_ATTR 4
 #define EX_PLANES 4                 /* 0: inverse depth, 1 to 3: the colour channels */
 #define EX_SCALE_IZ 52
 #define EX_SCALE_RGB 32
 #define EX_INV_2_52 2.220446049250313080847263336181640625e-16
+
+
+/* The guard band: every screen vertex is clipped to |x|, |y| <= EX_GUARD pixels before it is snapped, on both sides, by this one function. A vertex near the
+ * camera's near plane can project to 10^9 pixels, where the edge products (about 10^21) leave 64 bits. Inside the band the snapped coordinates are at most
+ * 2.7e8, so every product is under 3e17 and nothing wraps. Attributes (inverse depth, three colour channels) are interpolated linearly in screen space,
+ * which is exact for the planes they are evaluated from. Clipped coordinates are clamped onto the band so a clipped triangle never needs clipping again. */
+#define EX_GUARD 1048576.0
+
+typedef struct { double x, y, a[4]; } ex_vtx;
+
+static inline int ex_outside(double ax, double ay, double bx, double by, double cx, double cy)
+{
+    return fabs(ax) > EX_GUARD || fabs(ay) > EX_GUARD || fabs(bx) > EX_GUARD || fabs(by) > EX_GUARD || fabs(cx) > EX_GUARD || fabs(cy) > EX_GUARD;
+}
+
+/* Sutherland-Hodgman against the four sides of the band. in: n vertices; out: room for n + 4. Returns the vertex count (0 when nothing is inside). */
+static inline int ex_guard_clip(const ex_vtx *in, int n, ex_vtx *out)
+{
+    ex_vtx buf[2][24];
+    int cnt = n, cur = 0;
+    for (int i = 0; i < n; i++) buf[0][i] = in[i];
+    for (int side = 0; side < 4; side++) {
+        const int axis = side >> 1;                       /* 0: x, 1: y */
+        const double bound = (side & 1) ? EX_GUARD : -EX_GUARD, sign = (side & 1) ? 1.0 : -1.0;     /* inside: sign * (v - bound) <= 0 */
+        int m = 0;
+        const ex_vtx *src = buf[cur];
+        ex_vtx *dst = buf[cur ^ 1];
+        for (int i = 0; i < cnt; i++) {
+            const ex_vtx p = src[i], q = src[(i + 1) % cnt];
+            const double pv = axis ? p.y : p.x, qv = axis ? q.y : q.x;
+            const int pin = sign * (pv - bound) <= 0.0, qin = sign * (qv - bound) <= 0.0;
+            if (pin && m < 22) dst[m++] = p;
+            if (pin != qin && m < 22) {
+                const double k = (bound - pv) / (qv - pv);
+                ex_vtx r;
+                r.x = p.x + k * (q.x - p.x); r.y = p.y + k * (q.y - p.y);
+                for (int j = 0; j < EX_PLANES_ATTR; j++) r.a[j] = p.a[j] + k * (q.a[j] - p.a[j]);
+                if (axis) r.y = bound; else r.x = bound;
+                dst[m++] = r;
+            }
+        }
+        cnt = m; cur ^= 1;
+        if (cnt == 0) return 0;
+    }
+    for (int i = 0; i < cnt; i++) {
+        out[i] = buf[cur][i];
+        if (out[i].x > EX_GUARD) out[i].x = EX_GUARD;
+        if (out[i].x < -EX_GUARD) out[i].x = -EX_GUARD;
+        if (out[i].y > EX_GUARD) out[i].y = EX_GUARD;
+        if (out[i].y < -EX_GUARD) out[i].y = -EX_GUARD;
+    }
+    return cnt;
+}
 
 typedef struct { long long ox, oy; uint64_t base[EX_PLANES], px[EX_PLANES], py[EX_PLANES]; } ex_planes;
 
