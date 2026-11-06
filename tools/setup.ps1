@@ -14,7 +14,6 @@ $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
 if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
 
 Confirm-F117Licences -Compiler $Compiler -Accept:$AcceptLicences
-while (Test-Path -LiteralPath 'D:\f117-dl\HEAVY.lock') { Start-Sleep -Seconds 5 }
 $workHandle = Open-F117SetupWork -Path $Work -GameDirectory $Data
 try {
 $pythonArgs = @{ Destination=Join-Path $Work 'python' }

@@ -33,11 +33,8 @@ $oldPath = $env:PATH
 $oldGlobal = $env:ZIG_GLOBAL_CACHE_DIR
 $oldLocal = $env:ZIG_LOCAL_CACHE_DIR
 $oldCpuDll = $env:F117R_CPU_DLL
-$lockPath = 'D:\f117-dl\HEAVY.lock'
-$lockOwner = $null
 $compilerEnvironmentOld = @{}
 try {
-    while (Test-Path -LiteralPath $lockPath) { Start-Sleep -Seconds 5 }
     New-Item -ItemType Directory -Path $destination | Out-Null
     if ($Compiler -eq 'Zig') {
     $env:PATH = (($env:PATH -split ';' | Where-Object { $_ -notmatch 'Microsoft Visual Studio|Windows Kits' }) -join ';')
@@ -92,7 +89,4 @@ try {
     $env:ZIG_GLOBAL_CACHE_DIR = $oldGlobal
     $env:ZIG_LOCAL_CACHE_DIR = $oldLocal
     $env:F117R_CPU_DLL = $oldCpuDll
-    if ($lockOwner -and (Test-Path -LiteralPath $lockPath) -and [IO.File]::ReadAllText($lockPath) -eq $lockOwner) {
-        Remove-Item -LiteralPath $lockPath
-    }
 }
