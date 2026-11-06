@@ -64,3 +64,22 @@ Evidence: D:/f117-dl/wizard/gpu-msvc-baseline and gpu-guards. These results do
 not establish cross-compiler equivalence of the CPU compositor or other
 resolutions/settings. No cause analysis is needed for this guard: it found
 no differing frames.
+
+End-to-end setup passed on 5 November using Windows PowerShell 5.1 with
+PATH restricted to Windows system folders. No Data argument was supplied:
+the launcher found the GOG install and verified all 18 game files. It
+downloaded its own embedded Python, CMake, Ninja, DXC, SDL/Munt sources and
+Zig, verified the pinned archives, bootstrapped the CPU DLL, translated and
+built the full app into D:/f117-dl/wizard/end-to-end. The builder reported
+582.93 seconds under concurrent gate load; this excludes the launcher's
+initial dependency downloads/extraction. The scratch shortcut's target,
+working directory and quoted game-data argument were checked, and the
+referenced game data passed verification again. ShortcutPath redirected
+this test's shortcut away from the desktop; no visible window was opened.
+
+Limits: this was an existing development machine with Visual Studio and
+Python installed but unavailable on PATH, not a clean VM/uninstalled-tool
+trial. Default desktop placement and opening the shortcut visibly were not
+tested. The Visual Studio builder separately passed; the complete launcher
+with -Compiler VisualStudio was not repeated. Full route/lockstep gate
+acceptance and default-adoption documentation remain pending.
