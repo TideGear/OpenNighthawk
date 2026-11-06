@@ -19,11 +19,13 @@ verification) is not an optimisation; it needs the owner's approval.
 
 ## Setup tooling validation (in progress)
 
-Setup work is isolated in `D:/f117-wt/setup-wizard`. Cold-cache Zig
-configuration can launch internal workers beyond CMake's job limit: acquire
-`D:/f117-dl/HEAVY.lock` before configuring or building, use private Zig cache
-folders, and use at most three build jobs. See [Zig validation](zig-setup-validation.md).
-No clean Zig build time or complete gate result is recorded yet.
+Setup work is isolated in `D:/f117-wt/setup-wizard`. Under the revised
+5 November lock rules, functional builds, pixel checks and wizard route
+parity do not acquire `D:/f117-dl/HEAVY.lock`. Wait while it exists: it
+protects renderer timing runs and the main checkout's full gate. Use private
+Zig caches and at most 12 build jobs while the three renderer recorders run.
+See [Zig validation](zig-setup-validation.md). The clean full app build took 258.61 seconds on 5 November with 12 jobs and
+concurrent functional recording; this is not an isolated performance benchmark.
 
 - `tools/find-f117-install.ps1`: source the helper and call
   `Get-F117InstallCandidates`. Candidates require `tools/verify_install.py`.
