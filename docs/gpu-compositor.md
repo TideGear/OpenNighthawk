@@ -387,3 +387,10 @@ Recorded with `F117_SKIP_COMPOSE_BEFORE` (above), exact mode, fixed cadence, clo
 | Maximum with `--dot-distance maximum` | 0, 1, 2 | 0, 0, 0 | 2,679 / 2,502 / 2,487 |
 
 Not covered: one GPU (RTX 3060) and one flight (the runway replay); Far not run separately (same composite as Near); the full gate, the presentation check and the 901-checksum guards on this branch are still to do.
+
+## Branch checks (6 November 2026, commit 7450e2c plus tooling)
+
+- **Full gate** (`tools/build_recomp.py --verify-interp-cache`, work folder `D:/f117-dl/gate-exact`): 63 of 63 routes IDENTICAL between the interpreter and the recompiled engine, 845 of 845 unit tests, 0 translated instructions mismatching (both timing profiles), 0 matched-routine mismatches at three seeds, steps 8 and 9 clean.
+- **Presentation check** (`tools/presentation_check.py --mode rerun --scales 1 --jobs 16`): all 63 routes print `exact`. The tool prints no tally line and the exit code was not captured.
+- **Exact mode off (default):** the 901 composed-image checksums per distance are IDENTICAL to the stored baseline at Near, Far and Maximum, and the replay's final machine hash is `600306c77cb04481` for the old and the new build at Near and Maximum.
+- Not covered: exact mode on through the gate or the guards (its pictures differ from today's by design until the owner approves the changed pixels); one GPU.
