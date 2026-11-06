@@ -309,7 +309,7 @@ takes longer than the copy, so **the worker is the critical path at 4K**, not th
 
 **Next, in this order**
 
-1. Instrument the worker at 4K by stage (picture-layer redraw, replace pass, GPU begin, GPU finish, in ms each). That says exactly what step 3 must move onto the GPU and what makes Maximum reliable under 16.7.
+1. (Done 5 November, see the last section.) Instrument the worker at 4K by stage (picture-layer redraw, replace pass, GPU begin, GPU finish, in ms each). That says exactly what step 3 must move onto the GPU and what makes Maximum reliable under 16.7.
 2. Step 2: a bit-exact GPU compositor (integer edge equations and integer depth on both sides, the CPU compositor as oracle, fixed-cadence checksums identical at Near, Far and Maximum).
 3. Step 3: move the per-pixel CPU work that remains at 4K onto the GPU. Then stage 1's pass line, and a `--present-log` from the owner's own 4K window.
 4. Stage 2 (the capture per game step). Overlapping the emulator with the copy and threading the far scenery's placing (about 2.5 ms at Maximum; `remaster_live_native` patches the machine's template area and uses a
@@ -318,3 +318,25 @@ takes longer than the copy, so **the worker is the critical path at 4K**, not th
 Guards for every step: picture checksums (`F117_REPLAY_FIXED_CADENCE=1`, `F117_PRESENT_HASH_FROM=3900000000`, eight workers) identical to the baseline, and the end-of-run machine hash. The scripts are in the repository,
 [tools/renderer_bench/](../tools/renderer_bench/README.md): `bench.sh NAME DISTANCE [NAME=value ...]` (timing; `MODE=gpu`, `WIN`, `PSCALE`, `EXE`, `XARGS`) and `guards.sh checksums TAG` / `baseline` / `statehash`. The recorded flight, the ini and the baseline
 (taken from the build at `03c6631`) are in `private/renderer-bench/`, which is git-ignored.
+
+## Worker stages and the 4K p95 at all three distances (5 November 2026)
+
+Build at `4f6dba1` and later, hidden 3840x2160 GPU-renderer window (`F117_GPU_PRESENT=1 F117_GPU_COMPOSE=1 F117_NO_VSYNC=1`, `MODE=gpu WIN=3840x2160 PSCALE=9`), runway replay, clocks 3.9 to 4.8 billion, no other load on the machine.
+
+| Distance | p95 work per frame, ms (runs) | Mean, ms |
+|---|---|---|
+| Near | 13.36, 13.28 | 11.8 |
+| Far | 13.20, 13.52 | 11.8 to 11.9 |
+| Maximum | 15.28, 15.18, 15.08 | 13.5 to 13.6 |
+
+A fourth Maximum run read 16.92 ms (mean 14.84) while downloads and unzipping were running on the same machine; it is a disturbed run and is not counted. The 16.7 ms line holds at all three distances; step 2's checksum condition (identical to the CPU compositor) is not met yet, so stage 1 is not passed.
+
+Worker stages (`F117_WORKER_TIMING`, elapsed time on the worker thread, whole run from boot, so not the same window as the p95 above; a diagnostic run, kept apart from the timing runs):
+
+| Distance | GPU begin | Picture layer (`drawlive_render`) | Compose | Worker total |
+|---|---|---|---|---|
+| Near | 1.20 mean, 1.70 p95 | 5.36 mean, 6.10 p95 | 1.86 mean, 2.29 p95 | 8.42 mean, 9.29 p95 |
+| Far | 1.33, 1.85 | 5.45, 6.52 | 1.94, 2.62 | 8.73, 9.93 |
+| Maximum | 1.35, 1.97 | 5.46, 6.27 | 1.99, 3.01 | 8.80, 9.99 |
+
+The picture layer, the game's own picture redrawn at 4K by the CPU, is about 62% of the worker and does not change with the draw distance. It is the target of step 3. Main-thread and GPU time are not yet split out.
