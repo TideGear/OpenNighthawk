@@ -376,3 +376,14 @@ Sensitivity control (the same traces compared with the GPU in float mode, frames
 A trace at clock C normally replays the flight from the start with the renderer drawing every frame, 30 to 60 minutes at 4K. `F117_SKIP_COMPOSE_BEFORE=CLOCK` (test tooling, off unless set, in `src/host/main.c`) makes the host skip the Remastered composite (and the GPU scene begin) until the machine clock reaches CLOCK; the game's own picture is shown meanwhile. The machine and the game's logic are not touched. Used with CLOCK = target minus 300 million, a 4K frame takes about 6 minutes and a 1280 x 600 frame about 2.
 
 Checked against full replays: the recorded trace files (every raster call, the CPU result and the replace inputs) are byte-identical for Near at 1280 x 600 (clocks 3.95 and 4.35 billion) and at 3840 x 2160 (clock 3.95 billion). Never use it for the gate, the lockstep tests, the picture guards, the presentation check or any machine-hash run: those must exercise the renderer on every frame.
+
+## Step 2 result with the final build, 3840 x 2160 (6 November 2026)
+
+Recorded with `F117_SKIP_COMPOSE_BEFORE` (above), exact mode, fixed cadence, clocks 3.95, 4.03 and 4.11 billion, composite 3840 x 1800 (6,912,000 pixels):
+
+| Set | Frame | Exact: GPU versus CPU differing pixels | Float-mode control |
+|---|---|---|---|
+| Near | 0, 1, 2 | 0, 0, 0 | 2,653 / 2,468 / 2,491 |
+| Maximum with `--dot-distance maximum` | 0, 1, 2 | 0, 0, 0 | 2,679 / 2,502 / 2,487 |
+
+Not covered: one GPU (RTX 3060) and one flight (the runway replay); Far not run separately (same composite as Near); the full gate, the presentation check and the 901-checksum guards on this branch are still to do.
