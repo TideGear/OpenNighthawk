@@ -19,3 +19,11 @@ The toolchain file passed CMake script parsing. Full configure, static
 archive creation, app linking, clean build time, GPU checks and the Zig
 route gate have not yet been verified with this toolchain. This is not an
 end-user setup release or an adoption of Zig as the supported default.
+
+Cold-cache scheduling: a fresh configure on 5 November launched many Zig
+compiler child processes during C++ compiler identification despite
+`CMAKE_BUILD_PARALLEL_LEVEL=3`. It was stopped because the renderer owned
+`HEAVY.lock`; no configure or build success is claimed. Acquire the heavy-job
+lock before cold-cache Zig configure as well as builds: CMake's job limit
+does not bound Zig's internal compiler workers. Do not use the interrupted
+folder as evidence of a clean completed build.
