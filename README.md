@@ -99,7 +99,7 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
 1. **Own the game.** Buy F-117A on [Steam](https://store.steampowered.com/app/328920/) or
    [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20) and install it
    ([why](#you-need-your-own-copy-of-the-game)).
-2. **Build.** On 64-bit Windows, extract the source-only ZIP and double-click setup.cmd. It finds and verifies your GOG or Steam copy, downloads a small Zig compiler and its other build tools, and builds locally. No Git, preinstalled Python or Visual Studio is needed. See [Building](#building).
+2. **Build.** On 64-bit Windows, extract the source-only ZIP and double-click setup.cmd. It finds and verifies your GOG or Steam copy, downloads a small Zig compiler and its other build tools, and builds locally. Setup downloads its own tools; the test used no developer tools on PATH. See the machine-test limits below. See [Building](#building).
 3. **Play.** Open the OpenNighthawk desktop shortcut. Answer SETUP's questions as in 1991
    (2 for AdLib). Press the ` key for the settings menu. All options: [Running](#running).
 
@@ -155,12 +155,14 @@ On 64-bit Windows, use a source-only ZIP containing `setup.cmd`, extract it
 and double-click that file. Setup downloads its own Python, portable CMake,
 Ninja, shader compiler and Zig 0.14.1, checking pinned SHA-256 values. It
 finds GOG and Steam installations and verifies the game files before building.
-No Git, preinstalled Python or Visual Studio is required. Internet access is
-needed for the first setup.
+Setup downloads its own Python and build tools and does not use Git. Internet
+access is needed for setup. The standard-account test used no developer tools
+on PATH, but Visual Studio and Python remained installed elsewhere on that PC;
+a PC with neither installed has not yet been verified.
 
 The game is translated and compiled on your machine from your own copy.
 Source releases contain no game data, generated C or prebuilt game executable.
-Build output goes under `%LOCALAPPDATA%\OpenNighthawk\setup-<timestamp>`,
+Build output goes under `%LOCALAPPDATA%\OpenNighthawk\setup-work`,
 outside the source folder. Setup creates an OpenNighthawk desktop shortcut
 when the build succeeds. Keep that work folder: the shortcut uses its app.
 Original game files are read, not modified. Optional MT-32 ROMs remain yours
@@ -174,15 +176,15 @@ work folder. Errors stop setup and explain what is missing or failed.
 Visual Studio Build Tools with Desktop development with C++ and a Windows
 SDK, then run `setup.cmd -Compiler VisualStudio`. This fallback can require
 administrator access and several GB. Setup uses an installed toolset; it
-does not silently install Visual Studio. Use a new work folder when retrying.
+does not silently install Visual Studio. Rerunning setup cleans its recognized
+incomplete work folder and restarts; it preserves completed builds.
 
-The clean Zig builder completed in 258.61 seconds on the development machine
-with 12 jobs and concurrent renderer recordings. The Windows PowerShell 5.1
-end-to-end setup test passed with only Windows system folders on PATH; its
-build stage took 582.93 seconds under concurrent gate load, excluding initial
-dependency downloads/extraction. This was not a clean VM: Visual Studio and
-Python remained installed outside PATH. Validation and limits:
-[setup validation](docs/zig-setup-validation.md).
+The clean-account Zig build stage completed in **434.78 seconds**, about five to seven minutes on the development PC, excluding earlier helper downloads and extraction.
+The Windows PowerShell 5.1 test used a fresh standard account and only Windows
+system folders on PATH, then opened the actual desktop shortcut hidden with
+dummy audio. This was not a clean PC: Visual Studio and Python remained
+installed outside PATH. Visible gameplay and a second clean PC remain untested.
+Validation and limits: [setup validation](docs/zig-setup-validation.md).
 
 Developers can still use `build.cmd` with an installed MSVC toolset and
 CMake/Ninja. `py tools/build_recomp.py --data INSTALL --work OUTSIDE_REPO`
