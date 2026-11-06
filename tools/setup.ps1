@@ -4,14 +4,17 @@ param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','Vis
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'find-f117-install.ps1')
+. (Join-Path $PSScriptRoot 'setup-retry.ps1')
 . (Join-Path $PSScriptRoot 'setup-python.ps1')
 . (Join-Path $PSScriptRoot 'setup-sources.ps1')
 . (Join-Path $PSScriptRoot 'setup-build-tools.ps1')
-if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA ('OpenNighthawk/setup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
+if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk/setup-work' }
 $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
 if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
-if (Test-Path -LiteralPath $Work) { throw 'Choose a new setup work folder.' }
+
 while (Test-Path -LiteralPath 'D:\f117-dl\HEAVY.lock') { Start-Sleep -Seconds 5 }
+$workHandle = Open-F117SetupWork -Path $Work -GameDirectory $Data
+try {
 $pythonArgs = @{ Destination=Join-Path $Work 'python' }
 if ($ArchiveFolder) { $pythonArgs.Archive = Join-Path $ArchiveFolder 'python-3.12.10-embed-amd64.zip' }
 $python = Initialize-F117Python @pythonArgs
@@ -41,4 +44,6 @@ $shortcut.TargetPath = $exe
 $shortcut.Arguments = '--data "' + $accepted + '"'
 $shortcut.WorkingDirectory = Split-Path $exe
 $shortcut.Save()
+[IO.File]::WriteAllText((Join-Path $Work '.f117-setup-complete'),$exe)
 Write-Host 'Build complete. OpenNighthawk shortcut created.'
+} finally { $workHandle.Dispose() }

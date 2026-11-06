@@ -24,7 +24,10 @@ build. This is a release limitation, not a unit-test pass.
 The setup helpers pin SHA-256 before extraction and execution. A mismatch throws
 and prevents that archive's contents from being executed. Download or extraction
 errors propagate; no fallback to unchecked tools occurs. Partial work folders can
-remain after failure. Setup requires a new work folder on retry.
+remain after failure. Rerunning setup now cleans recognized incomplete work
+after validating every path, then restarts in the same folder. Completed builds
+are preserved. A per-work-folder handle prevents concurrent cleanup; this is
+separate from HEAVY.lock, which setup never acquires.
 
 Downloaded Python executes local verification/recompiler scripts; CMake executes
 local and downloaded SDL/Munt build descriptions and compiler probes. Ninja runs
@@ -67,7 +70,8 @@ README wording and source-only publication remain owner decisions.
 Reviewed in full: `setup.cmd`, `build.cmd`, `tools/setup.ps1`,
 `tools/setup-python.ps1`, `tools/setup-sources.ps1`,
 `tools/setup-build-tools.ps1`, `tools/setup-visual-studio.ps1`,
-`tools/setup-paths.ps1`, `tools/setup-standard-user-test.ps1`,
+`tools/setup-paths.ps1`, `tools/setup-retry.ps1`, `tools/check-setup-retry.ps1`,
+`tools/setup-standard-user-test.ps1`,
 `tools/build-zig.ps1`, `tools/find-f117-install.ps1`,
 `tools/package-source.py`, both `tools/cmake/*.cmake` files and all 2,164 lines
 of the root CMakeLists.txt. Most of CMake's length is test registration.
@@ -116,3 +120,56 @@ were tested earlier. Hidden ten-second startup does not validate visible output,
 interactive controls, sound or a full flight. The separate GPU picture guards
 provide the recorded D3D12 evidence. This is not a second clean-PC result; follow
 [the user guide](setup-user-guide.md) for that check.
+
+
+## Remaining release questions
+
+The recorded 2,703 GPU-composed image matches cover the specified guard runs.
+They do not resolve the separate **92-of-901 Zig-versus-MSVC Remastered picture
+question** documented in [GPU compositor notes](gpu-compositor.md). Its cause is
+not established here; recheck with the exact-raster branch after it merges.
+No new picture comparison was run during this setup-only change.
+Visible gameplay, a second clean PC and the full Zig unit/coverage pipeline also
+remain untested. The [Phase 2 request](setup-phase2-request.md) asks for the token
+spacing fixes without editing any Phase 2 test on this branch.
+
+Current master was fetched and `git merge origin/master` reported already up to
+date: it is already an ancestor of the setup branch. No merge into master was
+performed. `build.cmd` still checks the proven Visual Studio 18 Build Tools
+vcvars64.bat before vswhere (an explicit F117R_VCVARS override takes precedence).
+The README change remains only on `codex/setup-readme-proposal`.
+
+## Interrupted setup and retry validation
+
+An actual Windows PowerShell 5.1 setup run was interrupted during CMake extraction
+with 2,669 extracted files present. The same command and same `-Work` folder were
+rerun: it logged cleanup of `python` and `tools`, rechecked every pinned archive,
+and built f117a.exe, SDL3.dll, shared Munt and all GPU shaders. Build stage:
+321.93 seconds. This run used the seven cached archives, not fresh network
+transfers, and Windows-system-only PATH on the ordinary non-admin owner account.
+Its shortcut target and quoted data argument were verified. This retry test did
+not launch the app; the earlier standard-user test covers hidden startup.
+
+Evidence: `D:/f117-dl/wizard/retry-validation-01/interruption.txt`,
+`interrupted-2.log`, `rerun.log`, `rerun.err` and its private work folder.
+The first diagnostic runner inherited the wrong PowerShell module path; it failed
+before hash verification, was corrected, and reused that same work folder.
+No checksum mismatch occurred. The original installation verified 18/18 after
+completion. A subsequent invocation preserved the completed executable's hash
+and reported that setup had already finished.
+
+`tools/check-setup-retry.ps1` passed under Windows PowerShell 5.1 and PowerShell 7:
+concurrent-run refusal, incomplete cleanup, unexpected-file preservation, nested
+junction refusal, lock-path junction refusal, game-install refusal and completed
+build preservation. A separate live CMake diagnostic process also prevented
+cleanup until it exited. All setup script syntax and the packaging Python syntax
+were checked; `git diff --check` passed. No game/renderer/core-CMake or Phase 2
+test edits were made. This is functional validation, not a timing benchmark;
+no HEAVY.lock was acquired or held.
+
+Retry cleanup is deliberately limited to folders marked by this launcher. It
+checks the entire existing tree and absolute cleanup boundaries before deleting
+known partial outputs. Unexpected contents, links and live build tools cause a
+plain error. Completed builds are retained. For a separate completed build,
+choose another explicit `-Work` folder. The default folder is now stable across
+attempts: `%LOCALAPPDATA%/OpenNighthawk/setup-work`.
