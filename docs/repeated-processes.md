@@ -31,14 +31,14 @@ No clean Zig build time or complete gate result is recorded yet.
   5 November. Steam lacks the optional GOG DOSBox reference files.
 - `tools/setup-python.ps1`: source the helper and call
   `Initialize-F117Python -Destination NEW_FOLDER`; it downloads and checks
-  the private Python 3.12.10 embedded runtime. Cached-archive extraction,
+  the private Python 3.12.10 embedded runtime. Direct official download, checksum verification, cached-archive extraction,
   startup, game verification and bad-checksum refusal passed. With an
   existing Zig CPU DLL selected by `F117R_CPU_DLL`, embedded Python translated
   MISC.EXE (34 instructions, 10 regions) in 0.3 seconds. Full translation and
   a clean bootstrap have not been tested. No Capstone was installed in this runtime.
 - `tools/setup-sources.ps1`: source the helper and call
   `Initialize-F117SourceDependencies -Destination NEW_FOLDER`; it downloads
-  pinned SDL/Munt source archives without Git. Cached-archive checksum and
+  pinned SDL/Munt source archives without Git. Direct official downloads, checksum and
   extraction checks passed; a clean app build using them remains untested.
 - `py tools/package-source.py --ref COMMIT --out OUTSIDE_REPO.zip` packages
   committed source and records its commit and SHA-256. Archive layout and a
