@@ -6,6 +6,7 @@ Developer tool only: end users extract the resulting zip without Git.
 import argparse
 import hashlib
 import pathlib
+import stat
 import subprocess
 import tempfile
 import zipfile
@@ -22,6 +23,9 @@ GAME_NAMES = {
 def check_archive(path):
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
+        for entry in archive.infolist():
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                raise ValueError(f'Symlink forbidden in source archive: {entry.filename}')
         for name in names:
             p = pathlib.PurePosixPath(name)
             lower = p.name.lower()
@@ -47,6 +51,9 @@ def main():
     out = args.out.resolve()
     if out == ROOT or ROOT in out.parents:
         parser.error('Release output must be outside the repository')
+    for parent in out.parents:
+        if any((parent / name).is_file() for name in ('VGAME.EXE', 'F117.COM', 'F-117A/VGAME.EXE')):
+            parser.error('Release output must be outside game installations')
     if out.exists() or out.with_suffix(out.suffix + '.sha256').exists():
         parser.error('Choose an unused release output path')
     commit = subprocess.check_output(['git', 'rev-parse', '--verify', args.ref + '^{commit}'], cwd=ROOT, text=True).strip()

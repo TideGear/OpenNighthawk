@@ -1,0 +1,8 @@
+"component","version","local_archive","bytes","sha256","license_inventory","url","included_in_release"
+"Zig","0.14.1","zig.zip","82229343","554f5378228923ffd558eac35e21af020c73789d87afeabf4bfd16f2e6feed2c","MIT; bundled library notices retained","https://ziglang.org/download/0.14.1/zig-x86_64-windows-0.14.1.zip","no"
+"Python","3.12.10","python-3.12.10-embed-amd64.zip","11133606","4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3","PSF License Agreement; bundled notices","https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip","no"
+"CMake","4.0.3","cmake.zip","47717299","b59a31dfbfa376a4aaea9ff560ff2b29f78ee5f9fb15447fc71ae7bf9fea9379","BSD-3-Clause; bundled notices","https://github.com/Kitware/CMake/releases/download/v4.0.3/cmake-4.0.3-windows-x86_64.zip","no"
+"Ninja","1.12.1","ninja.zip","275425","f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a","Apache-2.0","https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip","no"
+"DXC","v1.8.2502 (1.8.2502.8)","dxc.zip","26346851","70b1913a1bfce4a3e1a5311d16246f4ecdf3a3e613abec8aa529e57668426f85","LICENSE-LLVM.txt; LICENSE-MIT.txt; LICENSE-MS.txt","https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip","no"
+"SDL","3.4.8","sdl-3.4.8.zip","17225925","9ff97fce9ffb64abd071de3e177a26fa6c9f1283a56ed166889345666ba3ef9b","zlib","https://codeload.github.com/libsdl-org/SDL/zip/refs/tags/release-3.4.8","no"
+"Munt","6e7c01fba7e1d50c8fa705834889fd0eac136075","munt.zip","882117","596a889bf204fe522228a414127a92890ccce13e9bef431c445ac325a5ff5944","LGPL-2.1-or-later (mt32emu)","https://codeload.github.com/munt/munt/zip/6e7c01fba7e1d50c8fa705834889fd0eac136075","no"
