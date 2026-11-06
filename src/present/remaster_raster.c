@@ -137,13 +137,13 @@ static int row_span(sv a, sv b, sv c, double py, int *xs, int *xe)
  * and a pixel is covered when its centre is inside or on the edge of that integer triangle, decided by three int64 edge equations. The decision is a
  * function of the snapped integers alone, so the GPU compositor can make the same decision from the same numbers; it no longer depends on how a
  * compiler or a GPU rounds doubles and floats. Snapped coordinates stay within about 2e8 (8e5 px at 1/256), so every product fits 64 bits.
- * Off unless F117_RASTER_EXACT=1 while the change is measured. */
+ * On by default since 6 November 2026 (owner's approval of the changed pixels); F117_RASTER_EXACT=0 restores the earlier double-precision fills. */
 typedef ex_tri itri;
 
 static int exact_cov(void)
 {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = e && *e && *e != '0'; }
+    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = !(e && *e == '0'); }
     return on;
 }
 

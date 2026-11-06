@@ -163,11 +163,11 @@ void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, d
 
 /* ---- CPU setup ---- */
 
-/* Exact coverage (remaster_raster.c, F117_RASTER_EXACT=1; docs/gpu-compositor.md "Step 2 design"): the same integers the CPU's itri_covers tests, handed to the shaders. */
+/* Exact coverage (remaster_raster.c, on by default, F117_RASTER_EXACT=0 turns it off; docs/gpu-compositor.md "Step 2 design"): the same integers the CPU's itri_covers tests, handed to the shaders. */
 static int exact_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = e && *e && *e != '0'; }
+    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = !(e && *e == '0'); }
     return on;
 }
 

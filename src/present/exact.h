@@ -1,5 +1,5 @@
 /* exact.h - the integer definitions shared by the CPU compositor (remaster_raster.c) and the GPU compositor's setup (gpu_compose.c), so that both make the
- * same decisions from the same numbers (docs/gpu-compositor.md, "Step 2 design"). Used when F117_RASTER_EXACT=1.
+ * same decisions from the same numbers (docs/gpu-compositor.md, "Step 2 design"). Used by default; F117_RASTER_EXACT=0 turns it off.
  *
  * ex_tri: a triangle's three vertices snapped to 1/256 pixel and twice its signed area, all integers. A pixel is covered when its centre is inside or on the
  * edge of that integer triangle (three int64 edge values). The values stay within about 2e8, so every product fits 64 bits.

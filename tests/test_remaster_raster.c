@@ -1,6 +1,7 @@
 /* test_remaster_raster.c - the Remastered triangle fill: depth order does not depend on draw order, the near plane clips,
  * a wider frame adds columns without moving what was drawn, and positions are sub-pixel. */
 #include "remaster_raster.h"
+#include "exact.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -214,10 +215,16 @@ int main(void)
             double px[3], py[3];
             for (int k = 0; k < 3; k++) { px[k] = t.cx + t.sx * (double)v[k].x / z; py[k] = t.cy + t.sy * (double)v[k].y / z; }
             const double den = (py[1] - py[2]) * (px[0] - px[2]) + (px[2] - px[1]) * (py[0] - py[2]);
+            /* exact mode (the default; F117_RASTER_EXACT=0 turns it off): the rule is the snapped-integer one of exact.h, so the reference is too */
+            const char *ee = getenv("F117_RASTER_EXACT");
+            const int exact = !(ee && *ee == '0');
+            ex_tri et;
+            const int et_ok = exact && ex_setup(&et, px[0], py[0], px[1], py[1], px[2], py[2]);
             for (int y = 0; y < t.h; y++)
                 for (int x = 0; x < t.w; x++) {
                     int inside = 0;
-                    if (fabs(den) >= 1e-12) {
+                    if (exact) inside = et_ok && ex_covers(&et, x, y);
+                    else if (fabs(den) >= 1e-12) {
                         const double cx = x + 0.5, cy = y + 0.5;
                         const double l1 = ((py[1] - py[2]) * (cx - px[2]) + (px[2] - px[1]) * (cy - py[2])) / den;
                         const double l2 = ((py[2] - py[0]) * (cx - px[2]) + (px[0] - px[2]) * (cy - py[2])) / den;
