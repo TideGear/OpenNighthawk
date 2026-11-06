@@ -1,4 +1,5 @@
 /* dos_video.c - extracted DOS/BIOS services; see dos.c for provenance. */
+#include <string.h>
 #include "dos_internal.h"
 #include "x86_sem.h"
 
