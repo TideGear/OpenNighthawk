@@ -193,7 +193,10 @@ if(F117R_BUILD_APP)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl)
-    add_custom_target(gpu_shaders_polys ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys_x.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys_x.hlsl)
+    add_custom_target(gpu_shaders_polys ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil)
     add_executable(gpu_polys tools/gpu_polys.c src/present/remaster_raster.c)
     target_include_directories(gpu_polys PRIVATE src/present)
     target_link_libraries(gpu_polys PRIVATE SDL3::SDL3)
@@ -201,7 +204,10 @@ if(F117R_BUILD_APP)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/strokes.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/strokes.hlsl)
-    add_custom_target(gpu_shaders_strokes ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes_x.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes_x.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/strokes_x.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/strokes_x.hlsl)
+    add_custom_target(gpu_shaders_strokes ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_strokes_x.dxil)
     add_executable(gpu_strokes tools/gpu_strokes.c src/present/remaster_raster.c)
     target_include_directories(gpu_strokes PRIVATE src/present)
     target_link_libraries(gpu_strokes PRIVATE SDL3::SDL3)

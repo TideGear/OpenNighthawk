@@ -44,6 +44,7 @@ int main(int argc, char **argv)
             for (int sh = 0; sh < 24; sh += 8) { int d = (int)(got[i] >> sh & 255) - (int)(want[i] >> sh & 255); if (d < 0) d = -d; if (d > m) m = d; }
             if (m > maxd) maxd = m;
             if (m > 8) big++;
+            { static int listed; const char *le = getenv("GPU_CHAIN_LIST"); if (le && listed < atoi(le)) { listed++; printf("  differs at %zu,%zu: CPU %08X, GPU %08X\n", i % (size_t)rp.tw, i / (size_t)rp.tw, want[i], got[i]); } }
         }
     printf("chain, %d x %d canvas: %zu of %zu pixels differ from the CPU's wide picture (%.4f%%), %zu by more than 8 levels (largest %d)\n", rp.tw, rp.h, bad, px, 100.0 * (double)bad / (double)px, big, maxd);
     const char *e = getenv("GPU_STAGE_REPEAT");
