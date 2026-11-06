@@ -6,7 +6,7 @@ function Initialize-F117Python {
         [string]$Archive
     )
     $ErrorActionPreference = 'Stop'
-    $destinationPath = [IO.Path]::GetFullPath($Destination)
+    $destinationPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
     $repoPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($destinationPath -eq $repoPath -or $destinationPath.StartsWith($repoPath + '\',[StringComparison]::OrdinalIgnoreCase)) {
         throw 'Python runtime must be outside the source folder.'

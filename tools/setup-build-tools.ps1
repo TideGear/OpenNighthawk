@@ -3,7 +3,7 @@ function Initialize-F117BuildTools {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][string]$Destination,[string]$ArchiveFolder)
     $ErrorActionPreference = 'Stop'
-    $root = [IO.Path]::GetFullPath($Destination)
+    $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
     $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($root -eq $repo -or $root.StartsWith($repo + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Build tools must be outside the repository.' }
     if (Test-Path -LiteralPath $root) { throw 'Choose a new build-tool folder.' }

@@ -6,7 +6,7 @@ function Initialize-F117SourceDependencies {
         [string]$ArchiveFolder
     )
     $ErrorActionPreference = 'Stop'
-    $root = [IO.Path]::GetFullPath($Destination)
+    $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
     $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($root -eq $repo -or $root.StartsWith($repo + '\',[StringComparison]::OrdinalIgnoreCase)) {
         throw 'Dependency sources must be outside the repository.'
