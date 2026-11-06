@@ -23,7 +23,7 @@ Capstone. The successful repaired first build's Zig runner matched the MSVC
 reference hashes for setup_calibration (`4a393859c6ec6923`) and strike
 (`aa8fca6ac6f373f0`). The hidden original-presentation runway replay also
 matched `600306c77cb04481` at clock 4,800,000,000. The 63-route
-gate, GPU picture comparisons, Visual Studio fallback build and full setup
+gate, GPU picture comparisons and full setup
 shortcut test remain outstanding. Zig is not yet adopted as the supported
 release default.
 
@@ -44,3 +44,10 @@ spacing fixes after hex literals ending in E/e, including operators before
 macros and casts. Removing whitespace yields identical content. The
 repository test remains unchanged. Optimized Zig harness compilation is
 still running; no gate tally is claimed.
+
+The same-source Visual Studio fallback full app build passed in 372.84
+seconds with 11 build jobs while the optimized Zig lockstep compiler and
+renderer jobs shared the machine. It used embedded Python, downloaded
+dependency sources and the same standalone DXC as Zig. This verifies the
+fallback builder, not the complete launcher path, and is not a controlled
+compiler-speed comparison.

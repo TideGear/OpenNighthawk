@@ -9,6 +9,7 @@ param(
     [string]$Cmake = 'cmake',
     [string]$Ninja = 'ninja',
     [ValidateSet('Zig','VisualStudio')][string]$Compiler = 'Zig',
+    [ValidateRange(1,12)][int]$Jobs = 12,
     [string]$ZigArchive
 )
 $ErrorActionPreference = 'Stop'
@@ -65,7 +66,7 @@ try {
         "-DCMAKE_MAKE_PROGRAM=$Ninja",'-DCMAKE_BUILD_TYPE=Release',
         '-DF117R_BUILD_APP=OFF','-DF117R_BUILD_TESTS=ON')
     Invoke-Checked $Cmake ($configureArgs + $compilerOptions)
-    Invoke-Checked $Cmake @('--build',$bootstrap,'--target','f117cpu_api','--parallel','12')
+    Invoke-Checked $Cmake @('--build',$bootstrap,'--target','f117cpu_api','--parallel',"$Jobs")
     $cpuDlls = @(Get-ChildItem -LiteralPath $bootstrap -Filter '*f117cpu_api.dll' -File)
     if ($cpuDlls.Count -ne 1) { throw 'CPU unpacking library was not built.' }
     $env:F117R_CPU_DLL = $cpuDlls[0].FullName
@@ -78,7 +79,7 @@ try {
         "-DFETCHCONTENT_SOURCE_DIR_SDL3=$SdlSource","-DF117R_MT32EMU_SOURCE=$MuntSource",
         "-DF117R_DXC=$Dxc")
     Invoke-Checked $Cmake ($configureArgs + $compilerOptions)
-    Invoke-Checked $Cmake @('--build',$build,'--target','f117a','--parallel','12')
+    Invoke-Checked $Cmake @('--build',$build,'--target','f117a','--parallel',"$Jobs")
     foreach ($file in @('f117a.exe','gpu_polys.dxil','gpu_bands_fast.dxil','gpu_strokes.dxil','gpu_replace.dxil','gpu_present.dxil')) {
         if (-not (Test-Path -LiteralPath (Join-Path $build $file))) { throw "Build output missing: $file" }
     }
