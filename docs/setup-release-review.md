@@ -61,3 +61,58 @@ data, generated translation, ROM or game executable is part of the release.
 Downloaded dependency licenses and notices remain with their downloaded packages;
 see [provenance](provenance.md). Zig and DXC licensing arrangement, merge,
 README wording and source-only publication remain owner decisions.
+
+## Review scope and pins
+
+Reviewed in full: `setup.cmd`, `build.cmd`, `tools/setup.ps1`,
+`tools/setup-python.ps1`, `tools/setup-sources.ps1`,
+`tools/setup-build-tools.ps1`, `tools/setup-visual-studio.ps1`,
+`tools/setup-paths.ps1`, `tools/setup-standard-user-test.ps1`,
+`tools/build-zig.ps1`, `tools/find-f117-install.ps1`,
+`tools/package-source.py`, both `tools/cmake/*.cmake` files and all 2,164 lines
+of the root CMakeLists.txt. Most of CMake's length is test registration.
+The root file is unchanged. Developer CMake can use installed SDL, otherwise its
+Git fallback names SDL's release tag; setup supplies the hash-checked SDL tree.
+Munt's Git fallback names a complete commit; setup supplies its hash-checked
+source tree. Setup does not need Git for either dependency.
+
+[Download inventory](setup-downloads.csv) gives all seven archive names, exact
+versions, byte sizes, SHA-256 values, URLs and license inventory. Cached archives
+were rehashed on 6 November; all matched the pins. No downloaded archive is
+included in the source ZIP. The DXC package contains separate MIT, LLVM/NCSA and
+Microsoft terms; it must not be described as solely MIT-licensed. This records
+package notices and the download arrangement, not a legal opinion or permission
+to redistribute the compiler. The fallback's Microsoft installer is obtained
+separately by the user, outside the scripted download inventory.
+
+## Fresh standard-user result
+
+The corrected owner-approved administrator retry passed on Windows 10 Home
+10.0.19045. The new `F117SetupTest` account was not an administrator; PATH was
+only Windows System32 and Windows PowerShell. Git, cl, CMake, Ninja, Python,
+python3 and py were absent from that PATH. The setup copied from commit
+`0b4054b` fetched its own tools and built the full app in the new user's local
+profile; the builder reported **434.78 seconds**, excluding earlier setup helper
+downloads/extraction. The default desktop shortcut targeted that app and was
+actually opened. The process belonged to F117SetupTest and remained running for
+ten seconds with `F117_HIDDEN_WINDOW=1`, dummy audio and software SDL rendering requested.
+The harness stopped only its own game process afterward. The account is disabled;
+the test profile/private build are retained. The original install and read-only
+private data copy both still verified 18/18 after the launch.
+
+Evidence: `C:/Users/Public/OpenNighthawk-StandardUser-20261106/results/setup.log`
+and `results/standard-user.json`. The admin wrapper's process ExitCode property
+was null; success is established by the worker's explicit setup/shortcut/owner
+assertions and recorded result, not a claimed numeric wrapper exit code.
+The first admin attempt failed before worker launch because of an account-member
+argument type; the owner authorized the corrected retry. Both attempts' finally
+blocks disabled the account when finished.
+
+Limits: same PC, shared installed runtimes, SDKs and drivers; no uninstall of Visual
+Studio/Python. The worker had no developer tools on PATH and used downloaded
+absolute paths. This run supplied a private GOG copy explicitly rather than
+retesting discovery under the new account. Owner-account GOG and Steam discovery
+were tested earlier. Hidden ten-second startup does not validate visible output,
+interactive controls, sound or a full flight. The separate GPU picture guards
+provide the recorded D3D12 evidence. This is not a second clean-PC result; follow
+[the user guide](setup-user-guide.md) for that check.

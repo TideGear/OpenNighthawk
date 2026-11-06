@@ -65,7 +65,7 @@ argument were checked; the referenced game data verified again. Steam
 candidate discovery and its 18/18 hashes were checked separately.
 
 Limits: this was a development machine with Visual Studio/Python installed
-outside PATH, not a clean VM. Default desktop placement and visible shortcut
+outside PATH, not a clean VM. At the time, default desktop placement and visible shortcut
 launch were not tested; ShortcutPath redirected the test into scratch.
 The complete VisualStudio launcher option was not repeated, although its
 builder passed. Missing-tool and bad-checksum error paths were checked.
@@ -74,3 +74,8 @@ No game-derived output or prebuilt game executable belongs in source releases.
 Functional jobs do not acquire HEAVY.lock under the revised shared-machine
 rules. Wait while it exists; use private Zig caches and at most 12 build jobs
 while the three renderer recorders run.
+
+A subsequent fresh standard-user setup and actual hidden, silent desktop-shortcut
+launch passed on 6 November; its builder took 434.78 seconds. Default desktop
+placement is now checked. Visible output and sound remain untested. Details and
+limits: [release review](setup-release-review.md).
