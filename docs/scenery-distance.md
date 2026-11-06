@@ -557,7 +557,7 @@ template area and uses a scene reader with caches, so threading it needs private
 
 ## Model 37 primitives by source (6 November 2026)
 
-The open question above ("a per-copy count of model 37 primitives by source has not been taken") answered with a diagnostic tag: `remaster_prim.source` (0 the game's own drawing, 1 the native walk's own objects, 2 placed through the game, 3 placed through the game and deferred), set by the far-scenery placement in `rerun.c`, counted at `F117_PRIM_HIST` (`[prim-src]` lines). Runway replay, 1280 x 600, clock 3,500,016,397 and the next two composites (three identical counts but the first frame's third value), polygons/lines per model 37:
+The open question above ("a per-copy count of model 37 primitives by source has not been taken") answered with a diagnostic tag: `remaster_prim.source` (0 the game's own drawing, 1 the native walk's own objects, 2 placed through the game, 3 placed through the game and deferred), set by the far-scenery placement in `rerun.c`, counted at `F117_PRIM_HIST` (`[prim-src]` lines). Runway replay, 1280 x 600, clock 3,500,016,397 (the first composite; the second is identical and the third has the game's own drawing at 163/133, the other columns unchanged), polygons/lines per model 37:
 
 | Mode | game's own drawing | native walk | placed through game | placed and deferred | total |
 |---|---|---|---|---|---|
