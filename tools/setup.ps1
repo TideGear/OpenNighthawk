@@ -24,6 +24,12 @@ foreach ($candidate in Get-F117InstallCandidates -SelectedFolder $Data) {
     & $python (Join-Path $PSScriptRoot 'verify_install.py') --data $candidate
     if ($LASTEXITCODE -eq 0) { $accepted = $candidate; break }
 }
+if ($Data -and $accepted) {
+    # A folder the user named is the only one to use: a mistyped or wrong -Data must not quietly build from another install that discovery found.
+    $named = [IO.Path]::GetFullPath($Data).TrimEnd('\')
+    if (-not ($accepted -ieq $named -or $accepted -ieq (Join-Path $named 'F-117A'))) { $accepted = $null }
+}
+if (-not $accepted -and $Data) { throw "The folder given with -Data does not hold a verified F-117A installation: $Data" }
 if (-not $accepted) { throw 'No verified F-117A installation found. Supply -Data with your GOG or Steam game folder.' }
 $tools = Initialize-F117BuildTools -Destination (Join-Path $Work 'tools') -ArchiveFolder $ArchiveFolder
 $sources = Initialize-F117SourceDependencies -Destination (Join-Path $Work 'sources') -ArchiveFolder $ArchiveFolder

@@ -23,6 +23,12 @@ If discovery fails, run Windows PowerShell in the extracted source folder:
 .\tools\setup.ps1 -Data 'D:\Games\F-117A'
 ```
 
+Every run of `setup.cmd` also writes everything it prints (its own messages and
+the build tools' output) to `%LOCALAPPDATA%\OpenNighthawk\logs\setup-DATE-TIME.log`;
+send the newest one when reporting a problem. A folder given with `-Data` is the
+only one setup uses: if it does not hold a verified game, setup stops rather than
+building from another installation it finds.
+
 Read the reported error if setup stops. A failed checksum must be investigated;
 do not bypass it. After resolving the cause, rerun the same command: setup cleans
 its recognized incomplete work and starts again. The default folder is
