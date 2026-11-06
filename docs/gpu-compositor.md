@@ -359,3 +359,20 @@ What differs between the CPU and GPU compositors today is arithmetic done separa
 Possibly a second reason: the Zig-compiled game (a different compiler and C library) differed from the Microsoft-compiled one in 92 of 901 Remastered pictures per distance while the game state matched exactly. The cause is not established: it may be float arithmetic in the CPU compositor, or the far-scenery sort (`qsort` orders objects tied on distance differently in different C libraries, which the Far object order setting already documents as changing a few edge pixels). Integer setup would remove only the first. Find the cause before attributing it (compare the two builds' pictures at one differing frame, for example clock 4,067,016,397, and see whether the changed pixels sit on the far scenery's tied objects).
 
 Order of work: the polygon fill and depth plane first (CPU, behind a switch, counting the changed pixels against today's output), then the rules that read neighbours (decals, strokes), then the GPU side, then the baselines.
+
+## Step 2 result with the final build, 1280 x 600 (6 November 2026)
+
+Final build (guard-band clip, commit 427e429 code), exact mode, `tools/renderer_bench/exact_frames.sh`, fixed cadence, clocks 3.95 to 4.67 billion in steps of 80 million:
+
+| Set | Frames | GPU versus CPU differing pixels |
+|---|---|---|
+| Near | 10 | 0 of 768,000 on every frame |
+| Maximum with `--dot-distance maximum` | 10 | 0 of 768,000 on every frame |
+
+Sensitivity control (the same traces compared with the GPU in float mode, frames 0, 3 and 9): Near 254, 457, 180 pixels differ; Maximum with dots 262, 459, 189. At 1280 x 600 the Maximum-with-dots composites are almost the same as Near's. Far was not run separately: it gives the same composite as Near in these frames, because the far scenery is dropped before the composite.
+
+## Recording a late frame without replaying the renderer (`F117_SKIP_COMPOSE_BEFORE`)
+
+A trace at clock C normally replays the flight from the start with the renderer drawing every frame, 30 to 60 minutes at 4K. `F117_SKIP_COMPOSE_BEFORE=CLOCK` (test tooling, off unless set, in `src/host/main.c`) makes the host skip the Remastered composite (and the GPU scene begin) until the machine clock reaches CLOCK; the game's own picture is shown meanwhile. The machine and the game's logic are not touched. Used with CLOCK = target minus 300 million, a 4K frame takes about 6 minutes and a 1280 x 600 frame about 2.
+
+Checked against full replays: the recorded trace files (every raster call, the CPU result and the replace inputs) are byte-identical for Near at 1280 x 600 (clocks 3.95 and 4.35 billion) and at 3840 x 2160 (clock 3.95 billion). Never use it for the gate, the lockstep tests, the picture guards, the presentation check or any machine-hash run: those must exercise the renderer on every frame.
