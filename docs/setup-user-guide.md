@@ -7,6 +7,11 @@ OpenNighthawk locally. It needs internet access, disk space and several minutes.
 Setup downloads its own tools. It passed with no developer tools on PATH; a PC
 with neither Visual Studio nor Python installed has not yet been verified.
 
+Before the first download setup lists the tools it will fetch and their licences
+(including the Microsoft terms for the shader compiler) and asks you to type YES.
+Scripted runs add `-AcceptLicences` to agree without being asked; without it a run
+with no console stops before downloading anything.
+
 When setup succeeds, open the OpenNighthawk desktop shortcut. Keep the setup work
 folder: the shortcut points to the game built there. Your original installation
 must remain available. Generated code and binaries are for your own machine and

@@ -26,7 +26,7 @@ if($Mode -eq 'Worker') {
     $resultFile=Join-Path $TestRoot 'results/standard-user.json'
     try {
         $work=Join-Path $env:LOCALAPPDATA ('OpenNighthawk/standard-test-'+(Get-Date -Format yyyyMMdd-HHmmss))
-        & (Join-Path $TestRoot 'source/tools/setup.ps1') -Data (Join-Path $TestRoot 'data') -Work $work *> (Join-Path $TestRoot 'results/setup.log')
+        & (Join-Path $TestRoot 'source/tools/setup.ps1') -Data (Join-Path $TestRoot 'data') -Work $work -AcceptLicences *> (Join-Path $TestRoot 'results/setup.log')
         $exe=Join-Path $work 'game/build/f117a.exe'
         if(-not(Test-Path -LiteralPath $exe)){throw 'Setup did not produce the app'}
         $report.setupPassed=$true;$report.work=$work

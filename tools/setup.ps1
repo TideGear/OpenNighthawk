@@ -1,6 +1,6 @@
 # Build locally from the verified owner-supplied game installation.
 [CmdletBinding()]
-param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath)
+param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath,[switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'find-f117-install.ps1')
@@ -8,10 +8,12 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-python.ps1')
 . (Join-Path $PSScriptRoot 'setup-sources.ps1')
 . (Join-Path $PSScriptRoot 'setup-build-tools.ps1')
+. (Join-Path $PSScriptRoot 'setup-licences.ps1')
 if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk/setup-work' }
 $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
 if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
 
+Confirm-F117Licences -Compiler $Compiler -Accept:$AcceptLicences
 while (Test-Path -LiteralPath 'D:\f117-dl\HEAVY.lock') { Start-Sleep -Seconds 5 }
 $workHandle = Open-F117SetupWork -Path $Work -GameDirectory $Data
 try {
