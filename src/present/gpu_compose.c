@@ -41,7 +41,7 @@ struct gpu_compose {
     Uint32 up_cap, down_cap;
     clist polys, strokes;
     vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
-    double setup_ms, gpu_ms, copy_ms;
+    double setup_ms, gpu_ms, copy_ms, wait_ms;
     int said;
     int begun;                              /* gpu_compose_begin has run and gpu_compose_finish has not */
     gpu_compose_in params;                  /* the begun frame's replace parameters (the pointers in it are not kept) */
@@ -156,6 +156,11 @@ void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, d
     if (copy_ms) *copy_ms = g ? g->copy_ms : 0.0;
     if (setup_ms) *setup_ms = g ? g->setup_ms : 0.0;
     if (gpu_ms) *gpu_ms = g ? g->gpu_ms : 0.0;
+}
+
+double gpu_compose_wait_ms(const gpu_compose *g)
+{
+    return g ? g->wait_ms : 0.0;
 }
 
 /* ---- CPU setup ---- */
@@ -609,9 +614,11 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     }
     SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
     if (!fence) return 0;
+    const Uint64 t_wait = SDL_GetTicksNS();
     SDL_WaitForGPUFences(g->dev, true, &fence, 1);
     SDL_ReleaseGPUFence(g->dev, fence);
     const Uint64 t_gpu = SDL_GetTicksNS();
+    g->wait_ms = (double)(t_gpu - t_wait) / 1e6;          /* how long the caller blocked on the GPU: its work not hidden behind the caller's */
     if (g->targets[0]) { g->last_written = g->cur_write; g->cur_write ^= 1; }
     if (wide_out) {
         const void *got = SDL_MapGPUTransferBuffer(g->dev, g->down, false);

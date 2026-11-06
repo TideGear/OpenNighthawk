@@ -376,3 +376,23 @@ The 55 that remain are not polygon coverage. Listed with `GPU_CHAIN_LIST=N`: abo
 The first exact build still disagreed at isolated pixels where the CPU left black and the GPU drew a band colour. Cause: the CPU fills visited only the rows and columns `row_span`'s doubles gave, so a triangle tip that snapping moved onto a pixel centre was skipped. In exact mode the CPU now scans the whole bounding box and the integer test decides every pixel.
 
 Fixed-cadence Near frame (`F117_REPLAY_FIXED_CADENCE=1`, clock 4.0 billion, 1280 x 600, one recording per mode), `gpu_chain` against the CPU picture: float 71 pixels differ (40 by more than 8 levels), exact 39 (9 by more than 8 levels); the CPU replay of each trace reproduces its own recording. What is left is in two groups: about 30 pixels where two overlapping polygons tie on depth (`1C1C1C` against `242424`: the polygon passes still take inverse depth from float weights, double on the CPU and float on the GPU) and about 9 lights and dots (the stroke and decal rules). Next: the inverse-depth plane for the polygon and stroke triangles (the same `ex_planes` data, one more block of words per triangle), then the stroke rules on that depth.
+
+## Stage 1, the 4K split into main-thread, worker and GPU time (5 November 2026)
+
+Build at `2c7b837` plus the GPU-wait columns; hidden 3840 x 2160 GPU-renderer window (`F117_GPU_PRESENT=1 F117_GPU_COMPOSE=1 F117_NO_VSYNC=1`), runway replay, clocks 3.9 to 4.8 billion, `F117_LOOP_TIMING=1` and `F117_WORKER_TIMING` on. The diagnostics add work (p95 16.1 to 18.8 ms against 13.2 to 15.3 in the clean timing runs), so read the proportions, not the absolute values. Milliseconds a frame:
+
+| | Near | Far | Maximum |
+|---|---|---|---|
+| Main thread: waiting for the worker | 6.3 to 6.8 | 6.3 to 6.7 | 6.2 to 6.6 |
+| Main thread: the copy | 3.6 to 4.7 | 3.7 to 4.5 | 5.5 to 6.3 |
+| Main thread: collect, apply, publish | under 0.02 | under 0.02 | under 0.02 |
+| Worker total, mean / p95 | 9.3 / 11.2 | 9.5 / 11.3 | 9.6 / 11.5 |
+| Worker: GPU begin | 1.4 / 2.1 | 1.6 / 2.4 | 1.6 / 2.5 |
+| Worker: the game's picture layer | 5.6 / 7.5 | 5.5 / 7.4 | 5.6 / 7.5 |
+| Worker: compose | 2.3 / 3.6 | 2.4 / 4.0 | 2.4 / 4.0 |
+| GPU: scene span, submission to fence | 7.6 / 9.3 | 7.7 / 9.2 | 7.8 / 9.5 |
+| GPU: worker blocked on the fence | 1.3 / 2.8 | 1.5 / 3.1 | 1.5 / 3.2 |
+
+The main thread waits about as long for the worker as it spends on the copy, at every distance; the worker's picture layer (the CPU redraw of the game's own picture at 4K) is steady at about 5.6 ms and is its largest part. The GPU is busy about 7.6 to 7.8 ms a scene, mostly overlapping the picture layer, and blocks the worker for 1.3 to 1.5 ms on average. Maximum differs from Near only in the main thread's copy. So step 3 (the picture layer and the replace pass onto the GPU) is what removes the 6.3 ms wait.
+
+Guards with the timing columns on: 901 identical picture checksums at Near, Far and Maximum, and the runway replay's final machine hash `600306c77cb04481` (Near and Maximum).

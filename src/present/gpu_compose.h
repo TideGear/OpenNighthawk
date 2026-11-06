@@ -54,5 +54,7 @@ int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out
 
 /* Milliseconds of the last run: CPU setup, upload and compute (to the end of the submission), readback. For diagnostics. */
 void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, double *copy_ms);
+/* Milliseconds the last gpu_compose_finish blocked waiting for the GPU's fence (the GPU work the caller's own work did not hide). For diagnostics. */
+double gpu_compose_wait_ms(const gpu_compose *g);
 
 #endif
