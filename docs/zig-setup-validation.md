@@ -32,7 +32,9 @@ Portable build-tool helper: source `tools/setup-build-tools.ps1` and call
 `Initialize-F117BuildTools -Destination NEW_FOLDER`. It downloads CMake
 4.0.3, Ninja 1.12.1 and standalone DXC v1.8.2502, verifies pinned SHA-256
 values and returns executable paths. Cached-archive checks, extraction and
-startup passed on 5 November; the helper's network branch remains untested.
+startup passed on 5 November. Direct downloads, hash checks, extraction and
+startup also passed with only Windows system folders on PATH. This is a
+PATH-isolation check on the development machine, not a clean-machine build.
 Standalone DXC reports 1.8.2502.8, while the installed SDK reports
 1.8.2502.11. The probe shader compiles with both but their DXIL bytes differ;
 no picture-equivalence conclusion follows from this check. Full GPU guards
