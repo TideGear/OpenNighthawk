@@ -396,3 +396,16 @@ Build at `2c7b837` plus the GPU-wait columns; hidden 3840 x 2160 GPU-renderer wi
 The main thread waits about as long for the worker as it spends on the copy, at every distance; the worker's picture layer (the CPU redraw of the game's own picture at 4K) is steady at about 5.6 ms and is its largest part. The GPU is busy about 7.6 to 7.8 ms a scene, mostly overlapping the picture layer, and blocks the worker for 1.3 to 1.5 ms on average. Maximum differs from Near only in the main thread's copy. So step 3 (the picture layer and the replace pass onto the GPU) is what removes the 6.3 ms wait.
 
 Guards with the timing columns on: 901 identical picture checksums at Near, Far and Maximum, and the runway replay's final machine hash `600306c77cb04481` (Near and Maximum).
+
+### Step 2, the depth plane: zero differing pixels on 30 test frames (5 November 2026, branch `p3-exact-raster`)
+
+The polygon, stroke and logic fills now take their inverse depth from the integer depth plane (`exact.h`, `ex_planes`) on the CPU, and the GPU polygon and stroke shaders evaluate the same plane (words 25 to 32 of each triangle, 40 words a triangle). Test: `tools/renderer_bench/exact_frames.sh WORKTREE exact|float TAG`, ten fixed-cadence frames (clock 3.95 billion in steps of 80 million) at each of Near, Far and Maximum, one recording per frame with `F117_REMASTER_THREADS=1`, 1280 x 600 composites, then `gpu_chain` on each with the same mode.
+
+| Mode | GPU against CPU, differing pixels per frame |
+|---|---|
+| exact | **0 on all 30 frames** |
+| float (today) | 15 to 249 per frame (0.002% to 0.032%), up to 230 of them by more than 8 levels |
+
+Controls: the GPU run in float mode on the exact-mode traces differs by 207 to 457 pixels (so the zero is not an artefact of the comparison); the exact CPU compositor replayed on the float traces differs from today's picture by about 180 to 230 colour pixels a frame (the change the owner is to review before any baseline moves).
+
+Limits to keep in view: (1) the three distances give the same composite on these frames (identical raster-call counts and identical float differences), so the 30 frames are ten distinct frames, not thirty: the far scenery is mostly dropped before the composite, as the earlier Maximum finding said; a Maximum test needs `--dot-distance maximum` to put more primitives in the composite. (2) 1280 x 600 only; 4K composites (3840 x 1800, larger coordinates) are not tested. (3) One GPU (RTX 3060). (4) The whole branch still has to pass the full gate and the all-route presentation check before it merges, and exact mode is off by default.
