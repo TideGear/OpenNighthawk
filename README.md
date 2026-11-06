@@ -99,7 +99,7 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
 1. **Own the game.** Buy F-117A on [Steam](https://store.steampowered.com/app/328920/) or
    [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20) and install it
    ([why](#you-need-your-own-copy-of-the-game)).
-2. **Build.** On 64-bit Windows, extract the source-only ZIP and double-click setup.cmd. It finds and verifies your GOG or Steam copy, downloads a small Zig compiler and its other build tools, and builds locally. Setup downloads its own tools; the test used no developer tools on PATH. See the machine-test limits below. See [Building](#building).
+2. **Build.** On 64-bit Windows, download the setup ZIP from [Releases](https://github.com/TideGear/OpenNighthawk/releases/latest), extract it and double-click setup.cmd. It finds and verifies your GOG or Steam copy, downloads a small Zig compiler and its other build tools, and builds locally. Setup downloads its own tools; the test used no developer tools on PATH. See the machine-test limits below. See [Building](#building).
 3. **Play.** Open the OpenNighthawk desktop shortcut. Answer SETUP's questions as in 1991
    (2 for AdLib). Press the ` key for the settings menu. All options: [Running](#running).
 
@@ -151,8 +151,10 @@ please open an issue: that is a bug, and a serious one.
 
 ## Building
 
-On 64-bit Windows, use a source-only ZIP containing `setup.cmd`, extract it
-and double-click that file. Setup downloads its own Python, portable CMake,
+On 64-bit Windows, download the setup ZIP from the
+[Releases](https://github.com/TideGear/OpenNighthawk/releases/latest) page
+(`OpenNighthawk-setup-*.zip`, source code only), extract it and double-click
+`setup.cmd`. Setup downloads its own Python, portable CMake,
 Ninja, shader compiler and Zig 0.14.1, checking pinned SHA-256 values. It
 finds GOG and Steam installations and verifies the game files before building.
 Setup downloads its own Python and build tools and does not use Git. Internet
