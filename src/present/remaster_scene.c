@@ -171,8 +171,11 @@ static unsigned order_by_angle(const scene_mesh *mesh, const scene_geometry *g, 
     return m;
 }
 
+int remaster_prim_source;
+
 static void init_primitive(remaster_prim *p, const emit_ctx *x, const scene_material *c)
 {
+    p->source = (uint8_t)remaster_prim_source;
     p->kind = c->kind;
     p->n = 0;
     p->colour_index = c->colour_index;

@@ -292,6 +292,15 @@ static void gpu_compose_start(void)
     fprintf(stderr, "[gpu-compose] on\n");
 }
 static const uint8_t *remaster_apply(const uint8_t *hi) { return remaster_apply_ex(hi, H.frame.dac, -1, 0); }
+/* F117_SKIP_COMPOSE_BEFORE=CLOCK (test tooling for recording a trace late in a flight): until the machine's clock reaches CLOCK no Remastered composite is made (the
+ * picture is the game's own), so a long replay costs the game's logic and its own picture only. The game's logic is not affected; the recorded trace is compared byte for
+ * byte with a full replay's before this is relied on. */
+static int compose_skipped(void)
+{
+    static uint64_t until; static int init;
+    if (!init) { const char *s = getenv("F117_SKIP_COMPOSE_BEFORE"); until = s ? strtoull(s, NULL, 0) : 0; init = 1; }
+    return until && H.m.cpu.icount < until;
+}
 /* ww_given -1: work out the wide picture here (main thread: it may make a texture); otherwise the width the main thread worked out. on_worker: only a picture
  * from a rerun copy is composed (the live machine's frame is written by the main thread meanwhile), else NULL. */
 static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, int ww_given, int on_worker)
@@ -302,6 +311,7 @@ static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, i
         fprintf(stderr, "[remaster] apply: rlive %p hi %p tag %p scale %d\n", (void *)g_rlive, (const void *)hi, (const void *)g_live.shown_tag, g_scale);
     }
     if (!g_remaster || !g_rlive || !hi || !g_live.shown_tag || g_scale < 1) return hi;
+    if (compose_skipped()) return on_worker ? NULL : hi;
     const size_t size = (size_t)320 * g_scale * 200 * g_scale;
     if (g_rbuf_cap < size) {
         free(g_rbuf); free(g_rrgb); free(g_rmask);
@@ -626,7 +636,7 @@ static int present_worker_main(void *u)
         SDL_WaitSemaphore(w->go);
         if (w->quit) break;
         const Uint64 wt0 = timing ? SDL_GetTicksNS() : 0;
-        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && (w->plan.rerun_ready || w->plan.rerun_inline) && !getenv("F117_GPU_NO_OVERLAP")) {
+        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && !compose_skipped() && (w->plan.rerun_ready || w->plan.rerun_inline) && !getenv("F117_GPU_NO_OVERLAP")) {
             /* the GPU draws the scene (it needs none of the game's own picture) while this thread makes that picture below */
             remaster_live_set_palette(w->frame.dac);
             remaster_live_gpu_begin(g_rlive_copy, &H.m, g_scale, w->ww);

@@ -2,6 +2,7 @@
  * gpu_replace): the CPU clips and projects the polygons and strokes, splits them into triangles and bins them into 16 x 16 tiles with the weights evaluated in
  * double at each tile's first pixel; the passes are the shaders in src/present/gpu. */
 #include "gpu_compose.h"
+#include "exact.h"
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -21,6 +22,8 @@ typedef struct {
     uint32_t w7, paint_index, paint_owner, kind;
     double cx, cy, a1d, b1d, a2d, b2d;
     int bbox[4];
+    long long dbase, dpx, dpy, dox, doy;   /* exact depth: the inverse-depth plane (exact.h) */
+    long long q[6], area;           /* exact coverage: the vertices snapped to 1/256 px (ax, ay, bx, by, cx, cy) and twice the signed area */
 } ctri;
 typedef struct { ctri *t; size_t n, cap; } clist;
 
@@ -102,9 +105,9 @@ static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, i
     if (!g) return NULL;
     g->dev = device;
     g->own_device = own;
-    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_fast.dxil", 1, 4, 0, 64, 1);
-    g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys.dxil", 4, 4, 0, 16, 16);
-    g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes.dxil", 4, 6, 0, 16, 16);
+    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_x.dxil", 1, 4, 0, 64, 1);
+    g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys_x.dxil", 4, 4, 0, 16, 16);
+    g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes_x.dxil", 4, 6, 0, 16, 16);
     g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 0, 16, 16);
     g->p_present = load_pipeline(g->dev, shader_dir, "gpu_present.dxil", 1, 0, 1, 16, 16);
     if (!g->p_bands || !g->p_polys || !g->p_strokes || !g->p_replace) { gpu_compose_destroy(g); return NULL; }
@@ -165,8 +168,48 @@ double gpu_compose_wait_ms(const gpu_compose *g)
 
 /* ---- CPU setup ---- */
 
+/* Exact coverage (remaster_raster.c, on by default, F117_RASTER_EXACT=0 turns it off; docs/gpu-compositor.md "Step 2 design"): the same integers the CPU's itri_covers tests, handed to the shaders. */
+static int exact_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = !(e && *e == '0'); }
+    return on;
+}
+
+static void put64(uint32_t *w, long long v) { const uint64_t u = (uint64_t)v; w[0] = (uint32_t)u; w[1] = (uint32_t)(u >> 32); }
+
+/* words 0 to 11 of wd: for the three edges (a to b, b to c, c to a) the change of the edge value per pixel in x and in y, as int64; word 12: 1 when the area is positive */
+static void put_exact_steps(uint32_t *wd, const ctri *tr)
+{
+    for (int k = 0; k < 3; k++) {
+        const long long xi = tr->q[2 * k], yi = tr->q[2 * k + 1], xj = tr->q[(2 * k + 2) % 6], yj = tr->q[(2 * k + 3) % 6];
+        put64(wd + 4 * k, -(yj - yi) * 256);
+        put64(wd + 4 * k + 2, (xj - xi) * 256);
+    }
+    wd[12] = tr->area > 0 ? 1u : 0u;
+}
+
+/* the three edge values at the centre of the tile's first pixel, as int64 */
+static void put_exact_origin(uint32_t *en, const ctri *tr, int tx, int ty)
+{
+    const long long px = (long long)tx * TILE * 256 + 128, py = (long long)ty * TILE * 256 + 128;
+    for (int k = 0; k < 3; k++) {
+        const long long xi = tr->q[2 * k], yi = tr->q[2 * k + 1], xj = tr->q[(2 * k + 2) % 6], yj = tr->q[(2 * k + 3) % 6];
+        put64(en + 2 * k, EX_SUB(EX_MUL(xj - xi, py - yi), EX_MUL(yj - yi, px - xi)));
+    }
+}
+
 static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_owner, uint32_t kind, sv a, sv b, sv c, int w, int h)
 {
+    if (exact_on() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {       /* the same guard-band clip as remaster_raster.c, from the same exact.h code */
+        const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
+        ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o);
+        for (int k = 1; k + 1 < m; k++) {
+            const sv p = { o[0].x, o[0].y, o[0].a[0] }, q = { o[k].x, o[k].y, o[k].a[0] }, r = { o[k + 1].x, o[k + 1].y, o[k + 1].a[0] };
+            if (!c_add(l, w7, paint_index, paint_owner, kind, p, q, r, w, h)) return 0;
+        }
+        return 1;
+    }
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 1;
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
@@ -191,6 +234,17 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     t->w7 = w7; t->paint_index = paint_index; t->paint_owner = paint_owner; t->kind = kind;
     t->cx = c.x; t->cy = c.y;
     t->bbox[0] = x0; t->bbox[1] = x1; t->bbox[2] = y0; t->bbox[3] = y1;
+    t->q[0] = llround(a.x * 256.0); t->q[1] = llround(a.y * 256.0);
+    t->q[2] = llround(b.x * 256.0); t->q[3] = llround(b.y * 256.0);
+    t->q[4] = llround(c.x * 256.0); t->q[5] = llround(c.y * 256.0);
+    t->area = (t->q[2] - t->q[0]) * (t->q[5] - t->q[1]) - (t->q[4] - t->q[0]) * (t->q[3] - t->q[1]);
+    if (exact_on() && t->area == 0) { l->n--; return 1; }      /* the CPU fill skips a triangle with no area */
+    if (t->area != 0) {
+        ex_tri et; memcpy(et.q, t->q, sizeof et.q); et.area = t->area;
+        const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+        ex_planes pl; ex_planes_make(&pl, &et, pv);
+        t->dbase = (long long)pl.base[0]; t->dpx = (long long)pl.px[0]; t->dpy = (long long)pl.py[0]; t->dox = pl.ox; t->doy = pl.oy;
+    }
     return 1;
 }
 
@@ -282,7 +336,7 @@ static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *en
     for (int pass = 0; pass < 2; pass++) {
         if (pass == 1) {
             for (int k = 0; k < ntiles; k++) cursor[k] = off[k];
-            ents = (uint32_t *)vec_reserve(ents_v, (nents ? nents : 1) * 12);
+            ents = (uint32_t *)vec_reserve(ents_v, (nents ? nents : 1) * 36);
             if (!ents) { free(cursor); return 0; }
         }
         size_t count = 0;
@@ -308,7 +362,9 @@ static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *en
                     else {
                         const uint32_t at = cursor[tile]++;
                         const float f1 = (float)l1, f2 = (float)l2;
-                        ents[3 * at] = (uint32_t)ti; memcpy(&ents[3 * at + 1], &f1, 4); memcpy(&ents[3 * at + 2], &f2, 4);
+                        uint32_t *en = &ents[9 * at];
+                        en[0] = (uint32_t)ti; memcpy(&en[1], &f1, 4); memcpy(&en[2], &f2, 4);
+                        put_exact_origin(en + 3, tr, tx, ty);
                     }
                 }
         }
@@ -323,6 +379,9 @@ static void tri_words(uint32_t *wd, const ctri *tr)
 {
     memcpy(&wd[0], &tr->a1, 4); memcpy(&wd[1], &tr->b1, 4); memcpy(&wd[2], &tr->a2, 4); memcpy(&wd[3], &tr->b2, 4);
     memcpy(&wd[4], &tr->ciz, 4); memcpy(&wd[5], &tr->diz1, 4); memcpy(&wd[6], &tr->diz2, 4);
+    put_exact_steps(wd + 12, tr);
+    wd[25] = (uint32_t)(int32_t)tr->dox; wd[26] = (uint32_t)(int32_t)tr->doy;
+    put64(wd + 27, tr->dbase); put64(wd + 29, tr->dpx); put64(wd + 31, tr->dpy);
 }
 
 /* one band triangle (the fast form's 24 words); 0 when the CPU draws nothing from it */
@@ -343,8 +402,20 @@ static int band_triangle(uint32_t *wd, const gpu_trace_rec *r, const sv s[3], co
                           (float)(rgb[0][0] - rgb[2][0]), (float)(rgb[0][1] - rgb[2][1]), (float)(rgb[0][2] - rgb[2][2]),
                           (float)(rgb[1][0] - rgb[2][0]), (float)(rgb[1][1] - rgb[2][1]), (float)(rgb[1][2] - rgb[2][2]),
                           (float)rgb[2][0], (float)rgb[2][1], (float)rgb[2][2] };
-    memset(wd, 0, 24 * 4);
+    memset(wd, 0, 64 * 4);
     for (int k = 0; k < 18; k++) memcpy(&wd[k], &f[k], 4);
+    {   /* exact form: the snapped vertices, the area's sign, the plane origin and the four planes (exact.h) */
+        ex_tri et;
+        if (!ex_setup(&et, a.x, a.y, b.x, b.y, c.x, c.y)) { if (exact_on()) return 0; }
+        else {
+            const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { rgb[0][0], rgb[1][0], rgb[2][0] }, { rgb[0][1], rgb[1][1], rgb[2][1] }, { rgb[0][2], rgb[1][2], rgb[2][2] } };
+            ex_planes pl; ex_planes_make(&pl, &et, pv);
+            for (int k = 0; k < 6; k++) put64(wd + 24 + 2 * k, et.q[k]);
+            wd[36] = et.area > 0 ? 1u : 0u;
+            wd[37] = (uint32_t)(int32_t)pl.ox; wd[38] = (uint32_t)(int32_t)pl.oy;
+            for (int k = 0; k < EX_PLANES; k++) { put64(wd + 40 + 6 * k, (long long)pl.base[k]); put64(wd + 42 + 6 * k, (long long)pl.px[k]); put64(wd + 44 + 6 * k, (long long)pl.py[k]); }
+        }
+    }
     wd[18] = r->paint_index;
     wd[19] = (uint32_t)x0; wd[20] = (uint32_t)x1; wd[21] = (uint32_t)y0; wd[22] = (uint32_t)y1;
     return 1;
@@ -365,10 +436,10 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     int phase = 0;
     g->polys.n = 0; g->strokes.n = 0;
     uint32_t nband = 0, nstrokes = 0;
-    uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 24 * 4);
+    uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 64 * 4);
     uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * 16 * 4);
     if (!bw || !sw) return 0;
-    const size_t band_cap = g->band_words.cap / (24 * 4);
+    const size_t band_cap = g->band_words.cap / (64 * 4);
     for (uint32_t i = 0; i < in->nrec; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         switch (r->kind) {
@@ -385,11 +456,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
                 rgb[k][0] = r->colors[k] >> 16 & 255; rgb[k][1] = r->colors[k] >> 8 & 255; rgb[k][2] = r->colors[k] & 255;
             }
             if (!ok) break;
+            if (exact_on()) for (int k = 0; k < r->n; k++) if (fabs(s[k].x) > EX_GUARD || fabs(s[k].y) > EX_GUARD) { say(g, "a band vertex outside the exact guard band"); return 0; }
             for (int k = 1; k + 1 < r->n; k++) {
                 const sv tr[3] = { s[0], s[k], s[k + 1] };
                 const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };
                 if (nband >= band_cap) { say(g, "too many band triangles"); return 0; }
-                if (band_triangle(bw + (size_t)nband * 24, r, tr, col, tw, h)) nband++;
+                if (band_triangle(bw + (size_t)nband * 64, r, tr, col, tw, h)) nband++;
             }
             break;
         }
@@ -414,15 +486,15 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     size_t npents = 0, nsents = 0;
     if (!bin_tiles(&g->polys, tilesx, tilesy, &g->poly_off, &g->poly_ents, &npents)) return 0;
     if (!bin_tiles(&g->strokes, tilesx, tilesy, &g->stroke_off, &g->stroke_ents, &nsents)) return 0;
-    uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 48);
-    uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 48);
+    uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 160);
+    uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 160);
     if (!pw || !stw) return 0;
-    memset(pw, 0, (g->polys.n ? g->polys.n : 1) * 48); memset(stw, 0, (g->strokes.n ? g->strokes.n : 1) * 48);
+    memset(pw, 0, (g->polys.n ? g->polys.n : 1) * 160); memset(stw, 0, (g->strokes.n ? g->strokes.n : 1) * 160);
     for (size_t k = 0; k < g->polys.n; k++) {
-        const ctri *tr = &g->polys.t[k]; uint32_t *wd = pw + k * 12;
+        const ctri *tr = &g->polys.t[k]; uint32_t *wd = pw + k * 40;
         tri_words(wd, tr); wd[7] = tr->w7; wd[8] = tr->paint_index; wd[9] = tr->paint_owner; wd[10] = tr->kind;
     }
-    for (size_t k = 0; k < g->strokes.n; k++) { const ctri *tr = &g->strokes.t[k]; uint32_t *wd = stw + k * 12; tri_words(wd, tr); wd[7] = tr->w7; }
+    for (size_t k = 0; k < g->strokes.n; k++) { const ctri *tr = &g->strokes.t[k]; uint32_t *wd = stw + k * 40; tri_words(wd, tr); wd[7] = tr->w7; }
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
@@ -433,13 +505,13 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 game_bytes = (Uint32)((npix_game + 7) & ~(size_t)3);
     const Uint32 nstroke_b = (Uint32)((nstrokes ? nstrokes : 1) * 4);
     seg segs[] = {
-        { &g->bt, bw, (Uint32)((nband ? nband : 1) * 96), RO },
-        { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 48), RO },
-        { &g->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 12), RO },
+        { &g->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
+        { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 160), RO },
+        { &g->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
         { &g->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &g->pal, in->palette, 1024, RO },
-        { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 48), RO },
-        { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 12), RO },
+        { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
+        { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
         { &g->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &g->sw, sw, (Uint32)((nstrokes ? nstrokes : 1) * 64), RO },
         { &g->tf, flags, 1024, RO },
@@ -497,7 +569,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     SDL_GPUBuffer *b_colour = g->colour.buf, *b_index = g->index_.buf, *b_invz = g->invz.buf, *b_owner = g->owner.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
     {   /* bands: the clear, the sky and ground, depth and owner zero */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
-        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, 0 };
+        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_bands);
         SDL_BindGPUComputeStorageBuffers(c, 0, &g->bt.buf, 1);
@@ -508,7 +580,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (g->polys.n) {
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
         SDL_GPUBuffer *ro[4] = { g->pt.buf, g->pe.buf, g->po.buf, g->pal.buf };
-        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, (Uint32)tilesx, 0 };
+        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, (Uint32)tilesx, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_polys);
         SDL_BindGPUComputeStorageBuffers(c, 0, ro, 4);
@@ -519,7 +591,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
         SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { g->hid.buf, false }, { b_strokez, false } };
         SDL_GPUBuffer *ro[4] = { g->st.buf, g->se.buf, g->so.buf, g->sw.buf };
-        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, 0, 0, 0 };
+        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, 0, 0 };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 6);
         SDL_BindGPUComputePipeline(c, g->p_strokes);
         SDL_BindGPUComputeStorageBuffers(c, 0, ro, 4);

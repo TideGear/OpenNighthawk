@@ -419,3 +419,55 @@ Recorded at 4K (3840 x 1800 composites, `exact_frames.sh` with `WIN=3840x2160 PS
 Fix, shared by both sides in `src/present/exact.h`: every triangle is clipped to a guard band of +/-1,048,576 px (Sutherland-Hodgman, attributes interpolated linearly in screen space, the result clamped onto the band) before it is snapped, so every product stays under about 3e17; the products are computed in unsigned 64-bit (defined wrap); a band vertex outside the band makes the GPU decline the frame. With the fix the same three 4K frames are **0, 0, 0** differing pixels; the control (GPU in float mode on the same frame) differs by 2,491.
 
 Status at the stop: the 1280 x 600 sets (ten Near, ten Maximum with `--dot-distance maximum`, which holds 19,809 raster calls against 577 at Near) must be re-recorded with this build, a 4K Maximum-with-dots set is untested, and the branch has not been through the full gate or the all-route presentation check. Until then the claim is: zero on three 4K Near frames with the final build; unverified elsewhere.
+## Step 2 result with the final build, 1280 x 600 (6 November 2026)
+
+Final build (guard-band clip, commit 427e429 code), exact mode, `tools/renderer_bench/exact_frames.sh`, fixed cadence, clocks 3.95 to 4.67 billion in steps of 80 million:
+
+| Set | Frames | GPU versus CPU differing pixels |
+|---|---|---|
+| Near | 10 | 0 of 768,000 on every frame |
+| Maximum with `--dot-distance maximum` | 10 | 0 of 768,000 on every frame |
+
+Sensitivity control (the same traces compared with the GPU in float mode, frames 0, 3 and 9): Near 254, 457, 180 pixels differ; Maximum with dots 262, 459, 189. At 1280 x 600 the Maximum-with-dots composites are almost the same as Near's. Far was not run separately: it gives the same composite as Near in these frames, because the far scenery is dropped before the composite.
+
+## Recording a late frame without replaying the renderer (`F117_SKIP_COMPOSE_BEFORE`)
+
+A trace at clock C normally replays the flight from the start with the renderer drawing every frame, 30 to 60 minutes at 4K. `F117_SKIP_COMPOSE_BEFORE=CLOCK` (test tooling, off unless set, in `src/host/main.c`) makes the host skip the Remastered composite (and the GPU scene begin) until the machine clock reaches CLOCK; the game's own picture is shown meanwhile. The machine and the game's logic are not touched. Used with CLOCK = target minus 300 million, a 4K frame takes about 6 minutes and a 1280 x 600 frame about 2.
+
+Checked against full replays: the recorded trace files (every raster call, the CPU result and the replace inputs) are byte-identical for Near at 1280 x 600 (clocks 3.95 and 4.35 billion) and at 3840 x 2160 (clock 3.95 billion). Never use it for the gate, the lockstep tests, the picture guards, the presentation check or any machine-hash run: those must exercise the renderer on every frame.
+
+## Step 2 result with the final build, 3840 x 2160 (6 November 2026)
+
+Recorded with `F117_SKIP_COMPOSE_BEFORE` (above), exact mode, fixed cadence, clocks 3.95, 4.03 and 4.11 billion, composite 3840 x 1800 (6,912,000 pixels):
+
+| Set | Frame | Exact: GPU versus CPU differing pixels | Float-mode control |
+|---|---|---|---|
+| Near | 0, 1, 2 | 0, 0, 0 | 2,653 / 2,468 / 2,491 |
+| Maximum with `--dot-distance maximum` | 0, 1, 2 | 0, 0, 0 | 2,679 / 2,502 / 2,487 |
+
+Not covered: one GPU (RTX 3060) and one flight (the runway replay); Far not run separately (same composite as Near); the full gate, the presentation check and the 901-checksum guards on this branch are still to do.
+
+## Branch checks (6 November 2026, commit 7450e2c plus tooling)
+
+- **Full gate** (`tools/build_recomp.py --verify-interp-cache`, work folder `D:/f117-dl/gate-exact`): 63 of 63 routes IDENTICAL between the interpreter and the recompiled engine, 845 of 845 unit tests, 0 translated instructions mismatching (both timing profiles), 0 matched-routine mismatches at three seeds, steps 8 and 9 clean.
+- **Presentation check** (`tools/presentation_check.py --mode rerun --scales 1 --jobs 16`): all 63 routes print `exact`; a second run with the exit code captured: 63 of 63 `exact`, exit code 0.
+- **Exact mode off (the default at the time):** the 901 composed-image checksums per distance are IDENTICAL to the stored baseline at Near, Far and Maximum, and the replay's final machine hash is `600306c77cb04481` for the old and the new build at Near and Maximum.
+- Not covered: exact mode on through the gate or the guards (its pictures differ from today's by design until the owner approves the changed pixels); one GPU.
+
+## Step 3 scope, from reading the code (6 November 2026; no code written yet)
+
+Two pieces move, and they differ a great deal in size.
+
+**The replace pass** (`replace_part` in `remaster_live.c`): per pixel, from the game's picture (`src`), its tag buffer (`tag`), the palette (`dac`) and the compositor's buffers (`color`, `inv_z`, `stroke_z`, `line_strong`, `line_tmp_z`), it chooses the composite colour or the game's colour. Its only neighbourhood work is the bright-line test (a 25 x 25 window of tags and palette colours around a pixel) and `nearest_index` (the palette index for `dst`, which the shown picture does not use: `rgb` and `mask` are what is shown). It is data parallel and every input is a buffer the GPU compose already holds or can be given, so it is a compute pass of the same kind as the existing ones; the check is the one used for step 2 (exact equality with the CPU result, here on `wide_out`).
+
+**The picture layer** (`drawlive_render`, `drawfeed.c`, 5.6 ms of the 9.3 ms worker at 4K): it is not one raster but the game's own 2D drawing at the presentation scale, made by `draw_copy` / `draw_rerun` / `draw_list` (the game's fills, clipped spans, scaled RLE sprites, text and fonts, HUD records, bands, and the interpolated in-betweens of `interp_inbetween_ex`), producing `picture_hi` plus `picture_tag`. Porting it means reproducing every primitive the original's resident graphics driver and VGAME's fill selector draw, bit for bit, on the GPU: the existing checks that cover them (`test_present_fills` 2,619 cases, `test_present_driver` 3,953 cases, `test_hud_state`, `test_band_state`, the hires scenes) would each need a GPU counterpart. That is weeks of careful work, not a session, and a mistake shows as a wrong HUD pixel the 901 checksums per distance would catch only at the three test distances.
+
+Plan for the next session, in order: (1) the replace pass on the GPU, exact against the CPU `wide_out` on the 4K frames used for step 2, with the 901 checksums unchanged; that alone removes the replace cost, not the picture layer's; (2) measure what the picture layer costs by primitive class at 4K (fills, sprites, text, HUD, bands, interpolation) to see whether a few classes dominate; (3) port the dominant classes first, each with its component test. The goal's step 3 pass line (p95 under 16.7 ms at 4K) is already met by the current default path at Near and Far and nearly so at Maximum (15.1 to 15.3 ms, 16.9 once with downloads running), so step 3's value is the headroom Stage 2 needs, not the 4K 60 target itself.
+
+## Exact mode on by default (6 November 2026, owner's approval)
+
+The owner reviewed the changed pixels (143 to 263 per 1280 x 600 frame against the float compositor; the largest are edge flips of a runway light and a distant silhouette) and asked for exact mode on. `F117_RASTER_EXACT` now defaults to on in `remaster_raster.c` and `gpu_compose.c`; `F117_RASTER_EXACT=0` restores the double-precision fills. `test_remaster_raster`'s brute-force reference uses the same rule as the fill (the exact.h integer test when exact is on): 0 of 27,648,000 pixels differ in both modes.
+
+- Machine hash: `600306c77cb04481` for the old and new builds at Near and Maximum.
+- Baselines: regenerated from the exact CPU compositor (`guards.sh baseline`); the float baselines are kept in `private/renderer-bench/baseline-float-20261106`. A second CPU run: 901 of 901 identical at Near, Far and Maximum.
+- **Open defect, GPU compositor live:** `MODE=gpu guards.sh checksums ... F117_GPU_COMPOSE=1` differs from the exact CPU baselines on 899 of 901 pictures per distance. Controls at Near: the hidden GPU window with the CPU compositor matches 901 of 901 (the window is not the cause); `F117_GPU_COMPOSE_CHECK=1` over the whole flight shows the GPU differing from the CPU by about 59 pixels a picture on average (137 to 212 in the sampled pictures), the same with `F117_REMASTER_THREADS=1` and 8. The recorded-trace test (`gpu_chain`) shows 0 on 29 frames, so the live GPU path differs from the trace replay's in some input or state; not yet found. GPU composition is off by default (`F117_GPU_COMPOSE`), so the shown picture is the CPU's. Next: record a trace at a clock where the live check reports differences and run `gpu_chain` on it, to split "live path" from "frame content".
