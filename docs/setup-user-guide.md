@@ -1,46 +1,48 @@
 # Local setup guide
 
-Obtain the source-only setup ZIP from the project owner and extract it to a normal
-folder. Keep your own GOG or Steam F-117A installation installed. Double-click
-`setup.cmd`. Setup downloads its private tools, verifies your game, and builds
-OpenNighthawk locally. It needs internet access, disk space and several minutes.
-Setup downloads its own tools. It passed with no developer tools on PATH; a PC
-with neither Visual Studio nor Python installed has not yet been verified.
+Download the setup ZIP, extract it to a normal folder and double-click `setup.cmd`.
+Keep your own GOG or Steam F-117A installation installed: setup finds it, checks it,
+and builds OpenNighthawk from it on this PC. It needs internet access, about 1.5 GB of
+free space while it builds, and about 5 to 15 minutes.
 
-Before the first download setup lists the tools it will fetch and their licences
-(including the Microsoft terms for the shader compiler) and asks you to type YES.
-Scripted runs add `-AcceptLicences` to agree without being asked; without it a run
-with no console stops before downloading anything.
+## What the wizard asks
 
-When setup succeeds, open the OpenNighthawk desktop shortcut. Keep the setup work
-folder: the shortcut points to the game built there. Your original installation
-must remain available. Generated code and binaries are for your own machine and
-must not be added to a source release.
+1. **Licences.** The tools it downloads and their licences, including Microsoft's terms
+   for the shader compiler; type YES to continue.
+2. **Install folder.** Default `%LOCALAPPDATA%\Programs\OpenNighthawk` (press Enter to
+   accept). Only the game itself, about 35 MB, goes there.
+3. **Shortcuts.** A desktop shortcut and a Start menu entry, each optional.
+4. **Settings (optional).** Take the defaults, or choose the visuals (Original,
+   Enhanced or Remastered), full screen, whether the bug fixes are on, and Roland MT-32
+   music if you have the two ROM files (setup checks them). AdLib music, effects and
+   speech are the default and need nothing. Everything can be changed later in the
+   game with the ` key.
 
-If discovery fails, run Windows PowerShell in the extracted source folder:
+It then shows one line per stage and a live progress line while compiling. When it
+finishes it removes its build files (the downloaded tools and the compiler's
+intermediate files, about 1.4 GB) and keeps a log in the install folder's `logs`
+folder; send the newest log when reporting a problem. If setup stops early, the
+message names the log, which is then in `%TEMP%\OpenNighthawk-setup`.
 
-```powershell
-.\tools\setup.ps1 -Data 'D:\Games\F-117A'
-```
+Your saved pilots and settings are kept outside the install folder
+(`%APPDATA%\F117Recomp\F-117A`) and in `f117a.ini` beside the game; running setup
+again (for a new version) asks whether to keep your settings. Setup never writes to
+your game installation. Generated code and binaries are for your own machine and
+must not be shared.
 
-Every run of `setup.cmd` also writes everything it prints (its own messages and
-the build tools' output) to `%LOCALAPPDATA%\OpenNighthawk\logs\setup-DATE-TIME.log`;
-send the newest one when reporting a problem. A folder given with `-Data` is the
-only one setup uses: if it does not hold a verified game, setup stops rather than
-building from another installation it finds.
+## Options for scripted runs
 
-Read the reported error if setup stops. A failed checksum must be investigated;
-do not bypass it. After resolving the cause, rerun the same command: setup cleans
-its recognized incomplete work and starts again. The default folder is
-`%LOCALAPPDATA%\OpenNighthawk\setup-work`; an explicit `-Work` is reused on retry.
-Completed builds, unrecognized folders, game installs and junctions are never
-automatically cleaned. If Zig
-cannot be used, install Microsoft's Visual Studio Build Tools with Desktop
-development with C++ and a Windows SDK, then explicitly select the fallback:
+`setup.cmd -AcceptLicences` asks nothing and takes the defaults. Further options:
+`-Data FOLDER` (the game folder; if it does not hold a verified game, setup stops
+rather than using another installation it finds), `-InstallDir FOLDER`,
+`-NoDesktopShortcut`, `-StartMenu`, `-KeepBuildFiles`, `-Work FOLDER` (the temporary
+build workspace, default `%LOCALAPPDATA%\OpenNighthawk\setup-work`).
 
-```powershell
-.\tools\setup.ps1 -Compiler VisualStudio -Data 'D:\Games\F-117A'
-```
+A failed checksum must be investigated; do not bypass it. After fixing the cause, run
+setup again: it cleans its own incomplete work and starts over. Unrecognized folders,
+game installs and junctions are never cleaned. If Zig cannot be used, install
+Microsoft's Visual Studio Build Tools with Desktop development with C++ and a Windows
+SDK, then run `setup.cmd -Compiler VisualStudio`.
 
 ## Second clean-PC check
 
@@ -60,7 +62,7 @@ with the release review. Run as your normal standard user. Keep the setup log
 and record Windows version, graphics device/driver, compiler choice and ZIP hash.
 Do not set hidden-window, dummy-audio or test replay options for this check.
 
-- [ ] **Build:** extract the ZIP and run `setup.cmd`. Confirm the game installation
+- [ ] **Build:** extract the ZIP and run `setup.cmd`; answer the wizard (defaults are fine). Confirm the game installation
   is found and verification succeeds. Record elapsed time and the work folder.
   If setup stops, save the error; rerun after resolving it. Never bypass a hash
   check. Expect the OpenNighthawk desktop shortcut after success.
