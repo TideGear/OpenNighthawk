@@ -36,12 +36,13 @@ concurrent functional recording; this is not an isolated performance benchmark.
   the private Python 3.12.10 embedded runtime. Direct official download, checksum verification, cached-archive extraction,
   startup, game verification and bad-checksum refusal passed. With an
   existing Zig CPU DLL selected by `F117R_CPU_DLL`, embedded Python translated
-  MISC.EXE (34 instructions, 10 regions) in 0.3 seconds. Full translation and
-  a clean bootstrap have not been tested. No Capstone was installed in this runtime.
+  MISC.EXE (34 instructions, 10 regions) in 0.3 seconds. Full translation (90,112 instructions in 18 modules) and clean CPU bootstrap
+  subsequently passed as part of the 258.61-second app build. No Capstone was
+  installed in this runtime.
 - `tools/setup-sources.ps1`: source the helper and call
   `Initialize-F117SourceDependencies -Destination NEW_FOLDER`; it downloads
   pinned SDL/Munt source archives without Git. Direct official downloads, checksum and
-  extraction checks passed; a clean app build using them remains untested.
+  extraction checks passed; the clean full app build using them passed in 258.61 seconds.
 - `py tools/package-source.py --ref COMMIT --out OUTSIDE_REPO.zip` packages
   committed source and records its commit and SHA-256. Archive layout and a
   negative game-executable check passed. This does not publish a release or

@@ -21,7 +21,8 @@ The Zig zip SHA-256 is
 Embedded Python 3.12.10 translated 90,112 instructions in 18 modules without
 Capstone. The successful repaired first build's Zig runner matched the MSVC
 reference hashes for setup_calibration (`4a393859c6ec6923`) and strike
-(`aa8fca6ac6f373f0`). The recorded runway check is in progress. The 63-route
+(`aa8fca6ac6f373f0`). The hidden original-presentation runway replay also
+matched `600306c77cb04481` at clock 4,800,000,000. The 63-route
 gate, GPU picture comparisons, Visual Studio fallback build and full setup
 shortcut test remain outstanding. Zig is not yet adopted as the supported
 release default.
@@ -37,3 +38,9 @@ were also tested with only Windows system folders on PATH. Standalone DXC
 reports 1.8.2502.8, while the installed SDK reports 1.8.2502.11. The probe
 shader compiles with both but their DXIL bytes differ; picture equivalence
 has not been established. No game-derived files are included in a release.
+
+Gate preparation uses a scratch copy of tests/func_lockstep.c with 19
+spacing fixes after hex literals ending in E/e, including operators before
+macros and casts. Removing whitespace yields identical content. The
+repository test remains unchanged. Optimized Zig harness compilation is
+still running; no gate tally is claimed.
