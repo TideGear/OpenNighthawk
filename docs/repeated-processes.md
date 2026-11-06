@@ -17,7 +17,7 @@ outputs and verdicts identical, and the proof is the same verdicts before and
 after. A change that alters what a check tests (different states, a skipped
 verification) is not an optimisation; it needs the owner's approval.
 
-## Setup tooling validation (in progress)
+## Setup tooling validation
 
 Setup work is isolated in `D:/f117-wt/setup-wizard`. Under the revised
 5 November lock rules, functional builds, pixel checks and wizard route
@@ -47,6 +47,19 @@ concurrent functional recording; this is not an isolated performance benchmark.
   committed source and records its commit and SHA-256. Archive layout and a
   negative game-executable check passed. This does not publish a release or
   prove end-to-end setup success; provenance review remains required.
+
+`setup.cmd` now uses Zig by default. End-to-end setup passed under Windows
+PowerShell 5.1 with system-only PATH, including automatic GOG verification
+and a checked scratch shortcut; the build stage took 582.93 seconds under
+concurrent gate load. The separate Visual Studio fallback builder passed in
+372.84 seconds at 11 jobs. This was a PATH-isolation test, not a clean VM.
+The Zig parity-only gate passed all 63 routes (124 fresh engine runs) and
+all five locksteps in 2,539 seconds; declined/skipped counts are recorded in
+[setup validation](zig-setup-validation.md). GPU-present/compositor guards
+matched 901 checksums at each of Near, Far and Maximum (2,703/2,703).
+The unit suite and coverage-generation pipeline were not repeated by the
+parity-only gate. Source-only archive checks passed; no public release was
+published by the packaging tool.
 
 ## Current practice by kind of change
 
