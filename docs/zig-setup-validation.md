@@ -27,3 +27,13 @@ compiler child processes during C++ compiler identification despite
 lock before cold-cache Zig configure as well as builds: CMake's job limit
 does not bound Zig's internal compiler workers. Do not use the interrupted
 folder as evidence of a clean completed build.
+
+Portable build-tool helper: source `tools/setup-build-tools.ps1` and call
+`Initialize-F117BuildTools -Destination NEW_FOLDER`. It downloads CMake
+4.0.3, Ninja 1.12.1 and standalone DXC v1.8.2502, verifies pinned SHA-256
+values and returns executable paths. Cached-archive checks, extraction and
+startup passed on 5 November; the helper's network branch remains untested.
+Standalone DXC reports 1.8.2502.8, while the installed SDK reports
+1.8.2502.11. The probe shader compiles with both but their DXIL bytes differ;
+no picture-equivalence conclusion follows from this check. Full GPU guards
+and adoption of a standalone shader compiler remain pending.
