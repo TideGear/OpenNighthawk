@@ -67,6 +67,15 @@ README wording and source-only publication remain owner decisions.
 
 ## Review scope and pins
 
+Licence notice (added 6 November after review): `tools/setup-licences.ps1` shows the
+downloaded tools' licences, including the Microsoft shader-compiler terms (Windows
+only, may send usage data, no redistribution), and asks for `YES` before any
+download; `-AcceptLicences` agrees non-interactively, and a run without a console
+and without that switch stops with nothing downloaded. Tested under Windows
+PowerShell 5.1 (accept, refuse, full `setup.ps1` refusal creating no work folder);
+the interactive `YES` prompt itself was not exercised in a console and PowerShell 7
+was not available on this PC for this change.
+
 Reviewed in full: `setup.cmd`, `build.cmd`, `tools/setup.ps1`,
 `tools/setup-python.ps1`, `tools/setup-sources.ps1`,
 `tools/setup-build-tools.ps1`, `tools/setup-visual-studio.ps1`,
