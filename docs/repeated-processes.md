@@ -17,6 +17,50 @@ outputs and verdicts identical, and the proof is the same verdicts before and
 after. A change that alters what a check tests (different states, a skipped
 verification) is not an optimisation; it needs the owner's approval.
 
+## Setup tooling validation
+
+Setup work is isolated in `D:/f117-wt/setup-wizard`. Under the revised
+5 November lock rules, functional builds, pixel checks and wizard route
+parity do not acquire `D:/f117-dl/HEAVY.lock`. Wait while it exists: it
+protects renderer timing runs and the main checkout's full gate. Use private
+Zig caches and at most 12 build jobs while the three renderer recorders run.
+See [Zig validation](zig-setup-validation.md). The clean full app build took 258.61 seconds on 5 November with 12 jobs and
+concurrent functional recording; this is not an isolated performance benchmark.
+
+- `tools/find-f117-install.ps1`: source the helper and call
+  `Get-F117InstallCandidates`. Candidates require `tools/verify_install.py`.
+  Both local GOG and Steam candidates passed 18/18 game-file hashes on
+  5 November. Steam lacks the optional GOG DOSBox reference files.
+- `tools/setup-python.ps1`: source the helper and call
+  `Initialize-F117Python -Destination NEW_FOLDER`; it downloads and checks
+  the private Python 3.12.10 embedded runtime. Direct official download, checksum verification, cached-archive extraction,
+  startup, game verification and bad-checksum refusal passed. With an
+  existing Zig CPU DLL selected by `F117R_CPU_DLL`, embedded Python translated
+  MISC.EXE (34 instructions, 10 regions) in 0.3 seconds. Full translation (90,112 instructions in 18 modules) and clean CPU bootstrap
+  subsequently passed as part of the 258.61-second app build. No Capstone was
+  installed in this runtime.
+- `tools/setup-sources.ps1`: source the helper and call
+  `Initialize-F117SourceDependencies -Destination NEW_FOLDER`; it downloads
+  pinned SDL/Munt source archives without Git. Direct official downloads, checksum and
+  extraction checks passed; the clean full app build using them passed in 258.61 seconds.
+- `py tools/package-source.py --ref COMMIT --out OUTSIDE_REPO.zip` packages
+  committed source and records its commit and SHA-256. Archive layout and a
+  negative game-executable check passed. This does not publish a release or
+  prove end-to-end setup success; provenance review remains required.
+
+`setup.cmd` now uses Zig by default. End-to-end setup passed under Windows
+PowerShell 5.1 with system-only PATH, including automatic GOG verification
+and a checked scratch shortcut; the build stage took 582.93 seconds under
+concurrent gate load. The separate Visual Studio fallback builder passed in
+372.84 seconds at 11 jobs. This was a PATH-isolation test, not a clean VM.
+The Zig parity-only gate passed all 63 routes (124 fresh engine runs) and
+all five locksteps in 2,539 seconds; declined/skipped counts are recorded in
+[setup validation](zig-setup-validation.md). GPU-present/compositor guards
+matched 901 checksums at each of Near, Far and Maximum (2,703/2,703).
+The unit suite and coverage-generation pipeline were not repeated by the
+parity-only gate. Source-only archive checks passed; no public release was
+published by the packaging tool.
+
 ## Current practice by kind of change
 
 - **Remastered performance.** Keep throughput measurements separate from correctness

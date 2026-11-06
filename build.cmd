@@ -1,8 +1,17 @@
 @echo off
 rem Configure and build with MSVC + Ninja. Usage: build.cmd [extra cmake -D args]
 setlocal enabledelayedexpansion
-set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-if not exist "%VCVARS%" ( echo ERROR: vcvars64.bat not found & exit /b 1 )
+rem The compiler the project was proven with (Visual Studio 2026 Build Tools) is used when it is there. F117R_VCVARS names another
+rem vcvars64.bat; failing both, vswhere finds any Visual Studio with the C++ tools (a different compiler than the proven one: say so).
+set "PROVEN_VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+set "VCVARS=%PROVEN_VCVARS%"
+if defined F117R_VCVARS set "VCVARS=%F117R_VCVARS%"
+if exist "%VCVARS%" goto havevc
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%VSWHERE%" for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VCVARS=%%I\VC\Auxiliary\Build\vcvars64.bat"
+if not exist "%VCVARS%" ( echo ERROR: vcvars64.bat not found; install the Visual Studio C++ Build Tools or set F117R_VCVARS & exit /b 1 )
+:havevc
+if /i not "%VCVARS%"=="%PROVEN_VCVARS%" echo [build] using %VCVARS%, not the compiler the project was proven with
 call "%VCVARS%" >nul
 cd /d "%~dp0"
 rem The working copy lives in a synced folder and build output does not
