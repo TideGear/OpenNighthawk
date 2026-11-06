@@ -408,4 +408,14 @@ The polygon, stroke and logic fills now take their inverse depth from the intege
 
 Controls: the GPU run in float mode on the exact-mode traces differs by 207 to 457 pixels (so the zero is not an artefact of the comparison); the exact CPU compositor replayed on the float traces differs from today's picture by about 180 to 230 colour pixels a frame (the change the owner is to review before any baseline moves).
 
+**Superseded (5 November, late):** the zero results in this section were recorded before the guard-band fix and must be recorded again; see the next section. The 30 frames are also ten distinct frames, not thirty.
+
 Limits to keep in view: (1) the three distances give the same composite on these frames (identical raster-call counts and identical float differences), so the 30 frames are ten distinct frames, not thirty: the far scenery is mostly dropped before the composite, as the earlier Maximum finding said; a Maximum test needs `--dot-distance maximum` to put more primitives in the composite. (2) 1280 x 600 only; 4K composites (3840 x 1800, larger coordinates) are not tested. (3) One GPU (RTX 3060). (4) The whole branch still has to pass the full gate and the all-route presentation check before it merges, and exact mode is off by default.
+
+### Step 2, the 4K test finds an overflow; the guard band (5 November 2026, branch `p3-exact-raster`, `427e429`)
+
+Recorded at 4K (3840 x 1800 composites, `exact_frames.sh` with `WIN=3840x2160 PSCALE=9`), the first three Near frames gave 0, 0 and **4,697** differing pixels, all in seven rows along the horizon. Cause: a stipple polygon at the near plane had a vertex at x = -2,304,193,464 px; with the vertices snapped to 1/256 px the edge products reach about 1e21, past the 9.2e18 of int64. Signed overflow is undefined in C, so the CPU's compiled sign test and the GPU's disagreed. The 1280 x 600 frames happened to hold no such polygon, and the earlier overflow check looked only at band triangles (at most 2.5e5 px).
+
+Fix, shared by both sides in `src/present/exact.h`: every triangle is clipped to a guard band of +/-1,048,576 px (Sutherland-Hodgman, attributes interpolated linearly in screen space, the result clamped onto the band) before it is snapped, so every product stays under about 3e17; the products are computed in unsigned 64-bit (defined wrap); a band vertex outside the band makes the GPU decline the frame. With the fix the same three 4K frames are **0, 0, 0** differing pixels; the control (GPU in float mode on the same frame) differs by 2,491.
+
+Status at the stop: the 1280 x 600 sets (ten Near, ten Maximum with `--dot-distance maximum`, which holds 19,809 raster calls against 577 at Near) must be re-recorded with this build, a 4K Maximum-with-dots set is untested, and the branch has not been through the full gate or the all-route presentation check. Until then the claim is: zero on three 4K Near frames with the final build; unverified elsewhere.
