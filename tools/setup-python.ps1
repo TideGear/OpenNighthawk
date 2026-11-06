@@ -1,3 +1,4 @@
+. (Join-Path $PSScriptRoot 'setup-paths.ps1')
 # Private Python runtime for setup; no system Python or package installation.
 function Initialize-F117Python {
     [CmdletBinding()]
@@ -6,7 +7,7 @@ function Initialize-F117Python {
         [string]$Archive
     )
     $ErrorActionPreference = 'Stop'
-    $destinationPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    $destinationPath = (Assert-F117OutputPath -Path $Destination)
     $repoPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($destinationPath -eq $repoPath -or $destinationPath.StartsWith($repoPath + '\',[StringComparison]::OrdinalIgnoreCase)) {
         throw 'Python runtime must be outside the source folder.'

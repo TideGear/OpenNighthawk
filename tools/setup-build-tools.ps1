@@ -1,9 +1,10 @@
+. (Join-Path $PSScriptRoot 'setup-paths.ps1')
 # Portable build tools, downloaded at setup time; no machine-wide install.
 function Initialize-F117BuildTools {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][string]$Destination,[string]$ArchiveFolder)
     $ErrorActionPreference = 'Stop'
-    $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    $root = (Assert-F117OutputPath -Path $Destination)
     $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($root -eq $repo -or $root.StartsWith($repo + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Build tools must be outside the repository.' }
     if (Test-Path -LiteralPath $root) { throw 'Choose a new build-tool folder.' }

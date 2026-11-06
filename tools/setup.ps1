@@ -1,12 +1,15 @@
-# Development draft: full build, parity and GPU validation are still pending.
+# Build locally from the verified owner-supplied game installation.
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'find-f117-install.ps1')
 . (Join-Path $PSScriptRoot 'setup-python.ps1')
 . (Join-Path $PSScriptRoot 'setup-sources.ps1')
 . (Join-Path $PSScriptRoot 'setup-build-tools.ps1')
 if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA ('OpenNighthawk/setup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
+$Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
+if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
 if (Test-Path -LiteralPath $Work) { throw 'Choose a new setup work folder.' }
 while (Test-Path -LiteralPath 'D:\f117-dl\HEAVY.lock') { Start-Sleep -Seconds 5 }
 $pythonArgs = @{ Destination=Join-Path $Work 'python' }
@@ -31,7 +34,7 @@ $exe = Join-Path $Work 'game/build/f117a.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Build did not produce the game executable.' }
 $shell = New-Object -ComObject WScript.Shell
 if (-not $ShortcutPath) { $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'OpenNighthawk.lnk' }
-$ShortcutPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ShortcutPath)
+$ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $accepted
 if ([IO.Path]::GetExtension($ShortcutPath) -ne '.lnk') { throw 'Shortcut path must end in .lnk.' }
 $shortcut = $shell.CreateShortcut($ShortcutPath)
 $shortcut.TargetPath = $exe

@@ -13,8 +13,9 @@ param(
     [string]$ZigArchive
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'setup-paths.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$destination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Work).TrimEnd('\','/')
+$destination = (Assert-F117OutputPath -Path $Work -GameDirectory $Data)
 if ($destination -eq $repo -or $destination.StartsWith($repo + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Choose a work folder outside the source folder.'
 }

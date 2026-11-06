@@ -1,3 +1,4 @@
+. (Join-Path $PSScriptRoot 'setup-paths.ps1')
 # Fetch dependency sources at the same revisions used by CMake, without Git.
 function Initialize-F117SourceDependencies {
     [CmdletBinding()]
@@ -6,7 +7,7 @@ function Initialize-F117SourceDependencies {
         [string]$ArchiveFolder
     )
     $ErrorActionPreference = 'Stop'
-    $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    $root = (Assert-F117OutputPath -Path $Destination)
     $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
     if ($root -eq $repo -or $root.StartsWith($repo + '\',[StringComparison]::OrdinalIgnoreCase)) {
         throw 'Dependency sources must be outside the repository.'
