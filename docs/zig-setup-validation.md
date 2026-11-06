@@ -23,7 +23,7 @@ Capstone. The successful repaired first build's Zig runner matched the MSVC
 reference hashes for setup_calibration (`4a393859c6ec6923`) and strike
 (`aa8fca6ac6f373f0`). The hidden original-presentation runway replay also
 matched `600306c77cb04481` at clock 4,800,000,000. The 63-route
-gate, GPU picture comparisons and full setup
+gate and full setup
 shortcut test remain outstanding. Zig is not yet adopted as the supported
 release default.
 
@@ -42,8 +42,8 @@ has not been established. No game-derived files are included in a release.
 Gate preparation uses a scratch copy of tests/func_lockstep.c with 19
 spacing fixes after hex literals ending in E/e, including operators before
 macros and casts. Removing whitespace yields identical content. The
-repository test remains unchanged. Optimized Zig harness compilation is
-still running; no gate tally is claimed.
+repository test remains unchanged. Optimized Zig harness compilation passed; the gate is running with fresh
+interpreter routes and all five lockstep jobs. No final gate tally is claimed.
 
 The same-source Visual Studio fallback full app build passed in 372.84
 seconds with 11 build jobs while the optimized Zig lockstep compiler and
@@ -51,3 +51,16 @@ renderer jobs shared the machine. It used embedded Python, downloaded
 dependency sources and the same standalone DXC as Zig. This verifies the
 fallback builder, not the complete launcher path, and is not a controlled
 compiler-speed comparison.
+
+GPU guard result: Near, Far and Maximum each matched all 901 composed-image
+checksums between the same-source MSVC and Zig builds (2,703 comparisons,
+zero differences). Both F117_GPU_PRESENT=1 and F117_GPU_COMPOSE=1 were set,
+MODE=gpu selected hidden windows, audio used the dummy driver, scale was 3,
+and fixed cadence, hash start clock 3,900,000,000 and eight renderer workers
+were used as prescribed by tools/renderer_bench/guards.sh. All six runs
+reported GPU composition on and no GPU-present fallback. The compositor
+requires DXIL shaders, supplied through SDL's Direct3D 12 GPU backend.
+Evidence: D:/f117-dl/wizard/gpu-msvc-baseline and gpu-guards. These results do
+not establish cross-compiler equivalence of the CPU compositor or other
+resolutions/settings. No cause analysis is needed for this guard: it found
+no differing frames.
