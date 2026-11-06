@@ -340,3 +340,22 @@ Worker stages (`F117_WORKER_TIMING`, elapsed time on the worker thread, whole ru
 | Maximum | 1.35, 1.97 | 5.46, 6.27 | 1.99, 3.01 | 8.80, 9.99 |
 
 The picture layer, the game's own picture redrawn at 4K by the CPU, is about 62% of the worker and does not change with the draw distance. It is the target of step 3. Main-thread and GPU time are not yet split out.
+
+## Step 2 design: exact setup once on the CPU, integer evaluation per pixel (5 November 2026)
+
+Measured on one Near composite from the runway replay (`F117_GPU_DUMP`, 1280 x 600, 604 raster calls: 248 polygons, 32 shaded, 16 logic, 306 lines; 602 primitives, 1,812 vertices):
+
+- Camera-space vertices are integers: |X| up to 9.6e8, |Y| up to 7.4e8 (30 bits), Z from 0.97e6 to 2.03e8 in front of the near plane (28 bits).
+- The projection is `x = cx + sx * X / Z`, `y = cy + sy * Y / Z`, `iz = inv_depth_scale / Z` (sx = sy = 768 here, inv_depth_scale 1 to 64). Unclipped screen vertices reach +/-74,000 px (128 vertices past +/-16,384), so edges are clipped to a guard band before any fixed-point step.
+- Inverse depth spans 6.2e-9 to 1.6e-5; the largest triangle has twice its area 8.3e9 px^2 before clipping.
+
+What differs between the CPU and GPU compositors today is arithmetic done separately on each side: weights in doubles per pixel on the CPU, in float or double per 16 x 16 tile on the GPU, and float depth compared with factors such as 0.9999 and 0.97. The design that removes the cause rather than matching the rounding:
+
+1. **One setup, on the CPU, in exact integer arithmetic**, per primitive: the vertices snapped to a fixed grid (1/256 px, after clipping to the guard band, so the largest edge value is about 1e12 and fits 64 bits), the three edge equations `A*x + B*y + C` as int64, the top-left fill rule, and the depth plane `iz = a*x + b*y + c` (inverse depth is affine in screen space, so one plane per primitive is exact) as fixed-point int64. A 128-bit intermediate (CPU only) covers the plane's coefficients.
+2. **Both compositors evaluate those numbers**, not recompute them: per pixel centre an integer multiply-add for each edge and for depth, tested with integer comparisons. The GPU receives the setup values as constants (int64 as two uint32), so it cannot disagree with the CPU by rounding.
+3. **Depth rules in integers:** the tie factors become integer ratios on the fixed depth (for example `iz * 10000 < d * 9999` in 64 bits); the decal, stroke and slope rules read the same fixed depth.
+4. **The cost to the baselines:** the CPU compositor then rounds differently from today at pixels whose centre lies within about 1/512 px of an edge, and at depth ties; the 901-checksum baselines per distance are regenerated from the integer CPU compositor after the owner has seen the changed pixels. The end-of-run machine hash does not depend on the picture and must stay `600306c77cb04481`.
+
+A second reason to do it: the Zig-compiled game (a different compiler and C library) differed from the Microsoft-compiled one in 92 of 901 Remastered pictures per distance while the game state matched exactly, so float arithmetic in the CPU compositor already depends on the compiler. Integer setup removes that dependence too.
+
+Order of work: the polygon fill and depth plane first (CPU, behind a switch, counting the changed pixels against today's output), then the rules that read neighbours (decals, strokes), then the GPU side, then the baselines.
