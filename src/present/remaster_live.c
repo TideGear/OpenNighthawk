@@ -868,6 +868,18 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             fprintf(stderr, "[prim-hist] #%u clock %llu, %zu primitives, scene %p (model:polygons/lines/dots):", done_hist, (unsigned long long)m->cpu.icount, r->done.n, (void *)r->scene);
             for (int k = 0; k < 1024; k++) if (cnt[k][0] || cnt[k][1] || cnt[k][2]) fprintf(stderr, " %d:%u/%u/%u", k, cnt[k][0], cnt[k][1], cnt[k][2]);
             fprintf(stderr, "\n");
+            {   /* by source (remaster_prim_source): the game's own drawing, the native walk, placed through the game, placed through the game and deferred; models 37, 39, 40, 44, polygons/lines/dots */
+                static const int models[4] = { 37, 39, 40, 44 };
+                for (int mi = 0; mi < 4; mi++) {
+                    unsigned s[4][3]; memset(s, 0, sizeof s);
+                    for (size_t i = 0; i < r->done.n; i++) {
+                        const remaster_prim *q = &r->done.prim[i];
+                        if ((q->model & 1023) == models[mi]) s[q->source & 3][q->kind % 3]++;
+                    }
+                    fprintf(stderr, "[prim-src] #%u model %d  game %u/%u/%u  native %u/%u/%u  guest %u/%u/%u  guest-deferred %u/%u/%u\n", done_hist, models[mi],
+                            s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2], s[2][0], s[2][1], s[2][2], s[3][0], s[3][1], s[3][2]);
+                }
+            }
         }
     }
     remaster_target t;

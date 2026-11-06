@@ -554,3 +554,15 @@ Step 2 above (the level and the cull, `far_choose_row` in `rerun.c`) runs one ro
 joined in row order. The pick list, and `qsort`'s result on it, are therefore the same as the single loop's: 901 of 901 composed-image checksums identical at Near, Far and Maximum, and the end-of-run machine hash
 identical. `F117_FAR_WHY`, `F117_CULL_WHY` and `F117_NATIVE_FORCE_BASE` keep the choosing on one thread (they print or count while choosing). The placing (step 4) stays on one thread: it patches the machine's
 template area and uses a scene reader with caches, so threading it needs private copies per thread. Timings and guards: [gpu-compositor.md](gpu-compositor.md), last section.
+
+## Model 37 primitives by source (6 November 2026)
+
+The open question above ("a per-copy count of model 37 primitives by source has not been taken") answered with a diagnostic tag: `remaster_prim.source` (0 the game's own drawing, 1 the native walk's own objects, 2 placed through the game, 3 placed through the game and deferred), set by the far-scenery placement in `rerun.c`, counted at `F117_PRIM_HIST` (`[prim-src]` lines). Runway replay, 1280 x 600, clock 3,500,016,397 and the next two composites (three identical counts but the first frame's third value), polygons/lines per model 37:
+
+| Mode | game's own drawing | native walk | placed through game | placed and deferred | total |
+|---|---|---|---|---|---|
+| Default (`F117_NATIVE_WALK` off) | 139/100 | 75/30 | 0/0 | 0/0 | **214/130** |
+| `F117_NATIVE_WALK=1` | 0/0 | 75/30 | 0/0 | 31/31 | **106/61** |
+| `F117_NATIVE_WALK=1 F117_NATIVE_FORCE_BASE=1` | 0/0 | 75/30 | 0/0 | 31/31 | **106/61** |
+
+Reading: the 75/30 the native path draws are identical in all three modes. What the default picture has and the native walk lacks is the game's own walk's 139/100, of which the native walk reproduces only the 31/31 that the game's placement draws for deferring own-cell objects: **108 polygons and 69 lines of model 37 (50% of the polygons) are missing in native-walk mode**, none of them from a source the native walk has a path for (no primitive in any mode comes from "placed through the game" alone). Forcing the base tiles changes nothing.

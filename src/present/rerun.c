@@ -270,6 +270,7 @@ static int64_t cell_scaled(int level, uint32_t v)
     return s;
 }
 static int cell_base(int level, uint32_t v) { return (int)(cell_scaled(level, v) >> 12); }
+extern int remaster_prim_source;     /* remaster_scene.c: which placement is emitting primitives (diagnostic, F117_PRIM_HIST) */
 static int g_walk_k = -1, g_walk_busy;
 static double walk_ms(void)
 {
@@ -1114,9 +1115,13 @@ static int far_scenery_body(machine_t *m)
             spec.pos[2] = (int16_t)(uint16_t)(0 - (uint16_t)(pk->y - pk->oy));
             spec.darken = pk->darken; spec.level = pk->level; spec.shrink = 2 * (pk->level - f->ring);
             spec.eye[0] = eye_long[0]; spec.eye[1] = eye_long[1]; spec.eye[2] = eye_long[2];
-            if (g_collector.native(g_collector.user, m, &spec)) { native++; continue; }
+            remaster_prim_source = 1;
+            const int took = g_collector.native(g_collector.user, m, &spec);
+            remaster_prim_source = 0;
+            if (took) { native++; continue; }
         }
         guest++;
+        remaster_prim_source = pk->own && pk->defers ? 3 : 2;
         const double guest_start = stats ? walk_ms() : 0.0;
         { static int set_flags = -1; if (set_flags < 0) set_flags = getenv("F117_NATIVE_C06E") != NULL;   /* experiment: the walk sets [C070] and [C06E] from [98A4] before each entry */
           if (set_flags) { const uint16_t v98 = rd16(m->mem, ds, 0x98A4); wr16(m->mem, ds, 0xC070, v98); wr16(m->mem, ds, 0xC06E, v98); } }
@@ -1145,9 +1150,9 @@ static int far_scenery_body(machine_t *m)
                 fprintf(stderr, "[why] model %u ring %d level %d own %d defers %d: placed by the game, result %s\n", (unsigned)(pk->model & 0x7F), pk->ring, pk->level, pk->own, pk->defers, rc == RUN_TRAP ? "returned" : "did not return");
             }
         }
-        g_walk_busy = 0; g_scale_shift = 0;
+        g_walk_busy = 0; g_scale_shift = 0; remaster_prim_source = 0;
     }
-    g_walk_busy = 0; g_scale_shift = 0;
+    g_walk_busy = 0; g_scale_shift = 0; remaster_prim_source = 0;
     while (n_nodefer) { n_nodefer--; m->mem[(((uint32_t)ds << 4) + nodefer[n_nodefer].at) & 0xFFFFF] = nodefer[n_nodefer].was; }
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;
     wr16(m->mem, ds, 0x48E6, far_was);
