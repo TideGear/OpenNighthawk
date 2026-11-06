@@ -132,6 +132,38 @@ static int row_span(sv a, sv b, sv c, double py, int *xs, int *xe)
     return 1;
 }
 
+/* Exact coverage (F117R exact rasterising, docs/gpu-compositor.md "Step 2 design"): the triangle's vertices are snapped once to a grid of 1/256 pixel
+ * and a pixel is covered when its centre is inside or on the edge of that integer triangle, decided by three int64 edge equations. The decision is a
+ * function of the snapped integers alone, so the GPU compositor can make the same decision from the same numbers; it no longer depends on how a
+ * compiler or a GPU rounds doubles and floats. Snapped coordinates stay within about 2e8 (8e5 px at 1/256), so every product fits 64 bits.
+ * Off unless F117_RASTER_EXACT=1 while the change is measured. */
+typedef struct { long long ax, ay, bx, by, cx, cy, area; } itri;
+
+static int exact_cov(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_RASTER_EXACT"); on = e && *e && *e != '0'; }
+    return on;
+}
+
+static int itri_setup(itri *r, sv a, sv b, sv c)
+{
+    r->ax = llround(a.x * 256.0); r->ay = llround(a.y * 256.0);
+    r->bx = llround(b.x * 256.0); r->by = llround(b.y * 256.0);
+    r->cx = llround(c.x * 256.0); r->cy = llround(c.y * 256.0);
+    r->area = (r->bx - r->ax) * (r->cy - r->ay) - (r->cx - r->ax) * (r->by - r->ay);
+    return r->area != 0;
+}
+
+static int itri_covers(const itri *r, int x, int y)
+{
+    const long long px = (long long)x * 256 + 128, py = (long long)y * 256 + 128;
+    const long long e0 = (r->bx - r->ax) * (py - r->ay) - (r->by - r->ay) * (px - r->ax);
+    const long long e1 = (r->cx - r->bx) * (py - r->by) - (r->cy - r->by) * (px - r->bx);
+    const long long e2 = (r->ax - r->cx) * (py - r->cy) - (r->ay - r->cy) * (px - r->cx);
+    return r->area > 0 ? (e0 >= 0 && e1 >= 0 && e2 >= 0) : (e0 <= 0 && e1 <= 0 && e2 <= 0);
+}
+
 /* How much the polygons' inverse depth changes across one pixel at (x, y): per axis the smaller step to a covered neighbour, so a
  * surface's edge, where one neighbour is another surface, reads the slope of the surface itself. */
 static float surface_slope(const remaster_target *t, int x, int y)
@@ -156,6 +188,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
 {
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
+    itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -176,7 +209,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
             const double l3 = 1.0 - l1 - l2;
-            if (l1 < 0 || l2 < 0 || l3 < 0) continue;        /* the pixel's centre is outside */
+            if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;        /* the pixel's centre is outside */
             const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
             float *d = &t->inv_z[(long)y * t->w + x];
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
@@ -245,6 +278,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
 {
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
+    itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -270,7 +304,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
         double l1 = a1 * (xs + 0.5 - c.x) + b1 * (py - c.y), l2 = a2 * (xs + 0.5 - c.x) + b2 * (py - c.y);
         for (int x = xs; x <= xe; x++, l1 += a1, l2 += a2) {
             const double l3 = 1.0 - l1 - l2;
-            if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+            if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;
             const float iz = (float)(c.iz + l1 * diz1 + l2 * diz2);
             float *d = &t->inv_z[(long)y * t->w + x];
             if (iz < *d * 0.9999f) continue;
@@ -297,6 +331,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
 {
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
+    itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -317,7 +352,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
             const double l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den;
             const double l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den;
             const double l3 = 1.0 - l1 - l2;
-            if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+            if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;
             const float iz = (float)(l1 * a.iz + l2 * b.iz + l3 * c.iz);
             const long i = (long)y * t->w + x;
             if (iz < t->inv_z[i] * 0.9999f) continue;          /* something clearly nearer covers it */
