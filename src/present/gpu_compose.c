@@ -2,6 +2,7 @@
  * gpu_replace): the CPU clips and projects the polygons and strokes, splits them into triangles and bins them into 16 x 16 tiles with the weights evaluated in
  * double at each tile's first pixel; the passes are the shaders in src/present/gpu. */
 #include "gpu_compose.h"
+#include "exact.h"
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -103,7 +104,7 @@ static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, i
     if (!g) return NULL;
     g->dev = device;
     g->own_device = own;
-    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_fast.dxil", 1, 4, 0, 64, 1);
+    g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_x.dxil", 1, 4, 0, 64, 1);
     g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys_x.dxil", 4, 4, 0, 16, 16);
     g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes_x.dxil", 4, 6, 0, 16, 16);
     g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 0, 16, 16);
@@ -378,8 +379,20 @@ static int band_triangle(uint32_t *wd, const gpu_trace_rec *r, const sv s[3], co
                           (float)(rgb[0][0] - rgb[2][0]), (float)(rgb[0][1] - rgb[2][1]), (float)(rgb[0][2] - rgb[2][2]),
                           (float)(rgb[1][0] - rgb[2][0]), (float)(rgb[1][1] - rgb[2][1]), (float)(rgb[1][2] - rgb[2][2]),
                           (float)rgb[2][0], (float)rgb[2][1], (float)rgb[2][2] };
-    memset(wd, 0, 24 * 4);
+    memset(wd, 0, 64 * 4);
     for (int k = 0; k < 18; k++) memcpy(&wd[k], &f[k], 4);
+    {   /* exact form: the snapped vertices, the area's sign, the plane origin and the four planes (exact.h) */
+        ex_tri et;
+        if (!ex_setup(&et, a.x, a.y, b.x, b.y, c.x, c.y)) { if (exact_on()) return 0; }
+        else {
+            const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { rgb[0][0], rgb[1][0], rgb[2][0] }, { rgb[0][1], rgb[1][1], rgb[2][1] }, { rgb[0][2], rgb[1][2], rgb[2][2] } };
+            ex_planes pl; ex_planes_make(&pl, &et, pv);
+            for (int k = 0; k < 6; k++) put64(wd + 24 + 2 * k, et.q[k]);
+            wd[36] = et.area > 0 ? 1u : 0u;
+            wd[37] = (uint32_t)(int32_t)pl.ox; wd[38] = (uint32_t)(int32_t)pl.oy;
+            for (int k = 0; k < EX_PLANES; k++) { put64(wd + 40 + 6 * k, (long long)pl.base[k]); put64(wd + 42 + 6 * k, (long long)pl.px[k]); put64(wd + 44 + 6 * k, (long long)pl.py[k]); }
+        }
+    }
     wd[18] = r->paint_index;
     wd[19] = (uint32_t)x0; wd[20] = (uint32_t)x1; wd[21] = (uint32_t)y0; wd[22] = (uint32_t)y1;
     return 1;
@@ -400,10 +413,10 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     int phase = 0;
     g->polys.n = 0; g->strokes.n = 0;
     uint32_t nband = 0, nstrokes = 0;
-    uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 24 * 4);
+    uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 64 * 4);
     uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * 16 * 4);
     if (!bw || !sw) return 0;
-    const size_t band_cap = g->band_words.cap / (24 * 4);
+    const size_t band_cap = g->band_words.cap / (64 * 4);
     for (uint32_t i = 0; i < in->nrec; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         switch (r->kind) {
@@ -424,7 +437,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
                 const sv tr[3] = { s[0], s[k], s[k + 1] };
                 const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };
                 if (nband >= band_cap) { say(g, "too many band triangles"); return 0; }
-                if (band_triangle(bw + (size_t)nband * 24, r, tr, col, tw, h)) nband++;
+                if (band_triangle(bw + (size_t)nband * 64, r, tr, col, tw, h)) nband++;
             }
             break;
         }
@@ -468,7 +481,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 game_bytes = (Uint32)((npix_game + 7) & ~(size_t)3);
     const Uint32 nstroke_b = (Uint32)((nstrokes ? nstrokes : 1) * 4);
     seg segs[] = {
-        { &g->bt, bw, (Uint32)((nband ? nband : 1) * 96), RO },
+        { &g->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
         { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 128), RO },
         { &g->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
         { &g->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
@@ -532,7 +545,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     SDL_GPUBuffer *b_colour = g->colour.buf, *b_index = g->index_.buf, *b_invz = g->invz.buf, *b_owner = g->owner.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
     {   /* bands: the clear, the sky and ground, depth and owner zero */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
-        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, 0 };
+        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_bands);
         SDL_BindGPUComputeStorageBuffers(c, 0, &g->bt.buf, 1);

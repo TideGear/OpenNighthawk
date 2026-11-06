@@ -189,7 +189,10 @@ if(F117R_BUILD_APP)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_fast.hlsl)
-    add_custom_target(gpu_shaders_bands ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_x.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_x.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_x.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/bands_x.hlsl)
+    add_custom_target(gpu_shaders_bands ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_fast.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_bands_x.dxil)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl)

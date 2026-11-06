@@ -1,5 +1,6 @@
 /* remaster_raster.c - the Remastered presentation's triangle fill (see remaster_raster.h). */
 #include "remaster_raster.h"
+#include "exact.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -137,7 +138,7 @@ static int row_span(sv a, sv b, sv c, double py, int *xs, int *xe)
  * function of the snapped integers alone, so the GPU compositor can make the same decision from the same numbers; it no longer depends on how a
  * compiler or a GPU rounds doubles and floats. Snapped coordinates stay within about 2e8 (8e5 px at 1/256), so every product fits 64 bits.
  * Off unless F117_RASTER_EXACT=1 while the change is measured. */
-typedef struct { long long ax, ay, bx, by, cx, cy, area; } itri;
+typedef ex_tri itri;
 
 static int exact_cov(void)
 {
@@ -146,23 +147,8 @@ static int exact_cov(void)
     return on;
 }
 
-static int itri_setup(itri *r, sv a, sv b, sv c)
-{
-    r->ax = llround(a.x * 256.0); r->ay = llround(a.y * 256.0);
-    r->bx = llround(b.x * 256.0); r->by = llround(b.y * 256.0);
-    r->cx = llround(c.x * 256.0); r->cy = llround(c.y * 256.0);
-    r->area = (r->bx - r->ax) * (r->cy - r->ay) - (r->cx - r->ax) * (r->by - r->ay);
-    return r->area != 0;
-}
-
-static int itri_covers(const itri *r, int x, int y)
-{
-    const long long px = (long long)x * 256 + 128, py = (long long)y * 256 + 128;
-    const long long e0 = (r->bx - r->ax) * (py - r->ay) - (r->by - r->ay) * (px - r->ax);
-    const long long e1 = (r->cx - r->bx) * (py - r->by) - (r->cy - r->by) * (px - r->bx);
-    const long long e2 = (r->ax - r->cx) * (py - r->cy) - (r->ay - r->cy) * (px - r->cx);
-    return r->area > 0 ? (e0 >= 0 && e1 >= 0 && e2 >= 0) : (e0 <= 0 && e1 <= 0 && e2 <= 0);
-}
+static int itri_setup(itri *r, sv a, sv b, sv c) { return ex_setup(r, a.x, a.y, b.x, b.y, c.x, c.y); }
+static int itri_covers(const itri *r, int x, int y) { return ex_covers(r, x, y); }
 
 /* How much the polygons' inverse depth changes across one pixel at (x, y): per axis the smaller step to a covered neighbour, so a
  * surface's edge, where one neighbour is another surface, reads the slope of the surface itself. */
@@ -201,7 +187,8 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
-        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (exact) { xs = x0; xe = x1; }       /* the integer test decides every pixel of the box: row_span's doubles can miss a tip the snapping moved onto a pixel centre */
+        else if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
         if (xs < x0) xs = x0;
         if (xe > x1) xe = x1;
         for (int x = xs; x <= xe; x++) {
@@ -279,6 +266,11 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     const double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
     if (fabs(den) < 1e-12) return 0;
     itri it; const int exact = exact_cov(); if (exact && !itri_setup(&it, a, b, c)) return 0;
+    ex_planes pl;
+    if (exact) {
+        const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { ca[0], cb[0], cc[0] }, { ca[1], cb[1], cc[1] }, { ca[2], cb[2], cc[2] } };
+        ex_planes_make(&pl, &it, pv);
+    }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
     int x0 = (int)floor(minx - 0.5), x1 = (int)ceil(maxx - 0.5), y0 = (int)floor(miny - 0.5), y1 = (int)ceil(maxy - 0.5);
@@ -297,7 +289,8 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
-        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (exact) { xs = x0; xe = x1; }       /* the integer test decides every pixel of the box: row_span's doubles can miss a tip the snapping moved onto a pixel centre */
+        else if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
         if (xs < x0) xs = x0;
         if (xe > x1) xe = x1;
         const double py = y + 0.5;
@@ -305,7 +298,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
         for (int x = xs; x <= xe; x++, l1 += a1, l2 += a2) {
             const double l3 = 1.0 - l1 - l2;
             if (exact ? !itri_covers(&it, x, y) : (l1 < 0 || l2 < 0 || l3 < 0)) continue;
-            const float iz = (float)(c.iz + l1 * diz1 + l2 * diz2);
+            const float iz = exact ? (float)((double)(int64_t)ex_eval(&pl, 0, x, y) * EX_INV_2_52) : (float)(c.iz + l1 * diz1 + l2 * diz2);
             float *d = &t->inv_z[(long)y * t->w + x];
             if (iz < *d * 0.9999f) continue;
             *d = iz;
@@ -314,6 +307,14 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
             const double noise = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16.0 - 0.5;
             uint32_t out = 0xFF000000u;
             for (int k = 0; k < 3; k++) {
+                if (exact) {
+                    /* the same rounding in integers: the plane value in 2^-32 units, the ordered noise (2b - 15) / 32 and one half added, floored, limited to 0..255 */
+                    const long long vs = (long long)ex_eval(&pl, k + 1, x, y) + ((long long)(2 * (int)bayer[(y & 3) * 4 + (x & 3)] - 15) << 27) + 2147483648LL;
+                    long long vi = vs < 0 ? 0 : (vs >> 32);
+                    if (vi > 255) vi = 255;
+                    out |= (uint32_t)vi << (16 - 8 * k);
+                    continue;
+                }
                 double v = cc[k] + l1 * dc1[k] + l2 * dc2[k] + noise + 0.5;
                 if (v < 0) v = 0;
                 if (v > 255) v = 255;
@@ -344,7 +345,8 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
     long written = 0;
     for (int y = y0; y <= y1; y++) {
         int xs, xe;
-        if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
+        if (exact) { xs = x0; xe = x1; }       /* the integer test decides every pixel of the box: row_span's doubles can miss a tip the snapping moved onto a pixel centre */
+        else if (!row_span(a, b, c, y + 0.5, &xs, &xe)) continue;
         if (xs < x0) xs = x0;
         if (xe > x1) xe = x1;
         for (int x = xs; x <= xe; x++) {
