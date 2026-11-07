@@ -19,7 +19,9 @@ $writer = $null
 function Log([string]$line) {
     if ($writer) { $writer.WriteLine($line) } else { $logLines.Add($line) }
 }
-function Say([string]$line) { Write-Host $line; Log $line }
+# Colours: the CGA's palette 1 (cyan, magenta, white): headings and success cyan, questions and anything to notice magenta, text white,
+# hints light grey. Text is wrapped at word boundaries to the window (Write-F117Text, setup-licences.ps1).
+function Say([string]$line, [string]$color = 'White') { Write-F117Text $line $color; Log $line }
 function Open-Log([string]$folder) {
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
     $script:logPath = Join-Path $folder ('setup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
@@ -28,28 +30,42 @@ function Open-Log([string]$folder) {
     foreach ($l in $logLines) { $script:writer.WriteLine($l) }
     $logLines.Clear()
 }
-function Ask([string]$question, [string]$default) {
-    $answer = Read-Host "$question [$default]"
-    Log "$question [$default]: $answer"
+# A question with a free answer: the question in magenta, what Enter does in grey, the answer typed after '>'.
+function Ask([string]$question, [string]$default, [string]$enter) {
+    Write-F117Text $question 'Magenta'
+    if ($enter) { Write-F117Text "  $enter" 'Gray' }
+    Write-Host '  > ' -ForegroundColor Magenta -NoNewline
+    $answer = Read-Host
+    Log "$question -> $answer"
     if ([string]::IsNullOrWhiteSpace($answer)) { return $default }
+    return $answer.Trim()
+}
+# A short question answered on the same line: [y/n, Enter = yes].
+function Ask-Inline([string]$question, [string]$hint) {
+    Write-Host "$question " -ForegroundColor Magenta -NoNewline
+    Write-Host "[$hint] " -ForegroundColor Gray -NoNewline
+    $answer = Read-Host
+    Log "$question [$hint] -> $answer"
     return $answer.Trim()
 }
 function Ask-YesNo([string]$question, [bool]$default) {
     while ($true) {
-        $a = Ask $question $(if ($default) { 'Y/n' } else { 'y/N' })
-        if ($a -in 'Y/n','y/N') { return $default }
+        $a = Ask-Inline $question $(if ($default) { 'y/n, Enter = yes' } else { 'y/n, Enter = no' })
+        if (-not $a) { return $default }
         if ($a -match '^(y|yes)$') { return $true }
         if ($a -match '^(n|no)$') { return $false }
-        Write-Host '  Please answer y or n.'
+        Write-Host '  Please answer y or n.' -ForegroundColor Magenta
     }
 }
 function Ask-Pick([string]$question, [string[]]$labels, [int]$default) {
-    for ($i = 0; $i -lt $labels.Count; $i++) { Write-Host ("  {0}. {1}" -f ($i + 1), $labels[$i]) }
+    Write-F117Text $question 'Magenta'
+    for ($i = 0; $i -lt $labels.Count; $i++) { Write-F117Text ("  {0}. {1}" -f ($i + 1), $labels[$i]) }
     while ($true) {
-        $a = Ask $question ([string]($default + 1))
+        $a = Ask-Inline '  Your choice' ("1-$($labels.Count), Enter = $($default + 1)")
+        if (-not $a) { return $default }
         $n = 0
         if ([int]::TryParse($a, [ref]$n) -and $n -ge 1 -and $n -le $labels.Count) { return $n - 1 }
-        Write-Host "  Please type a number from 1 to $($labels.Count)."
+        Write-Host "  Please type a number from 1 to $($labels.Count)." -ForegroundColor Magenta
     }
 }
 # MT-32 ROMs are recognised by SHA-1 (docs/mt32-roms.md): a usable folder holds at least one control ROM and one PCM ROM.
@@ -72,7 +88,7 @@ function Test-Mt32Folder([string]$folder) {
 
 $exitCode = 1
 try {
-    Say 'OpenNighthawk setup'
+    Say 'OpenNighthawk setup' 'Cyan'
     Say 'This builds OpenNighthawk on this PC from your own copy of F-117A (GOG or Steam). It takes about 5 to 15 minutes.'
     Log ('Started ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '; Windows ' + [Environment]::OSVersion.Version + ', PowerShell ' + $PSVersionTable.PSVersion)
 
@@ -104,14 +120,13 @@ try {
     }
 
     if ($interactive) {
-        Write-Host ''
         Confirm-F117Licences -Compiler $Compiler
         Log 'Licence terms accepted.'
-        Write-Host ''
-        Write-Host 'Setup needs about 1.5 GB of free space while it builds: the build tools and the compiler''s intermediate files for the'
-        Write-Host 'translated game and its libraries. It removes them at the end; the installed game is about 35 MB.'
-        Write-Host ''
-        if (-not $InstallDir) { $InstallDir = Ask 'Install OpenNighthawk to' $defaultInstall }
+        Write-F117Heading 'Install location'
+        Write-F117Text 'While it builds, setup needs about 1.5 GB of free space for the build tools and the compiler''s intermediate files. It deletes them at the end; the installed game is about 35 MB.'
+        Write-F117Text 'The default is the folder Windows provides for programs installed for your user only: no administrator rights are needed, and the game can keep its settings file beside itself. Any folder you can write to works too, for example D:\Games\OpenNighthawk (not inside your F-117A game folder).' 'Gray'
+        if (-not $InstallDir) { $InstallDir = Ask 'Install folder' $defaultInstall "Press Enter to use $defaultInstall, or type another folder." }
+        $InstallDir = $InstallDir.Trim('"')
         if (-not $NoDesktopShortcut) { $NoDesktopShortcut = -not (Ask-YesNo 'Add a desktop shortcut?' $true) }
         if (-not $StartMenu) { $StartMenu = Ask-YesNo 'Add OpenNighthawk to the Start menu?' $true }
     } elseif (-not $InstallDir) { $InstallDir = $defaultInstall }
@@ -140,51 +155,42 @@ try {
         }
     }
     if ($interactive) {
-        Write-Host ''
-        Write-Host 'Sound: the game plays its AdLib music, effects and speech, the sound most players know. Two optional extras,'
-        Write-Host 'from your own files: the music as a Roland MT-32 played it (needs the two MT-32 ROM files), and the Macintosh'
-        Write-Host 'version''s recorded sounds, music and speech (needs your Mac copy of F-117A). You can skip both if you are'
-        Write-Host 'happy with AdLib.'
+        Write-F117Heading 'Sound'
+        Write-F117Text 'The game plays its AdLib music, effects and speech, the sound most players know. Two optional extras come from your own files: the music as a Roland MT-32 played it (needs the two MT-32 ROM files), and the Macintosh version''s recorded sounds, music and speech (needs your Mac copy of F-117A). You can skip both if you are happy with AdLib.'
         if (Ask-YesNo 'Do you have MT-32 ROM files to use?' $false) {
             while ($true) {
-                $folder = Ask 'Folder holding the two ROM files (Enter to skip)' 'skip'
+                $folder = Ask 'Folder holding the two ROM files' 'skip' 'Type or paste the folder, or press Enter to skip.'
                 if ($folder -eq 'skip') { break }
                 $folder = $folder.Trim('"')
                 $problem = Test-Mt32Folder $folder
                 if (-not $problem) {
                     $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($folder)
-                    Say '  MT-32 ROMs recognised.'
+                    Say '  MT-32 ROMs recognised.' 'Cyan'
                     break
                 }
-                Write-Host "  Not usable: $problem."
+                Write-F117Text "  Not usable: $problem." 'Magenta'
             }
         }
         if (Ask-YesNo 'Do you have the Mac version of F-117A?' $false) {
-            Write-Host '  Give its StuffIt archive (.sit), a disk image, or a folder holding it or an unpacked copy.'
             while ($true) {
-                $m = Ask 'Mac copy (Enter to skip)' 'skip'
+                $m = Ask 'Your Mac copy: its StuffIt archive (.sit), a disk image, or a folder holding it or an unpacked copy' 'skip' 'Type or paste the path, or press Enter to skip.'
                 if ($m -eq 'skip') { break }
                 $m = $m.Trim('"')
-                if (Test-Path -LiteralPath $m) { $MacSource = [IO.Path]::GetFullPath($m); Say '  The Mac sounds will be imported during setup.'; break }
-                Write-Host '  That file or folder does not exist.'
+                if (Test-Path -LiteralPath $m) { $MacSource = [IO.Path]::GetFullPath($m); Say '  The Mac sounds will be imported during setup.' 'Cyan'; break }
+                Write-F117Text '  That file or folder does not exist.' 'Magenta'
             }
         }
+        Write-F117Heading 'Settings'
         if ((Test-Path -LiteralPath $ini) -or $oldIni) { $keep = Ask-YesNo 'Keep your current OpenNighthawk settings?' $true }
         if (-not $keep) {
-            Write-Host ''
-            Write-Host 'Choose your settings now, or take the defaults. Either way you can change everything later in the game:'
-            Write-Host 'press the ` key (left of 1) for the settings menu.'
+            Write-F117Text 'Choose your settings now, or take the defaults. Either way you can change everything later in the game: press the ` key (left of 1) for the settings menu.'
             if (Ask-YesNo 'Choose settings now?' $false) {
-                Write-Host ''
-                Write-Host 'Visuals:'
                 $v = Ask-Pick 'Visuals' @('Original - the 1991 picture, pixel for pixel',
                     'Enhanced - the original picture, smoother and sharper at higher resolutions',
                     'Remastered - the 3-D world redrawn at your screen''s resolution, widescreen, longer draw distance') 0
                 $settings['presentation'] = @('original','enhanced','remastered')[$v]
                 if (Ask-YesNo 'Start in full screen?' $false) { $settings['fullscreen'] = 'yes' }
-                Write-Host ''
-                Write-Host 'Fixes: OpenNighthawk can repair bugs in the original game (crashes, mistakes in missions and scoring).'
-                $f = Ask-Pick 'Fixes' @('Recommended fixes on (the default)','Original behaviour, bugs included') 0
+                $f = Ask-Pick 'Fixes: OpenNighthawk can repair bugs in the original game (crashes, mistakes in missions and scoring).' @('Recommended fixes on (the default)','Original behaviour, bugs included') 0
                 if ($f -eq 1) { $settings['fixes'] = 'original' }
             }
         }
@@ -208,7 +214,7 @@ try {
         Remove-Item -LiteralPath $Work -Recurse -Force
     }
 
-    Write-Host ''
+    Write-F117Heading 'Building'
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = $env:ComSpec
     $psi.Arguments = '/d /s /c "powershell.exe ' + ($argsList -join ' ') + ' 2>&1"'
@@ -249,7 +255,8 @@ try {
             $progress = $null
             $stage = $line.Substring(3)
             $stageClock.Restart()
-            Write-Host ("[{0:mm\:ss}] {1}" -f $started.Elapsed, $stage)
+            Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
+            Write-Host $stage -ForegroundColor $(if ($stage -like '*not imported*') { 'Magenta' } else { 'White' })
         } elseif ($line -match '^\[(\d+)/(\d+)\]') {
             $progress = "compiled $($Matches[1]) of $($Matches[2]) files"
         }
@@ -260,8 +267,8 @@ try {
     Log "Build exit code $exitCode"
     if ($exitCode -ne 0) {
         Write-Host ''
-        Write-Host 'Setup stopped. The last lines of the build output:'
-        foreach ($l in $recent) { if ($l.Trim()) { Write-Host "  $l" } }
+        Write-Host 'Setup stopped. The last lines of the build output:' -ForegroundColor Magenta
+        foreach ($l in $recent) { if ($l.Trim()) { Write-Host "  $l" -ForegroundColor Gray } }
         throw "The build failed (exit code $exitCode)."
     }
 
@@ -296,7 +303,8 @@ try {
     # Clean up the build workspace (about 1.4 GB) unless asked to keep it.
     if ($KeepBuildFiles) { Say "Build files kept in $Work" }
     else {
-        Write-Host ("[{0:mm\:ss}] Removing the build files" -f $started.Elapsed)
+        Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
+        Write-Host 'Removing the build files' -ForegroundColor White
         if ((Test-Path -LiteralPath $marker) -and [IO.File]::ReadAllText($marker) -eq 'OpenNighthawk setup work v1') {
             Remove-Item -LiteralPath $Work -Recurse -Force
             $parent = Split-Path $Work -Parent
@@ -306,16 +314,16 @@ try {
     }
 
     Write-Host ''
-    Say ("OpenNighthawk is installed in {0} ({1:mm\:ss})." -f $InstallDir, $started.Elapsed)
+    Say ("OpenNighthawk is installed in {0} ({1:mm\:ss})." -f $InstallDir, $started.Elapsed) 'Cyan'
     if ($NoDesktopShortcut -and -not $StartMenu) { Say ('Start it with ' + (Join-Path $InstallDir 'f117a.exe') + '. Press the ` key in the game for settings.') }
     else { Say 'Start it from the shortcut. Press the ` key in the game for settings.' }
-    Say "Setup log: $logPath"
+    Say "Setup log: $logPath" 'Gray'
     $exitCode = 0
 } catch {
     Write-Host ''
-    Say ('Setup did not finish: ' + $_.Exception.Message)
+    Say ('Setup did not finish: ' + $_.Exception.Message) 'Magenta'
     if (-not $writer) { Open-Log (Join-Path $env:TEMP 'OpenNighthawk-setup') }
-    Say "Setup log: $logPath"
+    Say "Setup log: $logPath" 'Gray'
     $exitCode = 1
 } finally {
     if ($writer) { $writer.Dispose() }
