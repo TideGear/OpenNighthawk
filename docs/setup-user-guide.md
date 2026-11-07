@@ -15,7 +15,7 @@ free space while it builds, and about 5 to 15 minutes.
 4. **Sound (optional).** AdLib music, effects and speech are the default and need
    nothing. If you have the two Roland MT-32 ROM files, give their folder (setup checks
    them by hash) for MT-32 music. If you have the Macintosh version of F-117A, give its
-   StuffIt archive (`.sit`), a disk image, or a folder holding it or an unpacked copy:
+   StuffIt archive (`.sit`), a folder holding it, or an unpacked copy (disk images are not read):
    setup imports its 33 recorded sounds, music and speech words into the install
    folder's `mac-sounds`, and the game then uses them first (Mac, then Roland, then
    AdLib). Unpacking an archive uses The Unarchiver's `unar`, downloaded and checked

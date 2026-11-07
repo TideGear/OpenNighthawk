@@ -24,6 +24,22 @@ import wave
 
 SOUND_FILE = 'F117a Sound'
 
+# The 'snd ' resources as a set (id, length and bytes, in id order), SHA-256. The whole fork differs between releases (its map and
+# attributes changed) while the sounds did not, so the sounds themselves are what is recognised. Seen in: the 2.1 archive
+# (F-117a_Stealth_Fighter_2.1.sit) and the archive that also carries the 2.3.2 update (f117a_stealth_fighter.sit); the 2.3.1 and
+# 2.3.2 updates do not contain the sound file.
+KNOWN_SOUND_SETS = {
+    'ebb855b3a91db4f3c066db6fc006b240cefdda17c36f7135270345fba974d8f8': 'the Mac release 2.1 to 2.3.2 sound file (33 sounds)',
+}
+
+
+def sound_set_hash(fork: bytes) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    for rid, data in sorted(resources(fork, b'snd ')):
+        h.update(rid.to_bytes(2, 'big', signed=True) + len(data).to_bytes(4, 'big') + data)
+    return h.hexdigest()
+
 
 def fork_from_container(b: bytes) -> bytes | None:
     """The resource fork from AppleDouble/AppleSingle, or b itself when it already is one."""
@@ -120,6 +136,8 @@ def main() -> int:
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
     fork = find_sound_fork(args.source)
+    known = KNOWN_SOUND_SETS.get(sound_set_hash(fork))
+    print(f'recognised: {known}' if known else 'not a known Mac sound file: imported anyway; please report its source')
     os.makedirs(args.out, exist_ok=True)
     done, skipped = 0, []
     for rid, data in resources(fork, b'snd '):

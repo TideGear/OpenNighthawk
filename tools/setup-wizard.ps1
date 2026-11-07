@@ -68,6 +68,14 @@ function Ask-Pick([string]$question, [string[]]$labels, [int]$default) {
         Write-Host "  Please type a number from 1 to $($labels.Count)." -ForegroundColor Magenta
     }
 }
+# A typed or pasted path: surrounding quotes and spaces removed, made absolute, and a trailing \ or / dropped (except a drive's root).
+function Normalize-Path([string]$p) {
+    $p = $p.Trim().Trim('"').Trim()
+    if (-not $p) { return $null }
+    try { $full = [IO.Path]::GetFullPath($p) } catch { return $null }        # characters a path cannot hold: $null, so the question is asked again
+    if ($full.Length -gt 3) { $full = $full.TrimEnd('\', '/') }
+    return $full
+}
 # MT-32 ROMs are recognised by SHA-1 (docs/mt32-roms.md): a usable folder holds at least one control ROM and one PCM ROM.
 $mt32Control = @('b083518fffb7f66b03c23b7eb4f868e62dc5a987','a553481f4e2794c10cfe597fef154eef0d8257de','e17a3a6d265bf1fa150312061134293d2b58288c',
     '5a5cb5a77d7d55ee69657c2f870416daed52dea7','7b8c2a5ddb42fd0732e2f22b3340dcf5360edf92','47b52adefedaec475c925e54340e37673c11707c',
@@ -125,8 +133,20 @@ try {
         Write-F117Heading 'Install location'
         Write-F117Text 'While it builds, setup needs about 1.5 GB of free space for the build tools and the compiler''s intermediate files. It deletes them at the end; the installed game is about 35 MB.'
         Write-F117Text 'The default is the folder Windows provides for programs installed for your user only: no administrator rights are needed, and the game can keep its settings file beside itself. Any folder you can write to works too, for example D:\Games\OpenNighthawk (not inside your F-117A game folder).' 'Gray'
-        if (-not $InstallDir) { $InstallDir = Ask 'Install folder' $defaultInstall "Press Enter to use $defaultInstall, or type another folder." }
-        $InstallDir = $InstallDir.Trim('"')
+        $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
+        $given = $InstallDir
+        while ($true) {
+            $typed = if ($given) { $given } else { Ask 'Install folder' $defaultInstall "Press Enter to use $defaultInstall, or type another folder." }
+            $given = $null
+            $candidate = Normalize-Path $typed
+            $why = $null
+            if (-not $candidate) { $why = 'that is not a valid folder path' }
+            elseif ($candidate -ieq $repo -or $candidate.StartsWith($repo + '\', [StringComparison]::OrdinalIgnoreCase)) { $why = 'it is inside this source folder' }
+            elseif ($candidate -ieq $Work -or $candidate.StartsWith($Work + '\', [StringComparison]::OrdinalIgnoreCase)) { $why = 'it is inside the temporary build workspace' }
+            else { try { $null = Assert-F117OutputPath -Path $candidate -GameDirectory $Data } catch { $why = $_.Exception.Message } }
+            if (-not $why) { $InstallDir = $candidate; break }
+            Write-F117Text "  That folder cannot be used: $why. Please choose another." 'Magenta'
+        }
         if (-not $NoDesktopShortcut) { $NoDesktopShortcut = -not (Ask-YesNo 'Add a desktop shortcut?' $true) }
         if (-not $StartMenu) { $StartMenu = Ask-YesNo 'Add OpenNighthawk to the Start menu?' $true }
     } elseif (-not $InstallDir) { $InstallDir = $defaultInstall }
@@ -147,11 +167,11 @@ try {
         if ($Mt32Roms) {
             $problem = Test-Mt32Folder $Mt32Roms
             if ($problem) { throw "-Mt32Roms: $problem." }
-            $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($Mt32Roms)
+            $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = Normalize-Path $Mt32Roms
         }
         if ($MacSource) {
             if (-not (Test-Path -LiteralPath $MacSource)) { throw "-MacSource: not found: $MacSource" }
-            $MacSource = [IO.Path]::GetFullPath($MacSource)
+            $MacSource = Normalize-Path $MacSource
         }
     }
     if ($interactive) {
@@ -161,10 +181,10 @@ try {
             while ($true) {
                 $folder = Ask 'Folder holding the two ROM files' 'skip' 'Type or paste the folder, or press Enter to skip.'
                 if ($folder -eq 'skip') { break }
-                $folder = $folder.Trim('"')
-                $problem = Test-Mt32Folder $folder
+                $folder = Normalize-Path $folder
+                $problem = if ($folder) { Test-Mt32Folder $folder } else { 'that is not a valid folder path' }
                 if (-not $problem) {
-                    $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($folder)
+                    $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = $folder
                     Say '  MT-32 ROMs recognised.' 'Cyan'
                     break
                 }
@@ -173,10 +193,10 @@ try {
         }
         if (Ask-YesNo 'Do you have the Mac version of F-117A?' $false) {
             while ($true) {
-                $m = Ask 'Your Mac copy: its StuffIt archive (.sit), a disk image, or a folder holding it or an unpacked copy' 'skip' 'Type or paste the path, or press Enter to skip.'
+                $m = Ask 'Your Mac copy: its StuffIt archive (.sit), a folder holding it, or an unpacked copy' 'skip' 'Type or paste the path, or press Enter to skip.'
                 if ($m -eq 'skip') { break }
-                $m = $m.Trim('"')
-                if (Test-Path -LiteralPath $m) { $MacSource = [IO.Path]::GetFullPath($m); Say '  The Mac sounds will be imported during setup.' 'Cyan'; break }
+                $m = Normalize-Path $m
+                if ($m -and (Test-Path -LiteralPath $m)) { $MacSource = $m; Say '  The Mac sounds will be imported during setup.' 'Cyan'; break }
                 Write-F117Text '  That file or folder does not exist.' 'Magenta'
             }
         }
@@ -197,7 +217,8 @@ try {
     }
 
     # The build, in a child process: its stage lines are shown, everything goes to the log.
-    $quote = { param($v) '"' + ($v -replace '"', '\"') + '"' }
+    # Windows command-line quoting: backslashes before a quote (including the closing one) are doubled, so "C:\folder\" stays one argument.
+    $quote = { param($v) '"' + (($v -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
     $argsList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(& $quote (Join-Path $PSScriptRoot 'setup.ps1')),'-AcceptLicences',
         '-Compiler',$Compiler,'-InstallDir',(& $quote $InstallDir),'-Work',(& $quote $Work))
     if ($Data) { $argsList += @('-Data',(& $quote $Data)) }

@@ -1,6 +1,6 @@
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 # The Mac release's recorded sounds and music, imported from the user's own Mac copy (docs/setup-user-guide.md).
-# SOURCE may be a StuffIt archive (.sit) or a disk image as the Mac version is usually kept, a folder holding an unpacked
+# SOURCE may be a StuffIt archive (.sit, as the Mac version is usually kept; other formats The Unarchiver reads also work), a folder holding an unpacked
 # copy (or such archives), or the 'F117a Sound' file itself. Archives are unpacked with The Unarchiver's command-line
 # tool, downloaded at run time from its publisher and checked like every other tool (LGPL-2.1, not redistributed).
 function Import-F117MacSounds {
@@ -22,7 +22,7 @@ function Import-F117MacSounds {
     # Otherwise unpack: the source itself if it is an archive, or the archives inside a folder.
     $archives = @()
     if (Test-Path -LiteralPath $Source -PathType Leaf) { $archives = @(Get-Item -LiteralPath $Source) }
-    else { $archives = @(Get-ChildItem -LiteralPath $Source -Recurse -File | Where-Object { $_.Extension -in '.sit','.sitx','.sea','.hqx','.bin','.image','.img','.dsk','.dmg','.cpt','.zip' }) }
+    else { $archives = @(Get-ChildItem -LiteralPath $Source -Recurse -File | Where-Object { $_.Extension -in '.sit','.sitx','.sea','.hqx','.bin','.cpt','.zip' }) }
     if (-not $archives) { throw 'No Mac sound file or Mac archive was found there.' }
 
     $tools = Assert-F117OutputPath -Path (Join-Path $Work 'unar')
@@ -46,8 +46,9 @@ function Import-F117MacSounds {
         & $unar -q -o $unpacked -k visible $archive.FullName | Out-Host
         if ($LASTEXITCODE -ne 0) { continue }
         if (Try-Import $unpacked) { return @(Get-ChildItem -LiteralPath $out -Filter '*.wav').Count }
-        # A disk image inside an archive (the 2.3.2 update ships as one): one more level.
-        foreach ($inner in Get-ChildItem -LiteralPath $unpacked -Recurse -File | Where-Object { $_.Extension -in '.image','.img','.dsk','.dmg','.sit' }) {
+        # An archive inside an archive: one more level. (Disk images are not read: The Unarchiver 1.8.1 does not open the
+        # DiskCopy 4.2 floppy images the Mac updates came as, and the updates hold no sound file anyway.)
+        foreach ($inner in Get-ChildItem -LiteralPath $unpacked -Recurse -File | Where-Object { $_.Extension -in '.sit','.sea','.hqx','.bin' }) {
             $n++
             $deeper = Assert-F117OutputPath -Path (Join-Path $Work "mac-unpacked-$n")
             & $unar -q -o $deeper -k visible $inner.FullName | Out-Host
