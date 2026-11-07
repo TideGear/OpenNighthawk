@@ -96,7 +96,7 @@ function Test-Mt32Folder([string]$folder) {
 
 $exitCode = 1
 try {
-    Say 'OpenNighthawk setup' 'Cyan'
+    Say 'OpenNighthawk Setup Wizard' 'Cyan'
     Say 'This builds OpenNighthawk on this PC from your own copy of F-117A (GOG or Steam). It takes about 5 to 15 minutes.'
     Log ('Started ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '; Windows ' + [Environment]::OSVersion.Version + ', PowerShell ' + $PSVersionTable.PSVersion)
 
