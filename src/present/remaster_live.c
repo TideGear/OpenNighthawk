@@ -1187,6 +1187,21 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
                 if (mx > 8) big++;
             }
         diff_total += bad; big_total += big;
+        if (bad) {                                   /* F117_GPU_CHECK_DUMP=PREFIX: write the first differing pair as PREFIX_gpu.ppm / PREFIX_cpu.ppm (diagnostic) */
+            static int dumped; const char *dp = getenv("F117_GPU_CHECK_DUMP");
+            if (dp && !dumped) {
+                dumped = 1;
+                for (int which = 0; which < 2; which++) {
+                    char name[512]; snprintf(name, sizeof name, "%s_%s.ppm", dp, which ? "cpu" : "gpu");
+                    FILE *f = fopen(name, "wb");
+                    if (!f) continue;
+                    const uint32_t *px = which ? wide_out : gpu_check;
+                    fprintf(f, "P6\n%d %d\n255\n", tw, h);
+                    for (size_t i = 0; i < (size_t)tw * h; i++) { const unsigned char rgb3[3] = { (unsigned char)(px[i] >> 16), (unsigned char)(px[i] >> 8), (unsigned char)px[i] }; fwrite(rgb3, 1, 3, f); }
+                    fclose(f);
+                }
+            }
+        }
         { static unsigned listed; if (bad && listed < 20) { listed++; size_t first = 0; for (size_t i = 0; i < (size_t)tw * h; i++) if (gpu_check[i] != wide_out[i]) { first = i; break; }
             fprintf(stderr, "[gpu-compose] differs: clock %llu, %zu pixels, first at x %zu y %zu (GPU %08X, CPU %08X)\n", (unsigned long long)m->cpu.icount, bad, first % (size_t)tw, first / (size_t)tw, gpu_check[first], wide_out[first]); } }
         if (++checked % 60 == 1) fprintf(stderr, "[gpu-compose] %u pictures checked: %llu pixels differ in all (%llu by more than 8 levels); this one %zu of %zu\n", checked, diff_total, big_total, bad, (size_t)tw * h);
