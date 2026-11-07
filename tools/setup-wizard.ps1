@@ -246,6 +246,7 @@ try {
     # A finished workspace from an earlier run is removed first, so a rerun (an update) builds fresh. Only a folder setup made is touched.
     $marker = Join-Path $Work '.f117-setup-work'
     Write-F117Heading 'Building'
+    Write-F117Text 'Setup uses its own private copies of these tools, kept in its build folder and deleted at the end. Any Python, CMake, compiler or other tools you already have installed are not used and not changed.' 'Gray'
     if ((Test-Path -LiteralPath (Join-Path $Work '.f117-setup-complete')) -and (Test-Path -LiteralPath $marker) -and
         [IO.File]::ReadAllText($marker) -eq 'OpenNighthawk setup work v1') {
         Remove-FolderVisibly $Work 'Removing the earlier build (its files, about 1.4 GB)'
