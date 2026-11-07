@@ -31,7 +31,9 @@ try {
     $saves = Join-Path $env:APPDATA 'F117Recomp\F-117A'
     $dropSaves = [bool]$RemoveSaves
     if (-not $Yes -and (Test-Path -LiteralPath $saves)) {
-        $a = Read-Host "Also delete your saved pilots, screenshots and recorded flights in ${saves}? [y/N]"
+        Write-Host "Your saved pilots, screenshots and recorded flights are in:"
+        Write-Host "  $saves"
+        $a = Read-Host 'Delete them too? [y/N]'
         $dropSaves = $a -match '^(y|yes)$'
     }
 
