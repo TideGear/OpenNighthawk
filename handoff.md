@@ -1,5 +1,16 @@
 # Handoff
 
+## Corrections and state, 6 November evening (read before the sections below)
+
+The two sections below this one were written before these changes and are partly superseded.
+
+- **Merged and on by default:** exact rasterising (`F117_RASTER_EXACT`, `0` turns it off; the owner approved the changed pixels), GPU composition and presentation in Remastered with a real display (`F117_GPU_COMPOSE` / `F117_GPU_PRESENT`, `0` turns off; the owner's 4K flight ran at 7 to 30 fps and slowed the game on the CPU path, 50 to 60 fps on the GPU path). The setup wizard (`setup.cmd`, `tools/setup-wizard.ps1`) is merged; nothing is published.
+- **A mistake of mine, corrected in [docs/gpu-compositor.md](docs/gpu-compositor.md):** `guards.sh` and `bench.sh` run `${EXE:-$F117_REPO/build/f117a.exe}`, and from a worktree `F117_REPO` is the main checkout, so my pre-merge "901 identical", "regenerated baselines" and "hash unchanged" claims measured the main checkout's old float build. Re-run correctly on the merged build (`build/f117a.exe`, 16:56): exact off 901/901 identical to the float baseline at Near, Far and Maximum; new exact baseline written (differs from the float one); exact on repeat 901/901; machine hash `600306c77cb04481`. Always pass `EXE=` (memory: `f117-guards-run-the-repo-exe.md`). The full gate and the presentation check were run in the branch's own folder and stand.
+- **Baselines:** `private/renderer-bench/baseline` is the exact one; the float one is in `baseline-float-20261106`.
+- **Live GPU check:** on the exact build the GPU differs from the CPU by 1,735 pixels in 3,421 pictures (all in an early scene, 2 pixels a picture, at the end pixel of near-plane-clipped outline lines: `decal_stroke_hidden`, doubles on the CPU and floats on the GPU). The "about 59 pixels a picture" in earlier notes was the float build. Not fixed yet.
+- **Step 2 (exactness) results** (0 differing pixels at 1280 x 600 and 4K, Near, Far and Maximum with dots; controls 180 to 2,679) used the trace tool with the right executable and stand. Model 37 by source (native walk 106/61 against the game walk's 214/130) stands: a once-per-step capture on the native walk is not feasible today; plan is the game's own walk once per step.
+- **Open:** R29 (lights of building groups pop in at Maximum; needs a Tab capture from the updated install), the 2-pixel live GPU residual, R28 (replays of the owner's flights crash), wizard polish and the owner's release decision, then step 3 (replace pass on the GPU) and Stage 2.
+
 ## Ready for a new conversation: 6 November, step 2 (exact compositor) half done; setup wizard built on its own branch
 
 The owner asked to find a stopping place, hand off, commit and push. Two sessions ran on 5 November (this one: the renderer goal; a second: the Zig setup wizard). **Read this section to the end first.** Older material below it (the 5 November renderer section) is still true except where this section says otherwise.

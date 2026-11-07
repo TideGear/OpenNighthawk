@@ -1187,6 +1187,8 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
                 if (mx > 8) big++;
             }
         diff_total += bad; big_total += big;
+        { static unsigned listed; if (bad && listed < 20) { listed++; size_t first = 0; for (size_t i = 0; i < (size_t)tw * h; i++) if (gpu_check[i] != wide_out[i]) { first = i; break; }
+            fprintf(stderr, "[gpu-compose] differs: clock %llu, %zu pixels, first at x %zu y %zu (GPU %08X, CPU %08X)\n", (unsigned long long)m->cpu.icount, bad, first % (size_t)tw, first / (size_t)tw, gpu_check[first], wide_out[first]); } }
         if (++checked % 60 == 1) fprintf(stderr, "[gpu-compose] %u pictures checked: %llu pixels differ in all (%llu by more than 8 levels); this one %zu of %zu\n", checked, diff_total, big_total, bad, (size_t)tw * h);
         free(gpu_check);
     }
