@@ -248,6 +248,7 @@ set (and, for Munt, `mt32-roms`).
 | `--present-log FILE` | write one line per displayed frame (host time, game clock, picture ages and the work per frame in nanoseconds) for timing |
 | `--draw-distance maximum\|far\|near\|original\|N` | Remastered: how far scenery is drawn; `original` keeps the game's short reach, `maximum` draws every ring to the limit of the game's arithmetic, N is in world units. Farther costs picture rate |
 | `--dot-distance original\|near\|far\|maximum` | Remastered: how far the small dark dots on plain ground are drawn (default `original`); lit points follow `--draw-distance` |
+| `--model-detail full\|original` | Remastered: `full` (default) draws every model in its most detailed version at any distance, so buildings' lights no longer pop in; `original` chooses by distance as the game does |
 | `--remaster-view wide\|4:3` | Remastered: `wide` (default) fills a wide window with a wider view; `4:3` keeps the original's framing, with black bars in a wide window. Either way the picture is redrawn without the original's road and coastline jitter |
 | `--pick-order exact\|fast` | Remastered: the order far objects are sorted in. `exact` (default) is the order every picture comparison was made against; `fast` is cheaper by about 0.8 ms a frame at Maximum and lets objects tied on distance swap places, changing a few edge pixels in some frames |
 | `--crt`, `--crt-mask`, `--crt-glow` | a CRT look: dark scanlines, a coloured phosphor mask, and a soft glow around bright parts (settings menu: Video) |
@@ -363,14 +364,9 @@ logic still steps at its own rate (fifteen a second under the default
 D1REAL), and the extra pictures fall between its steps. Design, status and
 measurements: [docs/presentation.md](docs/presentation.md).
 
-The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
-selects fullscreen, `present = rerun` and scale 9:
-`build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`. Select
-3840x2160 at 60 Hz in Windows' display settings first. The build replaces
-the copy in `build\` whenever the repository's file changes: edit the
-repository's file and rebuild, or keep your own file and pass it with
-`--config`. For the sharp mode without in-between frames, use
-`--present replay --present-scale 9` instead.
+For a 4K display, choose Remastered (or Enhanced) in setup or the ` menu: Picture detail `auto` fits the display's height (9 on 3840 x 2160, 4 on 1080p) and
+setup asks whether to start in full screen. Select 3840x2160 at 60 Hz in Windows' display settings first. For the sharp mode without in-between frames,
+use `--present replay --present-scale 9`.
 
 ### Roland and Munt
 

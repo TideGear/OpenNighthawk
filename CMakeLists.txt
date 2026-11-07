@@ -245,8 +245,6 @@ if(F117R_BUILD_APP)
   endif()
   add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
     copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.example.ini $<TARGET_FILE_DIR:f117a>)
-  add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
-    copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.4k.ini $<TARGET_FILE_DIR:f117a>)
   if(F117R_GEN_DIR)
     target_link_libraries(f117a PRIVATE f117recomp)
   else()

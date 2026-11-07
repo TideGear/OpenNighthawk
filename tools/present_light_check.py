@@ -41,7 +41,7 @@ TOOLS = {"tools/interp_frame.py", "tools/motion_check.py", "tools/present_diag.p
          "tools/present_light_check.py", "tools/host_acceptance.py", "tests/test_host_acceptance.py"}
 TESTS = re.compile(r"tests/test_(present_\w+|hud_\w+|band_\w+|world_\w+|map_marker|interp|hires|drawlist|"
                    r"near_polygons|nearclip|scene_mesh|frame_pacer)\.c$")
-APP_ONLY = {"src/host/main.c", "f117a.example.ini", "f117a.4k.ini"}
+APP_ONLY = {"src/host/main.c", "f117a.example.ini"}
 MACHINE_EXECUTION = {"src/present/drawfeed.c", "src/present/drawfeed.h",
                      "src/present/rerun.c", "src/present/rerun.h"}
 

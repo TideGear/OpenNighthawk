@@ -35,8 +35,8 @@ measurements so far and the guards are in [gpu-compositor.md](gpu-compositor.md)
   lines and dots keep one thickness at any distance. A picture without the jitter or the sort, widescreen and a
   longer draw distance are the Remastered presentation, a new renderer, built in the app and experimental
   ([decisions](#decisions-that-constrain-the-work); status in [gpu-compositor.md](gpu-compositor.md) and [../handoff.md](../handoff.md)).
-- **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. The preset `f117a.4k.ini`
-  selects fullscreen, `present = rerun` and scale 9.
+- **4K.** `--present-scale 9` gives a 2880 x 1800 picture that, shown 4:3, fills 2,160 lines. Picture detail `auto` picks it on a 2160-line display;
+  the preset file `f117a.4k.ini` was removed on 6 November 2026 (setup and the menu cover fullscreen, the presentation and the scale).
 - **One setting.** The app's `--presentation original|enhanced|remastered` (`presentation =` in `f117a.ini`) chooses for you (`remastered` is the row above):
   `original` is `--present scan` (the default); `enhanced` is `--present rerun` with `--present-scale` taken from the
   display's height (height / 240, 1 to 16: 2,160 lines give 9, 1,440 give 6, 1,080 give 4). A later `--present...`
@@ -140,7 +140,6 @@ without its dashes (`present = rerun`).
 | `--present-age interp\|extrapolate` | `interp` (default) shows the step before the newest; `extrapolate` predicts past the newest ([picture age](#the-live-path-feed-replay-pacing-and-picture-age)). With `rerun` and its smoothed clock nothing is predicted; the clock is only read one display frame later |
 | `--present-line-width N` | at N > 1, stroke width of HUD lines, ticks, world outlines, dots and thin span strips: 1-20 pixels of the fine picture; 0, the default, is one original cell ([pen](#projected-outlines-point-markers-and-one-stroke-pen)) |
 | `--present-log FILE` | app only: per presented picture, the host clock, the machine's clock, the logic frames shown and t, plus the display mode |
-| `f117a.4k.ini` | optional fullscreen preset: `scale = 9`, `present = rerun`, `present-scale = 9` |
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` (or `0`, `off`) | the captured-call HUD / sky and ground instead of the state-driven ones |
 | `F117_PRESENT_IDENT=1` | the identity-pairing experiment (off by default) |
 | `F117_PRESENT_CLOCK=raw` | `rerun` uses the plain step clock instead of the smoothed playback clock |
