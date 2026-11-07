@@ -343,6 +343,9 @@ static int add_stroke(clist *l, const gpu_trace_rec *r, int w, int h, uint32_t i
      * same pixel as the CPU's decal_stroke_hidden, which works in doubles (6 November: two end pixels of near-clipped outlines differed) */
     const double ends[4] = { sa.x, sa.y, sb.x, sb.y };
     memcpy(&words[16], ends, sizeof ends);
+    /* words 5 to 8 (the float copies of the ends above, unused since the ends are doubles): the depth slopes as doubles, for the point-against-edge correction
+     * (remaster_raster.c: line_depth_dx * (aux_x - px) + line_depth_dy * (aux_y - py) in double, then to float; 7 November, far lights at camera depth 5.6e7) */
+    memcpy(&words[5], &depth_dx, 8); memcpy(&words[7], &depth_dy, 8);
     *drawn = 1;
     return 1;
 }

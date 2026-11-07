@@ -83,25 +83,29 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const uint b = s * 24;
         hidden[s] = 0u;
         if (strokes[b + 3] == 0u) return;
-        const float cx = asfloat(strokes[b + 11]), cy = asfloat(strokes[b + 12]), iz = asfloat(strokes[b + 13]);
-        if (cx < 0.0 || cy < 0.0 || cx >= (float)w || cy >= (float)h) return;
+        // point_behind_own_surface in remaster_raster.c works in doubles (centre, slope, surface) with a float iz: the same here, from the double end (words 16, 17).
+        // In floats the two differed for far points, whose inverse depths are about 3e-8 (7 November: a light drawn on the CPU and not on the GPU).
+        const double cx = asdouble(strokes[b + 16], strokes[b + 17]), cy = asdouble(strokes[b + 18], strokes[b + 19]);
+        const float iz = asfloat(strokes[b + 13]);
+        if (cx < 0.0 || cy < 0.0 || cx >= (double)w || cy >= (double)h) return;
         const int x = (int)cx, y = (int)cy;
         const uint i = (uint)y * w + (uint)x;
         const uint own = owner[i];
         const uint po = strokes[b + 2];
         if (own == 0 || (own & 0x800u) != 0 || (own >> 12) != (po >> 12)) return;
-        float surface = asfloat(invz[i]);
+        double surface = (double)asfloat(invz[i]);
         for (int axis = 0; axis < 2; ++axis) {
-            float slope = 0.0; int samples = 0;
+            double slope = 0.0; int samples = 0;
             for (int sign = -1; sign <= 1; sign += 2) {
                 const int nx = x + (axis == 0 ? sign : 0), ny = y + (axis == 1 ? sign : 0);
                 if (nx < 0 || ny < 0 || nx >= (int)w || ny >= (int)h) continue;
                 const uint ni = (uint)ny * w + (uint)nx;
-                if (owner[ni] == own) { slope += (asfloat(invz[ni]) - asfloat(invz[i])) * (float)sign; ++samples; }
+                /* a float difference, as the CPU's (float - float) * int */
+                if (owner[ni] == own) { slope += (double)((asfloat(invz[ni]) - asfloat(invz[i])) * (float)sign); ++samples; }
             }
-            if (samples != 0) surface += slope / (float)samples * (axis == 0 ? cx - (float)x - 0.5 : cy - (float)y - 0.5);
+            if (samples != 0) surface += slope / (double)samples * (axis == 0 ? cx - (double)x - 0.5 : cy - (double)y - 0.5);
         }
-        if (iz < surface * 0.99) hidden[s] = 1u;
+        if ((double)iz < surface * 0.99) hidden[s] = 1u;
         return;
     }
     const uint x = id.x, y = id.y;
@@ -148,6 +152,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const double4 ls = double4(asdouble(strokes[sb + 16], strokes[sb + 17]), asdouble(strokes[sb + 18], strokes[sb + 19]),
                                    asdouble(strokes[sb + 20], strokes[sb + 21]), asdouble(strokes[sb + 22], strokes[sb + 23]));
         const float ddx = asfloat(strokes[sb + 9]), ddy = asfloat(strokes[sb + 10]);
+        const double ddxd = asdouble(strokes[sb + 5], strokes[sb + 6]), ddyd = asdouble(strokes[sb + 7], strokes[sb + 8]);
         // decal rules against the polygon pass
         if (decal_hidden(at, iz, po, line_point, false)) continue;
         const bool same_here = (owner[at] >> 12) == object;
@@ -161,7 +166,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const float point_z = point_z0;
         if (old_z > 0.0 && old_point != line_point) {
             if (line_point) edge_z += (float)((double)s_ax * (ls.x - px) + (double)s_ay * (ls.y - py));    // in double, then to float, as the CPU
-            else edge_z += ddx * (s_ax - px) + ddy * (s_ay - py);
+            else edge_z += (float)(ddxd * ((double)s_ax - (double)px) + ddyd * ((double)s_ay - (double)py));    // in double, then to float, as the CPU
         }
         const bool point_tie = old_z > 0.0 && object != 0u && object == (old & 0xFFFFFu) && old_point != line_point &&
             ((po & 0x800u) != 0u || (point_z >= edge_z * 0.99 && edge_z >= point_z * 0.99));
