@@ -68,6 +68,22 @@ function Ask-Pick([string]$question, [string[]]$labels, [int]$default) {
         Write-Host "  Please type a number from 1 to $($labels.Count)." -ForegroundColor Magenta
     }
 }
+# Delete a folder in a background job, showing a moving line meanwhile (deleting about 1.4 GB takes several seconds).
+function Remove-FolderVisibly([string]$folder, [string]$what) {
+    Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
+    Write-Host $what -ForegroundColor White
+    Log "$what ($folder)"
+    $job = Start-Job -ScriptBlock { param($p) Remove-Item -LiteralPath $p -Recurse -Force } -ArgumentList $folder
+    $spin = '|/-\'; $k = 0; $clock = [Diagnostics.Stopwatch]::StartNew(); $live = $true
+    try { $null = [Console]::WindowWidth; if ([Console]::IsOutputRedirected) { $live = $false } } catch { $live = $false }
+    while ($job.State -eq 'Running' -or $job.State -eq 'NotStarted') {
+        if ($live) { [Console]::Write(("`r  {0} deleting  {1:mm\:ss}   " -f $spin[$k % 4], $clock.Elapsed)) }
+        $k++; Start-Sleep -Milliseconds 250
+    }
+    if ($live) { [Console]::Write("`r" + (' ' * 30) + "`r") }
+    Receive-Job -Job $job -ErrorAction Stop | Out-Null
+    Remove-Job -Job $job
+}
 # A typed or pasted path: surrounding quotes and spaces removed, made absolute, and a trailing \ or / dropped (except a drive's root).
 function Normalize-Path([string]$p) {
     $p = $p.Trim().Trim('"').Trim()
@@ -229,13 +245,12 @@ try {
 
     # A finished workspace from an earlier run is removed first, so a rerun (an update) builds fresh. Only a folder setup made is touched.
     $marker = Join-Path $Work '.f117-setup-work'
+    Write-F117Heading 'Building'
     if ((Test-Path -LiteralPath (Join-Path $Work '.f117-setup-complete')) -and (Test-Path -LiteralPath $marker) -and
         [IO.File]::ReadAllText($marker) -eq 'OpenNighthawk setup work v1') {
-        Log "Removing the finished workspace of an earlier run: $Work"
-        Remove-Item -LiteralPath $Work -Recurse -Force
+        Remove-FolderVisibly $Work 'Removing the earlier build (its files, about 1.4 GB)'
     }
 
-    Write-F117Heading 'Building'
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = $env:ComSpec
     $psi.Arguments = '/d /s /c "powershell.exe ' + ($argsList -join ' ') + ' 2>&1"'
@@ -324,10 +339,8 @@ try {
     # Clean up the build workspace (about 1.4 GB) unless asked to keep it.
     if ($KeepBuildFiles) { Say "Build files kept in $Work" }
     else {
-        Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
-        Write-Host 'Removing the build files' -ForegroundColor White
         if ((Test-Path -LiteralPath $marker) -and [IO.File]::ReadAllText($marker) -eq 'OpenNighthawk setup work v1') {
-            Remove-Item -LiteralPath $Work -Recurse -Force
+            Remove-FolderVisibly $Work 'Removing the build files (about 1.4 GB)'
             $parent = Split-Path $Work -Parent
             if ((Split-Path $parent -Leaf) -eq 'OpenNighthawk' -and -not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force }
         }
