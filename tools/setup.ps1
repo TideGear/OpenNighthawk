@@ -3,7 +3,7 @@
 # everything else this prints goes only to the log. It can also be run directly with -AcceptLicences.
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath,
-      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[string]$MacSource,[switch]$AcceptLicences)
+      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[string]$MacSource,[switch]$NoSystemEntries,[switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'     # Windows PowerShell's download progress bar slows Invoke-WebRequest many times over
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
@@ -84,7 +84,7 @@ $targets = @()
 if ($ShortcutPath) { $targets += $ShortcutPath }
 elseif (-not $NoDesktopShortcut) { $targets += Join-Path ([Environment]::GetFolderPath('Desktop')) 'OpenNighthawk.lnk' }
 $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'OpenNighthawk'
-if ($StartMenu) { New-Item -ItemType Directory -Force -Path $menu | Out-Null; $targets += Join-Path $menu 'OpenNighthawk.lnk' }
+if ($StartMenu -and -not $NoSystemEntries) { New-Item -ItemType Directory -Force -Path $menu | Out-Null; $targets += Join-Path $menu 'OpenNighthawk.lnk' }
 $shell = New-Object -ComObject WScript.Shell
 foreach ($target in $targets) {
     $target = Assert-F117OutputPath -Path $target -GameDirectory $accepted
@@ -99,7 +99,7 @@ foreach ($target in $targets) {
 if ($InstallDir) {
     $uninstall = Join-Path $InstallDir 'uninstall.ps1'
     $uninstallCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $uninstall + '"'
-    if ($StartMenu) {
+    if ($StartMenu -and -not $NoSystemEntries) {
         $u = $shell.CreateShortcut((Join-Path $menu 'Uninstall OpenNighthawk.lnk'))
         $u.TargetPath = 'powershell.exe'
         $u.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $uninstall + '"'
@@ -107,6 +107,7 @@ if ($InstallDir) {
         $u.Save()
     }
     # Apps & features (per user, no administrator rights): name, size and the uninstaller.
+    if (-not $NoSystemEntries) {
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenNighthawk'
     New-Item -Path $key -Force | Out-Null
     $kb = [int]((Get-ChildItem -LiteralPath $InstallDir -Recurse -File | Measure-Object Length -Sum).Sum / 1KB)
@@ -116,6 +117,7 @@ if ($InstallDir) {
     foreach ($k in 'NoModify','NoRepair') { New-ItemProperty -Path $key -Name $k -Value 1 -PropertyType DWord -Force | Out-Null }
     New-ItemProperty -Path $key -Name 'EstimatedSize' -Value $kb -PropertyType DWord -Force | Out-Null
     Write-Host '## Listed in Windows Apps & features (uninstall from there or the Start menu)'
+    }
 }
 [IO.File]::WriteAllText((Join-Path $Work '.f117-setup-complete'),$exe)
 Write-Host "## Build complete: $exe"

@@ -5,7 +5,7 @@
 # Scripted use: -AcceptLicences asks nothing and takes the defaults (or -InstallDir, -NoDesktopShortcut, -StartMenu, -KeepBuildFiles).
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',
-      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[string]$MacSource,[string]$Mt32Roms,
+      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[switch]$NoSystemEntries,[string]$MacSource,[string]$Mt32Roms,
       [ValidateSet('original','enhanced','remastered')][string]$Presentation,[ValidateSet('wide','4:3')][string]$RemasterView,
       [ValidateSet('original','near','far','maximum')][string]$DrawDistance,[switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
@@ -272,6 +272,7 @@ try {
     if ($ArchiveFolder) { $argsList += @('-ArchiveFolder',(& $quote $ArchiveFolder)) }
     if ($NoDesktopShortcut) { $argsList += '-NoDesktopShortcut' }
     if ($StartMenu) { $argsList += '-StartMenu' }
+    if ($NoSystemEntries) { $argsList += '-NoSystemEntries' }
     if ($MacSource) { $argsList += @('-MacSource',(& $quote $MacSource)) }
 
     # A finished workspace from an earlier run is removed first, so a rerun (an update) builds fresh. Only a folder setup made is touched.

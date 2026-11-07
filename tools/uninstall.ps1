@@ -44,7 +44,11 @@ try {
         }
     }
     $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'OpenNighthawk'
-    if (Test-Path -LiteralPath (Join-Path $menu 'OpenNighthawk.lnk')) { Remove-Item -LiteralPath $menu -Recurse -Force }
+    $menuLnk = Join-Path $menu 'OpenNighthawk.lnk'
+    if (Test-Path -LiteralPath $menuLnk) {
+        $menuTarget = $shell.CreateShortcut($menuLnk).TargetPath
+        if ($menuTarget -and $menuTarget.StartsWith($InstallDir + '\', [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $menu -Recurse -Force }
+    }
 
     # The Apps & features entry, if it is this install's.
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenNighthawk'
