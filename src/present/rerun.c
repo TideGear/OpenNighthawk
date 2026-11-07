@@ -684,6 +684,12 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     int16_t up = ax;
     if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF] != 0) up = (int16_t)(((int16_t)((up >> 3) + ax)) >> 1);
     const int16_t ayy = yh < 0 ? (int16_t)-yh : yh;
+    /* The same for the up test: the original's 3D view ends at the top of the cockpit panel, but the wide picture's margins show the world down to the
+     * bottom of the screen, so a far object below the old view's edge was dropped there (R30, lower margins). Percent of the up cone for coarser-level
+     * objects in a wide picture: F117_FAR_WIDE_UP (default 100 = the game's cone, off: the effect is not yet shown, see docs/owner-issues.md R30). */
+    static int widen_up = -1;
+    if (widen_up < 0) { const char *e = getenv("F117_FAR_WIDE_UP"); widen_up = e ? atoi(e) : 100; if (widen_up < 100) widen_up = 100; }
+    if (widen_up > 100 && shift > 0 && g_wide_pct > 100) { int32_t u = ((int32_t)up * widen_up) / 100; up = (int16_t)(u > 32767 ? 32767 : u); }
     if (ayy > up && !((skip & 2) && shift == 0)) CULL_FAIL(3);
     const int16_t metric = (int16_t)(((int16_t)(axx + ayy) >> 2) + di);
     if (!((skip & 4) && shift == 0) && metric > (int16_t)rd16(m->mem, ds, 0x48E6)) CULL_FAIL(4);
