@@ -860,13 +860,15 @@ static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t 
             }
             static unsigned long long why_from; static int why_from_init;
             if (!why_from_init) { why_from_init = 1; const char *e2 = getenv("F117_FAR_WHY_FROM"); why_from = e2 ? strtoull(e2, NULL, 0) : 0; }
-            if (why_left && c->icount >= why_from && (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3)) {
+            static int why_all = -1; if (why_all < 0) why_all = getenv("F117_FAR_WHY_ALL") != NULL;   /* every cell, not only those around the viewer */
+            if (why_left && c->icount >= why_from && (why_all || (dcx >= -2 && dcx <= 3 && dcy >= -2 && dcy <= 3))) {
                 const unsigned mi = model_by_type[f->type & 0x7F] & 0x7F;
                 for (int q = 0; q < why_n; q++)
                     if ((int)mi == why_models[q]) {
                         why_left--;
-                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d level %d detail %u: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
                                 (int)(int16_t)(uint16_t)(f->x - eye_l[f->ring][0]), (int)(int16_t)(uint16_t)(f->z - (eye_l[f->ring][2] < 2 ? 2 : eye_l[f->ring][2])), (int)(int16_t)(uint16_t)-(f->y - eye_l[f->ring][1]),
+                                chosen == 1 ? pk.level : -1, chosen == 1 ? (unsigned)pk.darken : 0u,
                                 chosen == 1 ? "chosen" : chosen == -1 ? (last_reason == 1 ? "culled by the game's visibility test, check 1 far plane" : last_reason == 2 ? "culled by the game's visibility test, check 2 near plane" : last_reason == 3 ? "culled by the game's visibility test, check 3 across" : last_reason == 4 ? "culled by the game's visibility test, check 4 up" : last_reason == 5 ? "culled by the game's visibility test, check 5 metric" : "culled by the game's visibility test, check ?") : "no level within reach or bounds");
                     }
             }

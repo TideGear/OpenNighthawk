@@ -1360,7 +1360,12 @@ static void capture_template(remaster_live *r, machine_t *m)
     if (parts < 0 || parts > 1 || m->mem[(((uint32_t)ds << 4) + 0x7D8E) & 0xFFFFF]) return;     /* none or the base part only; more parts: the game's own pose */
     unsigned i = 0;
     while (i < r->ntmpl && !(r->tmpl[i].bank == r->bank && r->tmpl[i].model == r->model)) i++;
-    if (i == r->ntmpl) { if (r->ntmpl == sizeof r->tmpl / sizeof r->tmpl[0]) return; r->ntmpl++; }
+    if (i == r->ntmpl) {
+        if (r->ntmpl == sizeof r->tmpl / sizeof r->tmpl[0]) return;
+        r->ntmpl++;
+        if (getenv("F117_TEMPLATE_LOG"))     /* diagnostic: when each model's template is first learned (far instances of a model cannot be drawn natively before it) */
+            fprintf(stderr, "[template] clock %llu: learned bank %04X model %u (%u templates)\n", (unsigned long long)m->cpu.icount, (unsigned)r->bank, (unsigned)r->model, r->ntmpl);
+    }
     r->tmpl[i].bank = r->bank; r->tmpl[i].model = r->model;
     r->tmpl[i].parts = remaster_scene_has_shared(r->scene) ? -1 : parts;      /* -1: shared vertices, always the game's own pose */
     memcpy(r->tmpl[i].bytes, m->mem + (((uint32_t)ds << 4) + TEMPLATE_AT), TEMPLATE_LEN);
