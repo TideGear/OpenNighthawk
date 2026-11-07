@@ -38,22 +38,17 @@ function Open-F117SetupWork {
                 throw "Unrecognized file in setup work: $($child.Name). Nothing was removed."
             }
         }
-        # Walk explicitly: inspect every link before descending, including nested
-        # junctions. Validate all targets before the first recursive deletion.
-        $pending = [Collections.Generic.Stack[string]]::new()
-        foreach ($child in $children) { $pending.Push($child.FullName) }
-        while ($pending.Count) {
-            $itemPath = $pending.Pop()
-            $null = Assert-F117OutputPath -Path $itemPath -GameDirectory $GameDirectory
-            $item = Get-Item -LiteralPath $itemPath -Force
-            if ($item.PSIsContainer) {
-                foreach ($entry in Get-ChildItem -LiteralPath $itemPath -Force) { $pending.Push($entry.FullName) }
-            }
-        }
+        # Any link or junction inside the workspace stops the cleanup (nothing is followed or removed). One native directory listing of every reparse point
+        # replaces a PowerShell check of each of the tens of thousands of files a failed build leaves, which took minutes.
+        $links = @(& cmd.exe /d /c ('dir /a:l /s /b "' + $root + '" 2>nul'))
+        if ($links.Count -gt 0 -and $links[0]) { throw "Output paths through links or junctions are not supported: $($links[0]). Nothing was removed." }
         foreach ($child in $children) {
             if ($child.Name -in @('.f117-setup-work','.f117-setup-running')) { continue }
-            Write-Host "Cleaning incomplete setup: $($child.Name)"
-            Remove-Item -LiteralPath $child.FullName -Recurse -Force
+            Write-Host "## Removing incomplete setup files: $($child.Name)"
+            if ($child.PSIsContainer) {
+                & cmd.exe /d /c ('rd /s /q "' + $child.FullName + '"')       # rd removes a link without following it; faster than Remove-Item -Recurse
+                if (Test-Path -LiteralPath $child.FullName) { throw "Could not remove $($child.FullName). Close anything using it and run setup again." }
+            } else { Remove-Item -LiteralPath $child.FullName -Force }
         }
         return $handle
     } catch { $handle.Dispose(); throw }
