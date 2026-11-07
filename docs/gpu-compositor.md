@@ -519,3 +519,16 @@ Size: the fills alone are a known exact port (the step 2 machinery); sprites, te
 Known limits: per-step decisions (which objects are drawn, darken and detail values) still change only at steps, as today. And 6.9 ms at 4K is not reachable while the picture layer costs 5.6 ms on the CPU, so Stage 2's speed target needs step 3's port, or at least its dominant classes.
 
 **Recommended order:** step 3's measurement (1); then Stage 2 (it removes the larger per-frame cost, the copy, and is where 144 comes from); then port the picture layer's dominant classes until 6.9 ms is met. The owner decides the order and whether to start.
+
+## Check of the Model detail build (6 November 2026, 23:42)
+
+`C:\Dev\F-117A Recomp\build\f117a.exe`, built 22:21 on 6 November (commit `ef43ff9`, Model detail Full by default), run with `EXE=` given, runway replay, fixed cadence, no stray `f117a.exe` before or after.
+
+| Check | Near | Far | Maximum |
+|---|---|---|---|
+| Live check (`MODE=gpu`, `F117_GPU_COMPOSE=1 F117_GPU_COMPOSE_CHECK=1`, 3,421 pictures) | 0 pixels differ | 0 | 0 |
+| GPU guards against the exact CPU baseline | 901/901 identical | 901/901 | 901/901 |
+| CPU guards against the exact CPU baseline | 901/901 identical | 901/901 | 901/901 |
+| Machine hash (4.8 billion clocks, old Desktop `ONTests` build and this one) | `600306c77cb04481` | | `600306c77cb04481` |
+
+Not covered: one GPU (RTX 3060) and one flight.
