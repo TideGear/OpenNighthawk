@@ -500,3 +500,22 @@ Results, `build/f117a.exe` built 20:06 on 6 November, runway replay, fixed caden
 | Machine hash (`guards.sh statehash`, 4.8 billion clocks) | `600306c77cb04481` old and new | | `600306c77cb04481` old and new |
 
 The trace sets of step 2 (1280 x 600 and 4K, Near and Maximum with dots) and the two new traces give 0 differing pixels with this build. Not covered: one GPU (RTX 3060) and one flight.
+
+## Plan for step 3 and Stage 2 (6 November 2026, for the owner's approval; nothing started)
+
+**Correction to the step 3 scope note above:** the replace pass already runs on the GPU (`gpu_replace.dxil`, stage 5; the CPU `replace_part` runs only when the GPU path declines a frame). What remains on the CPU every displayed frame at 4K is the game's picture layer (`drawlive_render`, about 5.6 ms on the worker) and the per-frame copy that walks the scene (3.6 to 6.3 ms on the main thread). The owner's 4K flight with GPU composition ran at 49 to 60 pictures a second (16 to 20 ms of work), so those two are what stand between today and 60 everywhere, and between 60 and 144.
+
+**Step 3, the picture layer on the GPU**
+1. Measure first (small): split `drawlive_render`'s 5.6 ms at 4K by what it draws (fills and spans, scaled sprites, text, HUD records, bands, the in-between interpolation) with timers, on the runway replay at Near, Far and Maximum.
+2. Port the classes that dominate, one at a time, each against the CPU as the reference: a recorded picture-layer input (like `F117_GPU_DUMP` for the composite) and a tool that compares the GPU's `picture_hi` and `picture_tag` byte for byte with the CPU's; the component tests that cover each class (`test_present_fills`, `test_present_driver`, `test_hud_state`, the hires scenes) get a GPU counterpart before a class is switched on.
+3. Pass line: p95 under 16.7 ms at 4K, hidden window, Near, Far and Maximum, two clean runs each; the 901 checksums per distance and the machine hash identical.
+Size: the fills alone are a known exact port (the step 2 machinery); sprites, text and HUD are each their own piece. Weeks rather than days if every class is ported.
+
+**Stage 2, the scene captured once per game step**
+1. Capture: at each game step the copy runs the game's own walk once, with a view wider than the screen by the camera's possible motion until the next step, and keeps the scene (primitives in that step's camera space plus the camera itself).
+2. Draw: every displayed frame the GPU transforms the captured scene by the change from the step's camera to the interpolated camera and composes it, with the exact rules of step 2.
+3. Tests: frames on a game step byte-identical to today's per-frame copy (the camera is the same); in-between frames against the per-frame copy with static-scenery vertices within half a game pixel and at most 0.5% of pixels differing on average, 2% in any frame; moving objects (aircraft, missiles) reported separately, first kept on the per-frame path if they disagree; p95 under 6.9 ms at 4K, and 1080p reported, two runs each.
+4. Owner gate 2 at the first working version: the worst frames beside the copy's; the per-frame copy retired only after the owner approves and has flown it.
+Known limits: per-step decisions (which objects are drawn, darken and detail values) still change only at steps, as today. And 6.9 ms at 4K is not reachable while the picture layer costs 5.6 ms on the CPU, so Stage 2's speed target needs step 3's port, or at least its dominant classes.
+
+**Recommended order:** step 3's measurement (1); then Stage 2 (it removes the larger per-frame cost, the copy, and is where 144 comes from); then port the picture layer's dominant classes until 6.9 ms is met. The owner decides the order and whether to start.
