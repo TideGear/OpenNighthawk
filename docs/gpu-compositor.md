@@ -482,3 +482,21 @@ The owner's first flight from the setup wizard's install (3840 x 2160, picture d
 `F117_GPU_COMPOSE` and `F117_GPU_PRESENT` are therefore on by default (`gpu_wanted` in `src/host/main.c`) in Remastered with a real display; 0 turns either off. They stay off by default with the dummy video driver or the software renderer, which the checksum guards (`guards.sh`) and headless checks use, so the CPU-compositor baselines are unchanged. `bench.sh MODE=gpu` (a hidden Direct3D 11 window) now measures the GPU path unless `F117_GPU_COMPOSE=0 F117_GPU_PRESENT=0` are given. Without a usable GPU device the CPU compositor is used as before. The live GPU-versus-CPU difference is now two pixels in an early scene (previous bullet in the section above).
 
 Found while checking: with GPU presentation the picture goes to a texture without being read back, so Tab saved the last picture the CPU had made (all six of the owner's captures in flight were the same runway picture). Tab now reads the shown picture back first. Test option `F117_TAB_SHOT_AT=CLOCK,...` takes the Tab capture at those clocks in a replay: on the runway replay at 3840 x 2160 with GPU presentation, three captures at 4.0, 4.3 and 4.6 billion are three different pictures of the flight.
+
+## The GPU compositor equals the CPU compositor over the whole flight (6 November 2026, evening)
+
+Two causes found and fixed, each traced from a recorded frame with `gpu_chain` and confirmed offline before the live runs:
+
+1. **The end pixel of near-clipped outline lines** (2 pixels a picture in an early scene, 1,735 in all). The decal rule's nearest point on the segment (`decal_stroke_hidden` on the CPU, `stroke_hidden` in `strokes_x.hlsl`) was found in doubles on the CPU and in floats from float-rounded ends on the GPU, then truncated to a pixel, so a nearest point on a pixel boundary fell in different pixels. The stroke record now carries the segment's ends as doubles (words 16 to 23, 24 words a stroke) and the shader does the same double arithmetic in the same order, casting to float where the CPU does.
+2. **Tiles skipped at their corner pixel** (single pixels at x and y multiples of 16, 19 in all). Triangles were binned into 16 x 16 tiles by a float barycentric test on the tile's corners with a 1e-3 margin; exact snapping moves a vertex by up to 1/512 px, so a snapped triangle could cover a tile's first pixel that the unsnapped float test had excluded (a water logic polygon at (864, 112), clock 3,549,000,000). In exact mode the tile test now uses the same int64 edge equations as the shader (`tile_touches_exact`: an edge's best tile corner on the outside means no pixel of the tile is in).
+
+Results, `build/f117a.exe` built 20:06 on 6 November, runway replay, fixed cadence, `EXE=` given:
+
+| Check | Near | Far | Maximum |
+|---|---|---|---|
+| Live check (`F117_GPU_COMPOSE_CHECK=1`, `MODE=gpu`, 3,421 pictures) | 0 pixels differ | 0 | 0 |
+| GPU guards (`MODE=gpu guards.sh checksums`) against the exact CPU baseline | 901/901 identical | 901/901 | 901/901 |
+| CPU guards against the exact CPU baseline | 901/901 identical | 901/901 | 901/901 |
+| Machine hash (`guards.sh statehash`, 4.8 billion clocks) | `600306c77cb04481` old and new | | `600306c77cb04481` old and new |
+
+The trace sets of step 2 (1280 x 600 and 4K, Near and Maximum with dots) and the two new traces give 0 differing pixels with this build. Not covered: one GPU (RTX 3060) and one flight.

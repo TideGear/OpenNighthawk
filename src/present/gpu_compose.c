@@ -2,6 +2,8 @@
  * gpu_replace): the CPU clips and projects the polygons and strokes, splits them into triangles and bins them into 16 x 16 tiles with the weights evaluated in
  * double at each tile's first pixel; the passes are the shaders in src/present/gpu. */
 #include "gpu_compose.h"
+
+#define STROKE_WORDS 24     /* words of one stroke record (strokes_x.hlsl: the same stride) */
 #include "exact.h"
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -199,6 +201,25 @@ static void put_exact_origin(uint32_t *en, const ctri *tr, int tx, int ty)
     }
 }
 
+/* Exact mode: whether any pixel centre of tile (tx, ty) can be covered by the snapped triangle, from the same int64 edge values as ex_covers. */
+static int tile_touches_exact(const ctri *tr, int tx, int ty)
+{
+    const int pos = tr->area > 0;
+    for (int k = 0; k < 3; k++) {
+        const long long xi = tr->q[2 * k], yi = tr->q[2 * k + 1], xj = tr->q[(2 * k + 2) % 6], yj = tr->q[(2 * k + 3) % 6];
+        long long best = 0; int first = 1;
+        for (int cy2 = 0; cy2 < 2; cy2++)
+            for (int cx2 = 0; cx2 < 2; cx2++) {
+                const long long px = ((long long)tx * TILE + cx2 * (TILE - 1)) * 256 + 128, py = ((long long)ty * TILE + cy2 * (TILE - 1)) * 256 + 128;
+                long long e = EX_SUB(EX_MUL(xj - xi, py - yi), EX_MUL(yj - yi, px - xi));
+                if (!pos) e = -e;
+                if (first || e > best) { best = e; first = 0; }
+            }
+        if (best < 0) return 0;
+    }
+    return 1;
+}
+
 static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_owner, uint32_t kind, sv a, sv b, sv c, int w, int h)
 {
     if (exact_on() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {       /* the same guard-band clip as remaster_raster.c, from the same exact.h code */
@@ -314,10 +335,14 @@ static int add_stroke(clist *l, const gpu_trace_rec *r, int w, int h, uint32_t i
     const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz - cap_z }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz - cap_z };
     const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz + cap_z }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz + cap_z };
     if (!c_add(l, id, 0, 0, 0, q0, q1, q2, w, h) || !c_add(l, id, 0, 0, 0, q0, q2, q3, w, h)) return 0;
-    memset(words, 0, 16 * 4);
+    memset(words, 0, STROKE_WORDS * 4);
     words[0] = r->color; words[1] = r->paint_index; words[2] = r->paint_owner; words[3] = (uint32_t)line_point; words[4] = (uint32_t)radius;
     const float f[9] = { (float)sa.x, (float)sa.y, (float)sb.x, (float)sb.y, (float)depth_dx, (float)depth_dy, (float)sa.x, (float)sa.y, (float)sa.iz };
     for (int k = 0; k < 9; k++) memcpy(&words[5 + k], &f[k], 4);
+    /* words 16 to 23: the segment's ends in double precision, for the decal rule's nearest point (stroke_hidden in strokes_x.hlsl), so it lands in the
+     * same pixel as the CPU's decal_stroke_hidden, which works in doubles (6 November: two end pixels of near-clipped outlines differed) */
+    const double ends[4] = { sa.x, sa.y, sb.x, sb.y };
+    memcpy(&words[16], ends, sizeof ends);
     *drawn = 1;
     return 1;
 }
@@ -356,7 +381,12 @@ static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *en
                             if (b > m2) m2 = b;
                             if (c3 > m3) m3 = c3;
                         }
-                    if (m1 < -1e-3 || m2 < -1e-3 || m3 < -1e-3) continue;
+                    if (exact_on()) {
+                        /* Exact mode: decide with the same integer edges the shader tests. Snapping moves a vertex by up to 1/512 px, so the float weights
+                         * above can reject a tile whose first pixel the snapped triangle still covers (6 November: a water polygon's corner pixel, drawn by
+                         * the CPU and missed by the GPU). An edge is linear, so if even its best tile corner is on the outside, no pixel of the tile is in. */
+                        if (!tile_touches_exact(tr, tx, ty)) continue;
+                    } else if (m1 < -1e-3 || m2 < -1e-3 || m3 < -1e-3) continue;
                     const int tile = ty * tilesx + tx;
                     if (pass == 0) { off[tile + 1]++; count++; }
                     else {
@@ -437,7 +467,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     g->polys.n = 0; g->strokes.n = 0;
     uint32_t nband = 0, nstrokes = 0;
     uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 64 * 4);
-    uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * 16 * 4);
+    uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
     if (!bw || !sw) return 0;
     const size_t band_cap = g->band_words.cap / (64 * 4);
     for (uint32_t i = 0; i < in->nrec; i++) {
@@ -474,7 +504,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
             if (!r->line_decal || !r->line_order) { say(g, "lines without the decal rules"); return 0; }
             phase = 2;
             int drawn = 0;
-            if (!add_stroke(&g->strokes, r, tw, h, nstrokes, sw + (size_t)nstrokes * 16, &drawn)) return 0;
+            if (!add_stroke(&g->strokes, r, tw, h, nstrokes, sw + (size_t)nstrokes * STROKE_WORDS, &drawn)) return 0;
             if (drawn) nstrokes++;
             break;
         }
@@ -513,7 +543,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
         { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
         { &g->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
-        { &g->sw, sw, (Uint32)((nstrokes ? nstrokes : 1) * 64), RO },
+        { &g->sw, sw, (Uint32)((nstrokes ? nstrokes : 1) * STROKE_WORDS * 4), RO },
         { &g->tf, flags, 1024, RO },
     };
     const int nseg = (int)(sizeof segs / sizeof *segs);

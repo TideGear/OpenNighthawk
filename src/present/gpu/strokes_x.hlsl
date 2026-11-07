@@ -36,7 +36,8 @@ cbuffer params : register(b0, space2)
     uint pad2;
 };
 
-// stroke words: 0 colour, 1 paint index, 2 paint owner, 3 line_point, 4 radius, 5..8 line_screen (x0 y0 x1 y1), 9 depth_dx, 10 depth_dy, 11 sa.x, 12 sa.y, 13 sa.iz
+// stroke words (24 a stroke): 0 colour, 1 paint index, 2 paint owner, 3 line_point, 4 radius, 5..8 line_screen (x0 y0 x1 y1), 9 depth_dx, 10 depth_dy, 11 sa.x, 12 sa.y, 13 sa.iz,
+// 16..23 the segment's ends x0 y0 x1 y1 as doubles (the decal rule's nearest point is found in double precision, as the CPU does)
 
 bool decal_hidden(uint at, float iz, uint po, bool line_point, bool self_hidden)
 {
@@ -47,14 +48,16 @@ bool decal_hidden(uint at, float iz, uint po, bool line_point, bool self_hidden)
     return !on_ground && iz < asfloat(invz[at]) * (same ? 0.99 : 0.97);
 }
 
-bool stroke_hidden(float px, float py, float iz, uint po, bool line_point, bool self_hidden, float4 ls, int radius)
+bool stroke_hidden(double px, double py, float iz, uint po, bool line_point, bool self_hidden, double4 ls, int radius)
 {
-    const float dx = ls.z - ls.x, dy = ls.w - ls.y;
-    const float ll = dx * dx + dy * dy;
-    float u = ll > 0.0 ? ((px - ls.x) * dx + (py - ls.y) * dy) / ll : 0.0;
-    u = clamp(u, 0.0, 1.0);
-    const float cx = ls.x + u * dx, cy = ls.y + u * dy;
-    if (cx >= 0.0 && cy >= 0.0 && cx < (float)w && cy < (float)h) {
+    // the same double arithmetic, in the same order, as decal_stroke_hidden in remaster_raster.c
+    const double dx = ls.z - ls.x, dy = ls.w - ls.y;
+    const double ll = dx * dx + dy * dy;
+    double u = ll > 0.0 ? ((px - ls.x) * dx + (py - ls.y) * dy) / ll : 0.0;
+    if (u < 0.0) u = 0.0;
+    if (u > 1.0) u = 1.0;
+    const double cx = ls.x + u * dx, cy = ls.y + u * dy;
+    if (cx >= 0.0 && cy >= 0.0 && cx < (double)w && cy < (double)h) {
         const uint i = (uint)(int)cy * w + (uint)(int)cx;
         if (decal_hidden(i, iz, po, line_point, self_hidden)) return true;
         if ((owner[i] >> 12) == (po >> 12)) return false;
@@ -62,8 +65,8 @@ bool stroke_hidden(float px, float py, float iz, uint po, bool line_point, bool 
     if (ll <= 0.0) return false;
     for (int y = -radius; y <= radius; ++y)
         for (int x = -radius; x <= radius; ++x) {
-            const float qx = cx + (float)x, qy = cy + (float)y;
-            if (qx < 0.0 || qy < 0.0 || qx >= (float)w || qy >= (float)h) continue;
+            const double qx = cx + (double)x, qy = cy + (double)y;
+            if (qx < 0.0 || qy < 0.0 || qx >= (double)w || qy >= (double)h) continue;
             const uint i = (uint)(int)qy * w + (uint)(int)qx;
             const uint ow = owner[i];
             if (ow != 0 && (ow >> 12) == (po >> 12) && decal_hidden(i, iz, po, line_point, self_hidden)) return true;
@@ -77,7 +80,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
     if (mode == 0) {
         const uint s = id.y * 4096u + id.x;
         if (s >= nstrokes) return;
-        const uint b = s * 16;
+        const uint b = s * 24;
         hidden[s] = 0u;
         if (strokes[b + 3] == 0u) return;
         const float cx = asfloat(strokes[b + 11]), cy = asfloat(strokes[b + 12]), iz = asfloat(strokes[b + 13]);
@@ -138,11 +141,12 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         }
         const uint si = tri[b + 7];
         if (hidden[si] != 0u) continue;
-        const uint sb = si * 16;
+        const uint sb = si * 24;
         const uint po = strokes[sb + 2];
         const bool line_point = strokes[sb + 3] != 0u;
         const uint object = po >> 12;
-        const float4 ls = float4(asfloat(strokes[sb + 5]), asfloat(strokes[sb + 6]), asfloat(strokes[sb + 7]), asfloat(strokes[sb + 8]));
+        const double4 ls = double4(asdouble(strokes[sb + 16], strokes[sb + 17]), asdouble(strokes[sb + 18], strokes[sb + 19]),
+                                   asdouble(strokes[sb + 20], strokes[sb + 21]), asdouble(strokes[sb + 22], strokes[sb + 23]));
         const float ddx = asfloat(strokes[sb + 9]), ddy = asfloat(strokes[sb + 10]);
         // decal rules against the polygon pass
         if (decal_hidden(at, iz, po, line_point, false)) continue;
@@ -156,7 +160,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         float edge_z = line_point ? old_z : iz;
         const float point_z = point_z0;
         if (old_z > 0.0 && old_point != line_point) {
-            if (line_point) edge_z += s_ax * (ls.x - px) + s_ay * (ls.y - py);
+            if (line_point) edge_z += (float)((double)s_ax * (ls.x - px) + (double)s_ay * (ls.y - py));    // in double, then to float, as the CPU
             else edge_z += ddx * (s_ax - px) + ddy * (s_ay - py);
         }
         const bool point_tie = old_z > 0.0 && object != 0u && object == (old & 0xFFFFFu) && old_point != line_point &&
@@ -168,8 +172,8 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
             if (point_tie ? !line_point : new_z < prev_z * 0.9999) continue;
         }
         s_z = iz;
-        s_ax = line_point ? ls.x : ddx;
-        s_ay = line_point ? ls.y : ddy;
+        s_ax = line_point ? (float)ls.x : ddx;
+        s_ay = line_point ? (float)ls.y : ddy;
         s_owner = object | (line_point ? 0x100000u : 0u);
         col = strokes[sb + 0];
         idx = strokes[sb + 1];
