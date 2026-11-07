@@ -43,10 +43,20 @@ settings are carried over. Setup never writes to your game installation. Generat
 code and binaries are for your own machine and must not be shared.
 
 **Uninstalling.** Use Windows Settings, Apps & features (OpenNighthawk), the Start
-menu's "Uninstall OpenNighthawk", or run `uninstall.ps1` in the install folder. It
-removes the install folder, its shortcuts and its Apps & features entry, and asks
-before deleting your saved pilots; it removes only a folder setup marked as its
-install and never touches the game installation.
+menu's "Uninstall OpenNighthawk", or double-click `uninstall.cmd` in the install folder
+(`uninstall.ps1` is the script behind it; double-clicking a `.ps1` file opens it in
+Notepad). It removes the install folder, its shortcuts and its Apps & features entry,
+and asks before deleting your saved pilots; it removes only a folder setup marked as its
+install and never touches the game installation. It closes File Explorer windows that
+show the install folder; if Windows still reports the folder in use, close any other
+window or program using it and run the uninstaller again.
+
+**Windows SmartScreen and antivirus.** Setup downloads Zig, a build tool, and compiles
+the game on your PC, so the program it produces is new to Windows and its reputation
+checks. SmartScreen may warn the first time you run `setup.cmd` or the built game
+("Windows protected your PC": choose More info, then Run anyway), and an antivirus may
+scan the build for a while. Setup checks every download against a pinned checksum; if an
+antivirus quarantines something, setup stops with a message rather than continuing.
 
 ## Options for scripted runs
 

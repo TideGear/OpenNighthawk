@@ -6,6 +6,7 @@
 param([string]$InstallDir,[switch]$Yes,[switch]$RemoveSaves,[switch]$FromTemp)
 $ErrorActionPreference = 'Stop'
 if (-not $InstallDir) { $InstallDir = $PSScriptRoot }
+Set-Location -LiteralPath $env:TEMP      # never run from inside the folder being removed (Windows refuses to delete a current directory)
 $InstallDir = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
 $marker = Join-Path $InstallDir '.opennighthawk-install'
 
@@ -30,7 +31,7 @@ try {
     $saves = Join-Path $env:APPDATA 'F117Recomp\F-117A'
     $dropSaves = [bool]$RemoveSaves
     if (-not $Yes -and (Test-Path -LiteralPath $saves)) {
-        $a = Read-Host "Also delete your saved pilots, screenshots and recorded flights in $saves? [y/N]"
+        $a = Read-Host "Also delete your saved pilots, screenshots and recorded flights in ${saves}? [y/N]"
         $dropSaves = $a -match '^(y|yes)$'
     }
 
@@ -55,7 +56,17 @@ try {
     $entry = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
     if ($entry -and $entry.InstallLocation -and ([IO.Path]::GetFullPath($entry.InstallLocation).TrimEnd('\') -ieq $InstallDir)) { Remove-Item -LiteralPath $key -Force }
 
-    Remove-Item -LiteralPath $InstallDir -Recurse -Force
+    # An Explorer window showing the folder keeps Windows from deleting it: close only those windows, then retry a few times.
+    try {
+        foreach ($win in (New-Object -ComObject Shell.Application).Windows()) {
+            $loc = try { $win.LocationURL } catch { $null }
+            if ($loc -and $loc.StartsWith(([Uri]($InstallDir + '\')).AbsoluteUri.TrimEnd('/'), [StringComparison]::OrdinalIgnoreCase)) { try { $win.Quit() } catch {} }
+        }
+    } catch {}
+    for ($try = 1; ; $try++) {
+        try { Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop; break }
+        catch { if ($try -ge 5) { throw "$($_.Exception.Message) Close any window or program that is using the folder (File Explorer, a command prompt, Notepad) and run the uninstaller again." }; Start-Sleep -Seconds 2 }
+    }
     if ($dropSaves -and (Test-Path -LiteralPath $saves)) {
         Remove-Item -LiteralPath $saves -Recurse -Force
         $parent = Split-Path $saves -Parent

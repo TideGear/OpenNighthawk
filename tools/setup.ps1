@@ -66,6 +66,7 @@ if ($InstallDir) {
     # The marker the uninstaller requires before it deletes anything, and the uninstaller itself.
     [IO.File]::WriteAllText((Join-Path $InstallDir '.opennighthawk-install'), "OpenNighthawk install made by setup`r`n")
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.cmd') -Destination (Join-Path $InstallDir 'uninstall.cmd') -Force
 }
 
 if ($MacSource) {

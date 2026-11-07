@@ -136,8 +136,38 @@ try {
 
     # Where things go. The build workspace is temporary; the install folder holds only what the game needs.
     if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk\setup-work' }
+    if ($Data) {      # "C:\Games\F-117A\" typed with its closing backslash arrives with a stray quote (the backslash escapes it): clean it up first
+        $q = $Data.IndexOf('"')
+        if ($q -ge 0 -and $Data.Substring($q + 1).Trim()) {   # the backslash also swallowed the arguments that followed; do not guess them
+            throw "The folder given with -Data ends in a backslash inside quotes, which Windows reads as part of the next arguments. Give the folder without its final backslash (for example -Data `"C:\Games\F-117A`")."
+        }
+        $cleaned = Normalize-Path ($Data -replace '"', '')
+        if (-not $cleaned) { throw "The folder given with -Data is not a valid path: $Data" }
+        $Data = $cleaned
+    }
     $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
     $defaultInstall = Join-Path $env:LOCALAPPDATA 'Programs\OpenNighthawk'
+
+    # The game, found now so that someone without a GOG or Steam copy gets a plain message here and not a failed check minutes later.
+    . (Join-Path $PSScriptRoot 'find-f117-install.ps1')
+    $games = @(Get-F117InstallCandidates -SelectedFolder $Data)
+    if ($Data) {      # a folder the user named is the only one that counts, whatever else is found on this PC
+        $named = Normalize-Path $Data
+        $games = @($games | Where-Object { $named -and ($_ -ieq $named -or $_ -ieq (Join-Path $named 'F-117A')) })
+    }
+    if ($Data -and -not $games) {
+        throw "The folder given with -Data does not hold F-117A (no VGAME.EXE found in it or in its F-117A folder): $Data"
+    }
+    while (-not $games) {
+        if (-not $interactive) { throw 'No GOG or Steam copy of F-117A was found. Install the game, or pass its folder with -Data.' }
+        Write-F117Text 'Setup could not find F-117A on this PC (GOG or Steam). OpenNighthawk is built from your own copy of the game, so it is needed.' 'Magenta'
+        $typed = Ask 'Folder holding your F-117A game files' 'quit' 'Type or paste the folder that contains VGAME.EXE, or press Enter to stop.'
+        if ($typed -eq 'quit') { throw 'Setup stopped: no F-117A game folder. Install the game from GOG or Steam and run setup again.' }
+        $typed = Normalize-Path $typed
+        $games = if ($typed) { @(Get-F117InstallCandidates -SelectedFolder $typed | Where-Object { $_ -ieq $typed -or $_ -ieq (Join-Path $typed 'F-117A') }) } else { @() }
+        if ($games) { $Data = $typed } else { Write-F117Text '  No VGAME.EXE there.' 'Magenta' }
+    }
+    Log "Game folder: $($games[0])"
 
     # An earlier install: one setup made (listed in Apps & features) is updated in place; a build left in the workspace by the
     # first version of setup (no install folder) is replaced, and its settings carried over.
@@ -396,6 +426,7 @@ try {
     Say ("OpenNighthawk is installed in {0} ({1:mm\:ss})." -f $InstallDir, $started.Elapsed) 'Cyan'
     if ($NoDesktopShortcut -and -not $StartMenu) { Say ('Start it with ' + (Join-Path $InstallDir 'f117a.exe') + '. Press the ` key in the game for settings.') }
     else { Say 'Start it from the shortcut. Press the ` key in the game for settings.' }
+    Say 'To uninstall: Windows Settings, Apps, OpenNighthawk, or double-click uninstall.cmd in the install folder.' 'Gray'
     Say "Setup log: $logPath" 'Gray'
     $exitCode = 0
 } catch {
