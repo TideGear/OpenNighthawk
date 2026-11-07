@@ -212,7 +212,19 @@ try {
         if ($DrawDistance) { $settings['draw-distance'] = $DrawDistance }
     }
     if ($interactive) {
+        # An existing install's settings come first: keeping them also keeps the sound setup they hold, so it is not asked for again.
+        $existingLines = @()
+        if (Test-Path -LiteralPath $ini) { $existingLines = @([IO.File]::ReadAllLines($ini)) } elseif ($oldIni) { $existingLines = @($oldIni) }
+        $hasSound = [bool]($existingLines | Where-Object { $_ -match '^\s*(sound|mt32-roms|mac-sounds)\s*=' })
+        if ($existingLines.Count) {
+            Write-F117Heading 'Your current settings'
+            foreach ($l in $existingLines) { if ($l.Trim() -and $l -notmatch '^\s*;') { Write-F117Text ('  ' + $l.Trim()) 'Gray' } }
+            $keep = Ask-YesNo 'Keep your current OpenNighthawk settings?' $true
+        }
+        $skipSound = $keep -and $hasSound
         Write-F117Heading 'Sound'
+        if ($skipSound) { Say 'Keeping the sound setup in your settings (MT-32 ROM folder and Mac sounds as listed above).' }
+        else {
         Write-F117Text 'The game plays its AdLib music, effects and speech, the sound most players know. Two optional extras come from your own files: the music as a Roland MT-32 played it (needs the two MT-32 ROM files), and the Macintosh version''s recorded sounds, music and speech (needs your Mac copy of F-117A). You can skip both if you are happy with AdLib.'
         if (Ask-YesNo 'Do you have MT-32 ROM files to use?' $false) {
             while ($true) {
@@ -237,9 +249,9 @@ try {
                 Write-F117Text '  That file or folder does not exist.' 'Magenta'
             }
         }
-        Write-F117Heading 'Settings'
-        if ((Test-Path -LiteralPath $ini) -or $oldIni) { $keep = Ask-YesNo 'Keep your current OpenNighthawk settings?' $true }
+        }
         if (-not $keep) {
+            Write-F117Heading 'Settings'
             Write-F117Text 'Choose your settings now, or take the defaults. Either way you can change everything later in the game: press the ` key (left of 1) for the settings menu.'
             if (Ask-YesNo 'Choose settings now?' $false) {
                 $v = Ask-Pick 'Visuals' @('Original - the 1991 picture, pixel for pixel',
