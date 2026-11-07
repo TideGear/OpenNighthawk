@@ -8,7 +8,7 @@ free space while it builds, and about 5 to 15 minutes.
 ## What the wizard asks
 
 1. **Licences.** The tools it downloads and their licences, including Microsoft's terms
-   for the shader compiler; type YES to continue.
+   for the shader compiler; type yes to continue (any case; no stops setup).
 2. **Install folder.** Default `%LOCALAPPDATA%\Programs\OpenNighthawk` (press Enter to
    accept). Only the game itself, about 35 MB, goes there.
 3. **Shortcuts.** A desktop shortcut and a Start menu entry, each optional.

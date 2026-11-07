@@ -36,7 +36,11 @@ function Confirm-F117Licences {
     if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
         throw 'Setup needs your agreement to these licence terms. Rerun with -AcceptLicences to agree without being asked.'
     }
-    Write-Host 'Type YES to agree and continue: ' -ForegroundColor Magenta -NoNewline
-    $answer = Read-Host
-    if ($answer -cne 'YES') { throw 'Licence terms not accepted. Nothing was downloaded.' }
+    while ($true) {
+        Write-Host 'Type yes to agree and continue, or no to stop: ' -ForegroundColor Magenta -NoNewline
+        $answer = (Read-Host).Trim()
+        if ($answer -ieq 'yes') { return }
+        if ($answer -imatch '^(n|no)$') { throw 'Licence terms not accepted. Nothing was downloaded.' }
+        Write-Host '  Please type yes or no.' -ForegroundColor Magenta
+    }
 }
