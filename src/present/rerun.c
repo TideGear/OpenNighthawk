@@ -671,7 +671,13 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     /* Own-level objects in native-walk mode: the original table value, not the lowered one (the lowering keeps the coarser levels' sums under 8000h and would reject objects the game keeps). */
     const int16_t across_word = g_allow_saved && shift == 0 && lod < 8 ? (int16_t)g_allow_saved[lod] : (int16_t)rd16(m->mem, ds, t_across);
     int16_t ax = (int16_t)((int16_t)(di + (across_word >> shift)) >> cl);
-    const int16_t si = (int16_t)(ax + (ax >> 2));
+    int16_t si = (int16_t)(ax + (ax >> 2));
+    /* The game's cone (1.25 x the depth plus the allowance) is for its own 4:3 picture. An object drawn at a coarser level has only a small allowance
+     * (the lowered table, shifted down), so its cone stays at the original's and a far light in the wide margins is dropped. Widen the cone by the
+     * wide picture's factor for those objects (docs/owner-issues.md R30); F117_FAR_WIDE_ACROSS=0 restores the original cone. */
+    static int widen = -1;
+    if (widen < 0) { const char *e = getenv("F117_FAR_WIDE_ACROSS"); widen = e ? atoi(e) : 1; }
+    if (widen && shift > 0 && g_wide_pct > 100) { int32_t w = ((int32_t)si * g_wide_pct) / 100; si = (int16_t)(w > 32767 ? 32767 : w); }
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
     if (axx > si && !((skip & 1) && shift == 0)) CULL_FAIL(2);
     ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
