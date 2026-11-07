@@ -12,6 +12,7 @@ function Confirm-F117Licences {
     if ($Compiler -eq 'Zig') { $lines += '  Zig (MIT), and the DirectX Shader Compiler (LLVM, MIT and Microsoft terms).' }
     else { $lines += '  and the DirectX Shader Compiler (LLVM, MIT and Microsoft terms).' }
     $lines += @(
+        '  Only if you import the Mac version''s sounds: The Unarchiver''s unar (LGPL-2.1), to unpack the Mac archive.',
         'Microsoft''s terms for the shader compiler: Windows only, it may send usage data to Microsoft, no redistribution.',
         'Full licence texts: docs/provenance.md in this folder, and each publisher''s download.'
     )

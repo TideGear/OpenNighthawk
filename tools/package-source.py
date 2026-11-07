@@ -36,7 +36,8 @@ def check_archive(path):
                     or p.suffix.lower() in {'.exe', '.dll', '.obj', '.lib', '.rom', '.ppm', '.dxil'}
                     or any(part.lower() in {'private', 'generated', 'build', 'sessions', 'save-start'} for part in p.parts)):
                 raise ValueError(f'Forbidden game/build artifact: {name}')
-        required = {'README.md', 'LICENSE', 'CMakeLists.txt', 'tools/verify_install.py', 'recompiler/recomp.py'}
+        required = {'README.md', 'LICENSE', 'CMakeLists.txt', 'setup.cmd', 'tools/verify_install.py', 'recompiler/recomp.py',
+                    'tools/setup.ps1', 'tools/setup-wizard.ps1', 'tools/setup-mac.ps1', 'tools/mac_sounds.py', 'tools/uninstall.ps1'}
         missing = required - set(names)
         if missing:
             raise ValueError(f'Missing source files: {sorted(missing)}')

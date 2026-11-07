@@ -12,11 +12,17 @@ free space while it builds, and about 5 to 15 minutes.
 2. **Install folder.** Default `%LOCALAPPDATA%\Programs\OpenNighthawk` (press Enter to
    accept). Only the game itself, about 35 MB, goes there.
 3. **Shortcuts.** A desktop shortcut and a Start menu entry, each optional.
-4. **Settings (optional).** Take the defaults, or choose the visuals (Original,
-   Enhanced or Remastered), full screen, whether the bug fixes are on, and Roland MT-32
-   music if you have the two ROM files (setup checks them). AdLib music, effects and
-   speech are the default and need nothing. Everything can be changed later in the
-   game with the ` key.
+4. **Sound (optional).** AdLib music, effects and speech are the default and need
+   nothing. If you have the two Roland MT-32 ROM files, give their folder (setup checks
+   them by hash) for MT-32 music. If you have the Macintosh version of F-117A, give its
+   StuffIt archive (`.sit`), a disk image, or a folder holding it or an unpacked copy:
+   setup imports its 33 recorded sounds, music and speech words into the install
+   folder's `mac-sounds`, and the game then uses them first (Mac, then Roland, then
+   AdLib). Unpacking an archive uses The Unarchiver's `unar`, downloaded and checked
+   like the other tools. A failed import does not stop setup; the game uses AdLib.
+5. **Settings (optional).** Take the defaults, or choose the visuals (Original,
+   Enhanced or Remastered), full screen, and whether the bug fixes are on. Everything
+   can be changed later in the game with the ` key.
 
 It then shows one line per stage and a live progress line while compiling. When it
 finishes it removes its build files (the downloaded tools and the compiler's
@@ -24,19 +30,29 @@ intermediate files, about 1.4 GB) and keeps a log in the install folder's `logs`
 folder; send the newest log when reporting a problem. If setup stops early, the
 message names the log, which is then in `%TEMP%\OpenNighthawk-setup`.
 
-Your saved pilots and settings are kept outside the install folder
-(`%APPDATA%\F117Recomp\F-117A`) and in `f117a.ini` beside the game; running setup
-again (for a new version) asks whether to keep your settings. Setup never writes to
-your game installation. Generated code and binaries are for your own machine and
-must not be shared.
+Your saved pilots are kept outside the install folder (`%APPDATA%\F117Recomp\F-117A`)
+and your settings in `f117a.ini` beside the game. Running setup again (for a new
+version) finds the existing install, updates it in place and asks whether to keep
+your settings; a build left by the first version of setup (in
+`%LOCALAPPDATA%\OpenNighthawk\setup-work`) is replaced by an installed copy and its
+settings are carried over. Setup never writes to your game installation. Generated
+code and binaries are for your own machine and must not be shared.
+
+**Uninstalling.** Use Windows Settings, Apps & features (OpenNighthawk), the Start
+menu's "Uninstall OpenNighthawk", or run `uninstall.ps1` in the install folder. It
+removes the install folder, its shortcuts and its Apps & features entry, and asks
+before deleting your saved pilots; it removes only a folder setup marked as its
+install and never touches the game installation.
 
 ## Options for scripted runs
 
 `setup.cmd -AcceptLicences` asks nothing and takes the defaults. Further options:
 `-Data FOLDER` (the game folder; if it does not hold a verified game, setup stops
 rather than using another installation it finds), `-InstallDir FOLDER`,
-`-NoDesktopShortcut`, `-StartMenu`, `-KeepBuildFiles`, `-Work FOLDER` (the temporary
-build workspace, default `%LOCALAPPDATA%\OpenNighthawk\setup-work`).
+`-NoDesktopShortcut`, `-StartMenu`, `-KeepBuildFiles`, `-Mt32Roms FOLDER`,
+`-MacSource PATH`, `-Work FOLDER` (the temporary build workspace, default
+`%LOCALAPPDATA%\OpenNighthawk\setup-work`). Scripted runs keep existing settings and
+merge these choices in. `uninstall.ps1 -Yes [-RemoveSaves]` uninstalls without asking.
 
 A failed checksum must be investigated; do not bypass it. After fixing the cause, run
 setup again: it cleans its own incomplete work and starts over. Unrecognized folders,

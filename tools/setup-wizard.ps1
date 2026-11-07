@@ -5,7 +5,8 @@
 # Scripted use: -AcceptLicences asks nothing and takes the defaults (or -InstallDir, -NoDesktopShortcut, -StartMenu, -KeepBuildFiles).
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',
-      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[switch]$AcceptLicences)
+      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[string]$MacSource,[string]$Mt32Roms,
+      [switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'setup-licences.ps1')
@@ -80,6 +81,20 @@ try {
     $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
     $defaultInstall = Join-Path $env:LOCALAPPDATA 'Programs\OpenNighthawk'
 
+    # An earlier install: one setup made (listed in Apps & features) is updated in place; a build left in the workspace by the
+    # first version of setup (no install folder) is replaced, and its settings carried over.
+    $existing = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenNighthawk' -ErrorAction SilentlyContinue).InstallLocation
+    if ($existing -and (Test-Path -LiteralPath (Join-Path $existing 'f117a.exe'))) {
+        $defaultInstall = $existing
+        Say "OpenNighthawk is already installed in $existing; setup will update it. Saved pilots are kept."
+    }
+    $oldIni = $null
+    $oldBuild = Join-Path $Work 'game\build'
+    if ((Test-Path -LiteralPath (Join-Path $Work '.f117-setup-complete')) -and (Test-Path -LiteralPath (Join-Path $oldBuild 'f117a.exe'))) {
+        if (Test-Path -LiteralPath (Join-Path $oldBuild 'f117a.ini')) { $oldIni = [IO.File]::ReadAllLines((Join-Path $oldBuild 'f117a.ini')) }
+        Say "An earlier OpenNighthawk build was found in $oldBuild; setup replaces it with an installed copy$(if ($oldIni) { ' and keeps its settings' })."
+    }
+
     # Disk space: the build needs room for its tools and its intermediate files, most of which are removed at the end.
     $drive = [IO.Path]::GetPathRoot($Work)
     $free = (New-Object IO.DriveInfo($drive)).AvailableFreeSpace
@@ -107,12 +122,54 @@ try {
     Open-Log (Join-Path $InstallDir 'logs')
     Log "Install folder: $InstallDir"
 
-    # Optional settings. Whatever is chosen, the in-game menu (the ` key) changes all of it later.
+    # Sound and optional settings. Whatever is chosen, the in-game menu (the ` key) changes all of it later.
     $ini = Join-Path $InstallDir 'f117a.ini'
     $settings = [ordered]@{}
+    $keep = $false
+    if (-not $interactive) {
+        # Scripted: keep any existing settings; the options given are merged in.
+        $keep = [bool]((Test-Path -LiteralPath $ini) -or $oldIni)
+        if ($Mt32Roms) {
+            $problem = Test-Mt32Folder $Mt32Roms
+            if ($problem) { throw "-Mt32Roms: $problem." }
+            $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($Mt32Roms)
+        }
+        if ($MacSource) {
+            if (-not (Test-Path -LiteralPath $MacSource)) { throw "-MacSource: not found: $MacSource" }
+            $MacSource = [IO.Path]::GetFullPath($MacSource)
+        }
+    }
     if ($interactive) {
-        $keep = $false
-        if (Test-Path -LiteralPath $ini) { $keep = Ask-YesNo 'Keep your current OpenNighthawk settings?' $true }
+        Write-Host ''
+        Write-Host 'Sound: the game plays its AdLib music, effects and speech, the sound most players know. Two optional extras,'
+        Write-Host 'from your own files: the music as a Roland MT-32 played it (needs the two MT-32 ROM files), and the Macintosh'
+        Write-Host 'version''s recorded sounds, music and speech (needs your Mac copy of F-117A). You can skip both if you are'
+        Write-Host 'happy with AdLib.'
+        if (Ask-YesNo 'Do you have MT-32 ROM files to use?' $false) {
+            while ($true) {
+                $folder = Ask 'Folder holding the two ROM files (Enter to skip)' 'skip'
+                if ($folder -eq 'skip') { break }
+                $folder = $folder.Trim('"')
+                $problem = Test-Mt32Folder $folder
+                if (-not $problem) {
+                    $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($folder)
+                    Say '  MT-32 ROMs recognised.'
+                    break
+                }
+                Write-Host "  Not usable: $problem."
+            }
+        }
+        if (Ask-YesNo 'Do you have the Mac version of F-117A?' $false) {
+            Write-Host '  Give its StuffIt archive (.sit), a disk image, or a folder holding it or an unpacked copy.'
+            while ($true) {
+                $m = Ask 'Mac copy (Enter to skip)' 'skip'
+                if ($m -eq 'skip') { break }
+                $m = $m.Trim('"')
+                if (Test-Path -LiteralPath $m) { $MacSource = [IO.Path]::GetFullPath($m); Say '  The Mac sounds will be imported during setup.'; break }
+                Write-Host '  That file or folder does not exist.'
+            }
+        }
+        if ((Test-Path -LiteralPath $ini) -or $oldIni) { $keep = Ask-YesNo 'Keep your current OpenNighthawk settings?' $true }
         if (-not $keep) {
             Write-Host ''
             Write-Host 'Choose your settings now, or take the defaults. Either way you can change everything later in the game:'
@@ -129,25 +186,6 @@ try {
                 Write-Host 'Fixes: OpenNighthawk can repair bugs in the original game (crashes, mistakes in missions and scoring).'
                 $f = Ask-Pick 'Fixes' @('Recommended fixes on (the default)','Original behaviour, bugs included') 0
                 if ($f -eq 1) { $settings['fixes'] = 'original' }
-                Write-Host ''
-                Write-Host 'Music: by default the game plays its AdLib music, effects and speech, which is the sound most players know.'
-                Write-Host 'If you have the two Roland MT-32 ROM files (a control ROM and a PCM ROM), the music can play as it did on'
-                Write-Host 'a Roland MT-32. You can safely skip this if you are happy with AdLib.'
-                if (Ask-YesNo 'Do you have MT-32 ROM files to use?' $false) {
-                    while ($true) {
-                        $folder = Ask 'Folder holding the two ROM files (Enter to skip)' 'skip'
-                        if ($folder -eq 'skip') { break }
-                        $folder = $folder.Trim('"')
-                        $problem = Test-Mt32Folder $folder
-                        if (-not $problem) {
-                            $settings['sound'] = 'roland'; $settings['roland'] = 'munt'; $settings['mt32-roms'] = [IO.Path]::GetFullPath($folder)
-                            Say '  MT-32 ROMs recognised.'
-                            break
-                        }
-                        Write-Host "  Not usable: $problem."
-                    }
-                }
-                # The Mac version's recorded sounds and music are supported by the game but setup cannot import them yet.
             }
         }
     }
@@ -160,6 +198,7 @@ try {
     if ($ArchiveFolder) { $argsList += @('-ArchiveFolder',(& $quote $ArchiveFolder)) }
     if ($NoDesktopShortcut) { $argsList += '-NoDesktopShortcut' }
     if ($StartMenu) { $argsList += '-StartMenu' }
+    if ($MacSource) { $argsList += @('-MacSource',(& $quote $MacSource)) }
 
     # A finished workspace from an earlier run is removed first, so a rerun (an update) builds fresh. Only a folder setup made is touched.
     $marker = Join-Path $Work '.f117-setup-work'
@@ -226,12 +265,32 @@ try {
         throw "The build failed (exit code $exitCode)."
     }
 
-    # Settings: written only for a new install or when the user chose new ones; an existing f117a.ini is otherwise left alone.
-    if ($settings.Count -gt 0 -or -not (Test-Path -LiteralPath $ini)) {
-        $text = @('; OpenNighthawk settings, written by setup. Change them in the game with the ` key.')
-        foreach ($k in $settings.Keys) { $text += "$k = $($settings[$k])" }
-        [IO.File]::WriteAllLines($ini, $text)
-        Log ('Settings written: ' + (($settings.Keys | ForEach-Object { "$_=$($settings[$_])" }) -join ', '))
+    # The Mac recordings, if they were imported, are used by default (the game's own order: Mac, then Roland, then AdLib).
+    $macDir = Join-Path $InstallDir 'mac-sounds'
+    if ($MacSource -and (Test-Path -LiteralPath $macDir) -and @(Get-ChildItem -LiteralPath $macDir -Filter '*.wav').Count) { $settings['mac-sounds'] = $macDir }
+
+    # Settings: kept (this install's f117a.ini, or the earlier build's) when the user said so, with the sound choices merged in;
+    # otherwise written from the choices. Lines are 'key = value'.
+    $lines = [Collections.Generic.List[string]]::new()
+    if ($keep -and (Test-Path -LiteralPath $ini)) { $lines.AddRange([string[]][IO.File]::ReadAllLines($ini)) }
+    elseif ($keep -and $oldIni) { $lines.AddRange([string[]]$oldIni) }
+    else { $lines.Add('; OpenNighthawk settings, written by setup. Change them in the game with the ` key.') }
+    foreach ($k in $settings.Keys) {
+        $set = "$k = $($settings[$k])"
+        $i = -1
+        for ($j = 0; $j -lt $lines.Count; $j++) { if ($lines[$j] -match ('^\s*' + [regex]::Escape($k) + '\s*=')) { $i = $j } }
+        if ($i -ge 0) { $lines[$i] = $set } else { $lines.Add($set) }
+    }
+    if ($settings.Count -or -not $keep -or -not (Test-Path -LiteralPath $ini)) {
+        [IO.File]::WriteAllLines($ini, $lines)
+        Log ('Settings written: ' + (($lines | Where-Object { $_ -notmatch '^\s*;' }) -join ', '))
+    }
+
+    # A desktop shortcut left by the earlier build points into the workspace being removed: drop it unless setup just replaced it.
+    $desk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'OpenNighthawk.lnk'
+    if (Test-Path -LiteralPath $desk) {
+        $t = (New-Object -ComObject WScript.Shell).CreateShortcut($desk).TargetPath
+        if ($t -and $t.StartsWith($Work + '\', [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $desk -Force; Log 'Removed the earlier build''s desktop shortcut.' }
     }
 
     # Clean up the build workspace (about 1.4 GB) unless asked to keep it.

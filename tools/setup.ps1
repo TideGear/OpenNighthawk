@@ -3,7 +3,7 @@
 # everything else this prints goes only to the log. It can also be run directly with -AcceptLicences.
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath,
-      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$AcceptLicences)
+      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[string]$MacSource,[switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'     # Windows PowerShell's download progress bar slows Invoke-WebRequest many times over
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
@@ -13,6 +13,7 @@ $ProgressPreference = 'SilentlyContinue'     # Windows PowerShell's download pro
 . (Join-Path $PSScriptRoot 'setup-sources.ps1')
 . (Join-Path $PSScriptRoot 'setup-build-tools.ps1')
 . (Join-Path $PSScriptRoot 'setup-licences.ps1')
+. (Join-Path $PSScriptRoot 'setup-mac.ps1')
 if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk/setup-work' }
 $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
 if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
@@ -58,16 +59,32 @@ if ($InstallDir) {
     # Only what the game needs to run goes to the install folder (about 35 MB); the build workspace stays in Work for the caller to remove.
     Write-Host "## Installing to $InstallDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    $files = @(Get-ChildItem -LiteralPath $build -File | Where-Object { $_.Name -eq 'f117a.exe' -or $_.Extension -in '.dll','.dxil' -or $_.Name -like 'f117a.*.ini' })
+    $files = @(Get-ChildItem -LiteralPath $build -File | Where-Object { $_.Name -eq 'f117a.exe' -or $_.Extension -in '.dll','.dxil' })
     foreach ($file in $files) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $InstallDir $file.Name) -Force }
     $exe = Join-Path $InstallDir 'f117a.exe'
     if (-not (Test-Path -LiteralPath $exe)) { throw 'Installing the game executable failed.' }
+    # The marker the uninstaller requires before it deletes anything, and the uninstaller itself.
+    [IO.File]::WriteAllText((Join-Path $InstallDir '.opennighthawk-install'), "OpenNighthawk install made by setup`r`n")
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force
+}
+
+if ($MacSource) {
+    # Not fatal: without the Mac recordings the game plays its AdLib sound, which is the default anyway.
+    Write-Host '## Importing the Mac sounds and music'
+    $macOut = Join-Path (Split-Path $exe) 'mac-sounds'
+    try {
+        $count = Import-F117MacSounds -Source $MacSource -Python $python -Work $Work -Out $macOut -ArchiveFolder $ArchiveFolder
+        Write-Host "## Mac sounds imported: $count recordings"
+    } catch {
+        Write-Host "## Mac sounds not imported: $($_.Exception.Message) The game will use its AdLib sound."
+    }
 }
 
 $targets = @()
 if ($ShortcutPath) { $targets += $ShortcutPath }
 elseif (-not $NoDesktopShortcut) { $targets += Join-Path ([Environment]::GetFolderPath('Desktop')) 'OpenNighthawk.lnk' }
-if ($StartMenu) { $targets += Join-Path ([Environment]::GetFolderPath('Programs')) 'OpenNighthawk.lnk' }
+$menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'OpenNighthawk'
+if ($StartMenu) { New-Item -ItemType Directory -Force -Path $menu | Out-Null; $targets += Join-Path $menu 'OpenNighthawk.lnk' }
 $shell = New-Object -ComObject WScript.Shell
 foreach ($target in $targets) {
     $target = Assert-F117OutputPath -Path $target -GameDirectory $accepted
@@ -78,6 +95,27 @@ foreach ($target in $targets) {
     $shortcut.WorkingDirectory = Split-Path $exe
     $shortcut.Save()
     Write-Host "## Shortcut: $target"
+}
+if ($InstallDir) {
+    $uninstall = Join-Path $InstallDir 'uninstall.ps1'
+    $uninstallCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $uninstall + '"'
+    if ($StartMenu) {
+        $u = $shell.CreateShortcut((Join-Path $menu 'Uninstall OpenNighthawk.lnk'))
+        $u.TargetPath = 'powershell.exe'
+        $u.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $uninstall + '"'
+        $u.WorkingDirectory = $env:TEMP
+        $u.Save()
+    }
+    # Apps & features (per user, no administrator rights): name, size and the uninstaller.
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenNighthawk'
+    New-Item -Path $key -Force | Out-Null
+    $kb = [int]((Get-ChildItem -LiteralPath $InstallDir -Recurse -File | Measure-Object Length -Sum).Sum / 1KB)
+    $values = @{ DisplayName='OpenNighthawk'; DisplayVersion=(Get-Date -Format 'yyyy.MM.dd'); Publisher='OpenNighthawk (built on this PC)';
+                 InstallLocation=$InstallDir; DisplayIcon=$exe; UninstallString=$uninstallCommand }
+    foreach ($k in $values.Keys) { New-ItemProperty -Path $key -Name $k -Value $values[$k] -PropertyType String -Force | Out-Null }
+    foreach ($k in 'NoModify','NoRepair') { New-ItemProperty -Path $key -Name $k -Value 1 -PropertyType DWord -Force | Out-Null }
+    New-ItemProperty -Path $key -Name 'EstimatedSize' -Value $kb -PropertyType DWord -Force | Out-Null
+    Write-Host '## Listed in Windows Apps & features (uninstall from there or the Start menu)'
 }
 [IO.File]::WriteAllText((Join-Path $Work '.f117-setup-complete'),$exe)
 Write-Host "## Build complete: $exe"
