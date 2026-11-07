@@ -81,5 +81,5 @@ try {
     Write-Host ('Uninstall stopped: ' + $_.Exception.Message)
     $code = 1
 }
-if (-not $Yes) { Read-Host 'Press Enter to close' | Out-Null }
+if (-not $Yes) { Write-Host 'Press Enter to close.'; [void][Console]::ReadLine() }
 exit $code
