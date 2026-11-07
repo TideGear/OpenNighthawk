@@ -285,6 +285,10 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
     uint32_t depth32 = scene_model_depth(position, camera);
     if (g_lod_shift) { depth32 <<= g_lod_shift > 16 ? 16 : g_lod_shift; if (depth32 > 32767) depth32 = 32767; g_lod_shift = 0; }
+    {   /* F117_LOD_FINEST (experiment, R29): every model at its finest level of detail, whatever its distance */
+        static int finest = -1; if (finest < 0) finest = getenv("F117_LOD_FINEST") != NULL;
+        if (finest) depth32 = 0;
+    }
     const uint16_t depth = (uint16_t)depth32;
     cache_entry *entry = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
     if (!entry) return -1;

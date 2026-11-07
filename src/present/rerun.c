@@ -847,6 +847,10 @@ static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t 
             chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
             if (!visible) { chosen = -1; tr_culled++; break; }
             pk.darken = far_detail(m, ds, zh, klass & 7u);
+            {   /* F117_FAR_DARKEN=N (experiment, R29): every far pick's darken byte set to N, to test whether lights appear with it */
+                static int forced = -2; if (forced == -2) { const char *e = getenv("F117_FAR_DARKEN"); forced = e ? atoi(e) : -1; }
+                if (forced >= 0) pk.darken = (uint8_t)forced;
+            }
             /* The comparator groups by ring first, so the ring's scale and
              * the square root do not affect ordering within that group. */
             pk.distance_squared = (uint32_t)(ddx * ddx + ddy * ddy + ddz * ddz);
@@ -866,7 +870,11 @@ static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t 
                 for (int q = 0; q < why_n; q++)
                     if ((int)mi == why_models[q]) {
                         why_left--;
-                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d pos %d,%d,%d level %d detail %u: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                        int owncell = 0;     /* chosen, but left to the game's own walk (its own cell at its own level): the placement below skips it */
+                        if (chosen == 1 && pk.level == r && game_would[r] && game_draws[r])
+                            for (int k = step_lo[r]; k < step_hi[r]; k++) if (own_x[k] == dcx && own_y[k] == dcy) owncell = 1;
+                        fprintf(stderr, "[why] clock %llu model %u ring %d cell %d,%d entry %d %spos %d,%d,%d level %d detail %u: %s\n", (unsigned long long)c->icount, mi, f->ring, (int)dcx, (int)dcy, f->entry,
+                                owncell ? "owncell " : "",
                                 (int)(int16_t)(uint16_t)(f->x - eye_l[f->ring][0]), (int)(int16_t)(uint16_t)(f->z - (eye_l[f->ring][2] < 2 ? 2 : eye_l[f->ring][2])), (int)(int16_t)(uint16_t)-(f->y - eye_l[f->ring][1]),
                                 chosen == 1 ? pk.level : -1, chosen == 1 ? (unsigned)pk.darken : 0u,
                                 chosen == 1 ? "chosen" : chosen == -1 ? (last_reason == 1 ? "culled by the game's visibility test, check 1 far plane" : last_reason == 2 ? "culled by the game's visibility test, check 2 near plane" : last_reason == 3 ? "culled by the game's visibility test, check 3 across" : last_reason == 4 ? "culled by the game's visibility test, check 4 up" : last_reason == 5 ? "culled by the game's visibility test, check 5 metric" : "culled by the game's visibility test, check ?") : "no level within reach or bounds");
