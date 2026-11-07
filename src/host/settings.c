@@ -30,6 +30,7 @@ static const char *const C_DRAW[] = { "original", "near", "far", "maximum", NULL
 static const char *const C_DOTS[] = { "original", "near", "far", "maximum", NULL };
 static const char *const C_PICKORD[] = { "exact", "fast", NULL };
 static const char *const C_VIEW[] = { "wide", "4:3", NULL };
+static const char *const C_DETAIL[] = { "full", "original", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* The folders the Folders screen edits, typed or pasted. */
@@ -63,6 +64,7 @@ static const setting_def DEFS[] = {
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
     { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
     { "dot-distance", "Terrain dots",     C_DOTS,         0, 1 },
+    { "model-detail", "Model detail",     C_DETAIL,       0, 1 },     /* Remastered: full (every model at its finest version) or original (by distance); applied at once */
     { "remaster-view", "Remastered view", C_VIEW,         0, 1 },     /* Remastered: wide (fills a wide window) or 4:3 (the original's framing); applied at once */
     { "pick-order", "Far object order", C_PICKORD,    0, 1 },     /* Remastered: exact (the game's own order) or fast (cheaper by about 0.65 ms a frame); applied at once */     /* Remastered: how far the small dark ground dots are drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
@@ -106,9 +108,10 @@ const char *settings_description(const char *key)
         { "no-aspect", "Stretches the original pixels without correcting their intended 4:3 display shape." },
         { "draw-distance", "Remastered only: how far scenery is drawn. The game stops drawing each object at a fixed depth, so buildings appear suddenly; each step here draws far objects one scale coarser, four times farther: Near one step (the default, almost free), Far two, Maximum the whole map. Original keeps the game's own reach. Farther costs picture rate." },
         { "pick-order", "Remastered only: the order far objects are drawn in. Exact keeps the game's own order for objects the same distance away. Fast sorts them with a cheaper method that saves about 0.65 ms a frame at Maximum draw distance and lets objects tied on distance swap places, which changes a few edge pixels in some frames." },
+        { "model-detail", "Remastered only: Full draws every building and object in its most detailed version at any distance, so their lights no longer appear suddenly as you fly closer (costs about 1 ms a frame at 4K). Original picks the version by distance, as the game does." },
         { "remaster-view", "Remastered only: Wide fills a wide window with a wider view of the world. 4:3 keeps the original's framing, with black bars at the sides of a wide window; the picture is still redrawn without the original's road and coastline jitter." },
         { "dot-distance", "Remastered only: how far the small dark dots that add detail to plain ground are drawn. Original keeps the game's own reach; each step reaches one scale coarser, up to Maximum. Far lights and buildings follow Draw distance instead." },
-        { "present-scale", "Sets render resolution. 3 draws three pixels per original pixel on each axis. Auto fits the display. Higher values cost more CPU time." },
+        { "present-scale", "Sets render resolution as a multiplier on the original 320 x 200 picture: 3 draws three pixels per original pixel on each axis (960 x 600), 9 draws 2880 x 1800. The size is shown beside the number. Auto fits the display. Higher values cost more CPU time." },
         { "present-line-width", "Changes fine-line thickness. Auto scales the width with resolution." },
         { "present-age", "Interpolate gives smooth motion with some delay. Extrapolate predicts ahead and can overshoot sudden changes." },
         { "pad-deadzone", "Ignores small stick movements near the center to prevent unwanted drift." },
@@ -155,7 +158,7 @@ static int fix_height(const settings_state *s, int index)
 int settings_group(const char *key)
 {
     static const char *const audio[] = { "sound", "music-source", "sound-source", "roland", "adlib-effects", "speaker", "opl", NULL };
-    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "pick-order", "remaster-view", "present-scale", "present-line-width", "present-age", NULL };
+    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "model-detail", "pick-order", "remaster-view", "present-scale", "present-line-width", "present-age", NULL };
     for (int i = 0; video[i]; ++i) if (!strcmp(key, video[i])) return SETTINGS_VIDEO;
     static const char *const advanced[] = { "timing", "ips", "sim-hz", "engine", NULL };
     for (int i = 0; audio[i]; ++i) if (!strcmp(key, audio[i])) return SETTINGS_AUDIO;
@@ -609,6 +612,9 @@ static const char *action_help(int action)
     return action >= 0 && action < (int)(sizeof help / sizeof help[0]) ? help[action] : "";
 }
 
+static int s_auto_scale;     /* what Picture detail "auto" resolves to on this display, for the menu's label (0: unknown) */
+void settings_set_auto_scale(int n) { s_auto_scale = n; }
+
 void settings_render(const settings_state *s, uint32_t *px, int w, int h)
 {
     int rows[48];
@@ -694,7 +700,15 @@ void settings_render(const settings_state *s, uint32_t *px, int w, int h)
         if (on) put_text(px, w, h, x0 + 12, y, ">", color);
         if (i < NDEFS) {
             char v[64];
-            snprintf(v, sizeof v, "< %s >", settings_value(s,i));
+            const char *val = settings_value(s, i);
+            if (!strcmp(DEFS[i].key, "present-scale")) {
+                /* Picture detail is a multiplier on the original's 320 x 200: show the picture it makes (the stored value stays the number) */
+                const int is_auto = !strcmp(val, "auto");
+                const int n = is_auto ? s_auto_scale : atoi(val);
+                if (n < 1 || n > 16) snprintf(v, sizeof v, "< %s >", val);
+                else if (is_auto) snprintf(v, sizeof v, "< auto (%d: %dx%d) >", n, 320 * n, 200 * n);
+                else snprintf(v, sizeof v, "< %d (%dx%d) >", n, 320 * n, 200 * n);
+            } else snprintf(v, sizeof v, "< %s >", val);
             put_text(px, w, h, x0 + 30, y, DEFS[i].label, color);
             put_text(px, w, h, x0 + 200, y, v, s->custom[i][0] || s->value[i] != DEFS[i].def ? 0xFF60B0FFu : color);
             if (!DEFS[i].live && changed(s,i)) put_text(px, w, h, x0 + 370, y, "*", 0xFF60E060u);

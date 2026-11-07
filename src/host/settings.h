@@ -127,5 +127,6 @@ const char *settings_value(const settings_state *s, int i);
 /* Draw the menu into an ARGB buffer (w*h, w >= 400, h >= 280), over whatever it holds: a dark panel
  * centred, 8x16 text. */
 void settings_render(const settings_state *s, uint32_t *pixels, int w, int h);
+void settings_set_auto_scale(int n);     /* what Picture detail "auto" resolves to on this display (the menu shows it); 0 unknown */
 
 #endif

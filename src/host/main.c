@@ -49,6 +49,7 @@
 #include "sidecar.h"
 #include "soundpolicy.h"
 #include "remaster_live.h"
+#include "remaster_scene.h"
 #include "gpu_compose.h"
 #include "font8x16.h"
 #ifdef _WIN32
@@ -143,6 +144,7 @@ static unsigned g_rlive_base;
 static SDL_Renderer *g_ren;            /* the window's renderer, for its output size */
 static int g_aspect_on = 1;            /* the 4:3 shape is kept (not --no-aspect) */
 static const char *g_view_choice = "wide";   /* Remastered view: wide (fills a wide window) or 4:3 (the original's framing, black bars at the sides) */
+static const char *g_detail_choice = "full"; /* Model detail: full (every model at its finest version, the default) or original (by distance, as the game does) */
 static SDL_Texture *g_wtex;
 static uint32_t *g_wpix;
 static int g_ww, g_wh;
@@ -1596,6 +1598,10 @@ int main(int argc, char **argv)
             if (strcmp(v, "wide") && strcmp(v, "4:3")) { fprintf(stderr, "--remaster-view takes wide or 4:3\n"); return 2; }
             g_view_choice = v; i++;
         }
+        else if (!strcmp(a, "--model-detail") && v) {                  /* Remastered: full (every model at its finest version) or original (by distance) */
+            if (strcmp(v, "full") && strcmp(v, "original")) { fprintf(stderr, "--model-detail takes full or original\n"); return 2; }
+            g_detail_choice = v; remaster_scene_set_full_detail(!strcmp(v, "full")); i++;
+        }
         else if (!strcmp(a, "--dot-distance") && v) {                  /* Remastered: how far the small dark ground dots are drawn (original, near, far, maximum) */
             if (dot_levels(v) < 0) { fprintf(stderr, "--dot-distance takes original, near, far or maximum\n"); return 2; }
             remaster_live_set_dot_levels(dot_levels(v)); g_dot_choice = v; i++;
@@ -1636,7 +1642,7 @@ int main(int argc, char **argv)
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--presentation original|enhanced|remastered] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker] [--watch latest|SESSION] [--seek SECONDS]\n"
-                "             [--draw-distance maximum|far|near|original|N] [--dot-distance original|near|far|maximum] [--pick-order exact|fast] [--remaster-view wide|4:3]\n"
+                "             [--draw-distance maximum|far|near|original|N] [--dot-distance original|near|far|maximum] [--pick-order exact|fast] [--remaster-view wide|4:3] [--model-detail full|original]\n"
                 "             [--crt] [--crt-mask] [--crt-glow] [--colourblind off|protanopia|deuteranopia|tritanopia] [--subtitles]\n"
                 "             [--mac-sounds DIR] [--music-source default|mac|dos] [--sound-source default|mac|dos] [--adlib-effects | --no-adlib-effects]\n"
                 "             [--remap A:B] [--pad-deadzone N] [--pad-fire1 N] [--pad-fire2 N] [--pad-invert-x Y|N] [--pad-invert-y Y|N] [--pad-keys B:KEY,...]\n"
@@ -1793,6 +1799,7 @@ int main(int argc, char **argv)
         g_scale = mode ? mode->h / 240 : 4;
         if (g_scale < 1) g_scale = 1;
         if (g_scale > 16) g_scale = 16;
+        settings_set_auto_scale(g_scale);        /* the menu labels "auto" with what it picked here */
     }
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, 640, 400);
@@ -2429,6 +2436,7 @@ int main(int argc, char **argv)
                         settings_mark_saved(&g_set, "dot-distance", g_dot_choice);
                         settings_mark_saved(&g_set, "pick-order", g_pick_choice);
                         settings_mark_saved(&g_set, "remaster-view", g_view_choice);
+                        settings_mark_saved(&g_set, "model-detail", g_detail_choice);
                     }
                     fill_fix_picker(&g_set);
                     fill_bindings(&g_set);
@@ -2543,6 +2551,7 @@ int main(int argc, char **argv)
                             for (int i = 0; i < n; i++) {
                                 if (!strcmp(d[i].key, "pick-order")) { rerun_set_pick_order(!strcmp(settings_value(&g_set, i), "fast")); g_pick_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "remaster-view")) g_view_choice = d[i].choices[g_set.value[i]];
+                                if (!strcmp(d[i].key, "model-detail")) { g_detail_choice = d[i].choices[g_set.value[i]]; remaster_scene_set_full_detail(!strcmp(g_detail_choice, "full")); }
                                 if (!strcmp(d[i].key, "dot-distance")) { remaster_live_set_dot_levels(dot_levels(settings_value(&g_set, i))); g_dot_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "draw-distance")) { rerun_set_distance(draw_distance_units(settings_value(&g_set, i))); g_draw_choice = d[i].choices[g_set.value[i]]; }
                                 if (!strcmp(d[i].key, "fullscreen")) {

@@ -45,6 +45,8 @@ wraps complete descriptions and scrolls by their actual rendered height.
 
 Developer verification is documented in [host-acceptance.md](host-acceptance.md).
 
+Model detail (Remastered only, applied at once): Full (default) draws every building and object in its most detailed version at any distance. The game picks a model's version by distance, and a building's lights exist only in the finer versions, so with Original (the game's own choice) the lights of distant buildings appear suddenly as you fly closer. Full costs about 1 ms a frame at 3840 x 2160 on the GPU path.
+
 Remastered view (Remastered only, applied at once): Wide (default) fills a wide window with a wider view of the world, the game's own picture
 (HUD, cockpit) staying at its size in the middle. 4:3 keeps the original's framing: the same Remastered redraw, without the original's road and
 coastline jitter, at 4:3 with black bars at the sides of a wide window. In a 4:3 window both settings give the same picture.

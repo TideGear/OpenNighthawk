@@ -67,6 +67,7 @@ int remaster_scene_has_shared(const remaster_scene *s);
  * a depth that many bits smaller in that scale's units, and the game would pick its level of detail by the depth in its own ring's units. Set before the call,
  * for that call only (it returns to 0). */
 void remaster_scene_lod_shift(unsigned bits);
+void remaster_scene_set_full_detail(int on);     /* Model detail: 1 Full (default, every model at its finest version), 0 Original (by distance) */
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f);
 

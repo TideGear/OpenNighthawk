@@ -275,6 +275,20 @@ void remaster_scene_origin(const remaster_scene *s, int32_t out[3]) { for (int j
 
 static F117_TLS unsigned g_lod_shift;
 void remaster_scene_lod_shift(unsigned bits) { g_lod_shift = bits; }
+/* Model detail (the Remastered setting, R29 in docs/owner-issues.md). Each model has versions chosen by distance from limits in the game's own data;
+ * a building's lights belong only to the finer ones, so at long draw distances the lights appeared only as each building crossed its limit. Full
+ * (1, the default) always takes the finest version; Original (0) chooses by distance as the game does. F117_LOD_FINEST=0/1 overrides (diagnostic). */
+static int g_full_detail = -1;      /* -1: not set yet (the default, Full, unless F117_LOD_FINEST says otherwise) */
+void remaster_scene_set_full_detail(int on)
+{
+    const char *e = getenv("F117_LOD_FINEST");
+    g_full_detail = e ? (e[0] && e[0] != '0') : (on != 0);
+}
+static int full_detail(void)
+{
+    if (g_full_detail < 0) remaster_scene_set_full_detail(1);     /* first use: the default, with the environment override applied */
+    return g_full_detail;
+}
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f)
 {
@@ -285,10 +299,7 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
     uint32_t depth32 = scene_model_depth(position, camera);
     if (g_lod_shift) { depth32 <<= g_lod_shift > 16 ? 16 : g_lod_shift; if (depth32 > 32767) depth32 = 32767; g_lod_shift = 0; }
-    {   /* F117_LOD_FINEST (experiment, R29): every model at its finest level of detail, whatever its distance */
-        static int finest = -1; if (finest < 0) finest = getenv("F117_LOD_FINEST") != NULL;
-        if (finest) depth32 = 0;
-    }
+    if (full_detail()) depth32 = 0;    /* Model detail: Full (the setting's default) draws every model at its finest version, whatever its distance (R29) */
     const uint16_t depth = (uint16_t)depth32;
     cache_entry *entry = lookup(s, bank, bank_signature_cached(s, bank), model, depth);
     if (!entry) return -1;
