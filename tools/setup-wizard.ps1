@@ -11,6 +11,23 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'setup-licences.ps1')
 
+# Console QuickEdit: a click in the window starts a text selection, which pauses a running program's output until Enter or Esc (a white box and a
+# frozen setup). Switched off for this window while the wizard runs, and put back as it was at the end. Not applicable when output is redirected.
+$quickEditWas = $null
+try {
+    Add-Type -Namespace F117 -Name Con -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetStdHandle(int h);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GetConsoleMode(System.IntPtr h, out uint m);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool SetConsoleMode(System.IntPtr h, uint m);
+'@
+    $hIn = [F117.Con]::GetStdHandle(-10)
+    $mode = 0
+    if ([F117.Con]::GetConsoleMode($hIn, [ref]$mode)) {
+        $quickEditWas = $mode
+        [void][F117.Con]::SetConsoleMode($hIn, (($mode -band (-bnot 0x40)) -bor 0x80))     # clear ENABLE_QUICK_EDIT_MODE, set ENABLE_EXTENDED_FLAGS
+    }
+} catch { $quickEditWas = $null }
+
 $interactive = -not $AcceptLicences
 $started = [Diagnostics.Stopwatch]::StartNew()
 $logLines = [Collections.Generic.List[string]]::new()      # kept in memory until the log's folder is known
@@ -362,5 +379,6 @@ try {
     $exitCode = 1
 } finally {
     if ($writer) { $writer.Dispose() }
+    if ($null -ne $quickEditWas) { try { [void][F117.Con]::SetConsoleMode([F117.Con]::GetStdHandle(-10), [uint32]$quickEditWas) } catch {} }
 }
 exit $exitCode
