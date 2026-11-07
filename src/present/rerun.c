@@ -641,7 +641,8 @@ int rerun_why_model(unsigned model)               /* F117_FAR_WHY=M0,M1,...: is 
     for (int i = 0; i < n; i++) if ((int)model == list[i]) return 1;
     return 0;
 }
-static const uint16_t *g_allow_saved;            /* the across-test table as the copy had it (the wide copy raises it), before far_scenery lowers it for the coarser levels */
+static int g_up_raised;                          /* the wide copy raised the up allowance table (F117_WIDE_UP_ALLOW), so far_cull clamps it to leave room for the depth */
+static const uint16_t *g_allow_saved;           /* the across-test table as the copy had it (the wide copy raises it), before far_scenery lowers it for the coarser levels */
 static F117_TLS int g_cull_reason;                       /* which check of the last far_cull call rejected the object (1 far plane, 2 near plane, 3 across, 4 up, 5 metric), diagnostic */
 /* The environment switches far_cull and the choosing read, taken once before the choosing runs on several threads. */
 static int why_on, nskip, skip, force_base;
@@ -680,13 +681,16 @@ static int far_cull(const machine_t *m, uint16_t ds, uint16_t ss, const int16_t 
     if (widen && shift > 0 && g_wide_pct > 100) { int32_t w = ((int32_t)si * g_wide_pct) / 100; si = (int16_t)(w > 32767 ? 32767 : w); }
     const int16_t axx = xh < 0 ? (int16_t)-xh : xh;
     if (axx > si && !((skip & 1) && shift == 0)) CULL_FAIL(2);
-    ax = (int16_t)((int16_t)(di + ((int16_t)rd16(m->mem, ss, t_up) >> shift)) >> cl);
+    /* A raised up allowance (the wide copy) must leave room for the depth in 16 bits, as the across allowance is lowered in the far walks. */
+    int16_t up_word = (int16_t)rd16(m->mem, ss, t_up);
+    if (g_up_raised) { const int room = 32600 - (int)(int16_t)rd16(m->mem, ds, 0x48E6); if (up_word > room && room > 0) up_word = (int16_t)room; }   /* only with the raised table: off, the game's own value is used unchanged */
+    ax = (int16_t)((int16_t)(di + (up_word >> shift)) >> cl);
     int16_t up = ax;
     if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF] != 0) up = (int16_t)(((int16_t)((up >> 3) + ax)) >> 1);
     const int16_t ayy = yh < 0 ? (int16_t)-yh : yh;
     /* The same for the up test: the original's 3D view ends at the top of the cockpit panel, but the wide picture's margins show the world down to the
      * bottom of the screen, so a far object below the old view's edge was dropped there (R30, lower margins). Percent of the up cone for coarser-level
-     * objects in a wide picture: F117_FAR_WIDE_UP (default 400; 100 = the game's cone; shown to add the missing lower-margin lights, docs/owner-issues.md R30). */
+     * objects in a wide picture: F117_FAR_WIDE_UP (default 400. Measured on the owner's flights, 7 Nov: 300 and 600 are identical to 400 on one session, 200 loses 93 pixels on the other, 100 loses more; the ceiling is the 16-bit sum with the depth; 100 = the game's cone; shown to add the missing lower-margin lights, docs/owner-issues.md R30). */
     static int widen_up = -1;
     if (widen_up < 0) { const char *e = getenv("F117_FAR_WIDE_UP"); widen_up = e ? atoi(e) : 400; if (widen_up < 100) widen_up = 100; }
     if (widen_up > 100 && shift > 0 && g_wide_pct > 100) { int32_t u = ((int32_t)up * widen_up) / 100; up = (int16_t)(u > 32767 ? 32767 : u); }
@@ -1336,6 +1340,19 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                     wr16(g_copy_mem, ds, (uint16_t)(0x48F6 + 2 * md), (uint16_t)(int16_t)(v < -32000 ? -32000 : v));
                 }
                 if (rd16(g_copy_mem, ds, at) < allowance) wr16(g_copy_mem, ds, at, (uint16_t)allowance);
+            }
+            /* The same for the vertical allowance: the cull's up test (|y'| against (|z'| + up allowance) >> cl, the table at ss:[E570], eight words)
+             * dropped buildings and terrain once they passed the original view's top or bottom edge, which the wide picture shows in its lower margins
+             * (owner, 7 Nov 12:09: things disappear as they move into the bottom left or right). F117_WIDE_UP_ALLOW=0 leaves it. */
+            static int up_val = -1;      /* F117_WIDE_UP_ALLOW=N: the allowance in world units (0 off; default the same as the sideways one) */
+            if (up_val < 0) { const char *e = getenv("F117_WIDE_UP_ALLOW"); up_val = e ? atoi(e) : (int)allowance; if (up_val > 18000) up_val = 18000; }
+            g_up_raised = up_val > 0;
+            if (up_val > 0) {
+                const uint16_t ssg = s->cpu.seg[S_SS], base_up = rd16(g_copy_mem, ds, 0xE570);
+                for (int md = 0; md < 8; md++) {
+                    const uint16_t at = (uint16_t)(base_up + 2 * md);
+                    if (rd16(g_copy_mem, ssg, at) < (unsigned)up_val) wr16(g_copy_mem, ssg, at, (uint16_t)up_val);
+                }
             }
             g_air_k = -1; g_air_done = 0; g_air_pct = pct;
             if (!getenv("F117_WIDE_NO_AIR") && s->exec_hook_n < EXEC_HOOKS_MAX) {      /* F117_WIDE_NO_AIR (diagnostic): the aircraft test left alone */
