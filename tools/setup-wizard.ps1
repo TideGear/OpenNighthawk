@@ -87,7 +87,7 @@ function Ask-Pick([string]$question, [string[]]$labels, [int]$default) {
 }
 # Delete a folder in a background job, showing a moving line meanwhile (deleting about 1.4 GB takes several seconds).
 function Remove-FolderVisibly([string]$folder, [string]$what) {
-    Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
+    Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor Cyan -NoNewline
     Write-Host $what -ForegroundColor White
     Log "$what ($folder)"
     $job = Start-Job -ScriptBlock { param($p) Remove-Item -LiteralPath $p -Recurse -Force } -ArgumentList $folder
@@ -309,7 +309,7 @@ try {
             $progress = $null
             $stage = $line.Substring(3)
             $stageClock.Restart()
-            Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor DarkCyan -NoNewline
+            Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor Cyan -NoNewline
             Write-Host $stage -ForegroundColor $(if ($stage -like '*not imported*') { 'Magenta' } else { 'White' })
         } elseif ($line -match '^\[(\d+)/(\d+)\]') {
             $progress = "compiled $($Matches[1]) of $($Matches[2]) files"
