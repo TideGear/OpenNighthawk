@@ -279,9 +279,24 @@ static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const u
     SDL_UnlockMutex(g_gpu_lock);
     return ok;
 }
+/* The GPU compositor and GPU presentation (F117_GPU_COMPOSE, F117_GPU_PRESENT) are on by default in Remastered with a real display (6 November
+ * 2026, the owner: at 3840 x 2160 the CPU compositor fell to 7 to 30 pictures a second and slowed the game; the GPU held 50 to 60). Off when
+ * either variable is 0, and by default with the dummy video driver or the software renderer, which the checksum guards and headless checks use,
+ * so their baselines stay the CPU compositor's. Without a usable GPU device the CPU compositor is used as before. */
+static int gpu_wanted(const char *var)
+{
+    const char *e = getenv(var);
+    if (e) return e[0] && e[0] != '0';
+    if (!g_remaster) return 0;
+    const char *video = SDL_GetCurrentVideoDriver();
+    if (video && !strcmp(video, "dummy")) return 0;
+    const char *render = getenv("SDL_RENDER_DRIVER");
+    if (render && !strcmp(render, "software")) return 0;
+    return 1;
+}
 static void gpu_compose_start(void)
 {
-    if (g_gpu || !getenv("F117_GPU_COMPOSE")) return;
+    if (g_gpu || !gpu_wanted("F117_GPU_COMPOSE")) return;
     const char *base = SDL_GetBasePath();
     SDL_GPUDevice *rdev = g_gpu_present && g_ren ? SDL_GetGPURendererDevice(g_ren) : NULL;
     g_gpu = rdev ? gpu_compose_create_on(rdev, base ? base : ".") : gpu_compose_create(base ? base : ".");
@@ -1760,7 +1775,7 @@ int main(int argc, char **argv)
     }
     const Uint64 win_flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
                              (getenv("F117_HIDDEN_WINDOW") ? SDL_WINDOW_HIDDEN : 0);   /* diagnostic: a real renderer (GPU) without showing a window, for timing */
-    if (getenv("F117_GPU_PRESENT")) {          /* piece 3: SDL's own GPU renderer, its device shared with the GPU compositor */
+    if (gpu_wanted("F117_GPU_PRESENT")) {      /* piece 3: SDL's own GPU renderer, its device shared with the GPU compositor */
         win = SDL_CreateWindow("F-117A Nighthawk Stealth Fighter 2.0", win_w, win_h, win_flags);
         ren = win ? SDL_CreateGPURenderer(NULL, win) : NULL;
         if (win && !ren) { fprintf(stderr, "[gpu-present] no GPU renderer (%s): the ordinary renderer is used\n", SDL_GetError()); SDL_DestroyWindow(win); win = NULL; }
@@ -2975,6 +2990,11 @@ int main(int argc, char **argv)
                 }
             }
         }
+        {   /* F117_TAB_SHOT_AT=CLOCK,CLOCK,... (test tooling): the Tab screenshot at those machine clocks, for replays (Tab itself is not recorded) */
+            static int init; static uint64_t at[16]; static int n_at, next;
+            if (!init) { init = 1; const char *e = getenv("F117_TAB_SHOT_AT"); while (e && *e && n_at < 16) { at[n_at++] = strtoull(e, (char **)&e, 0); if (*e == ',') e++; else break; } }
+            while (next < n_at && H.m.cpu.icount >= at[next]) { next++; g_shot_now++; }
+        }
         while (g_shot_now) {
             --g_shot_now;
             char path[1000];
@@ -2983,6 +3003,13 @@ int main(int argc, char **argv)
             SDL_PathInfo info;
             for (unsigned suffix = 1; SDL_GetPathInfo(path, &info); ++suffix)
                 snprintf(path, sizeof path, "%s/%s-clock%llu-%u.bmp", g_shots_dir, g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount, suffix);
+            if (WIDE_IS(show) && g_gpu && gpu_tex_mode() == 1) {
+                /* GPU presentation draws the compositor's texture without reading it back, so g_wpix still holds the last picture the CPU made
+                 * (every Tab capture of a GPU flight was the same stale runway picture, 6 November): read the shown picture back for the shot */
+                SDL_LockMutex(g_gpu_lock);
+                gpu_compose_read_target(g_gpu, g_wpix);
+                SDL_UnlockMutex(g_gpu_lock);
+            }
             const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
             SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
             const int ok = sf && SDL_SaveBMP(sf, path);

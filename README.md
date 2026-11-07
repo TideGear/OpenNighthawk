@@ -346,9 +346,9 @@ itself:
   between two frames; anything without a match holds and then switches
   halfway. Superseded by `rerun`; kept as an experiment.
 - `--presentation remastered` rebuilds the 3-D view with this project's own renderer from a render copy of the machine: a wide view in a widescreen window, depth-correct drawing, and
-  far scenery out to the whole map (the *Draw distance*, *Terrain dots* and *Far object order* settings), drawn at the display's refresh rate. It is experimental. An optional GPU compositor and
-  GPU present path (`F117_GPU_COMPOSE=1`, `F117_GPU_PRESENT=1`; both off by default, Windows with a Direct3D 12 GPU) give 4K frame times of 14.5 to 17.1 ms on the author's machine against 32 to 40 ms
-  for the CPU path; see [docs/gpu-compositor.md](docs/gpu-compositor.md) and [docs/remaster-performance.md](docs/remaster-performance.md).
+  far scenery out to the whole map (the *Draw distance*, *Terrain dots* and *Far object order* settings), drawn at the display's refresh rate. It is experimental. Remastered composes and presents the picture on the GPU
+  (Windows with a Direct3D 12 GPU; the CPU compositor is used automatically without one, and `F117_GPU_COMPOSE=0` / `F117_GPU_PRESENT=0` turn the GPU path off): 4K frame times of 14.5 to 17.1 ms
+  on the author's machine against 32 to 40 ms for the CPU path, which on a 4K flight fell to 7 frames a second and slowed the game; see [docs/gpu-compositor.md](docs/gpu-compositor.md) and [docs/remaster-performance.md](docs/remaster-performance.md).
 
 **Higher resolution (`--present-scale` above 1) and higher frame rates
 (`interp`, `rerun`) are experimental.** Both redraw what the original draws,
