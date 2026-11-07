@@ -20,9 +20,13 @@ free space while it builds, and about 5 to 15 minutes.
    folder's `mac-sounds`, and the game then uses them first (Mac, then Roland, then
    AdLib). Unpacking an archive uses The Unarchiver's `unar`, downloaded and checked
    like the other tools. A failed import does not stop setup; the game uses AdLib.
-5. **Settings (optional).** Take the defaults, or choose the visuals (Original,
-   Enhanced or Remastered), full screen, and whether the bug fixes are on. Everything
-   can be changed later in the game with the ` key.
+5. **Settings (optional).** Take the defaults, or choose the visuals (Original, Enhanced or
+   Remastered), full screen, and whether the bug fixes are on. If you choose Remastered,
+   setup also asks for the **Remastered view** (wide, which fills a widescreen window with
+   extra view at the sides, or standard 4:3) and the **draw distance** (Original, Near,
+   Far or Maximum: how far away buildings, lights and scenery are drawn; farther looks
+   better and costs frame rate). Everything can be changed later in the game with the `
+   key.
 
 It then shows one line per stage and a live progress line while compiling. When it
 finishes it removes its build files (the downloaded tools and the compiler's
@@ -50,7 +54,8 @@ install and never touches the game installation.
 `-Data FOLDER` (the game folder; if it does not hold a verified game, setup stops
 rather than using another installation it finds), `-InstallDir FOLDER`,
 `-NoDesktopShortcut`, `-StartMenu`, `-KeepBuildFiles`, `-Mt32Roms FOLDER`,
-`-MacSource PATH`, `-Work FOLDER` (the temporary build workspace, default
+`-MacSource PATH`, `-Presentation original|enhanced|remastered`, `-RemasterView wide|4:3`,
+`-DrawDistance original|near|far|maximum`, `-Work FOLDER` (the temporary build workspace, default
 `%LOCALAPPDATA%\OpenNighthawk\setup-work`). Scripted runs keep existing settings and
 merge these choices in. `uninstall.ps1 -Yes [-RemoveSaves]` uninstalls without asking.
 

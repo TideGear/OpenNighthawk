@@ -6,7 +6,8 @@
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',
       [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[string]$MacSource,[string]$Mt32Roms,
-      [switch]$AcceptLicences)
+      [ValidateSet('original','enhanced','remastered')][string]$Presentation,[ValidateSet('wide','4:3')][string]$RemasterView,
+      [ValidateSet('original','near','far','maximum')][string]$DrawDistance,[switch]$AcceptLicences)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'setup-licences.ps1')
@@ -206,6 +207,9 @@ try {
             if (-not (Test-Path -LiteralPath $MacSource)) { throw "-MacSource: not found: $MacSource" }
             $MacSource = Normalize-Path $MacSource
         }
+        if ($Presentation) { $settings['presentation'] = $Presentation }
+        if ($RemasterView) { $settings['remaster-view'] = $RemasterView }
+        if ($DrawDistance) { $settings['draw-distance'] = $DrawDistance }
     }
     if ($interactive) {
         Write-F117Heading 'Sound'
@@ -242,6 +246,16 @@ try {
                     'Enhanced - the original picture, smoother and sharper at higher resolutions',
                     'Remastered - the 3-D world redrawn at your screen''s resolution, widescreen, longer draw distance') 0
                 $settings['presentation'] = @('original','enhanced','remastered')[$v]
+                if ($v -eq 2) {
+                    $rv = Ask-Pick 'Remastered view: how much of the world the 3-D picture shows' @('Wide - fills a widescreen window with extra view at the sides (the default)',
+                        'Standard 4:3 - the original game''s framing, with black bars in a widescreen window') 0
+                    if ($rv -eq 1) { $settings['remaster-view'] = '4:3' }
+                    $dd = Ask-Pick 'Draw distance: how far away buildings, lights and scenery are drawn. Farther looks better but costs frame rate.' @('Original - the game''s own distance, fastest',
+                        'Near - a little farther, almost free',
+                        'Far - much farther, costs some frame rate',
+                        'Maximum - the whole map, costs the most frame rate') 0
+                    if ($dd -gt 0) { $settings['draw-distance'] = @('original','near','far','maximum')[$dd] }
+                }
                 if (Ask-YesNo 'Start in full screen?' $false) { $settings['fullscreen'] = 'yes' }
                 $f = Ask-Pick 'Fixes: OpenNighthawk can repair bugs in the original game (crashes, mistakes in missions and scoring).' @('Recommended fixes on (the default)','Original behaviour, bugs included') 0
                 if ($f -eq 1) { $settings['fixes'] = 'original' }
