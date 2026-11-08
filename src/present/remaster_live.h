@@ -29,6 +29,8 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg);
 /* A collector that gathers the model requests of a rerun copy (rerun.h): reset before the copy runs. After it the copy's
  * completed frame is the one remaster_live_composite and remaster_live_wide use. */
 void remaster_live_copy_begin(remaster_live *r);
+void remaster_live_set_deferred(remaster_live *r, int on);   /* a copy stages its frame; remaster_live_commit makes it the done frame (worker mode) */
+void remaster_live_commit(remaster_live *r);
 
 /* The machine reached exec_hook[base + k]; k counts from the first entry armed here. Always returns 0 (never takes a
  * call). */

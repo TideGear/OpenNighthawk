@@ -2037,6 +2037,7 @@ int main(int argc, char **argv)
             g_pw.go = SDL_CreateSemaphore(0);
             g_pw.done = SDL_CreateSemaphore(0);
             if (g_pw.go && g_pw.done) g_pw.thread = SDL_CreateThread(present_worker_main, "present-draw", &g_pw);
+            if (g_pw.thread && g_rlive_copy && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);   /* the copy stages its frame; the loop commits it after the copy */
             for (int k = 0; k < PAL_HELPERS; k++) {
                 g_pal[k].go = SDL_CreateSemaphore(0);
                 g_pal[k].done = SDL_CreateSemaphore(0);
@@ -2926,6 +2927,7 @@ int main(int argc, char **argv)
  if (g_pw.ww > 0 && getenv("F117_BLEND_PICTURE")) remaster_blend_picture_check(g_rlive_copy, &H.m, g_scale, g_pw.ww, ca, cb, plan.t); }
                     } else
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
+                    if (g_rlive_copy) remaster_live_commit(g_rlive_copy);   /* its frame becomes the one the worker will compose (deferred mode: the worker is idle here) */
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;
                     g_pw.frame = fresh;

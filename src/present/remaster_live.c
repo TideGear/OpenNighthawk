@@ -143,6 +143,12 @@ struct remaster_live {
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
     int32_t done_band[BAND_REC_BASE];
     int done_have_band, have_done, done_origin[2], done_window[4];
+    /* Deferred mode (remaster_live_set_deferred): a copy stages its finished frame here instead of replacing `done`, which a worker may be reading; the main
+     * thread makes it the done frame with remaster_live_commit at a point where the worker is idle. */
+    remaster_frame staged;
+    int32_t staged_band[BAND_REC_BASE];
+    int staged_have_band, have_staged, staged_origin[2], staged_window[4], staged_complete;
+    int deferred, copy_open;
     long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
 };
@@ -196,10 +202,35 @@ void remaster_live_copy_begin(remaster_live *r)
     r->pending = 0;
     r->nunits = 0;
     r->have_band = 0;
-    r->have_done = 0;
-    r->frame_complete = r->done_complete = 0;
-    r->done.n = 0;
+    if (r->deferred) {              /* the done frame stays as the worker has it; the copy's result is staged and committed later */
+        r->have_staged = 0; r->staged.n = 0; r->copy_open = 1;
+        r->frame_complete = 0;
+    } else {
+        r->have_done = 0;
+        r->frame_complete = r->done_complete = 0;
+        r->done.n = 0;
+    }
     r->hud_at = r->done_hud_at = -1;
+}
+
+void remaster_live_set_deferred(remaster_live *r, int on) { if (r) r->deferred = on != 0; }
+
+/* Deferred mode: make the copy's finished frame the one a composite uses, exactly as the end of a copy did without deferral (a copy that completed
+ * no frame leaves the done frame empty). Call it only while no composite is reading the done frame. */
+void remaster_live_commit(remaster_live *r)
+{
+    if (!r || !r->deferred || !r->copy_open) return;
+    r->copy_open = 0;
+    if (r->have_staged) {
+        remaster_frame tmp = r->done; r->done = r->staged; r->staged = tmp;
+        memcpy(r->done_band, r->staged_band, sizeof r->done_band);
+        r->done_have_band = r->staged_have_band; r->have_done = r->done.n > 0;
+        r->done_complete = r->staged_complete;
+        memcpy(r->done_origin, r->staged_origin, sizeof r->origin); memcpy(r->done_window, r->staged_window, sizeof r->window);
+        r->have_staged = 0;
+    } else {
+        r->done.n = 0; r->have_done = 0; r->done_complete = 0;
+    }
 }
 
 unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
@@ -1974,7 +2005,13 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
-        {                                       /* the completed frame becomes the one a composite uses */
+        if (r->deferred) {                      /* the completed frame is staged: the main thread commits it when the worker is idle */
+            remaster_frame tmp = r->staged; r->staged = r->frame; r->frame = tmp;
+            memcpy(r->staged_band, r->band_rec, sizeof r->staged_band);
+            r->staged_have_band = r->have_band; r->have_staged = r->staged.n > 0;
+            r->staged_complete = r->frame_complete;
+            memcpy(r->staged_origin, r->origin, sizeof r->origin); memcpy(r->staged_window, r->window, sizeof r->window);
+        } else {                                /* the completed frame becomes the one a composite uses */
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
             memcpy(r->done_band, r->band_rec, sizeof r->done_band);
             r->done_have_band = r->have_band; r->have_done = r->done.n > 0;
