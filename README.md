@@ -285,7 +285,7 @@ Host keys (chosen so as not to collide with the game's):
 | ` (tilde) | the menu: two tabs, Settings and Keys; pauses the game. Tab switches tab, ` or Esc closes it |
 | Alt+Enter | toggle fullscreen |
 | Ctrl+Alt+P | pause / resume |
-| Tab or Ctrl+Alt+C | screenshot in live play or replay (Tab with the menu closed): saved in `screenshots` beside `sessions`, with a brief on-screen confirmation; `<session>-clock<flight clock>.bmp` names the flight and moment, with a numbered suffix for repeated captures at the same clock |
+| Tab or Ctrl+Alt+C | screenshot in live play (Tab with the menu closed): a PNG named `OpenNighthawk YYYY-MM-DD HH-MM-SS.png` in your Pictures folder, in `OpenNighthawk` (change it with `--screenshots DIR`, the `screenshots` ini key or Settings, Folders), with a brief on-screen message naming the file; a second picture in the same second gets ` (2)`. In a replay, Tab saves `screenshots/<session>-clock<flight clock>.bmp` beside `sessions` so the picture names the flight and moment, unless a screenshots folder is given |
 | G, digits, Enter (watching a replay) | jump to that second |
 | + / - / 0 (watching a replay) | faster / slower / normal speed |
 | ] / [ (watching a replay) | jump 30 seconds on / back |

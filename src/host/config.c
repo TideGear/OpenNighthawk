@@ -12,10 +12,10 @@ static const char *const VALUED[] = {
     "data", "save", "engine", "ips", "sim-hz", "scale", "midi", "log", "record", "replay", "time-us",
     "exit-after", "opl", "audio-queue-log", "audio-dump", "mt32-control", "mt32-pcm", "mt32-seed",
     "coverage", "fix", "roland", "mt32-roms", "speaker", "present", "present-scale", "draw-distance", "dot-distance", "model-detail", "pick-order", "remaster-view", "present-line-width", "present-age", "present-log", "timing",
-    "presentation", "fixes", "pad-deadzone", "pad-fire1", "pad-fire2", "pad-invert-x", "pad-invert-y", "pad-keys", "remap", "sound", "mac-sounds", "music-source", "sound-source", "colourblind", NULL };
+    "presentation", "fixes", "pad-deadzone", "pad-fire1", "pad-fire2", "pad-invert-x", "pad-invert-y", "pad-keys", "remap", "sound", "mac-sounds", "screenshots", "music-source", "sound-source", "colourblind", NULL };
 static const char *const PATHS[] = {
     "data", "save", "log", "record", "replay", "audio-queue-log", "audio-dump", "mt32-control",
-    "mt32-pcm", "mt32-roms", "coverage", "present-log", "mac-sounds", NULL };
+    "mt32-pcm", "mt32-roms", "coverage", "present-log", "mac-sounds", "screenshots", NULL };
 static const char *const SWITCHES[] = { "fullscreen", "no-aspect", "no-record", "crt", "crt-mask", "crt-glow", "subtitles", "adlib-effects", NULL };
 
 static int in(const char *const *list, const char *s)

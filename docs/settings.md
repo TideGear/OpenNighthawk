@@ -39,8 +39,12 @@ row waits, and Backspace on a row also clears its buttons (shown as "+ pad N").
 Settings no longer lists the controller-button rows. Fix-picker selections are saved as a custom
 set and take effect after restart.
 
-Folders accepts typed or pasted paths. Enter keeps an edit, Escape undoes it,
-and Backspace clears a folder choice. Save writes folder changes. Choose Fixes
+Folders accepts typed or pasted paths: the game folder, the MT-32 ROM folder,
+the Mac recordings, the save folder (pilots, settings history and recorded
+flights) and the screenshots folder (Tab saves PNG pictures there; empty means
+Pictures\OpenNighthawk). Enter keeps an edit, Escape undoes it,
+and Backspace clears a folder choice. Save writes folder changes; they apply
+after restart. Choose Fixes
 wraps complete descriptions and scrolls by their actual rendered height.
 
 Developer verification is documented in [host-acceptance.md](host-acceptance.md).

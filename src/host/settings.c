@@ -36,6 +36,7 @@ static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia"
 /* The folders the Folders screen edits, typed or pasted. */
 static const struct { const char *key, *label; } TEXTS[SETTINGS_TEXTS] = {
     { "data", "Game folder" }, { "mt32-roms", "MT-32 ROM folder" }, { "mac-sounds", "Mac recordings" },
+    { "save", "Save folder" }, { "screenshots", "Screenshots folder" },
 };
 const char *settings_text_label(int i) { return i >= 0 && i < SETTINGS_TEXTS ? TEXTS[i].label : ""; }
 const char *settings_text_key(int i) { return i >= 0 && i < SETTINGS_TEXTS ? TEXTS[i].key : ""; }
@@ -123,6 +124,8 @@ const char *settings_description(const char *key)
         { "data", "Folder containing your original DOS game files. Clear to use the normal game-folder search." },
         { "mt32-roms", "Folder containing your MT-32 ROM files for Munt's Roland music output." },
         { "mac-sounds", "Folder containing recordings extracted from your own Macintosh copy of the game." },
+        { "save", "Folder for your pilots, settings history and recorded flights. Clear to use the default under your user profile." },
+        { "screenshots", "Folder where Tab saves pictures, as PNG files named OpenNighthawk and the date and time. Clear for the Pictures folder, in OpenNighthawk." },
     };
     for (unsigned i = 0; i < sizeof help / sizeof help[0]; ++i)
         if (!strcmp(help[i].key, key)) return help[i].text;

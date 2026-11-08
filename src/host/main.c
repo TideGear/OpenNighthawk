@@ -105,6 +105,9 @@ static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
  * session names the flight, the clock the moment a replay of it jumps to */
 static char g_shots_dir[800], g_session_name[64];
+static char g_pictures_dir[800];           /* --screenshots DIR (ini: screenshots): where Tab saves PNG pictures; empty: Pictures\OpenNighthawk */
+static int g_shot_legacy;                  /* a replay (or F117_TAB_SHOT_AT, test tooling): the older screenshots/<session>-clock<N>.bmp names, which the test scripts read */
+static char g_shot_note_buf[160];
 static unsigned g_shot_now;
 static uint64_t g_shot_note_until;
 static const char *g_shot_note;
@@ -1491,6 +1494,7 @@ int main(int argc, char **argv)
             else { fprintf(stderr, "unknown option %s\n", a); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--screenshots") && v) { snprintf(g_pictures_dir, sizeof g_pictures_dir, "%s", v); i++; }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--watch") && v) { watch = v; i++; }
         else if (!strcmp(a, "--seek") && v) { seek_secs = atof(v); i++; }       /* a replay starts this many seconds in */
@@ -1644,7 +1648,7 @@ int main(int argc, char **argv)
                 "             [--presentation original|enhanced|remastered] [--fixes original|recommended|custom] [--sound ask|adlib|roland|speaker] [--watch latest|SESSION] [--seek SECONDS]\n"
                 "             [--draw-distance maximum|far|near|original|N] [--dot-distance original|near|far|maximum] [--pick-order exact|fast] [--remaster-view wide|4:3] [--model-detail full|original]\n"
                 "             [--crt] [--crt-mask] [--crt-glow] [--colourblind off|protanopia|deuteranopia|tritanopia] [--subtitles]\n"
-                "             [--mac-sounds DIR] [--music-source default|mac|dos] [--sound-source default|mac|dos] [--adlib-effects | --no-adlib-effects]\n"
+                "             [--screenshots DIR] [--mac-sounds DIR] [--music-source default|mac|dos] [--sound-source default|mac|dos] [--adlib-effects | --no-adlib-effects]\n"
                 "             [--remap A:B] [--pad-deadzone N] [--pad-fire1 N] [--pad-fire2 N] [--pad-invert-x Y|N] [--pad-invert-y Y|N] [--pad-keys B:KEY,...]\n"
                 "             [--mt32-seed N] [--coverage FILE] [--replay-fixes log|cli]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
@@ -1924,6 +1928,7 @@ int main(int argc, char **argv)
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) g_setup_sound = 0;                  /* a replay brings its own inputs, SETUP's answers included */
+    if (replay) g_shot_legacy = 1;                  /* Tab in a replay keeps the screenshots/<session>-clock<N>.bmp names the test scripts read */
     if (!time_us) time_us = machine_local_time_us();
     if (!replay) save_fixset_check(save, win);      /* a replay brings its recorded set */
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
@@ -2392,6 +2397,7 @@ int main(int argc, char **argv)
                     if(data_option)settings_mark_folder_saved(&g_set,"data",data);
                     if(mt32_roms)settings_mark_folder_saved(&g_set,"mt32-roms",mt32_roms);
                     if(mac_sounds_path)settings_mark_folder_saved(&g_set,"mac-sounds",mac_sounds_path);
+                    if(g_pictures_dir[0] && !g_shot_legacy)settings_mark_folder_saved(&g_set,"screenshots",g_pictures_dir);
                     SDL_StartTextInput(win);                              /* for the Folders screen; the other screens ignore typed text */
                     settings_set_live(&g_set, "fullscreen", fullscreen ? 1 : 0);
                     {   /* the menu shows what is running: options given on the command line (a .bat) are not in the file, so mark them */
@@ -3006,12 +3012,28 @@ int main(int argc, char **argv)
         }
         while (g_shot_now) {
             --g_shot_now;
-            char path[1000];
-            if (g_shots_dir[0]) SDL_CreateDirectory(g_shots_dir);
-            snprintf(path, sizeof path, "%s/%s-clock%llu.bmp", g_shots_dir[0] ? g_shots_dir : ".", g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount);
+            char path[1000], shown_name[200] = "";
             SDL_PathInfo info;
-            for (unsigned suffix = 1; SDL_GetPathInfo(path, &info); ++suffix)
-                snprintf(path, sizeof path, "%s/%s-clock%llu-%u.bmp", g_shots_dir, g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount, suffix);
+            const int legacy = (g_shot_legacy || getenv("F117_TAB_SHOT_AT")) && !g_pictures_dir[0] && !getenv("F117_SHOT_PNG");   /* an explicit --screenshots folder (or F117_SHOT_PNG, test tooling) always gets the new PNG names, replays included */
+            if (legacy) {
+                if (g_shots_dir[0]) SDL_CreateDirectory(g_shots_dir);
+                snprintf(path, sizeof path, "%s/%s-clock%llu.bmp", g_shots_dir[0] ? g_shots_dir : ".", g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount);
+                for (unsigned suffix = 1; SDL_GetPathInfo(path, &info); ++suffix)
+                    snprintf(path, sizeof path, "%s/%s-clock%llu-%u.bmp", g_shots_dir, g_session_name[0] ? g_session_name : "replay", (unsigned long long)H.m.cpu.icount, suffix);
+            } else {
+                /* Pictures\OpenNighthawk\OpenNighthawk 2026-11-07 15-30-12.png (a second one in the same second gets " (2)") */
+                if (!g_pictures_dir[0]) { const char *pic = SDL_GetUserFolder(SDL_FOLDER_PICTURES); snprintf(g_pictures_dir, sizeof g_pictures_dir, "%sOpenNighthawk", pic ? pic : "./"); }
+                SDL_CreateDirectory(g_pictures_dir);
+                time_t now = time(NULL); struct tm *lt = localtime(&now);
+                char stamp[64];
+                snprintf(stamp, sizeof stamp, "OpenNighthawk %04d-%02d-%02d %02d-%02d-%02d", lt ? lt->tm_year + 1900 : 0, lt ? lt->tm_mon + 1 : 0, lt ? lt->tm_mday : 0, lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0, lt ? lt->tm_sec : 0);
+                snprintf(path, sizeof path, "%s/%s.png", g_pictures_dir, stamp);
+                snprintf(shown_name, sizeof shown_name, "%s.png", stamp);
+                for (unsigned suffix = 2; SDL_GetPathInfo(path, &info); ++suffix) {
+                    snprintf(path, sizeof path, "%s/%s (%u).png", g_pictures_dir, stamp, suffix);
+                    snprintf(shown_name, sizeof shown_name, "%s (%u).png", stamp, suffix);
+                }
+            }
             if (WIDE_IS(show) && g_gpu && gpu_tex_mode() == 1) {
                 /* GPU presentation draws the compositor's texture without reading it back, so g_wpix still holds the last picture the CPU made
                  * (every Tab capture of a GPU flight was the same stale runway picture, 6 November): read the shown picture back for the shot */
@@ -3021,11 +3043,12 @@ int main(int argc, char **argv)
             }
             const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
             SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
-            const int ok = sf && SDL_SaveBMP(sf, path);
+            const int ok = sf && (legacy ? SDL_SaveBMP(sf, path) : SDL_SavePNG(sf, path));
             if (sf) SDL_DestroySurface(sf);
             fprintf(stderr, "[shot] %s%s\n", ok ? "" : "could not write ", path);
             if (!ok) fprintf(stderr, "[shot] %s\n", SDL_GetError());
-            g_shot_note = ok ? "Screenshot saved" : "Screenshot failed - see console";
+            if (ok && shown_name[0]) { snprintf(g_shot_note_buf, sizeof g_shot_note_buf, "Saved %s", shown_name); g_shot_note = g_shot_note_buf; }
+            else g_shot_note = ok ? "Screenshot saved" : "Screenshot failed - see console";
             g_shot_note_until = SDL_GetTicks() + 2500;
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };

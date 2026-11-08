@@ -255,6 +255,30 @@ int main(void)
         settings_key_event(&s, SKEY_ESC);                                            /* Esc in the menu drops the edits */
         CHECK(!s.open && !strcmp(s.text_val[0], "C:/Old/Game") && !strcmp(s.text_val[1], "C:/Roms"));
         CHECK(!strcmp(settings_text_key(0), "data") && !strcmp(settings_text_key(1), "mt32-roms") && !strcmp(settings_text_key(2), "mac-sounds"));
+        CHECK(!strcmp(settings_text_key(3), "save") && !strcmp(settings_text_key(4), "screenshots") && !strcmp(settings_text_label(4), "Screenshots folder"));
+        {   /* the save and screenshots folders load from the file, change on the screen, and save back */
+            settings_load(&s, "save = D:/Saves\nscreenshots = D:/Pics\n");
+            CHECK(!strcmp(s.text_val[3], "D:/Saves") && !strcmp(s.text_val[4], "D:/Pics"));
+            settings_open(&s);
+            const int to_folders = settings_steps_to_row(&s, rows + 6);
+            for (int i = 0; i < to_folders; i++) settings_key_event(&s, SKEY_DOWN);
+            settings_key_event(&s, SKEY_ENTER);                                      /* the Folders screen */
+            for (int i = 0; i < 4; i++) settings_key_event(&s, SKEY_DOWN);           /* to Screenshots folder */
+            settings_key_event(&s, SKEY_ENTER);
+            CHECK(s.text_edit == 4);
+            settings_key_event(&s, SKEY_BACKSPACE);
+            settings_text_input(&s, "tures");
+            settings_key_event(&s, SKEY_ENTER);
+            CHECK(!strcmp(s.text_val[4], "D:/Pictures"));                             /* 's' removed, "tures" typed */
+            settings_key_event(&s, SKEY_ESC);
+            char *saved = settings_apply(&s, "save = D:/Saves\nscreenshots = D:/Pics\n");
+            CHECK(saved);
+            char sv[300];
+            CHECK(saved && config_get(saved, "save", sv, sizeof sv) && !strcmp(sv, "D:/Saves"));
+            CHECK(saved && config_get(saved, "screenshots", sv, sizeof sv) && !strcmp(sv, "D:/Pictures"));
+            free(saved);
+            settings_key_event(&s, SKEY_ESC);
+        }
         /* it draws, in bounds */
         static uint32_t px[640 * 400];
         settings_open(&s);

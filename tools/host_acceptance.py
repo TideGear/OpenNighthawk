@@ -248,6 +248,22 @@ def check_workers(log, presentation, spec):
                 distinct_plans=len(plans))
 
 
+def check_shots_png(directory):
+    """Live Tab saves PNG files named OpenNighthawk YYYY-MM-DD HH-MM-SS.png (a repeat in the same second gets " (N)")."""
+    files = sorted(directory.glob("*.png"))
+    require(len(files) == 4, "expected four screenshots: two taps, another Tab, Ctrl+Alt+C; held repeat must be ignored")
+    pixels = []
+    for f in files:
+        require(re.fullmatch(r"OpenNighthawk \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}(?: \(\d+\))?\.png", f.name), "screenshot name is not OpenNighthawk date time")
+        with Image.open(f) as im:
+            require(im.format == "PNG" and im.width >= 320 and im.height >= 200, "invalid screenshot")
+            rgb = im.convert("RGB")
+            require(rgb.getbbox(), "screenshot is empty")
+            pixels.append(rgb.tobytes())
+    require(len(set(pixels)) == 1, "paused screenshots did not show the same picture")
+    return {"captures": 4, "format": "PNG"}
+
+
 def check_shots(directory):
     files = sorted(directory.glob("*.bmp"))
     require(len(files) == 4, "expected four screenshots: two taps, another Tab, Ctrl+Alt+C; held repeat must be ignored")
@@ -379,10 +395,13 @@ class Runner:
 
     def input(self, mode):
         session = self.manifest["sound"]["session"]
+        shots = self.args.out / ("input-" + mode) / "screenshots"
+        extra = ["--screenshots", str(shots)] if mode == "live" else []        # live Tab saves PNGs in the screenshots folder: keep the test's out of Pictures
         root, elapsed = self.run("input-" + mode, session,
-            ["--presentation", "original", "--exit-after", "1000000000"],
+            ["--presentation", "original", "--exit-after", "1000000000"] + extra,
             {"F117_SHOT_AUTOTEST": "1"}, watch=mode == "watch")
-        return dict(name="input-" + mode, status="pass", seconds=elapsed, checks=check_shots(root / "screenshots"))
+        return dict(name="input-" + mode, status="pass", seconds=elapsed,
+                    checks=check_shots_png(root / "screenshots") if mode == "live" else check_shots(root / "screenshots"))
 
     def menu(self):
         shot = self.args.out / "menu.ppm"
