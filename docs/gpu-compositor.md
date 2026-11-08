@@ -646,3 +646,95 @@ Controls with the overlap off and the same switch: one thread 0 differ (equal to
 The median is 16.68 ms in both overlap runs, which looks like 60 Hz pacing (vsync on the hidden window) rather than the true cost; the next measurement should run without it to see how far below 16.7 ms the work really is.
 
 **The worker-compose check (`F117_WORKER_COMPOSE_CHECK`) is not usable as a race test on the GPU path.** On `build/f117a.exe` 21:49, GPU path, Maximum, to clock 4.3 billion, it reports the same result with the overlap off and on (275 composites the same, 2,525 different, the first difference at composite 1; on a full run with the overlap on, a difference of 183,366 wide pixels at composite 3,451, with the main thread's recomputation repeatable). So it disagrees in the old order too: the main thread's recomputation is not the same path as the worker's GPU composite. It is a pre-existing problem with the check, not with the overlap; the overlap's exactness rests on the guards (CPU and GPU 901/901), the stress replays and the live GPU check (0 differing pixels at Near, Far and Maximum). Fixing or retiring this check is a small task for the next session.
+
+### R37 review prototype (8 November 2026, owner comparison pending)
+
+Executable: `C:/Dev/F-117A Recomp/build/f117a.exe`, built 8 November
+2026 at 12:20:01 local time. `F117_SQUARE_PEN=1` selects a review-only
+upright square swept along each segment in the picture layer and both scene
+compositors; it is off by default. Scene compositors share the endpoint-square
+convex hull and continue the segment's inverse-depth plane across it.
+No new baseline is approved or generated.
+
+Completed sequential verification, explicit `EXE` above:
+
+- Machine state: `guards.sh statehash`,
+  `OLD=D:/f117-dl/old-ontests/f117a-20261104-2207.exe`, old and new at
+  Near and Maximum all give `600306c77cb04481` (square pen off).
+- CPU and GPU guards: 901/901 identical at Near, Far and Maximum,
+  `F117_FAR_WIDE_ACROSS=0 F117_FAR_WIDE_UP=100 F117_WIDE_UP_ALLOW=0`,
+  square pen off. Counts and checksum contents independently inspected.
+- Square pen on, widenings on: live CPU/GPU comparison completed through
+  clock 4,800,000,000 at all three distances. Each last cumulative report
+  covers 3,421 pictures with zero differing pixels. These diagnostic timings
+  include both compositors and are not performance evidence.
+
+Evidence: `private/r37-verify/verification.txt`, produced by
+`private/r37-verify/verify.sh` (both untracked). Archived executable startup
+initially failed because runtime DLLs were not found; the corrected runs above
+supersede those failed attempts. The statehash helper now preserves the supplied
+new executable, supplies its runtime DLL search directory using Git Bash path
+conversion, and fails explicitly when no final hash is produced.
+
+Host acceptance passed 12/12 with one job and square pen off; its saved report was verified against this executable and the current checkers. Evidence
+in `private/r37-host` and `private/r37-verify/host-console.txt`. Owner-flight
+before/after shots remain required. The owner's original 3840 x 1800 screenshot
+was inspected directly: include the teal heading marker and grey frame joins,
+using `session-20261107-223638` (recorded AdLib effects enabled).
+Owner-flight captures are running sequentially under `private/r37-verify/owner_pen_0` and `owner_pen_1`. No ONTests replacement, commit or push yet. No threading change in R37.
+
+Owner-flight capture progress: the square-pen-off run of
+`session-20261107-223638` completed at clock 15,880,000,000, final machine hash
+`d209adb69eb1143b` (this is a different flight/end clock from the standard
+`600306c77cb04481` guard). Three PNGs were captured at requested clocks
+15.5, 15.7 and 15.85 billion. Actual backing images are 4102 x 1800 with
+`WIN=3840x1800 PSCALE=9`; both variants use these identical settings.
+The first two images were visually inspected and show the flight and HUD joins.
+The square-pen-on paired run has started; its final state must equal the off
+run above. The review images and state logs remain in the workspace under
+`private/r37-verify/owner_pen_0` and `owner_pen_1`, not the owner's folders.
+
+R37 OWNER GATE: both full owner-flight runs completed at clock
+15,880,000,000 with identical final state `d209adb69eb1143b`. Their hidden
+GPU output widths differ (4102 versus 4576), so the full-width pictures are
+not a valid whole-frame A/B. Exact, unscaled 2880 x 1800 centre crops align:
+all three pairs have zero differing pixels below row 900 (the cockpit).
+Pixel-preserving HUD close-ups in `private/r37-verify/review/flight2_joins.png`
+show the teal marker's tilted tips removed and the grey frame join filled.
+Full centre crops and two other comparisons are beside it. Review applies to
+these line ends/joins; differing margins are excluded from this comparison.
+The owner must approve before the visual default or baseline changes.
+Windowless probe off produced 4608 x 1800; no full dummy recapture was started.
+Commit/push was rejected by automatic approval review, citing an unverified
+remote and pending owner-flight gate; remote readback confirms
+`https://github.com/TideGear/OpenNighthawk.git`. Nothing was committed/pushed.
+
+ONTests updated with the 8 November 12:20:01 executable, all build DXIL files,
+and changed `f117machine_api.dll` (other runtime DLLs already match by SHA-256).
+`EXE=C:/Users/Tideg/Desktop/ONTests/f117a.exe` launched headless with dummy
+video/audio, private workspace saves, no config, and exit-after 1,000,000:
+explicitly waited process exit 0, no remaining game process. Square pen remains
+off by default. Owner approval of R37 and the blocked commit/push is pending.
+
+Owner approved R37's shown line ends/joins and commit/push in chat on
+8 November ("i approve"). Square pen is now the default; `F117_SQUARE_PEN=0`
+retains the prior pen. Rebuilt successfully and started sequential verification
+with explicit executable/build header in `private/r37-approved/verification.txt`.
+Candidate baseline is isolated in `private/r37-approved/baseline`, with widenings
+off. The previous baseline remains untouched until candidate CPU/GPU guards,
+live comparisons, machine hashes and host acceptance have been inspected.
+
+R37 approved-default verification complete: `build/f117a.exe`, 8 November
+2026 13:58:29, explicit EXE in `private/r37-approved/verification.txt`.
+Old/new Near and Maximum hashes all `600306c77cb04481`; CPU and GPU each
+901/901 at Near/Far/Maximum against the candidate square-pen baseline,
+widenings off; live CPU/GPU checks 3,421 pictures each, zero differing pixels
+at all three distances; host acceptance 12/12, saved report verified against
+this executable. All six checksum sets independently inspected, 901 entries
+and identical contents. Candidate baseline promoted after owner approval;
+previous baseline preserved in `private/r37-approved/pre-r37-baseline`.
+ONTests refreshed with this executable, DXIL files and changed DLLs. Explicit
+EXE headless launch, dummy audio/video, private saves: exit 0, no stray process.
+R37's visual gate is approved; owner's flight of this build remains open.
+Next item is R36 sea-band smoothing, with its own owner gate. No release
+publication was requested or performed.

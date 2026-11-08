@@ -1,6 +1,7 @@
 /* remaster_raster.c - the Remastered presentation's triangle fill (see remaster_raster.h). */
 #include "remaster_raster.h"
 #include "exact.h"
+#include "square_pen.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -497,6 +498,17 @@ long remaster_line(remaster_target *t, remaster_v3 a, remaster_v3 b, double widt
     const double cap_z = t->line_depth_dx * ex + t->line_depth_dy * ey;
     const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz - cap_z }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz - cap_z };
     const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz + cap_z }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz + cap_z };
+    if (square_pen_enabled()) {
+        square_pen_point hull[16]; sv v[16];
+        const int count = square_pen_hull(sa.x, sa.y, sb.x, sb.y, h, hull);
+        for (int k=0;k<count;k++) {
+            v[k].x=hull[k].x; v[k].y=hull[k].y;
+            v[k].iz=sa.iz+t->line_depth_dx*(v[k].x-sa.x)+t->line_depth_dy*(v[k].y-sa.y);
+        }
+        long pixels=0;
+        for (int k=1;k<count-1;k++) pixels+=fill_triangle(t,v[0],v[k],v[k+1],color);
+        return pixels;
+    }
     return fill_triangle(t, q0, q1, q2, color) + fill_triangle(t, q0, q2, q3, color);
 }
 

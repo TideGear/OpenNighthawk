@@ -31,11 +31,20 @@ case "$1" in
     done ;;
   statehash)
     OLD=${OLD:-$HOME/Desktop/ONTests/f117a.exe}
+    # Archived executables may share the current build's unchanged runtime DLLs.
+    runtime_dir=$(dirname "${EXE:-$ROOT/build/f117a.exe}")
+    if command -v cygpath >/dev/null 2>&1; then runtime_dir=$(cygpath -u "$runtime_dir"); fi
+    export PATH="$runtime_dir:$PATH"
     for d in near maximum; do
       for b in old new; do
-        E=; [ $b = old ] && E=$OLD
+        E=${EXE:-$ROOT/build/f117a.exe}; [ $b = old ] && E=$OLD
         EXE=$E MODE=gpu XARGS="--log $WORK/sh_${b}_$d.log" "$HERE/bench.sh" "sh_${b}_$d" $d F117_REPLAY_FIXED_CADENCE=1 >/dev/null 2>&1
-        echo "$b $d: $(grep -h 'final hash' "$WORK/sh_${b}_$d.log" | tail -1)"
+        final=$(grep -h 'final hash' "$WORK/sh_${b}_$d.log" | tail -1)
+        if [ -z "$final" ]; then
+          echo "$b $d: FAILED (no final hash; inspect $WORK/sh_${b}_$d/out.txt)" >&2
+          exit 1
+        fi
+        echo "$b $d: $final"
       done
     done ;;
   *) echo "usage: guards.sh baseline | checksums TAG [NAME=value ...] | statehash"; exit 2 ;;

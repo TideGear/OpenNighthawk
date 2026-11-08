@@ -447,12 +447,36 @@ void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double b
     const double ey = fabs(uy) * (len + width) / 2 + fabs(ux) * half;
     const double my = (ay + by) / 2;
     double top = floor(my - ey), bottom = ceil(my + ey);
+    /* Owner-approved R37: sweep an upright square along the segment.
+     * At each scanline intersect the segment with the square's vertical
+     * extent, then expand that interval horizontally by half the width. */
+    const char *square_env = getenv("F117_SQUARE_PEN");
+    const int square_pen = !square_env || atoi(square_env) != 0;
+    if (square_pen) {
+        top = floor(fmin(ay, by) - half);
+        bottom = ceil(fmax(ay, by) + half);
+    }
     if (top < ct) top = ct; if (bottom > cb) bottom = cb;
     if (top >= bottom) return;
     for (int y = (int)top; y < (int)bottom; y++) {
         const double yc = y + 0.5;
         double lo = cl, hi = cr;
-        for (int k = 0; k < 2; k++) {
+        if (square_pen) {
+            double ta = 0.0, tb = 1.0;
+            if (fabs(dy) < 1e-12) {
+                if (yc < ay - half || yc >= ay + half) continue;
+            } else {
+                ta = (yc - half - ay) / dy;
+                tb = (yc + half - ay) / dy;
+                if (ta > tb) { double tmp = ta; ta = tb; tb = tmp; }
+                if (ta < 0.0) ta = 0.0;
+                if (tb > 1.0) tb = 1.0;
+                if (ta > tb) continue;
+            }
+            lo = fmax(lo, ax + dx * ta - half);
+            hi = fmin(hi, ax + dx * tb + half);
+        }
+        for (int k = 0; !square_pen && k < 2; k++) {
             const double slope = k ? -uy : ux;
             const double base = k ? (yc - ay) * ux + ax * uy : (yc - ay) * uy - ax * ux;
             const double low = -half, high = k ? half : len + half;

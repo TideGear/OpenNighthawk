@@ -5,6 +5,7 @@
 
 #define STROKE_WORDS 24     /* words of one stroke record (strokes_x.hlsl: the same stride) */
 #include "exact.h"
+#include "square_pen.h"
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -334,7 +335,17 @@ static int add_stroke(clist *l, const gpu_trace_rec *r, int w, int h, uint32_t i
     const double cap_z = depth_dx * ex + depth_dy * ey;
     const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz - cap_z }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz - cap_z };
     const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz + cap_z }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz + cap_z };
-    if (!c_add(l, id, 0, 0, 0, q0, q1, q2, w, h) || !c_add(l, id, 0, 0, 0, q0, q2, q3, w, h)) return 0;
+    if (square_pen_enabled()) {
+        square_pen_point hull[16]; sv v[16];
+        const int count = square_pen_hull(sa.x, sa.y, sb.x, sb.y, hw, hull);
+        for (int k=0;k<count;k++) {
+            v[k].x=hull[k].x; v[k].y=hull[k].y;
+            v[k].iz=sa.iz+depth_dx*(v[k].x-sa.x)+depth_dy*(v[k].y-sa.y);
+        }
+        for (int k=1;k<count-1;k++) if (!c_add(l,id,0,0,0,v[0],v[k],v[k+1],w,h)) return 0;
+    } else {
+        if (!c_add(l, id, 0, 0, 0, q0, q1, q2, w, h) || !c_add(l, id, 0, 0, 0, q0, q2, q3, w, h)) return 0;
+    }
     memset(words, 0, STROKE_WORDS * 4);
     words[0] = r->color; words[1] = r->paint_index; words[2] = r->paint_owner; words[3] = (uint32_t)line_point; words[4] = (uint32_t)radius;
     const float f[9] = { (float)sa.x, (float)sa.y, (float)sb.x, (float)sb.y, (float)depth_dx, (float)depth_dy, (float)sa.x, (float)sa.y, (float)sa.iz };
