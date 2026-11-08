@@ -456,6 +456,25 @@ static int band_triangle(uint32_t *wd, const gpu_trace_rec *r, const sv s[3], co
 
 typedef struct { gbuf *b; const void *data; Uint32 bytes; SDL_GPUBufferUsageFlags usage; } seg;
 
+/* F117_GPU_PASS_TIMES=1 (diagnostic): each compute pass of the begin step is submitted on its own and waited for, so its wall time (GPU work plus one
+ * submit and fence) is known; the means are printed every 120 pictures. The sum is longer than the normal run, which overlaps the passes. */
+static int pass_times_on(void) { static int on = -1; if (on < 0) on = getenv("F117_GPU_PASS_TIMES") != NULL; return on; }
+static void pass_split(gpu_compose *g, SDL_GPUCommandBuffer **cb, int idx, Uint64 *mark)
+{
+    static double sum[6]; static unsigned n[6]; static const char *name[6] = { "upload", "bands", "polygons", "strokes (points)", "strokes (pixels)", "-" };
+    SDL_GPUFence *f = SDL_SubmitGPUCommandBufferAndAcquireFence(*cb);
+    SDL_WaitForGPUFences(g->dev, true, &f, 1);
+    SDL_ReleaseGPUFence(g->dev, f);
+    const Uint64 now = SDL_GetTicksNS();
+    sum[idx] += (double)(now - *mark) / 1e6; n[idx]++;
+    *mark = now;
+    *cb = SDL_AcquireGPUCommandBuffer(g->dev);
+    if (idx == 4 && n[4] % 120 == 0) {
+        fprintf(stderr, "[gpu-pass] mean of %u pictures (ms, each pass on its own): ", n[4]);
+        for (int k = 0; k < 5; k++) if (n[k]) fprintf(stderr, "%s %.2f%s", name[k], sum[k] / n[k], k < 4 ? ", " : "\n");
+    }
+}
+
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 {
     if (!g || !in) return 0;
@@ -598,6 +617,8 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         }
     }
     SDL_EndGPUCopyPass(cp);
+    Uint64 pmark = SDL_GetTicksNS();
+    if (pass_times_on()) { pmark = t_setup; pass_split(g, &cb, 0, &pmark); if (!cb) return 0; }
 
     SDL_GPUBuffer *b_colour = g->colour.buf, *b_index = g->index_.buf, *b_invz = g->invz.buf, *b_owner = g->owner.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
     {   /* bands: the clear, the sky and ground, depth and owner zero */
@@ -609,6 +630,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 63) / 64, (Uint32)h, 1);
         SDL_EndGPUComputePass(c);
+        if (pass_times_on()) pass_split(g, &cb, 1, &pmark);
     }
     if (g->polys.n) {
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
@@ -620,6 +642,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
         SDL_DispatchGPUCompute(c, (Uint32)tilesx, (Uint32)tilesy, 1);
         SDL_EndGPUComputePass(c);
+        if (pass_times_on()) pass_split(g, &cb, 2, &pmark);
     }
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
         SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { g->hid.buf, false }, { b_strokez, false } };
@@ -632,6 +655,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (mode == 0) SDL_DispatchGPUCompute(c, 256, (nstrokes / 4096 + 16) / 16, 1);
         else SDL_DispatchGPUCompute(c, (Uint32)tilesx, (Uint32)tilesy, 1);
         SDL_EndGPUComputePass(c);
+        if (pass_times_on()) pass_split(g, &cb, 3 + mode, &pmark);
     }
     g->params = *in; g->params.recs = NULL; g->params.palette = NULL; g->params.src = NULL; g->params.tag = NULL; g->params.dac = NULL; g->params.tagflags = NULL;
     g->pbytes = pbytes; g->game_bytes = game_bytes; g->npix_game = npix_game;
