@@ -82,8 +82,14 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
     original's reach (Draw distance, Terrain dots, Far object order) and
     smooth motion between the game's steps. Road and coastline jitter is
     gone, and `--remaster-view 4:3` keeps the original's framing with it.
-  - *GPU compositor and GPU present path* for 4K Remastered on Windows with a
-    Direct3D 12 GPU (`F117_GPU_COMPOSE=1`, `F117_GPU_PRESENT=1`).
+  - *GPU compositor and GPU present path*, on by default for Remastered in a
+    real window on Windows with a Direct3D 12 GPU (about 50 to 60 frames a
+    second at 4K in the author's flights; the CPU compositor is used without
+    a GPU). `F117_GPU_COMPOSE=0` and `F117_GPU_PRESENT=0` turn them off. Its
+    pictures equal the CPU compositor's exactly (checked pixel by pixel).
+  - *Model detail* (Full by default in Remastered): every building and object
+    in its most detailed version at any distance, so lights no longer appear
+    suddenly as you fly closer.
   - *CRT look* (scanlines, phosphor mask, glow).
 - **Optional sound**
   - *Hybrid sound*: Roland music with AdLib effects together, or the Macintosh
