@@ -308,14 +308,14 @@ static int run_copy(drawlive *r, const drawlive_step *a, const drawlive_step *b,
 }
 
 /* the step's own start state, then the copy's drawing from where the step begins (its first phase) */
-static const uint8_t *draw_copy(drawlive *r, const drawlive_step *a)
+static const uint8_t *draw_copy(drawlive *r, const drawlive_step *a, const rerun_list *l)
 {
-    return draw_recs(r, a, r->rlist.rec + r->rlist.first, r->rlist.nrec - r->rlist.first);
+    return draw_recs(r, a, l->rec + l->first, l->nrec - l->first);
 }
 
 static const uint8_t *draw_rerun(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
 {
-    return run_copy(r, a, b, t) ? draw_copy(r, a) : NULL;
+    return run_copy(r, a, b, t) ? draw_copy(r, a, &r->rlist) : NULL;
 }
 
 void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
@@ -325,6 +325,7 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     const int ia = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia), ib = plan->sb >= 0 ? plan->sb : r->ib;
     if (ia < 0 || ib < 0) return;
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
+    if (plan->rerun_ready) { const rerun_list tmp = r->rlist; r->rlist = r->rlist_job; r->rlist_job = tmp; }   /* hand the records to the job; the next copy fills the other list */
 }
 
 /* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
@@ -659,7 +660,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             return 1;
         }
         if (r->rerun && !plan->extrapolate) {
-            const uint8_t *p = plan->rerun_ready ? draw_copy(r, a) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
+            const uint8_t *p = plan->rerun_ready ? draw_copy(r, a, &r->rlist_job) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
             {   /* F117_RERUN_FALLBACK_AT=N (diagnostic): the Nth picture made on a copy is treated as late, as a slow machine would */
                 static long forced = -2, n;
                 if (forced == -2) { const char *e = getenv("F117_RERUN_FALLBACK_AT"); forced = e ? atol(e) : -1; }

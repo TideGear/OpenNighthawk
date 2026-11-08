@@ -167,7 +167,8 @@ typedef struct {
     uint64_t       fine_flat, fine_agree, fine_restored;
     /* rerun (rerun.h): in-between pictures drawn by the original on a copy of the machine */
     int            rerun;
-    rerun_list     rlist;
+    rerun_list     rlist;         /* the copy being made writes here */
+    rerun_list     rlist_job;     /* the records the worker draws from: the copy's list is swapped in when the job is handed over (drawlive_prepare_rerun), so a later copy never overwrites it */
     interp_rec    *splice;
     int            nsplice, csplice;
     uint64_t       rerun_drawn, rerun_fell_back, rerun_t0_exact, rerun_t0_inexact, rerun_insn;
