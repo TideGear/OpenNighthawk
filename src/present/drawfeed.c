@@ -308,14 +308,14 @@ static int run_copy(drawlive *r, const drawlive_step *a, const drawlive_step *b,
 }
 
 /* the step's own start state, then the copy's drawing from where the step begins (its first phase) */
-static const uint8_t *draw_copy(drawlive *r, const drawlive_step *a)
+static const uint8_t *draw_copy(drawlive *r, const drawlive_step *a, const rerun_list *l)
 {
-    return draw_recs(r, a, r->rlist.rec + r->rlist.first, r->rlist.nrec - r->rlist.first);
+    return draw_recs(r, a, l->rec + l->first, l->nrec - l->first);
 }
 
 static const uint8_t *draw_rerun(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
 {
-    return run_copy(r, a, b, t) ? draw_copy(r, a) : NULL;
+    return run_copy(r, a, b, t) ? draw_copy(r, a, &r->rlist) : NULL;
 }
 
 void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
@@ -325,6 +325,25 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     const int ia = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia), ib = plan->sb >= 0 ? plan->sb : r->ib;
     if (ia < 0 || ib < 0) return;
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
+}
+
+/* F117_COPY_FP (diagnostic): a fingerprint of the job's copy records (kinds, clocks, values). */
+unsigned long long drawlive_job_fingerprint(const drawlive *r)
+{
+    unsigned long long h = 1469598103934665603ull;
+    const rerun_list *l = &r->rlist_job;
+    for (int i = l->first < 0 ? 0 : l->first; i < l->nrec; i++) {
+        const interp_rec *x = &l->rec[i];
+        h ^= (unsigned char)x->kind; h *= 1099511628211ull;
+        for (int k = 0; k < x->n; k++) { h ^= (unsigned)x->v[k]; h *= 1099511628211ull; }
+    }
+    return h;
+}
+
+/* Hand the copy's records to the job: swap them into rlist_job (the next copy fills the other list). Call it when no job is drawing from rlist_job. */
+void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan)
+{
+    if (plan->rerun_ready) { const rerun_list tmp = r->rlist; r->rlist = r->rlist_job; r->rlist_job = tmp; }
 }
 
 /* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
@@ -502,13 +521,20 @@ static void release_step(drawlive *r, int k)
     r->step[k].state = DRAWLIVE_FREE;
 }
 
+/* The steps drawlive_publish queued for release (defer_release): free them when no job can draw from them any more (the loop calls this after the wait). */
+void drawlive_release_pending(drawlive *r)
+{
+    for (int q = 0; q < r->nrelease; q++) release_step(r, r->release_q[q]);
+    r->nrelease = 0;
+}
+
 void drawlive_publish(drawlive *r)
 {
     for (int q = 0; q < r->nqueue; q++) {
         const int k = r->queue[q];
         if (k < 0) { r->shown = 0; continue; }
         drawlive_step *s = &r->step[k];
-        if (r->ia >= 0) release_step(r, r->ia);
+        if (r->ia >= 0) { if (r->defer_release && r->nrelease < DRAWLIVE_POOL) r->release_q[r->nrelease++] = r->ia; else release_step(r, r->ia); }
         if (r->smooth) {                               /* three published: the playback clock sits between them */
             if (r->last_end && s->end > r->last_end) {
                 const double d = (double)(s->end - r->last_end);
@@ -616,6 +642,10 @@ int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f
     plan->sa = plan->sb = -1;
     const drawlive_step *a, *b;
     drawlive_steps(r, &a, &b);
+    /* what the worker would otherwise read from the live ring when it runs: the ring's older and newer step and the replayed picture (plan_smooth overrides the
+     * indices with its own pair). With these in the plan the worker needs nothing drawlive_publish changes. */
+    plan->sa = r->smooth ? r->im : r->ia; plan->sb = r->ib;
+    plan->picture = r->picture; plan->picture_hi = r->scale ? r->picture_hi : NULL; plan->picture_tag = r->scale ? r->picture_tag : NULL;
     if (a && b) {
         plan->older = a->seq;
         plan->newer = b->seq;
@@ -655,7 +685,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             return 1;
         }
         if (r->rerun && !plan->extrapolate) {
-            const uint8_t *p = plan->rerun_ready ? draw_copy(r, a) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
+            const uint8_t *p = plan->rerun_ready ? draw_copy(r, a, &r->rlist_job) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
             {   /* F117_RERUN_FALLBACK_AT=N (diagnostic): the Nth picture made on a copy is treated as late, as a slow machine would */
                 static long forced = -2, n;
                 if (forced == -2) { const char *e = getenv("F117_RERUN_FALLBACK_AT"); forced = e ? atol(e) : -1; }
@@ -684,8 +714,8 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             return 1;
         }
     }
-    memcpy(f->vram, r->picture, 64000);                /* the replayed picture */
-    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    memcpy(f->vram, plan->picture ? plan->picture : r->picture, 64000);                /* the replayed picture */
+    if (r->scale) { r->shown_hi = plan->picture ? plan->picture_hi : r->picture_hi; r->shown_tag = plan->picture ? plan->picture_tag : r->picture_tag; }
     r->diag_kind = PLAN_REPLAY;
     return 1;
 }

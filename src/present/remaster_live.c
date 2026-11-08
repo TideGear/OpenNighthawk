@@ -143,6 +143,12 @@ struct remaster_live {
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
     int32_t done_band[BAND_REC_BASE];
     int done_have_band, have_done, done_origin[2], done_window[4];
+    /* Deferred mode (remaster_live_set_deferred): a copy stages its finished frame here instead of replacing `done`, which a worker may be reading; the main
+     * thread makes it the done frame with remaster_live_commit at a point where the worker is idle. */
+    remaster_frame staged;
+    int32_t staged_band[BAND_REC_BASE];
+    int staged_have_band, have_staged, staged_origin[2], staged_window[4], staged_complete;
+    int deferred, copy_open;
     long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
 };
@@ -196,10 +202,35 @@ void remaster_live_copy_begin(remaster_live *r)
     r->pending = 0;
     r->nunits = 0;
     r->have_band = 0;
-    r->have_done = 0;
-    r->frame_complete = r->done_complete = 0;
-    r->done.n = 0;
+    if (r->deferred) {              /* the done frame stays as the worker has it; the copy's result is staged and committed later */
+        r->have_staged = 0; r->staged.n = 0; r->copy_open = 1;
+        r->frame_complete = 0;
+    } else {
+        r->have_done = 0;
+        r->frame_complete = r->done_complete = 0;
+        r->done.n = 0;
+    }
     r->hud_at = r->done_hud_at = -1;
+}
+
+void remaster_live_set_deferred(remaster_live *r, int on) { if (r) r->deferred = on != 0; }
+
+/* Deferred mode: make the copy's finished frame the one a composite uses, exactly as the end of a copy did without deferral (a copy that completed
+ * no frame leaves the done frame empty). Call it only while no composite is reading the done frame. */
+void remaster_live_commit(remaster_live *r)
+{
+    if (!r || !r->deferred || !r->copy_open) return;
+    r->copy_open = 0;
+    if (r->have_staged) {
+        remaster_frame tmp = r->done; r->done = r->staged; r->staged = tmp;
+        memcpy(r->done_band, r->staged_band, sizeof r->done_band);
+        r->done_have_band = r->staged_have_band; r->have_done = r->done.n > 0;
+        r->done_complete = r->staged_complete;
+        memcpy(r->done_origin, r->staged_origin, sizeof r->origin); memcpy(r->done_window, r->staged_window, sizeof r->window);
+        r->have_staged = 0;
+    } else {
+        r->done.n = 0; r->have_done = 0; r->done_complete = 0;
+    }
 }
 
 unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg)
@@ -269,9 +300,14 @@ static int word_style(unsigned word, unsigned darken, unsigned *idx)
 /* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
 static const uint8_t *g_palette_override;                /* the composite on the present worker reads the frame's own palette, never the live machine's (which runs meanwhile); a plain variable, not thread-local: the composite's row helpers read it too */
 void remaster_live_set_palette(const uint8_t *dac) { g_palette_override = dac; }
+/* The thread that runs a copy (the main thread) never uses the override: it belongs to the composite on the worker, which may be running at the same time
+ * (the copy overlaps the previous picture's composite), and a copy's colours come from its own machine's palette, as when nothing overlapped. */
+static F117_TLS int g_override_ignored;
+void remaster_live_ignore_palette_override(int on) { g_override_ignored = on; }
 static uint32_t dac_colour(const machine_t *m, unsigned index)
 {
-    const uint8_t *d = g_palette_override ? &g_palette_override[(index & 255) * 3] : &m->dac[(index & 255) * 3];
+    const uint8_t *ov = g_override_ignored ? NULL : g_palette_override;
+    const uint8_t *d = ov ? &ov[(index & 255) * 3] : &m->dac[(index & 255) * 3];
     const unsigned r = d[0] << 2 | d[0] >> 4, g = d[1] << 2 | d[1] >> 4, b = d[2] << 2 | d[2] >> 4;
     return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
 }
@@ -1974,7 +2010,13 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
-        {                                       /* the completed frame becomes the one a composite uses */
+        if (r->deferred) {                      /* the completed frame is staged: the main thread commits it when the worker is idle */
+            remaster_frame tmp = r->staged; r->staged = r->frame; r->frame = tmp;
+            memcpy(r->staged_band, r->band_rec, sizeof r->staged_band);
+            r->staged_have_band = r->have_band; r->have_staged = r->staged.n > 0;
+            r->staged_complete = r->frame_complete;
+            memcpy(r->staged_origin, r->origin, sizeof r->origin); memcpy(r->staged_window, r->window, sizeof r->window);
+        } else {                                /* the completed frame becomes the one a composite uses */
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
             memcpy(r->done_band, r->band_rec, sizeof r->done_band);
             r->done_have_band = r->have_band; r->have_done = r->done.n > 0;
@@ -2001,6 +2043,24 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 
 size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
 size_t remaster_live_done_prims(const remaster_live *r) { return r->have_done ? r->done.n : 0; }
+
+/* F117_COPY_FP (diagnostic): a fingerprint of the done frame's primitives (every field that reaches a picture, not the padding) and of its band, origin and window. */
+unsigned long long remaster_live_done_fingerprint(const remaster_live *r)
+{
+    unsigned long long h = 1469598103934665603ull;
+#define FP(x) do { const unsigned char *b_ = (const unsigned char *)&(x); for (size_t k_ = 0; k_ < sizeof(x); k_++) { h ^= b_[k_]; h *= 1099511628211ull; } } while (0)
+    if (!r->have_done) return h;
+    for (size_t i = 0; i < r->done.n; i++) {
+        const remaster_prim *p = &r->done.prim[i];
+        FP(p->kind); FP(p->n); for (int v = 0; v < p->n && v < REMASTER_PRIM_VERTICES; v++) FP(p->v[v]);
+        FP(p->colour_index); FP(p->colour_word); FP(p->shade); FP(p->darken); FP(p->face); FP(p->model); FP(p->owner); FP(p->flat);
+    }
+    for (int i = 0; i < BAND_REC_BASE; i++) FP(r->done_band[i]);
+    FP(r->done_have_band); FP(r->done_complete); FP(r->done_origin[0]); FP(r->done_origin[1]);
+    for (int i = 0; i < 4; i++) FP(r->done_window[i]);
+#undef FP
+    return h;
+}
 unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }
 
 /* ---- Piece 2: the blend check (F117_BLEND_CHECK=1, docs/gpu-compositor.md) ---- */

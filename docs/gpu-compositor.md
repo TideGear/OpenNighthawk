@@ -532,3 +532,117 @@ Known limits: per-step decisions (which objects are drawn, darken and detail val
 | Machine hash (4.8 billion clocks, old Desktop `ONTests` build and this one) | `600306c77cb04481` | | `600306c77cb04481` |
 
 Not covered: one GPU (RTX 3060) and one flight.
+
+## Step 4: the 4K frame times on the current picture (7 November 2026)
+
+`C:\Dev\F-117A Recomp\build\f117a.exe`, built 15:58 on 7 November (Model detail Full by default, the margin widenings on, GPU compose and present on), `EXE=` given. Runway replay at 3840 x 2160 (picture detail 9, hidden Direct3D 11 window, `MODE=gpu`), Maximum draw distance, fixed cadence, clocks 3.9 to 4.8 billion (901 pictures), two runs one after the other with nothing else running and no stray `f117a.exe` before or after; `F117_SLOW_FRAME_TRACE=1 F117_REMASTER_TIMING=1`.
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| Mean, p50, p95, p99, max (ms per picture, the `cost_ns` column) | 20.98, 22.67, 24.99, 25.55, 26.72 | 20.89, 22.52, 24.84, 25.59, 26.45 |
+| Pictures over 16.7 ms | 827 of 901 | 819 of 901 |
+| Over 20 ms, over 25 ms | 495, 45 | 495, 29 |
+
+**So 4K 60 is not met at Maximum with Model detail Full: about 47 pictures a second on average, and nine in ten pictures miss the 16.7 ms line.** (The 6 November numbers, p95 13.2 to 15.3 ms, were Original model detail, before the margins were filled: both add work. The widenings alone cost about 1.3 ms of 29 ms at 1080p-class in the 7 November tuning runs; not separated at 4K here.)
+
+**Where the time goes** (the slow-frame trace, every picture in the window is over 12 ms; the same in both runs):
+
+| Picture kind | Count | Total | Waiting for the worker | Scene copy (main thread) | Machine step |
+|---|---|---|---|---|---|
+| Game-step pictures (the machine runs) | 226 | 21.1 ms | 4.6 | 6.8 | 9.6 |
+| In-between pictures | 675 | 20.9 ms | 13.9 | 6.8 | 0.1 |
+
+The main thread does these in series: it waits for the worker's previous picture, then runs the scene copy (6.8 ms, every picture), and on game steps also the machine step (about 9.6 ms, of which 1.6 is the draw-feed collection). The worker (picture layer, compositor setup, GPU upload) is on the critical path at about 14 ms on in-between pictures. No picture is slow because of a one-off hitch: the worst frames (26.7, 26.5, 26.3 ms at clocks 4,750,016,397, 4,710,016,397, 4,757,016,397) are ordinary in-between pictures with a slow worker, and the same clocks come out worst in both runs.
+
+**What this means for step 5.** Making the main thread overlap the copy with the worker's job (so a picture costs about the larger of the two, 14 ms, not their sum, 21 ms) is the cheapest route to 16.7 ms, but the copy reads the machine state the worker's picture is made from, so it needs care; shortening the worker (the picture layer across CPU threads, byte-identical) shortens its wait directly; Stage 2 removes the 6.8 ms copy from every picture.
+
+### Step 4, the worker's split, and what it changes (7 November 2026)
+
+One more run at the same settings (`build/f117a.exe` 15:58, 3840 x 2160, Maximum, Model detail Full, `EXE=` given, nothing else running; 21.29 ms mean over 901 pictures, p95 25.41) with `F117_WORKER_TIMING` on, over the last 900 worker jobs that made a picture:
+
+| Worker stage (ms per job) | mean | p50 | p95 | max |
+|---|---|---|---|---|
+| GPU begin (the scene's setup and submission, CPU) | 3.32 | 3.19 | 4.62 | 5.07 |
+| Picture layer (`drawlive_render`, CPU, runs while the GPU works) | 5.31 | 5.27 | 6.03 | 6.43 |
+| Compose (`remaster_apply_ex`), of which blocked on the GPU fence | 6.08 (5.15) | 8.57 (7.64) | 9.94 (9.02) | 11.39 (10.43) |
+| **Worker total** | **14.70** | 16.58 | 18.39 | 19.70 |
+| GPU span, from the scene's submission to its fence | 11.13 | 13.98 | 15.39 | 16.90 |
+
+**The worker is bound by the GPU, not by the picture layer.** The CPU's share before the fence (begin 3.3 + picture 5.3 = 8.6 ms) is hidden behind a GPU span of about 14 ms, and compose then waits 5 to 8 ms for the fence. So the earlier plan of putting the picture layer across CPU threads would cut a cost that is already overlapped and would not shorten a picture. What decides a 4K Maximum picture is, in order: the GPU's scene time (about 14 ms), then the main thread's serial scene copy (6.8 ms, plus 9.6 ms of machine step on a game step) which cannot overlap the worker today (the copy needs the draw-live step ring, which `drawlive_publish` rewrites only while the worker is idle, and its output buffer is swapped only at the end of a copy).
+
+**Revised plan for step 5** (nothing started; each step keeps the 901 checksums and the machine hash identical):
+1. Add GPU timestamp queries around each compute pass of `gpu_compose.c` (polygons, strokes, bands, replace, readback) and find which pass owns the 14 ms at 4K Maximum with Full detail (1,829 primitives a frame instead of 554). Candidate causes to check, not yet measured: tile binning with far more triangles, the per-pixel stroke loop's cost, or too few tiles in flight.
+2. Make the heaviest pass cheaper without changing a result (the exact-equality check against the CPU compositor is the test, as in step 2).
+3. Overlap the main thread's scene copy with the worker's job: double-buffer the step ring and the copy's output so the worker reads a fixed set while the next copy builds; the bound becomes the larger of copy and worker, about 14 ms before step 2 above and lower after it.
+4. Stage 2 (capture once per game step) only if 1 to 3 do not reach 16.7 ms at the 95th percentile. Owner gate at its first working version, as before.
+
+### Step 5, first measurements of the GPU passes (7 November 2026, evening)
+
+New diagnostic `F117_GPU_PASS_TIMES=1` (`gpu_compose.c`, off by default): each compute pass of the begin step is submitted and fenced on its own, so each pass's wall time (GPU work plus one submit and fence) is known; the means print every 120 pictures. On `build/f117a.exe` 17:43, 3840 x 2160, Maximum, Model detail Full, one run alone (the passes do not overlap in this mode, so the run is slower: 28.6 ms a picture): **upload 0.6 ms, bands 7.8 ms, polygons 1.2 ms, strokes (points) 0.1 ms, strokes (pixels) 8.4 to 8.9 ms.** The sky-and-ground "bands" pass and the stroke pixel pass are the two heavy ones; the polygons are cheap.
+
+**A change that did not work (reverted):** I took the bands cost for the shader walking every band triangle's box at every pixel and binned the band triangles per 16 x 16 tile (CPU lists, shader reads its tile's list). The recorded traces stayed at 0 differing pixels (so it was exact), but the bands pass only fell from 7.8 to about 7.0 ms while the CPU binning added about 2.3 ms to the worker's start, and the whole picture got slower (21.3 to 23.7 ms mean at 4K Maximum). So the cost is the per-pixel work of the covering triangles (int64 edge and plane arithmetic for the sky and ground, which cover most of the picture, in painter order), not the list walk. Reverted; the code is as before apart from the diagnostic.
+
+**Where this leaves step 5.** The two heavy passes need a cheaper exact method, not a different loop structure: for the bands, test coverage with fewer 64-bit multiplications (one edge value per pixel stepped incrementally instead of three products per triangle), skip triangles a later one will certainly overwrite at that pixel when the depth rule allows it, or evaluate the colour planes only for the triangle that finally wins; for the strokes' pixel pass, find how many stroke entries each tile holds at Maximum with Full detail (about 1,800 primitives against 554) and whether the 16 x 16 tiles should be smaller or the lists sorted. Each needs the exact-equality check against the CPU compositor (0 of 768,000 differing on the recorded traces, then the live check and the guards). Overlapping the 6.8 ms scene copy with the worker (the earlier plan) remains separate and independent.
+
+### Step 5, a second change that did not help, and what the GPU is doing (7 November 2026, night)
+
+**Per-pixel box test in the stroke pixel pass (exact, not kept).** Each stroke triangle got its pixel box (the one the tile binning already relies on, conservative by construction: a half-pixel margin around the vertices) in its spare words, and the shader skipped a triangle at a pixel outside it before any float or 64-bit arithmetic. Exactness held on the recorded 1280 x 600 traces (0 of 768,000 differing). Paired A/B, built copies alternated twice at 4K Maximum with Model detail Full (`F117_GPU_PASS_TIMES`, one run at a time, nothing else of mine running; another program was using about 29% of the GPU, which is why only back-to-back pairs are comparable): baseline strokes (pixels) 8.80 and 8.79 ms, with the box test 8.77 and 8.83 ms; whole pictures 30.29 and 30.28 against 30.14 and 30.18 ms. **No gain, so it was not committed** (the source is as before). With the earlier band-binning result this shows the two heavy passes are not limited by how many triangles a pixel looks at.
+
+**The GPU is not clocked down and is half idle.** Sampled once a second during a 4K Maximum run: power state P0, 1950 of 2130 MHz, memory 7501 MHz, 73 W, utilization 44 to 53%. So over a 20 ms picture the GPU does about 10 ms of work and waits the rest, while the main thread runs the scene copy (6.8 ms) and, on game steps, the machine step (9.6 ms) in series with the worker's wait. The pass times when each pass is fenced on its own (bands 8.3, strokes pixels 8.8, polygons 1.2 ms) add up to more than the GPU's real busy time in normal running because the passes then also wait for their own fences; they show proportions, not the cost of a normal picture.
+
+**Order for the next session's speed work (changed):** (1) overlap the main thread's scene copy and machine step with the worker and the GPU, so a picture costs about the larger of its CPU and GPU halves, not their sum (double-buffer the step ring, `drawlive_publish` and the copy's output, as described above); the GPU's roughly 10 ms of work then fits under 16.7 ms; (2) only then make a pass cheaper if the GPU becomes the larger half (the bands pass is the candidate: cheaper exact edge tests); (3) Stage 2 if (1) falls short, with its owner gate.
+
+### Step 5, why overlapping the scene copy is a design task, not a small edit (7 November 2026, night)
+
+Read in `main.c` (the build step around `g_pw`) and `drawfeed.c`: each loop iteration does `drawlive_collect`, then waits for the worker's previous job, applies its picture, then `drawlive_publish`, `drawlive_plan_interp`, `drawlive_prepare_rerun` (the scene copy, about 6.8 ms at 4K) and releases the next worker job. The copy cannot simply move before the wait, for three reasons found in the code:
+1. **The copy's plan depends on the publish.** `drawlive_plan_interp` picks the older and newer steps from the ring as `drawlive_publish` has just left it (`ia`, `im`, `ib`); moving the publish earlier is what lets the copy run earlier.
+2. **`drawlive_publish` releases steps the worker may still be reading.** It calls `release_step` on the oldest step as it advances the ring and replaces `r->picture`, `r->picture_hi`, `r->picture_tag`, `r->picture_seq` and `r->picture_end`, which the worker's `drawlive_render` reads. The comment at the call ("the worker is idle: nothing renders from the old steps") is the contract.
+3. **The copy writes the frame the worker reads.** `remaster_live_exec` ends a copy by swapping `r->done` and `r->frame` (and copying the band record, origin and window), so the worker's `remaster_live_gpu_begin` and `remaster_apply_ex` read `r->done` that the next copy's end would swap away.
+
+**A design that keeps every picture byte-identical** (so the 901 checksums and the machine hash must not move): (a) let `drawlive_publish` run before the wait but defer its `release_step` calls and the change of `r->picture*` to after the wait, by recording them in a small pending list that is applied at the same point in the iteration as today; give the ring two spare steps so a step the worker reads is never recycled before its release; (b) give the worker its own copy of the `picture*` fields and step indices in the job (`g_pw.plan` already carries the plan) so the worker no longer reads `r->picture*`; (c) defer the `r->done`/`r->frame` swap of a copy to the point after the wait, running the copy into `r->frame` while the worker reads `r->done`. The order of results is then the same as today's; only when the work happens changes. The tests: the 901 checksums at Near, Far and Maximum on CPU and GPU, the live GPU check, host acceptance (its `renderer-workers` scenario compares the parallel result with a single-worker reference on every picture), and a new stress run with `F117_WORKER_COMPOSE_CHECK`, plus the machine hash. Expected gain at 4K Maximum with Full detail: a picture costs about the larger of its CPU half (copy 6.8 + wait for setup) and its GPU half (about 10 ms busy), roughly 14 ms, under 16.7 ms; the machine step on game steps (9.6 ms) remains in the main thread's path and needs the same treatment or Stage 2.
+This is a dedicated piece of work (the publish, the worker's reads and the copy's swap all have to change together and be shown byte-identical), not one to rush at the end of a long session.
+
+**Addendum from reading `drawlive_render` (7 November, night):** the worker's picture layer reads the ring indices and the replay fallback from the live `drawlive` at the moment it runs, not from the plan: `older_ix = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia)`, `b = plan->sb >= 0 ? plan->sb : r->ib`, and, for a replayed picture, `r->picture`, `r->picture_hi`, `r->picture_tag`. `drawlive_plan_interp` sets `plan->sa` and `plan->sb` only on the smooth rerun path. So step (b) of the design is concrete: make `drawlive_plan_interp` always fill `sa`, `sb` and copies of the `picture*` pointers into the plan, so the worker needs nothing that `drawlive_publish` changes; then defer `release_step` of the oldest step to after the wait (its slot must stay owned while the worker's plan can name it), which needs the step array to have at least two free slots beyond today's peak use (check `DRAWLIVE_STEPS` against the peak ring occupancy first). The worker also writes `r->shown_hi`, `r->shown_tag`, `r->inter_hi`, `r->inter_tag`, which the main thread reads after the wait; those stay on the main-thread side of the wait.
+
+**Overlap, state after sub-step 1 (7 November, night).** Sub-step 1 (the plan carries the step indices and the replayed-picture pointers, so the worker no longer reads them from the live ring) is done, behaviour-neutral and verified (`30aa327`, `build/f117a.exe` 18:55: CPU and GPU guards 901/901 at Near, Far and Maximum with the widenings off, hash `600306c77cb04481`, host acceptance 12/12). Reading `drawlive_prepare_rerun` and the end of `remaster_live_exec` for the next sub-step found that the copy and the worker share **one more structure besides the step ring and `r->done`**: `run_copy` fills `r->rlist` (the copy's primitive records and overlays) and the worker's `draw_copy` / `draw_rerun` read it, so a copy that starts while the worker runs would overwrite what the worker is drawing from. The sub-steps still to do, each verified like sub-step 1 before the next: (2) double-buffer `r->rlist` (the copy writes one, the worker reads the other, switched at the same point in the iteration as today's hand-over); (3) split the copy's end in `remaster_live_exec` so the `r->done`/`r->frame` swap, the band record, origin and window copies and `done_complete` are done by a new `remaster_live_commit` called after the wait; (4) defer `release_step` in `drawlive_publish` to after the wait and enlarge `DRAWLIVE_POOL` (5 today: three published, two staging) by two; (5) give the job its own `ww` (it is set on `g_pw` after the wait today and read by the worker) and skip the overlap on a frame where the wide width changes (`wide_prepare` may resize `g_wpix` the worker writes); (6) only then move `drawlive_publish`, `drawlive_plan_interp` and `drawlive_prepare_rerun` before the wait. Check each against the 901 checksums on CPU and GPU, the live GPU check, host acceptance and the machine hash, and run `F117_WORKER_COMPOSE_CHECK` over a whole flight for a race.
+
+### Step 5, the copy overlap: built, fast, not yet exact (7 November 2026, night)
+
+**What was built** (all behind the plan's switches, default off; sub-steps 1 to 3 are committed and verified neutral: `30aa327`, `d05f905`, `1e0cb79`): the plan carries the step indices and the replayed-picture pointers; the copy's records are double-buffered (`rlist`, `rlist_job`, swapped by `drawlive_commit_rerun`); a copy stages its finished frame and `remaster_live_commit` publishes it; `drawlive_publish` queues the oldest step's release (`defer_release`, `drawlive_release_pending`, `DRAWLIVE_POOL` 7); the main loop can publish and plan before the wait (`F117_OVERLAP_MODE=1`) and run the copy before the wait too (`F117_OVERLAP_MODE=2`); a thread-local flag (`remaster_live_ignore_palette_override`) keeps the copy from using the worker's palette override.
+
+**Measured, paired and repeated, 4K Maximum, Model detail Full, GPU path (`build/f117a.exe` 20:21, `F117_NO_COPY_OVERLAP=1` against the default of that build):** mean picture time **23.45 and 23.48 ms without the overlap, 17.74 and 17.71 ms with it; p95 28.30 and 28.24 against 22.93 and 23.14 ms.** So the overlap is worth about 5.7 ms a picture, as the design predicted (the picture costs about the larger of its halves).
+
+**Exactness (Near, the guards' replay, three runs at once to stress the timing; baseline = the exact baseline with the widenings off):**
+
+| Setting | Differing checksums against the baseline |
+|---|---|
+| overlap off (the default now) | 0 of 901 |
+| mode 1 (publish and plan before the wait), three runs | 0, 0, 0 |
+| mode 2 (copy before the wait), two runs | 894 and 896, and the two runs differ from each other in 334: a race |
+| mode 2 with the compose moved to the main thread (`F117_NO_WORKER_COMPOSE=1`), two runs | all 901 differ from the baseline and the two runs are identical to each other: systematic |
+| mode 2 with one render thread | all 901 differ |
+
+Controls with the overlap off and the same switch: one thread 0 differ (equal to the baseline), no worker compose 2 differ. The sequential guards run showed the differences confined to the first 232 pictures on the CPU compositor and the first three on the GPU path, so the damage depends on timing, which is what a race does.
+
+**What is established.** Publishing, planning and the deferred release are safe (mode 1 is exact under stress). The copy before the wait is what changes the pictures, deterministically when the compose is on the main thread (so not only a thread race), and with a race on top in the default configuration. The palette override was one real shared global (the copy's colours come from `dac_colour`, which takes the worker's palette whenever it is set); ignoring it on the copy's thread did not make the pictures exact, so something else the copy shares with the previous job's picture layer or compose, or depends on from it, is still unfound.
+
+**What to do next.** Find the remaining shared or order-dependent state, by comparing, in the deterministic configuration (`F117_NO_WORKER_COMPOSE=1`, mode 2 against mode 0), the copy's output (`r->frame` primitives, `rlist` records) for the same picture: the first picture whose copy output differs shows what the previous job changed before the copy ran in the old order. Candidates still unchecked: state `drawlive_render` or `draw_recs` leaves in `rerun`'s scratch or in the step snapshots (`rerun_snap`) that a copy reads; the copy machine's incremental sync (`nudge`, `g_copy_mem`); the native templates and `remaster_scene_dropped` that the copy updates and a compose may read; `r->inter_hi` and `r->inter_tag`, which the worker writes and the next plan reads. Until it is exact the overlap must stay off (it is).
+
+### Step 5, the overlap made exact and on by default (7 November 2026, 22:30)
+
+**Cause of the inexactness found above:** `remaster_live_set_deferred(g_rlive_copy, 1)` ran where the worker thread is created, before `g_rlive_copy` exists (it is created when VGAME loads), so the deferred copy was never on: sub-step 3's neutral verification was vacuous, and in mode 2 the early copy's `remaster_live_copy_begin` cleared the done frame while the previous picture's composite still needed it (that composite then declined, `done_prims 0`, and the picture lost its Remastered 3D view). Found by fingerprinting each copy's output (`F117_COPY_FP`: identical in both orders) and each picture's layer, composite and compose decision (`F117_PIC_FP`: the first differing picture was a composite declined with an empty done frame). Fixed by setting the flag where `g_rlive_copy` is created. The palette-override ignore stays (a real shared global, now harmless).
+
+**After the fix:** with the compose on the main thread, mode 2 equals mode 0 in every picture, composite decision and checksum (0 of 3,476 pictures, two runs); in the default configuration four parallel stress replays (mode 0, mode 2 x3) all equal the exact baseline (0 of 901). **Mode 2 is now the default.**
+
+**Speed (`build/f117a.exe` 21:49, 4K 3840 x 2160, Maximum, Model detail Full, GPU path, paired, two rounds):**
+
+| | Mode 0 (old order) | Mode 2 (overlap) |
+|---|---|---|
+| Mean | 20.87, 20.95 ms | **16.72, 16.72 ms** |
+| p95 / p99 / max | 24.9 / 25.6 / 26.9 ms | **17.9 / 18.6 / 19.5 ms** |
+| Frames over 16.7 ms | 803, 835 of 901 | 438, 425 |
+| Frames over 20 ms | 496, 494 | **0, 0** |
+
+The median is 16.68 ms in both overlap runs, which looks like 60 Hz pacing (vsync on the hidden window) rather than the true cost; the next measurement should run without it to see how far below 16.7 ms the work really is.
+
+**The worker-compose check (`F117_WORKER_COMPOSE_CHECK`) is not usable as a race test on the GPU path.** On `build/f117a.exe` 21:49, GPU path, Maximum, to clock 4.3 billion, it reports the same result with the overlap off and on (275 composites the same, 2,525 different, the first difference at composite 1; on a full run with the overlap on, a difference of 183,366 wide pixels at composite 3,451, with the main thread's recomputation repeatable). So it disagrees in the old order too: the main thread's recomputation is not the same path as the worker's GPU composite. It is a pre-existing problem with the check, not with the overlap; the overlap's exactness rests on the guards (CPU and GPU 901/901), the stress replays and the live GPU check (0 differing pixels at Near, Far and Maximum). Fixing or retiring this check is a small task for the next session.

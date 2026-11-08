@@ -36,6 +36,20 @@ int main(void)
     inputlog_cadence(f, 15); fclose(f);
     unsigned hz;
     CHECK(inputlog_read_cadence(path, &hz) && hz == 15);
+    {   /* the AdLib sidecar flag: written 1 or 0, read back; a log without the line reports none (R28, 7 November) */
+        int on = -1;
+        CHECK(!inputlog_read_adlib_effects(path, &on) && on == -1);
+        f = fopen(path, "a"); CHECK(f);
+        inputlog_adlib_effects(f, 1); fclose(f);
+        CHECK(inputlog_read_adlib_effects(path, &on) && on == 1);
+        f = fopen(path, "w"); CHECK(f);
+        inputlog_header(f, 40000000, 700000000000000ull); inputlog_adlib_effects(f, 0); inputlog_cadence(f, 15); fclose(f);
+        CHECK(inputlog_read_adlib_effects(path, &on) && on == 0 && inputlog_read_cadence(path, &hz) && hz == 15);
+        f = fopen(path, "w"); CHECK(f);
+        fputs("# f117r-input ips=1 time_us=1\n# f117r-adlib-effects 7\nK 1 01\n", f); fclose(f);
+        on = -1;
+        CHECK(!inputlog_read_adlib_effects(path, &on) && on == -1);
+    }
     remove(path);
     puts("recorded cadence and legacy defaults pass");
     return 0;

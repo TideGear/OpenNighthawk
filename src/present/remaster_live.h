@@ -29,6 +29,9 @@ unsigned remaster_live_arm(remaster_live *r, machine_t *m, uint16_t load_seg);
 /* A collector that gathers the model requests of a rerun copy (rerun.h): reset before the copy runs. After it the copy's
  * completed frame is the one remaster_live_composite and remaster_live_wide use. */
 void remaster_live_copy_begin(remaster_live *r);
+void remaster_live_set_deferred(remaster_live *r, int on);   /* a copy stages its frame; remaster_live_commit makes it the done frame (worker mode) */
+void remaster_live_commit(remaster_live *r);
+unsigned long long remaster_live_done_fingerprint(const remaster_live *r);   /* F117_COPY_FP */
 
 /* The machine reached exec_hook[base + k]; k counts from the first entry armed here. Always returns 0 (never takes a
  * call). */
@@ -37,6 +40,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
 /* While set (on the calling thread), remaster_live_compose reads colours from this 768-byte six-bit palette instead of the machine's: the composite can then
  * run on another thread than the machine's, with the palette of the frame it belongs to. NULL: the machine's. */
 void remaster_live_set_palette(const uint8_t *dac);
+void remaster_live_ignore_palette_override(int on);   /* this thread, a copy's, ignores the override the worker set */
 /* The GPU compositor (gpu_compose.h), registered by the app: given a composite's raster calls and the replace step's inputs it writes the wide picture and returns 1, or
  * returns 0 and the CPU compositor is used. NULL: always the CPU. F117_GPU_COMPOSE_CHECK also runs the CPU compositor and compares. */
 typedef int (*remaster_gpu_fn)(const gpu_compose_in *in, uint32_t *wide_out);

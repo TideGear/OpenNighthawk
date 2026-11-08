@@ -15,6 +15,28 @@ void inputlog_fixes(FILE *f, const char *ids)
     if (ids && *ids) fprintf(f, "# f117r-fixes %s\n", ids);
 }
 
+void inputlog_adlib_effects(FILE *f, int on)
+{
+    fprintf(f, "# f117r-adlib-effects %d\n", on ? 1 : 0);
+}
+
+int inputlog_read_adlib_effects(const char *path, int *on)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[512];
+    int seen = 0;
+    while (fgets(line, sizeof line, f) && line[0] == '#') {
+        if (strncmp(line, "# f117r-adlib-effects ", 22)) continue;
+        int v;
+        char extra;
+        if (sscanf(line + 22, "%d %c", &v, &extra) == 1 && (v == 0 || v == 1)) { *on = v; seen = 1; }
+        break;
+    }
+    fclose(f);
+    return seen;
+}
+
 void inputlog_cadence(FILE *f, unsigned hz)
 {
     if (hz == 15) fprintf(f, "# f117r-sim-hz 15\n");

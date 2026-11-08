@@ -90,7 +90,7 @@ typedef struct {
     int            state;         /* DRAWLIVE_FREE, _STAGED (collected, not yet shown) or _PUBLISHED */
 } drawlive_step;
 
-#define DRAWLIVE_POOL 5           /* steps: two published (three in rerun), remaining slots collected and waiting */
+#define DRAWLIVE_POOL 7           /* steps: two published (three in rerun), one released late (defer_release), the rest collected and waiting */
 #define DRAWLIVE_QUEUE 16
 enum { DRAWLIVE_FREE, DRAWLIVE_STAGED, DRAWLIVE_PUBLISHED };
 
@@ -104,7 +104,8 @@ typedef struct {
     double   t_shown;
     int      rerun_ready;         /* rerun: drawlive_prepare_rerun has the copy's records for this plan */
     int      rerun_inline;        /* rerun: the render may run the copy itself (it is on the machine's thread) */
-    int      sa, sb;              /* smoothed clock: the published steps (indexes) the picture is drawn between, else -1 */
+    int      sa, sb;              /* the published steps (indexes) the picture is drawn between: always set by drawlive_plan_interp (the ring's own older and newer, or the smoothed clock's pair), else -1 */
+    const uint8_t *picture, *picture_hi, *picture_tag;   /* the replayed picture the ring showed when the plan was made, for a PLAN_REPLAY or a fallback: the worker reads these, not the live ring */
 } drawlive_plan;
 
 /* The replay of the feed, a frame at a time: the picture it leaves on the
@@ -133,6 +134,8 @@ typedef struct {
     int            interp, check;  /* check: draw each pair a hair from each end and compare */
     drawlive_step  step[DRAWLIVE_POOL];
     int            ia, ib;         /* the published older and newer steps, -1 none */
+    int            defer_release;  /* worker mode: drawlive_publish queues the oldest step's release (a job may still draw from it); drawlive_release_pending frees them */
+    int            release_q[DRAWLIVE_POOL], nrelease;
     /* the smoothed playback clock (rerun): three steps are published (ia, im, ib, oldest first) and the picture is
      * drawn at a playback position, in steps, advanced by the machine's clock over a smoothed step duration and held
      * about one step behind the newest, so an uneven step never freezes or skips it (docs/presentation.md, "The step
@@ -166,7 +169,8 @@ typedef struct {
     uint64_t       fine_flat, fine_agree, fine_restored;
     /* rerun (rerun.h): in-between pictures drawn by the original on a copy of the machine */
     int            rerun;
-    rerun_list     rlist;
+    rerun_list     rlist;         /* the copy being made writes here */
+    rerun_list     rlist_job;     /* the records the worker draws from: the copy's list is swapped in when the job is handed over (drawlive_prepare_rerun), so a later copy never overwrites it */
     interp_rec    *splice;
     int            nsplice, csplice;
     uint64_t       rerun_drawn, rerun_fell_back, rerun_t0_exact, rerun_t0_inexact, rerun_insn;
@@ -194,6 +198,9 @@ int drawlive_collect(drawlive *r, drawfeed *f);
 /* Make the staged frames the published ones, in order (the last two are kept,
  * paired). Frees the older steps; nothing may be rendering. */
 void drawlive_publish(drawlive *r);
+void drawlive_release_pending(drawlive *r);
+unsigned long long drawlive_job_fingerprint(const drawlive *r);   /* F117_COPY_FP */
+void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan);   /* after drawlive_prepare_rerun, when no job draws from the job list */
 
 /* drawlive_collect then drawlive_publish: the single-threaded form. */
 int drawlive_update(drawlive *r, drawfeed *f);
