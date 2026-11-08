@@ -1,6 +1,7 @@
 /* remaster_raster.c - the Remastered presentation's triangle fill (see remaster_raster.h). */
 #include "remaster_raster.h"
 #include "exact.h"
+#include "band_palette.h"
 #include "square_pen.h"
 
 #include <math.h>
@@ -355,6 +356,8 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
 
 static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, unsigned value)
 {
+    const char *sea_env = getenv("F117_SMOOTH_SEA");
+    const int smooth_sea = sea_env && atoi(sea_env);
     if (exact_cov() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {
         const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
         ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o); long w = 0;
@@ -405,8 +408,15 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
                 written++;
             } else if (t->index && t->palette && t->index[i] != REMASTER_NO_INDEX) {
                 const unsigned ni = op == REMASTER_AND ? (t->index[i] & value) : (t->index[i] | value);
+                const unsigned old_index = t->index[i];
+                if (smooth_sea && op == REMASTER_OR && value == 0x80 && old_index >= 0x70 && old_index <= 0x7F) {
+                    const unsigned prev = old_index > 0x70 ? old_index - 1 : old_index;
+                    const unsigned next = old_index < 0x7F ? old_index + 1 : old_index;
+                    t->color[i] = band_palette_sea(t->color[i], old_index,
+                        t->palette[prev], t->palette[old_index], t->palette[next],
+                        t->palette[prev | 0x80], t->palette[ni & 255], t->palette[next | 0x80]);
+                } else t->color[i] = t->palette[ni & 255];
                 t->index[i] = (uint16_t)(ni & 255);
-                t->color[i] = t->palette[ni & 255];
                 if (t->inv_z[i] <= 0.0f) t->inv_z[i] = 1e-15f;     /* as above */
                 written++;
             }

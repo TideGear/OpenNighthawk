@@ -3,6 +3,8 @@
 // order, with each triangle's two barycentric weights evaluated in double at the tile's first pixel (so a huge ground polygon whose vertices lie far off the
 // screen does not lose its precision); a thread walks its tile's list in order carrying the pixel's state (colour, palette index, depth, owner) in
 // registers, with remaster_raster.c's depth, owner and fill rules. Painter order and the later-wins tie are therefore the CPU's.
+#define F117_BAND_HLSL
+#include "../band_palette.h"
 StructuredBuffer<uint> tri : register(t0, space0);       // 40 words a triangle (see the exact coverage note below)
 StructuredBuffer<uint> ents : register(t1, space0);      // 9 words per (triangle, tile): triangle, L1 and L2 at the tile's first pixel centre, then the three exact edge values
 StructuredBuffer<uint> tileoff : register(t2, space0);   // tiles + 1 offsets into ents, in entries
@@ -88,8 +90,12 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
                 if (d <= 0.0) d = 1e-15;
             } else if (idx != 0xFFFFu) {
                 const uint ni = (kind == 1 ? (idx & value) : (idx | value)) & 255u;
+                if (kind == 6 && idx >= 0x70u && idx <= 0x7Fu) {
+                    const uint prev = idx > 0x70u ? idx - 1u : idx;
+                    const uint next = idx < 0x7Fu ? idx + 1u : idx;
+                    col = band_palette_sea(col, idx, pal[prev], pal[idx], pal[next], pal[prev | 0x80u], pal[ni], pal[next | 0x80u]);
+                } else col = pal[ni];
                 idx = ni;
-                col = pal[ni];
                 if (d <= 0.0) d = 1e-15;
             }
         }

@@ -738,3 +738,42 @@ EXE headless launch, dummy audio/video, private saves: exit 0, no stray process.
 R37's visual gate is approved; owner's flight of this build remains open.
 Next item is R36 sea-band smoothing, with its own owner gate. No release
 publication was requested or performed.
+
+### R36 investigation (8 November 2026)
+
+Using `EXE=C:/Dev/F-117A Recomp/build/f117a.exe`, build 13:58:29,
+owner flight `session-20261107-223638`, AdLib effects as recorded, Maximum
+Full. Source reads: `draw_scene_ex` already shades both sky and ground band
+quads. `fill_triangle_logic` replaces RGB with `palette[index AND/OR value]`;
+GPU `polys_x.hlsl` does the same. Thus palette logic is a candidate for losing
+the gradient, not a missing ground-band smoothing switch.
+
+Existing `F117_FLAT_SHOW=1` diagnostic at clock 15,700,000,000 highlights
+level model objects magenta but leaves the stepped sea blue (shot under
+`private/r36/flat/shots`, inspected). This rules out the highlighted ordinary
+flat model fills as the direct cause; logic fills bypass that highlight.
+A single-thread raster trace of the same view is running to identify the sea's
+operation. `F117_SKIP_COMPOSE_BEFORE=15698000000` skips early composites;
+these runs are diagnostic, not timing evidence. No R36 source or baseline
+change yet. All outputs and private saves remain in the workspace.
+
+R36 trace finding: `private/r36/sea.trc` (1536 x 600, 76,306 records),
+parsed with the current 360-byte record layout and near-plane clipping.
+Sea samples (30,300) and (1500,300) are RGB `FF084971`, palette index `FE`,
+owner zero. Record 22,765 is an OR fill, value `80`, whose clipped footprint
+covers the sea sample: ground-band `7E` becomes `FE`. Thus the OR fill
+replaces the interpolated ground RGB with the flat sea palette entry.
+The captured scene has 54 AND `6F` and 15 OR `80` fills. Next: preserve
+fractional band shading through the OR palette conversion, identically on
+CPU/GPU, review-only until the owner's visual gate. No source change yet.
+
+R36 prototype built: `build/f117a.exe`, 8 November 15:01:48.
+`F117_SMOOTH_SEA=1` is review-only, default off. For OR `80` on source band
+indices `70..7F`, shared integer RGB projection estimates the position between
+the original gradient endpoints and maps it between the corresponding sea
+palette endpoints. Palette indices and the fill operation remain unchanged.
+Verification runs sequentially from `private/r36-verify/verify.sh`, report
+`private/r36-verify/verification.txt`. Owner-flight fixed-dimension captures
+are prepared in `private/r36/captures.sh`, not started while verification runs.
+
+Owner requested wrap-up: verification deliberately stopped after CPU all distances and GPU Near/Far each 901/901. GPU Maximum incomplete; switch-on live and host acceptance not run. All four statehash comparisons passed. R36 saved as default-off WIP, not accepted. See newest handoff section; CMake dependency approval remains pending.
