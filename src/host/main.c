@@ -2038,6 +2038,7 @@ int main(int argc, char **argv)
             g_pw.done = SDL_CreateSemaphore(0);
             if (g_pw.go && g_pw.done) g_pw.thread = SDL_CreateThread(present_worker_main, "present-draw", &g_pw);
             if (g_pw.thread && g_rlive_copy && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);   /* the copy stages its frame; the loop commits it after the copy */
+            if (g_pw.thread) g_live.defer_release = 1;   /* the oldest step is released after the loop has waited for the worker */
             for (int k = 0; k < PAL_HELPERS; k++) {
                 g_pal[k].go = SDL_CreateSemaphore(0);
                 g_pal[k].done = SDL_CreateSemaphore(0);
@@ -2838,6 +2839,34 @@ int main(int argc, char **argv)
                 fresh = H.frame;
                 drawlive_collect(&g_live, &g_feed);
                 if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[0] += bt1 - bt0; bt0 = bt1; }
+                /* Overlap (docs/gpu-compositor.md, step 5): while the worker still draws the previous picture, publish, plan and run the copy for the next one, and
+                 * only then wait. Safe because the plan carries the steps it names and the replayed picture, the oldest step is released after the wait, the copy
+                 * writes its own record list and staged frame (committed after the wait), and the wide width is unchanged. F117_NO_COPY_OVERLAP=1: as before. */
+                int early = 0, early_planned = 0, early_copied = 0;
+                drawlive_plan eplan;
+                {
+                    static int overlap_mode = -1;   /* F117_OVERLAP_MODE (experimental): 0 (default) as before; 1 publish and plan before the wait, copy after it (exact, no gain); 2 the copy before the wait too (faster, NOT yet exact: docs/gpu-compositor.md) */
+                    if (overlap_mode < 0) { const char *e = getenv("F117_OVERLAP_MODE"); overlap_mode = e ? atoi(e) : 0; }
+                    static int overlap = -1;
+                    if (overlap < 0) overlap = overlap_mode >= 1 && !getenv("F117_NO_COPY_OVERLAP") && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY");
+                    if (overlap && g_pw.busy && g_remaster && g_rlive && g_rlive_copy && g_scale >= 1 && !g_live.check && g_live.defer_release) {
+                        const int ww0 = wide_width();
+                        if (ww0 == g_pw.ww && (ww0 == 0 || (g_wtex && g_wpix && g_ww == ww0))) {
+                            early = 1;
+                            drawlive_publish(&g_live);
+                            if (drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &eplan)) {
+                                early_planned = 1;
+                                rerun_set_wide(ww0 ? ww0 * 130 / (320 * g_scale) : 100);
+                                if (overlap_mode >= 2) {
+                                    remaster_live_ignore_palette_override(1);   /* the worker may be composing with its frame's palette override */
+                                    drawlive_prepare_rerun(&g_live, &eplan);
+                                    remaster_live_ignore_palette_override(0);
+                                    early_copied = 1;
+                                }
+                            }
+                        }
+                    }
+                }
                 /* the picture planned a frame ago, drawn meanwhile by the worker */
                 g_fine = NULL;
                 if (g_pw.busy) {
@@ -2895,11 +2924,13 @@ int main(int argc, char **argv)
                     }
                 }
                 if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[2] += bt1 - bt0; bt0 = bt1; }
-                drawlive_publish(&g_live);          /* the worker is idle: nothing renders from the old steps */
+                if (!early) drawlive_publish(&g_live);   /* the worker is idle: nothing renders from the old steps (early: published before the wait) */
+                drawlive_release_pending(&g_live);  /* (defer_release: the oldest step goes now that the worker is idle) */
                 drawlive_plan plan;
                 /* Interpolation shows the clock as it stands (a frame later than the drawing, which
                  * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
-                if (drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                if (early ? early_planned : drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                    if (early) plan = eplan;
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[3] += bt1 - bt0; bt0 = bt1; }
                     if (g_remaster && g_rlive && g_scale >= 1) {         /* the wide picture the next composite is to use (it may make a texture: here), and the copies' wider view */
                         int ww = wide_width();
@@ -2913,8 +2944,8 @@ int main(int argc, char **argv)
                         if (!ca) { ca = remaster_frame_copy_new(); cb = remaster_frame_copy_new(); cc = remaster_frame_copy_new(); }
                         drawlive_plan p0 = plan, p1 = plan;
                         p0.t = 0.0; p1.t = 1.0;
-                        drawlive_prepare_rerun(&g_live, &p0); const int oka = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, ca);
-                        drawlive_prepare_rerun(&g_live, &p1); const int okb = p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, cb);
+                        drawlive_prepare_rerun(&g_live, &p0); drawlive_commit_rerun(&g_live, &p0); if (g_rlive_copy) remaster_live_commit(g_rlive_copy); const int oka = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, ca);
+                        drawlive_prepare_rerun(&g_live, &p1); drawlive_commit_rerun(&g_live, &p1); if (g_rlive_copy) remaster_live_commit(g_rlive_copy); const int okb = p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, cb);
                         drawlive_prepare_rerun(&g_live, &plan);
                         if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) { remaster_blend_report(ca, cb, cc, plan.t);
                             {   /* is the copy at t = 0 / t = 1 one of the live game's own recorded steps? */
@@ -2925,8 +2956,9 @@ int main(int argc, char **argv)
                                 if (total % 60 == 1) fprintf(stderr, "[blend-ring] %llu frames: the copy at t = 0 is one of the live steps (newest 8) in %.1f%%, at t = 1 in %.1f%%; this one: ages %d and %d\n", total, 100.0 * (double)exact_a / (double)total, 100.0 * (double)exact_b / (double)total, ma, mb);
                             }
  if (g_pw.ww > 0 && getenv("F117_BLEND_PICTURE")) remaster_blend_picture_check(g_rlive_copy, &H.m, g_scale, g_pw.ww, ca, cb, plan.t); }
-                    } else
-                    drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
+                    } else if (!early_copied)
+                    drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread (early: it ran before the wait) */
+                    drawlive_commit_rerun(&g_live, &plan);   /* its records go to the job */
                     if (g_rlive_copy) remaster_live_commit(g_rlive_copy);   /* its frame becomes the one the worker will compose (deferred mode: the worker is idle here) */
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;

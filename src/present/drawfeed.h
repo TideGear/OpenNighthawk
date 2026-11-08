@@ -90,7 +90,7 @@ typedef struct {
     int            state;         /* DRAWLIVE_FREE, _STAGED (collected, not yet shown) or _PUBLISHED */
 } drawlive_step;
 
-#define DRAWLIVE_POOL 5           /* steps: two published (three in rerun), remaining slots collected and waiting */
+#define DRAWLIVE_POOL 7           /* steps: two published (three in rerun), one released late (defer_release), the rest collected and waiting */
 #define DRAWLIVE_QUEUE 16
 enum { DRAWLIVE_FREE, DRAWLIVE_STAGED, DRAWLIVE_PUBLISHED };
 
@@ -134,6 +134,8 @@ typedef struct {
     int            interp, check;  /* check: draw each pair a hair from each end and compare */
     drawlive_step  step[DRAWLIVE_POOL];
     int            ia, ib;         /* the published older and newer steps, -1 none */
+    int            defer_release;  /* worker mode: drawlive_publish queues the oldest step's release (a job may still draw from it); drawlive_release_pending frees them */
+    int            release_q[DRAWLIVE_POOL], nrelease;
     /* the smoothed playback clock (rerun): three steps are published (ia, im, ib, oldest first) and the picture is
      * drawn at a playback position, in steps, advanced by the machine's clock over a smoothed step duration and held
      * about one step behind the newest, so an uneven step never freezes or skips it (docs/presentation.md, "The step
@@ -196,6 +198,8 @@ int drawlive_collect(drawlive *r, drawfeed *f);
 /* Make the staged frames the published ones, in order (the last two are kept,
  * paired). Frees the older steps; nothing may be rendering. */
 void drawlive_publish(drawlive *r);
+void drawlive_release_pending(drawlive *r);
+void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan);   /* after drawlive_prepare_rerun, when no job draws from the job list */
 
 /* drawlive_collect then drawlive_publish: the single-threaded form. */
 int drawlive_update(drawlive *r, drawfeed *f);

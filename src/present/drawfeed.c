@@ -325,7 +325,12 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     const int ia = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia), ib = plan->sb >= 0 ? plan->sb : r->ib;
     if (ia < 0 || ib < 0) return;
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
-    if (plan->rerun_ready) { const rerun_list tmp = r->rlist; r->rlist = r->rlist_job; r->rlist_job = tmp; }   /* hand the records to the job; the next copy fills the other list */
+}
+
+/* Hand the copy's records to the job: swap them into rlist_job (the next copy fills the other list). Call it when no job is drawing from rlist_job. */
+void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan)
+{
+    if (plan->rerun_ready) { const rerun_list tmp = r->rlist; r->rlist = r->rlist_job; r->rlist_job = tmp; }
 }
 
 /* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
@@ -503,13 +508,20 @@ static void release_step(drawlive *r, int k)
     r->step[k].state = DRAWLIVE_FREE;
 }
 
+/* The steps drawlive_publish queued for release (defer_release): free them when no job can draw from them any more (the loop calls this after the wait). */
+void drawlive_release_pending(drawlive *r)
+{
+    for (int q = 0; q < r->nrelease; q++) release_step(r, r->release_q[q]);
+    r->nrelease = 0;
+}
+
 void drawlive_publish(drawlive *r)
 {
     for (int q = 0; q < r->nqueue; q++) {
         const int k = r->queue[q];
         if (k < 0) { r->shown = 0; continue; }
         drawlive_step *s = &r->step[k];
-        if (r->ia >= 0) release_step(r, r->ia);
+        if (r->ia >= 0) { if (r->defer_release && r->nrelease < DRAWLIVE_POOL) r->release_q[r->nrelease++] = r->ia; else release_step(r, r->ia); }
         if (r->smooth) {                               /* three published: the playback clock sits between them */
             if (r->last_end && s->end > r->last_end) {
                 const double d = (double)(s->end - r->last_end);

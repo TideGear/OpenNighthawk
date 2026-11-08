@@ -300,9 +300,14 @@ static int word_style(unsigned word, unsigned darken, unsigned *idx)
 /* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
 static const uint8_t *g_palette_override;                /* the composite on the present worker reads the frame's own palette, never the live machine's (which runs meanwhile); a plain variable, not thread-local: the composite's row helpers read it too */
 void remaster_live_set_palette(const uint8_t *dac) { g_palette_override = dac; }
+/* The thread that runs a copy (the main thread) never uses the override: it belongs to the composite on the worker, which may be running at the same time
+ * (the copy overlaps the previous picture's composite), and a copy's colours come from its own machine's palette, as when nothing overlapped. */
+static F117_TLS int g_override_ignored;
+void remaster_live_ignore_palette_override(int on) { g_override_ignored = on; }
 static uint32_t dac_colour(const machine_t *m, unsigned index)
 {
-    const uint8_t *d = g_palette_override ? &g_palette_override[(index & 255) * 3] : &m->dac[(index & 255) * 3];
+    const uint8_t *ov = g_override_ignored ? NULL : g_palette_override;
+    const uint8_t *d = ov ? &ov[(index & 255) * 3] : &m->dac[(index & 255) * 3];
     const unsigned r = d[0] << 2 | d[0] >> 4, g = d[1] << 2 | d[1] >> 4, b = d[2] << 2 | d[2] >> 4;
     return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
 }
