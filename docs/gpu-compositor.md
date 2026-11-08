@@ -555,3 +555,23 @@ Not covered: one GPU (RTX 3060) and one flight.
 The main thread does these in series: it waits for the worker's previous picture, then runs the scene copy (6.8 ms, every picture), and on game steps also the machine step (about 9.6 ms, of which 1.6 is the draw-feed collection). The worker (picture layer, compositor setup, GPU upload) is on the critical path at about 14 ms on in-between pictures. No picture is slow because of a one-off hitch: the worst frames (26.7, 26.5, 26.3 ms at clocks 4,750,016,397, 4,710,016,397, 4,757,016,397) are ordinary in-between pictures with a slow worker, and the same clocks come out worst in both runs.
 
 **What this means for step 5.** Making the main thread overlap the copy with the worker's job (so a picture costs about the larger of the two, 14 ms, not their sum, 21 ms) is the cheapest route to 16.7 ms, but the copy reads the machine state the worker's picture is made from, so it needs care; shortening the worker (the picture layer across CPU threads, byte-identical) shortens its wait directly; Stage 2 removes the 6.8 ms copy from every picture.
+
+### Step 4, the worker's split, and what it changes (7 November 2026)
+
+One more run at the same settings (`build/f117a.exe` 15:58, 3840 x 2160, Maximum, Model detail Full, `EXE=` given, nothing else running; 21.29 ms mean over 901 pictures, p95 25.41) with `F117_WORKER_TIMING` on, over the last 900 worker jobs that made a picture:
+
+| Worker stage (ms per job) | mean | p50 | p95 | max |
+|---|---|---|---|---|
+| GPU begin (the scene's setup and submission, CPU) | 3.32 | 3.19 | 4.62 | 5.07 |
+| Picture layer (`drawlive_render`, CPU, runs while the GPU works) | 5.31 | 5.27 | 6.03 | 6.43 |
+| Compose (`remaster_apply_ex`), of which blocked on the GPU fence | 6.08 (5.15) | 8.57 (7.64) | 9.94 (9.02) | 11.39 (10.43) |
+| **Worker total** | **14.70** | 16.58 | 18.39 | 19.70 |
+| GPU span, from the scene's submission to its fence | 11.13 | 13.98 | 15.39 | 16.90 |
+
+**The worker is bound by the GPU, not by the picture layer.** The CPU's share before the fence (begin 3.3 + picture 5.3 = 8.6 ms) is hidden behind a GPU span of about 14 ms, and compose then waits 5 to 8 ms for the fence. So the earlier plan of putting the picture layer across CPU threads would cut a cost that is already overlapped and would not shorten a picture. What decides a 4K Maximum picture is, in order: the GPU's scene time (about 14 ms), then the main thread's serial scene copy (6.8 ms, plus 9.6 ms of machine step on a game step) which cannot overlap the worker today (the copy needs the draw-live step ring, which `drawlive_publish` rewrites only while the worker is idle, and its output buffer is swapped only at the end of a copy).
+
+**Revised plan for step 5** (nothing started; each step keeps the 901 checksums and the machine hash identical):
+1. Add GPU timestamp queries around each compute pass of `gpu_compose.c` (polygons, strokes, bands, replace, readback) and find which pass owns the 14 ms at 4K Maximum with Full detail (1,829 primitives a frame instead of 554). Candidate causes to check, not yet measured: tile binning with far more triangles, the per-pixel stroke loop's cost, or too few tiles in flight.
+2. Make the heaviest pass cheaper without changing a result (the exact-equality check against the CPU compositor is the test, as in step 2).
+3. Overlap the main thread's scene copy with the worker's job: double-buffer the step ring and the copy's output so the worker reads a fixed set while the next copy builds; the bound becomes the larger of copy and worker, about 14 ms before step 2 above and lower after it.
+4. Stage 2 (capture once per game step) only if 1 to 3 do not reach 16.7 ms at the 95th percentile. Owner gate at its first working version, as before.
