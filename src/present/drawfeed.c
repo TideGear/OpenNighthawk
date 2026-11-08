@@ -327,6 +327,19 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
 }
 
+/* F117_COPY_FP (diagnostic): a fingerprint of the job's copy records (kinds, clocks, values). */
+unsigned long long drawlive_job_fingerprint(const drawlive *r)
+{
+    unsigned long long h = 1469598103934665603ull;
+    const rerun_list *l = &r->rlist_job;
+    for (int i = l->first < 0 ? 0 : l->first; i < l->nrec; i++) {
+        const interp_rec *x = &l->rec[i];
+        h ^= (unsigned char)x->kind; h *= 1099511628211ull;
+        for (int k = 0; k < x->n; k++) { h ^= (unsigned)x->v[k]; h *= 1099511628211ull; }
+    }
+    return h;
+}
+
 /* Hand the copy's records to the job: swap them into rlist_job (the next copy fills the other list). Call it when no job is drawing from rlist_job. */
 void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan)
 {

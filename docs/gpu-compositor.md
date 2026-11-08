@@ -627,3 +627,22 @@ Controls with the overlap off and the same switch: one thread 0 differ (equal to
 **What is established.** Publishing, planning and the deferred release are safe (mode 1 is exact under stress). The copy before the wait is what changes the pictures, deterministically when the compose is on the main thread (so not only a thread race), and with a race on top in the default configuration. The palette override was one real shared global (the copy's colours come from `dac_colour`, which takes the worker's palette whenever it is set); ignoring it on the copy's thread did not make the pictures exact, so something else the copy shares with the previous job's picture layer or compose, or depends on from it, is still unfound.
 
 **What to do next.** Find the remaining shared or order-dependent state, by comparing, in the deterministic configuration (`F117_NO_WORKER_COMPOSE=1`, mode 2 against mode 0), the copy's output (`r->frame` primitives, `rlist` records) for the same picture: the first picture whose copy output differs shows what the previous job changed before the copy ran in the old order. Candidates still unchecked: state `drawlive_render` or `draw_recs` leaves in `rerun`'s scratch or in the step snapshots (`rerun_snap`) that a copy reads; the copy machine's incremental sync (`nudge`, `g_copy_mem`); the native templates and `remaster_scene_dropped` that the copy updates and a compose may read; `r->inter_hi` and `r->inter_tag`, which the worker writes and the next plan reads. Until it is exact the overlap must stay off (it is).
+
+### Step 5, the overlap made exact and on by default (7 November 2026, 22:30)
+
+**Cause of the inexactness found above:** `remaster_live_set_deferred(g_rlive_copy, 1)` ran where the worker thread is created, before `g_rlive_copy` exists (it is created when VGAME loads), so the deferred copy was never on: sub-step 3's neutral verification was vacuous, and in mode 2 the early copy's `remaster_live_copy_begin` cleared the done frame while the previous picture's composite still needed it (that composite then declined, `done_prims 0`, and the picture lost its Remastered 3D view). Found by fingerprinting each copy's output (`F117_COPY_FP`: identical in both orders) and each picture's layer, composite and compose decision (`F117_PIC_FP`: the first differing picture was a composite declined with an empty done frame). Fixed by setting the flag where `g_rlive_copy` is created. The palette-override ignore stays (a real shared global, now harmless).
+
+**After the fix:** with the compose on the main thread, mode 2 equals mode 0 in every picture, composite decision and checksum (0 of 3,476 pictures, two runs); in the default configuration four parallel stress replays (mode 0, mode 2 x3) all equal the exact baseline (0 of 901). **Mode 2 is now the default.**
+
+**Speed (`build/f117a.exe` 21:49, 4K 3840 x 2160, Maximum, Model detail Full, GPU path, paired, two rounds):**
+
+| | Mode 0 (old order) | Mode 2 (overlap) |
+|---|---|---|
+| Mean | 20.87, 20.95 ms | **16.72, 16.72 ms** |
+| p95 / p99 / max | 24.9 / 25.6 / 26.9 ms | **17.9 / 18.6 / 19.5 ms** |
+| Frames over 16.7 ms | 803, 835 of 901 | 438, 425 |
+| Frames over 20 ms | 496, 494 | **0, 0** |
+
+The median is 16.68 ms in both overlap runs, which looks like 60 Hz pacing (vsync on the hidden window) rather than the true cost; the next measurement should run without it to see how far below 16.7 ms the work really is.
+
+**The worker-compose check (`F117_WORKER_COMPOSE_CHECK`) is not usable as a race test on the GPU path.** On `build/f117a.exe` 21:49, GPU path, Maximum, to clock 4.3 billion, it reports the same result with the overlap off and on (275 composites the same, 2,525 different, the first difference at composite 1; on a full run with the overlap on, a difference of 183,366 wide pixels at composite 3,451, with the main thread's recomputation repeatable). So it disagrees in the old order too: the main thread's recomputation is not the same path as the worker's GPU composite. It is a pre-existing problem with the check, not with the overlap; the overlap's exactness rests on the guards (CPU and GPU 901/901), the stress replays and the live GPU check (0 differing pixels at Near, Far and Maximum). Fixing or retiring this check is a small task for the next session.

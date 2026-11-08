@@ -2043,6 +2043,24 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 
 size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
 size_t remaster_live_done_prims(const remaster_live *r) { return r->have_done ? r->done.n : 0; }
+
+/* F117_COPY_FP (diagnostic): a fingerprint of the done frame's primitives (every field that reaches a picture, not the padding) and of its band, origin and window. */
+unsigned long long remaster_live_done_fingerprint(const remaster_live *r)
+{
+    unsigned long long h = 1469598103934665603ull;
+#define FP(x) do { const unsigned char *b_ = (const unsigned char *)&(x); for (size_t k_ = 0; k_ < sizeof(x); k_++) { h ^= b_[k_]; h *= 1099511628211ull; } } while (0)
+    if (!r->have_done) return h;
+    for (size_t i = 0; i < r->done.n; i++) {
+        const remaster_prim *p = &r->done.prim[i];
+        FP(p->kind); FP(p->n); for (int v = 0; v < p->n && v < REMASTER_PRIM_VERTICES; v++) FP(p->v[v]);
+        FP(p->colour_index); FP(p->colour_word); FP(p->shade); FP(p->darken); FP(p->face); FP(p->model); FP(p->owner); FP(p->flat);
+    }
+    for (int i = 0; i < BAND_REC_BASE; i++) FP(r->done_band[i]);
+    FP(r->done_have_band); FP(r->done_complete); FP(r->done_origin[0]); FP(r->done_origin[1]);
+    for (int i = 0; i < 4; i++) FP(r->done_window[i]);
+#undef FP
+    return h;
+}
 unsigned remaster_live_frames(const remaster_live *r) { return r->frames; }
 
 /* ---- Piece 2: the blend check (F117_BLEND_CHECK=1, docs/gpu-compositor.md) ---- */

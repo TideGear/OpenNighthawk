@@ -199,6 +199,7 @@ int drawlive_collect(drawlive *r, drawfeed *f);
  * paired). Frees the older steps; nothing may be rendering. */
 void drawlive_publish(drawlive *r);
 void drawlive_release_pending(drawlive *r);
+unsigned long long drawlive_job_fingerprint(const drawlive *r);   /* F117_COPY_FP */
 void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan);   /* after drawlive_prepare_rerun, when no job draws from the job list */
 
 /* drawlive_collect then drawlive_publish: the single-threaded form. */

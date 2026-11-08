@@ -208,6 +208,8 @@ static int wide_prepare(int wide_w)
 /* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
  * original fine picture when there is nothing to compose. */
 static int g_pw_compose = 1;            /* F117_NO_WORKER_COMPOSE=1: the main thread composes, as before */
+static int diag_pic_fp(void) { static int on = -1; if (on < 0) on = getenv("F117_PIC_FP") != NULL; return on; }     /* diagnostics that fingerprint each picture and composite (docs/gpu-compositor.md, step 5) */
+static int diag_copy_fp(void) { static int on = -1; if (on < 0) on = getenv("F117_COPY_FP") != NULL; return on; }
 static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, int ww_given, int on_worker);
 
 /* The GPU compositor (F117_GPU_COMPOSE=1; docs/gpu-compositor.md): compute passes on a device of its own, the wide Remastered picture read back into the same buffer the CPU
@@ -368,6 +370,10 @@ static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, i
         static double sum; static unsigned n;
         sum += (double)(SDL_GetPerformanceCounter() - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
         if (++n % 120 == 0) { fprintf(stderr, "[timing] composite %.2f ms (mean of %u)\n", sum / n, n); }
+    }
+    if (diag_pic_fp() && !on_worker) {   /* diagnostic: how this composite was decided */
+        static unsigned n_cd;
+        fprintf(stderr, "[compdec] %u src %s done_prims %zu composed %d ww %d\n", ++n_cd, src == g_rlive_copy ? "copy" : "live", remaster_live_done_prims(src), composed, ww);
     }
     if (!composed) return hi;
     g_rtrue = 1;
@@ -1226,6 +1232,8 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
                 static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return };
                 if (g_rlive_copy) rerun_set_collector(&coll);
+                /* worker mode: the copy stages its frame and the loop commits it (this object exists only once the game is loaded, after the worker thread was made) */
+                if (g_rlive_copy && g_pw.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);
             }
         }
     }
@@ -2845,8 +2853,8 @@ int main(int argc, char **argv)
                 int early = 0, early_planned = 0, early_copied = 0;
                 drawlive_plan eplan;
                 {
-                    static int overlap_mode = -1;   /* F117_OVERLAP_MODE (experimental): 0 (default) as before; 1 publish and plan before the wait, copy after it (exact, no gain); 2 the copy before the wait too (faster, NOT yet exact: docs/gpu-compositor.md) */
-                    if (overlap_mode < 0) { const char *e = getenv("F117_OVERLAP_MODE"); overlap_mode = e ? atoi(e) : 0; }
+                    static int overlap_mode = -1;   /* F117_OVERLAP_MODE: 0 as before; 1 publish and plan before the wait, copy after it; 2 (default) the copy before the wait too: the picture costs the larger of its halves, not their sum (docs/gpu-compositor.md, step 5) */
+                    if (overlap_mode < 0) { const char *e = getenv("F117_OVERLAP_MODE"); overlap_mode = e ? atoi(e) : 2; }
                     static int overlap = -1;
                     if (overlap < 0) overlap = overlap_mode >= 1 && !getenv("F117_NO_COPY_OVERLAP") && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY");
                     if (overlap && g_pw.busy && g_remaster && g_rlive && g_rlive_copy && g_scale >= 1 && !g_live.check && g_live.defer_release) {
@@ -2881,6 +2889,13 @@ int main(int argc, char **argv)
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
                         g_fine = g_pw.composed ? g_pw.fine : remaster_apply(g_live.shown_hi);   /* composed on the worker, or here when it was a live-machine picture */
+                        if (diag_pic_fp()) {   /* diagnostic: fingerprints of the job's picture layer output and its composite, to compare runs */
+                            static unsigned n_pf; unsigned long long hv = 1469598103934665603ull, hh = hv, hf = hv;
+                            for (size_t q = 0; q < sizeof H.frame.vram; q++) { hv ^= H.frame.vram[q]; hv *= 1099511628211ull; }
+                            if (g_live.shown_hi && g_scale > 0) { const size_t fine_n = (size_t)320 * g_scale * 200 * g_scale; for (size_t q = 0; q < fine_n; q++) { hh ^= g_live.shown_hi[q]; hh *= 1099511628211ull; } }
+                            if (g_fine && g_scale > 0) { const size_t fine_n = (size_t)320 * g_scale * 200 * g_scale; for (size_t q = 0; q < fine_n; q++) { hf ^= g_fine[q]; hf *= 1099511628211ull; } }
+                            fprintf(stderr, "[picfp] %u kind %d t %.6f vram %016llx hi %016llx fine %016llx\n", ++n_pf, g_pw.plan.kind, g_pw.plan.t, hv, hh, hf);
+                        }
                         if (g_pw.composed && g_rbuf_cap && getenv("F117_WORKER_COMPOSE_CHECK")) {
                             /* the same composite again here, from the same inputs (the copy's frame, the frame's palette, the width): every output byte must agree */
                             static uint8_t *kb, *km; static uint32_t *kr, *kw; static size_t kcap, kwcap;
@@ -2960,6 +2975,11 @@ int main(int argc, char **argv)
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread (early: it ran before the wait) */
                     drawlive_commit_rerun(&g_live, &plan);   /* its records go to the job */
                     if (g_rlive_copy) remaster_live_commit(g_rlive_copy);   /* its frame becomes the one the worker will compose (deferred mode: the worker is idle here) */
+                    if (g_rlive_copy && plan.rerun_ready && diag_copy_fp()) {   /* diagnostic: what this copy produced, to compare runs */
+                        static unsigned n_fp;
+                        fprintf(stderr, "[copyfp] %u clock %llu t %.6f frame %016llx records %016llx\n", ++n_fp, (unsigned long long)H.m.cpu.icount, plan.t,
+                                remaster_live_done_fingerprint(g_rlive_copy), drawlive_job_fingerprint(&g_live));
+                    }
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;
                     g_pw.frame = fresh;
