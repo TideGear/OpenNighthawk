@@ -79,3 +79,16 @@ A subsequent fresh standard-user setup and actual hidden, silent desktop-shortcu
 launch passed on 6 November; its builder took 434.78 seconds. Default desktop
 placement is now checked. Visible output and sound remain untested. Details and
 limits: [release review](setup-release-review.md).
+
+## Zig build against the MSVC build, 7 November 2026 (after the margin, GPU and screenshot changes)
+
+Built by `setup.cmd` from `master` at `f4db435` into a private work and install folder (`D:\f117-dl\zig-work`, `D:\f117-dl\zig-install`; 4 minutes 30 seconds, Zig 0.14.1, checksums verified). The Zig exe is `D:\f117-dl\zig-install\f117a.exe` (installed 16:59); the MSVC exe is `C:\Dev\F-117A Recomp\build\f117a.exe` (built 15:58). Runway replay, fixed cadence, `EXE=` given for every run, no stray `f117a.exe` before or after.
+
+| Check | Near | Far | Maximum |
+|---|---|---|---|
+| Zig exe, CPU guards against the exact baseline (widenings off) | 901/901 identical | 901/901 | 901/901 |
+| Zig exe, GPU guards against the exact baseline (widenings off) | 901/901 identical | 901/901 | 901/901 |
+| Zig exe against the MSVC exe, widenings on (defaults), CPU compositor, checksum files compared | identical (901) | identical (901) | identical (901) |
+| Machine hash, Zig exe, 4.8 billion clocks | `600306c77cb04481` | | `600306c77cb04481` |
+
+So the earlier 92-of-901 Remastered picture differences between Zig and MSVC builds with the CPU compositor are gone: with exact rasterising (integer edge equations and depth planes) the two compilers give the same pictures, including with the margin widenings. Not covered: one GPU and one flight; the Zig exe's live GPU compose check was not run.
