@@ -29,6 +29,10 @@ void inputlog_read_fixes(const char *path, char *ids, size_t n);
 /* Cadence is authoritative on replay. Legacy logs use eight; malformed
  * or unsupported values fail rather than silently replay differently. */
 void inputlog_cadence(FILE *f, unsigned hz);
+/* Whether the AdLib sidecar for the effects was in the machine ("# f117r-adlib-effects 1"). It changes the emulated machine's timeline, so a replay must
+ * have the same: the replay uses the log's value (older logs carry none, and the setting is then as configured). Returns 1 when the log has the line. */
+void inputlog_adlib_effects(FILE *f, int on);
+int inputlog_read_adlib_effects(const char *path, int *on);
 int inputlog_read_cadence(const char *path, unsigned *hz);
 
 /* A replay, streamed: each input is queued on the machine before its time

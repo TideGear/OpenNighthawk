@@ -1858,6 +1858,13 @@ int main(int argc, char **argv)
     }
     H.audio = audio_create_backend(ips, opl_backend);
     if (H.audio) audio_set_speaker_model(H.audio, speaker_model);
+    if (replay) {   /* the AdLib sidecar changes the machine's timeline: a replay has what the recorded flight had (R28, 7 November) */
+        int logged;
+        if (inputlog_read_adlib_effects(replay, &logged)) {
+            if (g_adlib_effects >= 0 && g_adlib_effects != logged) fprintf(stderr, "adlib-effects: the log was recorded with it %s; the replay uses that\n", logged ? "on" : "off");
+            g_adlib_effects = logged;
+        }
+    }
     if (g_adlib_effects < 0) g_adlib_effects = g_setup_sound == '3' && !replay;   /* the default: with Roland chosen, not in a replay */
     if (g_adlib_effects > 0) {                      /* the AdLib sidecar: ASOUND.117 from the install, a chip of its own */
         char path[1024];
@@ -1981,6 +1988,7 @@ int main(int argc, char **argv)
         if (H.record) {
             inputlog_header(H.record, ips, time_us);
             inputlog_cadence(H.record, sim_hz);
+            inputlog_adlib_effects(H.record, g_adlib_effects > 0);
             char ids[256];
             fixes_enabled(ids, sizeof ids);
             inputlog_fixes(H.record, ids);
