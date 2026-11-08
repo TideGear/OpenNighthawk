@@ -532,3 +532,26 @@ Known limits: per-step decisions (which objects are drawn, darken and detail val
 | Machine hash (4.8 billion clocks, old Desktop `ONTests` build and this one) | `600306c77cb04481` | | `600306c77cb04481` |
 
 Not covered: one GPU (RTX 3060) and one flight.
+
+## Step 4: the 4K frame times on the current picture (7 November 2026)
+
+`C:\Dev\F-117A Recomp\build\f117a.exe`, built 15:58 on 7 November (Model detail Full by default, the margin widenings on, GPU compose and present on), `EXE=` given. Runway replay at 3840 x 2160 (picture detail 9, hidden Direct3D 11 window, `MODE=gpu`), Maximum draw distance, fixed cadence, clocks 3.9 to 4.8 billion (901 pictures), two runs one after the other with nothing else running and no stray `f117a.exe` before or after; `F117_SLOW_FRAME_TRACE=1 F117_REMASTER_TIMING=1`.
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| Mean, p50, p95, p99, max (ms per picture, the `cost_ns` column) | 20.98, 22.67, 24.99, 25.55, 26.72 | 20.89, 22.52, 24.84, 25.59, 26.45 |
+| Pictures over 16.7 ms | 827 of 901 | 819 of 901 |
+| Over 20 ms, over 25 ms | 495, 45 | 495, 29 |
+
+**So 4K 60 is not met at Maximum with Model detail Full: about 47 pictures a second on average, and nine in ten pictures miss the 16.7 ms line.** (The 6 November numbers, p95 13.2 to 15.3 ms, were Original model detail, before the margins were filled: both add work. The widenings alone cost about 1.3 ms of 29 ms at 1080p-class in the 7 November tuning runs; not separated at 4K here.)
+
+**Where the time goes** (the slow-frame trace, every picture in the window is over 12 ms; the same in both runs):
+
+| Picture kind | Count | Total | Waiting for the worker | Scene copy (main thread) | Machine step |
+|---|---|---|---|---|---|
+| Game-step pictures (the machine runs) | 226 | 21.1 ms | 4.6 | 6.8 | 9.6 |
+| In-between pictures | 675 | 20.9 ms | 13.9 | 6.8 | 0.1 |
+
+The main thread does these in series: it waits for the worker's previous picture, then runs the scene copy (6.8 ms, every picture), and on game steps also the machine step (about 9.6 ms, of which 1.6 is the draw-feed collection). The worker (picture layer, compositor setup, GPU upload) is on the critical path at about 14 ms on in-between pictures. No picture is slow because of a one-off hitch: the worst frames (26.7, 26.5, 26.3 ms at clocks 4,750,016,397, 4,710,016,397, 4,757,016,397) are ordinary in-between pictures with a slow worker, and the same clocks come out worst in both runs.
+
+**What this means for step 5.** Making the main thread overlap the copy with the worker's job (so a picture costs about the larger of the two, 14 ms, not their sum, 21 ms) is the cheapest route to 16.7 ms, but the copy reads the machine state the worker's picture is made from, so it needs care; shortening the worker (the picture layer across CPU threads, byte-identical) shortens its wait directly; Stage 2 removes the 6.8 ms copy from every picture.
