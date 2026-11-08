@@ -616,6 +616,10 @@ int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f
     plan->sa = plan->sb = -1;
     const drawlive_step *a, *b;
     drawlive_steps(r, &a, &b);
+    /* what the worker would otherwise read from the live ring when it runs: the ring's older and newer step and the replayed picture (plan_smooth overrides the
+     * indices with its own pair). With these in the plan the worker needs nothing drawlive_publish changes. */
+    plan->sa = r->smooth ? r->im : r->ia; plan->sb = r->ib;
+    plan->picture = r->picture; plan->picture_hi = r->scale ? r->picture_hi : NULL; plan->picture_tag = r->scale ? r->picture_tag : NULL;
     if (a && b) {
         plan->older = a->seq;
         plan->newer = b->seq;
@@ -684,8 +688,8 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             return 1;
         }
     }
-    memcpy(f->vram, r->picture, 64000);                /* the replayed picture */
-    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    memcpy(f->vram, plan->picture ? plan->picture : r->picture, 64000);                /* the replayed picture */
+    if (r->scale) { r->shown_hi = plan->picture ? plan->picture_hi : r->picture_hi; r->shown_tag = plan->picture ? plan->picture_tag : r->picture_tag; }
     r->diag_kind = PLAN_REPLAY;
     return 1;
 }
