@@ -99,17 +99,8 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
 1. **Own the game.** Buy F-117A on [Steam](https://store.steampowered.com/app/328920/) or
    [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20) and install it
    ([why](#you-need-your-own-copy-of-the-game)).
-2. **Build.** Windows with Visual Studio 2026 Build Tools, CMake, Ninja, Git and Python 3.12:
-
-   ```powershell
-   git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
-   Set-Location OpenNighthawk
-   py -m pip install capstone Pillow numpy
-   py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
-   ```
-
-   Details and what that command does: [Building](#building).
-3. **Play.** `build\f117a.exe --data "C:\GOG Games\F-117A"`. Answer SETUP's questions as in 1991
+2. **Build.** On 64-bit Windows, download the setup ZIP from [Releases](https://github.com/TideGear/OpenNighthawk/releases/latest), extract it and double-click `setup.cmd`. It finds and verifies your GOG or Steam copy, asks a few questions (install folder, shortcuts, optional sound and picture settings), downloads a small Zig compiler and its other build tools, builds on your PC in about 5 to 15 minutes and installs the game. It downloads its own tools and needs none installed. See [Building](#building).
+3. **Play.** Open the OpenNighthawk desktop shortcut or Start menu entry. Answer SETUP's questions as in 1991
    (2 for AdLib). Press the ` key for the settings menu. All options: [Running](#running).
 
 ## Status
@@ -160,42 +151,66 @@ please open an issue: that is a bug, and a serious one.
 
 ## Building
 
-Requirements: Windows, Visual Studio 2026 Build Tools with the C++ tools and
-Windows SDK, CMake 3.24+, Ninja, Git, and Python 3.12. CMake, Ninja, Git and
-Python must be available in the terminal. The build fetches SDL 3.4.8 (and
-Munt, below) on its first configure; it needs an internet connection then.
-The optional GPU compositor's shaders are compiled with the Windows SDK's `dxc`;
-when CMake does not find it they are skipped and the CPU compositor is used.
+On 64-bit Windows, download the setup ZIP from the
+[Releases](https://github.com/TideGear/OpenNighthawk/releases/latest) page
+(`OpenNighthawk-setup-*.zip`, source code only), extract it and double-click
+`setup.cmd`. Setup downloads its own Python, portable CMake,
+Ninja, shader compiler and Zig 0.14.1, checking pinned SHA-256 values. It
+finds GOG and Steam installations and verifies the game files before building.
+Setup downloads its own Python and build tools and does not use Git. Internet
+access is needed for setup. The standard-account test used no developer tools
+on PATH, but Visual Studio and Python remained installed elsewhere on that PC;
+a PC with neither installed has not yet been verified.
 
-From a new PowerShell terminal, in the directory where you keep source:
+The game is translated and compiled on your machine from your own copy.
+Source releases contain no game data, generated C or prebuilt game executable.
+Setup installs the game (about 35 MB) to `%LOCALAPPDATA%\Programs\OpenNighthawk`
+unless you choose another folder, adds the shortcuts you ask for and an entry in
+Windows Settings, Apps, and removes its build files (about 1.4 GB) when it
+finishes. Your pilots are kept outside the install folder, and running setup
+again updates an existing install in place. Original game files are read, not
+modified. Optional MT-32 ROMs and Macintosh sounds remain yours to supply; none
+are downloaded. Windows SmartScreen or an antivirus may warn about the new
+program the first time; see the [setup guide](docs/setup-user-guide.md).
 
-```powershell
-git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
-Set-Location OpenNighthawk
-py -m pip install capstone Pillow numpy
-py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
-```
+To uninstall, use Windows Settings, Apps, OpenNighthawk, or double-click
+`uninstall.cmd` in the install folder (it asks before deleting your pilots).
 
-Replace the data path with your installed game. `capstone` writes the
-disassembly comments in the generated C; Pillow and NumPy are needed by the
-picture and sound comparators (`tools/pc_parity.py`). Generated C, coverage
-and saves go in the work directory (default `%USERPROFILE%\f117-recomp-local`).
-On first build, `build.cmd` creates a `build` junction to a local directory
-under `%USERPROFILE%\f117-recomp-local`, with a separate CMake cache for each
-checkout. No generated files or game assets belong in the source tree.
-Translation counts depend on accumulated coverage, so a first build can
-translate slightly fewer instruction starts than the figures above.
+If automatic discovery fails, run `setup.cmd -Data "C:\path\to\F-117A"`
+from the extracted source folder. `-InstallDir "D:\OpenNighthawk"` selects the
+install folder, and `-AcceptLicences` takes every default without questions
+(more options: the [setup guide](docs/setup-user-guide.md)). Errors stop setup
+and explain what is missing or failed.
 
-That one command translates the game, builds it, plays the scripted routes
-in `tools/routes/` to gather coverage, translates and builds again, and
-verifies parity between the engines. It always builds the app,
-`build\f117a.exe`. Run on its own, `build.cmd` reuses the checkout's existing
-CMake settings; a build without generated C supports only the interpreter.
+**Visual Studio fallback.** If Zig cannot build on your machine, install
+Visual Studio Build Tools with Desktop development with C++ and a Windows
+SDK, then run `setup.cmd -Compiler VisualStudio`. This fallback can require
+administrator access and several GB. Setup uses an installed toolset; it
+does not silently install Visual Studio. Rerunning setup cleans its recognized
+incomplete work folder and restarts.
 
-After a runtime change, `py tools\build_recomp.py --data "C:\GOG Games\F-117A"
---parity-only` checks the existing build without translating or rebuilding.
+On the development PC the Zig build takes about five minutes (4 minutes 30
+seconds on 7 November 2026). The Zig-built game gives the same pictures and
+the same machine state as the Visual Studio build on the checks run so far
+(901 of 901 picture checksums at three draw distances, identical end-of-run
+state). Setup was tested end to end under Windows PowerShell 5.1 in a fresh
+standard account, and by the author's interactive runs of the wizard. It has
+not yet been run on a second PC or one with no Visual Studio or Python
+installed anywhere. Validation and limits:
+[setup validation](docs/zig-setup-validation.md).
+
+Developers can still use `build.cmd` with an installed MSVC toolset and
+CMake/Ninja. `py tools/build_recomp.py --data INSTALL --work OUTSIDE_REPO`
+translates, builds, gathers route coverage and checks parity; it needs an
+installed Python. Capstone adds optional disassembly comments; Pillow and
+NumPy support the separate picture/sound comparison tools. The setup path
+does not need those Python packages. A developer build without generated C
+supports only the interpreter. After a runtime change, `--parity-only`
+checks the existing generated build without translating or rebuilding.
 
 ## Running
+
+Setup users start the game from the shortcut or the Start menu (or `f117a.exe` in the install folder). The commands below refer to a developer build.
 
 ```bat
 build\f117a.exe --data "C:\GOG Games\F-117A"
@@ -500,6 +515,8 @@ pull requests and discussions asking where to download game data will be
 closed. Buy it; it is inexpensive and still available.
 
 ## Acknowledgements
+
+- **Zig contributors**, for the MIT-licensed Zig compiler used by setup. Zig is downloaded at run time, not redistributed in source releases.
 
 - **MicroProse / MPS Labs**, for the game, and for release notes that are
   still telling us how it works.
