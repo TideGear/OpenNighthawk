@@ -357,7 +357,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
 static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, unsigned value)
 {
     const char *sea_env = getenv("F117_SMOOTH_SEA");
-    const int smooth_sea = sea_env && atoi(sea_env);
+    const int smooth_sea = !sea_env || atoi(sea_env);
     if (exact_cov() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {
         const ex_vtx in[3] = { { a.x, a.y, { a.iz, 0, 0, 0 } }, { b.x, b.y, { b.iz, 0, 0, 0 } }, { c.x, c.y, { c.iz, 0, 0, 0 } } };
         ex_vtx o[16]; const int m = ex_guard_clip(in, 3, o); long w = 0;

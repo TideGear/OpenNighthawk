@@ -300,7 +300,7 @@ static int add_polygon(clist *l, const gpu_trace_rec *r, int w, int h)
     }
     uint32_t kind = r->kind == REMASTER_T_LOGIC ? (uint32_t)r->op + 1u : 0u;
     const char *sea_env = getenv("F117_SMOOTH_SEA");
-    if (kind == 2 && r->value == 0x80 && sea_env && atoi(sea_env)) kind = 6;
+    if (kind == 2 && r->value == 0x80 && (!sea_env || atoi(sea_env))) kind = 6;
     const uint32_t cv = r->kind == REMASTER_T_LOGIC ? r->value : r->color;
     for (int i = 1; i + 1 < m; i++) if (!c_add(l, cv, r->paint_index, r->paint_owner, kind, s[0], s[i], s[i + 1], w, h)) return 0;
     return 1;

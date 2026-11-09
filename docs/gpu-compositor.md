@@ -792,3 +792,20 @@ CMake edit: `band_palette.h` added to the `gpu_polys_x.dxil` DEPENDS, owner-appr
   On/off differ only in the sea: 0 differing pixels above y=425 (sky/HUD) and 0 in the cockpit centre. A margin column goes from 10 to 32 (left) and 11 to 44 (right) distinct colours, in smooth steps.
 
 OWNER GATE: visual approval. Default and baseline are unchanged; after approval the default flips and `guards.sh baseline` is rewritten.
+
+### R36 approved and enabled by default (8 November 2026, 17:10)
+
+Owner approved the before/after shots ("Smoothing looks good"). `F117_SMOOTH_SEA` is now
+default on (unset or non-zero; `0` off) in `remaster_raster.c` and `gpu_compose.c`.
+`EXE=C:/Dev/F-117A Recomp/build/f117a.exe`, build 8 November 16:15:46
+(`private/r36-approved-verification.txt`): machine hash `600306c77cb04481` old/new, Near
+and Maximum; new baseline written (differs from the old one at all three distances, as
+expected) and CPU and GPU guards 901/901 against it at Near, Far and Maximum, widenings
+off; live GPU check 0 differing pixels at all three; host acceptance 12/12, report verified.
+Baseline promoted to `private/renderer-bench/baseline`; the previous one is in
+`private/r36-approved/pre-r36-baseline`. ONTests holds this build (exe, all DXIL, changed
+`f117machine_api.dll`); headless dummy launch exit 0, no stray process.
+
+CI note: runs on `cdd5c7b`, `97f2a2f` and `383f7b5` failed on `presentation_world_lines`,
+whose last check still demanded equal diagonal and horizontal stroke area (true for the round
+pen, false for the approved square pen). Fixed in `329c663` (checks both pens); CI green.
