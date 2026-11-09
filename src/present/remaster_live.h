@@ -51,6 +51,7 @@ void remaster_live_set_gpu(remaster_gpu_fn run, remaster_gpu_begin_fn begin, rem
 int remaster_live_gpu_begin(remaster_live *r, const machine_t *m, int n, int wide_w);
 /* Terrain dots: how many coarser levels beyond its own ring an object's dark dots are drawn (0 the original's reach .. 3 the whole map). */
 void remaster_live_set_dot_levels(int levels);
+void remaster_live_set_far_light_size(int perspective);   /* Far light size (R35): 0 Original (default), 1 Perspective; F117_FAR_LIGHT_SIZE overrides */
 /* A static terrain object drawn without the game's placement (rerun.h, rerun_native): 1 when drawn, 0 when no template of its model exists yet
  * for this frame's camera (the caller lets the copy place it, which makes one). F117_NATIVE_CHECK=1 compares each with the game's own. */
 struct rerun_native_s;

@@ -186,7 +186,7 @@ static void init_primitive(remaster_prim *p, const emit_ctx *x, const scene_mate
     p->model = x->model;
     p->owner = x->serial << 12 | (c->face & 0xFFFu);
     p->flat = 0;
-    p->inv_depth_scale = 0.0;
+    p->inv_depth_scale = 0.0; p->shrink = 0;
 }
 
 static int emit(void *user, const scene_material *c)

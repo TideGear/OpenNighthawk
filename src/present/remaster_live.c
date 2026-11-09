@@ -280,6 +280,31 @@ static int word_colour(const machine_t *m, unsigned word, unsigned darken, uint3
 
 /* The fill style of a colour word and the palette index it stands for: 0 solid (index in *idx), 1 AND, 2 OR, 3 stipple (value
  * in *idx), -1 nothing drawn (FBh). Shaded colours are darkened as word_colour says. */
+/* R35: lines and dots of objects drawn beyond the original's reach shrink with distance. The original draws a terrain model only while its depth is
+ * under 8191 units of its own ring (z >> 14 in the drawn level's units, then >> shrink); beyond that the width is one game pixel x reach / depth,
+ * never under one screen pixel. The game's own drawing (shrink 0) and anything within reach keep the full width. The setting Far light size
+ * (remaster_live_set_far_light_size); F117_FAR_LIGHT_SIZE overrides it for testing. */
+static int g_far_light_size = -1;
+void remaster_live_set_far_light_size(int perspective)
+{
+    const char *e = getenv("F117_FAR_LIGHT_SIZE");
+    g_far_light_size = e ? atoi(e) != 0 : perspective != 0;
+}
+static int far_light_size(void)
+{
+    if (g_far_light_size < 0) remaster_live_set_far_light_size(0);     /* first use: the default, with the environment override applied */
+    return g_far_light_size;
+}
+static double far_width(const remaster_prim *p, int k0, int k1, double width)
+{
+    if (!p->shrink || !far_light_size()) return width;
+    const double z = ((double)p->v[k0].z + (double)p->v[k1].z) * 0.5;
+    const double reach = (double)((8191ll << 14) >> p->shrink);
+    if (z <= reach) return width;
+    const double w = width * reach / z;
+    return w < 1.0 ? 1.0 : w;
+}
+
 static int word_style(unsigned word, unsigned darken, unsigned *idx)
 {
     const unsigned ah = word >> 8 & 255, al = word & 255;
@@ -503,9 +528,9 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         }
         if (p->kind == SCENE_POLYGON && p->n >= 3) remaster_polygon(t, p->v, p->n, colour);
         else if (p->kind == SCENE_LINES)
-            for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
+            for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], far_width(p, k, k + 1, line_w), colour);
         else if (p->kind == SCENE_DOTS)
-            for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
+            for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], far_width(p, k, k, line_w * 1.5), colour);
     }
     const double tq3 = timing ? now_ms() : 0.0;
     if (timing) timing[2] += tq3 - tq2;
@@ -559,8 +584,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                     if (!point || dark) { t->line_bias = 50.0; t->line_slope = 0.0; }
                     else { t->line_bias = 1.01; t->line_slope = 1.0 + (ux > 1.0 ? ux : 1.0); }
                 }
-                if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], line_w, colour);
-                else for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], line_w * 1.5, colour);
+                if (p->kind == SCENE_LINES) for (int k = 0; k + 1 < p->n; k++) remaster_line(t, p->v[k], p->v[k + 1], far_width(p, k, k + 1, line_w), colour);
+                else for (int k = 0; k < p->n; k++) remaster_line(t, p->v[k], p->v[k], far_width(p, k, k, line_w * 1.5), colour);
             }
             t->color = c0; t->inv_z = z0;
         }
@@ -904,6 +929,21 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
             fprintf(stderr, "[prim-hist] #%u clock %llu, %zu primitives, scene %p (model:polygons/lines/dots):", done_hist, (unsigned long long)m->cpu.icount, r->done.n, (void *)r->scene);
             for (int k = 0; k < 1024; k++) if (cnt[k][0] || cnt[k][1] || cnt[k][2]) fprintf(stderr, " %d:%u/%u/%u", k, cnt[k][0], cnt[k][1], cnt[k][2]);
             fprintf(stderr, "\n");
+            {   /* z of the lines and dots relative to the original's reach (8191 << 14 in the object's own ring, >> shrink in the drawn level's units), by shrink (R35) */
+                double lo[16], hi[16]; unsigned cnt[16]; for (int k = 0; k < 16; k++) { lo[k] = 1e30; hi[k] = 0; cnt[k] = 0; }
+                for (size_t i = 0; i < r->done.n; i++) {
+                    const remaster_prim *q = &r->done.prim[i];
+                    if (q->kind == SCENE_POLYGON || q->n < 1 || q->shrink > 15) continue;
+                    const double reach = (double)((8191ll << 14) >> q->shrink);
+                    for (int j = 0; j < q->n; j++) {
+                        const double ratio = q->v[j].z / reach;
+                        if (ratio < lo[q->shrink]) lo[q->shrink] = ratio;
+                        if (ratio > hi[q->shrink]) hi[q->shrink] = ratio;
+                        cnt[q->shrink]++;
+                    }
+                }
+                for (int k = 0; k < 16; k++) if (cnt[k]) fprintf(stderr, "[prim-z] #%u shrink %d: %u vertices, z / reach min %.3f max %.3f\n", done_hist, k, cnt[k], lo[k], hi[k]);
+            }
             {   /* by source (remaster_prim_source): the game's own drawing, the native walk, placed through the game, placed through the game and deferred; models 37, 39, 40, 44, polygons/lines/dots */
                 static const int models[4] = { 37, 39, 40, 44 };
                 for (int mi = 0; mi < 4; mi++) {
@@ -1386,6 +1426,7 @@ static void finish_model(remaster_live *r, remaster_frame *f, size_t first, int 
     for (size_t i = first; i < f->n; ++i) {
         remaster_prim *p = &f->prim[i];
         p->inv_depth_scale = inv_depth;
+        p->shrink = (uint8_t)(shrink > 0 ? shrink : 0);
         for (int vertex = 0; vertex < p->n; ++vertex) {
             int32_t *coordinates[3] = { &p->v[vertex].x, &p->v[vertex].y, &p->v[vertex].z };
             for (int axis = 0; axis < 3; ++axis) {

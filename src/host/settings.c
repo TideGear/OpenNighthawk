@@ -31,6 +31,7 @@ static const char *const C_DOTS[] = { "original", "near", "far", "maximum", NULL
 static const char *const C_PICKORD[] = { "exact", "fast", NULL };
 static const char *const C_VIEW[] = { "wide", "4:3", NULL };
 static const char *const C_DETAIL[] = { "full", "original", NULL };
+static const char *const C_FAR_LIGHT[] = { "original", "perspective", NULL };
 static const char *const C_COLOURBLIND[] = { "off", "protanopia", "deuteranopia", "tritanopia", NULL };
 
 /* The folders the Folders screen edits, typed or pasted. */
@@ -66,6 +67,7 @@ static const setting_def DEFS[] = {
     { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
     { "dot-distance", "Terrain dots",     C_DOTS,         0, 1 },
     { "model-detail", "Model detail",     C_DETAIL,       0, 1 },     /* Remastered: full (every model at its finest version) or original (by distance); applied at once */
+    { "far-light-size", "Far light size", C_FAR_LIGHT,    0, 1 },     /* Remastered: original or perspective (R35: lights and lines beyond the game's reach shrink with distance); applied at once */
     { "remaster-view", "Remastered view", C_VIEW,         0, 1 },     /* Remastered: wide (fills a wide window) or 4:3 (the original's framing); applied at once */
     { "pick-order", "Far object order", C_PICKORD,    0, 1 },     /* Remastered: exact (the game's own order) or fast (cheaper by about 0.65 ms a frame); applied at once */     /* Remastered: how far the small dark ground dots are drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */
@@ -110,6 +112,7 @@ const char *settings_description(const char *key)
         { "draw-distance", "Remastered only: how far scenery is drawn. The game stops drawing each object at a fixed depth, so buildings appear suddenly; each step here draws far objects one scale coarser, four times farther: Near one step (the default, almost free), Far two, Maximum the whole map. Original keeps the game's own reach. Farther costs picture rate." },
         { "pick-order", "Remastered only: the order far objects are drawn in. Exact keeps the game's own order for objects the same distance away. Fast sorts them with a cheaper method that saves about 0.65 ms a frame at Maximum draw distance and lets objects tied on distance swap places, which changes a few edge pixels in some frames." },
         { "model-detail", "Remastered only: Full draws every building and object in its most detailed version at any distance, so their lights no longer appear suddenly as you fly closer (costs about 1 ms a frame at 4K). Original picks the version by distance, as the game does." },
+        { "far-light-size", "Remastered only: how big far lights and lines look. Original draws them one game pixel wide at any distance, so far lights become blocks. Perspective shrinks those beyond the game's own reach with distance, down to one screen pixel. Has no effect at Draw distance Original." },
         { "remaster-view", "Remastered only: Wide fills a wide window with a wider view of the world. 4:3 keeps the original's framing, with black bars at the sides of a wide window; the picture is still redrawn without the original's road and coastline jitter." },
         { "dot-distance", "Remastered only: how far the small dark dots that add detail to plain ground are drawn. Original keeps the game's own reach; each step reaches one scale coarser, up to Maximum. Far lights and buildings follow Draw distance instead." },
         { "present-scale", "Sets render resolution as a multiplier on the original 320 x 200 picture: 3 draws three pixels per original pixel on each axis (960 x 600), 9 draws 2880 x 1800. The size is shown beside the number. Auto fits the display. Higher values cost more CPU time." },
@@ -161,7 +164,7 @@ static int fix_height(const settings_state *s, int index)
 int settings_group(const char *key)
 {
     static const char *const audio[] = { "sound", "music-source", "sound-source", "roland", "adlib-effects", "speaker", "opl", NULL };
-    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "model-detail", "pick-order", "remaster-view", "present-scale", "present-line-width", "present-age", NULL };
+    static const char *const video[] = { "presentation", "scale", "fullscreen", "crt", "crt-mask", "crt-glow", "colourblind", "subtitles", "no-aspect", "draw-distance", "dot-distance", "model-detail", "far-light-size", "pick-order", "remaster-view", "present-scale", "present-line-width", "present-age", NULL };
     for (int i = 0; video[i]; ++i) if (!strcmp(key, video[i])) return SETTINGS_VIDEO;
     static const char *const advanced[] = { "timing", "ips", "sim-hz", "engine", NULL };
     for (int i = 0; audio[i]; ++i) if (!strcmp(key, audio[i])) return SETTINGS_AUDIO;
