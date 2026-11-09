@@ -777,3 +777,18 @@ Verification runs sequentially from `private/r36-verify/verify.sh`, report
 are prepared in `private/r36/captures.sh`, not started while verification runs.
 
 Owner requested wrap-up: verification deliberately stopped after CPU all distances and GPU Near/Far each 901/901. GPU Maximum incomplete; switch-on live and host acceptance not run. All four statehash comparisons passed. R36 saved as default-off WIP, not accepted. See newest handoff section; CMake dependency approval remains pending.
+
+### R36 verification complete; waiting at the OWNER GATE (8 November 2026, 16:10)
+
+`EXE=C:/Dev/F-117A Recomp/build/f117a.exe`, build 8 November 15:01:48 (unchanged by the
+CMake edit: `band_palette.h` added to the `gpu_polys_x.dxil` DEPENDS, owner-approved
+8 Nov 15:30; the rebuild found no work to do). Default stays off (`F117_SMOOTH_SEA=1` opts in).
+
+- Machine hash `600306c77cb04481`, old/new, Near and Maximum.
+- CPU guards 901/901 and GPU guards 901/901 at Near, Far and Maximum (smoothing off, widenings off). GPU Maximum, interrupted earlier, now passes.
+- Live GPU check with `F117_SMOOTH_SEA=1`: 0 differing pixels at Near, Far and Maximum (`private/r36-verify/rest.out`).
+- Host acceptance 12/12 (`private/r36-host`; default-off build, so it shows no regression, not the smoothing).
+- Owner flight `session-20261107-223638`, clock 15,700,000,000, 4608 x 1800 (3840 x 1800 view plus margins), Maximum Full: off and on end on the same machine hash `c68fad8ffaae6def`. Shots in `private/r36/sea_0/shots` and `sea_1/shots`; comparison `private/r36/r36_before_after_left_margin.png`.
+  On/off differ only in the sea: 0 differing pixels above y=425 (sky/HUD) and 0 in the cockpit centre. A margin column goes from 10 to 32 (left) and 11 to 44 (right) distinct colours, in smooth steps.
+
+OWNER GATE: visual approval. Default and baseline are unchanged; after approval the default flips and `guards.sh baseline` is rewritten.

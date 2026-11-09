@@ -198,7 +198,7 @@ if(F117R_BUILD_APP)
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys.hlsl)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys_x.hlsl
-      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys_x.hlsl)
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/polys_x.hlsl ${CMAKE_CURRENT_SOURCE_DIR}/src/present/band_palette.h)
     add_custom_target(gpu_shaders_polys ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys.dxil ${CMAKE_CURRENT_BINARY_DIR}/gpu_polys_x.dxil)
     add_executable(gpu_polys tools/gpu_polys.c src/present/remaster_raster.c)
     target_include_directories(gpu_polys PRIVATE src/present)
