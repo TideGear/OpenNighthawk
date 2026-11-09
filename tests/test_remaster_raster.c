@@ -2,11 +2,18 @@
  * a wider frame adds columns without moving what was drawn, and positions are sub-pixel. */
 #include "remaster_raster.h"
 #include "exact.h"
+#include "decal_faces.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#define SETENV(k, v) _putenv_s(k, v)
+#else
+#define SETENV(k, v) setenv(k, v, 1)
+#endif
 
 #define CHECK(c) do { if (!(c)) { printf("line %d: %s\n", __LINE__, #c); return 1; } } while (0)
 
@@ -502,5 +509,52 @@ int main(void)
         free(t.color); free(t.inv_z);
     }
     puts("remaster raster passes");
+    /* R38 face cache: dedupe, coverage lookup, size/allocation failure, and a recording pass that must not change the picture */
+    {
+        decal_face_cache c = { 0 };
+        df_reset(&c);
+        CHECK(!c.failed && c.words);
+        ex_tri tri = { { 0, 0, 40 * 256, 0, 0, 40 * 256 }, 40LL * 40 * 256 * 256 };
+        ex_planes pl = { 0 };
+        df_add(&c, 0x1234u, &tri, &pl);
+        df_add(&c, 0x1234u, &tri, &pl);                          /* tiled row stages meet the same face again */
+        CHECK(c.count == 1);
+        CHECK(df_contains(&c, 0x1234u, 5.0, 5.0));              /* inside the face */
+        CHECK(!df_contains(&c, 0x1234u, 38.0, 38.0));           /* outside its triangle: the face cannot hide a line there */
+        CHECK(df_contains(&c, 0x9999u, 5.0, 5.0));              /* an unknown owner never rejects */
+        df_reset(&c);
+        CHECK(c.count == 0 && !c.failed);                        /* reuse across frames */
+        CHECK(!df_reserve(&c, (size_t)-1 / 8) && c.failed);      /* an impossible size fails cleanly and disables the rule */
+        df_add(&c, 0x1234u, &tri, &pl);                          /* a failed cache ignores further faces */
+        CHECK(c.count == 0);
+        df_reset(&c);
+        CHECK(!c.failed && c.count == 0);                        /* the next frame starts afresh */
+        free(c.words);
+    }
+    {
+        static uint32_t ref_px[64 * 48];
+        decal_face_cache ctx = { 0 }, bad = { 0 };
+        for (int pass = 0; pass < 3; pass++) {                   /* 0 off, 1 on with a caller context, 2 on with a failed cache */
+            SETENV("F117_DECAL_FACE", pass ? "1" : "0");
+            remaster_target t = make(64, 48);
+            void *previous = pass ? remaster_faces_use(pass == 1 ? &ctx : &bad) : NULL;
+            t.paint_owner = 0x3000;
+            remaster_clear(&t, BG);
+            if (pass == 2) bad.failed = 1;
+            remaster_v3 q[4]; quad(q, 0x04000000, 12, 0);
+            remaster_polygon(&t, q, 4, RED);
+            if (pass == 0) memcpy(ref_px, t.color, sizeof ref_px);
+            else CHECK(memcmp(ref_px, t.color, sizeof ref_px) == 0);
+            if (pass == 1) CHECK(ctx.count > 0);                 /* the caller's context received the faces */
+            if (pass) remaster_faces_use(previous);
+            free(t.color); free(t.inv_z);
+        }
+        free(ctx.words); free(bad.words);
+        SETENV("F117_DECAL_FACE", "1"); SETENV("F117_RASTER_EXACT", "0");
+        CHECK(!decal_faces_enabled());                           /* the float path never uses the new rule */
+        SETENV("F117_RASTER_EXACT", "1"); CHECK(decal_faces_enabled());
+        SETENV("F117_RASTER_EXACT", ""); SETENV("F117_DECAL_FACE", "0");
+        CHECK(!decal_faces_enabled());
+    }
     return 0;
 }
