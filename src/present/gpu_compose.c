@@ -11,6 +11,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef F117_GPU_TIMESTAMPS
+#include <windows.h>
+#include "gpu_timestamps.h"
+#endif
 
 #define TILE 16
 #define MAX_POLY 16
@@ -56,7 +60,61 @@ struct gpu_compose {
     SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
     Uint32 up2_cap;
     Uint64 t_begin;
+    void *profile;
+    void *(*profile_list)(SDL_GPUCommandBuffer *);
+    FILE *profile_log;
 };
+
+static void profile_init(gpu_compose *g)
+{
+#ifdef F117_GPU_TIMESTAMPS
+    const char *path = getenv("F117_GPU_TIMESTAMP_LOG");
+    if (!path || !*path) return;
+    if (strcmp(SDL_GetGPUDeviceDriver(g->dev), "direct3d12") ||
+        getenv("F117_GPU_PASS_TIMES") || getenv("F117_GPU_PRESENT_SPLIT") ||
+        getenv("F117_GPU_PRESENT_TWICE")) {
+        fprintf(stderr, "[gpu-timestamp] unsupported backend or split-pass diagnostic\n");
+        return;
+    }
+    HMODULE module = GetModuleHandleW(L"SDL3.dll");
+    void *(*device)(SDL_GPUDevice *) = (void *(*)(SDL_GPUDevice *))GetProcAddress(module, "F117_GPUProfileDevice");
+    void *(*queue)(SDL_GPUDevice *) = (void *(*)(SDL_GPUDevice *))GetProcAddress(module, "F117_GPUProfileQueue");
+    g->profile_list = (void *(*)(SDL_GPUCommandBuffer *))GetProcAddress(module, "F117_GPUProfileCommandList");
+    if (!device || !queue || !g->profile_list) {
+        fprintf(stderr, "[gpu-timestamp] optional SDL profiling bridge unavailable\n");
+        return;
+    }
+    g->profile = f117_timestamp_create(device(g->dev), queue(g->dev));
+    if (g->profile) g->profile_log = fopen(path, "w");
+    if (!g->profile_log) {
+        f117_timestamp_destroy(g->profile); g->profile = NULL;
+        fprintf(stderr, "[gpu-timestamp] query resources or output unavailable\n");
+        return;
+    }
+    fprintf(g->profile_log, "from,to,gpu_ms\n");
+#else
+    (void)g;
+#endif
+}
+
+static void profile_mark(gpu_compose *g, SDL_GPUCommandBuffer *cb, const char *label)
+{
+#ifdef F117_GPU_TIMESTAMPS
+    if (g->profile && !f117_timestamp_mark(g->profile, g->profile_list(cb), label))
+        fprintf(stderr, "[gpu-timestamp] query marker failed: %s\n", label);
+#else
+    (void)g; (void)cb; (void)label;
+#endif
+}
+
+static void profile_resolve(gpu_compose *g, SDL_GPUCommandBuffer *cb)
+{
+#ifdef F117_GPU_TIMESTAMPS
+    if (g->profile) f117_timestamp_resolve(g->profile, g->profile_list(cb));
+#else
+    (void)g; (void)cb;
+#endif
+}
 
 static void say(gpu_compose *g, const char *msg)
 {
@@ -114,6 +172,7 @@ static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, i
     g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 0, 16, 16);
     g->p_present = load_pipeline(g->dev, shader_dir, "gpu_present.dxil", 1, 0, 1, 16, 16);
     if (!g->p_bands || !g->p_polys || !g->p_strokes || !g->p_replace) { gpu_compose_destroy(g); return NULL; }
+    profile_init(g);
     return g;
 }
 

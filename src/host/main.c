@@ -236,6 +236,14 @@ static int gpu_compose_begin_cb(const gpu_compose_in *in)
     if (!g_gpu) return 0;
     SDL_LockMutex(g_gpu_lock);
     const int ok = gpu_compose_begin(g_gpu, in);
+    if (ok && getenv("F117_REMASTER_TIMING")) {
+        static double setup_sum; static unsigned samples;
+        double setup_ms = 0.0;
+        gpu_compose_times(g_gpu, &setup_ms, NULL, NULL);
+        setup_sum += setup_ms;
+        if (++samples % 120 == 0)
+            fprintf(stderr, "[gpu-setup] mean of %u: CPU preparation %.2f ms, latest scene %u records\n", samples, setup_sum / samples, in->nrec);
+    }
     SDL_UnlockMutex(g_gpu_lock);
     return ok;
 }
@@ -590,7 +598,9 @@ static uint32_t *g_crt_buf; static size_t g_crt_cap;
 static int gpu_tex_mode(void)
 {
     if (!g_gpu_present) return 0;
-    if (g_crt || g_crt_mask || g_crt_glow || g_colourblind || getenv("F117_PRESENT_HASH_FROM") || getenv("F117_PRESENT_SHOTS") || getenv("F117_GPU_PRESENT_READBACK")) return 2;
+    /* The worker checker compares g_wpix before presentation, so its first
+     * composite must populate that buffer as well as the GPU texture. */
+    if (g_crt || g_crt_mask || g_crt_glow || g_colourblind || getenv("F117_PRESENT_HASH_FROM") || getenv("F117_PRESENT_SHOTS") || getenv("F117_GPU_PRESENT_READBACK") || getenv("F117_WORKER_COMPOSE_CHECK")) return 2;
     return 1;
 }
 
