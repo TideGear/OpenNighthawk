@@ -147,7 +147,7 @@ static unsigned g_rlive_base;
 static SDL_Renderer *g_ren;            /* the window's renderer, for its output size */
 static int g_aspect_on = 1;            /* the 4:3 shape is kept (not --no-aspect) */
 static const char *g_view_choice = "wide";   /* Remastered view: wide (fills a wide window) or 4:3 (the original's framing, black bars at the sides) */
-static const char *g_far_light_choice = "original"; /* Far light size: original or perspective (R35) */
+static const char *g_far_light_choice = "perspective"; /* Far light size: original or perspective (R35) */
 static const char *g_detail_choice = "full"; /* Model detail: full (every model at its finest version, the default) or original (by distance, as the game does) */
 static SDL_Texture *g_wtex;
 static uint32_t *g_wpix;
@@ -888,7 +888,7 @@ static void on_midi(void *u, uint64_t icount, uint8_t b)
 /* A draw-distance choice as world units: original turns the extra walks off, maximum is every ring to the limit of the guest's 16-bit cell offsets. -1: not a choice. */
 static const char *g_draw_choice = "original";           /* the draw distance in force, for the menu */
 static const char *g_pick_choice = "exact";             /* the far object order in force, for the menu */
-static const char *g_dot_choice = "original";            /* the terrain-dot distance in force, for the menu */
+static const char *g_dot_choice = "near";            /* the terrain-dot distance in force, for the menu */
 static int dot_levels(const char *v) { return !strcmp(v, "maximum") ? 3 : !strcmp(v, "far") ? 2 : !strcmp(v, "near") ? 1 : !strcmp(v, "original") ? 0 : -1; }
 static int draw_distance_units(const char *v)
 {

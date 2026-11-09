@@ -98,3 +98,14 @@ Generated from the status column above; the table is the record. The older "wher
 ## Earlier notes
 
 The 1 November pictures-per-second measurement, the ONTests build notes and the six full-gate records of that day are in [archive/owner-issues-log-20261101.md](archive/owner-issues-log-20261101.md).
+
+## Owner follow-up, 8 November 2026, 21:20
+
+Owner approved Perspective far light size and Near terrain dots as defaults, including baseline regeneration. Source/menu/acceptance/README updated; build 21:27:06 succeeds. Verification running under `private/defaults-approved`; no baseline promoted or ONTests refreshed yet. Bench ini pins neither setting. Config accepts both keys and preserves explicit saved choices.
+
+Approved stray session `session-20261108-170558` deleted from AppData; exact resolved path checked before deletion, absence verified. No other session deleted.
+
+New report: performance progressively worsened approaching lights and was terrible near the end; whether pre-existing is unknown. Lines grow thick near mountains and remain spotted even far away. New evidence: Pictures/OpenNighthawk shots 21:11:45 through 21:14:49 and matching replay `session-20261108-211031` (input through clock 10,375,887,168). R38 remains open: classify these shots and traces before equating the owner's stippling with the earlier broken edge strokes. Performance A/B still pending.
+Verification progress (build 21:27:06): old/new Near and old Maximum machine hashes equal 600306c77cb04481; new Maximum replay still running. Prior ONTests executable preserved under private/owner-211031/prior-build before refresh (file timestamp 21:04:15; handoff's 19:05:25 differs, so use measured file identity in comparisons). Owner ONTests ini explicitly selects perspective/near. No performance A/B has run yet.
+
+Approved-default verification update: EXE build 21:27:06, CPU/GPU guards each 901/901 at Near/Far/Maximum; live GPU comparisons each 3,421 pictures, zero differences; old/new Near/Maximum hashes 600306c77cb04481; host acceptance 12/12 with evidence verified. Full 846-test CTest run remains active at func_lockstep. Baseline promotion, ONTests and commit/push still pending; performance A/B not run.

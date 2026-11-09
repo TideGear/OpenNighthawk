@@ -65,9 +65,9 @@ static const setting_def DEFS[] = {
     { "opl",          "AdLib emulation",  C_OPL,          0, 0 },
     { "no-aspect",    "Ignore 4:3 shape", C_YESNO,        0, 0 },
     { "draw-distance", "Draw distance",   C_DRAW,         0, 1 },     /* Remastered: how far scenery is drawn; applied at once */
-    { "dot-distance", "Terrain dots",     C_DOTS,         0, 1 },
+    { "dot-distance", "Terrain dots",     C_DOTS,         1, 1 },
     { "model-detail", "Model detail",     C_DETAIL,       0, 1 },     /* Remastered: full (every model at its finest version) or original (by distance); applied at once */
-    { "far-light-size", "Far light size", C_FAR_LIGHT,    0, 1 },     /* Remastered: original or perspective (R35: lights and lines beyond the game's reach shrink with distance); applied at once */
+    { "far-light-size", "Far light size", C_FAR_LIGHT,    1, 1 },     /* Remastered: original or perspective (R35: lights and lines beyond the game's reach shrink with distance); applied at once */
     { "remaster-view", "Remastered view", C_VIEW,         0, 1 },     /* Remastered: wide (fills a wide window) or 4:3 (the original's framing); applied at once */
     { "pick-order", "Far object order", C_PICKORD,    0, 1 },     /* Remastered: exact (the game's own order) or fast (cheaper by about 0.65 ms a frame); applied at once */     /* Remastered: how far the small dark ground dots are drawn; applied at once */
     { "present-scale", "Picture detail",  C_PSCALE,       0, 0 },     /* fine pixels per original pixel; auto fits the display */

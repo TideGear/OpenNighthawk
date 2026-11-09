@@ -17,7 +17,7 @@ DEFAULTS = dict(presentation="original", fixes="recommended", scale="3", fullscr
     roland="off", opl="dbopl", engine="recomp", colourblind="off")
 DEFAULTS.update({"crt-mask":"no", "crt-glow":"no", "music-source":"default", "sound-source":"default",
     "adlib-effects":"yes", "sim-hz":"15", "no-aspect":"no", "present-scale":"auto",
-    "present-line-width":"auto", "present-age":"interp", "draw-distance":"original", "dot-distance":"original", "pick-order":"exact", "remaster-view":"wide", "model-detail":"full", "far-light-size":"original", "pad-deadzone":"0", "pad-fire1":"0",
+    "present-line-width":"auto", "present-age":"interp", "draw-distance":"original", "dot-distance":"near", "pick-order":"exact", "remaster-view":"wide", "model-detail":"full", "far-light-size":"perspective", "pad-deadzone":"0", "pad-fire1":"0",
     "pad-fire2":"1", "pad-invert-x":"no", "pad-invert-y":"no"})
 
 

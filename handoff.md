@@ -1,5 +1,14 @@
 # Handoff
 
+## Active continuation: approved defaults VERIFIED, 8 November 2026
+
+- Stray AppData session `session-20261108-170558` deleted with the owner's explicit approval; exact resolved path checked, absence verified.
+- Owner approves Perspective Far light size and Near Terrain dots defaults and baseline rewrite. Source/menu/acceptance/README edited; config already supports both keys. Bench ini pins neither. Build `build/f117a.exe` 21:27:06 succeeds. Only later source edit is a comment describing Near correctly; no behavior changed after build.
+- **Verification RUNNING**, unified exec session `85646`, script `private/defaults-approved/verify.sh`, log `private/defaults-approved/verification.txt`. Check the actual process/output before resuming; do not restart merely because a wait expires. All four old/new Near/Maximum statehash results are `600306c77cb04481`. Candidate baseline generation has started. Accepted baseline remains untouched; previous copy in `private/defaults-approved/pre-defaults-baseline`. CPU/GPU guards, live checks, host and full CTest are queued by that script, not yet claimed passed. No commit/push or ONTests refresh yet.
+- New owner flight `session-20261108-211031`, input ends 10,375,887,168; four latest PNGs in Pictures/OpenNighthawk (21:11:45 through 21:14:49), read-only. Performance worsens near lights/end, origin unknown. Owner's ONTests ini explicitly selects perspective/near. Last screenshot has scattered dots over sea plus dense distant land lines; no trace classification yet. Do not equate all spotting with R38's earlier broken edges.
+- Prepared but NOT RUN: `private/owner-211031/performance.sh` (sequential unpaced 4K setting/build comparisons with worker/slow-frame diagnostics), `summarize.py` (frame costs by billion-clock interval), `trace.sh` (late flight trace at 10.368G, scale3). The preserved ONTests executable is `private/owner-211031/prior-build/f117a.exe`, actual file timestamp 21:04:15 (different from prior handoff's 19:05:25; use measured identity). It needs current build DLLs on PATH, already in script. No performance conclusion yet.
+- SUPERSEDED by owner revised goal below; previous order: finish defaults verification/baseline/ONTests and commit+push+CI; performance new flight; R38 review-only same-pixel CPU/GPU fix if traces support it; overlap unpaced/check repair; machine thread, pipeline, parallel copies, picture/GPU cost. Owner gates and protected paths in the goal remain in force. Preserve owner sound-board edits and untracked P2 plan.
+
 ## Newest handoff: 8 November 2026, 21:20 (read this section first)
 
 - Work on **master**, pushed through the commit carrying this section; `9f86daf` holds R35, CI green. **ONTests holds `build/f117a.exe` 8 November 19:05:25** (R36 on, R35 available, default Original): exe, all DXIL, changed `f117machine_api.dll`; headless launch with a private `--save` exit 0, nothing written to AppData. No game or capture process is running.
@@ -354,3 +363,16 @@ Presentation:
 - **Public repo, code only:** no game data, generated C, raw captures or private-project references
   ([docs/provenance.md](docs/provenance.md)).
 - Long commands (over about 30 s) run in the background. While waiting, do a doc pass over every `.md`.
+
+### Owner revised rendering goal (8 November, current)
+
+Game logic and the complete selected object set remain exact; improved visuals may use hardware rasterisation, depth buffers and approximations. Owner reviews every visible change before enabling it. Adding shader build rules to CMake is approved; other core CMake edits and protected machine/matched/lockstep files stop for owner review.
+
+After defaults: new-flight paired performance, unpaced overlap/check repair, GPU pass timestamps; then hardware gradient bands preserving R36 behind a switch (timing and before/after owner gate); then hardware stroke quads with depth/bias and close-line options behind a switch (owner gate). Follow with machine thread, pipeline/latency, parallel copies, picture caching/GPU. Stage 2 requires approval if still over budget. Keep current exact GPU checks for speed-only changes; only replace CPU-equals-GPU with measured tolerance after hardware rendering approval. No objects removed for speed.
+
+Current verification update: all candidate baseline distances have 901 checksums and differ from prior baseline as expected; CPU comparison runs in progress. No baseline promoted.
+Defaults status update: baseline promoted from tested candidate at Near/Far/Maximum; previous baseline retained. All CPU/GPU guards 901/901, all live checks 3421 pictures zero differing, host 12/12 report verified, hashes unchanged. ONTests refreshed to 21:27:06 exe plus all DXIL and changed DLLs; hidden dummy-audio/video launch with private workspace save exited 0, no f117a process left. Full CTest still active at func_lockstep; commit/push/CI remain pending. Initial PowerShell direct GUI launch returned no exit status; explicit Start-Process -Wait confirmed exit 0.
+
+Full CTest continuation: func_lockstep PASSED in 1561.84 s; serial tests 1..150 passed. To reduce wall time, stopped only CTest's tree and retained complete log in private/defaults-approved/serial-verification.txt. Every remaining test resumed with ctest -I 151,846 -j 8, log private/defaults-approved/remaining-ctest.txt, unified exec session 38519. Former session 85646 is terminal from that intentional stop; do not restart it. Verify all 696 remaining cases and combine with first150 before claiming 846 passed. No source/build changed during tests.
+
+FINAL defaults verification: 846 unique CTests passed (1..150 serial and 151..846 parallel), host12/12 verified, renderer evidence above complete. Baseline promoted; ONTests refreshed and smoke exit0. No game process left. Next: commit/push this step and CI, then performance script. See latest goal for hardware bands/strokes order.

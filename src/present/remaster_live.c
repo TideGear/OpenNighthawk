@@ -292,7 +292,7 @@ void remaster_live_set_far_light_size(int perspective)
 }
 static int far_light_size(void)
 {
-    if (g_far_light_size < 0) remaster_live_set_far_light_size(0);     /* first use: the default, with the environment override applied */
+    if (g_far_light_size < 0) remaster_live_set_far_light_size(1);     /* first use: the default, with the environment override applied */
     return g_far_light_size;
 }
 static double far_width(const remaster_prim *p, int k0, int k1, double width)
@@ -1690,9 +1690,9 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
             target->n = w;
         }
         /* Terrain dots: a dark point (a light drawn as a line from a point to itself, or a dot) of an object placed at a coarser level than its own ring
-         * is a speck on the ground, thousands of them at Maximum. Their reach is the Terrain dots setting's (default: the original's); lit points (lights)
+         * is a speck on the ground, thousands of them at Maximum. Their reach is the Terrain dots setting's (default: Near); lit points (lights)
          * keep the Draw distance setting's reach. F117_FAR_DARK_DOTS=1 draws them at the full reach. */
-        if (g_dot_levels < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); g_dot_levels = e && e[0] == '1' ? 3 : 0; }
+        if (g_dot_levels < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); g_dot_levels = e ? (e[0] == '1' ? 3 : 0) : 1; }
         if (n->shrink / 2 > g_dot_levels && added >= 0) {
             size_t w = first;
             for (size_t i = first; i < target->n; i++) {
