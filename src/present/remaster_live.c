@@ -3,6 +3,7 @@
 #include "rerun.h"
 
 #include "remaster_raster.h"
+#include "decal_faces.h"
 #include "remaster_scene.h"
 #include "scene_mesh.h"
 #include "band_state.h"
@@ -706,12 +707,14 @@ typedef struct {
      * stage barriers. Never update shared floating-point accumulators here. */
     double (*timing)[4];
     int row_tile;
+    decal_face_cache *faces;
 } scene_job;
 
 static void scene_rows_part(void *arg, int part)
 {
     const scene_job *j = (const scene_job *)arg;
     remaster_target t = j->base;
+    void *previous_faces = remaster_faces_use(j->faces ? &j->faces[part] : NULL);
     if (j->parts > 1 && j->row_tile > 0) {
         /* Spread the narrow, busy horizon across workers rather than leaving
          * its lines and models in one contiguous worker band. A stage still
@@ -727,6 +730,7 @@ static void scene_rows_part(void *arg, int part)
         draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage,
                       j->timing ? j->timing[part] : NULL);
     }
+    remaster_faces_use(previous_faces);
 }
 
 static void run_parts(void (*fn)(void *, int), void *arg, int parts)
@@ -1021,6 +1025,8 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
     }
     {
         scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, wide, parts, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
+        static F117_TLS decal_face_cache part_faces[REMASTER_PARTS];
+        if (decal_faces_enabled()) sj.faces = part_faces;
         sj.timing = timed ? worker_timing : NULL;
         const char *tile = getenv("F117_REMASTER_ROW_TILE");
         sj.row_tile = tile ? atoi(tile) : parts >= 8 && h >= 1200 ? 64 : 0;

@@ -48,7 +48,52 @@ bool decal_hidden(uint at, float iz, uint po, bool line_point, bool self_hidden)
     return !on_ground && iz < asfloat(invz[at]) * (same ? 0.99 : 0.97);
 }
 
-bool stroke_hidden(double px, double py, float iz, uint po, bool line_point, bool self_hidden, double4 ls, int radius)
+
+int64_t review_i64(uint b) {return i64(strokes[b],strokes[b+1]);}
+uint64_t review_u64(uint b) {return u64(strokes[b],strokes[b+1]);}
+uint face_base(int j) {return pad1+4u+262144u+(uint)j*26u;}
+int face_head(uint ow) {return asint(strokes[pad1+4u+((ow*2654435761u)&262143u)]);}
+bool face_contains(uint ow,double x,double y) {
+ bool found=false;precise double px=x*256.0,py=y*256.0;
+ for(int j=face_head(ow);j>=0;j=asint(strokes[face_base(j)+1])) {
+  uint b=face_base(j);if(strokes[b]!=ow)continue;found=true;
+  int64_t ax=review_i64(b+2),ay=review_i64(b+4),bx=review_i64(b+6),by=review_i64(b+8),cx=review_i64(b+10),cy=review_i64(b+12);
+  precise double e0=(double)(bx-ax)*(py-(double)ay)-(double)(by-ay)*(px-(double)ax);
+  precise double e1=(double)(cx-bx)*(py-(double)by)-(double)(cy-by)*(px-(double)bx);
+  precise double e2=(double)(ax-cx)*(py-(double)cy)-(double)(ay-cy)*(px-(double)cx);
+  if(review_i64(b+14)>0?(e0>=0&&e1>=0&&e2>=0):(e0<=0&&e1<=0&&e2<=0))return true;
+ }
+ return !found;
+}
+double2 face_gradient(uint ow,int x,int y,float depth) {
+ double best=1e100;double2 result=double2(0,0);
+ int64_t px=(int64_t)x*256+128,py=(int64_t)y*256+128;
+ for(int j=face_head(ow);j>=0;j=asint(strokes[face_base(j)+1])) {
+  uint b=face_base(j);if(strokes[b]!=ow)continue;
+  int64_t ax=review_i64(b+2),ay=review_i64(b+4),bx=review_i64(b+6),by=review_i64(b+8),cx=review_i64(b+10),cy=review_i64(b+12);
+  int64_t e0=(bx-ax)*(py-ay)-(by-ay)*(px-ax),e1=(cx-bx)*(py-by)-(cy-by)*(px-bx),e2=(ax-cx)*(py-cy)-(ay-cy)*(px-cx);
+  if(!(review_i64(b+14)>0?(e0>=0&&e1>=0&&e2>=0):(e0<=0&&e1<=0&&e2<=0)))continue;
+  uint64_t zq=review_u64(b+20)+review_u64(b+22)*(uint64_t)((int64_t)x-review_i64(b+16))+review_u64(b+24)*(uint64_t)((int64_t)y-review_i64(b+18));
+  float z=(float)((double)(int64_t)zq*asdouble(0u,0x3CB00000u));
+  double error=abs((double)z-(double)depth);if(error>=best)continue;best=error;
+  result=double2((double)review_i64(b+22),(double)review_i64(b+24))*asdouble(0u,0x3CB00000u);
+ }
+ return result;
+}
+float sample_depth(double px,double py,float iz,double sx,double sy,double4 ls,double ddx,double ddy,uint po) {
+ if(pad1==0u)return iz;
+ int x=(int)sx,y=(int)sy;uint at=(uint)y*w+(uint)x;
+ precise double dx=ls.z-ls.x,dy=ls.w-ls.y,ll=dx*dx+dy*dy;
+ precise double u=ll>0.0?((px-ls.x)*dx+(py-ls.y)*dy)/ll:0.0;
+ if(u<0.0)u=0.0;if(u>1.0)u=1.0;
+ precise double cx=ls.x+u*dx,cy=ls.y+u*dy;
+ if((owner[at]>>12)==(po>>12) && !face_contains(owner[at],cx,cy))return 1e20;
+ double2 g=face_gradient(owner[at],x,y,asfloat(invz[at]));
+ precise double correction=g.x*(cx-(double)x-0.5)+g.y*(cy-(double)y-0.5);
+ float center_z=iz+(float)(ddx*(cx-px)+ddy*(cy-py));
+ return center_z-(float)correction;
+}
+bool stroke_hidden(double px, double py, float iz, uint po, bool line_point, bool self_hidden, double4 ls, int radius, double ddx, double ddy)
 {
     // the same double arithmetic, in the same order, as decal_stroke_hidden in remaster_raster.c
     const double dx = ls.z - ls.x, dy = ls.w - ls.y;
@@ -59,7 +104,7 @@ bool stroke_hidden(double px, double py, float iz, uint po, bool line_point, boo
     const double cx = ls.x + u * dx, cy = ls.y + u * dy;
     if (cx >= 0.0 && cy >= 0.0 && cx < (double)w && cy < (double)h) {
         const uint i = (uint)(int)cy * w + (uint)(int)cx;
-        if (decal_hidden(i, iz, po, line_point, self_hidden)) return true;
+        if (decal_hidden(i, sample_depth(px,py,iz,cx,cy,ls,ddx,ddy,po), po, line_point, self_hidden)) return true;
         if ((owner[i] >> 12) == (po >> 12)) return false;
     }
     if (ll <= 0.0) return false;
@@ -69,7 +114,7 @@ bool stroke_hidden(double px, double py, float iz, uint po, bool line_point, boo
             if (qx < 0.0 || qy < 0.0 || qx >= (double)w || qy >= (double)h) continue;
             const uint i = (uint)(int)qy * w + (uint)(int)qx;
             const uint ow = owner[i];
-            if (ow != 0 && (ow >> 12) == (po >> 12) && decal_hidden(i, iz, po, line_point, self_hidden)) return true;
+            if (ow != 0 && (ow >> 12) == (po >> 12) && decal_hidden(i, sample_depth(px,py,iz,qx,qy,ls,ddx,ddy,po), po, line_point, self_hidden)) return true;
         }
     return false;
 }
@@ -154,9 +199,9 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const float ddx = asfloat(strokes[sb + 9]), ddy = asfloat(strokes[sb + 10]);
         const double ddxd = asdouble(strokes[sb + 5], strokes[sb + 6]), ddyd = asdouble(strokes[sb + 7], strokes[sb + 8]);
         // decal rules against the polygon pass
-        if (decal_hidden(at, iz, po, line_point, false)) continue;
         const bool same_here = (owner[at] >> 12) == object;
-        if (!same_here && stroke_hidden(px, py, iz, po, line_point, false, ls, (int)strokes[sb + 4])) continue;
+        if (decal_hidden(at, same_here && !line_point ? sample_depth(px,py,iz,px,py,ls,ddxd,ddyd,po) : iz, po, line_point, false)) continue;
+        if (!same_here && stroke_hidden(px, py, iz, po, line_point, false, ls, (int)strokes[sb + 4], ddxd, ddyd)) continue;
         // stroke competition
         const float old_z = s_z;
         const uint old = old_z > 0.0 ? s_owner : 0u;

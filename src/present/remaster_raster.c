@@ -1,6 +1,7 @@
 /* remaster_raster.c - the Remastered presentation's triangle fill (see remaster_raster.h). */
 #include "remaster_raster.h"
 #include "exact.h"
+#include "decal_faces.h"
 #include "band_palette.h"
 #include "square_pen.h"
 
@@ -15,6 +16,19 @@ F117_TLS int (*remaster_trace_hook)(int kind, const remaster_target *t, const re
                                    uint32_t color, double width, int op, unsigned value);
 
 typedef struct { double x, y, z; } dv3;
+
+static F117_TLS decal_face_cache default_faces;
+static F117_TLS decal_face_cache *active_faces;
+static F117_TLS int use_face_depth;
+void *remaster_faces_use(void *context)
+{
+    void *previous = active_faces;
+    active_faces = (decal_face_cache *)context;
+    use_face_depth = decal_faces_enabled();
+    return previous;
+}
+static decal_face_cache *face_cache(void) { return active_faces ? active_faces : &default_faces; }
+
 
 static double inverse_depth(const remaster_target *t, double z)
 {
@@ -63,6 +77,23 @@ static int point_behind_own_surface(const remaster_target *t, double cx, double 
 
 /* A hidden line must not reappear as a fringe outside its own object's
  * raster silhouette. Only the stroke's uncovered pixels need this check. */
+static float sample_stroke_depth(const remaster_target *t, double px, double py, float iz, double sx, double sy)
+{
+    decal_face_cache *cache = face_cache();
+    if (!use_face_depth || cache->failed || !cache->words) return iz;
+    const int x=(int)sx, y=(int)sy;
+    const long i=(long)y*t->w+x;
+    const double dx=t->line_screen[2]-t->line_screen[0],dy=t->line_screen[3]-t->line_screen[1];
+    const double ll=dx*dx+dy*dy;
+    double u=ll>0?((px-t->line_screen[0])*dx+(py-t->line_screen[1])*dy)/ll:0;
+    if(u<0)u=0; if(u>1)u=1;
+    const double cx=t->line_screen[0]+u*dx,cy=t->line_screen[1]+u*dy;
+    if((t->owner[i]>>12)==(t->paint_owner>>12) && !df_contains(cache,t->owner[i],cx,cy)) return 1e20f;
+    double gx,gy;df_gradient(cache,t->owner[i],x,y,t->inv_z[i],&gx,&gy);
+    const double correction=gx*(cx-x-0.5)+gy*(cy-y-0.5);
+    const float center_z=iz+(float)(t->line_depth_dx*(cx-px)+t->line_depth_dy*(cy-py));
+    return center_z-(float)correction;
+}
 static int decal_stroke_hidden(const remaster_target *t, double px, double py, float iz)
 {
     const double dx = t->line_screen[2] - t->line_screen[0], dy = t->line_screen[3] - t->line_screen[1];
@@ -73,7 +104,7 @@ static int decal_stroke_hidden(const remaster_target *t, double px, double py, f
     const double cx = t->line_screen[0] + u * dx, cy = t->line_screen[1] + u * dy;
     if (cx >= 0.0 && cy >= 0.0 && cx < t->w && cy < t->h) {
         const long i = (long)(int)cy * t->w + (int)cx;
-        if (decal_hidden(t, i, iz)) return 1;
+        if (decal_hidden(t, i, sample_stroke_depth(t,px,py,iz,cx,cy))) return 1;
         if (t->owner[i] >> 12 == t->paint_owner >> 12) return 0;
     }
     if (ll <= 0.0) return 0;
@@ -82,7 +113,7 @@ static int decal_stroke_hidden(const remaster_target *t, double px, double py, f
             const double qx = cx + x, qy = cy + y;
             if (qx < 0.0 || qy < 0.0 || qx >= t->w || qy >= t->h) continue;
             const long i = (long)(int)qy * t->w + (int)qx;
-            if (t->owner[i] && t->owner[i] >> 12 == t->paint_owner >> 12 && decal_hidden(t, i, iz)) return 1;
+            if (t->owner[i] && t->owner[i] >> 12 == t->paint_owner >> 12 && decal_hidden(t, i, sample_stroke_depth(t,px,py,iz,qx,qy))) return 1;
         }
     return 0;
 }
@@ -90,6 +121,8 @@ static int decal_stroke_hidden(const remaster_target *t, double px, double py, f
 void remaster_clear(remaster_target *t, uint32_t color)
 {
     if (remaster_trace_hook && remaster_trace_hook(REMASTER_T_CLEAR, t, NULL, 0, NULL, color, 0.0, 0, 0)) return;
+    use_face_depth = decal_faces_enabled();
+    if (use_face_depth) df_reset(face_cache());
     const long from = (long)remaster_row_lo(t) * t->w, to = (long)remaster_row_hi(t) * t->w;
     for (long i = from; i < to; i++) { t->color[i] = color; t->inv_z[i] = 0.0f; }
     if (t->index) for (long i = from; i < to; i++) t->index[i] = REMASTER_NO_INDEX;
@@ -190,6 +223,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
     if (exact) {
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
         ex_planes_make(&pl, &it, pv);
+        if (use_face_depth && !t->line_order) df_add(face_cache(), t->paint_owner, &it, &pl);
     }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
@@ -226,7 +260,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
                 const uint32_t ow = t->owner[(long)y * t->w + x];
                 const int same = ow >> 12 == t->paint_owner >> 12, on_ground = ow && (ow & 0x800u) && !same;
                 if (t->line_decal) {
-                    if (decal_hidden(t, (long)y * t->w + x, iz)) continue;
+                    if (decal_hidden(t, (long)y * t->w + x, same && !t->line_point ? sample_stroke_depth(t,px,py,iz,px,py) : iz)) continue;
                     if (!same && decal_stroke_hidden(t, px, py, iz)) continue;
                 } else {
                     const int me_ground = (t->paint_owner & 0x800u) != 0;
@@ -296,6 +330,7 @@ static long fill_triangle_shaded(remaster_target *t, sv a, sv b, sv c, const dou
     if (exact) {
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { ca[0], cb[0], cc[0] }, { ca[1], cb[1], cc[1] }, { ca[2], cb[2], cc[2] } };
         ex_planes_make(&pl, &it, pv);
+        if (use_face_depth && !t->line_order) df_add(face_cache(), t->paint_owner, &it, &pl);
     }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));
@@ -374,6 +409,7 @@ static long fill_triangle_logic(remaster_target *t, sv a, sv b, sv c, int op, un
     if (exact) {
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
         ex_planes_make(&pl, &it, pv);
+
     }
     const double minx = fmin(a.x, fmin(b.x, c.x)), maxx = fmax(a.x, fmax(b.x, c.x));
     const double miny = fmin(a.y, fmin(b.y, c.y)), maxy = fmax(a.y, fmax(b.y, c.y));

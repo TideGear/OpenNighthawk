@@ -5,6 +5,7 @@
 
 #define STROKE_WORDS 24     /* words of one stroke record (strokes_x.hlsl: the same stride) */
 #include "exact.h"
+#include "decal_faces.h"
 #include "square_pen.h"
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -50,6 +51,7 @@ struct gpu_compose {
     SDL_GPUTransferBuffer *up, *down;
     Uint32 up_cap, down_cap;
     clist polys, strokes;
+    decal_face_cache faces;
     vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
     double setup_ms, gpu_ms, copy_ms, wait_ms;
     int said;
@@ -219,6 +221,7 @@ void gpu_compose_destroy(gpu_compose *g)
         if (g->tgt_down) SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down);
         if (g->own_device) SDL_DestroyGPUDevice(g->dev);
     }
+    free(g->faces.words);
     free(g->polys.t); free(g->strokes.t);
     free(g->band_words.p); free(g->poly_words.p); free(g->poly_ents.p); free(g->poly_off.p);
     free(g->stroke_tri_words.p); free(g->stroke_ents.p); free(g->stroke_off.p); free(g->stroke_words.p);
@@ -639,6 +642,28 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
+    const Uint32 stroke_words = (nstrokes ? nstrokes : 1) * STROKE_WORDS;
+    Uint32 face_offset = 0, sw_bytes = stroke_words * 4;
+    if (decal_faces_enabled()) {
+        df_reset(&g->faces);
+        for (size_t k = 0; k < g->polys.n; ++k) {
+            const ctri *tr = &g->polys.t[k];
+            if (tr->kind) continue; /* logic fills do not write surface depth */
+            ex_tri tri; memcpy(tri.q, tr->q, sizeof tri.q); tri.area = tr->area;
+            ex_planes plane = {0}; plane.ox = tr->dox; plane.oy = tr->doy;
+            plane.base[0] = (uint64_t)tr->dbase; plane.px[0] = (uint64_t)tr->dpx; plane.py[0] = (uint64_t)tr->dpy;
+            df_add(&g->faces, tr->paint_owner, &tri, &plane);
+        }
+        if (g->faces.failed) return 0;
+        const size_t face_words = DF_START + g->faces.count * DF_STRIDE;
+        if (face_words > UINT32_MAX / 4 - stroke_words) return 0;
+        sw_bytes += (Uint32)(face_words * 4);
+        sw = (uint32_t *)vec_reserve(&g->stroke_words, sw_bytes);
+        if (!sw) return 0;
+        face_offset = stroke_words;
+        memcpy(sw + face_offset, g->faces.words, face_words * 4);
+    }
+
     /* GPU resources */
     const Uint32 pbytes = (Uint32)(px * 4);
     const SDL_GPUBufferUsageFlags RO = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, RW = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
@@ -654,7 +679,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
         { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
         { &g->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
-        { &g->sw, sw, (Uint32)((nstrokes ? nstrokes : 1) * STROKE_WORDS * 4), RO },
+        { &g->sw, sw, sw_bytes, RO },
         { &g->tf, flags, 1024, RO },
     };
     const int nseg = (int)(sizeof segs / sizeof *segs);
@@ -740,7 +765,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
         SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { g->hid.buf, false }, { b_strokez, false } };
         SDL_GPUBuffer *ro[4] = { g->st.buf, g->se.buf, g->so.buf, g->sw.buf };
-        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, 0, 0 };
+        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, face_offset, 0 };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 6);
         SDL_BindGPUComputePipeline(c, g->p_strokes);
         SDL_BindGPUComputeStorageBuffers(c, 0, ro, 4);

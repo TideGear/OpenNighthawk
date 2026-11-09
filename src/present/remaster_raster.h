@@ -80,6 +80,9 @@ typedef struct {
 static inline int remaster_row_lo(const remaster_target *t) { return t->y_hi > 0 ? t->y_lo : 0; }
 static inline int remaster_row_hi(const remaster_target *t) { return t->y_hi > 0 ? t->y_hi : t->h; }
 
+/* Select a caller-owned face context for staged row work; NULL uses thread scratch. */
+void *remaster_faces_use(void *context);
+
 #define REMASTER_NO_INDEX 0xFFFFu
 
 enum { REMASTER_AND, REMASTER_OR, REMASTER_STIPPLE };
