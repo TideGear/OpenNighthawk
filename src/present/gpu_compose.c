@@ -63,6 +63,7 @@ struct gpu_compose {
     void *profile;
     void *(*profile_list)(SDL_GPUCommandBuffer *);
     FILE *profile_log;
+    int profile_pending, profile_failed;
 };
 
 static void profile_init(gpu_compose *g)
@@ -77,6 +78,7 @@ static void profile_init(gpu_compose *g)
         return;
     }
     HMODULE module = GetModuleHandleW(L"SDL3.dll");
+    if (!module) { fprintf(stderr, "[gpu-timestamp] SDL module unavailable\n"); return; }
     void *(*device)(SDL_GPUDevice *) = (void *(*)(SDL_GPUDevice *))GetProcAddress(module, "F117_GPUProfileDevice");
     void *(*queue)(SDL_GPUDevice *) = (void *(*)(SDL_GPUDevice *))GetProcAddress(module, "F117_GPUProfileQueue");
     g->profile_list = (void *(*)(SDL_GPUCommandBuffer *))GetProcAddress(module, "F117_GPUProfileCommandList");
@@ -101,7 +103,7 @@ static void profile_mark(gpu_compose *g, SDL_GPUCommandBuffer *cb, const char *l
 {
 #ifdef F117_GPU_TIMESTAMPS
     if (g->profile && !f117_timestamp_mark(g->profile, g->profile_list(cb), label))
-        fprintf(stderr, "[gpu-timestamp] query marker failed: %s\n", label);
+        { g->profile_failed = 1; fprintf(stderr, "[gpu-timestamp] query marker failed: %s\n", label); }
 #else
     (void)g; (void)cb; (void)label;
 #endif
@@ -110,7 +112,7 @@ static void profile_mark(gpu_compose *g, SDL_GPUCommandBuffer *cb, const char *l
 static void profile_resolve(gpu_compose *g, SDL_GPUCommandBuffer *cb)
 {
 #ifdef F117_GPU_TIMESTAMPS
-    if (g->profile) f117_timestamp_resolve(g->profile, g->profile_list(cb));
+    if (g->profile && !f117_timestamp_resolve(g->profile, g->profile_list(cb))) g->profile_failed = 1;
 #else
     (void)g; (void)cb;
 #endif
@@ -194,6 +196,13 @@ gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir
 void gpu_compose_destroy(gpu_compose *g)
 {
     if (!g) return;
+#ifdef F117_GPU_TIMESTAMPS
+    if (g->profile) {
+        SDL_WaitForGPUIdle(g->dev);
+        f117_timestamp_destroy(g->profile);
+    }
+    if (g->profile_log) fclose(g->profile_log);
+#endif
     if (g->dev) {
         gbuf *all[] = { &g->bt, &g->pt, &g->pe, &g->po, &g->pal, &g->st, &g->se, &g->so, &g->sw, &g->hid, &g->tf, &g->src, &g->tag, &g->dac,
                         &g->colour, &g->index_, &g->invz, &g->owner, &g->strokez, &g->outpix };
@@ -550,6 +559,14 @@ static void pass_split(gpu_compose *g, SDL_GPUCommandBuffer **cb, int idx, Uint6
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 {
     if (!g || !in) return 0;
+#ifdef F117_GPU_TIMESTAMPS
+    if (g->profile && g->profile_pending) {
+        SDL_WaitForGPUIdle(g->dev);
+        f117_timestamp_destroy(g->profile); g->profile = NULL;
+        fprintf(stderr, "[gpu-timestamp] incomplete previous frame; profiling disabled\n");
+    }
+    g->profile_pending = g->profile != NULL;
+#endif
     g->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
     const int w = in->w, h = in->h, tw = in->tw;
@@ -678,6 +695,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
     if (!cb) return 0;
+    profile_mark(g, cb, "upload_begin");
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
     {
         Uint32 at = 0;
@@ -689,6 +707,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         }
     }
     SDL_EndGPUCopyPass(cp);
+    profile_mark(g, cb, "upload_end");
     Uint64 pmark = SDL_GetTicksNS();
     if (pass_times_on()) { pmark = t_setup; pass_split(g, &cb, 0, &pmark); if (!cb) return 0; }
 
@@ -702,6 +721,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 63) / 64, (Uint32)h, 1);
         SDL_EndGPUComputePass(c);
+        profile_mark(g, cb, "bands_end");
         if (pass_times_on()) pass_split(g, &cb, 1, &pmark);
     }
     if (g->polys.n) {
@@ -714,6 +734,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
         SDL_DispatchGPUCompute(c, (Uint32)tilesx, (Uint32)tilesy, 1);
         SDL_EndGPUComputePass(c);
+        profile_mark(g, cb, "polygons_end");
         if (pass_times_on()) pass_split(g, &cb, 2, &pmark);
     }
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
@@ -727,10 +748,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (mode == 0) SDL_DispatchGPUCompute(c, 256, (nstrokes / 4096 + 16) / 16, 1);
         else SDL_DispatchGPUCompute(c, (Uint32)tilesx, (Uint32)tilesy, 1);
         SDL_EndGPUComputePass(c);
+        profile_mark(g, cb, mode == 0 ? "points_end" : "strokes_end");
         if (pass_times_on()) pass_split(g, &cb, 3 + mode, &pmark);
     }
     g->params = *in; g->params.recs = NULL; g->params.palette = NULL; g->params.src = NULL; g->params.tag = NULL; g->params.dac = NULL; g->params.tagflags = NULL;
     g->pbytes = pbytes; g->game_bytes = game_bytes; g->npix_game = npix_game;
+    profile_resolve(g, cb);
     SDL_SubmitGPUCommandBuffer(cb);               /* the raster passes run while the caller makes the game's picture */
     g->setup_ms = (double)(t_setup - t_start) / 1e6;
     g->t_begin = SDL_GetTicksNS();
@@ -760,6 +783,7 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     }
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
     if (!cb) return 0;
+    profile_mark(g, cb, "picture_upload_begin");
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
     {
         SDL_GPUTransferBufferLocation f1 = { g->up2, 0 }, f2 = { g->up2, off_tag }, f3 = { g->up2, off_dac };
@@ -767,6 +791,7 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
         SDL_UploadToGPUBuffer(cp, &f1, &t1, false); SDL_UploadToGPUBuffer(cp, &f2, &t2, false); SDL_UploadToGPUBuffer(cp, &f3, &t3, false);
     }
     SDL_EndGPUCopyPass(cp);
+    profile_mark(g, cb, "picture_upload_end");
     SDL_GPUBuffer *b_colour = g->colour.buf, *b_invz = g->invz.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
     {   /* the replace step */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_invz, false }, { b_strokez, false }, { b_out, false } };
@@ -779,6 +804,7 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
         SDL_EndGPUComputePass(c);
     }
+    profile_mark(g, cb, "replace_end");
     static int split = -1; if (split < 0) split = getenv("F117_GPU_PRESENT_SPLIT") != NULL;     /* diagnostic: the present pass in a command buffer of its own after the first one finished */
     if (split && g->targets[0] && g->p_present) {
         SDL_GPUFence *f1 = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
@@ -808,19 +834,32 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
             SDL_EndGPUComputePass(c2);
         }
     }
+    profile_mark(g, cb, "present_end");
     if (wide_out) {
         cp = SDL_BeginGPUCopyPass(cb);
         SDL_GPUBufferRegion bk = { b_out, 0, pbytes }; SDL_GPUTransferBufferLocation into = { g->down, 0 }; SDL_DownloadFromGPUBuffer(cp, &bk, &into);
         SDL_EndGPUCopyPass(cp);
     }
+    profile_mark(g, cb, "download_end");
+    profile_resolve(g, cb);
     SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
     if (!fence) return 0;
     const Uint64 t_wait = SDL_GetTicksNS();
     SDL_WaitForGPUFences(g->dev, true, &fence, 1);
     SDL_ReleaseGPUFence(g->dev, fence);
+#ifdef F117_GPU_TIMESTAMPS
+    if (g->profile) {
+        if (g->profile_failed || !f117_timestamp_read_after_fence(g->profile, g->profile_log)) {
+            fprintf(stderr, "[gpu-timestamp] invalid sample; profiling disabled\n");
+            f117_timestamp_destroy(g->profile); g->profile = NULL;
+        }
+        g->profile_pending = 0;
+    }
+#endif
     const Uint64 t_gpu = SDL_GetTicksNS();
     g->wait_ms = (double)(t_gpu - t_wait) / 1e6;          /* how long the caller blocked on the GPU: its work not hidden behind the caller's */
     if (g->targets[0]) { g->last_written = g->cur_write; g->cur_write ^= 1; }
+
     if (wide_out) {
         const void *got = SDL_MapGPUTransferBuffer(g->dev, g->down, false);
         if (!got) return 0;
