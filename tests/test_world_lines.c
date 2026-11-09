@@ -4,7 +4,16 @@
 #include "interp.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+static void set_pen(const char *v)
+{
+#ifdef _WIN32
+    _putenv(v[0]=='0' ? "F117_SQUARE_PEN=0" : "F117_SQUARE_PEN=1");
+#else
+    setenv("F117_SQUARE_PEN", v, 1);
+#endif
+}
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 static drawlist d, coarse;
@@ -123,13 +132,23 @@ int main(void)
     CHECK(display->hi[472*2880+1435]==0);          /* original 159.5 centre: no ghost */
     CHECK(display->hi[472*2880+1446]==7);          /* regenerated 160.75 centre */
     interp_list_free(&list);interp_pairing_free(pair);interp_frame_free(a);interp_frame_free(b);
-    /* Equal-length strokes have equal area regardless of direction, within
-     * raster sampling. A square nib would make the diagonal ~40% thicker. */
+    /* Round pen (F117_SQUARE_PEN=0): equal-length strokes have equal area
+     * regardless of direction, within raster sampling. */
+    set_pen("0");
     seed(4);drawlist_page *p=drawlist_page_of(&d,SEG);
     drawlist_stroke(p,100,100,300,100,9,7,0,0,1280,800);size_t horizontal=area(p);
     seed(4);p=drawlist_page_of(&d,SEG);
     drawlist_stroke(p,100,100,100+200/sqrt(2.0),100+200/sqrt(2.0),9,7,0,0,1280,800);
     CHECK(fabs((double)area(p)/horizontal-1)<0.025);
+    /* Square pen (R37, owner-approved, the default): a square nib swept along
+     * a diagonal is wider across its path, about sqrt(2) times (area ~1.40). */
+    set_pen("1");
+    seed(4);p=drawlist_page_of(&d,SEG);
+    drawlist_stroke(p,100,100,300,100,9,7,0,0,1280,800);horizontal=area(p);
+    seed(4);p=drawlist_page_of(&d,SEG);
+    drawlist_stroke(p,100,100,100+200/sqrt(2.0),100+200/sqrt(2.0),9,7,0,0,1280,800);
+    { double r=(double)area(p)/horizontal; CHECK(r>1.30&&r<1.50); }
+    set_pen("1");
     drawlist_free(&d);drawlist_free(&coarse);
     puts("projected outlines and dots: exact coarse replay, smooth fine motion, stale-slot rejection and perpendicular widths pass");
     return 0;
