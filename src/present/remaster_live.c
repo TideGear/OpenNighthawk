@@ -720,6 +720,8 @@ static void scene_rows_part(void *arg, int part)
          * its lines and models in one contiguous worker band. A stage still
          * finishes all rows before any worker starts the next stage. */
         for (int row = part * j->row_tile; row < t.h; row += j->parts * j->row_tile) {
+            t = j->base;        /* every tile starts from the base state, as the untiled call does: a draw leaves paint_owner and the line state set,
+                                 * and the sky and ground bands, which set no owner, would otherwise be recorded under the previous tile's last owner */
             t.y_lo = row;
             t.y_hi = row + j->row_tile < t.h ? row + j->row_tile : t.h;
             draw_scene_ex(j->m, &t, j->fr, j->band, j->have_band, j->origin, j->window, j->n, j->n, j->xoff, j->wide, j->stage,
