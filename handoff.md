@@ -24,7 +24,7 @@ terrain and sea dots are separate from R38: show evidence-based options, bundle 
 baseline (`private/renderer-bench/baseline`) is unchanged. Accepted defaults: exact rasterising, GPU composition and presentation, overlap mode 2, Model detail Full, R37 square pen, R36 smooth sea, R35
 Perspective far light size, Near terrain dots. Optional GPU hardware timestamps are in (`F117_GPU_TIMESTAMPS` configure option, default OFF; runtime needs `F117_GPU_TIMESTAMP_LOG`).
 
-**R38 (teeth on far slope lines): integrated, OFF by default, validation nearly complete.** `F117_DECAL_FACE=1` enables it (exact mode only; `F117_RASTER_EXACT=0` keeps the float path). The owner rejected the
+**R38 (teeth on far slope lines): ON by default since build 9 Nov 21:10:17 (`docs/gpu-compositor.md`, last section).** `F117_DECAL_FACE=0` turns it off (exact mode only; `F117_RASTER_EXACT=0` keeps the float path). Full set passed on that build: hash, CPU and GPU guards against the new baseline, switch-off guards, live checks, host acceptance 12/12 (after the hangar fix), full CTest 846/846; baseline promoted (previous kept in `private/renderer-bench/baseline-r38-prior`); ONTests refreshed. The owner rejected the
 first candidate (never ask to approve it again) and said "much better" to the revised one, which was taken as approval to integrate and test. Rule and code: `docs/gpu-compositor.md`, R38 section. Scripts and
 logs: `private/r38-validate` (`off.sh`, `on.sh`, `stress.sh`, `shots.sh`, `perf.sh`). **Never rerun `private/r38-same-pixel/integrate.py`** (a one-time source-edit script).
 

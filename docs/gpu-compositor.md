@@ -904,3 +904,30 @@ the separate thickness question is more visible. Crops: `private/r38-validate/re
 
 **Not done yet:** GPU-path shots at 4K against the CPU ones; the paired unpaced 4K cost (the cache is reset on every clear call, once per tile and worker in tiled mode, and the GPU path uploads the table and
 faces every frame: untimed); the default; host acceptance and the full CTest on the default-on build; promoting the baseline; ONTests.
+
+
+### R38, tiled-CPU leak, the hangar rule, default on, and the final required set (9 November 2026, evening)
+
+**Tiled CPU rows leaked a paint owner (`87783ef`).** With R38 on, the CPU's default shots at 4K (row tiles of 64 rows, eight workers) differed from the GPU by 12 to 31 pixels on the owner's late flight `session-20261108-211031` (clocks 9.5, 10.2 and 10.35 billion), while the single-thread CPU and the untiled eight-thread CPU matched the GPU. A diagnostic dump of each worker's face cache showed the same triangle count and different contents: 64 sky and ground band triangles were recorded under owner `0x3f3b1803` in the tiled run and owner `0` in the others. `scene_rows_part` reused one target across a worker's tiles, so from the second tile on the bands (which set no owner) inherited the last primitive's `paint_owner`. With R38 off the stale owner never changed a pixel. Fix: each tile starts from the base target (`t = j->base`). On the fixed build all 11 feature-on CPU shots along two flights equal the GPU shots (0 differing pixels each) and all 11 feature-off shots equal the earlier feature-off ones. The 1080p guards never tile (8 parts and 1200 rows are needed), so only a 4K comparison could see this.
+
+**The hangar door line (host acceptance `rear-hangar-occlusion`).** With R38 on by default the host check failed (12 of 15 frames): one dark-yellow door-line pixel (170,146,32) stayed visible at (600,161) on the lower silhouette edge of a hangar viewed from behind, where the old rule hid it. Offline probe on a trace of that frame (`private/r38-validate/hangar`, clock 10,452,330,792 of `session-20261102-141108`): the stroke pixel sits on face 5 of its own object, its centre-line point is 0.136 px outside that face's triangles, so the coverage test returned "uncovered" and showed the stroke. The known teeth case is 0.0012 px outside, so no distance margin separates them. Depth does: over every uncovered same-object case the old rule would hide, the teeth traces have a stroke-to-surface inverse-depth ratio of 0.955 to 0.99 (minimum 0.955 over the five reviewed scenes), the hangar frame 0.77 to 0.99 with 429 of 631 below 0.95 and the door line at 0.913. **Rule now:** a stroke whose centre point no face of its own object covers is hidden if its inverse depth is below 0.95 of the surface's at that pixel, otherwise shown (CPU `remaster_raster.c`, GPU `strokes_x.hlsl`, both `iz < inv_z * 0.95`). All five reviewed scenes stay byte-identical to the result the owner called "much better" (0 differing pixels each); the hangar frame has 0 yellow pixels and differs from R38-off in 305 pixels (was 714), looked at: the ragged edge on the slope is filled, flag and lights unchanged; the GPU chain tool matches the CPU on the teeth trace (0 of 8,294,400), the hangar frame (0 of 768,000) and the late and middle scenes. Two other variants were rejected: dropping the coverage test for strokes on their own object's face (hangar fixed, but 126 of the reviewed edge pixels reverted to the old gaps) and the plain pre-R38 depth there (660 reverted).
+
+**Cost.** Paired unpaced runs, runway replay, 4K Maximum Full, GPU path, `F117_NO_VSYNC=1`, one at a time: first set (build 17:28:36) off 21.75 and 21.87 ms mean, on 23.01 and 22.42 (about +0.9 ms, p95 +1.3); second set (build 20:24:14, with a 16,384-entry head table) off 17.67 and 17.57, on 19.03 and 19.00 (about +1.4 ms). The machine's state differed between the sets (the off runs moved from 21.8 to 17.6 ms), so only the gap within a set means anything. The smaller head table gave no gain and was reverted. A worker-stage split (diagnostic): GPU span 16.4 to 18.9 ms, compose 10.8 to 13.2, CPU setup +1.3. Accepted for now; the stroke pass is the target of the timestamp-guided optimisation in step 7. Unpaced, the runway replay is about 17.6 to 21.9 ms a frame with R38 off: 60 fps is not met.
+
+**R38 is ON by default** (`decal_faces.h`: on unless `F117_DECAL_FACE=0` or `F117_RASTER_EXACT=0`; unit cases in `tests/test_remaster_raster.c`). Final required set on `build/f117a.exe` **9 November 21:10:17** (logs in `private/r38-validate/final2`, run by `final_set2.sh`):
+
+| Check | Result |
+|---|---|
+| Machine hash, old and new, Near and Maximum | `600306c77cb04481` each |
+| CPU guards, default (R38 on), against `candidate-baseline2` (regenerated on this build) | 901/901 at Near, Far, Maximum |
+| GPU guards, default, against `candidate-baseline2` | 901/901 at Near, Far, Maximum |
+| CPU guards with `F117_DECAL_FACE=0` against the accepted baseline | 901/901 at Near, Far, Maximum |
+| Live GPU checks | 3,421 pictures per distance, 0 differing pixels |
+| Host acceptance, with `rear-hangar-occlusion` | 12/12, report verified |
+| `candidate-baseline2` against the accepted baseline | 891 of 901 checksums differ at each distance; 332 differ from the first candidate (the hangar rule) |
+
+**Full CTest on the same build:** 845 of 845 in the parallel set (`-E func_lockstep`, 190 s), and `func_lockstep` alone 1 of 1 (1,470 s): 846 of 846, 0 failures, `private/r38-validate/ctest_full.txt`.
+
+**Promoted and shipped:** `private/renderer-bench/baseline` is the new candidate (the previous accepted baseline is kept in `private/renderer-bench/baseline-r38-prior`). `Desktop\ONTests` holds the 21:10:17 build (exe, DXIL, SDL3, mt32emu-2; the two Python tooling DLLs are no longer copied); a hidden private-save smoke launch exited 0.
+
+**Not yet done for R38:** 4K GPU timestamps and the GPU-path 4K shots at the late-flight clocks (done for CPU and GPU parity above; no separate GPU-path timed shot set).

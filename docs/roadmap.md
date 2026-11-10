@@ -986,6 +986,26 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       An oracle to verify Mac behaviour, if one is needed, would start from Snow (open source, MIT,
       emulates the Mac II with its colour cards) with MAME as a second reference; it needs the owner's
       Mac II ROM. Not scored.
+- [ ] **Maybe: realistic lighting, after the PixelWings mod** (owner, 9 Nov 2026; not started, not scored).
+      The community mod "F-117A - Cockpit & Palette Mod 1.1" by PixelWings
+      ([page](https://pixelwings.org/f117.dir/f117a.htm); write-up:
+      [Tales from DarkenedRoom, 2 Nov 2025](https://www.tales-from-darkenedroom.com/post/f-117a-nighthawk-stealth-fighter-2-0-black-knight-marine-strike-fighter-a-pixelwings-update))
+      targets this game (F-117A Stealth Fighter 2.0). As the two pages describe it: a redrawn cockpit panel with
+      dim panel lighting in the dark hours; reworked dawn, day, dusk and night outside palettes, less intense and
+      more natural terrain and sky colours, and fully dark nights in the European and North Cape scenarios and
+      some other areas (desert nights stay partly lit because of how the palette system works there; the
+      write-up says it draws on the Amiga version's look); new symbology on the MFD tactical map. Distributed as
+      a RAR archive with a readme and optional DOS install menus; the pages give no author name, file format or
+      licence. **Rules for this project, proposed, owner to confirm:** the mod's files are never shipped or
+      copied into the repository (no licence stated; [provenance.md](provenance.md) allows code only); the game's
+      logic and the DOS files stay as they are. Candidate routes, to be chosen with the owner: (1) a Remastered
+      lighting option of our own (time-of-day palettes, darker nights, panel lighting at night) written from the
+      game's own palette and band state (R36's smoothing already reads it); (2) letting the player apply the mod
+      to their own copy through the import wizard, as a user-supplied asset library entry, with the original files
+      untouched in a separate library folder. Open questions: which of its changes are palette data the game loads
+      at run time (so a Remastered palette override can read them) and which replace code or art; how the dark
+      nights interact with the lit-dots and far-light rules; whether the Original presentation stays unchanged.
+      Reading the mod would first need the owner's own download.
 
 ## Housekeeping
 
