@@ -931,3 +931,23 @@ faces every frame: untimed); the default; host acceptance and the full CTest on 
 **Promoted and shipped:** `private/renderer-bench/baseline` is the new candidate (the previous accepted baseline is kept in `private/renderer-bench/baseline-r38-prior`). `Desktop\ONTests` holds the 21:10:17 build (exe, DXIL, SDL3, mt32emu-2; the two Python tooling DLLs are no longer copied); a hidden private-save smoke launch exited 0.
 
 **Not yet done for R38:** 4K GPU timestamps and the GPU-path 4K shots at the late-flight clocks (done for CPU and GPU parity above; no separate GPU-path timed shot set).
+
+### Clean 4K hardware GPU timestamps, runway replay and the owner's late flight (10 November 2026)
+
+`build/f117a.exe` **9 November 21:10:17** (R38 on, timestamp support compiled in, `F117_GPU_TIMESTAMPS=ON`), 3840 x 2160, picture scale 9, Maximum, Model detail Full, GPU compose and present, `F117_NO_VSYNC=1`, nothing else running, one run at a time, `F117_GPU_TIMESTAMP_LOG` set. Scripts and CSVs: `private/timestamp-4k` (`capture.sh`, `runway.csv`, `late.csv`). Both CSVs validate with `tools/renderer_bench/timestamp_report.py` (1,597 and 1,517 complete frames). The captures cover each whole replay, from its first scene; the CSV has no clock column, so the means below are whole-run means, and the tenths further down show how the cost moves. Hardware query intervals, not frame costs (the intervals between submissions can include idle time; the per-scene totals below are the sum of ten intervals).
+
+| Mean GPU interval per scene, ms | Runway replay (clocks 0 to 4.8 billion) | Late flight (`session-20261108-211031`, 0 to 10.4 billion) |
+|---|---|---|
+| upload | 0.23 (p95 0.75) | 1.25 (p95 2.83) |
+| bands | 8.30 (p95 15.66) | 16.45 (p95 24.17) |
+| polygons | 0.90 (p95 1.85) | 2.30 (p95 8.97) |
+| points | 0.01 | 0.03 |
+| strokes | 7.07 (p95 28.51) | 21.32 (p95 43.61) |
+| picture upload, replace, present, download | 0.86 | 1.37 |
+| whole-frame cost in the same run (`cost_ns`, with timestamps on) | 18.91 mean, p95 23.34 (784 frames of clocks 3.9 to 4.8 billion) | 151.72 mean, p95 220.19 (1,086 frames) |
+
+GPU total per scene by tenth of the run (mean / worst, ms): runway 35.0/50, 35.0/51, 17.3/22, 17.2/22, 10.0/18, 7.9/9, 8.1/9, 11.4/17, 15.3/17, 16.7/21 (554 of 1,597 scenes over 16.7 ms, 1,253 over 8.3 ms; the first two tenths are not explained: early scenes of the replay, possibly a cold GPU clock); late flight 34.1/58, 35.3/59, 35.1/45, 35.0/64, 34.2/78, 38.4/77, 37.5/73, 47.6/88, 65.1/117, 64.9/141 (1,516 of 1,517 over 16.7 ms, every scene over 8.3).
+
+**Reading.** (1) The bands pass and the stroke-pixel pass are 85 to 90% of the GPU time in both flights; polygons, uploads and the picture layer are small. (2) **By the goal's rule the GPU passes alone exceed both lines (16.7 and 8.3 ms): the bands and strokes passes come before the machine thread, the pipeline and the parallel copies.** The gap to 120 fps on the runway take-off stretch is about 8 to 9 ms a scene on the GPU alone at its best (7.9 ms in the best tenth, which is under 8.3 but leaves no room for anything else) and 17 ms at its worst; on the late flight it is 26 to 57 ms. (3) On the late flight the GPU (about 43 ms mean) is only about 28% of the 151.7 ms frame cost, so the CPU side (scene recording and setup for 35,000 to 62,000 primitives, the picture layer, the machine step and copy) is the larger part there; pipelining hides it only up to the slowest stage, and it also needs to be cut. (4) The strokes pass has a long tail (runway p95 28.5 ms against a 7.1 ms mean; late p95 43.6 ms against 21.3). Earlier attempts that did not help and are not to be repeated: a tile-binned band list (exact, slower) and a per-pixel box test in the stroke pass (exact, no change).
+
+**Next, step 6 of the goal:** read the band and stroke shaders (`src/present/gpu/bands_x.hlsl`, `strokes_x.hlsl`) against these numbers, find where the time goes (per-pixel work that could be per-tile, work done for pixels a later pass overwrites, 64-bit integer cost), and cut it with the output byte-identical to the CPU compositor (the guards). If exact rendering cannot reach the budget, the owner gate in step 7 applies, with these figures as the measured baseline.
