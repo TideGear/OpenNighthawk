@@ -335,7 +335,16 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     if (t->area != 0) {
         ex_tri et; memcpy(et.q, t->q, sizeof et.q); et.area = t->area;
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
-        ex_planes pl; ex_planes_make(&pl, &et, pv);
+        ex_planes pl; ex_plane0_make(&pl, &et, a.iz, b.iz, c.iz);
+        static int plane_check = -1;
+        if (plane_check < 0) plane_check = getenv("F117_BIN_CHECK") != NULL;
+        if (plane_check) {      /* the full setup must give the same plane 0, origin and zero colour planes */
+            ex_planes full; ex_planes_make(&full, &et, pv);
+            static unsigned bad; static unsigned n;
+            n++;
+            if (memcmp(&full, &pl, sizeof pl)) { bad++; if (bad < 4) fprintf(stderr, "[plane-check] differs (%u of %u)\n", bad, n); }
+            else if (n % 200000 == 0) fprintf(stderr, "[plane-check] %u triangles checked, %u differ\n", n, bad);
+        }
         t->dbase = (long long)pl.base[0]; t->dpx = (long long)pl.px[0]; t->dpy = (long long)pl.py[0]; t->dox = pl.ox; t->doy = pl.oy;
     }
     return 1;
@@ -356,6 +365,10 @@ static int clip_near(const remaster_v3 *in, int n, double near_z, dv3 *out)
     return m;
 }
 
+/* Read once per picture in gpu_compose_begin, not once per record: an uncached getenv scans the whole environment block (about 1.6 microseconds a record at 36,000 to 70,000
+ * records a picture was 59 of the 63 ms of CPU setup on the owner's late flight, 10 November 2026). */
+static int g_smooth_sea = 1, g_square_pen = 1;
+
 static int add_polygon(clist *l, const gpu_trace_rec *r, int w, int h)
 {
     const int n = r->n;
@@ -370,8 +383,7 @@ static int add_polygon(clist *l, const gpu_trace_rec *r, int w, int h)
         s[i].iz = (r->inv_depth_scale > 0.0 ? r->inv_depth_scale : 1.0) / c[i].z;
     }
     uint32_t kind = r->kind == REMASTER_T_LOGIC ? (uint32_t)r->op + 1u : 0u;
-    const char *sea_env = getenv("F117_SMOOTH_SEA");
-    if (kind == 2 && r->value == 0x80 && (!sea_env || atoi(sea_env))) kind = 6;
+    if (kind == 2 && r->value == 0x80 && g_smooth_sea) kind = 6;
     const uint32_t cv = r->kind == REMASTER_T_LOGIC ? r->value : r->color;
     for (int i = 1; i + 1 < m; i++) if (!c_add(l, cv, r->paint_index, r->paint_owner, kind, s[0], s[i], s[i + 1], w, h)) return 0;
     return 1;
@@ -408,7 +420,7 @@ static int add_stroke(clist *l, const gpu_trace_rec *r, int w, int h, uint32_t i
     const double cap_z = depth_dx * ex + depth_dy * ey;
     const sv q0 = { sa.x + px - ex, sa.y + py - ey, sa.iz - cap_z }, q1 = { sa.x - px - ex, sa.y - py - ey, sa.iz - cap_z };
     const sv q2 = { sb.x - px + ex, sb.y - py + ey, sb.iz + cap_z }, q3 = { sb.x + px + ex, sb.y + py + ey, sb.iz + cap_z };
-    if (square_pen_enabled()) {
+    if (g_square_pen) {
         square_pen_point hull[16]; sv v[16];
         const int count = square_pen_hull(sa.x, sa.y, sb.x, sb.y, hw, hull);
         for (int k=0;k<count;k++) {
@@ -434,8 +446,10 @@ static int add_stroke(clist *l, const gpu_trace_rec *r, int w, int h, uint32_t i
     return 1;
 }
 
-/* Bin the triangles into tiles in their order: offsets (tiles + 1 words) and entries (3 words each: triangle, the two weights at the tile's first pixel centre). */
-static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
+/* Bin the triangles into tiles in their order: offsets (tiles + 1 words) and entries (3 words each: triangle, the two weights at the tile's first pixel centre).
+ * The reference form: every tile of each triangle's box is tested (the float weights, and in exact mode tile_touches_exact). Kept for the float path and as the
+ * oracle of bin_tiles_fast (F117_BIN_CHECK=1 compares the two on every picture). */
+static int bin_tiles_ref(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
 {
     const int ntiles = tilesx * tilesy;
     uint32_t *off = (uint32_t *)vec_reserve(off_v, ((size_t)ntiles + 1) * 4);
@@ -489,6 +503,105 @@ static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *en
     }
     free(cursor);
     *nents_out = nents;
+    return 1;
+}
+
+/* floor and ceiling of a / b for any signs (b != 0) */
+static long long floor_div_ll(long long a, long long b)
+{
+    long long q = a / b;
+    if (a % b != 0 && ((a < 0) != (b < 0))) q--;
+    return q;
+}
+static long long ceil_div_ll(long long a, long long b) { return -floor_div_ll(-a, b); }
+
+/* Exact mode: the tiles of row ty that tile_touches_exact accepts are an interval of columns. For an edge, the best value over a tile's four corners is
+ * sdx * (py - yi) - sdy * (px - xi) at the corner whose offset (0 or 15 pixels, in x and in y) has the better sign of the two steps, the same corner for every tile;
+ * with px = (tx * 16 + cx * 15) * 256 + 128 it is C0 - m * tx, linear in tx, so "not negative" is a half-line of columns, solved here with integer division.
+ * *lo and *hi come in as the box's columns and go out as the accepted ones (hi < lo: none). Values stay below 2^60 (the guard band is 2^20 pixels). */
+static void tile_row_span(const ctri *tr, int ty, int *lo, int *hi)
+{
+    const int pos = tr->area > 0;
+    for (int k = 0; k < 3 && *lo <= *hi; k++) {
+        const long long xi = tr->q[2 * k], yi = tr->q[2 * k + 1], xj = tr->q[(2 * k + 2) % 6], yj = tr->q[(2 * k + 3) % 6];
+        const long long sdx = pos ? xj - xi : xi - xj, sdy = pos ? yj - yi : yi - yj;
+        const int cy2 = sdx > 0 ? 1 : 0, cx2 = sdy < 0 ? 1 : 0;
+        const long long py = ((long long)ty * TILE + cy2 * (TILE - 1)) * 256 + 128;
+        const long long px0 = (long long)cx2 * (TILE - 1) * 256 + 128;
+        const long long c0 = sdx * (py - yi) - sdy * (px0 - xi);
+        const long long m = sdy * (TILE * 256);
+        if (m > 0) {
+            const long long h = floor_div_ll(c0, m);
+            if (h < (long long)*hi) *hi = h < -1 ? -1 : (int)h;
+        } else if (m < 0) {
+            const long long c = ceil_div_ll(c0, m);
+            if (c > (long long)*lo) *lo = c > 0x3FFFFFFF ? 0x3FFFFFFF : (int)c;
+        } else if (c0 < 0) {
+            *hi = *lo - 1;
+        }
+    }
+}
+
+/* Exact mode, the same entries and offsets as bin_tiles_ref, found by columns per row instead of testing every tile of the box. */
+static int bin_tiles_fast(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
+{
+    const int ntiles = tilesx * tilesy;
+    uint32_t *off = (uint32_t *)vec_reserve(off_v, ((size_t)ntiles + 1) * 4);
+    if (!off) return 0;
+    memset(off, 0, ((size_t)ntiles + 1) * 4);
+    uint32_t *cursor = (uint32_t *)malloc(((size_t)ntiles + 1) * 4);
+    if (!cursor) return 0;
+    uint32_t *ents = NULL;
+    size_t nents = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass == 1) {
+            for (int k = 0; k < ntiles; k++) cursor[k] = off[k];
+            ents = (uint32_t *)vec_reserve(ents_v, (nents ? nents : 1) * 36);
+            if (!ents) { free(cursor); return 0; }
+        }
+        size_t count = 0;
+        for (size_t ti = 0; ti < l->n; ti++) {
+            const ctri *tr = &l->t[ti];
+            const int tx0 = tr->bbox[0] / TILE, tx1 = tr->bbox[1] / TILE, ty0 = tr->bbox[2] / TILE, ty1 = tr->bbox[3] / TILE;
+            for (int ty = ty0; ty <= ty1; ty++) {
+                int lo = tx0, hi = tx1;
+                tile_row_span(tr, ty, &lo, &hi);
+                for (int tx = lo; tx <= hi; tx++) {
+                    const int tile = ty * tilesx + tx;
+                    if (pass == 0) { off[tile + 1]++; count++; }
+                    else {
+                        const double ox = tx * TILE + 0.5, oy = ty * TILE + 0.5;
+                        const double l1 = tr->a1d * (ox - tr->cx) + tr->b1d * (oy - tr->cy), l2 = tr->a2d * (ox - tr->cx) + tr->b2d * (oy - tr->cy);
+                        const uint32_t at = cursor[tile]++;
+                        const float f1 = (float)l1, f2 = (float)l2;
+                        uint32_t *en = &ents[9 * at];
+                        en[0] = (uint32_t)ti; memcpy(&en[1], &f1, 4); memcpy(&en[2], &f2, 4);
+                        put_exact_origin(en + 3, tr, tx, ty);
+                    }
+                }
+            }
+        }
+        if (pass == 0) { nents = count; for (int k = 0; k < ntiles; k++) off[k + 1] += off[k]; }
+    }
+    free(cursor);
+    *nents_out = nents;
+    return 1;
+}
+
+/* The binning used: the fast form in exact mode, the reference otherwise. F117_BIN_CHECK=1 also runs the reference and reports any difference in the offsets or the entries. */
+static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
+{
+    if (!exact_on()) return bin_tiles_ref(l, tilesx, tilesy, off_v, ents_v, nents_out);
+    if (!getenv("F117_BIN_CHECK")) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
+    if (!bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out)) return 0;
+    vec ro = { 0 }, re = { 0 };
+    size_t n2 = 0;
+    static unsigned checks, bad;
+    const int ok = bin_tiles_ref(l, tilesx, tilesy, &ro, &re, &n2);
+    const int same = ok && n2 == *nents_out && !memcmp(ro.p, off_v->p, ((size_t)tilesx * tilesy + 1) * 4) && !memcmp(re.p, ents_v->p, n2 * 36);
+    checks++; if (!same) bad++;
+    if (!same || checks % 500 == 0) fprintf(stderr, "[bin-check] %u lists checked, %u differ%s\n", checks, bad, same ? "" : " (this one)");
+    free(ro.p); free(re.p);
     return 1;
 }
 
@@ -576,6 +689,10 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const size_t px = (size_t)tw * h;
     if (px * 4 > 0x7FFFFFFFu) { say(g, "the picture is too large"); return 0; }
 
+    {   const char *sea_env = getenv("F117_SMOOTH_SEA");
+        g_smooth_sea = !sea_env || atoi(sea_env) != 0;
+        g_square_pen = square_pen_enabled();
+    }
     /* classify the records: the clear and the bands first, then polygons, then the lines; anything else is not handled */
     int phase = 0;
     g->polys.n = 0; g->strokes.n = 0;
@@ -626,10 +743,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         }
     }
 
+    const Uint64 t_classified = SDL_GetTicksNS();
     const int tilesx = (tw + TILE - 1) / TILE, tilesy = (h + TILE - 1) / TILE;
     size_t npents = 0, nsents = 0;
     if (!bin_tiles(&g->polys, tilesx, tilesy, &g->poly_off, &g->poly_ents, &npents)) return 0;
     if (!bin_tiles(&g->strokes, tilesx, tilesy, &g->stroke_off, &g->stroke_ents, &nsents)) return 0;
+    const Uint64 t_binned = SDL_GetTicksNS();
     uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 160);
     uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 160);
     if (!pw || !stw) return 0;
@@ -664,6 +783,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         memcpy(sw + face_offset, g->faces.words, face_words * 4);
     }
 
+    const Uint64 t_packed = SDL_GetTicksNS();
     /* GPU resources */
     const Uint32 pbytes = (Uint32)(px * 4);
     const SDL_GPUBufferUsageFlags RO = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, RW = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
@@ -701,6 +821,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (!g->down) return 0;
     }
     if (!gbuf_ensure(g->dev, &g->src, RO, game_bytes) || !gbuf_ensure(g->dev, &g->tag, RO, game_bytes) || !gbuf_ensure(g->dev, &g->dac, RO, 768)) return 0;
+    const Uint64 t_prepared = SDL_GetTicksNS();
     {
         Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, g->up, true), *p = m;
         if (!m) return 0;
@@ -781,6 +902,15 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     profile_resolve(g, cb);
     SDL_SubmitGPUCommandBuffer(cb);               /* the raster passes run while the caller makes the game's picture */
     g->setup_ms = (double)(t_setup - t_start) / 1e6;
+    if (getenv("F117_REMASTER_TIMING")) {   /* diagnostic: where the CPU setup goes, every 120th picture (stderr) */
+        static double sum[5], mb, ents, trisn; static unsigned count;
+        sum[0] += (double)(t_classified - t_start) / 1e6; sum[1] += (double)(t_binned - t_classified) / 1e6; sum[2] += (double)(t_packed - t_binned) / 1e6;
+        sum[3] += (double)(t_prepared - t_packed) / 1e6; sum[4] += (double)(t_setup - t_prepared) / 1e6;
+        mb += (double)total / 1048576.0; ents += (double)(npents + nsents); trisn += (double)(g->polys.n + g->strokes.n);
+        if (++count % 120 == 0)
+            fprintf(stderr, "[gpu-phases] mean of %u: classify %.2f, bin %.2f, pack %.2f, buffers %.2f, copy %.2f ms; %.0f triangles, %.0f entries, %.1f MB uploaded\n",
+                    count, sum[0] / count, sum[1] / count, sum[2] / count, sum[3] / count, sum[4] / count, trisn / count, ents / count, mb / count);
+    }
     g->t_begin = SDL_GetTicksNS();
     g->begun = 1;
     return 1;

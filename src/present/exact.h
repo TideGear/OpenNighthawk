@@ -131,6 +131,30 @@ static inline void ex_planes_make(ex_planes *p, const ex_tri *t, const double v[
     }
 }
 
+/* ex_planes_make for a triangle whose colour planes are all zero (the GPU setup's polygons and strokes use plane 0 only): the same arithmetic in the same order for
+ * plane 0, so base[0], px[0] and py[0] are bit-identical; the three colour planes of zero inputs are exactly zero (0 / d = 0, round(0) = 0), so they are set to 0
+ * instead of being computed. About a quarter of the cost: 2 divisions, 1 ldexp and 3 llround calls instead of 8, 4 and 12. */
+static inline void ex_plane0_make(ex_planes *p, const ex_tri *t, double a, double b, double c)
+{
+    const double xa = (double)t->q[0] / 256.0, ya = (double)t->q[1] / 256.0, xb = (double)t->q[2] / 256.0, yb = (double)t->q[3] / 256.0;
+    const double xc = (double)t->q[4] / 256.0, yc = (double)t->q[5] / 256.0;
+    const double d = (xb - xa) * (yc - ya) - (xc - xa) * (yb - ya);
+    long long mx = t->q[0], my = t->q[1];
+    if (t->q[2] < mx) mx = t->q[2];
+    if (t->q[4] < mx) mx = t->q[4];
+    if (t->q[3] < my) my = t->q[3];
+    if (t->q[5] < my) my = t->q[5];
+    p->ox = ex_floor_div256(mx); p->oy = ex_floor_div256(my);
+    const double scale = ldexp(1.0, EX_SCALE_IZ);
+    const double gx = ((b - a) * (yc - ya) - (c - a) * (yb - ya)) / d;
+    const double gy = ((c - a) * (xb - xa) - (b - a) * (xc - xa)) / d;
+    const double b0 = a + gx * ((double)p->ox + 0.5 - xa) + gy * ((double)p->oy + 0.5 - ya);
+    p->base[0] = (uint64_t)ex_round(b0 * scale);
+    p->px[0] = (uint64_t)ex_round(gx * scale);
+    p->py[0] = (uint64_t)ex_round(gy * scale);
+    for (int k = 1; k < EX_PLANES; k++) p->base[k] = p->px[k] = p->py[k] = 0;
+}
+
 static inline uint64_t ex_eval(const ex_planes *p, int k, int x, int y)
 {
     return p->base[k] + p->px[k] * (uint64_t)(int64_t)(x - p->ox) + p->py[k] * (uint64_t)(int64_t)(y - p->oy);

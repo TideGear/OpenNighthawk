@@ -24,17 +24,56 @@ static const uint bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 1
 int64_t i64(uint lo, uint hi) { return (int64_t)(((uint64_t)hi << 32) | (uint64_t)lo); }
 uint64_t u64(uint lo, uint hi) { return ((uint64_t)hi << 32) | (uint64_t)lo; }
 
-// per triangle, 24 words: 0..3 a1 b1 a2 b2, 4 cx, 5 cy, 6 ciz, 7 diz1, 8 diz2, 9..11 dc1, 12..14 dc2, 15..17 cc, 18 paint, 19..22 x0 x1 y0 y1
+// Per group cull (exact): a group is 64 pixels of one row. Each thread tests one triangle of a batch of 64 against that whole segment: an edge's value
+// is linear along the row, so its best value over the segment is at one end, and if that is on the wrong side of zero the triangle covers no pixel of the
+// segment (the same int64 edge test as below, at the end pixel). Only the survivors, normally one to three of the 64 or so band triangles (in the wide view
+// every box is the whole picture, so the box test culls nothing), are visited per pixel, in the trace's order: painter order and the depth tie rule are unchanged.
+groupshared uint g_mask[2];
+
+bool edge_may_pass(int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t py, int64_t p0, int64_t p1, bool pos)
+{
+    const int64_t dy = by - ay;
+    const int64_t px = pos ? (dy < 0 ? p1 : p0) : (dy > 0 ? p1 : p0);
+    const int64_t q = (bx - ax) * (py - ay) - dy * (px - ax);
+    return pos ? q >= 0 : q <= 0;
+}
+
+bool may_cover_segment(uint t, int xs, int xe, uint y, int64_t p0, int64_t p1)
+{
+    const uint b = t * 64;
+    const int tx0 = asint(tri[b + 19]), tx1 = asint(tri[b + 20]), ty0 = asint(tri[b + 21]), ty1 = asint(tri[b + 22]);
+    if (xe < tx0 || xs > tx1 || (int)y < ty0 || (int)y > ty1) return false;
+    if (exact == 0) return true;
+    const int64_t py = (int64_t)y * 256 + 128;
+    const int64_t xa = i64(tri[b + 24], tri[b + 25]), ya = i64(tri[b + 26], tri[b + 27]), xb = i64(tri[b + 28], tri[b + 29]);
+    const int64_t yb = i64(tri[b + 30], tri[b + 31]), xc = i64(tri[b + 32], tri[b + 33]), yc = i64(tri[b + 34], tri[b + 35]);
+    const bool pos = tri[b + 36] != 0;
+    return edge_may_pass(xa, ya, xb, yb, py, p0, p1, pos) && edge_may_pass(xb, yb, xc, yc, py, p0, p1, pos) && edge_may_pass(xc, yc, xa, ya, py, p0, p1, pos);
+}
+
 [numthreads(64, 1, 1)]
-void main(uint3 id : SV_DispatchThreadID)
+void main(uint3 gid : SV_GroupID, uint3 gt : SV_GroupThreadID, uint3 id : SV_DispatchThreadID)
 {
     const uint x = id.x, y = id.y;
-    if (x >= w || y >= h) return;
+    const bool live = x < w && y < h;
+    const uint lane = gt.x;
+    const int xs = (int)(gid.x * 64u), xe = (int)min(gid.x * 64u + 63u, w - 1u);
+    const int64_t seg0 = (int64_t)xs * 256 + 128, seg1 = (int64_t)xe * 256 + 128;
     float d = 0.0;
     uint col = 0xFF000000u, idx = 0xFFFFu;
     const float fx = (float)x + 0.5, fy = (float)y + 0.5;
-    for (uint t = 0; t < ntri; t++) {
-        const uint b = t * 64;
+    for (uint batch = 0; batch < ntri; batch += 64) {
+        if (lane == 0) { g_mask[0] = 0u; g_mask[1] = 0u; }
+        GroupMemoryBarrierWithGroupSync();
+        const uint tc = batch + lane;
+        if (tc < ntri && may_cover_segment(tc, xs, xe, y, seg0, seg1)) InterlockedOr(g_mask[lane >> 5], 1u << (lane & 31));
+        GroupMemoryBarrierWithGroupSync();
+        uint m0 = g_mask[0], m1 = g_mask[1];
+        while ((m0 | m1) != 0u) {
+            uint bit;
+            if (m0 != 0u) { bit = firstbitlow(m0); m0 &= m0 - 1u; } else { bit = 32u + firstbitlow(m1); m1 &= m1 - 1u; }
+            if (!live) continue;
+            const uint b = (batch + bit) * 64;
         const int x0 = asint(tri[b + 19]), x1 = asint(tri[b + 20]), y0 = asint(tri[b + 21]), y1 = asint(tri[b + 22]);
         if ((int)x < x0 || (int)x > x1 || (int)y < y0 || (int)y > y1) continue;
         if (exact != 0) {
@@ -81,7 +120,10 @@ void main(uint3 id : SV_DispatchThreadID)
         }
         col = o;
         idx = tri[b + 18];
+        }
+        GroupMemoryBarrierWithGroupSync();
     }
+    if (!live) return;
     colour[y * w + x] = col;
     index_[y * w + x] = idx;
     invz[y * w + x] = 0u;
