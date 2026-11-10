@@ -292,6 +292,42 @@ static int tile_touches_exact(const ctri *tr, int tx, int ty)
     return 1;
 }
 
+/* Diagnostic cycle counters for the classify loop (F117_REMASTER_TIMING prints them): 0 bands, 1 polygons, 2 strokes, 3 depth planes, 4 snapped vertices, 5 the whole loop. */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define CYC() __rdtsc()
+#else
+#define CYC() 0ull
+#endif
+static unsigned long long g_cyc[6], g_cnt[6];
+/* The plane setup as it was before ex_llround and ex_pow2 (llround and ldexp), for F117_BIN_CHECK=1 to compare the depth-only setup with. */
+static void planes_ref(ex_planes *p, const ex_tri *t, const double v[EX_PLANES][3])
+{
+    const double xa = (double)t->q[0] / 256.0, ya = (double)t->q[1] / 256.0, xb = (double)t->q[2] / 256.0, yb = (double)t->q[3] / 256.0;
+    const double xc = (double)t->q[4] / 256.0, yc = (double)t->q[5] / 256.0;
+    const double d = (xb - xa) * (yc - ya) - (xc - xa) * (yb - ya);
+    long long mx = t->q[0], my = t->q[1];
+    if (t->q[2] < mx) mx = t->q[2];
+    if (t->q[4] < mx) mx = t->q[4];
+    if (t->q[3] < my) my = t->q[3];
+    if (t->q[5] < my) my = t->q[5];
+    p->ox = ex_floor_div256(mx); p->oy = ex_floor_div256(my);
+    for (int k = 0; k < EX_PLANES; k++) {
+        const double scale = ldexp(1.0, k == 0 ? EX_SCALE_IZ : EX_SCALE_RGB);
+        const double gx = ((v[k][1] - v[k][0]) * (yc - ya) - (v[k][2] - v[k][0]) * (yb - ya)) / d;
+        const double gy = ((v[k][2] - v[k][0]) * (xb - xa) - (v[k][1] - v[k][0]) * (xc - xa)) / d;
+        const double b0 = v[k][0] + gx * ((double)p->ox + 0.5 - xa) + gy * ((double)p->oy + 0.5 - ya);
+        double r0 = b0 * scale, r1 = gx * scale, r2 = gy * scale;
+        if (!(r0 > -9.0e18)) r0 = -9.0e18;
+        if (!(r0 < 9.0e18)) r0 = 9.0e18;
+        if (!(r1 > -9.0e18)) r1 = -9.0e18;
+        if (!(r1 < 9.0e18)) r1 = 9.0e18;
+        if (!(r2 > -9.0e18)) r2 = -9.0e18;
+        if (!(r2 < 9.0e18)) r2 = 9.0e18;
+        p->base[k] = (uint64_t)llround(r0); p->px[k] = (uint64_t)llround(r1); p->py[k] = (uint64_t)llround(r2);
+    }
+}
+
 static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_owner, uint32_t kind, sv a, sv b, sv c, int w, int h)
 {
     if (exact_on() && ex_outside(a.x, a.y, b.x, b.y, c.x, c.y)) {       /* the same guard-band clip as remaster_raster.c, from the same exact.h code */
@@ -327,19 +363,38 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     t->w7 = w7; t->paint_index = paint_index; t->paint_owner = paint_owner; t->kind = kind;
     t->cx = c.x; t->cy = c.y;
     t->bbox[0] = x0; t->bbox[1] = x1; t->bbox[2] = y0; t->bbox[3] = y1;
-    t->q[0] = llround(a.x * 256.0); t->q[1] = llround(a.y * 256.0);
-    t->q[2] = llround(b.x * 256.0); t->q[3] = llround(b.y * 256.0);
-    t->q[4] = llround(c.x * 256.0); t->q[5] = llround(c.y * 256.0);
+    const unsigned long long cv = CYC();
+    t->q[0] = ex_llround(a.x * 256.0); t->q[1] = ex_llround(a.y * 256.0);
+    t->q[2] = ex_llround(b.x * 256.0); t->q[3] = ex_llround(b.y * 256.0);
+    t->q[4] = ex_llround(c.x * 256.0); t->q[5] = ex_llround(c.y * 256.0);
+    g_cyc[4] += CYC() - cv; g_cnt[4]++;
+    {
+        static int q_check = -1;        /* F117_BIN_CHECK=1: the snapped vertices against llround, and 2^k against ldexp */
+        if (q_check < 0) q_check = getenv("F117_BIN_CHECK") != NULL;
+        if (q_check) {
+            static unsigned long long n; static unsigned bad;
+            const double in[6] = { a.x * 256.0, a.y * 256.0, b.x * 256.0, b.y * 256.0, c.x * 256.0, c.y * 256.0 };
+            for (int k = 0; k < 6; k++) if (t->q[k] != llround(in[k])) { bad++; if (bad < 4) fprintf(stderr, "[round-check] differs: %.17g %lld %lld\n", in[k], t->q[k], llround(in[k])); }
+            if (ex_pow2(EX_SCALE_IZ) != ldexp(1.0, EX_SCALE_IZ) || ex_pow2(EX_SCALE_RGB) != ldexp(1.0, EX_SCALE_RGB)) bad++;
+            n += 6;
+            if (n % 120000000ull < 6) fprintf(stderr, "[round-check] %llu values checked, %u differ\n", n, bad);
+        }
+    }
     t->area = (t->q[2] - t->q[0]) * (t->q[5] - t->q[1]) - (t->q[4] - t->q[0]) * (t->q[3] - t->q[1]);
     if (exact_on() && t->area == 0) { l->n--; return 1; }      /* the CPU fill skips a triangle with no area */
     if (t->area != 0) {
         ex_tri et; memcpy(et.q, t->q, sizeof et.q); et.area = t->area;
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
-        ex_planes pl; ex_plane0_make(&pl, &et, a.iz, b.iz, c.iz);
+        static int plane_full = -1;     /* F117_PLANE_FULL=1: the full four-plane setup (the reference; for paired A/B timing) */
+        if (plane_full < 0) plane_full = getenv("F117_PLANE_FULL") != NULL;
+        ex_planes pl;
+        const unsigned long long cq = CYC();
+        if (plane_full) ex_planes_make(&pl, &et, pv); else ex_plane0_make(&pl, &et, a.iz, b.iz, c.iz);
+        g_cyc[3] += CYC() - cq; g_cnt[3]++;
         static int plane_check = -1;
         if (plane_check < 0) plane_check = getenv("F117_BIN_CHECK") != NULL;
         if (plane_check) {      /* the full setup must give the same plane 0, origin and zero colour planes */
-            ex_planes full; ex_planes_make(&full, &et, pv);
+            ex_planes full; planes_ref(&full, &et, pv);
             static unsigned bad; static unsigned n;
             n++;
             if (memcmp(&full, &pl, sizeof pl)) { bad++; if (bad < 4) fprintf(stderr, "[plane-check] differs (%u of %u)\n", bad, n); }
@@ -591,7 +646,9 @@ static int bin_tiles_fast(const clist *l, int tilesx, int tilesy, vec *off_v, ve
 /* The binning used: the fast form in exact mode, the reference otherwise. F117_BIN_CHECK=1 also runs the reference and reports any difference in the offsets or the entries. */
 static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
 {
-    if (!exact_on()) return bin_tiles_ref(l, tilesx, tilesy, off_v, ents_v, nents_out);
+    static int bin_ref = -1;            /* F117_BIN_REF=1: the reference binning (for paired A/B timing) */
+    if (bin_ref < 0) bin_ref = getenv("F117_BIN_REF") != NULL;
+    if (!exact_on() || bin_ref) return bin_tiles_ref(l, tilesx, tilesy, off_v, ents_v, nents_out);
     if (!getenv("F117_BIN_CHECK")) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
     if (!bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out)) return 0;
     vec ro = { 0 }, re = { 0 };
@@ -701,6 +758,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
     if (!bw || !sw) return 0;
     const size_t band_cap = g->band_words.cap / (64 * 4);
+    const unsigned long long c_loop = CYC();
     for (uint32_t i = 0; i < in->nrec; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         switch (r->kind) {
@@ -722,20 +780,26 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
                 const sv tr[3] = { s[0], s[k], s[k + 1] };
                 const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };
                 if (nband >= band_cap) { say(g, "too many band triangles"); return 0; }
+                const unsigned long long cb = CYC();
                 if (band_triangle(bw + (size_t)nband * 64, r, tr, col, tw, h)) nband++;
+                g_cyc[0] += CYC() - cb; g_cnt[0]++;
             }
             break;
         }
         case REMASTER_T_POLYGON: case REMASTER_T_LOGIC:
             if (phase > 1) { say(g, "a polygon after a line"); return 0; }
             phase = 1;
-            if (!add_polygon(&g->polys, r, tw, h)) return 0;
+            { const unsigned long long cp = CYC();
+              if (!add_polygon(&g->polys, r, tw, h)) return 0;
+              g_cyc[1] += CYC() - cp; g_cnt[1]++; }
             break;
         case REMASTER_T_LINE: {
             if (!r->line_decal || !r->line_order) { say(g, "lines without the decal rules"); return 0; }
             phase = 2;
             int drawn = 0;
+            const unsigned long long cs = CYC();
             if (!add_stroke(&g->strokes, r, tw, h, nstrokes, sw + (size_t)nstrokes * STROKE_WORDS, &drawn)) return 0;
+            g_cyc[2] += CYC() - cs; g_cnt[2]++;
             if (drawn) nstrokes++;
             break;
         }
@@ -743,6 +807,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         }
     }
 
+    g_cyc[5] += CYC() - c_loop; g_cnt[5]++;
     const Uint64 t_classified = SDL_GetTicksNS();
     const int tilesx = (tw + TILE - 1) / TILE, tilesy = (h + TILE - 1) / TILE;
     size_t npents = 0, nsents = 0;
@@ -910,6 +975,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (++count % 120 == 0)
             fprintf(stderr, "[gpu-phases] mean of %u: classify %.2f, bin %.2f, pack %.2f, buffers %.2f, copy %.2f ms; %.0f triangles, %.0f entries, %.1f MB uploaded\n",
                     count, sum[0] / count, sum[1] / count, sum[2] / count, sum[3] / count, sum[4] / count, trisn / count, ents / count, mb / count);
+        if (count % 120 == 0 && g_cyc[5]) {     /* the classify loop by record kind, as shares of its cycles scaled to its measured milliseconds */
+            const double ms = sum[0] / count, tot = (double)g_cyc[5];
+            fprintf(stderr, "[gpu-classify] mean of %u: bands %.2f ms (%.0f a picture), polygons %.2f (%.0f), strokes %.2f (%.0f); of these, depth planes %.2f (%.0f triangles), snapped vertices %.2f; %.0f cycles a triangle for planes, %.0f for vertices\n",
+                    count, ms * (double)g_cyc[0] / tot, (double)g_cnt[0] / count, ms * (double)g_cyc[1] / tot, (double)g_cnt[1] / count, ms * (double)g_cyc[2] / tot, (double)g_cnt[2] / count,
+                    ms * (double)g_cyc[3] / tot, (double)g_cnt[3] / count, ms * (double)g_cyc[4] / tot, g_cnt[3] ? (double)g_cyc[3] / (double)g_cnt[3] : 0.0, g_cnt[4] ? (double)g_cyc[4] / (double)g_cnt[4] : 0.0);
+        }
     }
     g->t_begin = SDL_GetTicksNS();
     g->begun = 1;

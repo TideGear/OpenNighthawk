@@ -880,10 +880,21 @@ static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h
     t.stroke_z = (float *)stand_in; t.stroke_aux_x = (float *)stand_in; t.stroke_aux_y = (float *)stand_in; t.stroke_owner = (uint32_t *)stand_in;
     t.inv_depth_scale = 1.0;
     scene_job sj = { m, t, &r->done, r->done_band, r->done_have_band, 1, 1, 0, r->done_origin, r->done_window, (double)n, (double)xoff };
-    sj.timing = NULL; sj.row_tile = 0;
+    const int timed = getenv("F117_REMASTER_TIMING") != NULL;
+    double tm[4] = { 0 };
+    sj.timing = timed ? &tm : NULL; sj.row_tile = 0;
+    const double t_prepare = timed ? now_ms() : 0.0;
     g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
     run_parts(scene_rows_part, &sj, 1);
     remaster_trace_hook = NULL; g_record_only = 0;
+    if (timed) {        /* diagnostic: where the scene recording goes, every 120th picture (stderr): the clear, the bands, the primitives, the lines */
+        static double sum[5], recs; static unsigned count;
+        for (int k = 0; k < 4; k++) sum[k] += tm[k];
+        sum[4] += now_ms() - t_prepare; recs += (double)g_trace_n;
+        if (++count % 120 == 0)
+            fprintf(stderr, "[gpu-prepare] mean of %u: clear %.2f, bands %.2f, primitives %.2f, lines %.2f, total %.2f ms; %.0f records\n",
+                    count, sum[0] / count, sum[1] / count, sum[2] / count, sum[3] / count, sum[4] / count, recs / count);
+    }
     if (g_record_failed) return 0;
     for (unsigned i = 0; i < 256; i++) palette[i] = dac_colour(m, i);
     static uint8_t flags[256]; static int flags_done;

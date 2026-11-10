@@ -13,6 +13,10 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <emmintrin.h>
+#endif
 
 /* Multiplication in unsigned 64-bit (wraps, defined) so no signed overflow is ever undefined; after the guard clip below nothing wraps anyway. */
 #define EX_MUL(a, b) ((long long)((unsigned long long)(a) * (unsigned long long)(b)))
@@ -101,11 +105,37 @@ typedef struct { long long ox, oy; uint64_t base[EX_PLANES], px[EX_PLANES], py[E
 
 static inline long long ex_floor_div256(long long v) { return v >= 0 ? v / 256 : -((-v + 255) / 256); }
 
+/* llround without the library call: the processor's convert (nearest even in the default rounding mode), then the exact ties (the fraction is exactly 1/2, which the
+ * convert sends to the even neighbour) corrected to llround's rule, away from zero. Identical to llround for every double: equal on 4e8 random, tie and edge inputs
+ * (private/step6/llround_bench2.c) and checked in the app against llround for every snapped vertex (F117_BIN_CHECK=1); 3.4 times faster (0.96 ns against 3.25 ns).
+ * |x| below 2^52 only; anything else, and NaN, goes to llround as before. */
+static inline long long ex_llround(double x)
+{
+#if defined(_M_X64) || defined(__x86_64__)
+    if (fabs(x) < 4503599627370496.0) {
+        const long long r = _mm_cvtsd_si64(_mm_set_sd(x));
+        const double d = x - (double)r;                 /* exact */
+        if (d == 0.5) return x > 0.0 ? r + 1 : r;
+        if (d == -0.5) return x < 0.0 ? r - 1 : r;
+        return r;
+    }
+#endif
+    return llround(x);
+}
+
+/* 2^k for the exponents used here, as the double ldexp(1.0, k) returns (a power of two is exactly its biased exponent in the top bits) */
+static inline double ex_pow2(int k)
+{
+    const uint64_t b = (uint64_t)(k + 1023) << 52;
+    double d; memcpy(&d, &b, 8);
+    return d;
+}
+
 static inline long long ex_round(double v)
 {
     if (!(v > -9.0e18)) v = -9.0e18;
     if (!(v < 9.0e18)) v = 9.0e18;
-    return llround(v);
+    return ex_llround(v);
 }
 
 /* v[k][0..2]: plane k's value at vertices a, b and c */
@@ -121,7 +151,7 @@ static inline void ex_planes_make(ex_planes *p, const ex_tri *t, const double v[
     if (t->q[5] < my) my = t->q[5];
     p->ox = ex_floor_div256(mx); p->oy = ex_floor_div256(my);
     for (int k = 0; k < EX_PLANES; k++) {
-        const double scale = ldexp(1.0, k == 0 ? EX_SCALE_IZ : EX_SCALE_RGB);
+        const double scale = ex_pow2(k == 0 ? EX_SCALE_IZ : EX_SCALE_RGB);
         const double gx = ((v[k][1] - v[k][0]) * (yc - ya) - (v[k][2] - v[k][0]) * (yb - ya)) / d;
         const double gy = ((v[k][2] - v[k][0]) * (xb - xa) - (v[k][1] - v[k][0]) * (xc - xa)) / d;
         const double b0 = v[k][0] + gx * ((double)p->ox + 0.5 - xa) + gy * ((double)p->oy + 0.5 - ya);
@@ -145,7 +175,7 @@ static inline void ex_plane0_make(ex_planes *p, const ex_tri *t, double a, doubl
     if (t->q[3] < my) my = t->q[3];
     if (t->q[5] < my) my = t->q[5];
     p->ox = ex_floor_div256(mx); p->oy = ex_floor_div256(my);
-    const double scale = ldexp(1.0, EX_SCALE_IZ);
+    const double scale = ex_pow2(EX_SCALE_IZ);
     const double gx = ((b - a) * (yc - ya) - (c - a) * (yb - ya)) / d;
     const double gy = ((c - a) * (xb - xa) - (b - a) * (xc - xa)) / d;
     const double b0 = a + gx * ((double)p->ox + 0.5 - xa) + gy * ((double)p->oy + 0.5 - ya);
