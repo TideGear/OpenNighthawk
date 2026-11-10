@@ -150,7 +150,7 @@ these issues caught rather than be told). Evidence frame sets are in `D:\f117-ga
 bash silently does nothing, and a test then "passes" on a stale binary: check the exe's time); a `\n` in a C string written through a Python edit
 comes out as a real newline (use the Edit tool, or build the backslash with `chr(92)`); `tools/build_recomp.py` compiles the main tree, so use the
 `gate-master` worktree (the `gate-gatemasterN.ps1` pattern); never stop `f117a` by name (the owner tests from `Desktop\ONTests`) and do not touch
-`ONTests` while it runs; the unaccepted P2 VGAME thunk family was removed from mainline on 2 November because 29 of its 34 addresses overlap the graphics observers and would bypass Remastered capture; see docs/p2-brief-ci-failure.md.
+`ONTests` while it runs; the unaccepted P2 VGAME thunk family was removed from mainline on 2 November because 29 of its 34 addresses overlap the graphics observers and would bypass Remastered capture; see docs/archive/p2-brief-ci-failure.md.
 
 **Next, in order:** (1) the owner's look at R16, T1 and R15 in the refreshed `ONTests`; (2) reproduce R17 and R18 on their flight (frames near
 the jets at the runway's far end, and close to a hangar with its pole; compare `--presentation original`); (3) R9 on the recent flight at high
