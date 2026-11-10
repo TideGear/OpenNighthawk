@@ -1,6 +1,6 @@
 # Handoff
 
-## Current state: 9 November 2026, afternoon (read first)
+## Current state: 9 November 2026, 22:15 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The dated handoff sections of 5 to 9 November are archived, unedited, in
 [docs/archive/handoff-log-20261109.md](docs/archive/handoff-log-20261109.md). The renderer's measurements and the R38 record are in [docs/gpu-compositor.md](docs/gpu-compositor.md) (last sections);
@@ -8,7 +8,7 @@ every owner report is a row in [docs/owner-issues.md](docs/owner-issues.md).
 
 **The goal in force** (owner's `/goal`, 9 November; he keeps the text in chat): 4K 120 fps in Remastered without changing game logic, pictures byte-exact except owner-approved visual changes. Work order:
 
-1. Finish R38 (below).
+1. R38: DONE (on by default, below).
 2. Clean 4K hardware GPU timestamps on the runway replay and the owner's late flight. If the GPU passes alone exceed 16.7 or 8.3 ms, do step 7 before steps 3 to 6 and report the gap.
 3. Overlap's true unpaced 4K cost (the worker-checker repair is done; keep its evidence).
 4. The emulated machine on its own thread, handing state over at today's points.
@@ -20,33 +20,30 @@ every owner report is a row in [docs/owner-issues.md](docs/owner-issues.md).
 Pass lines: two runway replays each at 4K Maximum, Model detail Full; 60 fps is zero frames over 16.7 ms, 120 fps zero over 8.3 ms; report Near and Far too. **Neither is met.** Line thickness and the real
 terrain and sea dots are separate from R38: show evidence-based options, bundle nothing.
 
-**Where the code is.** `master`, pushed through `c4d7131` (CI green on `2c9c01e`). `build/f117a.exe` is **9 November 13:19:19**. `Desktop\ONTests` holds the accepted **11:42:20** build; the accepted guard
-baseline (`private/renderer-bench/baseline`) is unchanged. Accepted defaults: exact rasterising, GPU composition and presentation, overlap mode 2, Model detail Full, R37 square pen, R36 smooth sea, R35
-Perspective far light size, Near terrain dots. Optional GPU hardware timestamps are in (`F117_GPU_TIMESTAMPS` configure option, default OFF; runtime needs `F117_GPU_TIMESTAMP_LOG`).
+**Where the code is.** `master`, pushed through `b3b17dc`, CI green (run 42766154083). `build/f117a.exe` and `Desktop\ONTests\f117a.exe` are both **9 November 21:10:17**. The guard baseline
+(`private/renderer-bench/baseline`) was promoted that evening; the previous one is in `private/renderer-bench/baseline-r38-prior`. Defaults: exact rasterising, GPU composition and presentation, overlap mode 2,
+Model detail Full, R37 square pen, R36 smooth sea, R35 Perspective far light size, Near terrain dots, **R38 on**. Optional GPU hardware timestamps are in (`F117_GPU_TIMESTAMPS` configure option, default OFF;
+runtime needs `F117_GPU_TIMESTAMP_LOG`). No game process was running at the stop.
 
-**R38 (teeth on far slope lines): ON by default since build 9 Nov 21:10:17 (`docs/gpu-compositor.md`, last section).** `F117_DECAL_FACE=0` turns it off (exact mode only; `F117_RASTER_EXACT=0` keeps the float path). Full set passed on that build: hash, CPU and GPU guards against the new baseline, switch-off guards, live checks, host acceptance 12/12 (after the hangar fix), full CTest 846/846; baseline promoted (previous kept in `private/renderer-bench/baseline-r38-prior`); ONTests refreshed. The owner rejected the
-first candidate (never ask to approve it again) and said "much better" to the revised one, which was taken as approval to integrate and test. Rule and code: `docs/gpu-compositor.md`, R38 section. Scripts and
-logs: `private/r38-validate` (`off.sh`, `on.sh`, `stress.sh`, `shots.sh`, `perf.sh`). **Never rerun `private/r38-same-pixel/integrate.py`** (a one-time source-edit script).
+**R38 (teeth on far slope lines): finished, ON by default** (`F117_DECAL_FACE=0` turns it off; exact mode only). The full record is the last two R38 sections of `docs/gpu-compositor.md`. In short: the owner
+rejected the first candidate (never ask to approve it again) and said "much better" to the revised rule; two defects were found and fixed on the way: tiled CPU rows leaked the previous tile's paint owner into
+the band faces (`87783ef`, visible only at 4K on the late flight), and a hangar door-line pixel showed at a silhouette edge (`900fb52`: an uncovered stroke more than 5% behind the surface stays hidden; the five
+reviewed scenes stay byte-identical). On build 21:10:17: machine hash `600306c77cb04481`; CPU and GPU guards 901/901 at Near, Far and Maximum; guards with the switch off 901/901 against the previous
+baseline; live GPU checks 0 differing pixels in 3,421 pictures per distance; host acceptance 12/12; CTest 846/846. Cost: about 1 ms a frame at 4K Maximum (paired runs). **The owner has not flown an R38
+build**: ONTests is ready for it. Scripts and logs: `private/r38-validate`. **Never rerun `private/r38-same-pixel/integrate.py`.**
 
-Passed on the 13:19:19 build:
+**Next: step 2**, the clean 4K hardware timestamps on the runway replay and on `session-20261108-211031`. Also queued: the owner's request to rename the data folder `%APPDATA%\F117Recomp\F-117A` to
+`%APPDATA%\OpenNighthawk` (one site, `src/host/main.c` `SDL_GetPrefPath`; move the old folder on first run so the saves and 131 recorded flights survive; `tools/uninstall.ps1`, the docs and the bench scripts
+name the old path; ask him whether `save`, `sessions` and `screenshots` sit directly in `OpenNighthawk`), and the realistic-lighting item in [docs/roadmap.md](docs/roadmap.md) ("Maybe: realistic lighting"),
+which waits for his decisions.
 
-- Feature off: machine hash `600306c77cb04481` (old and new, Near and Maximum); CPU and GPU guards 901/901 at Near, Far and Maximum against the accepted baseline; live GPU check 0 differing pixels in 3,421
-  pictures at each distance.
-- Feature on, against the candidate baseline in `private/r38-validate/candidate-baseline` (894 of 901 checksums differ from the accepted one at each distance): CPU repeat, GPU, one thread, 64-row tiles, and
-  16-row tiles with five threads, each 901/901 at all three distances; live GPU check 0 differing pixels at all three; machine hash unchanged.
-- Three concurrent stress replays (8 threads; 7 threads with 32-row tiles; 3 threads with 16-row tiles): each 901/901 at all three distances.
-- Unit cases in `tests/test_remaster_raster.c` (`c4d7131`): cache dedupe, coverage lookup, allocation failure, a caller-owned context, the float path. Run standalone only, not yet in a full CTest.
-- Own inspection of off/on app shots at 3840 x 1800 along the owner's flights `session-20261107-223638` and `session-20261108-211031` (11 pairs; for each, the 400 x 120 region with the most changed pixels, crops in `private/r38-validate/review`; 515 to 1,520 pixels change per shot): the teeth are gone
-  on every slope edge that had them; no spreading onto neighbouring faces, no lost lights or structures, no new marks. With the gaps filled, those edges now read as solid dark bars one game pixel wide, which
-  makes the separate line-thickness issue easier to see. Faceted model shapes are unchanged. Regions with fewer changes were not looked at one by one.
-
-Still to do for R38, in order: compare the GPU-path 4K shots with the CPU ones; the paired unpaced 4K cost (`perf.sh`, nothing else running; the cache is cleared per clear call and the GPU uploads the face
-table every frame, so fix that first if the cost is measurable); enable by default; on that build run the required set once (hash, CPU and GPU guards, live checks, host acceptance 12/12, full CTest with
-`func_lockstep`); promote the candidate baseline (keep the old one); refresh ONTests; push; CI. On a GPU-path cache failure `gpu_compose_begin` returns 0 and the frame falls back to the CPU compositor (read
-from the code, not tested in the app).
+**Housekeeping done on 9 November:** 22 unlinked `build-*` folders deleted from `C:\Users\Tideg\f117-recomp-local`; its `pc-parity` and `runs` folders and `C:\Users\Tideg\f117-bench` moved to
+`D:\f117-archive\from-C-20261109` (`tools/pc_parity.py` writes to `~/f117-recomp-local/pc-parity` by default and will recreate it); C: went from 10.5 to about 30 GB free. `D:\f117-gate` (455 GB),
+`D:\F117A-Scratch-Files` (166 GB) and `D:\f117-dl` (18 GB) were left alone: D: has room, and they hold the gate proofs and the archived exe the hash check needs. ONTests no longer holds
+`f117machine_api.dll` and `f117cpu_api.dll` (Python tooling the game never loads).
 
 **Measured so far** (details in `docs/gpu-compositor.md`): runway replay, 4K Maximum Full, overlap mode 2: mean 16.72 ms, p95 17.9, about half the frames over 16.7 ms (7 November, probably paced by vsync:
-measure unpaced). The owner's late flight `session-20261108-211031`, unpaced 4K Maximum Full: mean 163.69 ms, p95 234.13, worsening from 167 ms at clock 7 billion to 227 ms at 10 billion as the scene grows from
+measure unpaced). Unpaced on 9 November (R38 off): 17.6 to 21.9 ms mean, p95 21.6 to 26.9, in two sessions whose machine state differed; with R38 on about 1 ms more. The owner's late flight `session-20261108-211031`, unpaced 4K Maximum Full: mean 163.69 ms, p95 234.13, worsening from 167 ms at clock 7 billion to 227 ms at 10 billion as the scene grows from
 about 35,700 to 62,000 primitives; the slowdown predates the 8 November defaults. A split diagnostic there (with fence overhead, not hardware timestamps) put bands at 19 to 28 ms and stroke pixels at 7 to 17 ms.
 
 **Required checks and rules** (every renderer step):
@@ -56,18 +53,18 @@ about 35,700 to 62,000 primitives; the slowdown predates the 8 November defaults
   before pushing a completed step; CI green. Interim builds need only guards and cost; the full set runs once on the build that becomes the default. Partial results are never passes.
 - Pass `EXE=` on every guard, bench and hash run and report the executable's build time (from a worktree the scripts otherwise run the main checkout's exe). One timed run at a time, paired A/B; concurrent
   runs are not performance evidence. Benchmark with `F117_NO_VSYNC=1`.
-- No stray `f117a.exe` before or after a run, no visible windows, no sound, private saves. Never write to the game install or the owner's folders except an authorised ONTests refresh: copy the exe, every DXIL
-  and each changed DLL, then wait explicitly for a hidden private-save launch to exit 0 (`Start-Process -Wait`; a plain GUI launch returns no exit code).
+- No stray `f117a.exe` before or after a run, no visible windows, no sound, private saves. Never write to the game install or the owner's folders except an authorised ONTests refresh: copy the exe, every DXIL,
+  `SDL3.dll` and `mt32emu-2.dll` (never the two `*_api.dll` tooling libraries), then wait explicitly for a hidden private-save launch to exit 0 (`Start-Process -Wait`; a plain GUI launch returns no exit code).
 - Replays of the owner's flights recorded before 7 November 18:06 need `--adlib-effects` when his ini had Roland, or they drift and crash (R28); later logs carry the setting.
 - Stop before touching `src/matched`, `src/machine`, `tests/func_lockstep.c` or core CMake. Commit and push each verified step with explicit paths; no AI attribution; nothing from kylofon's projects.
 - Preserve the owner's uncommitted `tools/sound_board_page.py`, `tools/sound_board_template.html` and untracked `docs/p2-completion-plan.md`.
 
-**Open owner gates:** his flight of ONTests (R30, R31, R32, R36 and the 8 November defaults); the CRT look (`Desktop\ONShots\r25_crt_options.png`, R25); the deletions in
+**Open owner gates:** his flight of ONTests (R30, R31, R32, R36, the 8 November defaults and R38); the CRT look (`Desktop\ONShots\r25_crt_options.png`, R25); the deletions in
 [docs/worktree-audit-20261107.md](docs/worktree-audit-20261107.md); Stage 2; any release (the first, `v2026.11.07`, is published; ask before another). Still owed from the first release: a second PC and
 his own fresh-download run.
 
 **Traps met in this stretch** (the general list is under Traps below): a game replay holds `build/f117a.exe` and `SDL3.dll`, so a relink fails while one runs; stopping a task leaves its bash and game
-children running, so kill them and confirm; screenshot files are named by wall time, so pair off/on shots by order, not name; a 4K software capture takes minutes per shot; C: had about 12 GB free on 8 November.
+children running, so kill them and confirm; screenshot files are named by wall time, so pair off/on shots by order, not name; a 4K software capture takes minutes per shot; the 1080p guards never tile rows, so compare CPU and GPU at 4K on the owner's late flight; figures from timing sessions hours apart do not compare.
 
 ## Standing state (P2, P3, housekeeping)
 
