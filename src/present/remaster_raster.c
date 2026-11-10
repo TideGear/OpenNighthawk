@@ -88,7 +88,11 @@ static float sample_stroke_depth(const remaster_target *t, double px, double py,
     double u=ll>0?((px-t->line_screen[0])*dx+(py-t->line_screen[1])*dy)/ll:0;
     if(u<0)u=0; if(u>1)u=1;
     const double cx=t->line_screen[0]+u*dx,cy=t->line_screen[1]+u*dy;
-    if((t->owner[i]>>12)==(t->paint_owner>>12) && !df_contains(cache,t->owner[i],cx,cy)) return 1e20f;
+    if((t->owner[i]>>12)==(t->paint_owner>>12) && !df_contains(cache,t->owner[i],cx,cy)) {
+        /* No face of this object covers the centre point, so no plane may be continued to it (that made the teeth), but a
+         * stroke clearly behind the surface here (more than 5%: a door line behind its hangar) stays hidden as before. */
+        return iz < t->inv_z[i] * 0.95f ? iz : 1e20f;
+    }
     double gx,gy;df_gradient(cache,t->owner[i],x,y,t->inv_z[i],&gx,&gy);
     const double correction=gx*(cx-x-0.5)+gy*(cy-y-0.5);
     const float center_z=iz+(float)(t->line_depth_dx*(cx-px)+t->line_depth_dy*(cy-py));

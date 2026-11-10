@@ -14,7 +14,7 @@ typedef struct { uint32_t *words; size_t count, cap; int failed; } decal_face_ca
 static inline int decal_faces_enabled(void) {
     const char *e = getenv("F117_DECAL_FACE");
     const char *x = getenv("F117_RASTER_EXACT");
-    return e && e[0] == '1' && !(x && x[0] == '0');
+    return !(e && e[0] == '0') && !(x && x[0] == '0');   /* on by default; F117_DECAL_FACE=0 or the float path turns it off */
 }
 static inline int df_reserve(decal_face_cache *c, size_t count) {
     if (c->failed) return 0;

@@ -87,7 +87,7 @@ float sample_depth(double px,double py,float iz,double sx,double sy,double4 ls,d
  precise double u=ll>0.0?((px-ls.x)*dx+(py-ls.y)*dy)/ll:0.0;
  if(u<0.0)u=0.0;if(u>1.0)u=1.0;
  precise double cx=ls.x+u*dx,cy=ls.y+u*dy;
- if((owner[at]>>12)==(po>>12) && !face_contains(owner[at],cx,cy))return 1e20;
+ if((owner[at]>>12)==(po>>12) && !face_contains(owner[at],cx,cy))return iz<asfloat(invz[at])*0.95?iz:1e20;
  double2 g=face_gradient(owner[at],x,y,asfloat(invz[at]));
  precise double correction=g.x*(cx-(double)x-0.5)+g.y*(cy-(double)y-0.5);
  float center_z=iz+(float)(ddx*(cx-px)+ddy*(cy-py));

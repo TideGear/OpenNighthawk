@@ -554,7 +554,8 @@ int main(void)
         CHECK(!decal_faces_enabled());                           /* the float path never uses the new rule */
         SETENV("F117_RASTER_EXACT", "1"); CHECK(decal_faces_enabled());
         SETENV("F117_RASTER_EXACT", ""); SETENV("F117_DECAL_FACE", "0");
-        CHECK(!decal_faces_enabled());
+        CHECK(!decal_faces_enabled());                           /* 0 turns it off */
+        SETENV("F117_DECAL_FACE", ""); CHECK(decal_faces_enabled());   /* unset or empty: on by default */
     }
     return 0;
 }
