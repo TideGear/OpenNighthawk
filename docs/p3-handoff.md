@@ -43,7 +43,7 @@ speed guards are in [../tools/renderer_bench/README.md](../tools/renderer_bench/
 
 **Replaying an owner flight.** A replay applies the fix list in its log header (edit the header to compare fixes) and the sound options of the session (`--adlib-effects` for the Roland bat's sessions, or it diverges). Copy
 `save-start` to a private folder, then `f117a.exe --data D:/GOG/F-117A --save COPY --replay SESSION/input.log --presentation remastered --present-scale 3 --sound adlib` under `SDL_VIDEODRIVER=dummy
-SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`. The owner's sessions are in `%APPDATA%\F117Recomp\F-117A\sessions`. The runway flight `20261103-154444` needs `--config` of the ONTests ini or the plane
+SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software`. The owner's sessions are in `%APPDATA%\OpenNighthawk\sessions`. The runway flight `20261103-154444` needs `--config` of the ONTests ini or the plane
 crashes near clock 3.54 billion (R28). Never stop `f117a` by name (the owner tests from `Desktop\ONTests`) and do not touch `ONTests` while it runs.
 
 ## Practical notes

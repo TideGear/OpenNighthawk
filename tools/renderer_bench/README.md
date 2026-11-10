@@ -13,7 +13,7 @@ A speed change is accepted only when every distance prints `IDENTICAL` and the f
 
 **Data, kept out of the repository** in `private/renderer-bench/` (git-ignored): `session-20261103-154444/` (the recorded flight: `input.log` and `save-start`), `f117a.ini` (the ONTests ini, whose fix list the
 replay needs: without it the replay crashes near clock 3.54 billion, owner issue R28) and `baseline/hash_base_{near,far,maximum}.txt` (taken from the build at `03c6631`; 901 checksums each). If they are lost,
-regenerate the baseline with `guards.sh baseline` from a build at or before `85ec934`; the flight is the owner's session `20261103-154444` under `%APPDATA%\F117Recomp\F-117A\sessions`.
+regenerate the baseline with `guards.sh baseline` from a build at or before `85ec934`; the flight is the owner's session `20261103-154444` under `%APPDATA%\OpenNighthawk\sessions`.
 
 Worker-stage diagnostics: set `F117_WORKER_TIMING` to an output CSV path. The presentation worker writes one row per job, with `frame`, `got`, `composed`, `gpu_begin_ns`, `picture_ns`, `compose_ns`, `total_ns`, `gpu_wait_ns` (how long the compose call blocked on the GPU fence) and `gpu_span_ns` (from the scene's submission to that fence; it overlaps the picture layer). The stages measure CPU elapsed time around GPU begin/submission, `drawlive_render`, and `remaster_apply_ex`. Their sum is `total_ns`; the semaphore wait and CSV write are excluded. `got` and `composed` identify jobs that produced and composed a picture. The file is buffered and closes when the worker exits.
 

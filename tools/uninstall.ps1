@@ -1,6 +1,6 @@
 # OpenNighthawk uninstaller. Setup copies this into the install folder as uninstall.ps1; Apps & features and the Start menu run it.
 # It removes only a folder setup marked as an OpenNighthawk install, the shortcuts that point into it, the Start menu folder and the
-# Apps & features entry. Saved pilots and settings history (%APPDATA%\F117Recomp\F-117A) are kept unless the user says otherwise.
+# Apps & features entry. Saved pilots and settings history (%APPDATA%\OpenNighthawk) are kept unless the user says otherwise.
 # The game installation (GOG or Steam) is never touched.
 [CmdletBinding()]
 param([string]$InstallDir,[switch]$Yes,[switch]$RemoveSaves,[switch]$FromTemp)
@@ -28,11 +28,14 @@ try {
         $a = Read-Host 'Remove OpenNighthawk? [y/N]'
         if ($a -notmatch '^(y|yes)$') { Write-Host 'Nothing was removed.'; exit 0 }
     }
-    $saves = Join-Path $env:APPDATA 'F117Recomp\F-117A'
+    # The data folder is %APPDATA%\OpenNighthawk; before 10 November 2026 it was %APPDATA%\F117Recomp\F-117A (the game moves it on its first run, so it is only
+    # still there if the game has not been run since).
+    $saveDirs = @((Join-Path $env:APPDATA 'OpenNighthawk'), (Join-Path $env:APPDATA 'F117Recomp\F-117A'))
+    $saves = @($saveDirs | Where-Object { Test-Path -LiteralPath $_ })
     $dropSaves = [bool]$RemoveSaves
-    if (-not $Yes -and (Test-Path -LiteralPath $saves)) {
+    if (-not $Yes -and $saves.Count -gt 0) {
         Write-Host "Your saved pilots, screenshots and recorded flights are in:"
-        Write-Host "  $saves"
+        foreach ($s in $saves) { Write-Host "  $s" }
         $a = Read-Host 'Delete them too? [y/N]'
         $dropSaves = $a -match '^(y|yes)$'
     }
@@ -69,10 +72,11 @@ try {
         try { Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop; break }
         catch { if ($try -ge 5) { throw "$($_.Exception.Message) Close any window or program that is using the folder (File Explorer, a command prompt, Notepad) and run the uninstaller again." }; Start-Sleep -Seconds 2 }
     }
-    if ($dropSaves -and (Test-Path -LiteralPath $saves)) {
-        Remove-Item -LiteralPath $saves -Recurse -Force
-        $parent = Split-Path $saves -Parent
-        if (-not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force }
+    if ($dropSaves -and $saves.Count -gt 0) {
+        foreach ($s in $saves) { Remove-Item -LiteralPath $s -Recurse -Force }
+        # the old layout had a parent folder of its own (F117Recomp); remove it only when it is empty. The new folder's parent is Roaming itself: never touched.
+        $oldParent = Join-Path $env:APPDATA 'F117Recomp'
+        if ((Test-Path -LiteralPath $oldParent) -and -not (Get-ChildItem -LiteralPath $oldParent -Force)) { Remove-Item -LiteralPath $oldParent -Force }
         Write-Host 'Saved pilots and settings history deleted.'
     }
     Write-Host 'OpenNighthawk has been removed. Your F-117A game installation was not changed.'

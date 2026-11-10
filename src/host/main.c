@@ -1353,6 +1353,38 @@ static void write_custom_fixes(settings_state *st, const char *path)
     free(b);
 }
 
+/* The game's data folder (saved pilots, recorded flights, screenshots, the watch copy) is %APPDATA%\OpenNighthawk. Before 10 November 2026 it was
+ * %APPDATA%\F117Recomp\F-117A. The first run after the rename moves the old folder there, so nothing is lost and the recorded flights still replay; if the new folder
+ * already exists both are left alone. Only for the default location: a --save folder is never touched. On Windows both come from the APPDATA environment variable
+ * (a test can point it at a scratch folder); elsewhere the platform's preference folder is used. The result ends with a path separator. */
+static void default_data_folder(char *out, size_t cap)
+{
+#ifdef _WIN32
+    const char *appdata = getenv("APPDATA");
+    if (appdata && *appdata) {
+        char old_dir[900], old_parent[900], new_dir[900];
+        snprintf(old_dir, sizeof old_dir, "%s\\F117Recomp\\F-117A", appdata);
+        snprintf(old_parent, sizeof old_parent, "%s\\F117Recomp", appdata);
+        snprintf(new_dir, sizeof new_dir, "%s\\OpenNighthawk", appdata);
+        SDL_PathInfo info;
+        if (SDL_GetPathInfo(old_dir, &info) && info.type == SDL_PATHTYPE_DIRECTORY && !SDL_GetPathInfo(new_dir, &info)) {
+            if (SDL_RenamePath(old_dir, new_dir)) {
+                SDL_RemovePath(old_parent);         /* only succeeds when it is empty */
+                fprintf(stderr, "Moved the saved pilots and recorded flights from %s to %s\n", old_dir, new_dir);
+            } else {
+                fprintf(stderr, "Could not move %s to %s (%s); a new data folder is started there\n", old_dir, new_dir, SDL_GetError());
+            }
+        }
+        SDL_CreateDirectory(new_dir);
+        snprintf(out, cap, "%s\\", new_dir);
+        return;
+    }
+#endif
+    char *base = SDL_GetPrefPath(NULL, "OpenNighthawk");
+    snprintf(out, cap, "%s", base ? base : "./");
+    SDL_free(base);
+}
+
 int main(int argc, char **argv)
 {
     g_settings_child=getenv("F117_SETTINGS_CHILD")!=NULL;
@@ -1737,8 +1769,9 @@ int main(int argc, char **argv)
     }
     char save_buf[700];
     if (!save) {
-        const char *base = SDL_GetPrefPath("F117Recomp", "F-117A");
-        snprintf(save_buf, sizeof save_buf, "%ssave", base ? base : "./");
+        char base[800];
+        default_data_folder(base, sizeof base);                          /* %APPDATA%\OpenNighthawk\ */
+        snprintf(save_buf, sizeof save_buf, "%ssave", base);
         save = save_buf;
     }
     snprintf(g_shots_dir, sizeof g_shots_dir, "%s/../screenshots", save);

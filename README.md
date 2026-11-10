@@ -61,7 +61,7 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
     original` plays the shipped game, bugs included. Saves remember their fix
     set and warn once if you switch.
   - *Works from your GOG or Steam install* without ever writing to it; saves
-    live in `%APPDATA%\F117Recomp`.
+    live in `%APPDATA%\OpenNighthawk`.
   - *Every flight is recorded* (input log plus the starting save) and can be
     watched again with `--watch`, with seek, speed and jump keys.
   - *An in-game settings menu* (the ` key) with a description for every
@@ -231,7 +231,7 @@ set (and, for Munt, `mt32-roms`).
 | Option | Meaning |
 |---|---|
 | `--data DIR` | the game's folder (found automatically for common GOG/Steam paths) |
-| `--save DIR` | where the game's own saves go (default: `%APPDATA%\F117Recomp\F-117A\save`); the install is never written |
+| `--save DIR` | where the game's own saves go (default: `%APPDATA%\OpenNighthawk\save`); the install is never written |
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` models a 1991 386DX/33 (original flight typically 5-9 fps with fixes off) |
 | `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (60,000,000 in `f117a`; 9,000,000 in `f117run` and route checks, GOG DOSBox's `cycles=9000`). Default D1REAL separately targets fifteen simulation steps per second |

@@ -73,7 +73,7 @@ published by the packaging tool.
 
 - **Host sound, rendering and input.** Run the [host integration suite](host-acceptance.md)
   in addition to the applicable existing parity checks, before deployment and release:
-  `py tools/host_acceptance.py --app build/f117a.exe --data D:/GOG/F-117A --sessions C:/Users/Tideg/AppData/Roaming/F117Recomp/F-117A/sessions --out NEW_DIR`.
+  `py tools/host_acceptance.py --app build/f117a.exe --data D:/GOG/F-117A --sessions C:/Users/Tideg/AppData/Roaming/OpenNighthawk/sessions --out NEW_DIR`.
   It uses private save copies and twelve cases covering actual routed/mixed audio,
   moving scene regressions, eight-worker/single-worker pixel equivalence at
   scale 9 in wide and 4:3 windows, and the SDL event loop plus seven settings/restart subcases. Missing recordings/evidence

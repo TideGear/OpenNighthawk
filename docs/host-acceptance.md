@@ -11,7 +11,7 @@ and runs it when host/presentation source changed. Full machine gates retain
 their existing scope: their pass is not a host acceptance pass.
 
 ```
-py tools/host_acceptance.py --app build/f117a.exe --data D:/GOG/F-117A --sessions C:/Users/Tideg/AppData/Roaming/F117Recomp/F-117A/sessions --out D:/f117-gate/host-acceptance-NEW
+py tools/host_acceptance.py --app build/f117a.exe --data D:/GOG/F-117A --sessions C:/Users/Tideg/AppData/Roaming/OpenNighthawk/sessions --out D:/f117-gate/host-acceptance-NEW
 ```
 
 Use a new/empty output folder. The local recordings and `save-start` folders

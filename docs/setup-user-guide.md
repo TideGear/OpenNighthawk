@@ -34,7 +34,7 @@ intermediate files, about 1.4 GB) and keeps a log in the install folder's `logs`
 folder; send the newest log when reporting a problem. If setup stops early, the
 message names the log, which is then in `%TEMP%\OpenNighthawk-setup`.
 
-Your saved pilots are kept outside the install folder (`%APPDATA%\F117Recomp\F-117A`)
+Your saved pilots are kept outside the install folder (`%APPDATA%\OpenNighthawk`)
 and your settings in `f117a.ini` beside the game. Running setup again (for a new
 version) finds the existing install, updates it in place and asks whether to keep
 your settings; a build left by the first version of setup (in
