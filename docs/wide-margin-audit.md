@@ -251,3 +251,24 @@ confirmation stage.
 (the turned-view reference, the 2D overlay comparison on the owner's flight). The list of what must be added to the margins is final as far as the reading goes:
 (1) far aircraft and projectile dots, (2) smoke-trail puff sprites, (3) the icon sprites of `DC46` (shape ids below 100h), (4) the flight display pass: weapon markers,
 tracers, blast sprite, detection rings (ground and air), locks, bomb symbology, beacons.
+
+## Better design for the 2D mechanism: margin-only camera-space overlays (11 Nov 2026, replaces the "wide page" draft above)
+
+The wide-page draft needs a wider replay page, a new GPU path for the flat layer and an exact reproduction of every driver's clip rule. Remastered already draws camera-space
+dots, lines and polygons through its own pipeline (`SCENE_DOTS`, `SCENE_LINES`, `remaster_prim`, both compositors), so the flat kinds can enter as camera-space primitives
+instead, and no page changes:
+
+- **Position.** Each flat kind has a world or camera-space anchor the game projects with `B5DC` (the three arguments are on the stack at the call; `air_depth` in the interim
+  patch already evaluates the camera-space z exactly; x' and y' come from the same matrix with the undivided x row). The overlay is a primitive at that camera-space point,
+  so the standard perspective projection puts it at the true place, the margins included, with no clamp and no squash.
+- **Where it shows.** Only outside the 4:3 window (a screen-space mask on the primitive: it draws where the screen x is outside the original picture), so the middle stays
+  the game's own picture, pixel for pixel, with no double drawing; inside the 4:3 area nothing changes by construction.
+- **Look.** Per kind, from the matched code: a far dot is one game pixel (a block of the present scale) in the game's colour (15, or 29h/13 for projectiles); a tracer is the
+  line between its two projected points in 0Dh/29h; the weapon box is `B171` (size 6, colour 11h/0Ah); the ring and label `B4F5`; the blast and puff sprites from the game's
+  sprite pages; each parameterised by the arguments the game passed.
+- **Hooks.** Read-only, at the return addresses of the `B5DC` calls (`9A04`, `9BDF`, `9D89`, `9DFD` and the `9EFA` sites) and at the drawing routines' entries, in the render
+  copy only: they record (kind, camera-space point, colour, size) into the frame; the game's own drawing and its logic are untouched.
+- **Parity checks.** With the overlay disabled the picture is today's; with it enabled and every flat thing inside the 4:3 area, the picture is byte-identical (the mask); the
+  margins are checked against the turned-view reference for position.
+
+First slice to build: the far aircraft and projectile dots (the owner's R41), then the puff sprites, then the flight display pass kind by kind.
