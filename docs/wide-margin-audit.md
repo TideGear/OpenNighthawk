@@ -40,21 +40,25 @@ projected position (`1B2E`, block page): NOT in the margins. Every other kind: a
 when the widened cone cull passes. OPEN: which game objects have kind bit 400h (explosions, fires and smoke clouds are
 expected). Read so far: the smoke-trail puffs are kind 400h + frame (the trail code above); the other deferred objects come from `compose_emit_object` (`E2B6`, 7 callers) and are OPEN and what the kind-25h+ markers are.
 
-## The symbology routine (sections from its own header in matched.c)
+## The symbology routine (sections from its own header in matched.c; each read)
 
-All at screen positions on the flat picture: NOT in the margins. OPEN: each section's projection and cull, read in full.
+All drawn flat at screen positions from `FN_PROJECT` (`B5DC`): NOT in the margins today. What each is, and what showing it in
+the margins would mean:
 
-1. a marker on every weapon in flight
-2. the gun tracers: line; hits on an air unit, the player, the ground
-3. the impact blast and its countdown (blast sprite `1A98`)
-4. 4a the weapon lock on a ground target; 4b the detection ring of a ground site
-5. the target camera (panel, not the view)
-6. the release trigger (no drawing)
-7. the weapon lock on an air target
-8. the air target camera (panel)
-9. the detection ring of an air unit (the rings the owner saw)
-10. bomb symbology: impact point and steering bracket
-11. radio beacons
+| Section | What | Placement and gate (from the code) | In the margins |
+|---|---|---|---|
+| 1 | a box (size 6) over every weapon in flight; colour 11h for slots 0..7 (fired at the player), 0Ah for 8..11 | projected; drawn when it lands on the screen | should show: a physical object |
+| 2 | gun tracers, tail-to-head lines (0Dh the player's, 29h an enemy's) and their hit tests | both points projected; if either is off the 320 screen the slot is skipped, drawing and hit test alike ("the gun's reach is the window") | the line should show; the hit test is game logic and stays the real game's (a tracer in the margin cannot hit, as in the original) |
+| 3 | the impact blast sprite (`1A98`), size 100h / depth, phase 10h - abs(clock) | projected at the effect (following a named unit while above ground) | should show |
+| 4a | the weapon lock marker on a ground target (display mode 2), recoloured 6 when the station cannot use it | drawn when the target projects | **owner decision**: the real game offers no lock on a target off its 320 screen; a margin marker drawn by the copy could show a lock state the real game does not have |
+| 4b, 9 | the detection ring: a closing marker with the detector's name (ground site, or air unit) while `DETECT_COUNTDOWN` runs (`B4F5`) | projected at the detector | should show (the rings the owner saw) |
+| 7 | the weapon lock marker on an air target (size 9), HUD pen near the centre, locks past depth / -8 | drawn when the unit projects | **owner decision**, as 4a |
+| 10 | bomb impact point (size 5, locked, 29h) with a line from the flight-path marker; bomb bracket and diamond on the target | projected; the impact point is pinned to the bottom of the window when it falls off the screen | **owner decision**: pin to the wide window or the original's |
+| 11 | radio beacons: diamond, "Radio Beacon" label with a pulsing marker, and messages | projected at z = 0 | should show |
+| 5, 8, 12 | the camera displays | the right-hand panel, not the view | not applicable |
+
+Rule for every margin overlay (from the owner's parity boundary): what is drawn must reflect the real game's state. The render
+copy's own decisions (lock, hit, kill) are thrown away and must not be shown where they could differ.
 
 ## OPEN
 
