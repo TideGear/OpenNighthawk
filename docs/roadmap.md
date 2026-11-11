@@ -977,7 +977,7 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       need hardware or a person this project does not have; the testable parts
       stay in Stages 3 and 4 and are measured here (long flights, constrained
       cores as a labelled proxy, playback-clock tuning). Not scored.
-- [ ] **Maybe: Macintosh-version improvements in OpenNighthawk** (owner, 24 Oct 2026).
+- [ ] **Planned: Macintosh-version graphics and improvements in OpenNighthawk** (owner, 24 Oct 2026; promoted from "Maybe" to the Phase 3 to-do list by the owner, 10 Nov 2026: the cockpit and the other Mac graphics).
       Anything the 1994 Mac port adds that is worth offering, read at run time from the player's own Mac
       copy and never shipped: its 640x480 and 512x384 art (cockpit, maps, screens), its scrolled-tape HUD
       as a HUD style, its digitised effects, music and word-by-word speech (beyond the planned sound-board
