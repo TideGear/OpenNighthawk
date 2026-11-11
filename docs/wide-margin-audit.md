@@ -78,8 +78,8 @@ stated; nothing is "believed fine".
 | # | Test | Where | State |
 |---|---|---|---|
 | 1 | The object cull (`E3AC`/`E3BF`, `camera_transform`): far plane, near limit, side and vertical frustum, range metric | `compose_emit_object`, `compose_defer_model` | READ, findings below |
-| 2 | The terrain walker (`04E6`): the four rings, the 4 x 4 cell block, the cell wrap at -8..7 cells, the detail value `[990E]`, the far plane `[48E6]` | `vgame_scene_finish_walk` and callees | OPEN |
-| 3 | Per-model detail selection and size thresholds (`scene_model_depth`, the size word `[7D5E]`, `[DEBE]` class tests, the dot-versus-model switch) | model draw `120A:00CF`, `BB0D` | OPEN |
+| 2 | The terrain walker (`04E6`): the four rings, the 4 x 4 cell block, the cell wrap at -8..7 cells, the detail value `[990E]`, the far plane `[48E6]` | `vgame_scene_walk` (matched.c), the copy's `far_scenery_body` (rerun.c) | READ, see below |
+| 3 | Per-model detail selection and size thresholds (`scene_model_depth`, the size word `[7D5E]`, `[DEBE]` class tests, the dot-versus-model switch) | model draw `120A:00CF`, `BB0D` | READ (depth only): see below; the dot-versus-model switch of aircraft is item 4 |
 | 4 | The aircraft test `B5DC` and its matrix (R9, R20, R41) | `wide_air_exec` | R41 cause found; fix not final |
 | 5 | Ground objects, buildings, lights, lit dots and patches: the ring each lives on and its draw distance | terrain walker, `remaster_live.c` far scenery | OPEN |
 | 6 | Sky and ground bands, horizon, sea (`vgame_horizon_bands`, `1450`) across the full width | `1450`, `drawfeed`/`remaster_live` | OPEN |
@@ -111,3 +111,24 @@ allowance (`F117_WIDE_NEAR`), and leaves the far plane to the draw-distance sett
   middle. **Candidate defect: far objects vanish earlier toward the margin edges.** To confirm by measurement (the distance at
   which a known object disappears at the centre and at the margin edge, in a replay) and then decide the rule (use |z'| plus the
   metric's own contribution only up to the original's edge angle).
+
+### Item 2: the terrain walker (read in matched.c `vgame_scene_walk` and in rerun.c `far_scenery_body`)
+
+The game's own walk (`04E6`) visits, per ring (4 coarse to 1 fine, only where `[04FA + 2 * ring]` is set), at most 16 cells per sector from the sector
+table `[034C]` (the sector is `(1000h - heading) >> 13`: eight 45-degree sectors; nine entries a sector, or the near tables `[04CC]`/`[04DE]` when the pitch
+is steeper than -60 degrees), each cell going through the cull `E3AC`, so it draws a block of cells ahead and nothing behind or aside beyond that block.
+The render copy's far scenery (`far_scenery_body`, the menu's Draw distance) does NOT use the sector table: it takes every cell of a square around the eye
+on each ring (radius from the reach, cells clipped to the map), picks each object once at the finest level whose camera depth is under the reach (8000
+units), skips only the cells the game's own walk draws, and lets the guest cull `E3BF` decide with the far plane `F117_WIDE_SCENERY_FAR` (default 30000) and the
+widened side and up allowances. **So the walk's cell coverage is all round, not the forward sector: no direction is missing by construction.** What can
+still hide a margin object: (a) the pick's depth reach (8000 units on the picked level), which is the same for the middle and the margins (depth, not
+sideways); (b) the cull's range metric (item 1), with the far plane 30000 it only binds beyond 4 x (30000 - |z'|), i.e. not at 8000 depth; for the game's own
+nine cells the far plane is the game's own (`(detail + 1) x 0D05h`, 13,332 at detail 3), where the metric does bind for margin objects close to the reach;
+(c) the cell wrap (an offset beyond -8..7 cells wraps), which limits every ring in every direction alike. To measure, not assume: item 1's test.
+
+### Item 3: the detail level and the size thresholds (read in `scene_mesh.c`, `scene_model_depth`)
+
+The detail level of a model is chosen from `scene_model_depth(position, camera)`: the position times the camera matrix's z column, summed in 32 bits, shifted
+by 16, magnitude: a function of depth z' only. It does not depend on the sideways position, so a model in the margin gets the same detail as one in the middle
+at the same depth. The size indicator `[DEBE]` (z' >> 3) that gates model versus dot for aircraft and projectiles is also depth only. Result: no margin
+difference from this class of test. (The aircraft's dot-versus-model switch is audited with item 4: the matrix division by the reach halves `[DEBE]`.)
