@@ -1207,12 +1207,54 @@ static int far_scenery_body(machine_t *m)
 }
 
 static int g_air_k = -1, g_air_done, g_air_pct = 100;
+/* R41/R42 groundwork (F117_WIDE_AIR_PROBE=1, diagnostic): the game's own matrix is left alone and, at the return of the aircraft loop's call of 0xB5DC (9BDF),
+ * the point's true camera-space x', y', z' and screen position are computed from the unwidened matrix and compared with what the routine stored in [4A10]/[4A18]. */
+static int g_air_ret_k = -1;
+static int16_t g_air_orig[3][3];        /* the matrix words as the game left them, [vector component][axis] (B082 + 6c + 2a) */
+static int16_t air_fixmul(int16_t a, int16_t b)      /* VGAME 104E:0000: (a * b) shifted right 14, rounded by the next bit, then the sums are 32-bit in B792 */
+{
+    const int32_t q = (int32_t)a * (int32_t)b;
+    return (int16_t)(((q << 1) >> 16) + (((uint32_t)q >> 14) & 1u));
+}
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
     if ((int)k == g_walk_k) {
         g_walk_calls++;
         { static int init; if (!init) { init = 1; if (getenv("F117_FAR_WALKER")) g_far_native = 0; } }
         return g_walk_busy ? 0 : (g_far_native ? far_scenery(m) : walk_second(m));
+    }
+    if ((int)k == g_air_ret_k) {         /* 9BDF: back from B5DC for an aircraft; the arguments x, y, alt are still at SS:SP */
+        const uint16_t dsr = m->cpu.seg[S_DS], ssr = m->cpu.seg[S_SS], spr = m->cpu.r[R_SP];
+        if (!(m->mem[(((uint32_t)dsr << 4) + 0xC0A6) & 0xFFFFF] & 0x80)) {
+            const int16_t x = (int16_t)rd16(m->mem, ssr, spr), y = (int16_t)rd16(m->mem, ssr, (uint16_t)(spr + 2)), alt = (int16_t)rd16(m->mem, ssr, (uint16_t)(spr + 4));
+            const int16_t ox = (int16_t)(rd16(m->mem, dsr, 0xC0D0) - (uint16_t)x), oy = (int16_t)((uint16_t)y - rd16(m->mem, dsr, 0xC0DE));
+            const int16_t oa = (int16_t)((int16_t)((uint16_t)alt - rd16(m->mem, dsr, 0x2DF4)) >> 5);
+            const int16_t v[3] = { ox, oa, oy };
+            int32_t comp[3];
+            for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(g_air_orig[c][a], v[c]); }
+            static unsigned long long total, match_pos, match_neg, offscreen_game, inside_wide; static unsigned shown;
+            const uint16_t gx = rd16(m->mem, dsr, 0x4A10), gy = rd16(m->mem, dsr, 0x4A18);
+            const int64_t zp = comp[2];
+            if (zp != 0) {
+                const int64_t sx_pos = ((int64_t)comp[0] * 256) / zp + 0xA0, sx_neg = ((int64_t)comp[0] * 256) / (-zp) + 0xA0;
+                if (gx != 0xFFFF) {
+                    total++;
+                    if ((uint16_t)sx_pos == gx) match_pos++;
+                    if ((uint16_t)sx_neg == gx) match_neg++;
+                    if (shown < 8 && (uint16_t)sx_pos != gx && (uint16_t)sx_neg != gx) { shown++; fprintf(stderr, "[air-probe] game x %u y %u; x' %d y' %d z' %d -> pos %lld neg %lld\n", gx, gy, comp[0], comp[1], comp[2], (long long)sx_pos, (long long)sx_neg); }
+                } else {
+                    offscreen_game++;
+                    static unsigned long long behind, left_far, left_near, right_near, right_far, centre;
+                    const int64_t sx = ((int64_t)comp[0] * 256) / zp + 0xA0;
+                    if (zp > 0) behind++;                       /* z' is negative in front */
+                    else if (sx < -160) left_far++; else if (sx < 0) left_near++; else if (sx >= 640) right_far++; else if (sx >= 320) right_near++; else centre++;
+                    if (offscreen_game % 500 == 0) fprintf(stderr, "[air-probe] %llu points off screen for the game (and %llu compared on screen, + formula matched %llu): behind the eye %llu; in front with the true x < -160: %llu, -160..-1: %llu, 0..319 (cut by the view's rows or cone): %llu, 320..639: %llu, 640 or more: %llu\n", offscreen_game, total, match_pos, behind, left_far, left_near, centre, right_near, right_far);
+                }
+                if (total && total % 25 == 0 && 0) fprintf(stderr, "[air-probe]");
+                (void)inside_wide;
+            }
+        }
+        return 0;
     }
     if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
     const uint16_t ds = m->cpu.seg[S_DS];
@@ -1225,12 +1267,15 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
          * by 2 makes an aircraft a model at twice the distance. F117_WIDE_AIR_REACH=PERCENT (diagnostic; 100: the game's own distance). */
         static int reach = -1;
         if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
+        static int probe = -1;
+        if (probe < 0) probe = getenv("F117_WIDE_AIR_PROBE") != NULL;
         for (int a = 0; a < 3; a++)
             for (int c = 0; c < 3; c++) {
                 const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
                 const int64_t w = (int16_t)rd16(m->mem, ds, at);
+                g_air_orig[c][a] = (int16_t)w;
                 const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
-                wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+                if (!probe) wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
             }
     }
     /* The test is on the aircraft's centre, so a jet right beside the viewer, its centre level with the eye or just behind it, was dropped
@@ -1363,6 +1408,13 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                         s->exec_hook[s->exec_hook_n].ip = 0xB5DC;
                         s->exec_hook_n++;
                         s->hooks.exec = wide_air_exec;
+                        g_air_ret_k = -1;
+                        if (getenv("F117_WIDE_AIR_PROBE") && s->exec_hook_n < EXEC_HOOKS_MAX) {
+                            g_air_ret_k = (int)s->exec_hook_n;
+                            s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
+                            s->exec_hook[s->exec_hook_n].ip = 0x9BDF;
+                            s->exec_hook_n++;
+                        }
                         break;
                     }
             }

@@ -272,3 +272,13 @@ instead, and no page changes:
   margins are checked against the turned-view reference for position.
 
 First slice to build: the far aircraft and projectile dots (the owner's R41), then the puff sprites, then the flight display pass kind by kind.
+
+## First measurement for the build (11 Nov 2026): the true dot position is exact, and how many dots are missing
+
+`F117_WIDE_AIR_PROBE=1` (rerun.c, diagnostic; the game's matrix is left alone) hooks the return of the aircraft loop's call of `B5DC` (VGAME `9BDF`), recomputes the
+point's camera-space x', y', z' from the unmodified matrix (the same fixed-point sums as `camera_body_axis`, which the depth predictor already reproduced exactly) and its
+screen x as `(x' * 256) / z' + 0A0h`, and compares it with the `[4A10]` the routine stored. Over clocks 17.9 to 18.5 billion of the owner's flight (Remastered wide): **437 of 437
+on-screen points match exactly.** The game put 3,500 aircraft points off screen in that window: 2,770 behind the eye (correctly skipped), 40 in front with the true x below -160,
+347 at 320 to 639 and 120 at 640 or more (the right margin: the flight turned right of the aircraft), and 223 inside 0..319 across but outside the view's rows. So **507 aircraft
+points in 0.6 billion clocks (about 10 seconds) were in the wide picture's margins and missing**, which is the owner's R41/R42 for the far dots. (The 223 in 0..319 are
+cut by the original's row limit; the wide picture shows more rows, so some of them belong in the picture as well.)
