@@ -73,7 +73,7 @@ stated; nothing is "believed fine".
 
 | # | Test | Where | State |
 |---|---|---|---|
-| 1 | The object cone cull (`E3AC`/`E3BF`: sideways and vertical allowances, tables at `[48F6..]` and `ss:[E570]`) | `compose_emit_object`, `compose_defer_model` | OPEN |
+| 1 | The object cull (`E3AC`/`E3BF`, `camera_transform`): far plane, near limit, side and vertical frustum, range metric | `compose_emit_object`, `compose_defer_model` | READ, findings below |
 | 2 | The terrain walker (`04E6`): the four rings, the 4 x 4 cell block, the cell wrap at -8..7 cells, the detail value `[990E]`, the far plane `[48E6]` | `vgame_scene_finish_walk` and callees | OPEN |
 | 3 | Per-model detail selection and size thresholds (`scene_model_depth`, the size word `[7D5E]`, `[DEBE]` class tests, the dot-versus-model switch) | model draw `120A:00CF`, `BB0D` | OPEN |
 | 4 | The aircraft test `B5DC` and its matrix (R9, R20, R41) | `wide_air_exec` | R41 cause found; fix not final |
@@ -87,3 +87,23 @@ stated; nothing is "believed fine".
 Confirmation runs, after the reading: the turned-view reference (the copy's heading turned by the margin's angle so the
 margin falls inside the game's own 4:3 view, the original renderer drawing it) compared object by object with the wide
 picture, on the owner's flight and the runway, at both edges and at the corners.
+
+### Item 1: the object cull `E3BF` (read in matched.c, `vgame_camera_transform`; the render copy's changes read in `rerun.c`)
+
+An object is culled when (a) its z is beyond the far plane `[48E6]`, (b) it is nearer than its detail class's limit
+`[48F6 + 2 * [49AA]]`, (c) it is outside the frustum: |x'| over 1.25 x ((|z'| + T_across) >> (1 - [294B])), or |y'| over
+(|z'| + T_up) >> ..., tables at `[E56A]` and `[E570]` (the second frustum, with `[438E]` set, uses `[4966]`/`[4976]`), or (d)
+its range metric `(|x'| + |y'|) / 4 + |z'|`, stored at `[49A8]`, is beyond the far plane `[48E6]`.
+The copy raises every T to 18,000 (or less when the far plane is raised), moves each near limit back by the class's own
+allowance (`F117_WIDE_NEAR`), and leaves the far plane to the draw-distance setting.
+
+- **(c) side and up: relaxed**, so a margin object is not culled for its sideways position, up to the allowance: a limit of
+  about 18,000 units beyond |z'| (an object centre more than about that far outside the cone is still culled; it matters only
+  for the widest views, to be quantified per width).
+- **(d) the range metric is NOT relaxed.** It adds a quarter of |x'| and |y'| to the distance, so the farther sideways an object
+  is, the nearer it is culled by distance: at the original's own view edge (|x'| = 1.25 |z'|) the reach is already about 24 %
+  shorter than straight ahead, and for a margin object at |x'| = 2.5 |z'| about 38 % shorter. So in the wide margins everything
+  that has a distance limit (scenery, buildings, lights, aircraft) pops out at a shorter distance than the same thing in the
+  middle. **Candidate defect: far objects vanish earlier toward the margin edges.** To confirm by measurement (the distance at
+  which a known object disappears at the centre and at the margin edge, in a replay) and then decide the rule (use |z'| plus the
+  metric's own contribution only up to the original's edge angle).
