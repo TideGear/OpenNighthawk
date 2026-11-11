@@ -200,3 +200,28 @@ object) show in the wide picture is OPEN: to read and to check in a replay of ea
 **Item 10, the theatres.** OPEN: the model word tables, the ring tables and the night and weather settings differ per theatre; the one memory dump is Libya.
 
 Confirmation still to run (after the reading): the turned-view reference and the 2D overlay comparison on the owner's flight.
+
+## Draft design of the 2D mechanism (11 Nov 2026; for the build stage; nothing built)
+
+What the code shows: the flat things are the game's own library calls (line entry 31, sprite entries 73/18/71/19 and 22, blit 42, fills) onto its 320 x 200
+pages, positioned from `[4A10]`/`[4A18]`, which `B5DC` stores only when the point lies inside 0..13Fh across and the view's rows down (else `[4A10]` = FFFFh and the
+true x is kept in `[952C]`). The picture layer replays those calls (drawlist.c, tags DT_SPRITE, DT_SPRITE_RLE, line, text) onto a page model of the game's pages and
+the wide picture puts that page in the 4:3 middle. Two changes make the margins show them:
+
+1. **True positions.** In the copy, `B5DC` must give the true screen x and y for any point inside the wide picture: widen its x test to the wide factor (the
+   cone test is already widened for models; the copy's x row division would move to a pure position scale instead of the 3x cone trick of R9/R20, which is what
+   squashed the dots) and not set `[4A10]` to FFFFh for a point that is inside the wide picture but outside 0..13Fh. The depth value `[DEBE]` needs no change
+   (z only; `air_depth` in the interim patch predicts it exactly).
+2. **A wide page for the flat tags.** The replay of the flat primitives that come from view-anchored routines (the lists above) must target a page wider than 320
+   and not clip at 0..319, so a sprite or ring centred at x = -80 or 400 is drawn in full into the margin. The HUD, text and panels keep the 320 page.
+   The tags to route there are those emitted between the dispatcher's view passes (`1450` onward to the end of `9EFA`); the HUD pass `1058:0016` and panel pass
+   `79BE` stay on the 320 page. (The routing point is the stage markers the observer already has: `frame_phase`, 'o' for the bands, 'h' for the HUD, 'p' for the
+   panel pass.)
+
+Parity checks for the build: with the widened `B5DC` and a wide page, a frame whose flat things all lie inside the 4:3 area must equal today's picture
+byte for byte (the 901 checksums and the live CPU/GPU checks, with the 4:3 view); in the wide view the middle must equal the 4:3 picture's middle for the same
+frame; the margins are checked against the turned-view reference.
+
+Risks to settle before building: the replay's page model is 320 wide in `drawlist.c` (the wide page is new code); the GPU compositor takes the picture layer as a
+320-wide game picture (its replace pass), so the wide flat layer needs its own path there; the library's own clip rectangle (viewport block at `[0344]`) is applied
+by the game's drivers, so replaying with a wider clip must reproduce each driver's pixel rule (entries 22, 71/19, 31) exactly.
