@@ -225,3 +225,29 @@ frame; the margins are checked against the turned-view reference.
 Risks to settle before building: the replay's page model is 320 wide in `drawlist.c` (the wide page is new code); the GPU compositor takes the picture layer as a
 320-wide game picture (its replace pass), so the wide flat layer needs its own path there; the library's own clip rectangle (viewport block at `[0344]`) is applied
 by the game's drivers, so replaying with a wider clip must reproduce each driver's pixel rule (entries 22, 71/19, 31) exactly.
+
+## Closing the open reading items (11 Nov 2026)
+
+**The 25h+ marker sprites of `DC46` (read).** `[7D7E]` is not a table of kinds: `model_fill_stream` (`120A:0CE9`, the `line_edge` code at `0D78`) sets it to the edge record
+(`5EEAh + 24 * number`) of the last edge it drew, whose first words are that edge's projected screen position and whose word +2 bit 7 means clipped away. In
+`DC46`'s `generic_draw` (matched.c, after the shape draw `DEFE`): for a shape id `[4986]` below 100h (the small special shapes, for example 18h, a ground vehicle)
+the walk adds a flat icon: ids above 25h take a sprite id from the word table at `[4ED2 + 2 * (id - 25h)]` (eight words in this theatre's dump: 6, 8, 0Ch, 10h, 14h, 18h,
+1Eh, 24h) and the others take the edge record's two words, both skipped when bit 7 of either byte of the record's second word is set; the sprite is drawn with
+`1B2E` (the block page) at a position made from the edge record's screen position (record word -A9h across and the object's byte +4 less 6Eh down). **These are
+flat icons at projected screen positions: the 2D mechanism must carry them too.** Which game objects have shape ids below 100h in a flight (the ground vehicles
+18h and the 26h to 2Dh kinds) is data; the code path is the same in every theatre.
+
+**Theatres (item 10), view codes (item 9).** All the passes above are code, and none of it differs by theatre: the theatres change tables (model words, ring
+tables, palettes, night settings), never which routines run, so no path can be missing in one theatre that is present in the audited one. What can differ is which of the
+flat kinds occurs (for example other theatres' ground vehicles, or sprite model words with bit 400h in their tables, none of which occur in the Libya table I read).
+Every view code (`[C0A6]`: 0 and 44h forward, 41h to 43h side looks, 84h, 85h, 87h, 88h, 89h, 8Bh, 8Ch) goes through the same dispatcher `03CE`, so the same passes and
+the same hooks apply; section 10 of the flight display pass and the locks are gated to the forward cockpit view by the game itself.
+
+**Items 7 and 8.** Remastered's own rasteriser replaces the original's clip and fill stages for 3D objects (item 7), and the per-object-state culls are game state
+(item 8): neither can differ between the middle and the margins. Read at header level; the turned-view reference run is the check of both and is part of the
+confirmation stage.
+
+**State of the audit.** Reading: complete for the passes, the culls that depend on position, the flat drawing and its sources. Confirmation by running: not done
+(the turned-view reference, the 2D overlay comparison on the owner's flight). The list of what must be added to the margins is final as far as the reading goes:
+(1) far aircraft and projectile dots, (2) smoke-trail puff sprites, (3) the icon sprites of `DC46` (shape ids below 100h), (4) the flight display pass: weapon markers,
+tracers, blast sprite, detection rings (ground and air), locks, bomb symbology, beacons.
