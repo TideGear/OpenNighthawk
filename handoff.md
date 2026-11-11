@@ -14,7 +14,7 @@ late clock use `F117_SKIP_COMPOSE_BEFORE`, validated byte-exact on 12 frames).
 **The audit, in progress:** [docs/wide-margin-audit.md](docs/wide-margin-audit.md). Done: the 2D list from the code (far aircraft and projectile dots, the
 smoke-trail puffs and other kind-400h sprites of the scene walk `DC46`, the kind-25h+ marker sprites, and every symbology section, each with its placement and
 gate); 3D checklist item 1 (the object cull `E3BF`: the side and up allowances are relaxed in the copy, the range metric `(|x|+|y|)/4+|z|` against `[48E6]` is
-NOT, so far objects probably vanish earlier toward the margin edges; to measure). Next: 3D item 2 (the terrain walker `04E6`: its sector table and whether
+NOT; measured 11 Nov with `F117_CULL_WHY=1` over the screenshot window: the metric rejected 0 of 578,234 visible objects, so it is not observed to bind). Next: 3D item 2 (the terrain walker `04E6`: its sector table and whether
 the copy's extra walks cover the full wide angle), then items 3 to 10, and proof that no other routine draws flat into the view (the 84 graphics entries).
 A runtime tally of 2D draw callers was tried and dropped: the stack top at record time is often inside a helper, so it cannot name the caller.
 

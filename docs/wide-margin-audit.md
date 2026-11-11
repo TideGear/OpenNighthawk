@@ -77,7 +77,7 @@ stated; nothing is "believed fine".
 
 | # | Test | Where | State |
 |---|---|---|---|
-| 1 | The object cull (`E3AC`/`E3BF`, `camera_transform`): far plane, near limit, side and vertical frustum, range metric | `compose_emit_object`, `compose_defer_model` | READ, findings below |
+| 1 | The object cull (`E3AC`/`E3BF`, `camera_transform`): far plane, near limit, side and vertical frustum, range metric | `compose_emit_object`, `compose_defer_model` | READ and MEASURED: the range metric never binds in practice (below) |
 | 2 | The terrain walker (`04E6`): the four rings, the 4 x 4 cell block, the cell wrap at -8..7 cells, the detail value `[990E]`, the far plane `[48E6]` | `vgame_scene_walk` (matched.c), the copy's `far_scenery_body` (rerun.c) | READ, see below |
 | 3 | Per-model detail selection and size thresholds (`scene_model_depth`, the size word `[7D5E]`, `[DEBE]` class tests, the dot-versus-model switch) | model draw `120A:00CF`, `BB0D` | READ (depth only): see below; the dot-versus-model switch of aircraft is item 4 |
 | 4 | The aircraft test `B5DC` and its matrix (R9, R20, R41) | `wide_air_exec` | R41 cause found; fix not final |
@@ -132,3 +132,14 @@ The detail level of a model is chosen from `scene_model_depth(position, camera)`
 by 16, magnitude: a function of depth z' only. It does not depend on the sideways position, so a model in the margin gets the same detail as one in the middle
 at the same depth. The size indicator `[DEBE]` (z' >> 3) that gates model versus dot for aircraft and projectiles is also depth only. Result: no margin
 difference from this class of test. (The aircraft's dot-versus-model switch is audited with item 4: the matrix division by the reach halves `[DEBE]`.)
+
+#### Item 1, measured (11 Nov 2026): the range metric did not reject anything
+
+`F117_CULL_WHY=1` (the copy's native cull, `far_cull` in rerun.c, counts which check rejects each own-level object first, in the order far plane, near plane,
+across, up, metric) over the screenshot window of the owner's flight (clocks 17.9 to 18.5 billion, Remastered wide, Maximum draw distance): far plane 0, near
+plane 378,338, across 1,771,104, up 152,324, **metric 0**, visible 578,234. The metric is the last test, so a metric rejection would be an object that passed every
+other test and was dropped only for its sideways distance: there were none. The far plane the copy sets for the walks (30000, or the detail's own when the game
+draws) leaves no room for the metric to bind within the reach (8000 units of depth). The candidate defect above is therefore **not observed** on this flight;
+it stays a possibility only for objects of the coarser levels (shift > 0, not counted by this switch) and for a lower far plane, and for a far plane the owner's
+Draw distance setting lowers. The across test is the dominant rejection (about 60 % of the tests): objects outside the widened cone, i.e. outside the wide
+picture, as intended; with the allowance at 18,000 units the cone half-angle is wider than any screen shape (about 76 degrees at 8000 depth).
