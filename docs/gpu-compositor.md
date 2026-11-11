@@ -1026,3 +1026,19 @@ Build 10 Nov 18:39:59, 4K Maximum, Model detail Full, unpaced, one run at a time
 The late flight's CPU setup (`F117_REMASTER_TIMING`, mean): classify 13.6 ms (strokes 9.1, polygons 4.1; 81,000 triangles), binning 3.8, packing 3.3, upload copy 1.4; one thread does all of it while about 30 of the machine's 32 hardware threads are idle. Whole frames (bench, runway clocks 3.9 to 4.8 billion): mean 12.6 ms, p95 18.6, p99 20.5.
 
 What limits each flight: the late flight is held by the CPU setup (about 70% of the worker); the runway by the picture step (about 65%), which is the per-frame copy that Stage 2 retires. Neither is the GPU any more.
+
+## The CPU setup on several threads (10 November 2026)
+
+The classify loop of `gpu_compose_begin` (polygon and line records into triangles) and the pack loop (`tri_words`, the clearing of the upload arrays) run on a small fork-join pool (`F117_SETUP_THREADS`, default half the logical cores up to 8, 1 = the old serial loop; `F117_BIN_CHECK` forces serial). The records are split into 32 contiguous ranges; each range builds its own triangle lists and stroke words, and the lists are merged in range order, with each stroke's id (which the shader indexes by) shifted by the strokes drawn in the earlier ranges, so the result is the serial order. Bands (a handful a picture), binning, the decal face cache and the upload copy stay serial.
+
+Exactness: `F117_SETUP_CHECK=1` also runs the serial loop every picture and compares the triangle lists and stroke words byte for byte: 0 differences in 2,280 runway and 2,880 late-flight pictures. The 901 checksums at Near/Far/Maximum, the live GPU checks and the 4K CPU/GPU shots are unchanged, with three replays and the host suite running at once.
+
+Measured (build 10 Nov 20:12:43, 4K Maximum, Model detail Full, paired serial against 8 threads, worker timing, later two thirds of the late flight):
+
+| | serial | 8 threads |
+|---|---|---|
+| late flight, CPU setup `gpu_begin` | 28.7 ms mean, p95 42.7 | 19.5 ms, p95 29.6 |
+| late flight, worker frame | 41.1 ms mean, p95 59.3, max 68.4 | 29.9 ms, p95 43.6, max 48.5 |
+| runway, whole frame (two runs each) | 12.59 and 12.63 ms mean, p95 18.6 | 12.33 and 12.39 ms, p95 19.5 and 18.8 |
+
+The late flight's setup phases with 8 threads (mean): classify 5.8 ms (was 13.6), binning 4.0, packing 3.1 (mostly the serial face-cache build), upload copy 1.5, scene preparation 2.5. The runway gains only about 0.25 ms because its setup was 2 ms of 11.5. Neither flight reaches 60 fps solid yet: the worker still runs its steps one after another (setup, picture, compose), and the runway is held by the picture step (7.5 ms).

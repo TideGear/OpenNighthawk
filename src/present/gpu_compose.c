@@ -18,6 +18,7 @@
 #endif
 
 #define TILE 16
+#define SETUP_CHUNKS 32     /* the classify loop's record ranges (more than threads, for balance) */
 #define MAX_POLY 16
 
 typedef struct { double x, y, z; } dv3;
@@ -51,6 +52,8 @@ struct gpu_compose {
     SDL_GPUTransferBuffer *up, *down;
     Uint32 up_cap, down_cap;
     clist polys, strokes;
+    clist cpoly[SETUP_CHUNKS], cstroke[SETUP_CHUNKS];     /* the classify loop's per-chunk lists, merged in order into polys and strokes */
+    vec cword[SETUP_CHUNKS];
     decal_face_cache faces;
     vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
     double setup_ms, gpu_ms, copy_ms, wait_ms;
@@ -195,6 +198,8 @@ gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir
     return device ? compose_new(device, shader_dir, 0) : NULL;
 }
 
+static void setup_pool_shutdown(void);
+
 void gpu_compose_destroy(gpu_compose *g)
 {
     if (!g) return;
@@ -223,6 +228,8 @@ void gpu_compose_destroy(gpu_compose *g)
     }
     free(g->faces.words);
     free(g->polys.t); free(g->strokes.t);
+    for (int k = 0; k < SETUP_CHUNKS; k++) { free(g->cpoly[k].t); free(g->cstroke[k].t); free(g->cword[k].p); }
+    setup_pool_shutdown();
     free(g->band_words.p); free(g->poly_words.p); free(g->poly_ents.p); free(g->poly_off.p);
     free(g->stroke_tri_words.p); free(g->stroke_ents.p); free(g->stroke_off.p); free(g->stroke_words.p);
     free(g);
@@ -300,6 +307,13 @@ static int tile_touches_exact(const ctri *tr, int tx, int ty)
 #define CYC() 0ull
 #endif
 static unsigned long long g_cyc[6], g_cnt[6];
+#if defined(_MSC_VER)
+#define CADD(a, i, v) _InterlockedExchangeAdd64((volatile __int64 *)&(a)[i], (__int64)(v))
+#else
+#define CADD(a, i, v) ((a)[i] += (v))
+#endif
+/* read once per picture in gpu_compose_begin (the classify loop can run on several threads) */
+static int g_q_check, g_plane_full, g_plane_check;
 /* The plane setup as it was before ex_llround and ex_pow2 (llround and ldexp), for F117_BIN_CHECK=1 to compare the depth-only setup with. */
 static void planes_ref(ex_planes *p, const ex_tri *t, const double v[EX_PLANES][3])
 {
@@ -367,11 +381,9 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     t->q[0] = ex_llround(a.x * 256.0); t->q[1] = ex_llround(a.y * 256.0);
     t->q[2] = ex_llround(b.x * 256.0); t->q[3] = ex_llround(b.y * 256.0);
     t->q[4] = ex_llround(c.x * 256.0); t->q[5] = ex_llround(c.y * 256.0);
-    g_cyc[4] += CYC() - cv; g_cnt[4]++;
+    CADD(g_cyc, 4, CYC() - cv); CADD(g_cnt, 4, 1);
     {
-        static int q_check = -1;        /* F117_BIN_CHECK=1: the snapped vertices against llround, and 2^k against ldexp */
-        if (q_check < 0) q_check = getenv("F117_BIN_CHECK") != NULL;
-        if (q_check) {
+        if (g_q_check) {        /* F117_BIN_CHECK=1: the snapped vertices against llround, and 2^k against ldexp */
             static unsigned long long n; static unsigned bad;
             const double in[6] = { a.x * 256.0, a.y * 256.0, b.x * 256.0, b.y * 256.0, c.x * 256.0, c.y * 256.0 };
             for (int k = 0; k < 6; k++) if (t->q[k] != llround(in[k])) { bad++; if (bad < 4) fprintf(stderr, "[round-check] differs: %.17g %lld %lld\n", in[k], t->q[k], llround(in[k])); }
@@ -385,15 +397,12 @@ static int c_add(clist *l, uint32_t w7, uint32_t paint_index, uint32_t paint_own
     if (t->area != 0) {
         ex_tri et; memcpy(et.q, t->q, sizeof et.q); et.area = t->area;
         const double pv[EX_PLANES][3] = { { a.iz, b.iz, c.iz }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
-        static int plane_full = -1;     /* F117_PLANE_FULL=1: the full four-plane setup (the reference; for paired A/B timing) */
-        if (plane_full < 0) plane_full = getenv("F117_PLANE_FULL") != NULL;
+        const int plane_full = g_plane_full;     /* F117_PLANE_FULL=1: the full four-plane setup (the reference; for paired A/B timing) */
         ex_planes pl;
         const unsigned long long cq = CYC();
         if (plane_full) ex_planes_make(&pl, &et, pv); else ex_plane0_make(&pl, &et, a.iz, b.iz, c.iz);
-        g_cyc[3] += CYC() - cq; g_cnt[3]++;
-        static int plane_check = -1;
-        if (plane_check < 0) plane_check = getenv("F117_BIN_CHECK") != NULL;
-        if (plane_check) {      /* the full setup must give the same plane 0, origin and zero colour planes */
+        CADD(g_cyc, 3, CYC() - cq); CADD(g_cnt, 3, 1);
+        if (g_plane_check) {      /* the full setup must give the same plane 0, origin and zero colour planes */
             ex_planes full; planes_ref(&full, &et, pv);
             static unsigned bad; static unsigned n;
             n++;
@@ -732,6 +741,208 @@ static void pass_split(gpu_compose *g, SDL_GPUCommandBuffer **cb, int idx, Uint6
     }
 }
 
+
+/* ---- The CPU setup on several threads (10 November 2026) -------------------------------------------------------------------------------------------------
+ * The classify loop turns each polygon and line record into triangles independently; only their order matters. The records are split into SETUP_CHUNKS
+ * contiguous ranges, each range builds its own lists, and the lists are merged in range order (a stroke's id, which the shader indexes by, is the number of
+ * strokes drawn before it, so each range's ids are shifted by the strokes of the earlier ranges), which is exactly the serial order. F117_SETUP_THREADS=1 runs
+ * the serial loop (the reference); F117_SETUP_CHECK=1 runs both every picture and compares the lists and the stroke words byte for byte. */
+typedef void (*pool_fn)(void *arg, int idx);
+typedef struct {
+    SDL_Thread *th[32]; int nworkers;
+    SDL_Semaphore *go, *done;
+    pool_fn fn; void *arg; int njobs;
+    SDL_AtomicInt next, quit;
+} setup_pool;
+static setup_pool *g_pool;
+static int g_setup_threads = -1;
+
+static int pool_worker(void *u)
+{
+    setup_pool *p = (setup_pool *)u;
+    for (;;) {
+        SDL_WaitSemaphore(p->go);
+        if (SDL_GetAtomicInt(&p->quit)) break;
+        int j;
+        while ((j = SDL_AddAtomicInt(&p->next, 1)) < p->njobs) p->fn(p->arg, j);
+        SDL_SignalSemaphore(p->done);
+    }
+    return 0;
+}
+
+static void setup_pool_shutdown(void)
+{
+    setup_pool *p = g_pool;
+    if (!p) return;
+    g_pool = NULL;
+    SDL_SetAtomicInt(&p->quit, 1);
+    for (int i = 0; i < p->nworkers; i++) SDL_SignalSemaphore(p->go);
+    for (int i = 0; i < p->nworkers; i++) SDL_WaitThread(p->th[i], NULL);
+    SDL_DestroySemaphore(p->go); SDL_DestroySemaphore(p->done);
+    free(p);
+}
+
+/* How many threads the setup uses (including the caller): F117_SETUP_THREADS, default 8 (at most half the logical cores), 1 = serial. */
+static int setup_threads(void)
+{
+    if (g_setup_threads >= 0) return g_setup_threads;
+    int n = SDL_GetNumLogicalCPUCores() / 2; if (n > 8) n = 8; if (n < 1) n = 1;
+    const char *e = getenv("F117_SETUP_THREADS");
+    if (e && *e) n = atoi(e);
+    if (n > 32) n = 32;
+    if (n < 1 || getenv("F117_BIN_CHECK")) n = 1;      /* the check modes keep static counters */
+    g_setup_threads = n;
+    return n;
+}
+
+static void pool_run(pool_fn fn, void *arg, int njobs)
+{
+    const int nt = setup_threads();
+    if (nt > 1 && !g_pool) {
+        setup_pool *p = (setup_pool *)calloc(1, sizeof *p);
+        if (p) {
+            p->go = SDL_CreateSemaphore(0); p->done = SDL_CreateSemaphore(0);
+            for (int i = 0; i < nt - 1 && p->go && p->done; i++) { p->th[i] = SDL_CreateThread(pool_worker, "setup", p); if (!p->th[i]) break; p->nworkers++; }
+            g_pool = p;
+        }
+    }
+    setup_pool *p = g_pool;
+    if (!p || p->nworkers == 0) { for (int j = 0; j < njobs; j++) fn(arg, j); return; }
+    p->fn = fn; p->arg = arg; p->njobs = njobs;
+    SDL_SetAtomicInt(&p->next, 0);
+    for (int i = 0; i < p->nworkers; i++) SDL_SignalSemaphore(p->go);
+    int j;
+    while ((j = SDL_AddAtomicInt(&p->next, 1)) < njobs) fn(arg, j);
+    for (int i = 0; i < p->nworkers; i++) SDL_WaitSemaphore(p->done);
+}
+
+static int clist_reserve(clist *l, size_t n)
+{
+    if (l->cap >= n) return 1;
+    size_t cap = l->cap ? l->cap : 1024; while (cap < n) cap *= 2;
+    ctri *q = (ctri *)realloc(l->t, cap * sizeof *q);
+    if (!q) return 0;
+    l->t = q; l->cap = cap;
+    return 1;
+}
+
+/* The serial loop over the polygon and line records (bands are handled by the caller): the reference. */
+static int classify_serial(clist *pl, clist *sl, uint32_t *sw, uint32_t *nstrokes_out, const gpu_compose_in *in, int w, int h)
+{
+    uint32_t nstrokes = 0;
+    for (uint32_t i = 0; i < in->nrec; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LOGIC) {
+            const unsigned long long cp = CYC();
+            if (!add_polygon(pl, r, w, h)) return 0;
+            CADD(g_cyc, 1, CYC() - cp); CADD(g_cnt, 1, 1);
+        } else if (r->kind == REMASTER_T_LINE) {
+            int drawn = 0;
+            const unsigned long long cs = CYC();
+            if (!add_stroke(sl, r, w, h, nstrokes, sw + (size_t)nstrokes * STROKE_WORDS, &drawn)) return 0;
+            CADD(g_cyc, 2, CYC() - cs); CADD(g_cnt, 2, 1);
+            if (drawn) nstrokes++;
+        }
+    }
+    *nstrokes_out = nstrokes;
+    return 1;
+}
+
+typedef struct {
+    gpu_compose *g; const gpu_compose_in *in; int w, h;
+    uint32_t per;                       /* records a chunk */
+    volatile int fail;
+    uint32_t drawn[SETUP_CHUNKS], sofs[SETUP_CHUNKS];       /* strokes drawn in a chunk; strokes drawn before it */
+    size_t pofs[SETUP_CHUNKS], tofs[SETUP_CHUNKS];          /* polygon and stroke triangles before the chunk */
+    uint32_t *sw;
+} cls_ctx;
+
+static void classify_job(void *vc, int k)
+{
+    cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g; const gpu_compose_in *in = c->in;
+    clist *pl = &g->cpoly[k], *sl = &g->cstroke[k];
+    pl->n = 0; sl->n = 0; c->drawn[k] = 0;
+    const uint64_t a64 = (uint64_t)k * c->per;
+    if (a64 >= in->nrec) return;
+    const uint32_t a = (uint32_t)a64, b = (uint32_t)(a64 + c->per < in->nrec ? a64 + c->per : in->nrec);
+    uint32_t *words = (uint32_t *)vec_reserve(&g->cword[k], (size_t)(b - a) * STROKE_WORDS * 4);
+    if (!words) { c->fail = 1; return; }
+    for (uint32_t i = a; i < b; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LOGIC) {
+            const unsigned long long cp = CYC();
+            if (!add_polygon(pl, r, c->w, c->h)) { c->fail = 1; return; }
+            CADD(g_cyc, 1, CYC() - cp); CADD(g_cnt, 1, 1);
+        } else if (r->kind == REMASTER_T_LINE) {
+            int drawn = 0;
+            const unsigned long long cs = CYC();
+            if (!add_stroke(sl, r, c->w, c->h, c->drawn[k], words + (size_t)c->drawn[k] * STROKE_WORDS, &drawn)) { c->fail = 1; return; }
+            CADD(g_cyc, 2, CYC() - cs); CADD(g_cnt, 2, 1);
+            if (drawn) c->drawn[k]++;
+        }
+    }
+}
+
+static void merge_job(void *vc, int k)
+{
+    cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g;
+    const clist *pl = &g->cpoly[k], *sl = &g->cstroke[k];
+    if (pl->n) memcpy(g->polys.t + c->pofs[k], pl->t, pl->n * sizeof(ctri));
+    for (size_t j = 0; j < sl->n; j++) { ctri *d = &g->strokes.t[c->tofs[k] + j]; *d = sl->t[j]; d->w7 += c->sofs[k]; }
+    if (c->drawn[k]) memcpy(c->sw + (size_t)c->sofs[k] * STROKE_WORDS, g->cword[k].p, (size_t)c->drawn[k] * STROKE_WORDS * 4);
+}
+
+/* The classify of polygons and lines, into g->polys, g->strokes and sw (nrec * STROKE_WORDS words). */
+static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int h, uint32_t *sw, uint32_t *nstrokes_out)
+{
+    const int nt = setup_threads();
+    if (nt <= 1 || in->nrec < 2048) return classify_serial(&g->polys, &g->strokes, sw, nstrokes_out, in, w, h);
+    static cls_ctx c;                   /* one render worker calls this; the context is reused */
+    c.g = g; c.in = in; c.w = w; c.h = h; c.fail = 0; c.sw = sw;
+    c.per = (in->nrec + SETUP_CHUNKS - 1) / SETUP_CHUNKS;
+    pool_run(classify_job, &c, SETUP_CHUNKS);
+    if (c.fail) return 0;
+    size_t np = 0, nsz = 0; uint32_t nd = 0;
+    for (int k = 0; k < SETUP_CHUNKS; k++) {
+        c.pofs[k] = np; c.tofs[k] = nsz; c.sofs[k] = nd;
+        np += g->cpoly[k].n; nsz += g->cstroke[k].n; nd += c.drawn[k];
+    }
+    if (!clist_reserve(&g->polys, np) || !clist_reserve(&g->strokes, nsz)) return 0;
+    g->polys.n = np; g->strokes.n = nsz;
+    pool_run(merge_job, &c, SETUP_CHUNKS);
+    *nstrokes_out = nd;
+    static int check = -1;
+    if (check < 0) check = getenv("F117_SETUP_CHECK") != NULL;
+    if (check) {                         /* the serial result, compared byte for byte */
+        static unsigned n, bad; clist rp = { 0 }, rs = { 0 }; uint32_t rn = 0;
+        uint32_t *rw = (uint32_t *)malloc((size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
+        int ok = rw && classify_serial(&rp, &rs, rw, &rn, in, w, h);
+        if (ok) ok = rp.n == g->polys.n && rs.n == g->strokes.n && rn == nd &&
+                     (!rp.n || !memcmp(rp.t, g->polys.t, rp.n * sizeof(ctri))) && (!rs.n || !memcmp(rs.t, g->strokes.t, rs.n * sizeof(ctri))) &&
+                     (!rn || !memcmp(rw, sw, (size_t)rn * STROKE_WORDS * 4));
+        n++; if (!ok) bad++;
+        if (!ok && bad < 4) fprintf(stderr, "[setup-check] differs at picture %u (polys %zu vs %zu, strokes %zu vs %zu, drawn %u vs %u)\n", n, rp.n, g->polys.n, rs.n, g->strokes.n, rn, nd);
+        if (n % 120 == 0) fprintf(stderr, "[setup-check] %u pictures checked, %u differ\n", n, bad);
+        free(rp.t); free(rs.t); free(rw);
+    }
+    return 1;
+}
+
+typedef struct { const gpu_compose *g; uint32_t *pw, *stw; } pack_ctx;
+static void pack_job(void *vc, int k)
+{
+    const pack_ctx *c = (const pack_ctx *)vc;
+    const size_t np = c->g->polys.n, ns = c->g->strokes.n;
+    const size_t p0 = np * k / SETUP_CHUNKS, p1 = np * (k + 1) / SETUP_CHUNKS, s0 = ns * k / SETUP_CHUNKS, s1 = ns * (k + 1) / SETUP_CHUNKS;
+    if (p1 > p0) memset(c->pw + p0 * 40, 0, (p1 - p0) * 160);
+    if (s1 > s0) memset(c->stw + s0 * 40, 0, (s1 - s0) * 160);
+    for (size_t j = p0; j < p1; j++) {
+        const ctri *tr = &c->g->polys.t[j]; uint32_t *wd = c->pw + j * 40;
+        tri_words(wd, tr); wd[7] = tr->w7; wd[8] = tr->paint_index; wd[9] = tr->paint_owner; wd[10] = tr->kind;
+    }
+    for (size_t j = s0; j < s1; j++) { const ctri *tr = &c->g->strokes.t[j]; uint32_t *wd = c->stw + j * 40; tri_words(wd, tr); wd[7] = tr->w7; }
+}
+
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 {
     if (!g || !in) return 0;
@@ -752,6 +963,9 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     {   const char *sea_env = getenv("F117_SMOOTH_SEA");
         g_smooth_sea = !sea_env || atoi(sea_env) != 0;
         g_square_pen = square_pen_enabled();
+        g_q_check = g_plane_check = getenv("F117_BIN_CHECK") != NULL;
+        g_plane_full = getenv("F117_PLANE_FULL") != NULL;
+        exact_on(); decal_faces_enabled();
     }
     /* classify the records: the clear and the bands first, then polygons, then the lines; anything else is not handled */
     int phase = 0;
@@ -762,55 +976,42 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (!bw || !sw) return 0;
     const size_t band_cap = g->band_words.cap / (64 * 4);
     const unsigned long long c_loop = CYC();
+    /* the order rules first (serial, cheap), then the bands (serial: a handful a picture), then the polygons and lines (several threads) */
     for (uint32_t i = 0; i < in->nrec; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         switch (r->kind) {
         case REMASTER_T_CLEAR: case REMASTER_T_ZRESET: case REMASTER_T_WINDOW: break;
-        case REMASTER_T_SHADED: {
-            if (phase != 0) { say(g, "a band after a polygon"); return 0; }
-            if (r->n < 3 || r->n > 14) break;
-            sv s[MAX_POLY]; double rgb[MAX_POLY][3]; int ok = 1;
-            for (int k = 0; k < r->n; k++) {
-                if (r->v[k].z < r->near_z) { ok = 0; break; }
-                s[k].x = r->cx + r->sx * (double)r->v[k].x / r->v[k].z;
-                s[k].y = r->cy + r->sy * (double)r->v[k].y / r->v[k].z;
-                s[k].iz = (r->inv_depth_scale > 0.0 ? r->inv_depth_scale : 1.0) / (double)r->v[k].z;
-                rgb[k][0] = r->colors[k] >> 16 & 255; rgb[k][1] = r->colors[k] >> 8 & 255; rgb[k][2] = r->colors[k] & 255;
-            }
-            if (!ok) break;
-            if (exact_on()) for (int k = 0; k < r->n; k++) if (fabs(s[k].x) > EX_GUARD || fabs(s[k].y) > EX_GUARD) { say(g, "a band vertex outside the exact guard band"); return 0; }
-            for (int k = 1; k + 1 < r->n; k++) {
-                const sv tr[3] = { s[0], s[k], s[k + 1] };
-                const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };
-                if (nband >= band_cap) { say(g, "too many band triangles"); return 0; }
-                const unsigned long long cb = CYC();
-                if (band_triangle(bw + (size_t)nband * 64, r, tr, col, tw, h)) nband++;
-                g_cyc[0] += CYC() - cb; g_cnt[0]++;
-            }
-            break;
-        }
-        case REMASTER_T_POLYGON: case REMASTER_T_LOGIC:
-            if (phase > 1) { say(g, "a polygon after a line"); return 0; }
-            phase = 1;
-            { const unsigned long long cp = CYC();
-              if (!add_polygon(&g->polys, r, tw, h)) return 0;
-              g_cyc[1] += CYC() - cp; g_cnt[1]++; }
-            break;
-        case REMASTER_T_LINE: {
-            if (!r->line_decal || !r->line_order) { say(g, "lines without the decal rules"); return 0; }
-            phase = 2;
-            int drawn = 0;
-            const unsigned long long cs = CYC();
-            if (!add_stroke(&g->strokes, r, tw, h, nstrokes, sw + (size_t)nstrokes * STROKE_WORDS, &drawn)) return 0;
-            g_cyc[2] += CYC() - cs; g_cnt[2]++;
-            if (drawn) nstrokes++;
-            break;
-        }
+        case REMASTER_T_SHADED: if (phase != 0) { say(g, "a band after a polygon"); return 0; } break;
+        case REMASTER_T_POLYGON: case REMASTER_T_LOGIC: if (phase > 1) { say(g, "a polygon after a line"); return 0; } phase = 1; break;
+        case REMASTER_T_LINE: if (!r->line_decal || !r->line_order) { say(g, "lines without the decal rules"); return 0; } phase = 2; break;
         default: say(g, "an unknown record"); return 0;
         }
     }
-
-    g_cyc[5] += CYC() - c_loop; g_cnt[5]++;
+    for (uint32_t i = 0; i < in->nrec; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        if (r->kind != REMASTER_T_SHADED) continue;
+        if (r->n < 3 || r->n > 14) continue;
+        sv s[MAX_POLY]; double rgb[MAX_POLY][3]; int ok = 1;
+        for (int k = 0; k < r->n; k++) {
+            if (r->v[k].z < r->near_z) { ok = 0; break; }
+            s[k].x = r->cx + r->sx * (double)r->v[k].x / r->v[k].z;
+            s[k].y = r->cy + r->sy * (double)r->v[k].y / r->v[k].z;
+            s[k].iz = (r->inv_depth_scale > 0.0 ? r->inv_depth_scale : 1.0) / (double)r->v[k].z;
+            rgb[k][0] = r->colors[k] >> 16 & 255; rgb[k][1] = r->colors[k] >> 8 & 255; rgb[k][2] = r->colors[k] & 255;
+        }
+        if (!ok) continue;
+        if (exact_on()) for (int k = 0; k < r->n; k++) if (fabs(s[k].x) > EX_GUARD || fabs(s[k].y) > EX_GUARD) { say(g, "a band vertex outside the exact guard band"); return 0; }
+        for (int k = 1; k + 1 < r->n; k++) {
+            const sv tr[3] = { s[0], s[k], s[k + 1] };
+            const double col[3][3] = { { rgb[0][0], rgb[0][1], rgb[0][2] }, { rgb[k][0], rgb[k][1], rgb[k][2] }, { rgb[k + 1][0], rgb[k + 1][1], rgb[k + 1][2] } };
+            if (nband >= band_cap) { say(g, "too many band triangles"); return 0; }
+            const unsigned long long cb = CYC();
+            if (band_triangle(bw + (size_t)nband * 64, r, tr, col, tw, h)) nband++;
+            CADD(g_cyc, 0, CYC() - cb); CADD(g_cnt, 0, 1);
+        }
+    }
+    if (!classify_records(g, in, tw, h, sw, &nstrokes)) return 0;
+    CADD(g_cyc, 5, CYC() - c_loop); CADD(g_cnt, 5, 1);
     const Uint64 t_classified = SDL_GetTicksNS();
     const int tilesx = (tw + TILE - 1) / TILE, tilesy = (h + TILE - 1) / TILE;
     size_t npents = 0, nsents = 0;
@@ -820,12 +1021,9 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 160);
     uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 160);
     if (!pw || !stw) return 0;
-    memset(pw, 0, (g->polys.n ? g->polys.n : 1) * 160); memset(stw, 0, (g->strokes.n ? g->strokes.n : 1) * 160);
-    for (size_t k = 0; k < g->polys.n; k++) {
-        const ctri *tr = &g->polys.t[k]; uint32_t *wd = pw + k * 40;
-        tri_words(wd, tr); wd[7] = tr->w7; wd[8] = tr->paint_index; wd[9] = tr->paint_owner; wd[10] = tr->kind;
-    }
-    for (size_t k = 0; k < g->strokes.n; k++) { const ctri *tr = &g->strokes.t[k]; uint32_t *wd = stw + k * 40; tri_words(wd, tr); wd[7] = tr->w7; }
+    if (!g->polys.n) memset(pw, 0, 160);        /* the one-triangle minimum upload of an empty list stays zero, as before */
+    if (!g->strokes.n) memset(stw, 0, 160);
+    { pack_ctx pc = { g, pw, stw }; pool_run(pack_job, &pc, SETUP_CHUNKS); }
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
