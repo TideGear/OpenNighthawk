@@ -143,3 +143,26 @@ draws) leaves no room for the metric to bind within the reach (8000 units of dep
 it stays a possibility only for objects of the coarser levels (shift > 0, not counted by this switch) and for a lower far plane, and for a far plane the owner's
 Draw distance setting lowers. The across test is the dominant rejection (about 60 % of the tests): objects outside the widened cone, i.e. outside the wide
 picture, as intended; with the allowance at 18,000 units the cone half-angle is wider than any screen shape (about 76 degrees at 8000 depth).
+
+## The complete list of what draws into the 3D view (read 11 Nov 2026; this closes the "prove nothing else draws flat" question for the view itself)
+
+The 3D window is drawn by one routine, the scene dispatcher VGAME `03CE` (matched.c, "VGAME 03CE: the scene dispatcher"; the composer `2F9D` only chooses the
+angles and the view code `[C0A6]` and calls it from `1BCE`). In order it runs: the window set-up and frame pacing; `D826` (`vgame_set_view_and_sky`: viewport,
+camera matrices, scene origin, then the sky and ground bands `1450`); the terrain walk `04E6` (objects through `E2B6`, culled by `E3AC`, drawn or deferred);
+`983E` (`vgame_moving_objects`: the player's own model in outside views, the 16 smoke-trail puffs, the other aircraft, the 12 projectiles, the flare, the
+exterior player model); `D87C` (`vgame_scene_finish_walk`, which composes the deferred objects through `DC46`, `vgame_compose_walk`, the scene-object walk with its
+400h sprites and 25h+ marker sprites); and `9EFA`, the flight display pass (weapon markers, tracers, blast, locks, detection rings, bomb symbology, beacons, and the
+right-hand display), the last thing the frame draws. The HUD (`1058:0016`) and the panels (`79BE`) are separate passes outside the 3D window (flat by design; they
+stay in the middle). So the passes that put something into the view are exactly these seven stages, and every one of them is accounted for above:
+
+| Stage | What | Margins today |
+|---|---|---|
+| bands `1450` | sky and ground bands | full width (R6, R24, owner-confirmed) |
+| terrain walk `04E6` and `D87C`/`DC46` models | 3D objects | yes, all round (item 2), culls relaxed (item 1) |
+| `DC46` kind 400h and 25h+ | flat sprites and marker sprites | NO: needs the 2D mechanism |
+| `983E` | smoke-puff sprites, far dots (aircraft, projectiles), models | models yes; flat things NO |
+| `9EFA` | markers, tracers, blast, rings, locks, bomb symbology, beacons | NO |
+
+Still to read for the 3D side (items 4 to 10 of the checklist): the 400h and 25h+ object kinds on the terrain (which object types are sprites: the table at `[0510]`
+read from game memory), the cull of the aircraft test (item 4, R9/R20/R41 known), the clip and fill stages (item 7), the object-state culls (item 8), the other view codes
+(item 9, `[C0A6]`: 41h to 43h side looks, 84h, 85h, 87h, 88h/89h/8Bh, 8Ch) and the per-theatre data (item 10).
