@@ -166,3 +166,37 @@ stay in the middle). So the passes that put something into the view are exactly 
 Still to read for the 3D side (items 4 to 10 of the checklist): the 400h and 25h+ object kinds on the terrain (which object types are sprites: the table at `[0510]`
 read from game memory), the cull of the aircraft test (item 4, R9/R20/R41 known), the clip and fill stages (item 7), the object-state culls (item 8), the other view codes
 (item 9, `[C0A6]`: 41h to 43h side looks, 84h, 85h, 87h, 88h/89h/8Bh, 8Ch) and the per-theatre data (item 10).
+
+## Items 4 to 10 (11 Nov 2026): what is read, what is not
+
+**Which objects are flat sprites (the 400h kind of `DC46`).** The scene walk draws a deferred object as a flat scaled sprite when its model word has bit 400h.
+The terrain's object types are read from the model word table at `DS:[0510]` (128 words): from a memory dump of the owner's flight at clock 12.0 billion (DS
+37AEh found through the string "Radio Beacon" at DS:42D8) **none of the 128 types has bit 400h**: every terrain object of this theatre is a 3D model. The only
+emitter of 400h model words found is the smoke-trail puff code (`983E` -> `D9FE`, model word 400h + (age & 0Eh) / 2). The other callers of `compose_emit_object`
+(`E2B6`) are the camera-image routines (`camimage_place_near_effect` `0BC5F`, `camimage_aircraft_glint` `0C4BA`), which draw the target-camera panel, not the
+view. **Not yet checked: the other theatres' tables (item 10); the kind-25h+ marker sprites (`1B2E`, a four-byte marker table through `[7D7E]`): which objects
+carry such kinds is OPEN.**
+
+**Item 4, the aircraft test `B5DC`.** Read (R9, R20, R41 above and in owner-issues). Known and understood; the fix is part of the 2D mechanism.
+
+**Item 5, ground objects, buildings, lights.** All are 3D models on the terrain walk (this theatre), covered by items 1 and 2. The scene walk gives each a ring by size;
+the far scenery reaches 8000 units of depth at the finest level where it fits, equal in the middle and the margins. No sideways-dependent limit found beyond the
+widened cone. (Not yet verified object type by object type; the turned-view comparison will check it.)
+
+**Item 6, the sky and ground bands (`1450`).** Full width in Remastered (R6, R24, owner-confirmed 3 Nov). Nothing to add.
+
+**Item 7, the clip and fill stages.** Remastered does not use the original's screen clipping: it takes each model's vertices in camera space from the scene
+mesh (`remaster_scene.c`, "from a model request to camera-space primitives") and rasterises them itself (`remaster_raster.c`), so the original's 320 x 96 clip
+rectangle and outcode routine (`04BC`) do not apply to the wide picture. Read at the level of the headers; the per-model material commands
+(`scene_mesh_materials`) are the same for every object and not sideways-dependent. Not read line by line.
+
+**Item 8, per-object-state culls.** Destroyed, hidden-class and class-byte culls (`[C05C]`, bit 7 of the class byte, `[49F6]` flags) are game state and the same in
+the middle and the margins. Not read line by line.
+
+**Item 9, the other views.** Every view code goes through the same scene dispatcher (`03CE`); `9EFA`'s sections are gated by the view (the weapon lock and the bomb
+symbology need the forward cockpit view, section 10 states it). The wide picture is for the cockpit view; how the other view codes (side looks, rear, tracked
+object) show in the wide picture is OPEN: to read and to check in a replay of each.
+
+**Item 10, the theatres.** OPEN: the model word tables, the ring tables and the night and weather settings differ per theatre; the one memory dump is Libya.
+
+Confirmation still to run (after the reading): the turned-view reference and the 2D overlay comparison on the owner's flight.
