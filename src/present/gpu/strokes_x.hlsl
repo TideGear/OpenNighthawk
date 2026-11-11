@@ -200,8 +200,10 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const double ddxd = asdouble(strokes[sb + 5], strokes[sb + 6]), ddyd = asdouble(strokes[sb + 7], strokes[sb + 8]);
         // decal rules against the polygon pass
         const bool same_here = (owner[at] >> 12) == object;
+        // F117_DECAL_SIMPLE (default on; F117_DECAL_SIMPLE=0 restores the exact rule): pad2 != 0 skips the neighbourhood walk (stroke_hidden), which is where the time went
+        // (strokes 11.9 to 3.0 ms on the late flight at 4K); the face-cache depth stays. About 216 of 8.3 million pixels differ from the exact rule (docs/gpu-compositor.md).
         if (decal_hidden(at, same_here && !line_point ? sample_depth(px,py,iz,px,py,ls,ddxd,ddyd,po) : iz, po, line_point, false)) continue;
-        if (!same_here && stroke_hidden(px, py, iz, po, line_point, false, ls, (int)strokes[sb + 4], ddxd, ddyd)) continue;
+        if (!same_here && pad2 == 0u && stroke_hidden(px, py, iz, po, line_point, false, ls, (int)strokes[sb + 4], ddxd, ddyd)) continue;
         // stroke competition
         const float old_z = s_z;
         const uint old = old_z > 0.0 ? s_owner : 0u;

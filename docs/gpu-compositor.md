@@ -992,3 +992,22 @@ The CPU setup was the larger cost on the owner's late flight, so it is measured 
 **After (late flight):** depth planes **84 to 85 cycles a triangle** (3.5 times fewer), snapped vertices **68 to 69** (5.8 times fewer), classify 17 to 20 ms down to **10 to 13 ms** (polygons 3.2 to 4.0, strokes 6.5 to 8.7 ms), the whole-frame mean 45.3 ms in that run (a figure from a different time than the 56 ms pair above: it is not a paired result; the cycle counts are the comparison, being far less affected by this machine's drift).
 
 **Required set on this build (`build/f117a.exe` 10 November 11:13:51; `gpu_bands_x.dxil` 08:24:31; logs in `private/step6/final3` and `private/step6/host_alone`):** machine hash `600306c77cb04481` (old and new, Near and Maximum); CPU guards 901/901 and GPU guards 901/901 at Near, Far and Maximum against `private/renderer-bench/baseline`; live GPU checks 3,421 pictures per distance, 0 differing pixels; CPU against GPU 4K shots of the late flight at clocks 9.5 and 10.35 billion, 0 differing pixels each; full CTest 846 of 846 (845 in the parallel set, `func_lockstep` alone, 1,509 s); host acceptance 12/12 with the report verified **when run alone**. **A trap met here:** in the parallel run, with five other checks on the machine, the host scenario `transport-and-screen-edge` produced 11 moving frames where it needs 12 ("too few moving frames"): the live presenter drops pictures under load, and the scenario takes every second one. Run alone the same build passes all twelve (about 6 minutes). Run the host suite on an idle machine, not beside the guards.
+
+## Simplified decal rule for strokes (10 November 2026; ON by default, owner's decision)
+
+The owner decided on 10 November that Remastered uses the simplified rule by default. `F117_DECAL_SIMPLE=0` restores the exact rule; any other value or none is the simplified rule (`strokes_x.hlsl`, mode 1; read once in `gpu_compose.c`). The exact rule tests a line or dot pixel against the polygon pass with `decal_hidden` and two helpers: the face-cache depth (`sample_depth`) and a walk over the neighbouring pixels within the stroke's radius (`stroke_hidden`). The simplified rule skips only the walk. Not exact. The CPU compositor (the oracle) keeps the exact rule, so the GPU and CPU pictures now differ by design unless `F117_DECAL_SIMPLE=0`: `guards.sh` sets it to 0 by default so the 901 checksums and the live checks still prove the exact path, and the host acceptance suite runs the default.
+
+Measured on the late flight `session-20261108-211031`, 4K Maximum, Model detail Full, hardware GPU timestamps for the strokes interval (builds of 10 Nov 16:13 to 17:49; one run per variant, one at a time; the frame mix differs a little between runs because the faster ones render more frames), and the differing pixels of GPU frames at clocks 9.5 and 10.35 billion (4608 x 1800 wide view, exact against the variant). The variants were separate switch values while testing, since removed:
+
+| Variant | Strokes mean / p95 | Differing pixels 9.5G / 10.35G |
+|---|---|---|
+| exact | 11.9 / 29.6 ms | 0 |
+| skip both helpers | 3.0 / 6.0 ms | 688 / 594 |
+| skip the face depth only | 12.4 / 33.6 ms | 479 / 377 |
+| **skip the walk only (the default now)** | **3.0 / 6.5 ms** | **216 / 217** |
+| walk without the face-gradient correction | 7.8 / 19.8 ms | 954 / 906 |
+| exact skip of the walk for `line_point` strokes only | 11.9 / 30.6 ms | 0 / 0 |
+
+Skipping the face depth saves nothing and causes about two thirds of the differences; skipping the walk is where the whole saving is, and its cost is the exact depth of its same-object neighbours, which cannot be made cheaper without losing accuracy. The differences are single light dots or short light segments appearing or disappearing at a boundary (crops in `private/step6/split/crop3_*.png`). Recipes: `private/timestamp-4k/simple.sh`, `private/step6/simple_shots.sh`, `private/step6/split_run.sh`.
+
+Checks on the default-on build of 10 Nov 18:39:59: machine hash `600306c77cb04481`; guards 901/901 at Near/Far/Maximum with `F117_DECAL_SIMPLE=0`; live GPU checks 0 differing (also with 0); CPU against GPU 4K shots 0 differing (with 0); host acceptance 12/12 with the default (alone); CTest 846/846 on the previous build, the unit tests again on this one. Not yet done: a baseline for the simplified rule's own checksums, and timings of whole frames with it on.

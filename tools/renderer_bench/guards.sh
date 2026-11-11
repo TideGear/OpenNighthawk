@@ -10,6 +10,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=${F117_REPO:-$(cd "$HERE/../.." && pwd)}
 WORK=${BENCH_WORK:-$HOME/f117-bench}
 BASE=${BASE:-$ROOT/private/renderer-bench/baseline}
+# The baseline is the EXACT decal rule's; the simplified rule is the default since 10 November 2026, so the guards turn it off unless F117_DECAL_SIMPLE is set (then use BASE=...baseline-simple).
+export F117_DECAL_SIMPLE=${F117_DECAL_SIMPLE:-0}
 C="F117_REPLAY_FIXED_CADENCE=1 F117_PRESENT_HASH_FROM=3900000000 F117_REMASTER_THREADS=8"
 hashes() {   # TAG DEST [env...]
   local tag=$1 dest=$2; shift 2

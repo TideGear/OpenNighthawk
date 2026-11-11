@@ -712,6 +712,9 @@ typedef struct { gbuf *b; const void *data; Uint32 bytes; SDL_GPUBufferUsageFlag
 
 /* F117_GPU_PASS_TIMES=1 (diagnostic): each compute pass of the begin step is submitted on its own and waited for, so its wall time (GPU work plus one
  * submit and fence) is known; the means are printed every 120 pictures. The sum is longer than the normal run, which overlaps the passes. */
+/* F117_DECAL_SIMPLE: on by default (Remastered GPU compositor); =0 restores the exact decal rule. The strokes shader then skips the neighbourhood walk of the rule (not exact: about 216 of 8.3 million pixels
+ * differ on the late flight at 4K), which cuts the strokes pass from about 11.9 to 3.0 ms. docs/gpu-compositor.md. */
+static Uint32 decal_simple_on(void) { static int on = -1; if (on < 0) { const char *e = getenv("F117_DECAL_SIMPLE"); on = !(e && e[0] == '0'); } return (Uint32)on; }
 static int pass_times_on(void) { static int on = -1; if (on < 0) on = getenv("F117_GPU_PASS_TIMES") != NULL; return on; }
 static void pass_split(gpu_compose *g, SDL_GPUCommandBuffer **cb, int idx, Uint64 *mark)
 {
@@ -951,7 +954,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
         SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { g->hid.buf, false }, { b_strokez, false } };
         SDL_GPUBuffer *ro[4] = { g->st.buf, g->se.buf, g->so.buf, g->sw.buf };
-        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, face_offset, 0 };
+        const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, face_offset, decal_simple_on() };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 6);
         SDL_BindGPUComputePipeline(c, g->p_strokes);
         SDL_BindGPUComputeStorageBuffers(c, 0, ro, 4);
