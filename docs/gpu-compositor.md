@@ -1011,3 +1011,18 @@ Measured on the late flight `session-20261108-211031`, 4K Maximum, Model detail 
 Skipping the face depth saves nothing and causes about two thirds of the differences; skipping the walk is where the whole saving is, and its cost is the exact depth of its same-object neighbours, which cannot be made cheaper without losing accuracy. The differences are single light dots or short light segments appearing or disappearing at a boundary (crops in `private/step6/split/crop3_*.png`). Recipes: `private/timestamp-4k/simple.sh`, `private/step6/simple_shots.sh`, `private/step6/split_run.sh`.
 
 Checks on the default-on build of 10 Nov 18:39:59: machine hash `600306c77cb04481`; guards 901/901 at Near/Far/Maximum with `F117_DECAL_SIMPLE=0`; live GPU checks 0 differing (also with 0); CPU against GPU 4K shots 0 differing (with 0); host acceptance 12/12 with the default (alone); CTest 846/846 on the previous build, the unit tests again on this one. Not yet done: a baseline for the simplified rule's own checksums, and timings of whole frames with it on.
+
+## Where a frame goes now (10 November 2026, simplified rule on; measurement only)
+
+Build 10 Nov 18:39:59, 4K Maximum, Model detail Full, unpaced, one run at a time. Main thread (`F117_LOOP_TIMING`): the machine step is about 2.7 ms a frame on the runway; the rest of the frame is the main thread waiting for the render worker (9.7 ms on the runway, 48 ms on the late flight), so the worker is the critical path. Worker per frame (`F117_WORKER_TIMING`, later two thirds of each flight, ms):
+
+| | Runway mean / p95 / max | Late flight mean / p95 / max |
+|---|---|---|
+| CPU setup (`remaster_live_gpu_begin`) | 2.0 / 3.0 / 14.5 | **28.0 / 41.6 / 46.1** |
+| picture (`drawlive_render`: the render copy and the game's picture layer) | **7.5 / 8.6 / 9.3** | 6.1 / 7.5 / 8.4 |
+| compose (of it, waiting for the GPU) | 2.0 (1.0) / 2.8 / 4.2 | 6.1 (5.2) / 11.4 / 17.7 |
+| worker total | 11.5 / 13.4 / 24.9 | 40.2 / 58.9 / 68.2 |
+
+The late flight's CPU setup (`F117_REMASTER_TIMING`, mean): classify 13.6 ms (strokes 9.1, polygons 4.1; 81,000 triangles), binning 3.8, packing 3.3, upload copy 1.4; one thread does all of it while about 30 of the machine's 32 hardware threads are idle. Whole frames (bench, runway clocks 3.9 to 4.8 billion): mean 12.6 ms, p95 18.6, p99 20.5.
+
+What limits each flight: the late flight is held by the CPU setup (about 70% of the worker); the runway by the picture step (about 65%), which is the per-frame copy that Stage 2 retires. Neither is the GPU any more.
