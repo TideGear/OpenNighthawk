@@ -986,7 +986,7 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       An oracle to verify Mac behaviour, if one is needed, would start from Snow (open source, MIT,
       emulates the Mac II with its colour cards) with MAME as a second reference; it needs the owner's
       Mac II ROM. Not scored.
-- [ ] **Maybe: realistic lighting, after the PixelWings mod** (owner, 9 Nov 2026; not started, not scored).
+- [ ] **Planned: realistic lighting, after the PixelWings mod** (owner, 9 Nov 2026; promoted from "Maybe" to the Phase 3 to-do list by the owner, 10 Nov 2026; not started, not scored yet).
       The community mod "F-117A - Cockpit & Palette Mod 1.1" by PixelWings
       ([page](https://pixelwings.org/f117.dir/f117a.htm); write-up:
       [Tales from DarkenedRoom, 2 Nov 2025](https://www.tales-from-darkenedroom.com/post/f-117a-nighthawk-stealth-fighter-2-0-black-knight-marine-strike-fighter-a-pixelwings-update))

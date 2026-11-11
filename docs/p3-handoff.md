@@ -11,7 +11,7 @@ Keys tab ([settings.md](settings.md), checked by [host-acceptance.md](host-accep
 (`--watch`), the colour-blind aid, and the 33 normal-play fixes ([bugs.md](bugs.md)). The owner's reports are tracked one by one in [owner-issues.md](owner-issues.md): read it before changing anything visible.
 What is planned and not built: the asset library and import wizard (one library folder for the DOS game, the Mac sounds converted to WAV at import and the Roland ROMs; a first-run wizard that copies and hash-checks
 them; every source optional), subtitles under AdLib, a real controller or HOTAS on hardware, other cameras in replays, the CRT improvements the owner asked for (R25), the Macintosh version's cockpit and other graphics read from the player's own Mac copy (owner, 10 Nov 2026; [roadmap.md](roadmap.md), "Planned: Macintosh-version graphics"), and realistic lighting after the PixelWings
-Cockpit & Palette mod (owner, 9 Nov 2026; [roadmap.md](roadmap.md), "Maybe: realistic lighting").
+Cockpit & Palette mod (owner, 9 Nov 2026; [roadmap.md](roadmap.md), "Planned: realistic lighting"; promoted to the to-do list 10 Nov).
 
 ## Rules that hold
 
