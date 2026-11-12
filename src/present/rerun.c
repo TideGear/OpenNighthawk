@@ -1227,7 +1227,7 @@ static void air_vector(machine_t *m,uint16_t ds, int16_t x, int16_t y, int16_t a
     }
     v[0] = ox; v[1] = oa; v[2] = oy;
 }
-static int g_air_dots = -1;              /* F117_WIDE_DOTS=1: per-call matrix (true placement for dots) and margin dots (R41/R42); off by default until the owner approves */
+static int g_air_dots = -1;              /* F117_WIDE_DOTS (default on, 0 disables): per-call matrix (true placement for dots) and margin dots (R41/R42) */
 static int g_air_last_model;             /* F117_WIDE_DOTS: the last 0xB5DC call goes on to draw a 3D model (widened matrix) */
 static int16_t air_fixmul(int16_t a, int16_t b)      /* VGAME 104E:0000: (a * b) shifted right 14, rounded by the next bit, then the sums are 32-bit in B792 */
 {
@@ -1522,7 +1522,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                         s->exec_hook_n++;
                         s->hooks.exec = wide_air_exec;
                         g_air_ret_k = -1;
-                        if (g_air_dots < 0) { const char *e = getenv("F117_WIDE_DOTS"); g_air_dots = e && e[0] == '1'; }
+                        if (g_air_dots < 0) { const char *e = getenv("F117_WIDE_DOTS"); g_air_dots = !(e && e[0] == '0'); }   /* on by default (owner, 11 Nov); F117_WIDE_DOTS=0 restores the squashed placement */
                         /* The table has room for two hooks past the live ones (EXEC_HOOKS_MAX): this one and the far scenery walk's below. The margin dots
                          * therefore work from this entry hook alone (R44: two return hooks took the walk's slot and the far scenery vanished without a word).
                          * The probe's return hook (diagnostic) is installed after the walk, only if there is room. */
