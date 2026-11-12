@@ -57,6 +57,9 @@ void remaster_live_set_far_light_size(int perspective);   /* Far light size (R35
 struct rerun_native_s;
 int remaster_live_native(remaster_live *r, machine_t *m, const void *spec);
 void remaster_live_placement_return(remaster_live *r, machine_t *m, int returned);
+/* A flat dot the copy's game dropped outside the 4:3 window (rerun_collector.overlay_dot): one game pixel at that screen position (a square polygon),
+   just beyond the near plane so it draws over the scene as the game's flat dot does. x, y in the game's 320 x 200 pixels (the pixel's corner). */
+void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word);
 
 /* Compose the Enhanced presentation's fine picture (n times finer: 320n x 200n palette indices in src, the origin tag of
  * each pixel in tag when F117_PRESENT_DIAG is on, dac the six-bit palette) with the last completed frame's Remastered

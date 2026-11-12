@@ -494,6 +494,12 @@ static void copy_placement_return(void *user, machine_t *m, int returned)
     if (g_rlive_copy) remaster_live_placement_return(g_rlive_copy, m, returned);
 }
 
+static void copy_overlay_dot(void *user, double x, double y, unsigned colour_word)
+{
+    (void)user;
+    if (g_rlive_copy) remaster_live_overlay_dot(g_rlive_copy, x, y, colour_word);
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -1241,7 +1247,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot };
                 if (g_rlive_copy) rerun_set_collector(&coll);
                 /* worker mode: the copy stages its frame and the loop commits it (this object exists only once the game is loaded, after the worker thread was made) */
                 if (g_rlive_copy && g_pw.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);

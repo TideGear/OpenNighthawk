@@ -2101,6 +2101,36 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
     return 0;
 }
 
+void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word)
+{
+    if (!r) return;
+    remaster_frame *f = &r->frame;
+    if (f->n == f->cap) {
+        const size_t cap = f->cap ? f->cap * 2 : 256;
+        remaster_prim *q = (remaster_prim *)realloc(f->prim, cap * sizeof *q);
+        if (!q) return;
+        f->prim = q; f->cap = cap;
+    }
+    remaster_prim *p = &f->prim[f->n++];
+    memset(p, 0, sizeof *p);
+    /* The game's far dot is one of its pixels (matched.c: the flat pixel at [4A10],[4A18]), and its pixel x covers x .. x + 1 of the wide picture's
+     * scale (draw_scene_ex: cx = origin * ux + xoff), so the dot is that square as a polygon: exactly one game pixel at every scale, where a dot
+     * primitive is 1.5 pixels wide and centred on the corner. In front of everything (the near plane is 0x10000), as the flat dot is drawn last;
+     * an owner no object has (serial FFFFFh, face FFFh), so no line takes it for its own face. */
+    const double z = 0x20000;
+    static const double cx[4] = { 0, 1, 1, 0 }, cy[4] = { 0, 0, 1, 1 };
+    p->kind = SCENE_POLYGON;
+    p->n = 4;
+    for (int k = 0; k < 4; k++) {
+        p->v[k].x = (int32_t)llround((x + cx[k] - r->origin[0]) * z / 256.0);
+        p->v[k].y = (int32_t)llround((y + cy[k] - r->origin[1]) * z / 256.0);
+        p->v[k].z = (int32_t)z;
+    }
+    p->owner = 0xFFFFFFFFu;
+    p->colour_word = (uint16_t)colour_word;
+    p->colour_index = (uint8_t)(colour_word & 255);
+}
+
 size_t remaster_live_prims(const remaster_live *r) { return r->frame.n; }
 size_t remaster_live_done_prims(const remaster_live *r) { return r->have_done ? r->done.n : 0; }
 

@@ -76,6 +76,9 @@ typedef struct {
     void *user;
     int  (*native)(void *user, machine_t *m, const rerun_native *n);   /* 1: drawn; 0: no template yet, the copy places it itself */
     void (*placement_return)(void *user, machine_t *m, int returned);
+    /* A dot the game draws flat at a screen position (x, y in its 320 x 200 pixels, unclamped) that its own cull dropped because it lies outside the
+     * 4:3 window, but which the wide picture shows (R41/R42): the renderer draws it in the margins. colour_word as a model's (FFxxh: palette pixel xx). */
+    void (*overlay_dot)(void *user, double x, double y, unsigned colour_word);
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */

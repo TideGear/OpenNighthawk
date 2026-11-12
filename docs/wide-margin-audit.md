@@ -50,10 +50,10 @@ the margins would mean:
 | 1 | a box (size 6) over every weapon in flight; colour 11h for slots 0..7 (fired at the player), 0Ah for 8..11 | projected; drawn when it lands on the screen | should show: a physical object |
 | 2 | gun tracers, tail-to-head lines (0Dh the player's, 29h an enemy's) and their hit tests | both points projected; if either is off the 320 screen the slot is skipped, drawing and hit test alike ("the gun's reach is the window") | the line should show; the hit test is game logic and stays the real game's (a tracer in the margin cannot hit, as in the original) |
 | 3 | the impact blast sprite (`1A98`), size 100h / depth, phase 10h - abs(clock) | projected at the effect (following a named unit while above ground) | should show |
-| 4a | the weapon lock marker on a ground target (display mode 2), recoloured 6 when the station cannot use it | drawn when the target projects | **owner decision**: the real game offers no lock on a target off its 320 screen; a margin marker drawn by the copy could show a lock state the real game does not have |
+| 4a | the weapon lock marker on a ground target (display mode 2), recoloured 6 when the station cannot use it | drawn when the target projects | **owner decision (11 Nov: recommendation accepted)**: in the margins a plain marker, the game's own unlocked form (the four-sided box of `0B171` with locked = 0, in the HUD pen), no lock indication; the real game offers no lock on a target off its 320 screen |
 | 4b, 9 | the detection ring: a closing marker with the detector's name (ground site, or air unit) while `DETECT_COUNTDOWN` runs (`B4F5`) | projected at the detector | should show (the rings the owner saw) |
-| 7 | the weapon lock marker on an air target (size 9), HUD pen near the centre, locks past depth / -8 | drawn when the unit projects | **owner decision**, as 4a |
-| 10 | bomb impact point (size 5, locked, 29h) with a line from the flight-path marker; bomb bracket and diamond on the target | projected; the impact point is pinned to the bottom of the window when it falls off the screen | **owner decision**: pin to the wide window or the original's |
+| 7 | the weapon lock marker on an air target (size 9), HUD pen near the centre, locks past depth / -8 | drawn when the unit projects | **owner decision (11 Nov)**: as 4a, the plain box, size 9, HUD pen |
+| 10 | bomb impact point (size 5, locked, 29h) with a line from the flight-path marker; bomb bracket and diamond on the target | projected; the impact point is pinned to the bottom of the window when it falls off the screen | **owner decision (11 Nov: recommendation accepted)**: when the impact point falls off the view, pin it to the bottom of the wide picture |
 | 11 | radio beacons: diamond, "Radio Beacon" label with a pulsing marker, and messages | projected at z = 0 | should show |
 | 5, 8, 12 | the camera displays | the right-hand panel, not the view | not applicable |
 
@@ -282,3 +282,48 @@ on-screen points match exactly.** The game put 3,500 aircraft points off screen 
 347 at 320 to 639 and 120 at 640 or more (the right margin: the flight turned right of the aircraft), and 223 inside 0..319 across but outside the view's rows. So **507 aircraft
 points in 0.6 billion clocks (about 10 seconds) were in the wide picture's margins and missing**, which is the owner's R41/R42 for the far dots. (The 223 in 0..319 are
 cut by the original's row limit; the wide picture shows more rows, so some of them belong in the picture as well.)
+
+## Margin dots built (11 Nov 2026): `F117_WIDE_DOTS=1`, default off
+
+What is drawn and how it is proven (`rerun.c`, `wide_dot_at_entry`; `remaster_live.c`, `remaster_live_overlay_dot`):
+
+- **Matrix per call.** Every call of `B5DC` sees the game's own matrix, so dots, smoke puffs (sized from `[DEBE]`), the flare's distance test and the flight display
+  pass's markers keep the original's placement, size and cull to the pixel. Only a call that draws a 3D model gets a changed matrix: the aircraft and projectile loops, when the
+  Remastered reach says model, get the reach-divided matrix with the widened x row; a flare model gets the widened x row alone. (Before this, the reach halved `[DEBE]` for
+  every caller: R44 item 3, to be measured on the smoke puffs' size in the 4:3 area against the original.)
+- **Position.** At the entry of a `9BDF` or `9D89` call, the point's true screen position from the game's own matrix, the routine's own arithmetic (camera offset in the
+  outside views, `[294B]` halving, `x = x' * 256 / z' + A0h`, `y = q - (q >> 2)` plus the row offset). **45,500 dot calls predicted against the routine's own `[4A10]`/`[4A18]`,
+  0 differ** (`F117_WIDE_DOTS_LOG=1`).
+- **Look.** One game pixel: a square polygon, because a dot primitive is 1.5 pixels wide and centred on the corner. Colour 15 (aircraft), 29h (projectile slots 0 to 7), 13 (slots 8 to 11),
+  from `9B16` and `9D39` (pen `886A`, then the far line call).
+- **Where.** Only outside the game's 320 x 200 picture; inside it the game's own flat picture stands (no double drawing).
+- **Owner's two dots at 18.207 billion** (the 12:58:48 screenshot): aircraft at true x 391-392 (the wide picture ends at 373 at 1280 wide, so correctly off screen) and x 33-35
+  (behind the left cockpit pillar). The cyan ring around the left one is drawn by `AD26` at the same x: the ring is not yet drawn in the margins.
+- **Found on the way.** Two return hooks took the far scenery walk's slot in the hook table (`EXEC_HOOKS_MAX` = live hooks + 2) and the city lights vanished from the margins
+  with no message; the dots now work from the single entry hook and a warning prints when a render-copy hook does not fit.
+- **Draw-distance gaps found while reading** (R43): aircraft are skipped at 4,800 units (`9B56`) at every draw distance; flares and smoke puffs are dropped at fixed depths; the
+  Terrain dots setting stops dark dots at Near. Far size (`far_width`) should apply to all of them once they are drawn beyond the original's cut.
+
+## Flight display pass: facts read from the matched code (11 Nov 2026), before building
+
+All read in `src/matched/matched.c`; nothing here is inferred from a run.
+
+- **`B171` `weapon_lock_marker(x, y, size, locked, pen)`** (matched.c 23667): `locked` = 0 draws a four-sided box, non-zero a six-sided hexagon. Half-width = size; half-height h = size - (size >> 2);
+  hexagon vertices: top (x, y-h), (x+size, y-h/2), (x+size, y+h/2), bottom (x, y+h), and the mirror on the left (h/2 = h >> 1). With `[294B]` set the size is halved first. Nothing is drawn when `[368C]` is 0
+  (the cockpit view's flag). The pen is set through `886A` (the raw palette index, both text contexts).
+- **Callers of `B171`** (the symbology routine): weapon in flight, size 6, unlocked, pen 11h for slots fired at the player (the first player weapon index and above are the player's: pen 0Ah); ground-target
+  marker (section 4a), size effect + 5 (9 with no effect), locked or not, pen `FR_MARKER_PEN` (the HUD pen; 29h tight lock; 6 when the weapon is no use); air-target marker (7), size 9, pen the HUD pen or
+  29h tight; bomb impact (10), size 5, locked, pen 29h; and `B4F5` below.
+- **`B4F5` `panel_marker_label(text, pen, margin)`** (24061): nothing when `[4A10]` = FFFFh. The hexagon (locked, size `margin`, the given pen) is drawn only when the point is more than `margin` from
+  every edge of the 320 x 92 window: `margin < x < 13Fh - margin` and `margin < y < 5Ch - margin`. The text (`898F`, colour `[98A2]`) is written only inside x 14h..118h and y 1..4Ch, centred under the
+  point (x minus twice its length, y + 5). Callers: the ground site's detection ring (4b, `A50D`) and the air unit's (9, `AD44`), both with `margin = [FRAME_RATE] - [DETECT_COUNTDOWN]` and pen `[LABEL_COLOUR]`
+  while `DETECT_COUNTDOWN > 0`; the site is projected at z = 0 (ground) or at the unit's position (air). `DETECT_COUNTDOWN > 0` and a ground `DETECTOR` >= 0 or an air one < 0 are game state: a ring in a margin
+  shows only what the game's own state says (a detection), never a decision of the copy.
+- **Consequence for the margins.** A ring whose true x is outside 0..13Fh is dropped by `B5DC` (`[4A10]` = FFFFh) and by the window test; the overlay draws the same hexagon at the true position, size `margin`,
+  pen `[LABEL_COLOUR]`, when it fits in the wide picture (the game's own edge rule applied to the wide window). The text label is drawn by a text routine into the 320 x 200 page: the margins need a text overlay
+  (open: the font, from the game's own `898F`) and until it exists a margin ring has no name, which is a stated limitation, not a design choice.
+- **The owner's ring at 18.207 billion** is the air unit's ring at true x 33-35 (inside 0..13Fh, so the game drew it itself); in the squashed build it was shown at the wrong x, in the margin-dot build the
+  game's own flat picture holds it at x 33-35, and in the frames checked no cyan pixel shows there: not yet verified whether the cockpit pillar covers it or the ring is missing (to check against the original's
+  picture at that clock in the turned-view reference run).
+- **HUD pen** `[2CA0]`: 10 (light green) when `[43DE]` is non-zero, else 15 (white), set at VGAME 09D8; `[43DE]` = 1 when `[368A]` is 0 (flight start, 00F0); `[368A]` = byte +33h of the pilot record.
+  Pens 10h to 4Fh are stepped toward a target palette by `frame_palette_cycle` (04E5F), so their colours depend on the time of day; the renderer takes them from the live palette (`dac_colour`).

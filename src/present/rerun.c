@@ -1210,12 +1210,80 @@ static int g_air_k = -1, g_air_done, g_air_pct = 100;
 /* R41/R42 groundwork (F117_WIDE_AIR_PROBE=1, diagnostic): the game's own matrix is left alone and, at the return of the aircraft loop's call of 0xB5DC (9BDF),
  * the point's true camera-space x', y', z' and screen position are computed from the unwidened matrix and compared with what the routine stored in [4A10]/[4A18]. */
 static int g_air_ret_k = -1;
-static int16_t g_air_orig[3][3];        /* the matrix words as the game left them, [vector component][axis] (B082 + 6c + 2a) */
+static int16_t g_air_orig[3][3];       /* the matrix words as the game left them, [vector component][axis] (B082 + 6c + 2a) */
+static int16_t g_air_r[3][3], g_air_w[3][3];   /* F117_WIDE_DOTS: this frame's matrix divided by the reach only, and also with the x row widened */
+static int16_t g_air_ow[3][3];                 /* F117_WIDE_DOTS: the game's own matrix with only the x row widened (a model of a caller without the reach) */
+/* The offset 0xB5DC turns into the body frame: ([C0D0] - x, (alt - [2DF4]) >> 5, y - [C0DE]) as B792 pairs them with the matrix's rows, in the
+ * outside view ([C0A6] bit 7) less the camera's own offset, the 32-bit [BA3C] - [B2B4], [B788] - [2DF4] and [C056] - [B77E], each >> 5 (0x0EF74). */
+static void air_vector(machine_t *m,uint16_t ds, int16_t x, int16_t y, int16_t alt, int16_t v[3])
+{
+    int16_t ox = (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), oy = (int16_t)((uint16_t)y - rd16(m->mem, ds, 0xC0DE));
+    int16_t oa = (int16_t)((int16_t)((uint16_t)alt - rd16(m->mem, ds, 0x2DF4)) >> 5);
+    if (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) {
+        const int32_t dx = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xBA3E) << 16 | rd16(m->mem, ds, 0xBA3C)) - ((uint32_t)rd16(m->mem, ds, 0xB2B6) << 16 | rd16(m->mem, ds, 0xB2B4)));
+        const int32_t dy = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC058) << 16 | rd16(m->mem, ds, 0xC056)) - ((uint32_t)rd16(m->mem, ds, 0xB780) << 16 | rd16(m->mem, ds, 0xB77E)));
+        const int32_t da = (int32_t)(int16_t)rd16(m->mem, ds, 0xB788) - (int32_t)rd16(m->mem, ds, 0x2DF4);
+        ox = (int16_t)(ox - (int16_t)(uint16_t)(dx >> 5)); oy = (int16_t)(oy - (int16_t)(uint16_t)(dy >> 5)); oa = (int16_t)(oa - (int16_t)(uint16_t)(da >> 5));
+    }
+    v[0] = ox; v[1] = oa; v[2] = oy;
+}
+static int g_air_dots = -1;              /* F117_WIDE_DOTS=1: per-call matrix (true placement for dots) and margin dots (R41/R42); off by default until the owner approves */
+static int g_air_last_model;             /* F117_WIDE_DOTS: the last 0xB5DC call goes on to draw a 3D model (widened matrix) */
 static int16_t air_fixmul(int16_t a, int16_t b)      /* VGAME 104E:0000: (a * b) shifted right 14, rounded by the next bit, then the sums are 32-bit in B792 */
 {
     const int32_t q = (int32_t)a * (int32_t)b;
     return (int16_t)(((q << 1) >> 16) + (((uint32_t)q >> 14) & 1u));
 }
+/* F117_WIDE_DOTS, at the entry of 0xB5DC from the aircraft loop (returning to 9BDF) or the projectile loop (9D89), for a call that will not draw a
+ * model, so the caller draws a dot if the point is on the screen: the point's true screen position from the game's own matrix (the one the call
+ * sees), exactly as the routine computes it (matched.c, camera_effect_point): in front when z' < 0; x and y halved when [294B] is set;
+ * x = (x' * 256) / z' + A0h; q = (y' * 256) / z', y = q - (q >> 2) plus 3Ch / 34h ([294B] set / clear) when [368C] is set, else 64h. The game
+ * keeps a point only inside 0..13Fh across and 0..60h (0..C7h with [368C] clear) down; one outside the 320 x 200 picture is drawn in the margin
+ * as the game draws its dot: one pixel in the pen colour (pen 0x886A, then the far line call), 15 for an aircraft (9B16), 29h for projectile
+ * slots 0 to 7 and 13 for slots 8 to 11 (9D39, the slot at the caller's [bp - 22]). A point inside the picture that the game drops is under the
+ * cockpit (outside the view's rows), so the game's own picture stands. F117_WIDE_DOTS_LOG=1 (diagnostic) logs each margin dot and checks the
+ * prediction against the routine's own [4A10]/[4A18] at the next call (nothing between them writes those words in either loop). */
+static struct { int valid, on; int16_t sx, sy; uint16_t ret; } g_dot_prev;
+static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
+{
+    static int log = -1;
+    if (log < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); log = e ? (e[0] == '2' ? 2 : 1) : 0; }
+    const unsigned view = m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF], zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF];
+    if (log && g_dot_prev.valid) {                  /* the previous call's prediction against what the routine stored */
+        static unsigned long long checked, differ; static unsigned shown;
+        const uint16_t gx = rd16(m->mem, ds, 0x4A10), gy = rd16(m->mem, ds, 0x4A18);
+        const int same = g_dot_prev.on ? gx == (uint16_t)g_dot_prev.sx && gy == (uint16_t)g_dot_prev.sy : gx == 0xFFFF;
+        checked++;
+        if (!same) {
+            differ++;
+            if (shown < 20) { shown++; fprintf(stderr, "[wide-dot] DIFFERS clock %llu caller %04X view %02X zoom %u: predicted %s %d,%d, game %u,%u\n", (unsigned long long)m->cpu.icount, g_dot_prev.ret, view, zoom, g_dot_prev.on ? "on" : "off", g_dot_prev.sx, g_dot_prev.sy, gx, gy); }
+        }
+        if (checked % 500 == 0) fprintf(stderr, "[wide-dot] check: %llu dot calls predicted, %llu differ\n", checked, differ);
+    }
+    g_dot_prev.valid = 0;
+    if (ret != 0x9BDF && ret != 0x9D89 && log < 2) return;   /* F117_WIDE_DOTS_LOG=2: every caller's true position too (flight display pass, puffs) */
+    int16_t v[3];
+    air_vector(m, ds, (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), v);
+    int32_t comp[3];
+    for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(g_air_orig[c][a], v[c]); }
+    if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }     /* SAR, RCR: the 32-bit value halved */
+    if (comp[2] >= 0) { g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89; g_dot_prev.on = 0; g_dot_prev.ret = ret; return; }   /* behind the eye: off, and no dot */
+    const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+    const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+    int16_t sy = (int16_t)(q - (int16_t)(q >> 2));
+    const int rows = rd16(m->mem, ds, 0x368C) != 0;
+    sy = (int16_t)(sy + (rows ? (zoom ? 0x3C : 0x34) : 0x64));
+    const int on = sx >= 0 && sx <= 0x13F && sy >= 0 && sy <= (rows ? 0x60 : 0xC7);
+    if (log == 2) fprintf(stderr, "[wide-pt] clock %llu caller %04X view %02X zoom %u true x %lld y %d %s\n", (unsigned long long)m->cpu.icount, ret, view, zoom, (long long)sx, sy, on ? "on" : "off");
+    if (ret != 0x9BDF && ret != 0x9D89) return;
+    g_dot_prev.valid = 1; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
+    if (on || !(sx < 0 || sx > 0x13F || sy < 0 || sy > 199) || !g_collector.overlay_dot) return;
+    unsigned colour = 0xFF0F;
+    if (ret == 0x9D89) colour = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) < 8 ? 0xFF29 : 0xFF0D;
+    if (log) fprintf(stderr, "[wide-dot] clock %llu %s view %02X zoom %u x %lld y %d colour %04X\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", view, zoom, (long long)sx, sy, colour);
+    g_collector.overlay_dot(g_collector.user, (double)sx, (double)sy, colour);
+}
+
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
     if ((int)k == g_walk_k) {
@@ -1239,6 +1307,15 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
                 const int64_t sx_pos = ((int64_t)comp[0] * 256) / zp + 0xA0, sx_neg = ((int64_t)comp[0] * 256) / (-zp) + 0xA0;
                 if (gx != 0xFFFF) {
                     total++;
+                    {   /* the y the margin dots use (F117_WIDE_DOTS), against the game's [4A18] */
+                        static unsigned long long ytotal, ymatch; static unsigned yshown;
+                        const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / zp);
+                        int16_t sy = (int16_t)(q - (int16_t)(q >> 2));
+                        if (rd16(m->mem, dsr, 0x368C)) sy = (int16_t)(sy + (m->mem[(((uint32_t)dsr << 4) + 0x294B) & 0xFFFFF] ? 0x3C : 0x34)); else sy = (int16_t)(sy + 0x64);
+                        ytotal++; if ((uint16_t)sy == gy) ymatch++;
+                        else if (yshown < 6) { yshown++; fprintf(stderr, "[air-probe] y: game %u, formula %d (q %d)\n", gy, sy, q); }
+                        if (ytotal % 100 == 0) fprintf(stderr, "[air-probe] y formula matched %llu of %llu on-screen points\n", ymatch, ytotal);
+                    }
                     if ((uint16_t)sx_pos == gx) match_pos++;
                     if ((uint16_t)sx_neg == gx) match_neg++;
                     if (shown < 8 && (uint16_t)sx_pos != gx && (uint16_t)sx_neg != gx) { shown++; fprintf(stderr, "[air-probe] game x %u y %u; x' %d y' %d z' %d -> pos %lld neg %lld\n", gx, gy, comp[0], comp[1], comp[2], (long long)sx_pos, (long long)sx_neg); }
@@ -1260,6 +1337,7 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     const uint16_t ds = m->cpu.seg[S_DS];
     if (!g_air_done) {
         g_air_done = 1;
+        g_dot_prev.valid = 0;                    /* the margin dots' check never spans two frames */
         /* Row a of the matrix is the words at B082 + 2a, B088 + 2a and B08E + 2a (a = 0 x', 1 y', 2 z'). The x row is divided by the width
          * factor three times over (the cone; the test is on the centre), and all three rows by the reach: the aircraft's size indicator [DEBE]
          * is z' >> 3 and the game draws a model only
@@ -1275,7 +1353,10 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
                 const int64_t w = (int16_t)rd16(m->mem, ds, at);
                 g_air_orig[c][a] = (int16_t)w;
                 const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
-                if (!probe) wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+                g_air_r[c][a] = (int16_t)(w * 10000 / ((int64_t)reach * 100));
+                g_air_w[c][a] = (int16_t)(w * 10000 / div);
+                g_air_ow[c][a] = (int16_t)(a == 0 ? w * 10000 / ((int64_t)g_air_pct * 300) : w);
+                if (!probe && g_air_dots <= 0) wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
             }
     }
     /* The test is on the aircraft's centre, so a jet right beside the viewer, its centre level with the eye or just behind it, was dropped
@@ -1303,6 +1384,38 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
             wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(y + sy));
             wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)(alt + 32 * sa));
         }
+    }
+    if (g_air_dots > 0) {
+        /* The routine's depth [DEBE] is the 32-bit z' >> 3 from the matrix in memory (the reach-only one; its z column is the same in both). The caller
+         * draws a 3D model when: the aircraft loop (9BDF), [DEBE] < 0 and, shifted right by the byte at [bp - 38], above -32; projectiles (9D89), above -32;
+         * the flare (9DFD), between -256 and 0; smoke puffs (9A04) never. Only such a call gets the widened x row (its model is placed by its own position);
+         * every other call keeps the game's placement and cull, so a far dot lands where the original puts it. */
+        /* Which matrix the call sees (R44): the Remastered reach (an aircraft or projectile a model at twice the distance) is for the two loops that
+         * choose between a model and a dot, and only when the reach says model: then the reach-divided matrix with the widened x row, whose [DEBE]
+         * is the one the reach intends. Everything else - every dot, smoke puffs (sized from [DEBE]), the flare's distance, the flight display pass's
+         * markers - sees the game's own matrix, so its placement, size and cut are the original's to the pixel (a flare model gets only the widened x
+         * row). The dot decision agrees with the game's: a point the reach calls a dot has an even more negative [DEBE] in the game's own matrix. */
+        const uint16_t ret = rd16(m->mem, ss, sp);
+        int16_t v[3];
+        air_vector(m, ds, (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), v);
+        const int reach_call = ret == 0x9BDF || ret == 0x9D89;
+        int32_t z = 0;
+        for (int c = 0; c < 3; c++) z += air_fixmul(reach_call ? g_air_r[c][2] : g_air_orig[c][2], v[c]);
+        const int16_t depth = (int16_t)(uint16_t)(z >> 3);
+        int model = 0;
+        if (ret == 0x9BDF) {
+            if (depth < 0) {
+                const unsigned cl = m->mem[(((uint32_t)ss << 4) + (uint16_t)(m->cpu.r[R_BP] - 38)) & 0xFFFFF];
+                const int16_t shifted = cl >= 15 ? (int16_t)-1 : (int16_t)(depth >> cl);
+                model = shifted > -32;
+            }
+        } else if (ret == 0x9D89) model = depth > -32;
+        else if (ret == 0x9DFD) model = depth < 0 && depth > -256;
+        g_air_last_model = model;
+        int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;        for (int a = 0; a < 3; a++)
+            for (int c = 0; c < 3; c++)
+                wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a), (uint16_t)mat[c][a]);
+        wide_dot_at_entry(m, ds, ss, sp, model ? 0 : ret);
     }
     return 0;
 }
@@ -1409,12 +1522,10 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                         s->exec_hook_n++;
                         s->hooks.exec = wide_air_exec;
                         g_air_ret_k = -1;
-                        if (getenv("F117_WIDE_AIR_PROBE") && s->exec_hook_n < EXEC_HOOKS_MAX) {
-                            g_air_ret_k = (int)s->exec_hook_n;
-                            s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs;
-                            s->exec_hook[s->exec_hook_n].ip = 0x9BDF;
-                            s->exec_hook_n++;
-                        }
+                        if (g_air_dots < 0) { const char *e = getenv("F117_WIDE_DOTS"); g_air_dots = e && e[0] == '1'; }
+                        /* The table has room for two hooks past the live ones (EXEC_HOOKS_MAX): this one and the far scenery walk's below. The margin dots
+                         * therefore work from this entry hook alone (R44: two return hooks took the walk's slot and the far scenery vanished without a word).
+                         * The probe's return hook (diagnostic) is installed after the walk, only if there is room. */
                         break;
                     }
             }
@@ -1429,6 +1540,22 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                         s->hooks.exec = wide_air_exec;
                         break;
                     }
+            if (g_air_k >= 0 && getenv("F117_WIDE_AIR_PROBE") && s->exec_hook_n < EXEC_HOOKS_MAX) {
+                g_air_ret_k = (int)s->exec_hook_n;
+                s->exec_hook[s->exec_hook_n].cs = s->exec_hook[g_air_k].cs;
+                s->exec_hook[s->exec_hook_n].ip = 0x9BDF;
+                s->exec_hook_n++;
+            }
+            {   static int warned;                                  /* a hook that did not fit is a picture that silently lacks something: say so */
+                const int want_air = !getenv("F117_WIDE_NO_AIR"), want_probe = getenv("F117_WIDE_AIR_PROBE") != NULL;
+                int watch = 0;                                      /* VGAME's draw watch present: the hooks belong to this program */
+                for (unsigned k = 0; k < s->exec_hook_n; k++) if (s->exec_hook[k].ip == 0x1450) watch = 1;
+                if (!warned && watch && ((want_air && g_air_k < 0) || g_walk_k < 0 || (want_probe && g_air_ret_k < 0))) {
+                    warned = 1;
+                    fprintf(stderr, "[wide] WARNING: render-copy hooks missing (table of %d full or no draw watch): aircraft test %s, far scenery walk %s, probe %s\n",
+                            (int)EXEC_HOOKS_MAX, g_air_k >= 0 ? "on" : "MISSING", g_walk_k >= 0 ? "on" : "MISSING", !want_probe ? "not asked" : g_air_ret_k >= 0 ? "on" : "MISSING");
+                }
+            }
             if (getenv("F117_WIDE_SCENERY_DIAG_FROM")) {
                 static int reported;
                 if (!reported) {
