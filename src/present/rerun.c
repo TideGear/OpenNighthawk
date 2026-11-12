@@ -1243,7 +1243,95 @@ static int16_t air_fixmul(int16_t a, int16_t b)      /* VGAME 104E:0000: (a * b)
  * slots 0 to 7 and 13 for slots 8 to 11 (9D39, the slot at the caller's [bp - 22]). A point inside the picture that the game drops is under the
  * cockpit (outside the view's rows), so the game's own picture stands. F117_WIDE_DOTS_LOG=1 (diagnostic) logs each margin dot and checks the
  * prediction against the routine's own [4A10]/[4A18] at the next call (nothing between them writes those words in either loop). */
+/* A smoke-trail puff (the trail loop's call of 0xB5DC, returning to 9A04): the game draws it as a scaled sprite at the projected point and drops it when that point is
+ * off the 320-pixel screen. Everything below is read from the matched code, not measured: the loop draws only when -256 < [DEBE] < 0 (9A0E, 9A15); the size is
+ * camimage_scale(age, |256 / [DEBE]|) (9A1D, EE0C, far 114A:0461: age 0: v/2, 1: v/2 + v/8, 2: v/2 + v/4, 3: v/2 + v/4 + v/8, else v); the deferred record (D9FE) carries
+ * x = [4A10], y = [4A18], size and the model word 400h + ((age & 14) >> 1), and the compose walk (DC46) draws kind = model & 7 with compose_draw_sprite (1AE9): the sprite's
+ * far pointer is [kind * 4 + 920A]:[kind * 4 + 9208], its top left (x - half(size), y - half(t)) with t = size - (size >> 2) and half(v) = v >> 1 for v >= 0, its drawn width size
+ * and height t; the blitter (MGRAPHIC 0C95) reads the sprite's width and height words, then a record per row: [n: word][k: word] and n pixel bytes (k transparent pixels
+ * before them, colour 0 transparent), and scales across and down with its Bresenham error terms: row error starts at -t and adds the sprite's height per drawn row, taking the
+ * source row on while it is not negative (each step the drawn height off), likewise across with the width and the drawn width. Here the whole sprite is generated and only the
+ * pixels outside the 4:3 picture's x range 0..319 are added (inside it the game's own picture stands, a puff it dropped included), rows inside the 3D clip window. */
+static void wide_puff_overlay(machine_t *m, uint16_t ds, int sx, int sy, int size, unsigned kind, uint16_t table, unsigned kinds, int layer, int whole)
+{
+    if (!g_collector.overlay_rect || size <= 0 || size > 400 || kind >= kinds) return;
+    static int full = -1;                           /* whole: the game dropped the sprite (its centre is off the 320 screen), so all of it is drawn, the overhang into the 4:3 picture too. F117_WIDE_PUFF_FULL=1 (diagnostic, the proof of the decode): the whole sprite, inside the 4:3 picture too, over the game's own: the picture must not change */
+    if (full < 0) full = getenv("F117_WIDE_PUFF_FULL") != NULL;
+    const int all = full || whole;
+    {   static int plog = -1;                       /* F117_WIDE_DOTS_LOG=1: each puff with the sprite's extent */
+        if (plog < 0) plog = getenv("F117_WIDE_DOTS_LOG") != NULL;
+        if (plog && (all || sx - (size >> 1) < 0 || sx + size - (size >> 1) > 320))
+            fprintf(stderr, "[wide-puff] clock %llu x %d y %d size %d kind %u\n", (unsigned long long)m->cpu.icount, sx, sy, size, kind);
+    }
+    const uint16_t seg = rd16(m->mem, ds, (uint16_t)(table + 2 + kind * 4)), off = rd16(m->mem, ds, (uint16_t)(table + kind * 4));
+    const uint32_t base = (((uint32_t)seg << 4) + off) & 0xFFFFF;
+    const int sw = (int)(m->mem[base] | m->mem[(base + 1) & 0xFFFFF] << 8), sh = (int)(m->mem[(base + 2) & 0xFFFFF] | m->mem[(base + 3) & 0xFFFFF] << 8);
+    const int dw = size, dh = size - (size >> 2);
+    if (sw <= 0 || sh <= 0 || sw > 256 || sh > 256 || dh <= 0) return;
+    const int x0 = sx - (dw >> 1), y0 = sy - (dh >> 1);
+    uint32_t row = (base + 4) & 0xFFFFF;
+    int ry = 0, ev = -dh;
+    uint8_t line[260];
+    for (int r = 0; r < dh && ry < sh; r++) {
+        const int n = (int)(m->mem[row] | m->mem[(row + 1) & 0xFFFFF] << 8), k = (int)(m->mem[(row + 2) & 0xFFFFF] | m->mem[(row + 3) & 0xFFFFF] << 8);
+        if (n > 0 && n < 512) {
+            memset(line, 0, sizeof line);
+            for (int i = 0; i < n && k + i < sw; i++) line[k + i] = m->mem[(row + 4 + (uint32_t)i) & 0xFFFFF];
+            int cur = 0, e = -dw, run_x = 0, run_c = 0;
+            for (int i = 0; i <= dw; i++) {
+                const int c = i < dw && cur < sw ? line[cur] : 0;
+                if (i == dw || c != run_c) {                                  /* the run [run_x, i) of colour run_c ends */
+                    if (run_c) {
+                        const int xa = x0 + run_x, xb = x0 + i;
+                        { static int rl = -1; if (rl < 0) rl = getenv("F117_WIDE_PUFF_RECTS") != NULL;      /* every run of the generated sprite, to compare with the game's own footprint */
+                          if (rl && full) fprintf(stderr, "[puff-rect] puff %d,%d size %d: x %d y %d w %d colour %d\n", sx, sy, size, xa, y0 + r, xb - xa, run_c); }
+                        if (all) g_collector.overlay_rect(g_collector.user, (double)xa, (double)(y0 + r), (double)(xb - xa), 1.0, 0xFF00u | (unsigned)run_c, 1, layer);
+                        else if (xa < 0) g_collector.overlay_rect(g_collector.user, (double)xa, (double)(y0 + r), (double)((xb < 0 ? xb : 0) - xa), 1.0, 0xFF00u | (unsigned)run_c, 1, layer);
+                        if (!all && xb > 320) { const int xs = xa > 320 ? xa : 320; g_collector.overlay_rect(g_collector.user, (double)xs, (double)(y0 + r), (double)(xb - xs), 1.0, 0xFF00u | (unsigned)run_c, 1, layer); }
+                    }
+                    run_x = i; run_c = c;
+                }
+                if (i < dw) { e += sw; if (e >= 0) { do { cur++; e -= dw; } while (e >= 0); } }
+            }
+        }
+        ev += sh;
+        if (ev >= 0) { do { row = (row + (uint32_t)(m->mem[row] | m->mem[(row + 1) & 0xFFFFF] << 8) + 4) & 0xFFFFF; ry++; ev -= dh; } while (ev >= 0 && ry < sh); }
+    }
+}
+
 static struct { int valid, on; int16_t sx, sy; uint16_t ret; } g_dot_prev;
+/* The gun tracer (the display pass, section 2, matched.c 68428): its tail is projected by the call returning to A203 and its head, half a velocity step ahead, by the call returning to
+ * A236; the game draws the line (114A:0006, clipped to the 320 x 91 view) only when BOTH ends are on the screen: "the gun's reach is the window". A tracer with an end off the 320 screen
+ * but both ends in front of the eye is drawn here by the part of the line outside x 0..319, in the pen the game would use: 0Dh for the player's slots (index below [B198]), 29h for an
+ * enemy's (A24E..A251; the slot is the caller's local at bp - 24h). The hit tests are the game's own and stay: a tracer in a margin cannot hit, as in the original. */
+static struct { int front, on; double x, y; } g_tail;
+static void wide_tracer_line(machine_t *m, uint16_t ds, uint16_t ss, double hx, double hy)
+{
+    if (!g_collector.overlay_line || !g_tail.front) return;
+    const int slot = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x24)), players = (int16_t)rd16(m->mem, ds, 0xB198);
+    const unsigned colour = 0xFF00u | (slot < players ? 0x0Du : 0x29u);
+    const double x0 = g_tail.x, y0 = g_tail.y, x1 = hx, y1 = hy;
+    if (x0 == x1 && y0 == y1) return;
+    {   static int tlog = -1;                       /* F117_WIDE_DOTS_LOG=1: each tracer drawn in a margin */
+        if (tlog < 0) tlog = getenv("F117_WIDE_DOTS_LOG") != NULL;
+        if (tlog) fprintf(stderr, "[wide-tracer] clock %llu slot %d (%d player slots) from %.1f,%.1f to %.1f,%.1f pen %02X\n", (unsigned long long)m->cpu.icount, slot, players, x0, y0, x1, y1, colour & 255);
+    }
+    /* the part with x < 0 and the part with x >= 320, by the line's parameter */
+    if (getenv("F117_WIDE_TRACER_FULL")) { g_collector.overlay_line(g_collector.user, x0, y0, x1, y1, colour); return; }
+    const double lim[2] = { 0.0, 320.0 };
+    for (int side = 0; side < 2; side++) {
+        double t0 = 0.0, t1 = 1.0;
+        const double dx = x1 - x0;
+        if (dx == 0.0) { if (side == 0 ? x0 >= lim[0] : x0 < lim[1]) continue; }
+        else {
+            const double tc = (lim[side] - x0) / dx;                 /* where the line crosses the edge */
+            if ((side == 0) == (dx > 0.0)) { if (tc < t1) t1 = tc; } else { if (tc > t0) t0 = tc; }   /* x < 0 is the early part if the line runs right, the late part if left */
+        }
+        if (t1 <= t0) continue;
+        g_collector.overlay_line(g_collector.user, x0 + dx * t0, y0 + (y1 - y0) * t0, x0 + dx * t1, y0 + (y1 - y0) * t1, colour);
+    }
+}
+
 static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
 {
     static int log = -1;
@@ -1260,23 +1348,90 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
         }
         if (checked % 500 == 0) fprintf(stderr, "[wide-dot] check: %llu dot calls predicted, %llu differ\n", checked, differ);
     }
+    if (log == 2) {                                 /* the active text block's rectangle (matched.c 13934: words +14, +16, +18, +20 of the record at [4010]) every 2000th call */
+        static unsigned calls;
+        if (calls++ % 2000 == 0) {
+            const uint16_t blk = rd16(m->mem, ds, 0x4010);
+            fprintf(stderr, "[wide-block] clock %llu caller %04X block %04X +4 %u +14 %d +16 %d +18 %d +20 %d | 4028 block %04X +14 %d +16 %d +18 %d +20 %d\n", (unsigned long long)m->cpu.icount, ret, blk, rd16(m->mem, ds, (uint16_t)(blk + 4)),
+                    (int16_t)rd16(m->mem, ds, (uint16_t)(blk + 14)), (int16_t)rd16(m->mem, ds, (uint16_t)(blk + 16)), (int16_t)rd16(m->mem, ds, (uint16_t)(blk + 18)), (int16_t)rd16(m->mem, ds, (uint16_t)(blk + 20)),
+                    rd16(m->mem, ds, 0x4028), (int16_t)rd16(m->mem, ds, (uint16_t)(rd16(m->mem, ds, 0x4028) + 14)), (int16_t)rd16(m->mem, ds, (uint16_t)(rd16(m->mem, ds, 0x4028) + 16)),
+                    (int16_t)rd16(m->mem, ds, (uint16_t)(rd16(m->mem, ds, 0x4028) + 18)), (int16_t)rd16(m->mem, ds, (uint16_t)(rd16(m->mem, ds, 0x4028) + 20)));
+        }
+    }
     g_dot_prev.valid = 0;
-    if (ret != 0x9BDF && ret != 0x9D89 && log < 2) return;   /* F117_WIDE_DOTS_LOG=2: every caller's true position too (flight display pass, puffs) */
+    if (ret != 0x9BDF && ret != 0x9D89 && ret != 0x9A04 && ret != 0xA298 && ret != 0xA203 && ret != 0xA236 && log < 2) return;   /* F117_WIDE_DOTS_LOG=2: every caller's true position too (flight display pass, puffs) */
     int16_t v[3];
     air_vector(m, ds, (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), v);
     int32_t comp[3];
     for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(g_air_orig[c][a], v[c]); }
     if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }     /* SAR, RCR: the 32-bit value halved */
-    if (comp[2] >= 0) { g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89; g_dot_prev.on = 0; g_dot_prev.ret = ret; return; }   /* behind the eye: off, and no dot */
+    if (ret == 0xA203) g_tail.front = 0;
+    if (comp[2] >= 0) { g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = 0; g_dot_prev.ret = ret; return; }   /* behind the eye: off, and no dot */
+    if (ret == 0xA298) {                            /* the impact blast (display pass section 3, matched.c 68847): the sprite 1A98(x, y, size, phase), same driver call as a puff's */
+        static int blast_on = -1;
+        if (blast_on < 0) blast_on = getenv("F117_WIDE_PUFFS") != NULL || getenv("F117_WIDE_PUFF_FULL") != NULL;     /* the sprite family shares the switch */
+        const int16_t depth = (int16_t)(uint16_t)(comp[2] >> 3), clock = (int16_t)rd16(m->mem, ds, 0x9D3C);
+        if (blast_on && depth < 0 && clock != 0) {
+            int size = abs((int)(256 / (int)depth));                                /* 0x100 / [DEBE], IDIV, ABS (A2A6..A2AE) */
+            if (rd16(m->mem, ds, 0xC0DC) == 0) size <<= 1;                          /* a ground blast is twice as wide (A2B3) */
+            const int phase = 0x10 - abs((int)clock);                                /* A2C0..A2C3 */
+            const int64_t px = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+            const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+            int py = q - (int16_t)(q >> 2);
+            py += rd16(m->mem, ds, 0x368C) ? (zoom ? 0x3C : 0x34) : 0x64;
+            if (phase >= 0 && phase < 16) wide_puff_overlay(m, ds, (int)px, py, size, (unsigned)phase, 0x91B8, 16, 0, !(px >= 0 && px <= 0x13F && py >= 0 && py <= (rd16(m->mem, ds, 0x368C) ? 0x60 : 0xC7)));
+        }
+        return;
+    }
+    if (ret == 0x9A04) {                            /* a smoke puff: the sprite outside the 4:3 picture (see wide_puff_overlay) */
+        /* F117_WIDE_PUFFS=1 (off by default): none of the ten long recorded flights scanned (11 Nov) contains a smoke trail, so the sprite decode has not been
+         * proven on a real puff; F117_WIDE_PUFF_FULL=1 (the proof mode) enables it too. */
+        static int puffs_on = -1;
+        if (puffs_on < 0) puffs_on = getenv("F117_WIDE_PUFFS") != NULL || getenv("F117_WIDE_PUFF_FULL") != NULL;
+        const int16_t depth = (int16_t)(uint16_t)(comp[2] >> 3);
+        if (puffs_on && depth < 0 && depth > -256) {
+            const uint16_t si = m->cpu.r[R_SI];
+            const int age = (int16_t)rd16(m->mem, ds, (uint16_t)(si + 0x3A0E));
+            const int v = abs((int)(int16_t)(256 / depth));
+            int size = v;
+            if (age == 0) size = v >> 1;
+            else if (age == 1) size = (v >> 1) + (v >> 3);
+            else if (age == 2) size = (v >> 1) + (v >> 2);
+            else if (age == 3) size = (v >> 1) + (v >> 2) + (v >> 3);
+            const int64_t px = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+            const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+            int py = q - (int16_t)(q >> 2);
+            py += rd16(m->mem, ds, 0x368C) ? (zoom ? 0x3C : 0x34) : 0x64;
+            wide_puff_overlay(m, ds, (int)px, py, size, (unsigned)((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, 0x9208, 8, 2, !(px >= 0 && px <= 0x13F && py >= 0 && py <= (rd16(m->mem, ds, 0x368C) ? 0x60 : 0xC7)));
+        }
+        return;
+    }
     const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
     const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
     int16_t sy = (int16_t)(q - (int16_t)(q >> 2));
     const int rows = rd16(m->mem, ds, 0x368C) != 0;
     sy = (int16_t)(sy + (rows ? (zoom ? 0x3C : 0x34) : 0x64));
-    const int on = sx >= 0 && sx <= 0x13F && sy >= 0 && sy <= (rows ? 0x60 : 0xC7);
+    int64_t sx_t = sx;
+    if (ret == 0xA203 || ret == 0xA236) {        /* F117_WIDE_TRACER_SHIFT=N (diagnostic, proves the margin path on a real tracer): the tracer's x moved by N game pixels */
+        static int shift = -999;
+        if (shift == -999) { const char *e = getenv("F117_WIDE_TRACER_SHIFT"); shift = e ? atoi(e) : 0; }
+        sx_t += shift;
+    }
+    const int on = sx_t >= 0 && sx_t <= 0x13F && sy >= 0 && sy <= (rows ? 0x60 : 0xC7);
     if (log == 2) fprintf(stderr, "[wide-pt] clock %llu caller %04X view %02X zoom %u true x %lld y %d %s\n", (unsigned long long)m->cpu.icount, ret, view, zoom, (long long)sx, sy, on ? "on" : "off");
-    if (ret != 0x9BDF && ret != 0x9D89) return;
-    g_dot_prev.valid = 1; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
+    if (log == 2 && (ret == 0xAD26 || ret == 0xA4ED))     /* the detection ring's projection (air unit AD26, ground site A4ED): the state B4F5 will test (matched.c 24061) */
+        fprintf(stderr, "[wide-ring] clock %llu caller %04X countdown %d S %d detector %d margin %d predicted %s x %lld y %d\n", (unsigned long long)m->cpu.icount, ret,
+                (int16_t)rd16(m->mem, ds, 0x3D98), (int16_t)rd16(m->mem, ds, 0x368E), (int16_t)rd16(m->mem, ds, 0xC0AA), (int)(int16_t)rd16(m->mem, ds, 0x368E) - (int)(int16_t)rd16(m->mem, ds, 0x3D98), on ? "on" : "off", (long long)sx, sy);
+    if (ret != 0x9BDF && ret != 0x9D89 && ret != 0xA203 && ret != 0xA236 && !(log == 2 && (ret == 0xAD26 || ret == 0xA4ED))) return;
+    if (ret == 0xA203 || ret == 0xA236) {
+        static int tr_on = -1;                      /* F117_WIDE_TRACERS=1 turns the margin tracers on (off until the owner has seen a picture of one) */
+        if (tr_on < 0) { const char *e = getenv("F117_WIDE_TRACERS"); tr_on = e && e[0] == '1' || getenv("F117_WIDE_TRACER_SHIFT") != NULL || getenv("F117_WIDE_TRACER_FULL") != NULL; }
+        if (ret == 0xA203) { g_tail.front = 1; g_tail.on = on; g_tail.x = (double)sx_t + 0.5; g_tail.y = (double)sy + 0.5; }
+        else if (tr_on && (getenv("F117_WIDE_TRACER_FULL") || !(on && g_tail.on))) wide_tracer_line(m, ds, ss, (double)sx_t + 0.5, (double)sy + 0.5);   /* F117_WIDE_TRACER_FULL=1 (diagnostic): the whole line over the game's own, to see that it lands on it */
+        if (ret == 0xA236) g_tail.front = 0;
+    }
+    g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
+    if (ret == 0xA203 || ret == 0xA236 || ret == 0x9A04) return;
     if (on || !(sx < 0 || sx > 0x13F || sy < 0 || sy > 199) || !g_collector.overlay_dot) return;
     unsigned colour = 0xFF0F;
     if (ret == 0x9D89) colour = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) < 8 ? 0xFF29 : 0xFF0D;
@@ -1284,10 +1439,86 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     g_collector.overlay_dot(g_collector.user, (double)sx, (double)sy, colour);
 }
 
+/* F117_STAGE_PUFFS=1 (diagnostic, the proof of the smoke puff overlay): no recorded flight has a smoke trail, so each frame, in the render copy only (it is thrown away and the real game
+ * is not touched), four puffs are put into the game's own trail table (16 slots of 8 bytes at DS:3A08: east, north, altitude, age; matched.c 34606) at world positions that project (by the
+ * live matrix at B082, B792's pairing, fixmul = a * b / 32768) to chosen screen points at depth [DEBE] = -8: left margin, across the left edge, across the right edge, right margin. The
+ * game's own puff loop (9A04) then draws them through its normal sprite path. Positions are solved for the cockpit view; the camera is the aircraft ([C0A6] bit 7 clear). */
+static void stage_puffs(machine_t *m)
+{
+    static int on = -1, blast = -1;
+    if (on < 0) { on = getenv("F117_STAGE_PUFFS") != NULL; blast = getenv("F117_STAGE_BLAST") != NULL; }
+    if (!on && !blast) return;
+    const uint16_t ds = m->cpu.seg[S_DS];
+    if (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) return;
+    double A[3][3];
+    for (int a = 0; a < 3; a++) for (int c = 0; c < 3; c++) A[a][c] = (int16_t)rd16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a)) / 32768.0;   /* comp_a = sum_c A[a][c] * v_c, v = (east offset, altitude offset, north offset) */
+    const double det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+    if (fabs(det) < 0.5) return;
+    double inv[3][3];
+    inv[0][0] = (A[1][1] * A[2][2] - A[1][2] * A[2][1]) / det; inv[0][1] = (A[0][2] * A[2][1] - A[0][1] * A[2][2]) / det; inv[0][2] = (A[0][1] * A[1][2] - A[0][2] * A[1][1]) / det;
+    inv[1][0] = (A[1][2] * A[2][0] - A[1][0] * A[2][2]) / det; inv[1][1] = (A[0][0] * A[2][2] - A[0][2] * A[2][0]) / det; inv[1][2] = (A[0][2] * A[1][0] - A[0][0] * A[1][2]) / det;
+    inv[2][0] = (A[1][0] * A[2][1] - A[1][1] * A[2][0]) / det; inv[2][1] = (A[0][1] * A[2][0] - A[0][0] * A[2][1]) / det; inv[2][2] = (A[0][0] * A[1][1] - A[0][1] * A[1][0]) / det;
+    const int rows = rd16(m->mem, ds, 0x368C) != 0, zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] != 0;
+    const int off = rows ? (zoom ? 0x3C : 0x34) : 0x64;
+    static const int px[4] = { -40, 8, 312, 358 }, age[4] = { 0, 1, 2, 3 };
+    for (int i = 0; i < 4 && on; i++) {
+        const double zc = -64.0;                                              /* [DEBE] = z' >> 3 = -8: the sprite is 256 / 8 = 32 wide before the age's scale */
+        const double xc = (px[i] - 160) * zc / 256.0, q = (40 - off) * 4.0 / 3.0, yc = q * zc / 256.0;
+        const double c[3] = { xc, yc, zc };
+        double v[3];
+        for (int r = 0; r < 3; r++) v[r] = inv[r][0] * c[0] + inv[r][1] * c[1] + inv[r][2] * c[2];
+        const int ox = (int)lround(v[0]), oa = (int)lround(v[1]), oy = (int)lround(v[2]);
+        const uint16_t slot = (uint16_t)(0x3A08 + 8 * (8 + i));
+        wr16(m->mem, ds, slot, (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
+        wr16(m->mem, ds, (uint16_t)(slot + 2), (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
+        wr16(m->mem, ds, (uint16_t)(slot + 4), (uint16_t)(rd16(m->mem, ds, 0x2DF4) + (uint16_t)(oa * 32)));
+        wr16(m->mem, ds, (uint16_t)(slot + 6), (uint16_t)age[i]);
+    }
+    if (blast) {                                    /* F117_STAGE_BLAST=X: an air blast (no unit followed) at screen x X (default -30), depth -8, clock 0Ch (phase 4) */
+        const int bx = atoi(getenv("F117_STAGE_BLAST"));
+        const double zc = -64.0, xc = ((bx ? bx : -30) - 160) * zc / 256.0, q = (60 - off) * 4.0 / 3.0, yc = q * zc / 256.0;
+        const double c[3] = { xc, yc, zc };
+        double v[3];
+        for (int r = 0; r < 3; r++) v[r] = inv[r][0] * c[0] + inv[r][1] * c[1] + inv[r][2] * c[2];
+        const int ox = (int)lround(v[0]), oa = (int)lround(v[1]), oy = (int)lround(v[2]);
+        wr16(m->mem, ds, 0xC0CC, (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
+        wr16(m->mem, ds, 0xC0D6, (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
+        wr16(m->mem, ds, 0xC0DC, (uint16_t)(rd16(m->mem, ds, 0x2DF4) + (uint16_t)(oa * 32)));
+        wr16(m->mem, ds, 0x992E, 0xFFFF);
+        wr16(m->mem, ds, 0x9D3C, 0x000C);
+    }
+}
+
+static int g_probe_label_k = -1, g_probe_marker_k = -1;   /* F117_RING_PROBE=1 (diagnostic): hooks at B4F5 (marker label) and B171 (lock marker) */
 static int wide_air_exec(void *user, machine_t *m, unsigned k)
 {
+    if ((int)k == g_probe_label_k || (int)k == g_probe_marker_k) {   /* log the arguments (cdecl: [sp+2..] after the return address) */
+        const uint16_t ds = m->cpu.seg[S_DS], ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        if ((int)k == g_probe_label_k)
+            fprintf(stderr, "[ring-probe] clock %llu B4F5 label text %04X pen %d margin %d ret %04X | 4A10 %u 4A18 %u 368C %u 294B %u countdown %d S %d\n", (unsigned long long)m->cpu.icount,
+                    rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), rd16(m->mem, ss, sp),
+                    rd16(m->mem, ds, 0x4A10), rd16(m->mem, ds, 0x4A18), rd16(m->mem, ds, 0x368C), m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF], (int16_t)rd16(m->mem, ds, 0x3D98), (int16_t)rd16(m->mem, ds, 0x368E));
+        else
+            fprintf(stderr, "[ring-probe] clock %llu B171 marker x %d y %d size %d locked %d pen %d ret %04X\n", (unsigned long long)m->cpu.icount, (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)),
+                    (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 8)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 10)), rd16(m->mem, ss, sp));
+        return 0;
+    }
     if ((int)k == g_walk_k) {
         g_walk_calls++;
+        stage_puffs(m);
+        {   /* F117_VIEW_LOG=1 (diagnostic): once per frame the view matrix words [49BE..] and the aircraft test's [B082..] (the turned-view reference warps one
+             * view to the other with them), the heading [2DEE], the picture's row offset flags [368C] [294B] and the clock */
+            static int vlog = -1;
+            if (vlog < 0) vlog = getenv("F117_VIEW_LOG") != NULL;
+            if (vlog) {
+                const uint16_t dsv = m->cpu.seg[S_DS];
+                fprintf(stderr, "[view] ds %04X clock %llu heading %u 368C %u 294B %u 49BE", dsv, (unsigned long long)m->cpu.icount, rd16(m->mem, dsv, 0x2DEE), rd16(m->mem, dsv, 0x368C), m->mem[(((uint32_t)dsv << 4) + 0x294B) & 0xFFFFF]);
+                for (int i = 0; i < 9; i++) fprintf(stderr, " %d", (int)(int16_t)rd16(m->mem, dsv, (uint16_t)(0x49BE + 2 * i)));
+                fprintf(stderr, " B082");
+                for (int i = 0; i < 9; i++) fprintf(stderr, " %d", (int)(int16_t)rd16(m->mem, dsv, (uint16_t)(0xB082 + 2 * i)));
+                fputc(10, stderr);
+            }
+        }
         { static int init; if (!init) { init = 1; if (getenv("F117_FAR_WALKER")) g_far_native = 0; } }
         return g_walk_busy ? 0 : (g_far_native ? far_scenery(m) : walk_second(m));
     }
@@ -1457,6 +1688,14 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     s->trap_on = 0;
     const uint16_t ds = s->cpu.seg[S_DS];
     if (b && b->valid && t > 0) nudge(g_copy_mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
+    {   /* F117_TURN_VIEW=N (diagnostic, the turned-view reference, docs/wide-margin-audit.md): the copy's pilot turned by N units of the game's angle
+         * (65536 = 360 degrees) before the frame is drawn. The forward view's heading is [2DEE] (matched.c, compose_forward: [E478] = [2DEE], the view
+         * matrix is built from it), so the copy draws the same world from a heading turned by N; the game's own 4:3 picture of the turned view is the
+         * reference for what the wide picture shows in its margin. The copy is thrown away: nothing of the real game changes. */
+        static int turn = -99999;
+        if (turn == -99999) { const char *e = getenv("F117_TURN_VIEW"); turn = e ? atoi(e) : 0; }
+        if (turn) wr16(g_copy_mem, ds, 0x2DEE, (uint16_t)(rd16(g_copy_mem, ds, 0x2DEE) + (unsigned)turn));
+    }
     {
         static int env = -2;
         if (env == -2) { const char *e = getenv("F117_WIDE_VIEW"); env = e ? atoi(e) : -1; }   /* F117_WIDE_VIEW=PERCENT (diagnostic; 100: off) overrides */
@@ -1513,7 +1752,18 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
                 }
             }
             g_air_k = -1; g_air_done = 0; g_air_pct = pct;
-            if (!getenv("F117_WIDE_NO_AIR") && s->exec_hook_n < EXEC_HOOKS_MAX) {      /* F117_WIDE_NO_AIR (diagnostic): the aircraft test left alone */
+            g_probe_label_k = g_probe_marker_k = -1;
+            const int ring_probe = getenv("F117_RING_PROBE") != NULL;
+            if (ring_probe && s->exec_hook_n + 2 <= EXEC_HOOKS_MAX) {   /* the probe takes the two spare slots: the aircraft test and the walk are not installed */
+                for (unsigned k = 0; k < s->exec_hook_n; k++)
+                    if (s->exec_hook[k].ip == 0x1450) {
+                        g_probe_label_k = (int)s->exec_hook_n; s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs; s->exec_hook[s->exec_hook_n].ip = 0xB4F5; s->exec_hook_n++;
+                        g_probe_marker_k = (int)s->exec_hook_n; s->exec_hook[s->exec_hook_n].cs = s->exec_hook[k].cs; s->exec_hook[s->exec_hook_n].ip = 0xB171; s->exec_hook_n++;
+                        s->hooks.exec = wide_air_exec;
+                        break;
+                    }
+            }
+            if (!ring_probe && !getenv("F117_WIDE_NO_AIR") && s->exec_hook_n < EXEC_HOOKS_MAX) {      /* F117_WIDE_NO_AIR (diagnostic): the aircraft test left alone */
                 for (unsigned k = 0; k < s->exec_hook_n; k++)       /* VGAME's load segment: the per-frame draw routine's watch (0x1450) is at its relative 0 */
                     if (s->exec_hook[k].ip == 0x1450) {
                         g_air_k = (int)s->exec_hook_n;

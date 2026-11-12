@@ -2103,7 +2103,18 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word)
 {
+    remaster_live_overlay_rect(r, x, y, 1.0, 1.0, colour_word, 0, 3);
+}
+
+void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer)
+{
     if (!r) return;
+    if (clip_rows) {                            /* the sprite blitter's clip: rows inside the 3D clip window (y0..y1 inclusive) */
+        const double lo = r->window[1], hi = (double)r->window[3] + 1.0;
+        if (y < lo) { h -= lo - y; y = lo; }
+        if (y + h > hi) h = hi - y;
+        if (h <= 0.0 || w <= 0.0) return;
+    }
     remaster_frame *f = &r->frame;
     if (f->n == f->cap) {
         const size_t cap = f->cap ? f->cap * 2 : 256;
@@ -2117,8 +2128,8 @@ void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned co
      * scale (draw_scene_ex: cx = origin * ux + xoff), so the dot is that square as a polygon: exactly one game pixel at every scale, where a dot
      * primitive is 1.5 pixels wide and centred on the corner. In front of everything (the near plane is 0x10000), as the flat dot is drawn last;
      * an owner no object has (serial FFFFFh, face FFFh), so no line takes it for its own face. */
-    const double z = 0x20000;
-    static const double cx[4] = { 0, 1, 1, 0 }, cy[4] = { 0, 0, 1, 1 };
+    const double z = 0x20000 + 0x200 * (layer < 0 ? 0 : layer > 3 ? 3 : layer);     /* the layers (rerun.h): 0 blast on top, 3 far dots at the back */
+    const double cx[4] = { 0, w, w, 0 }, cy[4] = { 0, 0, h, h };
     p->kind = SCENE_POLYGON;
     p->n = 4;
     for (int k = 0; k < 4; k++) {
@@ -2126,7 +2137,32 @@ void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned co
         p->v[k].y = (int32_t)llround((y + cy[k] - r->origin[1]) * z / 256.0);
         p->v[k].z = (int32_t)z;
     }
-    p->owner = 0xFFFFFFFFu;
+    p->owner = 0xFFFFF7FFu;     /* serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
+    p->colour_word = (uint16_t)colour_word;
+    p->colour_index = (uint8_t)(colour_word & 255);
+}
+
+void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x1, double y1, unsigned colour_word)
+{
+    if (!r) return;
+    remaster_frame *f = &r->frame;
+    if (f->n == f->cap) {
+        const size_t cap = f->cap ? f->cap * 2 : 256;
+        remaster_prim *q = (remaster_prim *)realloc(f->prim, cap * sizeof *q);
+        if (!q) return;
+        f->prim = q; f->cap = cap;
+    }
+    remaster_prim *p = &f->prim[f->n++];
+    memset(p, 0, sizeof *p);
+    const double z = 0x20200, xs[2] = { x0, x1 }, ys[2] = { y0, y1 };      /* layer 1 */      /* in front of everything, as the flat tracer is drawn last; no object's owner */
+    p->kind = SCENE_LINES;
+    p->n = 2;
+    for (int k = 0; k < 2; k++) {
+        p->v[k].x = (int32_t)llround((xs[k] - r->origin[0]) * z / 256.0);
+        p->v[k].y = (int32_t)llround((ys[k] - r->origin[1]) * z / 256.0);
+        p->v[k].z = (int32_t)z;
+    }
+    p->owner = 0xFFFFF7FFu;     /* serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
     p->colour_word = (uint16_t)colour_word;
     p->colour_index = (uint8_t)(colour_word & 255);
 }

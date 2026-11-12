@@ -79,6 +79,14 @@ typedef struct {
     /* A dot the game draws flat at a screen position (x, y in its 320 x 200 pixels, unclamped) that its own cull dropped because it lies outside the
      * 4:3 window, but which the wide picture shows (R41/R42): the renderer draws it in the margins. colour_word as a model's (FFxxh: palette pixel xx). */
     void (*overlay_dot)(void *user, double x, double y, unsigned colour_word);
+    /* The same for a w x h block of the game's pixels at (x, y) (a run of a scaled sprite the game drew clipped at the 4:3 window's edge or dropped); clip_rows non-zero keeps
+     * only the rows inside the game's 3D clip window, as the sprite blitter's own clip does. */
+    void (*overlay_rect)(void *user, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer);
+    /* A one-game-pixel-wide line from (x0, y0) to (x1, y1) in the game's pixels (a gun tracer the game skipped because an end is off its screen). */
+    void (*overlay_line)(void *user, double x0, double y0, double x1, double y1, unsigned colour_word);
+    /* The overlays' layers, in the order the original draws the flat things (later on top): 3 far dots (moving-objects pass, 983E), 2 smoke puffs (deferred, drawn by the compose walk D87C
+     * after them), 1 tracers and 0 the blast (the display pass 9EFA, the last thing the frame draws; tracers before the blast). Each layer sits at its own depth, 0.2 percent apart, so a
+     * tie cannot reorder them. */
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */

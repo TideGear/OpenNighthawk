@@ -60,6 +60,10 @@ void remaster_live_placement_return(remaster_live *r, machine_t *m, int returned
 /* A flat dot the copy's game dropped outside the 4:3 window (rerun_collector.overlay_dot): one game pixel at that screen position (a square polygon),
    just beyond the near plane so it draws over the scene as the game's flat dot does. x, y in the game's 320 x 200 pixels (the pixel's corner). */
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word);
+/* A w x h block of the game's pixels (a square polygon), the same way; clip_rows keeps only the rows inside the game's 3D clip window (r->window). */
+void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer);
+/* A line primitive of one game pixel's width between two points of the game's 320 x 200 screen, in front of the scene. */
+void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x1, double y1, unsigned colour_word);
 
 /* Compose the Enhanced presentation's fine picture (n times finer: 320n x 200n palette indices in src, the origin tag of
  * each pixel in tag when F117_PRESENT_DIAG is on, dac the six-bit palette) with the last completed frame's Remastered

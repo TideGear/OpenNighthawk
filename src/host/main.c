@@ -494,6 +494,18 @@ static void copy_placement_return(void *user, machine_t *m, int returned)
     if (g_rlive_copy) remaster_live_placement_return(g_rlive_copy, m, returned);
 }
 
+static void copy_overlay_line(void *user, double x0, double y0, double x1, double y1, unsigned colour_word)
+{
+    (void)user;
+    if (g_rlive_copy) remaster_live_overlay_line(g_rlive_copy, x0, y0, x1, y1, colour_word);
+}
+
+static void copy_overlay_rect(void *user, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer)
+{
+    (void)user;
+    if (g_rlive_copy) remaster_live_overlay_rect(g_rlive_copy, x, y, w, h, colour_word, clip_rows, layer);
+}
+
 static void copy_overlay_dot(void *user, double x, double y, unsigned colour_word)
 {
     (void)user;
@@ -1247,7 +1259,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot, copy_overlay_rect, copy_overlay_line };
                 if (g_rlive_copy) rerun_set_collector(&coll);
                 /* worker mode: the copy stages its frame and the loop commits it (this object exists only once the game is loaded, after the worker thread was made) */
                 if (g_rlive_copy && g_pw.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);
@@ -2868,6 +2880,39 @@ int main(int argc, char **argv)
                         fprintf(stderr, "poked %llu bytes at %05llX, clock %llu\n", k, addr, (unsigned long long)H.m.cpu.icount);
                         q = strchr(hex, ',');
                     }
+                }
+            }
+            {   /* F117_EMIT_PUFFS=START:DSBASE:ZC:XC (diagnostic): from clock START the real game is put into the state where it emits smoke by itself: [3D96] (the object whose trail
+                 * frame_trail, VGAME 48B8, draws; matched.c 2023) = 0 and that object's position, the words at B2D0 / B2D2 (east, north), set to a point at view-space depth ZC and lateral
+                 * offset +-XC from the aircraft (the side flips every 40 million clocks; the point is solved through the live view matrix at B082 and the puff's starting altitude 40h, as 0xB5DC
+                 * measures it). Nothing is drawn or written into the trail table here: frame_trail makes a puff at that position every eighth frame and rises and ages them, and the
+                 * flight's draw loop draws them. DSBASE is VGAME's data segment as a physical address (hex, 37DE0 for this install). */
+                static const char *ep; static int einit, side = 1, placed; static uint64_t estart, enext, ekeep; static long edb; static int ezc, exc; static uint16_t east, north;
+                if (!einit) {
+                    einit = 1; ep = getenv("F117_EMIT_PUFFS");
+                    if (ep) { char *q; estart = strtoull(ep, &q, 0); edb = strtol(q + 1, &q, 16); ezc = (int)strtol(q + 1, &q, 0); exc = (int)strtol(q + 1, &q, 0); }
+                }
+                if (ep && H.m.cpu.icount >= estart) {
+                    uint8_t *mem = H.m.mem;
+                    #define EW(off) ((uint16_t)(mem[(edb + (off)) & 0xFFFFF] | mem[(edb + (off) + 1) & 0xFFFFF] << 8))
+                    #define EPUT(off, v) do { mem[(edb + (off)) & 0xFFFFF] = (uint8_t)(v); mem[(edb + (off) + 1) & 0xFFFFF] = (uint8_t)((v) >> 8); } while (0)
+                    if (H.m.cpu.icount >= enext) {
+                        enext = H.m.cpu.icount + 40000000ull; side = -side;
+                        double A[3][3];                                   /* comp_a = sum_c A[a][c] * v_c, v = (east offset, altitude offset, north offset): B792's pairing, fixmul = a * b / 32768 */
+                        for (int a2 = 0; a2 < 3; a2++) for (int c2 = 0; c2 < 3; c2++) A[a2][c2] = (int16_t)EW(0xB082 + 6 * c2 + 2 * a2) / 32768.0;
+                        const double oa = (double)((int16_t)((int16_t)0x40 - (int16_t)EW(0x2DF4)) >> 5);
+                        const double xc = side * exc, zc = ezc;
+                        const double r0 = xc - A[0][1] * oa, r2 = zc - A[2][1] * oa;
+                        const double det = A[0][0] * A[2][2] - A[0][2] * A[2][0];
+                        if (det > 0.05 || det < -0.05) {
+                            const double ox = (r0 * A[2][2] - A[0][2] * r2) / det, oy = (A[0][0] * r2 - A[2][0] * r0) / det;
+                            east = (uint16_t)(EW(0xC0D0) - (uint16_t)(int)lround(ox)); north = (uint16_t)(EW(0xC0DE) + (uint16_t)(int)lround(oy)); placed = 1;
+                            fprintf(stderr, "[emit-puffs] clock %llu source side %d east %u north %u (aircraft %u,%u alt %u) offsets %.0f %.0f oa %.0f\n", (unsigned long long)H.m.cpu.icount, side, east, north, EW(0xC0D0), EW(0xC0DE), EW(0x2DF4), ox, oy, oa);
+                        }
+                    }
+                    if (placed && H.m.cpu.icount >= ekeep) { ekeep = H.m.cpu.icount + 1500000ull; EPUT(0x3D96, 0); EPUT(0xB2D0, east); EPUT(0xB2D2, north); }
+                    #undef EW
+                    #undef EPUT
                 }
             }
             {   /* F117_DUMP_RAM=CLOCK:FILE (diagnostic): the machine's 1 MB of memory once, when the clock reaches CLOCK */
