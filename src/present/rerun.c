@@ -1259,8 +1259,8 @@ static void wide_puff_overlay(machine_t *m, uint16_t ds, int sx, int sy, int siz
     if (full < 0) full = getenv("F117_WIDE_PUFF_FULL") != NULL;
     const int all = full || whole;
     {   static int plog = -1;                       /* F117_WIDE_DOTS_LOG=1: each puff with the sprite's extent */
-        if (plog < 0) plog = getenv("F117_WIDE_DOTS_LOG") != NULL;
-        if (plog && (all || sx - (size >> 1) < 0 || sx + size - (size >> 1) > 320))
+        if (plog < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); plog = e ? (e[0] == '3' ? 2 : 1) : 0; }   /* 3: every puff, inside the 4:3 picture too (the R44 size check) */
+        if (plog && (plog == 2 || all || sx - (size >> 1) < 0 || sx + size - (size >> 1) > 320))
             fprintf(stderr, "[wide-puff] clock %llu x %d y %d size %d kind %u\n", (unsigned long long)m->cpu.icount, sx, sy, size, kind);
     }
     const uint16_t seg = rd16(m->mem, ds, (uint16_t)(table + 2 + kind * 4)), off = rd16(m->mem, ds, (uint16_t)(table + kind * 4));
@@ -1297,6 +1297,46 @@ static void wide_puff_overlay(machine_t *m, uint16_t ds, int sx, int sy, int siz
         ev += sh;
         if (ev >= 0) { do { row = (row + (uint32_t)(m->mem[row] | m->mem[(row + 1) & 0xFFFFF] << 8) + 4) & 0xFFFFF; ry++; ev -= dh; } while (ev >= 0 && ry < sh); }
     }
+}
+
+/* A puff past the game's cut (|[DEBE]| >= 256, so the sprite would be one game pixel or less): the loop does not draw it (9A0E, 9A15), the overlay draws it at its true size,
+ * 256 / |[DEBE]| times the age factor (1/2, 5/8, 3/4, 7/8, 1) game pixels square, at least one screen pixel (the compositor's minimum), in the sprite's most frequent colour: below one game
+ * pixel the blitter's footprint is one source pixel that is often transparent, so a colour has to be chosen; the mode is the choice, stated in the audit. Rows clip to the 3D window. */
+static unsigned wide_sprite_mode_colour(machine_t *m, uint16_t ds, uint16_t table, unsigned kind)
+{
+    const uint16_t seg = rd16(m->mem, ds, (uint16_t)(table + 2 + kind * 4)), off = rd16(m->mem, ds, (uint16_t)(table + kind * 4));
+    const uint32_t base = (((uint32_t)seg << 4) + off) & 0xFFFFF;
+    const int sw = (int)(m->mem[base] | m->mem[(base + 1) & 0xFFFFF] << 8), sh = (int)(m->mem[(base + 2) & 0xFFFFF] | m->mem[(base + 3) & 0xFFFFF] << 8);
+    if (sw <= 0 || sh <= 0 || sw > 256 || sh > 256) return 0;
+    unsigned count[256] = { 0 };
+    uint32_t row = (base + 4) & 0xFFFFF;
+    for (int r = 0; r < sh; r++) {
+        const int n = (int)(m->mem[row] | m->mem[(row + 1) & 0xFFFFF] << 8), k = (int)(m->mem[(row + 2) & 0xFFFFF] | m->mem[(row + 3) & 0xFFFFF] << 8);
+        if (n < 0 || n > 512) return 0;
+        for (int i = 0; i < n && k + i < sw; i++) count[m->mem[(row + 4 + (uint32_t)i) & 0xFFFFF]]++;
+        row = (row + (uint32_t)n + 4) & 0xFFFFF;
+    }
+    unsigned best = 0, bc = 0;
+    for (unsigned c = 1; c < 256; c++) if (count[c] > bc) { bc = count[c]; best = c; }
+    return best;
+}
+static void wide_puff_far(machine_t *m, uint16_t ds, int64_t z, int64_t x, int64_t y, int age, unsigned kind, int zoom)
+{
+    if (!g_collector.overlay_rect || z >= 0 || kind >= 8) return;
+    const double depth = -(double)(z >> 3);                         /* |[DEBE]| >= 256 here */
+    static const double f[5] = { 0.5, 0.625, 0.75, 0.875, 1.0 };
+    const double size = 256.0 / depth * f[age < 0 ? 0 : age > 4 ? 4 : age];
+    const int64_t px = (x * 256) / z + 0xA0;
+    const int16_t q = (int16_t)((y * 256) / z);
+    int py = q - (int16_t)(q >> 2);
+    py += rd16(m->mem, ds, 0x368C) ? (zoom ? 0x3C : 0x34) : 0x64;
+    if (px < -4000 || px > 4000 || py < -4000 || py > 4000) return;
+    const unsigned c = wide_sprite_mode_colour(m, ds, 0x9208, kind);
+    if (!c) return;
+    static int plog = -1;
+    if (plog < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); plog = e && e[0] == '3'; }
+    if (plog) fprintf(stderr, "[wide-puff-far] clock %llu x %lld y %d depth %.0f size %.3f kind %u colour %u\n", (unsigned long long)m->cpu.icount, (long long)px, py, depth, size, kind, c);
+    g_collector.overlay_rect(g_collector.user, (double)px + 0.5 - size / 2, (double)py + 0.5 - size / 2, size, size, 0xFF00u | c, 1, 2);
 }
 
 static struct { int valid, on; int16_t sx, sy; uint16_t ret; } g_dot_prev;
@@ -1408,6 +1448,9 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
             int py = q - (int16_t)(q >> 2);
             py += rd16(m->mem, ds, 0x368C) ? (zoom ? 0x3C : 0x34) : 0x64;
             wide_puff_overlay(m, ds, (int)px, py, size, (unsigned)((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, 0x9208, 8, 2, !(px >= 0 && px <= 0x13F && py >= 0 && py <= (rd16(m->mem, ds, 0x368C) ? 0x60 : 0xC7)));
+        } else if (puffs_on && comp[2] < 0 && (comp[2] >> 3) <= -256) {          /* past the game's cut: true size, one screen pixel at least (R44 item 3 follow-up) */
+            const uint16_t si = m->cpu.r[R_SI];
+            wide_puff_far(m, ds, comp[2], comp[0], comp[1], (int16_t)rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)), ((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, zoom);
         }
         return;
     }
@@ -1689,7 +1732,26 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         } else if (ret == 0x9D89) model = depth > -32;
         else if (ret == 0x9DFD) model = depth < 0 && depth > -256;
         g_air_last_model = model;
-        int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;        for (int a = 0; a < 3; a++)
+        if (ret == 0x9DFD) { static int wc = -1; if (wc < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wc = e && e[0] == '3'; } if (wc) fprintf(stderr, "[wreck-call] clock %llu depth16 %d z>>3 %d model %d height %d\n", (unsigned long long)m->cpu.icount, (int)depth, (int)(z >> 3), model, (int)(int16_t)rd16(m->mem, ds, 0xC62E)); }
+        int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;
+        /* The falling wreck past the game's cut ([DEBE] at or below -256, matched.c 9E07: the game draws nothing, and nothing else depends on it): drawn as the model it is, at its
+         * true place and perspective size. Every row of the widened matrix is divided by k, so the point keeps its screen position and its size ratio (screen = x' / z', the model's
+         * own points go through the same matrix) while the routine's [DEBE] lands inside the game's range and its test passes; the compositor's far-size rule gives the thin
+         * parts their at-least-one-screen-pixel width. Only the 32-bit z' >> 3 counts here (the game's 16-bit [DEBE] wraps beyond 32,767). */
+        static int16_t farw[3][3];
+        const int32_t d32 = z >> 3;
+        static int wreck_on = -1;
+        if (wreck_on < 0) { const char *e = getenv("F117_WIDE_WRECK"); wreck_on = e && e[0] == '1'; }   /* F117_WIDE_WRECK=1: the far wreck. OFF by default: no staged state has drawn a wreck even in the original presentation, so the path is unproven (docs/wide-margin-audit.md) */
+        if (ret == 0x9DFD && d32 <= -256 && wreck_on) {
+            const int k = (int)((-(int64_t)d32) / 128) + 1;
+            for (int a = 0; a < 3; a++) for (int c = 0; c < 3; c++) farw[c][a] = (int16_t)(g_air_ow[c][a] / k);
+            mat = farw;
+            model = 1;
+            g_air_last_model = 1;
+            static int wl = -1; if (wl < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wl = e && e[0] == '3'; }
+            if (wl) fprintf(stderr, "[wide-wreck-far] clock %llu depth %d k %d\n", (unsigned long long)m->cpu.icount, (int)d32, k);
+        }
+        for (int a = 0; a < 3; a++)
             for (int c = 0; c < 3; c++)
                 wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a), (uint16_t)mat[c][a]);
         wide_dot_at_entry(m, ds, ss, sp, model ? 0 : ret);

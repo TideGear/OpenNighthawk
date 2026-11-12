@@ -413,3 +413,38 @@ Limits, stated: ages 0 to 3 only (the four staged), the sprite kinds 0 and 1; th
 ## Missiles and bullets: how deep they get (11 Nov 2026, measured on both recorded flights)
 
 `[proj-depth]` (`F117_WIDE_DOTS_LOG=1`, rerun.c, in the projectile call's hook, world units of depth = -z'): flight 1 (session-20261110-125342, to clock 12.2 billion): deepest 634; flight 2 (session-20261108-211031, to 10.4 billion): deepest 5,376. Both under the far-size reference 8,191, so the one-game-pixel dot the game draws stays exact for them in these flights; the far-size rule would not change any projectile here. Limits: two flights, one projectile record each; longer or other missions could go deeper (the weapon table's longest lock range is 150, about 9,600 map units). Decision carried: keep the game's one-pixel dot for missiles and bullets; re-measure if a longer flight shows a projectile past 8,191.
+
+## R44 item 3 measured (12 Nov 2026): puff size and place do not depend on the Remastered reach
+
+Same game-emitted puffs (`F117_EMIT_PUFFS=1200000000:37AE0:-120:90`, owner's flight, Remastered wide, from clock 1.24e9), `F117_WIDE_DOTS_LOG=3` (new: logs every puff, inside the 4:3 picture too), run once with the game's own distance (`F117_WIDE_AIR_REACH=100`) and once with the default reach (200):
+**1,296 puff records (x, y, size, kind) identical in both, and the four screenshots (clocks 1.255e9 to 1.273e9) are byte-identical.** Sizes seen: 8, 10, 12, 14, 15, 17, 18. So in the 4:3 area the puffs
+take the game's own matrix and so the original's size and place (the copy runs the game's own code on the game's own matrix; no matrix write happens for a puff call). The same run with `F117_WIDE_DOTS=0`
+(the old path, which divides every caller's matrix by the reach) gives different pictures at all four clocks, so the halving did change what was drawn; its puff sizes were not logged (the puff overlay
+exists only with dots on), so the "about 1.4 times" figure stays an estimate and is not a measurement. Not done: a render in the original presentation of the same state (the equality above is between
+two Remastered runs on the copy's matrix, which is the game's own).
+
+## Far smoke puffs built (12 Nov 2026), far falling wreck built but unproven and OFF
+
+**Far puffs (on with `F117_WIDE_PUFFS`, default on).** The trail loop draws a puff only when -256 < `[DEBE]` < 0 (matched.c, 9A0E/9A15). For a puff past that (`[DEBE]` = z' >> 3 at or below -256, 32-bit, so the game's
+16-bit wrap beyond 32,767 does not matter), `wide_puff_far` (`rerun.c`) draws a square of the true size, 256 / |`[DEBE]`| times the age factor (1/2, 5/8, 3/4, 7/8, 1) game pixels, centred on the true
+projected point (the routine's own arithmetic), with the compositor's minimum of one screen pixel, in the puff sprite's **most frequent non-transparent colour** (kind `(age & 14) >> 1`, table 9208/920A), rows clipped to the 3D window,
+layer 2, middle and margins alike. The colour is a choice, not a game value: below one game pixel the blitter's footprint is one source pixel, often transparent, so the game has no answer; the mode is
+the one that stays closest to what a coverage-weighted reduction of the sprite would show. Also not modelled: the sprite's transparent fraction (a far puff is an opaque pixel).
+Proof, game-emitted puffs (`F117_EMIT_PUFFS`) at view depth -3000, -2200 and -9000 (`[DEBE]` -375, -275, -1125): the log predicts x, y and size (`F117_WIDE_DOTS_LOG=3`, x 245 for XC 1000 as computed by hand:
+160 + 1000 * 256 / 3000 = 245.3); against the same flights with `F117_WIDE_PUFFS=0` the pictures differ in **1 to 2 pixels per frame, all at the predicted place, none elsewhere** (nothing else changed): in the
+margin (x 29 and 1253 at 1280 x 600) and inside the 4:3 area (x 182 and 1100). A puff whose place lands on a HUD line (the pitch ladder's row) is hidden by the line, as the original draws HUD after
+puffs. At dusk the smoke colour (index 77, RGB 12 16 28) is almost the sky's, so the pixel is hard to see; the picture `Desktop\ONShots\20261112-115546-far-smoke-puffs-off-vs-on.png` marks it.
+Also in this slice: `F117_WIDE_DOTS_LOG=3` logs every puff (R44 item 3, above).
+
+**Far wreck (`F117_WIDE_WRECK=1`, default OFF).** `9DFD` is the call for the falling wreck (matched.c 34803 to 34828: `[C62E]` > 0, point at `[C0D2]`, `[C0E4]`, height `[C62E]`; model 11 by `BB0D`, only when -256 < `[DEBE]` < 0). For `[DEBE]` at or
+below -256 the render copy divides every row of the widened matrix by k = |`[DEBE]`| / 128 + 1 before the call (the same mechanism as the aircraft reach: screen position and perspective size are ratios and
+do not move; the game's own test then passes and the model is drawn at its true place). `F117_EMIT_WRECK=START:DSBASE:ZC:XC:HEIGHT` (diagnostic, `main.c`) puts the game into the state `vgame_ai_destroy` sets (`C0D2`, `C0E4`, `C62E`, `B782` = 80h),
+re-set every 20,000 clocks because `vgame_free_fall` (04958) ends the fall within frames. **Not proven, therefore off:** with that state the game reaches the call (`[wreck-call]` log: depth -38 and -188, model 1, height held) and calls `BB0D`, but
+**no pixel changed, even at `[DEBE]` -38, in the original presentation either** (320 x 200 shots with and without the state, 0 differing). So the staged state does not reproduce a visible wreck: something `vgame_ai_destroy` sets besides those four words
+(or the model's own data) is missing, or model 11 is invisible in this scene. Next: read what `BB0D` does with shape 11, or find a real kill in a recorded flight, before the far path can be judged.
+
+## DC46 icons: what the edge record holds (read 12 Nov 2026, not built)
+
+The edge records at 5EEAh + 24 * n are written by `model_prepare_edge` (12BDB, matched.c 10566): both endpoints in front: each endpoint's projected x and y plus the screen origin (`[8602]`, `[8604]`) go to the record (+0, +4 for the first endpoint, +8, +0Ch for the second) and then the clipper (130D:033F) writes the clipped ends to +10h and +14h; an endpoint behind the eye (x word 8000h) takes the near-plane cut path and sets 4000h/4040h in +2; both behind sets 8080h. So word 0 and word 4 of the record `[7D7E]` points at are the
+first endpoint's screen x and y in the model renderer's own pixel frame (origin included), and `DC46`'s reject test `word2 & 8080h` is "both ends behind, or clipped away". Consequence for the wide picture: the render copy runs this code with the widened view, so the icon call `1B2E` already receives
+wide-canvas coordinates; what is missing in the margins is only the sprite blitter's clip to the 320-pixel block, exactly the puff case. The build is therefore a second sprite overlay at the `1B2E` call (generate the sprite by the same Bresenham routine, add the pixels outside 0..319), plus a check that the clipper's window ([7D72]..[7D78]) is wide in the copy (otherwise an edge ending in a margin is flagged 8080h and the game drops the icon first). Open: a free exec-hook slot for `1B2E`'s entry (the copy's limit is the live hooks plus 2, both used by the `B5DC` entry and the `04E6` walk), the sprite-index arithmetic (`[record + 6] >> 7`, or the word at `[4ED2 + 2 * (id - 25h)]`), which objects in a real flight have shape ids below 100h (scan), and a staged proof.

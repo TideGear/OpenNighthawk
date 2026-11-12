@@ -2915,6 +2915,38 @@ int main(int argc, char **argv)
                     #undef EPUT
                 }
             }
+            {   /* F117_EMIT_WRECK=START:DSBASE:ZC:XC:HEIGHT (diagnostic): from clock START the game is put into the state of a falling wreck (matched.c vgame_ai_destroy sets the words
+                 * C0D2 east, C0E4 north and C62E height from the killed unit and [B782] to 80h; vgame_free_fall, 04958, then lowers it and the moving-objects pass draws the model at 9DFD
+                 * while the height is above zero and [DEBE] is between -256 and 0). The position is solved like F117_EMIT_PUFFS's so that the point sits at view depth ZC and lateral offset XC
+                 * (side flipping every 40 million clocks), at altitude HEIGHT; the words are set again every 20,000 clocks (under one frame: the fall would end it within frames) so the wreck stays where it is. Nothing is drawn here. */
+                static const char *wp; static int winit, wside = 1, wplaced; static uint64_t wstart, wnext, wkeep; static long wdb; static int wzc, wxc, wh; static uint16_t weast, wnorth;
+                if (!winit) {
+                    winit = 1; wp = getenv("F117_EMIT_WRECK");
+                    if (wp) { char *q; wstart = strtoull(wp, &q, 0); wdb = strtol(q + 1, &q, 16); wzc = (int)strtol(q + 1, &q, 0); wxc = (int)strtol(q + 1, &q, 0); wh = (int)strtol(q + 1, &q, 0); }
+                }
+                if (wp && H.m.cpu.icount >= wstart) {
+                    uint8_t *mem = H.m.mem;
+                    #define WW(off) ((uint16_t)(mem[(wdb + (off)) & 0xFFFFF] | mem[(wdb + (off) + 1) & 0xFFFFF] << 8))
+                    #define WPUT(off, v) do { mem[(wdb + (off)) & 0xFFFFF] = (uint8_t)(v); mem[(wdb + (off) + 1) & 0xFFFFF] = (uint8_t)((v) >> 8); } while (0)
+                    if (H.m.cpu.icount >= wnext) {
+                        wnext = H.m.cpu.icount + 40000000ull; wside = -wside;
+                        double A[3][3];
+                        for (int a2 = 0; a2 < 3; a2++) for (int c2 = 0; c2 < 3; c2++) A[a2][c2] = (int16_t)WW(0xB082 + 6 * c2 + 2 * a2) / 32768.0;
+                        const double oa = (double)((int16_t)((int16_t)wh - (int16_t)WW(0x2DF4)) >> 5);
+                        const double xc = wside * wxc, zc = wzc;
+                        const double r0 = xc - A[0][1] * oa, r2 = zc - A[2][1] * oa;
+                        const double det = A[0][0] * A[2][2] - A[0][2] * A[2][0];
+                        if (det > 0.05 || det < -0.05) {
+                            const double ox = (r0 * A[2][2] - A[0][2] * r2) / det, oy = (A[0][0] * r2 - A[2][0] * r0) / det;
+                            weast = (uint16_t)(WW(0xC0D0) - (uint16_t)(int)lround(ox)); wnorth = (uint16_t)(WW(0xC0DE) + (uint16_t)(int)lround(oy)); wplaced = 1;
+                            fprintf(stderr, "[emit-wreck] clock %llu side %d east %u north %u height %d (aircraft %u,%u alt %u) offsets %.0f %.0f oa %.0f\n", (unsigned long long)H.m.cpu.icount, wside, weast, wnorth, wh, WW(0xC0D0), WW(0xC0DE), WW(0x2DF4), ox, oy, oa);
+                        }
+                    }
+                    if (wplaced && H.m.cpu.icount >= wkeep) { wkeep = H.m.cpu.icount + 20000ull; WPUT(0xC0D2, weast); WPUT(0xC0E4, wnorth); WPUT(0xC62E, wh); WPUT(0xB782, 0x80); }
+                    #undef WW
+                    #undef WPUT
+                }
+            }
             {   /* F117_DUMP_RAM=CLOCK:FILE (diagnostic): the machine's 1 MB of memory once, when the clock reaches CLOCK */
                 static const char *spec; static int init; static uint64_t at;
                 if (!init) { init = 1; spec = getenv("F117_DUMP_RAM"); if (spec) at = strtoull(spec, NULL, 0); }

@@ -1,6 +1,6 @@
 # Handoff
 
-## Current state: 11 November 2026, 23:10 (read first)
+## Current state: 12 November 2026, 12:10 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The previous one (10 and 11 November: the audit, R41 to R44, the margin dots, the
 sprite proofs, many staged findings) is archived unedited in [docs/archive/handoff-log-20261111.md](docs/archive/handoff-log-20261111.md); the one before it in
@@ -18,21 +18,19 @@ margins at four moments); diagnostics `F117_WIDE_DOTS_LOG=1/2`, `F117_RING_PROBE
 `F117_WIDE_TRACER_SHIFT/FULL`, `F117_WIDE_PUFF_FULL/RECTS`. Sprite proofs: staged and game-emitted puffs equal the game's own sprite pixel for pixel in the 4:3 area (1,284 of 1,284 over 24 frames; single
 puff 216 of 216 with one palette index per colour), the blast 67 of 67; the tracer's margin path proven by moving a real tracer into the margin.
 
-**In the working tree at the end of this session (committed with it if the closing gate passed; check `git log`):** tracers, puffs and the blast ON by default (owner said "turn them on";
-`F117_WIDE_TRACERS=0` and `F117_WIDE_PUFFS=0` disable, the second covers puffs and the blast); far aircraft past the game's 4,800-unit range (`far_aircraft_dots`, `F117_WIDE_FAR_AIRCRAFT=1`, OFF until the
-owner approves the picture `Desktop\ONShots\20261111-225200-far-aircraft-before-after.png`; draws a dot for each active air unit at 4,800 or more up to the Draw distance's reach, one game pixel up to depth
-8,191 and one pixel x 8191 / depth beyond, at least one screen pixel, the game's flow and lock-target choice untouched); a `[proj-depth]` log line (`F117_WIDE_DOTS_LOG=1`) for the missile/bullet depth question.
+**Added 12 Nov (committed with gate14 if it passed; check `git log`):** R44 item 3 measured: puff records (1,296) and pictures identical at reach 100 and 200, so puffs see the game's own matrix (audit, last sections);
+far puffs past `[DEBE]` -256 at true size, one screen pixel at least, mode colour of the sprite (`wide_puff_far`; proven: 1 to 2 pixels per frame differ from `F117_WIDE_PUFFS=0`, all at the predicted place; picture
+`Desktop\ONShots\20261112-115546-far-smoke-puffs-off-vs-on.png`); far wreck path built but OFF (`F117_WIDE_WRECK=1`): the staged state (`F117_EMIT_WRECK`) reaches the game's call but draws no pixel even near and in the original
+presentation, so the path is unproven (what is missing from the staged state is the next thing to read: `vgame_ai_destroy` side effects, `BB0D` shape 11). Earlier and unchanged: tracers, puffs, blast on; far aircraft past 4,800 OFF until the owner approves
+`Desktop\ONShots\20261111-225200-far-aircraft-before-after.png`; projectile depths 634 and 5,376, under 8,191, so their one-pixel dot stays.
 
 **Owner decisions in force:** HUD symbology (detection ring, lock markers, weapon boxes, bomb marker, diamond, beacons) follows the original's `881F` clip box (48,15)-(271,90): no margin overlay for
 it (option A; B "everywhere" could come later as an off-by-default setting); Terrain dots stay at the Near default; one far-size rule for every light and dot (one game pixel up to 8,191 world units of depth,
 x 8191 / depth beyond, at least one screen pixel); the margin tracers, puffs and blast are on.
 
-**Remaining Part A, in this order:** (1) measure the largest depth missiles and bullets reach: the scan `bash private/owner-flight-1110/dotlog.sh` (both flights, about 17 minutes, `F117_WIDE_DOTS_LOG=1`)
-prints `[proj-depth]` lines; the weapon table's longest lock range is 150 (about 9,600 map units), the projectile loop has no distance cut; decide their far size from the number and tell the owner; (2) R44:
-render a puff in the original presentation and in Remastered 4:3 (`F117_EMIT_PUFFS`) and compare sizes: by construction only aircraft and projectile calls get the Remastered reach now, so puffs and flares see the game's
-own matrix; (3) far puffs past `[DEBE]` -256 at true size, at least one screen pixel, middle and margins; (4) the far falling wreck (`9DFD`: a killed aircraft's wreck, `C0D2`/`C0E4`/`C62E`, not a countermeasure
-flare) past its cut; (5) the `DC46` icons (shape ids 25h to FFh; anchor = the last line edge of the model's command stream, `[7D7E]` set at `model_fill_stream` `line_edge`, matched.c 54503; read next how the edge
-record stores its screen point, then scan which objects use them, build, prove); (6) one full gate with everything on, push, CI, the release. Then Part B.
+**Remaining Part A, in this order:** (1) the far wreck: find a state that draws it in the original (a real kill in a recorded flight, or the side effects of `vgame_ai_destroy`, matched.c 17414, plus what `BB0D` does with shape 11), prove the far path
+against it, then turn it on; (2) the `DC46` icons (shape ids 25h to FFh; anchor = last line edge of the model's command stream, `[7D7E]` set at `model_fill_stream` `line_edge`, matched.c 54503; the edge records are made by
+`model_edge_pass` 12AD3 / `model_prepare_edge`; read how word 0 and word 4 of the record hold the screen point, scan which objects use them, build, prove); (3) one full gate with everything on, push, CI, the release (limits stated). Then Part B.
 
 **How to work (what cost time this session):** read the matched code first and say which facts are code, comment or run; staged state must be the game's own (poke flags or the smoke source, never write or
 draw puffs by hand); VGAME's data segment is `37AE` (physical `37AE0`; an earlier `37DE` guess was wrong): print and check every computed address before poking (a hand-typed poke address hit unrelated memory);
