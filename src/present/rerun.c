@@ -1366,10 +1366,15 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(g_air_orig[c][a], v[c]); }
     if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }     /* SAR, RCR: the 32-bit value halved */
     if (ret == 0xA203) g_tail.front = 0;
+    if (log && ret == 0x9D89 && comp[2] < 0) {     /* step 1 of the far-size question: how deep do missiles and bullets get? a line at each new record, per projectile slot class */
+        static int32_t deepest[2];
+        const int player = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) >= 8;
+        if (-comp[2] > deepest[player]) { deepest[player] = -comp[2]; fprintf(stderr, "[proj-depth] clock %llu %s projectile: new deepest %d world units\n", (unsigned long long)m->cpu.icount, player ? "player" : "enemy", (int)deepest[player]); }
+    }
     if (comp[2] >= 0) { g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = 0; g_dot_prev.ret = ret; return; }   /* behind the eye: off, and no dot */
     if (ret == 0xA298) {                            /* the impact blast (display pass section 3, matched.c 68847): the sprite 1A98(x, y, size, phase), same driver call as a puff's */
         static int blast_on = -1;
-        if (blast_on < 0) blast_on = getenv("F117_WIDE_PUFFS") != NULL || getenv("F117_WIDE_PUFF_FULL") != NULL;     /* the sprite family shares the switch */
+        if (blast_on < 0) { const char *e = getenv("F117_WIDE_PUFFS"); blast_on = !(e && e[0] == '0'); }     /* the sprite family shares the switch */
         const int16_t depth = (int16_t)(uint16_t)(comp[2] >> 3), clock = (int16_t)rd16(m->mem, ds, 0x9D3C);
         if (blast_on && depth < 0 && clock != 0) {
             int size = abs((int)(256 / (int)depth));                                /* 0x100 / [DEBE], IDIV, ABS (A2A6..A2AE) */
@@ -1386,8 +1391,8 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     if (ret == 0x9A04) {                            /* a smoke puff: the sprite outside the 4:3 picture (see wide_puff_overlay) */
         /* F117_WIDE_PUFFS=1 (off by default): none of the ten long recorded flights scanned (11 Nov) contains a smoke trail, so the sprite decode has not been
          * proven on a real puff; F117_WIDE_PUFF_FULL=1 (the proof mode) enables it too. */
-        static int puffs_on = -1;
-        if (puffs_on < 0) puffs_on = getenv("F117_WIDE_PUFFS") != NULL || getenv("F117_WIDE_PUFF_FULL") != NULL;
+        static int puffs_on = -1;      /* on by default (owner, 11 Nov 22:27); F117_WIDE_PUFFS=0 turns the margin puffs and the blast off */
+        if (puffs_on < 0) { const char *e = getenv("F117_WIDE_PUFFS"); puffs_on = !(e && e[0] == '0'); }
         const int16_t depth = (int16_t)(uint16_t)(comp[2] >> 3);
         if (puffs_on && depth < 0 && depth > -256) {
             const uint16_t si = m->cpu.r[R_SI];
@@ -1424,8 +1429,8 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
                 (int16_t)rd16(m->mem, ds, 0x3D98), (int16_t)rd16(m->mem, ds, 0x368E), (int16_t)rd16(m->mem, ds, 0xC0AA), (int)(int16_t)rd16(m->mem, ds, 0x368E) - (int)(int16_t)rd16(m->mem, ds, 0x3D98), on ? "on" : "off", (long long)sx, sy);
     if (ret != 0x9BDF && ret != 0x9D89 && ret != 0xA203 && ret != 0xA236 && !(log == 2 && (ret == 0xAD26 || ret == 0xA4ED))) return;
     if (ret == 0xA203 || ret == 0xA236) {
-        static int tr_on = -1;                      /* F117_WIDE_TRACERS=1 turns the margin tracers on (off until the owner has seen a picture of one) */
-        if (tr_on < 0) { const char *e = getenv("F117_WIDE_TRACERS"); tr_on = e && e[0] == '1' || getenv("F117_WIDE_TRACER_SHIFT") != NULL || getenv("F117_WIDE_TRACER_FULL") != NULL; }
+        static int tr_on = -1;                      /* on by default (owner, 11 Nov 22:27); F117_WIDE_TRACERS=0 turns the margin tracers off */
+        if (tr_on < 0) { const char *e = getenv("F117_WIDE_TRACERS"); tr_on = !(e && e[0] == '0'); }
         if (ret == 0xA203) { g_tail.front = 1; g_tail.on = on; g_tail.x = (double)sx_t + 0.5; g_tail.y = (double)sy + 0.5; }
         else if (tr_on && (getenv("F117_WIDE_TRACER_FULL") || !(on && g_tail.on))) wide_tracer_line(m, ds, ss, (double)sx_t + 0.5, (double)sy + 0.5);   /* F117_WIDE_TRACER_FULL=1 (diagnostic): the whole line over the game's own, to see that it lands on it */
         if (ret == 0xA236) g_tail.front = 0;
@@ -1437,6 +1442,46 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     if (ret == 0x9D89) colour = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) < 8 ? 0xFF29 : 0xFF0D;
     if (log) fprintf(stderr, "[wide-dot] clock %llu %s view %02X zoom %u x %lld y %d colour %04X\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", view, zoom, (long long)sx, sy, colour);
     g_collector.overlay_dot(g_collector.user, (double)sx, (double)sy, colour);
+}
+
+/* R43, far aircraft: see private/r43_far_aircraft.py and docs/wide-margin-audit.md. Called once per frame from the walk hook. */
+static void far_aircraft_dots(machine_t *m)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 0; }      /* off until the owner has seen a picture; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
+    if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;
+    const uint16_t ds = m->cpu.seg[S_DS];
+    if (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) return;                           /* the cockpit view's camera; the outside views are not done */
+    const int count = (int16_t)rd16(m->mem, ds, 0xDEFC);
+    if (count <= 0 || count > 64) return;
+    int16_t A[3][3];
+    for (int a = 0; a < 3; a++) for (int c = 0; c < 3; c++) A[a][c] = (int16_t)rd16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a));
+    const int rows = rd16(m->mem, ds, 0x368C) != 0, zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] != 0;
+    for (int i = 0; i < count; i++) {
+        const uint16_t rec = (uint16_t)(0xC16A + 36 * i);
+        if (!(m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF] & 2)) continue;                 /* the loop's first test: flags (C182) & 2 */
+        const int16_t x = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 2)), y = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 4)), alt = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 6));
+        int dx = (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), dy = (int16_t)(rd16(m->mem, ds, 0xC0DE) - (uint16_t)y);      /* point_range, then vg_dist */
+        dx = dx < 0 ? -dx : dx; dy = dy < 0 ? -dy : dy;
+        int range = (dx > dy ? dx : dy) + ((dx > dy ? dy : dx) >> 1);
+        if (range > 0x7FFF) range = 0x7FFF;
+        if (on == 1 && (range < 4800 || range > g_distance)) continue;                              /* the game draws it, or the setting's reach ends */
+        int16_t v[3];
+        air_vector(m, ds, x, y, alt, v);
+        int32_t comp[3];
+        for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(A[c][a], v[c]); }
+        if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }
+        if (comp[2] >= 0) continue;                                                                 /* behind the eye */
+        const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+        const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+        const int sy = (int16_t)(q - (int16_t)(q >> 2)) + (rows ? (zoom ? 0x3C : 0x34) : 0x64);
+        const double depth = -(double)comp[2], w = depth > 8191.0 ? 8191.0 / depth : 1.0;          /* the one far-size rule */
+        {   static int flog = -1;                      /* F117_WIDE_DOTS_LOG=1: each unit the far-aircraft overlay draws */
+            if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
+            if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
+        }
+        g_collector.overlay_rect(g_collector.user, (double)sx + 0.5 - w / 2, (double)sy + 0.5 - w / 2, w, w, 0xFF0F, 0, 3);
+    }
 }
 
 /* F117_STAGE_PUFFS=1 (diagnostic, the proof of the smoke puff overlay): no recorded flight has a smoke trail, so each frame, in the render copy only (it is thrown away and the real game
@@ -1506,6 +1551,7 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     if ((int)k == g_walk_k) {
         g_walk_calls++;
         stage_puffs(m);
+        far_aircraft_dots(m);
         {   /* F117_VIEW_LOG=1 (diagnostic): once per frame the view matrix words [49BE..] and the aircraft test's [B082..] (the turned-view reference warps one
              * view to the other with them), the heading [2DEE], the picture's row offset flags [368C] [294B] and the clock */
             static int vlog = -1;

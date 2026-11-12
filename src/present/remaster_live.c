@@ -2115,6 +2115,11 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
         if (y + h > hi) h = hi - y;
         if (h <= 0.0 || w <= 0.0) return;
     }
+    {   /* never under one screen pixel (the far-size rule): a smaller rectangle grows about its centre; the scale is the picture's height over the game's 200 rows */
+        const double px = r->h > 200 ? 200.0 / r->h : 1.0;
+        if (w < px) { x -= (px - w) / 2; w = px; }
+        if (h < px) { y -= (px - h) / 2; h = px; }
+    }
     remaster_frame *f = &r->frame;
     if (f->n == f->cap) {
         const size_t cap = f->cap ? f->cap * 2 : 256;
