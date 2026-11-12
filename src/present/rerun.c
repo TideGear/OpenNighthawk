@@ -1732,7 +1732,15 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         } else if (ret == 0x9D89) model = depth > -32;
         else if (ret == 0x9DFD) model = depth < 0 && depth > -256;
         g_air_last_model = model;
-        if (ret == 0x9DFD) { static int wc = -1; if (wc < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wc = e && e[0] == '3'; } if (wc) fprintf(stderr, "[wreck-call] clock %llu depth16 %d z>>3 %d model %d height %d\n", (unsigned long long)m->cpu.icount, (int)depth, (int)(z >> 3), model, (int)(int16_t)rd16(m->mem, ds, 0xC62E)); }
+        if (ret == 0x9DFD) { static int wc = -1; if (wc < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wc = e && e[0] == '3'; } if (wc) {   /* BB0D's own steps (matched.c vgame_draw_model_in_view) on the wreck's arguments: relative x, y, z, the scale, and the 16-bit range test */
+                const uint32_t bx = (uint32_t)rd16(m->mem, ds, 0xBA3C) | (uint32_t)rd16(m->mem, ds, 0xBA3E) << 16, by = (uint32_t)rd16(m->mem, ds, 0xC056) | (uint32_t)rd16(m->mem, ds, 0xC058) << 16;
+                int32_t rx = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0D2) << 5) - bx), ry = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0E4) << 5) + by - 0x01000000u);
+                const int view2 = (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) != 0;
+                const int sc = ((int16_t)rd16(m->mem, ds, 0xB782) <= 0 ? 5 : 6) - (m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] ? 2 : 3);
+                const int32_t sx2 = sc > 0 ? (int32_t)((uint32_t)rx << sc) : rx >> -sc, sy2 = sc > 0 ? (int32_t)((uint32_t)ry << sc) : ry >> -sc;
+                const int ax = abs((int)(int16_t)(uint16_t)sx2), ay = abs((int)(int16_t)(uint16_t)sy2);
+                fprintf(stderr, "[wreck-call] clock %llu depth16 %d z>>3 %d model %d height %d B782 %d view2 %d rel %ld %ld scale %d low %d %d range %s\n", (unsigned long long)m->cpu.icount, (int)depth, (int)(z >> 3), model, (int)(int16_t)rd16(m->mem, ds, 0xC62E), (int)(int16_t)rd16(m->mem, ds, 0xB782), view2, (long)rx, (long)ry, sc, (int)(int16_t)(uint16_t)sx2, (int)(int16_t)(uint16_t)sy2, ax < 0x7FFF && ay < 0x7FFF ? "in" : "OUT");
+            } }
         int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;
         /* The falling wreck past the game's cut ([DEBE] at or below -256, matched.c 9E07: the game draws nothing, and nothing else depends on it): drawn as the model it is, at its
          * true place and perspective size. Every row of the widened matrix is divided by k, so the point keeps its screen position and its size ratio (screen = x' / z', the model's
