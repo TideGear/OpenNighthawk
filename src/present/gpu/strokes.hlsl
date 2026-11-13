@@ -121,6 +121,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const float ddx = asfloat(strokes[sb + 9]), ddy = asfloat(strokes[sb + 10]);
         // decal rules against the polygon pass
         if (decal_hidden(at, iz, po, line_point, false)) continue;
+        if (owner[at] == 0xFFFFF7FEu) continue;   // a far dot: the original paints it over the lines already there (remaster_raster.c)
         const bool same_here = (owner[at] >> 12) == object;
         if (!same_here && stroke_hidden(px, py, iz, po, line_point, false, ls, (int)strokes[sb + 4])) continue;
         // stroke competition

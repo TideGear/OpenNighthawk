@@ -256,6 +256,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
             /* Something clearly nearer is already there: skip. At the same depth (within a hundredth of a percent) the later
              * polygon wins, so a decal on the ground (the runway strips, the markings) draws over the ground it lies on, as
              * the original's draw order has it; an exact test would let rounding pick between them. */
+            if (t->line_order && t->owner && t->owner[(long)y * t->w + x] == 0xFFFFF7FEu) continue;   /* a far dot: 983E paints it after the immediate objects' lines; the deferred objects after it cover it with their faces (the polygon rule) */
             if (t->owner && (t->line_decal || !t->line_order)) {
                 /* Lines, dots and polygons by what is already at the pixel (remaster_raster.h, owner): a ground object (bit 11:
                  * the runway, an apron) never hides another object's lines or polygons, since the original paints what stands on
@@ -271,6 +272,7 @@ static long fill_triangle(remaster_target *t, sv a, sv b, sv c, uint32_t color)
                     float k = 0.9999f;                          /* the same object: the depth, later winning a tie */
                     if (on_ground) k = me_ground ? 0.97f : 0.0f;  /* over the ground: always, or (ground on ground) unless clearly nearer */
                     else if (me_ground && ow && !same) k = 1.03f; /* the ground over what stands on it: only where clearly in front */
+                    if (t->paint_owner == 0xFFFFF7FEu) k = 0.0f;  /* a far dot (983E paints it before the deferred pass, after the immediate objects): over whatever is there; the deferred objects after it cover it by their own depth */
                     if (iz < *d * k) continue;
                 }
             } else if (iz < *d * 0.9999f && !(t->line_slope > 0.0 && t->line_ref_z && iz >= *d - (float)t->line_slope * surface_slope(t, x, y))) continue;

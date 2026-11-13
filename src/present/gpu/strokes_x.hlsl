@@ -199,6 +199,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
         const float ddx = asfloat(strokes[sb + 9]), ddy = asfloat(strokes[sb + 10]);
         const double ddxd = asdouble(strokes[sb + 5], strokes[sb + 6]), ddyd = asdouble(strokes[sb + 7], strokes[sb + 8]);
         // decal rules against the polygon pass
+        if (owner[at] == 0xFFFFF7FEu) continue;   // a far dot: the original paints it over the lines already there (remaster_raster.c)
         const bool same_here = (owner[at] >> 12) == object;
         // F117_DECAL_SIMPLE (default on; F117_DECAL_SIMPLE=0 restores the exact rule): pad2 != 0 skips the neighbourhood walk (stroke_hidden), which is where the time went
         // (strokes 11.9 to 3.0 ms on the late flight at 4K); the face-cache depth stays. About 216 of 8.3 million pixels differ from the exact rule (docs/gpu-compositor.md).

@@ -78,6 +78,7 @@ void main(uint3 gid : SV_GroupID, uint3 id : SV_DispatchThreadID)
             float k = 0.9999;
             if (on_ground) k = me_ground ? 0.97 : 0.0;
             else if (me_ground && own != 0 && !same) k = 1.03;
+            if (po == 0xFFFFF7FEu) k = 0.0;   // a far dot: over whatever is there (see remaster_raster.c)
             if (iz < d * k) continue;
             d = iz; own = po; col = tri[b + 7]; idx = tri[b + 8];
         } else {

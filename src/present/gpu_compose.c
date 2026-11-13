@@ -169,6 +169,9 @@ static SDL_GPUComputePipeline *load_pipeline(SDL_GPUDevice *dev, const char *dir
 
 static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, int own)
 {
+    {   /* the adapter the compositor runs on (a different GPU rounds a few pixels differently: the CPU-vs-GPU shots compare at exactly 0) */
+        const SDL_PropertiesID pr = SDL_GetGPUDeviceProperties(device);
+        fprintf(stderr, "[gpu-compose] device: %s, driver: %s %s\n", SDL_GetStringProperty(pr, SDL_PROP_GPU_DEVICE_NAME_STRING, "?"), SDL_GetStringProperty(pr, SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING, "?"), SDL_GetStringProperty(pr, SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, "?")); }
     gpu_compose *g = (gpu_compose *)calloc(1, sizeof *g);
     if (!g) return NULL;
     g->dev = device;

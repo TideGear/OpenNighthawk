@@ -1607,7 +1607,7 @@ static void far_aircraft_dots(machine_t *m)
             if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
         }
-        g_collector.overlay_rect(g_collector.user, (double)sx + 0.5 - w / 2, (double)sy + 0.5 - w / 2, w, w, 0xFF0F, 0, 3);
+        g_collector.overlay_rect(g_collector.user, (double)sx + 0.5 - w / 2, (double)sy + 0.5 - w / 2, w, w, 0xFF0F, 0, 99);   /* the same layer as the in-range far dots (983E, painted before the deferred pass): scenery hides it, ground and sky do not */
     }
 }
 
@@ -1751,10 +1751,16 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
         static int probe = -1;
         if (probe < 0) probe = getenv("F117_WIDE_AIR_PROBE") != NULL;
+        static int turned_dots = -1; if (turned_dots < 0) turned_dots = getenv("F117_WIDE_DOTS_TURNED") != NULL;   /* with F117_TURN_VIEW: the game's own dots and the predictions use the turned scene's matrix, so a dot that is in the margin unturned is in the middle turned (test only) */
+        {   /* F117_MATRIX_LOG=1 (test only): the matrix B5DC uses (B082) and the scene's (49BE), word by word, to fit the one from the other */
+            static int ml = -1, nml; if (ml < 0) ml = getenv("F117_MATRIX_LOG") != NULL;
+            if (ml && nml++ < 3) { fprintf(stderr, "[matrix] clock %llu B082:", (unsigned long long)m->cpu.icount); for (int i = 0; i < 9; i++) fprintf(stderr, " %d", (int)(int16_t)rd16(m->mem, ds, (uint16_t)(0xB082 + 2 * i)));
+                fprintf(stderr, " | 49BE:"); for (int i = 0; i < 9; i++) fprintf(stderr, " %d", (int)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49BE + 2 * i))); fputc(10, stderr); } }
         for (int a = 0; a < 3; a++)
             for (int c = 0; c < 3; c++) {
                 const uint16_t at = (uint16_t)(0xB082 + 6 * c + 2 * a);
-                const int64_t w = (int16_t)rd16(m->mem, ds, at);
+                int64_t w = (int16_t)rd16(m->mem, ds, at);
+                if (turned_dots) { const int16_t t = (int16_t)rd16(m->mem, ds, (uint16_t)(0x49BE + 6 * c + 2 * a)); w = ((a == 1) != (c == 1)) ? -t : t; }   /* M_B = D M_49 D, D = diag(1, -1, 1) (audit, 11 Nov): the turned scene's matrix for the flat things */
                 g_air_orig[c][a] = (int16_t)w;
                 const int64_t div = (int64_t)reach * (a == 0 ? g_air_pct * 3 : 100);       /* in 1/10000 */
                 g_air_r[c][a] = (int16_t)(w * 10000 / ((int64_t)reach * 100));

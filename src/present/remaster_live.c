@@ -1944,6 +1944,15 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         if (peek16(m, ss, sp) == 0xBC59)
             shift += (int16_t)peek16(m, ss, (uint16_t)(m->cpu.r[R_BP] + 0x16));
         const uint16_t type = peek16(m, ss, (uint16_t)(sp + 2)) & 0x7FFF;
+        {   /* F117_CLASS_LOG=1 (test only): every placement's class byte (E2B6: the table at [0A60 + 2 * (model >> 8)] indexed by the low byte; bit 7 = deferred), counted by table and model, printed every 2000 placements */
+            static int cl = -1; static unsigned cnt[8][128][2], n;
+            if (cl < 0) cl = getenv("F117_CLASS_LOG") != NULL;
+            if (cl) {
+                const unsigned hi = (type >> 8) & 7, lo = type & 0x7F;
+                const uint16_t tab = peek16(m, ds, (uint16_t)(0x0A60 + 2 * hi));
+                const unsigned cls = m->mem[(((uint32_t)ds << 4) + (uint16_t)(tab + lo)) & 0xFFFFF];
+                cnt[hi][lo][(cls & 0x80) ? 1 : 0]++;
+                if (++n % 2000 == 0) { fprintf(stderr, "[class] after %u placements, immediate (bit 7 clear) / deferred by table.model:", n); for (unsigned i = 0; i < 8; i++) for (unsigned j = 0; j < 128; j++) if (cnt[i][j][0] || cnt[i][j][1]) fprintf(stderr, " %u.%u=%u/%u", i, j, cnt[i][j][0], cnt[i][j][1]); fputc(10, stderr); } } }
         if (shift >= -16 && shift <= 16 && r->nunits < UNITS_MAX) {
             const unsigned u = r->nunits++;
             r->units[u].bank = peek16(m, ds, (uint16_t)(0xB78A + 2 * (type >> 8)));
@@ -2158,7 +2167,7 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
         p->v[k].y = (int32_t)llround((y + cy[k] - r->origin[1]) * z / 256.0);
         p->v[k].z = (int32_t)z;
     }
-    p->owner = 0xFFFFF7FFu;     /* serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
+    p->owner = layer == 99 ? 0xFFFFF7FEu : 0xFFFFF7FFu;     /* 7FEh: the far dot's mark, drawn over what is there (remaster_raster.c, polys.hlsl); otherwise serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
     p->colour_word = (uint16_t)colour_word;
     p->colour_index = (uint8_t)(colour_word & 255);
     if (inv > 0.0) p->inv_depth_scale = inv;
