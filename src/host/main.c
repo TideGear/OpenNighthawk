@@ -2942,7 +2942,7 @@ int main(int argc, char **argv)
                             fprintf(stderr, "[emit-wreck] clock %llu side %d east %u north %u height %d (aircraft %u,%u alt %u) offsets %.0f %.0f oa %.0f\n", (unsigned long long)H.m.cpu.icount, wside, weast, wnorth, wh, WW(0xC0D0), WW(0xC0DE), WW(0x2DF4), ox, oy, oa);
                         }
                     }
-                    if (wplaced && H.m.cpu.icount >= wkeep) { wkeep = H.m.cpu.icount + 20000ull; WPUT(0xC0D2, weast); WPUT(0xC0E4, wnorth); WPUT(0xC62E, wh); WPUT(0xB782, 0x80); }
+                    if (wplaced && H.m.cpu.icount >= wkeep) { wkeep = getenv("F117_EMIT_WRECK_ONCE") ? ~0ull : H.m.cpu.icount + 20000ull;   /* F117_EMIT_WRECK_ONCE=1: set the state once and let the game's own fall (04958) run */ WPUT(0xC0D2, weast); WPUT(0xC0E4, wnorth); WPUT(0xC62E, wh); WPUT(0xB782, 0x80); }
                     #undef WW
                     #undef WPUT
                 }

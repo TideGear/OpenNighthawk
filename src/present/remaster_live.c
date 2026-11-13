@@ -495,8 +495,8 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                             : (!front || px < x0b - 1.5 || px > x1b + 1.5 || py < y0b - 1.5 || py > y1b + 1.5)) continue;
                 uint32_t colour = 0;
                 word_colour(m, p->colour_word, p->darken, &colour);
-                fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d owner %08X flat %u\n",
-                        i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0, p->owner, (unsigned)p->flat);
+                fprintf(stderr, "[probe] prim %zu model %u kind %d n %d word %04X colour %06X behind %d box x %.1f..%.1f y %.1f..%.1f z %d inv %.6f true %.0f owner %08X flat %u\n",
+                        i, (unsigned)p->model, (int)p->kind, p->n, (unsigned)p->colour_word, (unsigned)(colour & 0xFFFFFF), p->n - front, x0b, x1b, y0b, y1b, front ? (int)p->v[0].z : 0, p->inv_depth_scale, front ? (double)p->v[0].z / (p->inv_depth_scale > 0.0 ? p->inv_depth_scale : 1.0) : 0.0, p->owner, (unsigned)p->flat);
                 if (p->kind == SCENE_LINES || p->kind == SCENE_DOTS || getenv("F117_REMASTER_PROBE_VERTICES"))
                     for (int k = 0; k < p->n; ++k)
                         fprintf(stderr, "[probe]   vertex %d: %d,%d,%d\n", k, p->v[k].x, p->v[k].y, p->v[k].z);
@@ -1927,6 +1927,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             {   static int want = -2;
                 if (want == -2) { const char *e = getenv("F117_MODEL_LOG"); want = e ? atoi(e) : -1; }
                 if (want >= 0 && r->model == (unsigned)want) fprintf(stderr, "[faces] model %u added %d\n", (unsigned)r->model, n);
+                if (want >= 0 && r->model == (unsigned)want && r->frame.n > first) {      /* the first polygon's camera z against the scale it carries (the depth the compositor compares is inv_depth_scale / z) */
+                    const remaster_prim *q = &r->frame.prim[first];
+                    fprintf(stderr, "[faces-z] model %u prims %zu first z %d,%d,%d inv_depth %.6f shrink %d pos %d %d %d inv %.6f\n", (unsigned)r->model, r->frame.n - first, q->v[0].z, q->n > 1 ? q->v[1].z : 0, q->n > 2 ? q->v[2].z : 0, q->inv_depth_scale, (int)q->shrink, r->position[0], r->position[1], r->position[2], r->pending_inv_depth);
+                }
             }
         }
     } else if (k == 4) {
@@ -2133,7 +2137,17 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
      * scale (draw_scene_ex: cx = origin * ux + xoff), so the dot is that square as a polygon: exactly one game pixel at every scale, where a dot
      * primitive is 1.5 pixels wide and centred on the corner. In front of everything (the near plane is 0x10000), as the flat dot is drawn last;
      * an owner no object has (serial FFFFFh, face FFFh), so no line takes it for its own face. */
-    const double z = 0x20000 + 0x200 * (layer < 0 ? 0 : layer > 3 ? 3 : layer);     /* the layers (rerun.h): 0 blast on top, 3 far dots at the back */
+    /* layer 0..3: a constant depth in front of everything (the layers, rerun.h: 0 blast on top, 3 far dots at the back), for what the original draws flat and last.
+     * layer < 0: the true depth, -layer in the game's B5DC units (-z' of the call that placed it), for what the original depth-sorts (a deferred sprite, a model):
+     * the compositor compares inv_depth_scale / z, and the game's own wreck model (BB0D) measured z / inv_depth_scale = 8191 x its B5DC depth at depths 20 to 49
+     * (12 Nov 2026, [faces-z]: 4,193,792 / 512 per unit), so the polygon gets z / inv = 8191 x depth, z kept near 2^22 by the scale so int32 coordinates cannot overflow. */
+    double z, inv = 0.0;
+    if (layer < 0) {
+        const double zt = 8191.0 * (double)(-layer);
+        const double k = zt > 4194304.0 ? zt / 4194304.0 : 1.0;
+        z = zt / k; inv = 1.0 / k;
+        if (z < 0x20000) z = 0x20000;
+    } else z = 0x20000 + 0x200 * (layer > 3 ? 3 : layer);
     const double cx[4] = { 0, w, w, 0 }, cy[4] = { 0, 0, h, h };
     p->kind = SCENE_POLYGON;
     p->n = 4;
@@ -2145,6 +2159,7 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
     p->owner = 0xFFFFF7FFu;     /* serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
     p->colour_word = (uint16_t)colour_word;
     p->colour_index = (uint8_t)(colour_word & 255);
+    if (inv > 0.0) p->inv_depth_scale = inv;
 }
 
 void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x1, double y1, unsigned colour_word)

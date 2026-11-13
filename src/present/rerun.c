@@ -1336,10 +1336,85 @@ static void wide_puff_far(machine_t *m, uint16_t ds, int64_t z, int64_t x, int64
     static int plog = -1;
     if (plog < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); plog = e && e[0] == '3'; }
     if (plog) fprintf(stderr, "[wide-puff-far] clock %llu x %lld y %d depth %.0f size %.3f kind %u colour %u\n", (unsigned long long)m->cpu.icount, (long long)px, py, depth, size, kind, c);
-    g_collector.overlay_rect(g_collector.user, (double)px + 0.5 - size / 2, (double)py + 0.5 - size / 2, size, size, 0xFF00u | c, 1, 2);
+    {   const double fx = (double)x * 256.0 / (double)z + 160.0, fy = (double)y * 256.0 / (double)z * 0.75 + (double)(py - (q - (int16_t)(q >> 2)));   /* exact projection, as for the wreck dot */
+    g_collector.overlay_rect(g_collector.user, fx - size / 2, fy - size / 2, size, size, 0xFF00u | c, 1, -(int)(-z > 2147483647 ? 2147483647 : -z));   /* true depth (-z', not |[DEBE]| = -z' >> 3): the original depth-sorts puffs with the other deferred objects */ }
 }
 
 static struct { int valid, on; int16_t sx, sy; uint16_t ret; } g_dot_prev;
+static uint16_t abs_w(uint16_t v) { const uint16_t sg = (v & 0x8000) ? 0xFFFF : 0; return (uint16_t)((v ^ sg) - sg); }
+/* The falling wreck (the call returning to 9DFD) and what the game draws of it. Every step below is read from the matched code:
+ * - 9E00..9E0F (matched.c 34805): the wreck model (model 11, BB0D) is requested only when [C62E] is not zero and -256 < [DEBE] < 0, [DEBE] = z' >> 3 of the call's own B5DC;
+ * - BB0D (matched.c 48553): x32 = [C0D2] << 5 and y32 = [C0E4] << 5 less the view origin ([BA3C]:[BA3E], [C056]:[C058] + 0x01000000 for y), z = [C62E] - [2DF4];
+ *   all three shifted left by the scale (5 if [B782] is zero else 6, less 3, or 2 when [294B] is set; negative: arithmetic right), and the model is dropped when the low word of
+ *   x or y has |v| >= 7FFFh; with bit 7 of [C0A6] a second-view correction applies (not modelled: no dot then);
+ * - E2B6 (matched.c 13347 ff.): the point (x low, -y low, z + (z != 0)) goes to E3BF, whose camera space is the matrix at 49BE/49C4/49CA (word [49CA + 2i] * y, [49C4 + 2i] * z,
+ *   [49BE + 2i] * x, summed, doubled; i = 0 x, 1 y, 2 z, high words) and which culls the object when the z high word is above [48E6] or below [48F6 + 2 * class]
+ *   (class = the low three bits of the byte at [[0A60 + 2 * (model >> 8)] + model & 7Fh], for model 11), when |x| or |y| leaves the cockpit frustum ([438E] clear: the second frustum is not modelled),
+ *   or when the range metric ((|x| + |y|) >> 2) + |z| is above [48E6].
+ * Returns 1 when the game draws the model, 0 when it does not, -1 when the state is one this does not model. */
+static int wreck_game_draws(machine_t *m, uint16_t ds, uint16_t ss)
+{
+    if (rd16(m->mem, ds, 0xC62E) == 0 || (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) || rd16(m->mem, ds, 0x438E) != 0) return -1;
+    const int zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] != 0;
+    const uint32_t ox = (uint32_t)rd16(m->mem, ds, 0xBA3C) | (uint32_t)rd16(m->mem, ds, 0xBA3E) << 16, oy = (uint32_t)rd16(m->mem, ds, 0xC056) | (uint32_t)rd16(m->mem, ds, 0xC058) << 16;
+    int32_t rx = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0D2) << 5) - ox), ry = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0E4) << 5) + oy - 0x01000000u);
+    int16_t rz = (int16_t)(rd16(m->mem, ds, 0xC62E) - rd16(m->mem, ds, 0x2DF4));
+    const int sc = (rd16(m->mem, ds, 0xB782) == 0 ? 5 : 6) - (zoom ? 2 : 3);
+    if (sc > 0) { rx = (int32_t)((uint32_t)rx << sc); ry = (int32_t)((uint32_t)ry << sc); rz = (int16_t)((uint16_t)rz << sc); }
+    else if (sc < 0) { rx >>= -sc; ry >>= -sc; rz = (int16_t)(rz >> -sc); }
+    if (abs_w((uint16_t)rx) >= 0x7FFF || abs_w((uint16_t)ry) >= 0x7FFF) return 0;
+    const int16_t bp = (int16_t)(uint16_t)rx, bx = (int16_t)(-(int16_t)(uint16_t)ry), cx = (int16_t)(rz + 1);   /* the height is not zero here */
+    int32_t hi[3];
+    for (int i = 0; i < 3; i++) {
+        const int32_t acc = (int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49CA + 2 * i)) * bx + (int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49C4 + 2 * i)) * cx + (int32_t)(int16_t)rd16(m->mem, ds, (uint16_t)(0x49BE + 2 * i)) * bp;
+        hi[i] = (int16_t)(((uint32_t)acc << 1) >> 16);
+    }
+    const int16_t zh = (int16_t)hi[2];
+    const uint16_t model = 11, tab = rd16(m->mem, ds, (uint16_t)(0x0A60 + 2 * ((model >> 8) & 0x7F)));
+    const unsigned lod = (m->mem[(((uint32_t)ds << 4) + (uint16_t)(tab + (model & 0xFF))) & 0xFFFFF]) & 7u, lod2 = lod * 2;
+    if (zh > (int16_t)rd16(m->mem, ds, 0x48E6)) return 0;
+    if (zh < (int16_t)rd16(m->mem, ds, (uint16_t)(0x48F6 + lod2))) return 0;
+    const unsigned cl = (unsigned)(zoom ^ 1);
+    const int16_t az = (int16_t)abs_w((uint16_t)zh);
+    int16_t lim = (int16_t)((int16_t)(az + (int16_t)(rd16(m->mem, ds, 0xE56A) + lod2)) >> cl);
+    const int16_t xlim = (int16_t)(lim + (lim >> 2)), ax = (int16_t)abs_w((uint16_t)hi[0]);
+    if (ax > xlim) return 0;
+    int16_t up = (int16_t)((int16_t)(az + (int16_t)rd16(m->mem, ss, (uint16_t)(rd16(m->mem, ds, 0xE570) + lod2))) >> cl);
+    if (m->mem[(((uint32_t)ds << 4) + 0x368C) & 0xFFFFF]) up = (int16_t)(((int16_t)((up >> 3) + up)) >> 1);
+    const int16_t ay = (int16_t)abs_w((uint16_t)hi[1]);
+    if (ay > up) return 0;
+    const int16_t metric = (int16_t)((int16_t)((int16_t)(ax + ay) >> 2) + az);
+    {   static int dl = -1; if (dl < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); dl = e && e[0] == '3'; }
+        if (dl) fprintf(stderr, "[wreck-calc] rx %d ry %d rz %d sc %d | bp %d bx %d cx %d | hi %d %d %d lod %u | xlim %d up %d metric %d 48E6 %d near %d\n", (int)rx, (int)ry, (int)rz, sc, bp, bx, cx, hi[0], hi[1], hi[2], lod, xlim, up, metric, (int)(int16_t)rd16(m->mem, ds, 0x48E6), (int)(int16_t)rd16(m->mem, ds, (uint16_t)(0x48F6 + lod2))); }
+    return !(metric > (int16_t)rd16(m->mem, ds, 0x48E6));
+}
+static void wide_wreck(machine_t *m, uint16_t ds, uint16_t ss, const int32_t comp[3], int zoom)
+{
+    static int on = -1;                             /* on by default; F117_WIDE_WRECK=0 draws no dot (the game's own picture) */
+    if (on < 0) { const char *e = getenv("F117_WIDE_WRECK"); on = !(e && e[0] == '0'); }
+    if (!on || !g_collector.overlay_rect || comp[2] >= 0) return;
+    const int16_t debe = (int16_t)(uint16_t)(comp[2] >> 3);
+    const int in_range = debe < 0 && debe > -256;
+    const int drawn = in_range ? wreck_game_draws(m, ds, ss) : 0;
+    static int wl = -1; if (wl < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wl = e && e[0] == '3'; }
+    const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+    const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+    int sy = q - (int16_t)(q >> 2);
+    const int rows = rd16(m->mem, ds, 0x368C) != 0;
+    sy += rows ? (zoom ? 0x3C : 0x34) : 0x64;
+    if (wl) fprintf(stderr, "[wreck] clock %llu z' %d debe %d in_range %d game_draws %d at %lld,%d\n", (unsigned long long)m->cpu.icount, (int)(-comp[2]), (int)debe, in_range, drawn, (long long)sx, sy);
+    if (drawn != 0) return;                         /* the game draws it (1), or this state is not modelled (-1): no dot */
+    const int inside = sx >= 0 && sx <= 0x13F;
+    if (sy < 0 || sy > (inside ? (rows ? 0x60 : 0xC7) : 199) || sx < -4000 || sx > 4000) return;
+    const double depth = -(double)comp[2], w = depth > 8191.0 ? 8191.0 / depth : 1.0;       /* the one far-size rule */
+    {   /* centred on the exact projection (the routine's arithmetic without its integer truncation): the original draws a model at its true sub-pixel place, and with a
+     * depth test a dot on the rounded pixel can fall under the horizon's ground, which the true point is above (seen at depth 4,000, 12 Nov) */
+    const double fx = (double)comp[0] * 256.0 / (double)comp[2] + 160.0, fq = (double)comp[1] * 256.0 / (double)comp[2];
+    const double fy = fq * 0.75 + (rows ? (zoom ? 0x3C : 0x34) : 0x64);
+    g_collector.overlay_rect(g_collector.user, fx - w / 2, fy - w / 2, w, w, 0xFF00u, 0, -(int)(depth < 1.0 ? 1.0 : depth));   /* at its true depth: the original draws the wreck as a depth-tested model */   /* palette index 0: the wreck's pixels in the original are black */ }
+}
+
+
 /* The gun tracer (the display pass, section 2, matched.c 68428): its tail is projected by the call returning to A203 and its head, half a velocity step ahead, by the call returning to
  * A236; the game draws the line (114A:0006, clipped to the 320 x 91 view) only when BOTH ends are on the screen: "the gun's reach is the window". A tracer with an end off the 320 screen
  * but both ends in front of the eye is drawn here by the part of the line outside x 0..319, in the pen the game would use: 0Dh for the player's slots (index below [B198]), 29h for an
@@ -1399,7 +1474,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
         }
     }
     g_dot_prev.valid = 0;
-    if (ret != 0x9BDF && ret != 0x9D89 && ret != 0x9A04 && ret != 0xA298 && ret != 0xA203 && ret != 0xA236 && log < 2) return;   /* F117_WIDE_DOTS_LOG=2: every caller's true position too (flight display pass, puffs) */
+    if (ret != 0x9BDF && ret != 0x9D89 && ret != 0x9A04 && ret != 0x9DFD && ret != 0xA298 && ret != 0xA203 && ret != 0xA236 && log < 2) return;   /* F117_WIDE_DOTS_LOG=2: every caller's true position too (flight display pass, puffs) */
     int16_t v[3];
     air_vector(m, ds, (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), v);
     int32_t comp[3];
@@ -1411,6 +1486,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
         const int player = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) >= 8;
         if (-comp[2] > deepest[player]) { deepest[player] = -comp[2]; fprintf(stderr, "[proj-depth] clock %llu %s projectile: new deepest %d world units\n", (unsigned long long)m->cpu.icount, player ? "player" : "enemy", (int)deepest[player]); }
     }
+    if (ret == 0x9DFD) { if (comp[2] < 0) wide_wreck(m, ds, ss, comp, (int)zoom); return; }
     if (comp[2] >= 0) { g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = 0; g_dot_prev.ret = ret; return; }   /* behind the eye: off, and no dot */
     if (ret == 0xA298) {                            /* the impact blast (display pass section 3, matched.c 68847): the sprite 1A98(x, y, size, phase), same driver call as a puff's */
         static int blast_on = -1;
@@ -1447,7 +1523,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
             const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
             int py = q - (int16_t)(q >> 2);
             py += rd16(m->mem, ds, 0x368C) ? (zoom ? 0x3C : 0x34) : 0x64;
-            wide_puff_overlay(m, ds, (int)px, py, size, (unsigned)((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, 0x9208, 8, 2, !(px >= 0 && px <= 0x13F && py >= 0 && py <= (rd16(m->mem, ds, 0x368C) ? 0x60 : 0xC7)));
+            wide_puff_overlay(m, ds, (int)px, py, size, (unsigned)((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, 0x9208, 8, -(int)(comp[2] < -1 ? -comp[2] : 1), !(px >= 0 && px <= 0x13F && py >= 0 && py <= (rd16(m->mem, ds, 0x368C) ? 0x60 : 0xC7)));
         } else if (puffs_on && comp[2] < 0 && (comp[2] >> 3) <= -256) {          /* past the game's cut: true size, one screen pixel at least (R44 item 3 follow-up) */
             const uint16_t si = m->cpu.r[R_SI];
             wide_puff_far(m, ds, comp[2], comp[0], comp[1], (int16_t)rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)), ((rd16(m->mem, ds, (uint16_t)(si + 0x3A0E)) & 14) >> 1) & 7u, zoom);
@@ -1732,37 +1808,11 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         } else if (ret == 0x9D89) model = depth > -32;
         else if (ret == 0x9DFD) model = depth < 0 && depth > -256;
         g_air_last_model = model;
-        if (ret == 0x9DFD) { static int wc = -1; if (wc < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wc = e && e[0] == '3'; } if (wc) {   /* BB0D's own steps (matched.c vgame_draw_model_in_view) on the wreck's arguments: relative x, y, z, the scale, and the 16-bit range test */
-                const uint32_t bx = (uint32_t)rd16(m->mem, ds, 0xBA3C) | (uint32_t)rd16(m->mem, ds, 0xBA3E) << 16, by = (uint32_t)rd16(m->mem, ds, 0xC056) | (uint32_t)rd16(m->mem, ds, 0xC058) << 16;
-                int32_t rx = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0D2) << 5) - bx), ry = (int32_t)(((uint32_t)rd16(m->mem, ds, 0xC0E4) << 5) + by - 0x01000000u);
-                const int view2 = (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) != 0;
-                const int sc = ((int16_t)rd16(m->mem, ds, 0xB782) <= 0 ? 5 : 6) - (m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] ? 2 : 3);
-                const int32_t sx2 = sc > 0 ? (int32_t)((uint32_t)rx << sc) : rx >> -sc, sy2 = sc > 0 ? (int32_t)((uint32_t)ry << sc) : ry >> -sc;
-                const int ax = abs((int)(int16_t)(uint16_t)sx2), ay = abs((int)(int16_t)(uint16_t)sy2);
-                fprintf(stderr, "[wreck-call] clock %llu depth16 %d z>>3 %d model %d height %d B782 %d view2 %d rel %ld %ld scale %d low %d %d range %s\n", (unsigned long long)m->cpu.icount, (int)depth, (int)(z >> 3), model, (int)(int16_t)rd16(m->mem, ds, 0xC62E), (int)(int16_t)rd16(m->mem, ds, 0xB782), view2, (long)rx, (long)ry, sc, (int)(int16_t)(uint16_t)sx2, (int)(int16_t)(uint16_t)sy2, ax < 0x7FFF && ay < 0x7FFF ? "in" : "OUT");
-            } }
         int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;
-        /* The falling wreck past the game's cut ([DEBE] at or below -256, matched.c 9E07: the game draws nothing, and nothing else depends on it): drawn as the model it is, at its
-         * true place and perspective size. Every row of the widened matrix is divided by k, so the point keeps its screen position and its size ratio (screen = x' / z', the model's
-         * own points go through the same matrix) while the routine's [DEBE] lands inside the game's range and its test passes; the compositor's far-size rule gives the thin
-         * parts their at-least-one-screen-pixel width. Only the 32-bit z' >> 3 counts here (the game's 16-bit [DEBE] wraps beyond 32,767). */
-        static int16_t farw[3][3];
-        const int32_t d32 = z >> 3;
-        static int wreck_on = -1;
-        if (wreck_on < 0) { const char *e = getenv("F117_WIDE_WRECK"); wreck_on = e && e[0] == '1'; }   /* F117_WIDE_WRECK=1: the far wreck. OFF by default: no staged state has drawn a wreck even in the original presentation, so the path is unproven (docs/wide-margin-audit.md) */
-        if (ret == 0x9DFD && d32 <= -256 && wreck_on) {
-            const int k = (int)((-(int64_t)d32) / 128) + 1;
-            for (int a = 0; a < 3; a++) for (int c = 0; c < 3; c++) farw[c][a] = (int16_t)(g_air_ow[c][a] / k);
-            mat = farw;
-            model = 1;
-            g_air_last_model = 1;
-            static int wl = -1; if (wl < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); wl = e && e[0] == '3'; }
-            if (wl) fprintf(stderr, "[wide-wreck-far] clock %llu depth %d k %d\n", (unsigned long long)m->cpu.icount, (int)d32, k);
-        }
         for (int a = 0; a < 3; a++)
             for (int c = 0; c < 3; c++)
                 wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a), (uint16_t)mat[c][a]);
-        wide_dot_at_entry(m, ds, ss, sp, model ? 0 : ret);
+        wide_dot_at_entry(m, ds, ss, sp, (model && ret != 0x9DFD) ? 0 : ret);
     }
     return 0;
 }

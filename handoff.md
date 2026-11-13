@@ -1,6 +1,6 @@
 # Handoff
 
-## Current state: 12 November 2026, 12:10 (read first)
+## Current state: 12 November 2026, 15:25 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The previous one (10 and 11 November: the audit, R41 to R44, the margin dots, the
 sprite proofs, many staged findings) is archived unedited in [docs/archive/handoff-log-20261111.md](docs/archive/handoff-log-20261111.md); the one before it in
@@ -28,9 +28,7 @@ presentation, so the path is unproven (what is missing from the staged state is 
 it (option A; B "everywhere" could come later as an off-by-default setting); Terrain dots stay at the Near default; one far-size rule for every light and dot (one game pixel up to 8,191 world units of depth,
 x 8191 / depth beyond, at least one screen pixel); the margin tracers, puffs and blast are on.
 
-**Remaining Part A, in this order:** (1) the far wreck: find a state that draws it in the original (a real kill in a recorded flight, or the side effects of `vgame_ai_destroy`, matched.c 17414, plus what `BB0D` does with shape 11), prove the far path
-against it, then turn it on; (2) the `DC46` icons (shape ids 25h to FFh; anchor = last line edge of the model's command stream, `[7D7E]` set at `model_fill_stream` `line_edge`, matched.c 54503; the edge records are made by
-`model_edge_pass` 12AD3 / `model_prepare_edge`; read how word 0 and word 4 of the record hold the screen point, scan which objects use them, build, prove); (3) one full gate with everything on, push, CI, the release (limits stated). Then Part B.
+**Remaining Part A (12 Nov 15:25):** the far wreck dot is built and proven (audit, last section; `F117_WIDE_WRECK=0` off; default on); DC46 icons closed (camera MFD, not a margin item); gate16 (sharded func_lockstep, `private/step6/gate.sh`) then push, CI, the release (limits stated: far aircraft OFF; wreck dot black and only against a lit background, second view/second frustum not modelled). Then Part B.
 
 **How to work (what cost time this session):** read the matched code first and say which facts are code, comment or run; staged state must be the game's own (poke flags or the smoke source, never write or
 draw puffs by hand); VGAME's data segment is `37AE` (physical `37AE0`; an earlier `37DE` guess was wrong): print and check every computed address before poking (a hand-typed poke address hit unrelated memory);
