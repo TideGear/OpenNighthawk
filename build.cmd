@@ -33,6 +33,9 @@ rem worktree overwrite it, and a scan of the wrong log printed BUILD OK.
 set "LOG=%~dp0build\f117r-build.log"
 del /q build\*.old.* 2>nul
 
+rem F117R_BUILD_TARGET=f117a builds only that target (experiment cycles: the 60 test executables are not relinked); unset, everything is built, as the gate needs.
+set "F117R_TGT="
+if defined F117R_BUILD_TARGET set "F117R_TGT=--target %F117R_BUILD_TARGET%"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo %*
 if errorlevel 1 exit /b 1
 
@@ -41,7 +44,7 @@ rem client intermittently holds an object or output open. Any other
 rem failure is reported at once. The log is scanned as well as the exit
 rem code, which has been seen to report success after a failed link.
 for /l %%A in (1,1,30) do (
-  cmake --build build > "%LOG%" 2>&1
+  cmake --build build %F117R_TGT% > "%LOG%" 2>&1
   set "RC=!ERRORLEVEL!"
   findstr /C:"ninja: build stopped" /C:"FAILED:" /C:"fatal error" "%LOG%" >nul
   if errorlevel 1 (set "SCAN=0") else (set "SCAN=1")

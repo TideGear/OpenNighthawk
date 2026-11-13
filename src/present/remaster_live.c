@@ -2107,7 +2107,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word)
 {
-    remaster_live_overlay_rect(r, x, y, 1.0, 1.0, colour_word, 0, 3);
+    remaster_live_overlay_rect(r, x, y, 1.0, 1.0, colour_word, 0, 99);
 }
 
 void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer)
@@ -2142,7 +2142,9 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
      * the compositor compares inv_depth_scale / z, and the game's own wreck model (BB0D) measured z / inv_depth_scale = 8191 x its B5DC depth at depths 20 to 49
      * (12 Nov 2026, [faces-z]: 4,193,792 / 512 per unit), so the polygon gets z / inv = 8191 x depth, z kept near 2^22 by the scale so int32 coordinates cannot overflow. */
     double z, inv = 0.0;
-    if (layer < 0) {
+    if (layer == 99) {                          /* a flat pixel the original paints BEFORE the deferred objects (the far aircraft and projectile dots, 983E; the deferred pass D87C paints nearly all scenery over them at any depth, ground the walk painted earlier it does not): at an infinite depth as an ordinary object, so the rasteriser's own rules hide it behind every object and show it over ground and sky (docs/wide-margin-audit.md, 12 Nov) */
+        z = 4194304.0; inv = 1.0 / 20000.0;
+    } else if (layer < 0) {
         const double zt = 8191.0 * (double)(-layer);
         const double k = zt > 4194304.0 ? zt / 4194304.0 : 1.0;
         z = zt / k; inv = 1.0 / k;

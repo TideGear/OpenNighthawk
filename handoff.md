@@ -1,6 +1,6 @@
 # Handoff
 
-## Current state: 12 November 2026, 15:25 (read first)
+## Current state: 12 November 2026, 18:55 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The previous one (10 and 11 November: the audit, R41 to R44, the margin dots, the
 sprite proofs, many staged findings) is archived unedited in [docs/archive/handoff-log-20261111.md](docs/archive/handoff-log-20261111.md); the one before it in
@@ -28,7 +28,7 @@ presentation, so the path is unproven (what is missing from the staged state is 
 it (option A; B "everywhere" could come later as an off-by-default setting); Terrain dots stay at the Near default; one far-size rule for every light and dot (one game pixel up to 8,191 world units of depth,
 x 8191 / depth beyond, at least one screen pixel); the margin tracers, puffs and blast are on.
 
-**Remaining Part A (12 Nov 15:25):** the far wreck dot is built and proven (audit, last section; `F117_WIDE_WRECK=0` off; default on); DC46 icons closed (camera MFD, not a margin item); gate16 (sharded func_lockstep, `private/step6/gate.sh`) then push, CI, the release (limits stated: far aircraft OFF; wreck dot black and only against a lit background, second view/second frustum not modelled). Then Part B.
+**Remaining Part A (12 Nov 18:55):** the far dots now follow the original's painter's order in the margins (infinite depth, ordinary object: scenery hides them, ground and sky do not; audit, last section, with its limits); wreck dot and far puffs depth-tested; DC46 closed. Left: puffs against an immediate object (class bit 7 clear) not staged; far aircraft past 4,800 OFF until the owner approves its picture and its own layering check; then the release (limits in the notes). Gate is about 25 min (sharded func_lockstep, parallel live and shot chains; `F117R_BUILD_TARGET=f117a` builds one target for experiments). Then Part B.
 
 **How to work (what cost time this session):** read the matched code first and say which facts are code, comment or run; staged state must be the game's own (poke flags or the smoke source, never write or
 draw puffs by hand); VGAME's data segment is `37AE` (physical `37AE0`; an earlier `37DE` guess was wrong): print and check every computed address before poking (a hand-typed poke address hit unrelated memory);

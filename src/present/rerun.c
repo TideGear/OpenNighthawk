@@ -1556,16 +1556,24 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     }
     g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
     if (ret == 0xA203 || ret == 0xA236 || ret == 0x9A04) return;
+    {   static int dl3 = -1; if (dl3 < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); dl3 = e && e[0] == '3'; }
+        if (dl3 && (ret == 0x9BDF || ret == 0x9D89)) fprintf(stderr, "[dot-all] clock %llu %s on %d x %lld y %d\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", on, (long long)sx, sy); }
     if (on || !(sx < 0 || sx > 0x13F || sy < 0 || sy > 199) || !g_collector.overlay_dot) return;
     unsigned colour = 0xFF0F;
     if (ret == 0x9D89) colour = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) < 8 ? 0xFF29 : 0xFF0D;
     if (log) fprintf(stderr, "[wide-dot] clock %llu %s view %02X zoom %u x %lld y %d colour %04X\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", view, zoom, (long long)sx, sy, colour);
+    {   /* F117_WIDE_DOT_SWEEP=1 (test only): the margin dot moved 5 game pixels left and 6 up per 4 million clocks (a different place in each shot, to see where the layering rule shows it and where it hides it) */
+        static int sweep = -1; if (sweep < 0) sweep = getenv("F117_WIDE_DOT_SWEEP") != NULL;
+        if (sweep) { const int k = (int)((m->cpu.icount / 4000000ull) % 8); g_collector.overlay_dot(g_collector.user, (double)(sx - 5 * k), (double)(sy - 6 * k), colour); return; } }
     g_collector.overlay_dot(g_collector.user, (double)sx, (double)sy, colour);
 }
 
 /* R43, far aircraft: see private/r43_far_aircraft.py and docs/wide-margin-audit.md. Called once per frame from the walk hook. */
 static void far_aircraft_dots(machine_t *m)
 {
+    {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
+        static int row = -2; if (row == -2) { const char *e = getenv("F117_WIDE_DOT_ROW"); row = e ? atoi(e) : -1; }
+        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370; x += 3) g_collector.overlay_dot(g_collector.user, (double)x, (double)row, 0xFF0F); }
     static int on = -1;
     if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 0; }      /* off until the owner has seen a picture; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
     if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;

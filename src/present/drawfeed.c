@@ -302,6 +302,11 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
 static int run_copy(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
 {
     if (!a->have_compose || !a->snap.valid) return 0;
+    {   /* F117_SKIP_COMPOSE_BEFORE=CLOCK (test tooling, host main.c compose_skipped): before that clock no Remastered picture is made, so the render copy is not run either: it would be thrown away */
+        static uint64_t until; static int init;
+        if (!init) { const char *e = getenv("F117_SKIP_COMPOSE_BEFORE"); until = e ? strtoull(e, NULL, 0) : 0; init = 1; }
+        if (until && a->snap.m.cpu.icount < until) return 0;
+    }
     if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist, r->check) || r->rlist.first < 0) return 0;
     r->rerun_insn += r->rlist.insn;
     return 1;
