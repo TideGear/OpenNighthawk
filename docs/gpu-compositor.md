@@ -1072,3 +1072,19 @@ the next design step (no added latency). The runway also needs about 1 to 2 ms o
 Late flight with `F117_SETUP_THREADS=16` (default 8, 32 logical cores), same settings: 3,573 frames mean 30.02 / p50 28.06 / p95 43.42 / p99 46.15 ms against 29.30 / 27.53 / 43.38 / 46.03 at 8 threads;
 setup phases classify 6.53, bin 3.61, pack 3.02, copy 1.46 ms (8 threads: 7.66, 2.57, 2.55, 1.44). More threads do not help: the setup is at its threading limit, about 83,000 triangles and 123,000 bin
 entries rebuilt every picture. The late flight's remaining no-latency route is to build the scene once per game step instead of once per picture (Stage 2), which needs the owner's review.
+
+### Part B: per-stage table and route recommendation (13 November 2026, night)
+
+Worker stages per job, hidden 4K window, later two thirds of each replay (`private/partb/stages.py`). Milliseconds: mean / p50 / p95 / p99 / max.
+
+| Stage | Runway (2729 jobs) | Late flight (3750 jobs) |
+|---|---|---|
+| gpu_begin (CPU setup) | 1.71 / 1.43 / 3.14 / 11.08 / 14.27 | 18.59 / 17.55 / 28.21 / 30.04 / 35.39 |
+| picture step | 5.76 / 5.73 / 6.44 / 6.74 / 8.11 | 5.77 / 5.80 / 6.12 / 6.27 / 8.13 |
+| compose | 1.85 / 1.81 / 2.06 / 2.39 / 3.33 | 4.97 / 4.31 / 9.81 / 11.17 / 17.60 |
+| GPU span | 7.36 / 7.31 / 8.12 / 8.49 / 9.84 | 10.50 / 9.88 / 15.39 / 16.74 / 23.24 |
+| worker total | 9.32 / 9.01 / 10.93 / 20.01 / 22.89 | 29.34 / 27.63 / 43.57 / 46.21 / 54.44 |
+
+Floors. Pipeline floor (slowest single stage per job, one frame of added latency): runway p95 6.55 ms (max 14.27, from the game-step setup spikes), late flight p95 28.21 ms. No-latency floor today is the worker total.
+
+Reading: a one-frame pipeline would bring the runway mean under 8.3 ms but not its game-step spikes, and would not bring the late flight near 16.7 ms, because its setup stage alone is 18.6 ms mean. So the pipeline cannot meet the late-flight target by itself; setup has to shrink, and 16 threads did not help. Recommended route: Stage 2 (build the scene once per game step, reuse it for the interpolated frames), which cuts the late-flight setup from every picture to once per game step with no added latency; for the runway, a collector thread for the draw-feed collection plus 1-2 ms off the GPU passes. Both need owner decisions (Stage 2 review gate; feed ring change). Nothing is built yet.
