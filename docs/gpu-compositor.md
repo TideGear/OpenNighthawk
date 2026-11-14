@@ -1116,3 +1116,18 @@ The runway holds every refresh at 60 Hz (so it is below 16.7 ms, but nothing is 
 | **sum of passes** | **4.82** | **12.22** |
 
 Reading: the two heavy passes are again bands and the stroke pixel pass (together 3.6 ms on the runway, 8.6 on the late flight). On the late flight the passes alone are 12.2 ms of the 16.7 ms budget, so Stage 2 cannot meet the target unless the GPU side also comes down: the GPU span has p95 15.4 and p99 16.7 ms before any setup is counted. This raises the GPU trim (step 5) to a need for the late flight, not only the runway's 1 to 2 ms. Earlier experiments found the heavy passes are not limited by how many triangles a pixel looks at (the per-pixel box test, above), so the cost is elsewhere in them; reading the two shaders is the first job of step 5.
+
+### Part B step 2: the classify counters were the scaling limit (13 November 2026, 23:50)
+
+Reading `gpu_compose.c`: the classify loop's diagnostic cycle counters (`CYC()` is `__rdtsc`, `CADD()` is `_InterlockedExchangeAdd64` on the shared `g_cyc[]`/`g_cnt[]`) ran on every polygon, stroke, depth plane and vertex snap, on every classify thread, even with `F117_REMASTER_TIMING` off. Locked adds from 8 threads onto the same two cache lines serialise, which is why classify did not scale past 8 threads. **Fix (diagnostic only, no picture data touched):** `g_cyc_on`, read once a picture from `F117_REMASTER_TIMING`, makes `CYC()` return 0 and `CADD()` do nothing when off.
+
+Paired, late flight, 4K Maximum, Model detail Full, hidden window, vsync off, base / new / base / new, one run at a time (`private/partb/pairs.sh`):
+
+| Build | Picture mean ms | CPU setup mean / p95 / p99 / max | Worker total mean / p95 / p99 |
+|---|---|---|---|
+| before (base 1, base 2) | 29.62, 29.62 | 18.97 / 28.68 / 30.17 / 34.28 and 18.96 / 28.50 / 31.01 / 34.14 | 29.67 / 44.26 / 46.56 and 29.78 / 43.82 / 46.86 |
+| after (new 1, new 2) | 23.13, 23.23 | 14.18 / 20.55 / 22.03 / 24.89 and 14.20 / 21.43 / 23.81 / 51.78 | 23.27 / 32.94 / 35.01 and 23.31 / 34.11 / 37.21 (one 116 ms outlier in run 2) |
+
+A gain of about 6.4 ms a picture (22%) with identical output: light check `private/step6/light.sh` (the gate's renderer part) passed: hash `600306c77cb04481` x4, 901 checksums in all four guard sets, live GPU checks 0 pixels differ (3421 pictures x3), CPU vs GPU shots 0 differing pixels. Late flight is still 23.2 ms mean against the 16.7 ms target; its setup (14.2 ms) is now the thing to attack with the 16-thread test repeated (the earlier 8 vs 16 result was taken with the counters on and should be redone) and then the profile of classify, bin and pack. Runway not re-timed yet.
+
+Also this session: `private/step6/light.sh NAME` is the gate's stage 1 without func_lockstep, ctest and host acceptance (about 11 minutes): use it after each renderer change, the full gate only before a push. `private/partb/pair.sh`/`pairs.sh` run paired late-flight timing; `passes.sh`, `delivery.sh`, `deliv.py` are step 1's tools.

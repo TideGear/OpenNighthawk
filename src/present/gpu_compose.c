@@ -305,15 +305,18 @@ static int tile_touches_exact(const ctri *tr, int tx, int ty)
 /* Diagnostic cycle counters for the classify loop (F117_REMASTER_TIMING prints them): 0 bands, 1 polygons, 2 strokes, 3 depth planes, 4 snapped vertices, 5 the whole loop. */
 #if defined(_MSC_VER)
 #include <intrin.h>
-#define CYC() __rdtsc()
+#define CYC() (g_cyc_on ? __rdtsc() : 0ull)
 #else
 #define CYC() 0ull
 #endif
+static int g_cyc_on;
 static unsigned long long g_cyc[6], g_cnt[6];
+/* Part B (13 November 2026): the counters run only with F117_REMASTER_TIMING set (g_cyc_on, read once a picture in gpu_compose_begin). They used to run on
+ * every polygon, stroke and vertex on every classify thread: locked adds on the same few cache lines, which kept the classify from scaling past about 8 threads. */
 #if defined(_MSC_VER)
-#define CADD(a, i, v) _InterlockedExchangeAdd64((volatile __int64 *)&(a)[i], (__int64)(v))
+#define CADD(a, i, v) do { if (g_cyc_on) _InterlockedExchangeAdd64((volatile __int64 *)&(a)[i], (__int64)(v)); } while (0)
 #else
-#define CADD(a, i, v) ((a)[i] += (v))
+#define CADD(a, i, v) do { if (g_cyc_on) (a)[i] += (v); } while (0)
 #endif
 /* read once per picture in gpu_compose_begin (the classify loop can run on several threads) */
 static int g_q_check, g_plane_full, g_plane_check;
@@ -968,6 +971,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         g_square_pen = square_pen_enabled();
         g_q_check = g_plane_check = getenv("F117_BIN_CHECK") != NULL;
         g_plane_full = getenv("F117_PLANE_FULL") != NULL;
+        g_cyc_on = getenv("F117_REMASTER_TIMING") != NULL;
         exact_on(); decal_faces_enabled();
     }
     /* classify the records: the clear and the bands first, then polygons, then the lines; anything else is not handled */
