@@ -1,13 +1,13 @@
 # Handoff
 
-## Current state: 13 November 2026, 19:15 (read first)
+## Current state: 13 November 2026, 23:15 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The previous one (10 and 11 November: the audit, R41 to R44, the margin dots, the
 sprite proofs, many staged findings) is archived unedited in [docs/archive/handoff-log-20261111.md](docs/archive/handoff-log-20261111.md); the one before it in
 [docs/archive/handoff-log-20261110.md](docs/archive/handoff-log-20261110.md). Every owner report is a row in [docs/owner-issues.md](docs/owner-issues.md); the margin work's facts, proofs and limits are in
 [docs/wide-margin-audit.md](docs/wide-margin-audit.md) (read its last sections first); renderer measurements are the end of [docs/gpu-compositor.md](docs/gpu-compositor.md).
 
-**Part B status (13 Nov 19:15):** measured, nothing built. Runway 9.7 ms mean (target 8.3): game-step frames are held by the main thread (machine step 6.6 ms, draw-feed collection 4.4 of it; close_frame fine copy 0.87 ms, open-frame replay about 1.6 ms a frame), worker median 8.9 ms, GPU span 7.3 ms. Late flight 29.3 ms mean (target 16.7): CPU setup, which does not scale past 8 threads (16 measured: 30.0 ms). Next, awaiting the owner: (1) a collector thread for the draw-feed collection, (2) Stage 2 (scene built once per game step; owner review at the first working version), (3) a visible vsynced delivery test only after asking. Numbers and scripts: end of docs/gpu-compositor.md, `private/partb/` (slow.sh, probe.sh, late16.sh).
+**Part B status (13 Nov 23:15, at the owner gate):** per-stage table (mean/p95/max) and floors are in the last section of docs/gpu-compositor.md. Pipeline floor p95: runway 6.55 ms, late flight 28.21 ms; a one-frame pipeline cannot reach 16.7 ms on the late flight, so Stage 2 is the recommended route. Owner 22:53 allowed a visible window for GPU/delivery runs. Earlier status: measured, nothing built. Runway 9.7 ms mean (target 8.3): game-step frames are held by the main thread (machine step 6.6 ms, draw-feed collection 4.4 of it; close_frame fine copy 0.87 ms, open-frame replay about 1.6 ms a frame), worker median 8.9 ms, GPU span 7.3 ms. Late flight 29.3 ms mean (target 16.7): CPU setup, which does not scale past 8 threads (16 measured: 30.0 ms). Next, awaiting the owner: (1) a collector thread for the draw-feed collection, (2) Stage 2 (scene built once per game step; owner review at the first working version), (3) a visible vsynced delivery test only after asking. Numbers and scripts: end of docs/gpu-compositor.md, `private/partb/` (slow.sh, probe.sh, late16.sh).
 
 **The active goal (owner, 11 Nov): Part A, then the release, then Part B.** Part A: the Remastered wide margins draw everything the 4:3 area draws at the true place, and nothing is dropped by
 distance. Part B: 4K 120 fps (runway 120 fps with 0 frames over 8.3 ms, late flight 60 fps with 0 over 16.7 ms; now late flight 29.9 ms mean, runway ~12.4 ms; next thread binning, the decal face
