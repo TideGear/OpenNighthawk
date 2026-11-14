@@ -1059,3 +1059,12 @@ The late flight's setup phases with 8 threads (mean): classify 5.8 ms (was 13.6)
 | frame cost minus worker total (the main thread's own serial work) | mean 0.85, median -0.13, p95 5.46; 223 frames (15%) are +5.2 ms | mean -0.24, p95 3.10 |
 
 What this says: (1) the late flight is held by the CPU setup, 18.7 ms of 29.5 (63%), and its p95 alone is 28 ms; (2) the runway's worker total is 8.9 ms at the median, above 8.3 with nothing else added, and the GPU alone is 7.3 ms mean and 8.5 at p99, so the GPU passes must also get faster; (3) the runway's frames over 12.5 ms (15%) are frames where the main thread adds about 5 ms on top of the worker (the game's machine step runs before the picture is published), so overlapping the machine step with the worker is worth about 5 ms on those frames; (4) a worker pipeline's floor is its slowest stage: runway about 6.5 ms (picture), late flight 28 ms at p95 (GPU begin), so the late flight needs the CPU setup cut by about three times with or without a pipeline.
+
+### Part B: the runway's game-step frames (13 November 2026, evening)
+
+`F117_SLOW_FRAME_TRACE=1` on the runway (same settings as the baseline): the last 300 frames of 12 ms or more are all game-step frames, mean 13.7 ms = machine step 6.6 ms (of which draw-feed
+collection 4.4 ms, run on the main thread after each 1 ms slice, `main.c` machine loop) + 7.0 ms waiting for the worker. `F117_COLLECT_PROBE=1` (new split, `drawfeed.c`): per closed frame
+`close_frame` 1.18 ms (fine copy + guard `take_fine` 0.87, `keep_step` + pairing 0.23, snapshot swap 0.04, start swap 0.03, 64,000-byte picture copy 0.003); replay of the last records 0.012 ms; the
+open-frame replay is 0.10 ms a call over about 16 slices a frame (about 1.6 ms). The fine copy cannot be dropped: the worker reads `picture_hi` through the plan. The collection is serial with the
+machine on one thread; moving it to its own thread needs the feed ring and `drawfeed_frame.len/cap` made safe for one producer and one consumer, which is a concurrency change to a hot path and is
+the next design step (no added latency). The runway also needs about 1 to 2 ms off the GPU passes (GPU span mean 7.3 ms, p99 8.5).

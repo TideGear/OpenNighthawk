@@ -22,6 +22,7 @@ static double probe_ms(void)
     return 0.0;
 #endif
 }
+static double g_pc_memcmp, g_pc_start, g_pc_picture, g_pc_fine, g_pc_snap, g_pc_keep, g_pc_pair, g_pc_n;
 static double g_probe_replay, g_probe_close, g_probe_open; static unsigned g_probe_n, g_probe_calls;
 
 /* a frame with no present closes after this many phases all the same */
@@ -458,6 +459,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         drawfeed_reseed(f);
         return;
     }
+    const double c0 = probe_ms();
     r->exact++;
     const int k = free_step(r);
     drawlive_step *s = &r->step[k];
@@ -469,8 +471,11 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
             r->pending_hires = old;
         }
     }
+    const double c1 = probe_ms();
     memcpy(s->picture, disp->b, 64000);
+    const double c2 = probe_ms();
     if (r->scale) take_fine(r, disp, s->picture_hi, s->picture_tag);
+    const double c3 = probe_ms();
     s->seq = fr->seq;
     s->end = fr->end;
     s->ok = 1;
@@ -481,6 +486,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         rerun_snap_swap(&s->snap, &((drawfeed_frame *)fr)->snap);
         s->have_compose = 1;
     }
+    const double c4 = probe_ms();
     if (r->interp) {
         keep_step(s, fr);
         s->ok = !fr->seeded && s->start.have_seg;
@@ -490,6 +496,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
             r->pairs++;
         }
     }
+    { const double c5 = probe_ms(); g_pc_start += c1 - c0; g_pc_picture += c2 - c1; g_pc_fine += c3 - c2; g_pc_snap += c4 - c3; g_pc_keep += c5 - c4; g_pc_n++; }
     s->state = DRAWLIVE_STAGED;
     r->newest = k;
     r->queue[r->nqueue++] = k;
@@ -507,8 +514,8 @@ int drawlive_collect(drawlive *r, drawfeed *f)
         close_frame(r, f, fr);
         const double pr2 = probe_ms();
         g_probe_replay += pr1 - pr0; g_probe_close += pr2 - pr1;
-        if (++g_probe_n % 600 == 0 && getenv("F117_COLLECT_PROBE"))
-            fprintf(stderr, "[collect] per closed frame: replay of its last records %.3f ms, close_frame %.3f ms; open-frame replays (every slice) %.3f ms a call over %u calls\n", g_probe_replay / g_probe_n, g_probe_close / g_probe_n, g_probe_open / (g_probe_calls ? g_probe_calls : 1), g_probe_calls);
+        if (++g_probe_n % 600 == 0 && getenv("F117_COLLECT_PROBE")) {
+            fprintf(stderr, "[collect2] close_frame parts per frame: pending-start swap %.3f, picture copy %.3f, fine copy+guard %.3f, snap swap %.3f, keep+pair %.3f\n", g_pc_start / g_pc_n, g_pc_picture / g_pc_n, g_pc_fine / g_pc_n, g_pc_snap / g_pc_n, g_pc_keep / g_pc_n); fprintf(stderr, "[collect] per closed frame: replay of its last records %.3f ms, close_frame %.3f ms; open-frame replays (every slice) %.3f ms a call over %u calls\n", g_probe_replay / g_probe_n, g_probe_close / g_probe_n, g_probe_open / (g_probe_calls ? g_probe_calls : 1), g_probe_calls); }
         drawfeed_pop(f);
         r->next_seq = fr->seq + 1;
         r->pending_active = 0;
