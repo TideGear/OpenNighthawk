@@ -1068,3 +1068,7 @@ collection 4.4 ms, run on the main thread after each 1 ms slice, `main.c` machin
 open-frame replay is 0.10 ms a call over about 16 slices a frame (about 1.6 ms). The fine copy cannot be dropped: the worker reads `picture_hi` through the plan. The collection is serial with the
 machine on one thread; moving it to its own thread needs the feed ring and `drawfeed_frame.len/cap` made safe for one producer and one consumer, which is a concurrency change to a hot path and is
 the next design step (no added latency). The runway also needs about 1 to 2 ms off the GPU passes (GPU span mean 7.3 ms, p99 8.5).
+
+Late flight with `F117_SETUP_THREADS=16` (default 8, 32 logical cores), same settings: 3,573 frames mean 30.02 / p50 28.06 / p95 43.42 / p99 46.15 ms against 29.30 / 27.53 / 43.38 / 46.03 at 8 threads;
+setup phases classify 6.53, bin 3.61, pack 3.02, copy 1.46 ms (8 threads: 7.66, 2.57, 2.55, 1.44). More threads do not help: the setup is at its threading limit, about 83,000 triangles and 123,000 bin
+entries rebuilt every picture. The late flight's remaining no-latency route is to build the scene once per game step instead of once per picture (Stage 2), which needs the owner's review.
