@@ -1,6 +1,6 @@
 # Handoff
 
-## Current state: 13 November 2026, 11:35 (read first)
+## Current state: 13 November 2026, 17:50 (read first)
 
 This section is the only current one. Replace it; do not stack a new "read first" section above it. The previous one (10 and 11 November: the audit, R41 to R44, the margin dots, the
 sprite proofs, many staged findings) is archived unedited in [docs/archive/handoff-log-20261111.md](docs/archive/handoff-log-20261111.md); the one before it in
@@ -28,7 +28,7 @@ presentation, so the path is unproven (what is missing from the staged state is 
 it (option A; B "everywhere" could come later as an off-by-default setting); Terrain dots stay at the Near default; one far-size rule for every light and dot (one game pixel up to 8,191 world units of depth,
 x 8191 / depth beyond, at least one screen pixel); the margin tracers, puffs and blast are on.
 
-**Remaining Part A (13 Nov):** far dots follow the original's painter's order in every raster pass (owner mark `FFFFF7FEh`: drawn over what is already in the frame, the deferred objects added later cover it; CPU `remaster_raster.c`, GPU `polys*.hlsl`, `strokes*.hlsl`; gate20 passed). Left: puffs and the wreck dot under the same mechanism; the far-aircraft picture for the owner (OFF until approved); the exact-pairing turned-view comparison (unit ids in `[dot-all]`); gate, push, release. Lesson (12 Nov evening): a partial copy of the gate (`shotsonly.sh`) dropped `F117_DECAL_SIMPLE=0`, so the GPU ran the simplified stroke rule and 22 pixels "differed": a harness error, not a regression. Copy the gate's environment with any extracted block. Then Part B.
+**Part A is done (13 Nov, gate22 passed):** far dots, the far aircraft past 4,800 (default ON, `F117_WIDE_FAR_AIRCRAFT=0` off, reach = the Draw distance), puffs and the wreck dot all follow the original's painter's order in every raster pass (owner mark `FFFFF7FEh`; the far aircraft are held in `rerun_flush_overlays` and added when the first deferred model is requested); the audit's last table lists each overlay with its evidence and limits (turned-view comparison by unit identity: 121 of 152 agree, the rest are the cockpit canopy and coast/sea edges; margin tracers rest on `9EFA` drawing last, matched.c 67734, and the 11 Nov shifted-tracer proof). The gate now has four guard jobs (new baseline `private/renderer-bench/baseline-farair` for the default, the original baseline with the far aircraft off) and sources `private/step6/gate_env.sh` (never hand-copy the gate's environment). Next: the release (limits stated), then Part B: first measure with the real present path (the hidden-window speed numbers exclude vsync/present), then thread binning and the decal face cache.
 
 **How to work (what cost time this session):** read the matched code first and say which facts are code, comment or run; staged state must be the game's own (poke flags or the smoke source, never write or
 draw puffs by hand); VGAME's data segment is `37AE` (physical `37AE0`; an earlier `37DE` guess was wrong): print and check every computed address before poking (a hand-typed poke address hit unrelated memory);

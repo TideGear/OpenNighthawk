@@ -1557,7 +1557,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
     if (ret == 0xA203 || ret == 0xA236 || ret == 0x9A04) return;
     {   static int dl3 = -1; if (dl3 < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); dl3 = e && e[0] == '3'; }
-        if (dl3 && (ret == 0x9BDF || ret == 0x9D89)) fprintf(stderr, "[dot-all] clock %llu %s on %d x %lld y %d\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", on, (long long)sx, sy); }
+        if (dl3 && (ret == 0x9BDF || ret == 0x9D89)) fprintf(stderr, "[dot-all] clock %llu %s on %d x %lld y %d unit %d\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", on, (long long)sx, sy, (int)(int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22))); }
     if (on || !(sx < 0 || sx > 0x13F || sy < 0 || sy > 199) || !g_collector.overlay_dot) return;
     unsigned colour = 0xFF0F;
     if (ret == 0x9D89) colour = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22)) < 8 ? 0xFF29 : 0xFF0D;
@@ -1569,13 +1569,23 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
 }
 
 /* R43, far aircraft: see private/r43_far_aircraft.py and docs/wide-margin-audit.md. Called once per frame from the walk hook. */
+/* The far aircraft overlay (and the test row) are decided at the frame's start, but the original paints those dots in 983E, after the terrain walk's immediate objects and before the
+ * deferred pass D87C. They are kept here and added to the frame by rerun_flush_overlays(), called when the first deferred model is requested (its caller is in DC46, 0DE00h to 0DFFFh),
+ * at the HUD pass or when the frame ends, whichever comes first; the layer (99) then paints them over what is in the frame and the deferred objects after them cover them. */
+static struct { double x, y, w; } g_pend[160];
+static int g_npend;
+void rerun_flush_overlays(void)
+{
+    for (int i = 0; i < g_npend; i++) if (g_collector.overlay_rect) g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
+    g_npend = 0;
+}
 static void far_aircraft_dots(machine_t *m)
 {
     {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
         static int row = -2; if (row == -2) { const char *e = getenv("F117_WIDE_DOT_ROW"); row = e ? atoi(e) : -1; }
-        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370; x += 3) g_collector.overlay_dot(g_collector.user, (double)x, (double)row, 0xFF0F); }
+        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_npend++; } }
     static int on = -1;
-    if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 0; }      /* off until the owner has seen a picture; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
+    if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 1; }      /* ON by default (owner, 13 Nov, after the picture); F117_WIDE_FAR_AIRCRAFT=0 turns it off; the reach is the Draw distance setting; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
     if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;
     const uint16_t ds = m->cpu.seg[S_DS];
     if (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) return;                           /* the cockpit view's camera; the outside views are not done */
@@ -1607,7 +1617,7 @@ static void far_aircraft_dots(machine_t *m)
             if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
         }
-        g_collector.overlay_rect(g_collector.user, (double)sx + 0.5 - w / 2, (double)sy + 0.5 - w / 2, w, w, 0xFF0F, 0, 99);   /* the same layer as the in-range far dots (983E, painted before the deferred pass): scenery hides it, ground and sky do not */
+        if (g_npend < 160) { g_pend[g_npend].x = (double)sx + 0.5 - w / 2; g_pend[g_npend].y = (double)sy + 0.5 - w / 2; g_pend[g_npend].w = w; g_npend++; }   /* added to the frame by rerun_flush_overlays */
     }
 }
 
@@ -1677,6 +1687,7 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     }
     if ((int)k == g_walk_k) {
         g_walk_calls++;
+        g_npend = 0;                                /* a frame's pending far overlays never carry over */
         stage_puffs(m);
         far_aircraft_dots(m);
         {   /* F117_VIEW_LOG=1 (diagnostic): once per frame the view matrix words [49BE..] and the aircraft test's [B082..] (the turned-view reference warps one

@@ -1862,6 +1862,9 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
     }
     if (k == 0) {                                           /* the model request: return IP, CS, then the model */
         const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
+        {   const uint16_t caller = peek16(m, ss, sp);        /* the deferred pass D87C draws through DC46 (0DE00h to 0DFFFh); the immediate objects return into E2B6 */
+            if (caller >= 0xDE00 && caller < 0xE000) rerun_flush_overlays();
+        }
         if (r->pending) r->overwritten++;                   /* the previous request never reached a projection */
         r->pending = 1;
         r->requests++;
@@ -1989,6 +1992,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             }
         }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
+        rerun_flush_overlays();                             /* far overlays no deferred model came for */
         rerun_prof_mark(4);
         {   /* F117_DS_DUMP=N,FILE (diagnostic): the data segment as the Nth render copy reaches its HUD pass, to diff one walk mode against another */
             static int want = -2; static const char *path; static unsigned seen;
@@ -2167,7 +2171,7 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
         p->v[k].y = (int32_t)llround((y + cy[k] - r->origin[1]) * z / 256.0);
         p->v[k].z = (int32_t)z;
     }
-    p->owner = layer == 99 ? 0xFFFFF7FEu : 0xFFFFF7FFu;     /* 7FEh: the far dot's mark, drawn over what is there (remaster_raster.c, polys.hlsl); otherwise serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
+    p->owner = (layer == 99 || layer < 0) ? 0xFFFFF7FEu : 0xFFFFF7FFu;   /* layer 99 (far dots) and true-depth overlays (puffs, wreck dot: deferred, called in 983E like the dots): painted over what is already in the frame, then a later (deferred) object covers them by its own depth */     /* 7FEh: the far dot's mark, drawn over what is there (remaster_raster.c, polys.hlsl); otherwise serial FFFFFh, face 7FFh: no object's, and bit 11 CLEAR: with it set the rasteriser takes the polygon for ground, which never hides another object's lines, so every distant light showed through a margin puff */
     p->colour_word = (uint16_t)colour_word;
     p->colour_index = (uint8_t)(colour_word & 255);
     if (inv > 0.0) p->inv_depth_scale = inv;
