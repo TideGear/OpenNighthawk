@@ -1042,3 +1042,20 @@ Measured (build 10 Nov 20:12:43, 4K Maximum, Model detail Full, paired serial ag
 | runway, whole frame (two runs each) | 12.59 and 12.63 ms mean, p95 18.6 | 12.33 and 12.39 ms, p95 19.5 and 18.8 |
 
 The late flight's setup phases with 8 threads (mean): classify 5.8 ms (was 13.6), binning 4.0, packing 3.1 (mostly the serial face-cache build), upload copy 1.5, scene preparation 2.5. The runway gains only about 0.25 ms because its setup was 2 ms of 11.5. Neither flight reaches 60 fps solid yet: the worker still runs its steps one after another (setup, picture, compose), and the runway is held by the picture step (7.5 ms).
+
+## Part B baseline (13 November 2026, build of commit `ccf90a8`)
+
+`private/partb/baseline.sh` (not in git): 4K (3840 x 2160, PSCALE 9) Maximum, Model detail Full, hidden GPU-renderer window, vsync off (work per frame, not delivery), `F117_WORKER_TIMING` to a CSV per flight, one flight at a time with nothing else running. The benchmark counts the frames after clock 3.9e9: the runway's last 1,506 pictures, the late flight's last 3,665 (`session-20261108-211031`, to clock 10.4e9). **The worker CSV covers the whole run from boot, so statistics must use the last N rows (the benchmark's own frames); the earlier part of the runway replay is a much heavier scene (36,000 records against 2,400) and a first reading of "the later two thirds" mixed the two (corrected the same day).**
+
+| Frames the benchmark counts (ms) | Runway | Late flight |
+|---|---|---|
+| frame cost, mean / p95 / p99 / max | 9.73 / 14.34 / 15.88 / 18.46 | 29.30 / 43.38 / 46.03 / 54.19 |
+| frames over the target | 84% over 8.3 ms, 0.5% over 16.7 | 100% over 16.7 ms |
+| worker: GPU begin (CPU setup), mean / p95 / max | 1.32 / 1.57 / 2.13 | 18.72 / 28.27 / 35.39 |
+| worker: picture step | 5.72 / 6.52 / 8.11 | 5.77 / 6.12 / 8.13 |
+| worker: compose (waiting for the GPU) | 1.85 (0.88) / 2.05 / 2.90 | 5.04 (4.13) / 9.83 / 17.60 |
+| worker total | 8.88 / 9.72 / 11.84 | 29.54 / 43.64 / 54.44 |
+| GPU span (scene submitted to its fence) | 7.31 / 8.16 / 9.84 | 10.57 / 15.41 / 23.24 |
+| frame cost minus worker total (the main thread's own serial work) | mean 0.85, median -0.13, p95 5.46; 223 frames (15%) are +5.2 ms | mean -0.24, p95 3.10 |
+
+What this says: (1) the late flight is held by the CPU setup, 18.7 ms of 29.5 (63%), and its p95 alone is 28 ms; (2) the runway's worker total is 8.9 ms at the median, above 8.3 with nothing else added, and the GPU alone is 7.3 ms mean and 8.5 at p99, so the GPU passes must also get faster; (3) the runway's frames over 12.5 ms (15%) are frames where the main thread adds about 5 ms on top of the worker (the game's machine step runs before the picture is published), so overlapping the machine step with the worker is worth about 5 ms on those frames; (4) a worker pipeline's floor is its slowest stage: runway about 6.5 ms (picture), late flight 28 ms at p95 (GPU begin), so the late flight needs the CPU setup cut by about three times with or without a pipeline.
