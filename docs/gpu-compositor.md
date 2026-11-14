@@ -1088,3 +1088,31 @@ Worker stages per job, hidden 4K window, later two thirds of each replay (`priva
 Floors. Pipeline floor (slowest single stage per job, one frame of added latency): runway p95 6.55 ms (max 14.27, from the game-step setup spikes), late flight p95 28.21 ms. No-latency floor today is the worker total.
 
 Reading: a one-frame pipeline would bring the runway mean under 8.3 ms but not its game-step spikes, and would not bring the late flight near 16.7 ms, because its setup stage alone is 18.6 ms mean. So the pipeline cannot meet the late-flight target by itself; setup has to shrink, and 16 threads did not help. Recommended route: Stage 2 (build the scene once per game step, reuse it for the interpolated frames), which cuts the late-flight setup from every picture to once per game step with no added latency; for the runway, a collector thread for the draw-feed collection plus 1-2 ms off the GPU passes. Both need owner decisions (Stage 2 review gate; feed ring change). Nothing is built yet.
+
+### Part B step 1: delivery in a real window and the GPU pass breakdown (13 November 2026, 23:30)
+
+Build of commit `ccf90a8` (`build/f117a.exe` 13 Nov 18:59), 3840 x 2160, Maximum, Model detail Full, one run at a time, nothing else running. Scripts: `private/partb/delivery.sh` and `passes.sh`; the delivery maths is `deliv.py`.
+
+**The display is 60 Hz.** The RTX 3060 output reads 3840 x 2160 at 59 Hz and the virtual display 60 Hz, so a vsynced run here can show whether 16.7 ms holds (the late-flight target) but cannot show 120 fps delivery (the runway target). That needs a 120 Hz display or a different test; open question for the owner.
+
+**Delivery, visible window, vsync on (replay clocks above 3.9 billion):**
+
+| Flight | Frames | Delivered | Interval ms mean / p50 / p95 / p99 / max | Over 20.9 ms | Over 29.2 ms | Over 41.8 ms |
+|---|---|---|---|---|---|---|
+| Runway | 901 in 15.0 s | 60.0 fps | 16.67 / 16.66 / 18.93 / 20.02 / 20.74 | 0 | 0 | 0 |
+| Late flight | 3738 in 108.3 s | 34.5 fps | 28.99 / 26.78 / 42.70 / 44.97 / 48.40 | 3490 | 1359 | 277 |
+
+The runway holds every refresh at 60 Hz (so it is below 16.7 ms, but nothing is shown about 8.3 ms). The late flight misses nearly every refresh, and its intervals (29.0 mean, 42.7 p95) match the hidden-window worker totals (29.3 mean, 43.6 p95), so **the hidden-window numbers are a fair guide to real delivery**; the step order is not re-ranked on that account. (A first late-flight run was cut short when the window was closed; the table is the second run.)
+
+**GPU pass breakdown** (`F117_GPU_PASS_TIMES=1`, each pass fenced on its own, so the run is slower than normal: 14.1 ms a picture on the runway, 38.5 on the late flight). The program prints running means; the figures below are the later two thirds of each replay, ms a picture:
+
+| Pass | Runway | Late flight |
+|---|---|---|
+| upload | 0.27 | 1.59 |
+| bands (sky and ground) | 2.72 | 4.40 |
+| polygons | 0.86 | 1.86 |
+| strokes (points) | 0.11 | 0.14 |
+| strokes (pixels) | 0.86 | 4.24 |
+| **sum of passes** | **4.82** | **12.22** |
+
+Reading: the two heavy passes are again bands and the stroke pixel pass (together 3.6 ms on the runway, 8.6 on the late flight). On the late flight the passes alone are 12.2 ms of the 16.7 ms budget, so Stage 2 cannot meet the target unless the GPU side also comes down: the GPU span has p95 15.4 and p99 16.7 ms before any setup is counted. This raises the GPU trim (step 5) to a need for the late flight, not only the runway's 1 to 2 ms. Earlier experiments found the heavy passes are not limited by how many triangles a pixel looks at (the per-pixel box test, above), so the cost is elsewhere in them; reading the two shaders is the first job of step 5.
