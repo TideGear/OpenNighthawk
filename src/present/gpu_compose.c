@@ -1030,10 +1030,26 @@ static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int
     return 1;
 }
 
-typedef struct { const gpu_compose *g; uint32_t *pw, *stw; } pack_ctx;
+/* Job 0 of the pack pool builds the decal face list (serial by nature: the chains and the dedup depend on the insertion order, so it stays one loop in triangle
+ * order); the pack chunks run beside it on the other threads (14 November 2026). It reads g->polys and writes only g->faces; the chunks write only pw and stw. */
+typedef struct { gpu_compose *g; uint32_t *pw, *stw; int faces; } pack_ctx;
+static void faces_build(gpu_compose *g)
+{
+    df_reset(&g->faces);
+    for (size_t k = 0; k < g->polys.n; ++k) {
+        const ctri *tr = &g->polys.t[k];
+        if (tr->kind) continue; /* logic fills do not write surface depth */
+        ex_tri tri; memcpy(tri.q, tr->q, sizeof tri.q); tri.area = tr->area;
+        ex_planes plane = {0}; plane.ox = tr->dox; plane.oy = tr->doy;
+        plane.base[0] = (uint64_t)tr->dbase; plane.px[0] = (uint64_t)tr->dpx; plane.py[0] = (uint64_t)tr->dpy;
+        df_add(&g->faces, tr->paint_owner, &tri, &plane);
+    }
+}
 static void pack_job(void *vc, int k)
 {
     const pack_ctx *c = (const pack_ctx *)vc;
+    if (k == 0) { if (c->faces) faces_build(c->g); return; }
+    k--;
     const size_t np = c->g->polys.n, ns = c->g->strokes.n;
     const size_t p0 = np * k / SETUP_CHUNKS, p1 = np * (k + 1) / SETUP_CHUNKS, s0 = ns * k / SETUP_CHUNKS, s1 = ns * (k + 1) / SETUP_CHUNKS;
     if (p1 > p0) memset(c->pw + p0 * 40, 0, (p1 - p0) * 160);
@@ -1126,22 +1142,14 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (!pw || !stw) return 0;
     if (!g->polys.n) memset(pw, 0, 160);        /* the one-triangle minimum upload of an empty list stays zero, as before */
     if (!g->strokes.n) memset(stw, 0, 160);
-    { pack_ctx pc = { g, pw, stw }; pool_run(pack_job, &pc, SETUP_CHUNKS); }
+    const int use_faces = decal_faces_enabled();
+    { pack_ctx pc = { g, pw, stw, use_faces }; pool_run(pack_job, &pc, SETUP_CHUNKS + 1); }
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
     const Uint32 stroke_words = (nstrokes ? nstrokes : 1) * STROKE_WORDS;
     Uint32 face_offset = 0, sw_bytes = stroke_words * 4;
-    if (decal_faces_enabled()) {
-        df_reset(&g->faces);
-        for (size_t k = 0; k < g->polys.n; ++k) {
-            const ctri *tr = &g->polys.t[k];
-            if (tr->kind) continue; /* logic fills do not write surface depth */
-            ex_tri tri; memcpy(tri.q, tr->q, sizeof tri.q); tri.area = tr->area;
-            ex_planes plane = {0}; plane.ox = tr->dox; plane.oy = tr->doy;
-            plane.base[0] = (uint64_t)tr->dbase; plane.px[0] = (uint64_t)tr->dpx; plane.py[0] = (uint64_t)tr->dpy;
-            df_add(&g->faces, tr->paint_owner, &tri, &plane);
-        }
+    if (use_faces) {
         if (g->faces.failed) return 0;
         const size_t face_words = DF_START + g->faces.count * DF_STRIDE;
         if (face_words > UINT32_MAX / 4 - stroke_words) return 0;
