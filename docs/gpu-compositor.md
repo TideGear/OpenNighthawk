@@ -1171,3 +1171,20 @@ Light check passed (hash `600306c77cb04481` x4, 901 checksums in all four guard 
 The pack's decal face list (`df_add`, serial, one loop in triangle order) now runs as job 0 of the same pool as the pack chunks (`pack_job`, `faces_build` in `gpu_compose.c`), so it overlaps them instead of running after them. It reads `g->polys` and writes only `g->faces`; the chunks write only `pw` and `stw`. The list's order is unchanged. Checks: `F117_SETUP_CHECK=1` on the late flight, 0 of 3,240 classify results and 0 of 6,480 binnings differ; light check passed (hash x4, 12 checksum sets identical, live checks and shots 0).
 
 Paired late flight, 4K Maximum, Model detail Full, base / new / base / new: picture mean 21.00 / 20.77 / 21.83 / 20.78 ms, p95 28.8 / 28.7 / 29.9 / 28.1 ms. **Gain about 0.5 ms a picture on the mean, within run-to-run noise on the p95.** Kept because it is exact and cheap, but it is the smallest step so far. (These absolute numbers are higher than the 20.3 ms of the previous section because another program was using the GPU during these runs.)
+
+### Part B step 1 redone: the runway with the GPU idle (15 November 2026, early morning)
+
+**The earlier runway numbers were inflated.** A Windows screensaver (`Mystify.scr`, 11 to 20% of the 3D engine) was running during the 14 Nov runway runs, on top of the desktop compositor (`dwm`, about 1 to 11% with the 4K display). It was stopped and a keep-awake held (`SetThreadExecutionState`, no settings changed) for the runs below; the GPU read under 2% before them (`Get-Counter '\GPU Engine(*engtype_3D)\Utilization Percentage'`). Check the counter before any timing: any other process using the GPU changes these numbers.
+
+Runway, 4K Maximum, Model detail Full, hidden window, vsync off, build `7dd6a74`, three runs one at a time (`private/partb/rwidle.sh`). Milliseconds, mean / p95 / p99 (later two thirds of each run):
+
+| Stage | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| CPU setup (`gpu_begin`) | 1.84 / 7.87 / 9.03 | 1.83 / 7.89 / 8.98 | 1.92 / 8.03 / 9.10 |
+| Picture step | 5.81 / 6.67 / 7.58 | 5.81 / 6.65 / 7.62 | 5.89 / 6.77 / 7.85 |
+| GPU span | 7.53 / 8.73 / 9.50 | 7.52 / 8.64 / 9.39 | 7.62 / 8.73 / 9.64 |
+| Worker total | 9.62 / 16.63 / 18.05 | 9.59 / 16.64 / 17.88 | 9.79 / 16.76 / 17.89 |
+
+Share of frames over 8.3 ms: worker total (the stages one after the other) **86, 87 and 94%**; CPU setup 3.2 to 3.4%; picture step 0.3 to 0.5%; **GPU span alone 10.3 to 13.0%**. If setup, picture step and GPU ran fully overlapped, each frame would cost the slowest of the three: mean 7.5 ms, p95 8.7 to 8.9, **11 to 14% of frames over 8.3 ms**. The 14 Nov statement that the runway's GPU span alone is over 8.3 ms on about 80% of frames, and that the runway therefore cannot reach 120 fps with the present GPU passes, was wrong; it came from the screensaver. The runway is within reach of the target: overlap the stages (the main lever), then take about 0.5 to 1 ms off the GPU span's upper tail (p99 9.5) and off the setup spikes (p99 9.0, the game-step frames).
+
+**The late flight was not affected as much** (its GPU span p99 is about 13 ms against 16.7; its runs were interleaved pairs, so the screensaver, if present, was in both halves); the late-flight GPU figures should still be re-taken with the GPU idle before they are quoted as final.
