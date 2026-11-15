@@ -3182,6 +3182,14 @@ int main(int argc, char **argv)
                 { const char *st = getenv("F117_PRESENT_SHOTS_STEP"); if (st && atoi(st) > 1) step = (uint64_t)atoi(st); }   /* every Nth picture */
             }
             if (shots && left && H.m.cpu.icount >= from && (++seen % step) == 0) {
+                if (getenv("F117_SHOT_STEPS")) {      /* diagnostic (Part A, 14 Nov 2026): the steps this picture is drawn between, and their end clocks, to pair a shot with the records of the draw calls that made it */
+                    unsigned long long eo = 0, en = 0; int fo = 0, fn = 0;
+                    for (int k = 0; k < DRAWLIVE_POOL; k++) {
+                        if (g_live.step[k].seq == older && g_live.step[k].end) { eo = g_live.step[k].end; fo = 1; }
+                        if (g_live.step[k].seq == newer && g_live.step[k].end) { en = g_live.step[k].end; fn = 1; }
+                    }
+                    fprintf(stderr, "[shot-steps] clock %llu older %llu end %llu%s newer %llu end %llu%s t %.6f\n", (unsigned long long)H.m.cpu.icount, (unsigned long long)older, eo, fo ? "" : "?", (unsigned long long)newer, en, fn ? "" : "?", t_shown);
+                }
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {
