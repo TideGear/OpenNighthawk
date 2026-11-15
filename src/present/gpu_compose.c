@@ -311,7 +311,7 @@ static int tile_touches_exact(const ctri *tr, int tx, int ty)
 #endif
 static int g_cyc_on;
 static unsigned long long g_cyc[6], g_cnt[6];
-/* Part B (13 November 2026): the counters run only with F117_REMASTER_TIMING set (g_cyc_on, read once a picture in gpu_compose_begin). They used to run on
+/* Part B (13 November 2026): the counters run only with F117_CLASSIFY_COUNTERS set (g_cyc_on, read once a picture in gpu_compose_begin). They used to run on
  * every polygon, stroke and vertex on every classify thread: locked adds on the same few cache lines, which kept the classify from scaling past about 8 threads. */
 #if defined(_MSC_VER)
 #define CADD(a, i, v) do { if (g_cyc_on) _InterlockedExchangeAdd64((volatile __int64 *)&(a)[i], (__int64)(v)); } while (0)
@@ -658,13 +658,15 @@ static int bin_tiles_fast(const clist *l, int tilesx, int tilesy, vec *off_v, ve
     return 1;
 }
 
+static int bin_tiles_threaded(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out);
+
 /* The binning used: the fast form in exact mode, the reference otherwise. F117_BIN_CHECK=1 also runs the reference and reports any difference in the offsets or the entries. */
 static int bin_tiles(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
 {
     static int bin_ref = -1;            /* F117_BIN_REF=1: the reference binning (for paired A/B timing) */
     if (bin_ref < 0) bin_ref = getenv("F117_BIN_REF") != NULL;
     if (!exact_on() || bin_ref) return bin_tiles_ref(l, tilesx, tilesy, off_v, ents_v, nents_out);
-    if (!getenv("F117_BIN_CHECK")) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
+    if (!getenv("F117_BIN_CHECK")) return bin_tiles_threaded(l, tilesx, tilesy, off_v, ents_v, nents_out);
     if (!bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out)) return 0;
     vec ro = { 0 }, re = { 0 };
     size_t n2 = 0;
@@ -822,6 +824,95 @@ static void pool_run(pool_fn fn, void *arg, int njobs)
     for (int i = 0; i < p->nworkers; i++) SDL_WaitSemaphore(p->done);
 }
 
+/* ---- The binning on several threads (14 November 2026) ---------------------------------------------------------------------------------------------------
+ * bin_tiles_fast is a two-pass counting sort in triangle order. Here the triangles are split into BIN_CHUNKS contiguous ranges: each range counts its own tiles
+ * (pass 0), the counts of the ranges are turned into each range's start inside every tile (the ranges in order, so a tile's entries stay in triangle order: the
+ * serial order exactly), and each range then writes its entries (pass 1). F117_SETUP_THREADS=1 and short lists run bin_tiles_fast; F117_SETUP_CHECK=1 compares
+ * the offsets and the entries of both byte for byte on every call. */
+#define BIN_CHUNKS 16
+typedef struct {
+    const clist *l; int tilesx, ntiles; uint32_t *off; uint32_t *cnt; uint32_t *ents; size_t per; int pass;
+} bin_ctx;
+
+static void bin_job(void *vc, int k)
+{
+    bin_ctx *c = (bin_ctx *)vc; const clist *l = c->l;
+    uint32_t *cnt = c->cnt + (size_t)k * c->ntiles;
+    const size_t a = (size_t)k * c->per, b = a + c->per < l->n ? a + c->per : l->n;
+    if (c->pass == 0) memset(cnt, 0, (size_t)c->ntiles * 4);
+    for (size_t ti = a; ti < b; ti++) {
+        const ctri *tr = &l->t[ti];
+        const int tx0 = tr->bbox[0] / TILE, tx1 = tr->bbox[1] / TILE, ty0 = tr->bbox[2] / TILE, ty1 = tr->bbox[3] / TILE;
+        for (int ty = ty0; ty <= ty1; ty++) {
+            int lo = tx0, hi = tx1;
+            tile_row_span(tr, ty, &lo, &hi);
+            for (int tx = lo; tx <= hi; tx++) {
+                const int tile = ty * c->tilesx + tx;
+                if (c->pass == 0) cnt[tile]++;
+                else {
+                    const double ox = tx * TILE + 0.5, oy = ty * TILE + 0.5;
+                    const double l1 = tr->a1d * (ox - tr->cx) + tr->b1d * (oy - tr->cy), l2 = tr->a2d * (ox - tr->cx) + tr->b2d * (oy - tr->cy);
+                    const uint32_t at = c->off[tile] + cnt[tile]++;
+                    const float f1 = (float)l1, f2 = (float)l2;
+                    uint32_t *en = &c->ents[9 * (size_t)at];
+                    en[0] = (uint32_t)ti; memcpy(&en[1], &f1, 4); memcpy(&en[2], &f2, 4);
+                    put_exact_origin(en + 3, tr, tx, ty);
+                }
+            }
+        }
+    }
+}
+
+/* per tile block: the chunks' counts become each chunk's start inside the tile, and the tile's total goes to off[tile + 1] */
+static void bin_prefix_job(void *vc, int blk)
+{
+    bin_ctx *c = (bin_ctx *)vc;
+    const int per = (c->ntiles + 31) / 32, t0 = blk * per, t1 = t0 + per < c->ntiles ? t0 + per : c->ntiles;
+    for (int t = t0; t < t1; t++) c->off[t + 1] = 0;
+    for (int k = 0; k < BIN_CHUNKS; k++) {
+        uint32_t *cnt = c->cnt + (size_t)k * c->ntiles;
+        for (int t = t0; t < t1; t++) { const uint32_t n = cnt[t]; cnt[t] = c->off[t + 1]; c->off[t + 1] += n; }
+    }
+}
+
+static int bin_tiles_threaded(const clist *l, int tilesx, int tilesy, vec *off_v, vec *ents_v, size_t *nents_out)
+{
+    if (setup_threads() <= 1 || l->n < 2048) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
+    const int ntiles = tilesx * tilesy;
+    static uint32_t *cnt; static size_t cnt_cap;
+    if (cnt_cap < (size_t)BIN_CHUNKS * ntiles) {
+        uint32_t *q = (uint32_t *)realloc(cnt, (size_t)BIN_CHUNKS * ntiles * 4);
+        if (!q) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
+        cnt = q; cnt_cap = (size_t)BIN_CHUNKS * ntiles;
+    }
+    uint32_t *off = (uint32_t *)vec_reserve(off_v, ((size_t)ntiles + 1) * 4);
+    if (!off) return 0;
+    static bin_ctx c;
+    c.l = l; c.tilesx = tilesx; c.ntiles = ntiles; c.off = off; c.cnt = cnt; c.ents = NULL;
+    c.per = (l->n + BIN_CHUNKS - 1) / BIN_CHUNKS;
+    off[0] = 0;
+    c.pass = 0; pool_run(bin_job, &c, BIN_CHUNKS);
+    pool_run(bin_prefix_job, &c, 32);
+    for (int t = 0; t < ntiles; t++) off[t + 1] += off[t];
+    const size_t nents = off[ntiles];
+    uint32_t *ents = (uint32_t *)vec_reserve(ents_v, (nents ? nents : 1) * 36);
+    if (!ents) return 0;
+    c.ents = ents; c.pass = 1; pool_run(bin_job, &c, BIN_CHUNKS);
+    *nents_out = nents;
+    static int check = -1;
+    if (check < 0) check = getenv("F117_SETUP_CHECK") != NULL;
+    if (check) {
+        static unsigned n, bad; vec ro = { 0 }, re = { 0 }; size_t n2 = 0;
+        const int ok = bin_tiles_fast(l, tilesx, tilesy, &ro, &re, &n2);
+        const int same = ok && n2 == nents && !memcmp(ro.p, off, ((size_t)ntiles + 1) * 4) && !memcmp(re.p, ents, n2 * 36);
+        n++; if (!same) bad++;
+        if (!same && bad < 4) fprintf(stderr, "[setup-check] binning differs (call %u, %zu vs %zu entries)\n", n, n2, nents);
+        if (n % 240 == 0) fprintf(stderr, "[setup-check] %u binnings checked, %u differ\n", n, bad);
+        free(ro.p); free(re.p);
+    }
+    return 1;
+}
+
 static int clist_reserve(clist *l, size_t n)
 {
     if (l->cap >= n) return 1;
@@ -866,8 +957,12 @@ typedef struct {
 static void classify_job(void *vc, int k)
 {
     cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g; const gpu_compose_in *in = c->in;
-    clist *pl = &g->cpoly[k], *sl = &g->cstroke[k];
-    pl->n = 0; sl->n = 0; c->drawn[k] = 0;
+    /* Part B (14 November 2026): the chunk's list headers and its stroke count live in locals and are stored once at the end. The 32 headers (g->cpoly[k], g->cstroke[k])
+     * and c->drawn[k] sit next to each other in memory, and every triangle and stroke wrote them from a different thread: false sharing, which kept the classify no
+     * faster on 8 threads than on one. */
+    clist lp = g->cpoly[k], ls = g->cstroke[k]; lp.n = 0; ls.n = 0;
+    clist *pl = &lp, *sl = &ls; uint32_t drawn_local = 0;
+    g->cpoly[k].n = 0; g->cstroke[k].n = 0; c->drawn[k] = 0;
     const uint64_t a64 = (uint64_t)k * c->per;
     if (a64 >= in->nrec) return;
     const uint32_t a = (uint32_t)a64, b = (uint32_t)(a64 + c->per < in->nrec ? a64 + c->per : in->nrec);
@@ -877,16 +972,17 @@ static void classify_job(void *vc, int k)
         const gpu_trace_rec *r = &in->recs[i];
         if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LOGIC) {
             const unsigned long long cp = CYC();
-            if (!add_polygon(pl, r, c->w, c->h)) { c->fail = 1; return; }
+            if (!add_polygon(pl, r, c->w, c->h)) { c->fail = 1; break; }
             CADD(g_cyc, 1, CYC() - cp); CADD(g_cnt, 1, 1);
         } else if (r->kind == REMASTER_T_LINE) {
             int drawn = 0;
             const unsigned long long cs = CYC();
-            if (!add_stroke(sl, r, c->w, c->h, c->drawn[k], words + (size_t)c->drawn[k] * STROKE_WORDS, &drawn)) { c->fail = 1; return; }
+            if (!add_stroke(sl, r, c->w, c->h, drawn_local, words + (size_t)drawn_local * STROKE_WORDS, &drawn)) { c->fail = 1; break; }
             CADD(g_cyc, 2, CYC() - cs); CADD(g_cnt, 2, 1);
-            if (drawn) c->drawn[k]++;
+            if (drawn) drawn_local++;
         }
     }
+    g->cpoly[k] = lp; g->cstroke[k] = ls; c->drawn[k] = drawn_local;      /* one store each (the lists may have grown) */
 }
 
 static void merge_job(void *vc, int k)
@@ -971,7 +1067,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         g_square_pen = square_pen_enabled();
         g_q_check = g_plane_check = getenv("F117_BIN_CHECK") != NULL;
         g_plane_full = getenv("F117_PLANE_FULL") != NULL;
-        g_cyc_on = getenv("F117_REMASTER_TIMING") != NULL;
+        g_cyc_on = getenv("F117_CLASSIFY_COUNTERS") != NULL;      /* the per-record counters (F117_REMASTER_TIMING alone prints the phases without them) */
         exact_on(); decal_faces_enabled();
     }
     /* classify the records: the clear and the bands first, then polygons, then the lines; anything else is not handled */
