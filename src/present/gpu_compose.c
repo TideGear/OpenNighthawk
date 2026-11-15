@@ -51,6 +51,8 @@ struct gpu_compose {
     Uint32 pix_cap;
     SDL_GPUTransferBuffer *up, *down;
     Uint32 up_cap, down_cap;
+    SDL_GPUTransferBuffer *upb;             /* the band triangles' own upload, for F117_GPU_BANDS_FIRST (the bands pass is submitted before the rest of the setup is done) */
+    Uint32 upb_cap;
     clist polys, strokes;
     clist cpoly[SETUP_CHUNKS], cstroke[SETUP_CHUNKS];     /* the classify loop's per-chunk lists, merged in order into polys and strokes */
     vec cword[SETUP_CHUNKS];
@@ -220,6 +222,7 @@ void gpu_compose_destroy(gpu_compose *g)
         if (g->up) SDL_ReleaseGPUTransferBuffer(g->dev, g->up);
         if (g->down) SDL_ReleaseGPUTransferBuffer(g->dev, g->down);
         if (g->up2) SDL_ReleaseGPUTransferBuffer(g->dev, g->up2);
+        if (g->upb) SDL_ReleaseGPUTransferBuffer(g->dev, g->upb);
         if (g->p_bands) SDL_ReleaseGPUComputePipeline(g->dev, g->p_bands);
         if (g->p_polys) SDL_ReleaseGPUComputePipeline(g->dev, g->p_polys);
         if (g->p_strokes) SDL_ReleaseGPUComputePipeline(g->dev, g->p_strokes);
@@ -1129,6 +1132,48 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
             CADD(g_cyc, 0, CYC() - cb); CADD(g_cnt, 0, 1);
         }
     }
+    /* Part B (14 November 2026), F117_GPU_BANDS_FIRST (on by default, =0 off): the bands pass (the clear, the sky and ground) needs only the band triangles built above, not the polygons
+     * and lines the CPU classifies, bins and packs next. So it is uploaded and submitted now, in a command buffer of its own, and the GPU runs it while the CPU
+     * does that setup; the main submission below then leaves the bands out. The passes, their order and their data are the same (command buffers run in
+     * submission order), so the result is the same. Not with the per-pass timing or the timestamp profile, which time the passes in one buffer. */
+    static int bands_first = -1;
+    if (bands_first < 0) { const char *bf = getenv("F117_GPU_BANDS_FIRST"); bands_first = !(bf && bf[0] == '0') && !getenv("F117_GPU_PASS_TIMES") && !getenv("F117_GPU_TIMESTAMP_LOG"); }
+    int did_bands = 0;
+    if (bands_first) {
+        const SDL_GPUBufferUsageFlags rb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, rwb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+        const Uint32 pb = (Uint32)(px * 4), bb = (Uint32)((nband ? nband : 1) * 256);
+        int ok = gbuf_ensure(g->dev, &g->bt, rb, bb);
+        gbuf *early[] = { &g->colour, &g->index_, &g->invz, &g->owner };
+        for (int k = 0; ok && k < 4; k++) ok = gbuf_ensure(g->dev, early[k], rwb, pb);
+        if (ok && g->upb_cap < bb) {
+            if (g->upb) SDL_ReleaseGPUTransferBuffer(g->dev, g->upb);
+            SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bb + bb / 2, 0 };
+            g->upb = SDL_CreateGPUTransferBuffer(g->dev, &ti); g->upb_cap = g->upb ? ti.size : 0;
+            ok = g->upb != NULL;
+        }
+        if (ok) {
+            Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, g->upb, true);
+            ok = m != NULL;
+            if (ok) { memset(m, 0, bb); if (nband) memcpy(m, bw, (size_t)nband * 256); SDL_UnmapGPUTransferBuffer(g->dev, g->upb); }
+        }
+        SDL_GPUCommandBuffer *cb0 = ok ? SDL_AcquireGPUCommandBuffer(g->dev) : NULL;
+        if (cb0) {
+            SDL_GPUCopyPass *cp0 = SDL_BeginGPUCopyPass(cb0);
+            SDL_GPUTransferBufferLocation from = { g->upb, 0 }; SDL_GPUBufferRegion to = { g->bt.buf, 0, bb };
+            SDL_UploadToGPUBuffer(cp0, &from, &to, false);
+            SDL_EndGPUCopyPass(cp0);
+            SDL_GPUStorageBufferReadWriteBinding rw[4] = { { g->colour.buf, false }, { g->index_.buf, false }, { g->invz.buf, false }, { g->owner.buf, false } };
+            const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
+            SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb0, NULL, 0, rw, 4);
+            SDL_BindGPUComputePipeline(c, g->p_bands);
+            SDL_BindGPUComputeStorageBuffers(c, 0, &g->bt.buf, 1);
+            SDL_PushGPUComputeUniformData(cb0, 0, u, sizeof u);
+            SDL_DispatchGPUCompute(c, ((Uint32)tw + 63) / 64, (Uint32)h, 1);
+            SDL_EndGPUComputePass(c);
+            SDL_SubmitGPUCommandBuffer(cb0);
+            did_bands = 1;
+        }
+    }
     if (!classify_records(g, in, tw, h, sw, &nstrokes)) return 0;
     CADD(g_cyc, 5, CYC() - c_loop); CADD(g_cnt, 5, 1);
     const Uint64 t_classified = SDL_GetTicksNS();
@@ -1204,6 +1249,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (!m) return 0;
         for (int k = 0; k < nseg; k++) {
             const size_t have = segs[k].data ? segs[k].bytes : 0;
+            if (did_bands && k == 0) { p += (segs[k].bytes + 15u) & ~15u; continue; }      /* the band triangles went in the early submission */
             memset(p, 0, segs[k].bytes);
             if (segs[k].data) {
                 size_t n = have;
@@ -1225,7 +1271,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         for (int k = 0; k < nseg; k++) {
             SDL_GPUTransferBufferLocation from = { g->up, at };
             SDL_GPUBufferRegion to = { segs[k].b->buf, 0, segs[k].bytes };
-            SDL_UploadToGPUBuffer(cp, &from, &to, false);
+            if (!(did_bands && k == 0)) SDL_UploadToGPUBuffer(cp, &from, &to, false);
             at += (segs[k].bytes + 15u) & ~15u;
         }
     }
@@ -1235,7 +1281,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (pass_times_on()) { pmark = t_setup; pass_split(g, &cb, 0, &pmark); if (!cb) return 0; }
 
     SDL_GPUBuffer *b_colour = g->colour.buf, *b_index = g->index_.buf, *b_invz = g->invz.buf, *b_owner = g->owner.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
-    {   /* bands: the clear, the sky and ground, depth and owner zero */
+    if (!did_bands) {   /* bands: the clear, the sky and ground, depth and owner zero (already submitted with F117_GPU_BANDS_FIRST) */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
         const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
