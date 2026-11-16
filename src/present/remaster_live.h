@@ -102,6 +102,8 @@ typedef struct remaster_frame_copy remaster_frame_copy;
 remaster_frame_copy *remaster_frame_copy_new(void);
 void remaster_frame_copy_free(remaster_frame_copy *c);
 int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out);
+/* The same without the copy: the done frame's buffer is swapped into `out` (for an instance only the caller reads). */
+int remaster_live_done_take(remaster_live *r, remaster_frame_copy *out);
 /* Part B Stage 2 (F117_STAGE2): the pairing of two step scenes' primitives (made once per interval) and the scene of a picture at t between them, staged in a deferred-mode instance
  * (remaster_live_commit makes it the done frame). 0: not made. */
 typedef struct remaster_stage2_pairs remaster_stage2_pairs;

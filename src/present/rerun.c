@@ -292,6 +292,7 @@ static int g_prof = -1;
 static uint64_t g_prof_ic[PROF_MARKS]; static double g_prof_ms[PROF_MARKS]; static int g_prof_set[PROF_MARKS];
 static machine_t *g_prof_m;
 static double walk_ms(void);
+static void rerun_yield_point(void);
 void rerun_prof_mark(int label)
 {
     if (g_prof <= 0 || label < 0 || label >= PROF_MARKS || !g_prof_m) return;
@@ -1129,6 +1130,7 @@ static int far_scenery_body(machine_t *m)
         *p &= 0x7F;
     }
     for (size_t k = 0; k < npick; k++) {
+        if ((k & 63) == 63) rerun_yield_point();      /* a sliced copy gives the display loop its turn here (state is clean between picks) */
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
         if (g_collector.native && !(pk->own && pk->defers)) {
@@ -1842,6 +1844,43 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     return 0;
 }
 
+/* ---- The copy on a fiber (Windows): a sliced copy yields from any yield point (between machine slices, every 64 placements of the far scenery) back to the display loop when its
+ * wall-time budget is spent, and is resumed where it stopped on the next call of rerun_step. Same thread, so the observer, the recompiled-code runtime and the thread-local
+ * state behave as in rerun_draw. A copy run without a budget (rerun_draw) does not use the fiber. Elsewhere the copy yields only between machine slices. */
+#ifdef _WIN32
+static void *g_fiber, *g_main_fiber;
+static int g_in_fiber, g_fiber_done;
+static double g_deadline_ms = 1e300;
+static int g_fiber_failed;
+#endif
+static void rerun_yield_point(void)
+{
+#ifdef _WIN32
+    if (g_in_fiber && walk_ms() >= g_deadline_ms) SwitchToFiber(g_main_fiber);
+#endif
+}
+static machine_t *g_run_machine;
+static uint64_t g_run_limit;
+/* the copy's machine loop: until the frame closes, the instruction limit or a fault */
+static int copy_run_body(void)
+{
+    machine_t *s = g_run_machine;
+    while (!g_done && s->cpu.icount < g_run_limit) {
+        if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) return 1;
+        rerun_yield_point();
+    }
+    return 0;
+}
+#ifdef _WIN32
+static void CALLBACK copy_fiber_proc(void *arg)
+{
+    (void)arg;
+    g_fiber_failed = copy_run_body();
+    g_fiber_done = 1;
+    for (;;) SwitchToFiber(g_main_fiber);        /* a fiber must not return */
+}
+#endif
+
 /* ---- A copy run in slices (Part B, Stage 2): rerun_begin does the setup, rerun_step runs the copy for a wall-time budget and puts the real observer back in between, so the
  * display loop can spend a few milliseconds a frame on a copy instead of seventeen at once. The copy needs the snapshots only in rerun_begin (it takes its own copy of the
  * memory and of the fixes' state there); one copy at a time. rerun_draw below is begin and step without a budget. */
@@ -2069,11 +2108,33 @@ int rerun_step(uint64_t budget_ns)
     int failed = 0;
     static double acc_run, acc_end, acc_post, worst_run; static unsigned njobs; static int tdiag = -1;
     if (tdiag < 0) tdiag = getenv("F117_RERUN_STEP_DIAG") != NULL;
-    while (!g_done && s->cpu.icount < limit) {
-        if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) { failed = 1; break; }
-        if (budget_ns != ~0ull && (walk_ms() - t0) * 1e6 >= (double)budget_ns) break;
+    g_run_machine = s; g_run_limit = limit;
+    int finished;
+#ifdef _WIN32
+    static int use_fibers = -1;
+    if (use_fibers < 0) { const char *e = getenv("F117_NO_COPY_FIBER"); use_fibers = !(e && e[0] == '1'); }
+    if (use_fibers && (g_fiber || budget_ns != ~0ull)) {
+        if (!g_main_fiber) g_main_fiber = IsThreadAFiber() ? GetCurrentFiber() : ConvertThreadToFiber(NULL);
+        if (!g_fiber && g_main_fiber) { g_fiber_done = 0; g_fiber_failed = 0; g_fiber = CreateFiberEx(1 << 16, 64u << 20, 0, copy_fiber_proc, NULL); }
     }
-    const int finished = g_done || failed || s->cpu.icount >= limit;
+    if (g_fiber) {
+        g_deadline_ms = budget_ns == ~0ull ? 1e300 : t0 + (double)budget_ns / 1e6;
+        g_in_fiber = 1;
+        SwitchToFiber(g_fiber);
+        g_in_fiber = 0;
+        failed = g_fiber_failed;
+        finished = g_fiber_done || failed;
+        if (finished) { DeleteFiber(g_fiber); g_fiber = NULL; }
+    } else
+#endif
+    {
+        while (!g_done && s->cpu.icount < limit) {
+            if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) { failed = 1; break; }
+            if (budget_ns != ~0ull && (walk_ms() - t0) * 1e6 >= (double)budget_ns) break;
+        }
+        finished = g_done || failed || s->cpu.icount >= limit;
+    }
+    if (!finished && g_job.began && s->cpu.icount >= limit) finished = 1;
     const double t_run = walk_ms() - t0;
     acc_run += t_run; if (t_run > worst_run) worst_run = t_run;
     if (!finished) {                       /* between slices: keep the copy's state, put the real one back */
@@ -2101,7 +2162,7 @@ int rerun_step(uint64_t budget_ns)
             const int a = order[i - 1], c2 = order[i];
             sum_ms[a][c2] += g_prof_ms[c2] - g_prof_ms[a]; sum_ic[a][c2] += (double)(g_prof_ic[c2] - g_prof_ic[a]); seen[a][c2]++;
         }
-        if (++n % 240 == 0) {
+        if (++n % 40 == 0) {
             fprintf(stderr, "[profile] mean of %u copies, per stretch (wall ms, original instructions):\n", n);
             double tot_ms = 0, tot_ic = 0;
             for (int a = 0; a < PROF_MARKS; a++) for (int c2 = 0; c2 < PROF_MARKS; c2++) if (seen[a][c2]) {

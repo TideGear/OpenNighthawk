@@ -2260,6 +2260,20 @@ int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
     return 1;
 }
 
+/* Part B Stage 2: like remaster_live_done_clone, but the done frame's primitive buffer is handed over to `out` and `out`'s old buffer takes its place: no copy. For an instance that
+ * nobody else reads (the scene copies'); its next copy rebuilds the frame, and its done frame is empty until then. */
+int remaster_live_done_take(remaster_live *r, remaster_frame_copy *out)
+{
+    if (!r || !out || !r->have_done) return 0;
+    remaster_prim *tp = out->prim; const size_t tc = out->cap;
+    out->prim = r->done.prim; out->cap = r->done.cap; out->n = r->done.n;
+    r->done.prim = tp; r->done.cap = tc; r->done.n = 0; r->have_done = 0;
+    out->origin[0] = r->done_origin[0]; out->origin[1] = r->done_origin[1];
+    memcpy(out->band, r->done_band, sizeof out->band); out->have_band = r->done_have_band; memcpy(out->window, r->done_window, sizeof out->window);
+    out->complete = r->done_complete; out->hud_at = r->done_hud_at;
+    return 1;
+}
+
 /* ---- Part B Stage 2: a picture's scene from two step scenes (F117_STAGE2; docs/gpu-compositor.md) ----------------------------------------------------------
  * The scene of an in-between picture is the blend of the scenes of the two game steps it lies between, not a render copy at its own t. The blend takes the primitives of the
  * nearer step in their own order (painter order and the HUD split are kept) and moves each one's vertices towards its partner in the other step, paired by (kind, vertex count,

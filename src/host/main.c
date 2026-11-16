@@ -146,6 +146,8 @@ static struct {
     remaster_stage2_pairs *pairs[3];                      /* [0] and [1] made on the pairing thread, [2] made at once when neither is ready */
     uint64_t pa[3], pb[3];                                /* the step scenes a pairing is for */
     int pvalid[3], pnext;
+    int pq, pq_a, pq_b; uint64_t pq_sa, pq_sb;            /* a pairing asked for while the thread was busy: slots and step seqs */
+    unsigned held;
     unsigned started, finished, late, extrap, boot, slices, blended;
     double slice_ms_max, slice_ms, pair_ms, begin_ms, blend_ms; unsigned blend_n, pairs_made;
 } g_s2;
@@ -165,21 +167,28 @@ static int pair_thread_main(void *u)
     }
     return 0;
 }
+/* Starts the queued pairing when the thread is free (the slots it names are still the scenes it was asked for). */
+static void s2_pair_launch(void)
+{
+    if (!g_s2.pq || g_pth.busy || !g_pth.th) return;
+    g_s2.pq = 0;
+    if (g_s2.seq[g_s2.pq_a] != g_s2.pq_sa || g_s2.seq[g_s2.pq_b] != g_s2.pq_sb) return;      /* a slot has been reused meanwhile */
+    const int pbuf = g_s2.pnext; g_s2.pnext ^= 1;
+    g_s2.pa[pbuf] = g_s2.pq_sa; g_s2.pb[pbuf] = g_s2.pq_sb; g_s2.pvalid[pbuf] = 0;
+    g_pth.buf = pbuf; g_pth.a = g_s2.sc[g_s2.pq_a]; g_pth.b = g_s2.sc[g_s2.pq_b]; g_pth.busy = 1;
+    SDL_SignalSemaphore(g_pth.go);
+}
+
 /* A scene copy has finished (rerun_step returned 1): keep its scene and start the pairing with the step before it on the pairing thread. */
 static void s2_job_done(void)
 {
     S2EV("job for step %llu finished (ok %d) at clock %llu, slices so far %u\n", (unsigned long long)g_s2.job_seq, drawlive_scene_ok(), (unsigned long long)H.m.cpu.icount, g_s2.slices);
     g_s2.job = 0;
-    if (drawlive_scene_ok() && remaster_live_done_clone(g_s2.scene, g_s2.sc[g_s2.next])) {
+    if (drawlive_scene_ok() && remaster_live_done_take(g_s2.scene, g_s2.sc[g_s2.next])) {
         const int k = g_s2.next;
         g_s2.seq[k] = g_s2.job_seq; g_s2.next = (g_s2.next + 1) % 4; g_s2.finished++;
-        for (int q = 0; q < 4; q++) if (g_s2.seq[q] + 1 == g_s2.job_seq && g_pth.th && !g_pth.busy) {
-            const int pbuf = g_s2.pnext; g_s2.pnext ^= 1;
-            g_s2.pa[pbuf] = g_s2.seq[q]; g_s2.pb[pbuf] = g_s2.job_seq; g_s2.pvalid[pbuf] = 0;
-            g_pth.buf = pbuf; g_pth.a = g_s2.sc[q]; g_pth.b = g_s2.sc[k]; g_pth.busy = 1;
-            SDL_SignalSemaphore(g_pth.go);
-            break;
-        }
+        for (int q = 0; q < 4; q++) if (g_s2.seq[q] + 1 == g_s2.job_seq && g_pth.th) { g_s2.pq = 1; g_s2.pq_a = q; g_s2.pq_b = k; g_s2.pq_sa = g_s2.seq[q]; g_s2.pq_sb = g_s2.job_seq; break; }
+        s2_pair_launch();
     }
 }
 static remaster_live *g_rlive_copy;       /* Remastered's collector for the rerun copies (rerun.h): the frame of the picture a copy drew */
@@ -758,9 +767,19 @@ static int present_setup_main(void *u)
         gpu_compose_use_set(w->set);
         w->a_ok = 0;
         if (pw_a_applies(w)) {
+            const Uint64 a0 = SDL_GetTicksNS();
             remaster_live_set_palette_thread(w->frame.dac);
             w->a_ok = remaster_live_gpu_begin_ex(g_rlive_copy, &H.m, g_scale, w->ww);
             remaster_live_set_palette_thread(NULL);
+            {   /* F117_SETUP_TIMING=1 (diagnostic): how long the setup stage takes, and how often it is over 12 ms */
+                static int on = -1; static double sum, worst; static unsigned n, over;
+                if (on < 0) on = getenv("F117_SETUP_TIMING") != NULL;
+                if (on) {
+                    const double ms = (double)(SDL_GetTicksNS() - a0) / 1e6;
+                    sum += ms; if (ms > worst) worst = ms; if (ms > 12.0) over++;
+                    if (++n % 60 == 0) fprintf(stderr, "[setup] %u pictures: mean %.2f ms, worst %.2f, %u over 12 ms\n", n, sum / n, worst, over);
+                }
+            }
         }
         SDL_SignalSemaphore(g_pwx.sdone);
     }
@@ -3280,7 +3299,8 @@ int main(int argc, char **argv)
                          * scenes of its two steps at its t and shows the nearer step's own picture layer. The copy of a step starts when the step is published, about a step before
                          * its interval is shown. A scene that is late holds the previous one (counted); at the start, the copies are made at once. */
                         static int s_log = -1; static double s_slice_ms = -1;
-                        if (s_log < 0) { s_log = getenv("F117_STAGE2_LOG") != NULL; const char *e = getenv("F117_STAGE2_SLICE_MS"); s_slice_ms = e ? atof(e) : 3.0; }
+                        const double br0 = (double)SDL_GetTicksNS() / 1e6; double c_slice = 0, c_done = 0, c_pair = 0, c_blend = 0, c_begin = 0;
+                        if (s_log < 0) { s_log = getenv("F117_STAGE2_LOG") != NULL; const char *e = getenv("F117_STAGE2_SLICE_MS"); s_slice_ms = e ? atof(e) : 5.0; }
                         if (!g_s2.sc[0]) {
                             for (int k = 0; k < 4; k++) { g_s2.sc[k] = remaster_frame_copy_new(); g_s2.seq[k] = ~0ull; }
                             for (int k = 0; k < 3; k++) { g_s2.pairs[k] = remaster_stage2_pairs_new(); g_s2.pa[k] = g_s2.pb[k] = ~0ull; }
@@ -3292,6 +3312,7 @@ int main(int argc, char **argv)
                             g_pth.busy = 0;
                             g_s2.pvalid[g_pth.buf] = g_pth.ok;
                         }
+                        s2_pair_launch();
                         {   /* the newest published step's scene: start its copy (the first slice follows at once) */
                             const drawlive_step *na, *nb;
                             drawlive_steps(&g_live, &na, &nb);
@@ -3302,6 +3323,7 @@ int main(int argc, char **argv)
                                 if (drawlive_scene_begin(&g_live)) { g_s2.job = 1; g_s2.job_seq = nb->seq; g_s2.started++; S2EV("job for step %llu started at clock %llu\n", (unsigned long long)nb->seq, (unsigned long long)H.m.cpu.icount); }
                                 g_coll = NULL;
                                 g_s2.begin_ms += (double)SDL_GetTicksNS() / 1e6 - b0;
+                                c_begin = (double)SDL_GetTicksNS() / 1e6 - b0;
                             }
                         }
                         if (g_s2.job) {                          /* this frame's slice of the running copy */
@@ -3310,8 +3332,9 @@ int main(int argc, char **argv)
                             const int done = drawlive_scene_step(&g_live, (uint64_t)(s_slice_ms * 1e6));
                             g_coll = NULL;
                             const double sl = (double)SDL_GetTicksNS() / 1e6 - sl0;
+                            c_slice = sl;
                             g_s2.slices++; g_s2.slice_ms += sl; if (sl > g_s2.slice_ms_max) g_s2.slice_ms_max = sl;
-                            if (done) s2_job_done();
+                            if (done) { const double d0 = (double)SDL_GetTicksNS() / 1e6; s2_job_done(); c_done = (double)SDL_GetTicksNS() / 1e6 - d0; }
                         }
                         int ka = -1, kb = -1, kp = -1;
                         for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == plan.older) ka = k; if (g_s2.seq[k] == plan.newer) kb = k; }
@@ -3329,32 +3352,47 @@ int main(int argc, char **argv)
                         }
                         int ok = 0;
                         double use_t = plan.t;
-                        if (ka >= 0 && kb >= 0) {
-                            for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pa[q] == plan.older && g_s2.pb[q] == plan.newer) kp = q;      /* its pairing: made on the thread, or in progress, or none */
-                            if (kp >= 0 && !g_s2.pvalid[kp]) {
-                                if (g_pth.busy && g_pth.buf == kp) { SDL_WaitSemaphore(g_pth.done); g_pth.busy = 0; g_s2.pvalid[kp] = g_pth.ok; }
-                                if (!g_s2.pvalid[kp]) kp = -1;
-                            }
-                            if (kp < 0) {                        /* none: made now (the start, or a step whose neighbour was missed) */
-                                const double pr0 = (double)SDL_GetTicksNS() / 1e6;
-                                if (remaster_stage2_pair(g_s2.pairs[2], g_s2.sc[ka], g_s2.sc[kb])) { kp = 2; g_s2.pa[2] = plan.older; g_s2.pb[2] = plan.newer; g_s2.pvalid[2] = 1; }
-                                g_s2.pair_ms += (double)SDL_GetTicksNS() / 1e6 - pr0; g_s2.pairs_made++;
-                            }
-                            ok = kp >= 0;
-                        } else {                                 /* this interval's scene (or its pairing) is not ready: carry on from the previous interval, the same pairing at t above 1 (a straight extrapolation) */
+                        const int have_scenes = ka >= 0 && kb >= 0;
+                        if (have_scenes)                         /* this interval's own pairing, when the thread has finished it: never waited for */
+                            for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pvalid[q] && g_s2.pa[q] == plan.older && g_s2.pb[q] == plan.newer) kp = q;
+                        if (kp >= 0) ok = 1;
+                        else {
+                            /* not ready: carry on from the previous interval, its pairing at t above 1 (a straight extrapolation); else the newest pairing held at its end */
+                            int hold = 0;
                             for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pvalid[q] && g_s2.pb[q] == plan.older) kp = q;
+                            if (kp < 0) {
+                                for (int q = 0; q < 3; q++) if (g_s2.pvalid[q] && (kp < 0 || g_s2.pb[q] > g_s2.pb[kp])) kp = q;
+                                hold = kp >= 0;
+                            }
                             if (kp >= 0) {
-                                ka = kb = -1;
-                                for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == g_s2.pa[kp]) ka = k; if (g_s2.seq[k] == g_s2.pb[kp]) kb = k; }
-                                ok = ka >= 0 && kb >= 0; use_t = 1.0 + plan.t; if (use_t > 1.5) use_t = 1.5; g_s2.extrap += ok;
+                                int xa = -1, xb = -1;
+                                for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == g_s2.pa[kp]) xa = k; if (g_s2.seq[k] == g_s2.pb[kp]) xb = k; }
+                                ok = xa >= 0 && xb >= 0;
+                                if (ok) {
+                                    ka = xa; kb = xb;
+                                    if (hold) { use_t = 1.0; g_s2.held++; } else { use_t = 1.0 + plan.t; if (use_t > 1.5) use_t = 1.5; g_s2.extrap++; }
+                                }
+                            } else if (have_scenes) {            /* no pairing exists at all (the start): made now */
+                                const double pr0 = (double)SDL_GetTicksNS() / 1e6;
+                                if (remaster_stage2_pair(g_s2.pairs[2], g_s2.sc[ka], g_s2.sc[kb])) { kp = 2; g_s2.pa[2] = plan.older; g_s2.pb[2] = plan.newer; g_s2.pvalid[2] = 1; ok = 1; }
+                                g_s2.pair_ms += (double)SDL_GetTicksNS() / 1e6 - pr0; g_s2.pairs_made++;
+                                c_pair = (double)SDL_GetTicksNS() / 1e6 - pr0;
                             }
                         }
                         const double bl0 = (double)SDL_GetTicksNS() / 1e6;
                         if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t)) {
                             g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
+                            c_blend = (double)SDL_GetTicksNS() / 1e6 - bl0;
                             plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
                         } else { S2EV("no blend: ok %d ka %d kb %d kp %d older %llu newer %llu job %d finished %u\n", ok, ka, kb, kp, (unsigned long long)plan.older, (unsigned long long)plan.newer, g_s2.job, g_s2.finished); if (g_s2.job) { g_coll = g_s2.scene; while (!drawlive_scene_step(&g_live, ~0ull)) {} g_coll = NULL; s2_job_done(); }      /* the legacy copy needs the copy machine free */
                             drawlive_prepare_rerun(&g_live, &plan); }      /* no scene yet: the legacy copy for this picture (so the worker composes it: never on the main thread beside the setup thread) */
+                        {   /* F117_STAGE2_SLOW=MS (diagnostic): the pictures whose Stage 2 branch took longer than that, with its parts */
+                            static double slow_ms = -2; static unsigned slow_n;
+                            if (slow_ms == -2) { const char *e = getenv("F117_STAGE2_SLOW"); slow_ms = e ? atof(e) : -1; }
+                            const double tot = (double)SDL_GetTicksNS() / 1e6 - br0;
+                            if (slow_ms > 0 && tot > slow_ms && slow_n < 60 && H.m.cpu.icount >= s2_ev_from())
+                                { slow_n++; fprintf(stderr, "[s2-slow] %.1f ms at clock %llu t %.2f: slice %.1f, job done (clone) %.1f, begin %.1f, pairing at once %.1f, blend %.1f, extrapolating %d\n", tot, (unsigned long long)H.m.cpu.icount, plan.t, c_slice, c_done, c_begin, c_pair, c_blend, use_t > 1.0); }
+                        }
                         if (s_log && (g_s2.blended % 40) == 0 && g_s2.blended)
                             fprintf(stderr, "[stage2] clock %llu: %u copies started, %u finished, %u slices (%.2f ms each, longest %.1f), %u pictures extrapolated, %u boot; copy begin %.2f ms, pairing at once %.2f ms (%u), blend %.2f ms a picture\n", (unsigned long long)H.m.cpu.icount,
                                     g_s2.started, g_s2.finished, g_s2.slices, g_s2.slices ? g_s2.slice_ms / g_s2.slices : 0.0, g_s2.slice_ms_max, g_s2.extrap, g_s2.boot, g_s2.started ? g_s2.begin_ms / g_s2.started : 0.0,
