@@ -1247,3 +1247,27 @@ Outside the mid-t band almost nothing is 4 or more pixels off. Models 37, 39 and
 4. The exact compute compositor stays as the oracle and as a switchable fallback; step pictures (t = 1) are held to it within a measured tolerance, in-between pictures by the blend check and the owner's eye. Unpaired primitives are drawn from the nearer step.
 
 Risks: the 0.2 to 1.7% of mid-t vertices that blend badly (pairing by the game's object identity and blending rotation as rotation are the known remedies), the layering rules under a depth buffer, and the decal and stroke rules that read neighbouring pixels.
+
+### Part B, route step 1: the hardware rasteriser throughput test (15 November 2026, evening)
+
+**Predicted before running:** 1 to 2 ms a frame for the late scene (about 81,000 triangles) at 4K on the RTX 3060.
+
+**Test** (`private/partb/hwtest/`, standalone, not in CMake; `hwtest.c`, `hw.hlsl`, `topng.py`; run `hwtest TRACE hw_vs.dxil hw_ps.dxil [frames] [rgba out]`): reads a recorded composite trace (`gpu_trace.h`), fan-triangulates the polygons after the near clip, draws each line as a quad of its width, and draws the shaded band polygons as the farthest backdrop; target 3840 x 1800 RGBA8 with a D32 depth buffer (greater wins, depth = 1/z), SDL GPU graphics pipeline (vertex and pixel shader, no blending). Flat per-vertex colour only: **none of the game's rules are in it** (no decal or stroke visibility, AND/OR/stipple fills, owner tags, replace step or present pass; the 67 AND/OR logic fills are left out). Each frame is a render pass with a clear of colour and depth, run back to back, one frame in flight ahead, 200 frames; hidden, nothing else running, no `f117a.exe` before or after. A first run was invalid and discarded: the logic fills drew opaque grey with depth and the band polygons sat in front of the scenery; both were found by reading back a frame (`frame_*.png`).
+
+| Scene (trace) | Triangles | Frame ms, clear + draw | Clear only | Upload of the scene (once per step) |
+|---|---|---|---|---|
+| Late flight (`owner-211031/late.trc`) | 152,717 | 0.261 | 0.098 | 0.604 ms (7.0 MB) |
+| Sea (`r36/sea.trc`) | 152,123 | 0.236 | 0.091 | 0.590 |
+| Earlier (`r38-ranges/earlier.trc`) | 87,404 | 0.217 | 0.092 | 0.368 |
+| Middle (`r38-ranges/middle.trc`) | 116,598 | 0.225 | 0.091 | 0.469 |
+| Airfield and hangar (`r38-validate/hangar/hangar.trc`) | 1,251 | 0.192 | 0.091 | 0.089 |
+| `r38/tr_0.trc` | 152,222 | 0.235 | 0.091 | 0.587 |
+| `r38-validate/b95trace/b95.trc` | 138,107 | 0.231 | 0.101 | 0.541 |
+
+(The trace holds 1 triangle per fan step of a polygon: the late trace's 76,727 records give 152,717 triangles, 458,151 vertices; 53,782 of the records are lines, drawn as two triangles each.)
+
+**Result: 0.19 to 0.26 ms a frame against the 1 to 2 ms predicted, about 5 to 10 times under it, and about 30 times under the 8.3 ms budget.** The clear of colour and depth is 0.09 ms of it. The upload of a whole scene is 0.6 ms at most, and is needed once per game step (15 Hz), not per picture.
+
+**What it does not prove.** The scenes are thin in fill (the flight is mostly over sea; the pixels covered by objects are few), no scene is a close, heavy runway or terrain view, and none of the game's per-pixel rules are in the shaders. The decal and stroke visibility rules, the AND/OR/stipple logic, owner tags, the replace step and the present pass all still have to be built and will cost something; at ten times this figure the total would still be 2.6 ms. The next measurement that matters is a runway trace with close terrain.
+
+**Remaining gap, both flights (the app is unchanged; this is a test beside it):** late flight 20.7 ms mean with the one-frame pipeline, 23.9 without (target 8.3, 0 frames over); runway about 12 ms mean with 10 to 13% of frames over 8.3 ms. The drawing is no longer the obstacle. What stands between the app and the target is the copy per picture (19.8 ms on the main thread), which step 2 retires.
