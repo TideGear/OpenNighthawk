@@ -215,6 +215,7 @@ gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir
 }
 
 static void setup_pool_shutdown(void);
+static void faces_thread_shutdown(void);
 
 void gpu_compose_destroy(gpu_compose *g)
 {
@@ -249,6 +250,7 @@ void gpu_compose_destroy(gpu_compose *g)
     free(g->faces.words);
     free(g->polys.t); free(g->strokes.t);
     for (int k = 0; k < SETUP_CHUNKS; k++) { free(g->cpoly[k].t); free(g->cstroke[k].t); free(g->cword[k].p); }
+    faces_thread_shutdown();
     setup_pool_shutdown();
     free(g->band_words.p); free(g->poly_words.p); free(g->poly_ents.p); free(g->poly_off.p);
     free(g->stroke_tri_words.p); free(g->stroke_ents.p); free(g->stroke_off.p); free(g->stroke_words.p);
@@ -971,6 +973,7 @@ typedef struct {
     uint32_t *sw;
 } cls_ctx;
 
+static Uint64 g_chunk_ns[SETUP_CHUNKS];   /* F117_CLASSIFY_SPLIT diagnostic: each chunk's own time */
 static void classify_job(void *vc, int k)
 {
     cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g; const gpu_compose_in *in = c->in;
@@ -983,6 +986,7 @@ static void classify_job(void *vc, int k)
     const uint64_t a64 = (uint64_t)k * c->per;
     if (a64 >= in->nrec) return;
     const uint32_t a = (uint32_t)a64, b = (uint32_t)(a64 + c->per < in->nrec ? a64 + c->per : in->nrec);
+    const Uint64 t_job0 = SDL_GetTicksNS(); (void)t_job0;
     uint32_t *words = (uint32_t *)vec_reserve(&g->cword[k], (size_t)(b - a) * STROKE_WORDS * 4);
     if (!words) { c->fail = 1; return; }
     for (uint32_t i = a; i < b; i++) {
@@ -1000,6 +1004,7 @@ static void classify_job(void *vc, int k)
         }
     }
     g->cpoly[k] = lp; g->cstroke[k] = ls; c->drawn[k] = drawn_local;      /* one store each (the lists may have grown) */
+    g_chunk_ns[k] = SDL_GetTicksNS() - t_job0;
 }
 
 static void merge_job(void *vc, int k)
@@ -1019,7 +1024,16 @@ static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int
     static cls_ctx c;                   /* one render worker calls this; the context is reused */
     c.g = g; c.in = in; c.w = w; c.h = h; c.fail = 0; c.sw = sw;
     c.per = (in->nrec + SETUP_CHUNKS - 1) / SETUP_CHUNKS;
+    const Uint64 t_pool0 = SDL_GetTicksNS();
     pool_run(classify_job, &c, SETUP_CHUNKS);
+    {   static int on = -1; static unsigned n; static double sp, ss, sm, sx;
+        if (on < 0) on = getenv("F117_CLASSIFY_SPLIT") != NULL;
+        if (on) {
+            double sum = 0, mx = 0; for (int k = 0; k < SETUP_CHUNKS; k++) { const double ms = g_chunk_ns[k] / 1e6; sum += ms; if (ms > mx) mx = ms; }
+            sp += (SDL_GetTicksNS() - t_pool0) / 1e6; ss += sum; sm += mx; n++;
+            if (n % 60 == 0) fprintf(stderr, "[classify-split] %u: pool wall %.2f ms, chunk sum %.2f, longest chunk %.2f\n", n, sp / n, ss / n, sm / n);
+        }
+    }
     if (c.fail) return 0;
     size_t np = 0, nsz = 0; uint32_t nd = 0;
     for (int k = 0; k < SETUP_CHUNKS; k++) {
@@ -1049,7 +1063,7 @@ static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int
 
 /* Job 0 of the pack pool builds the decal face list (serial by nature: the chains and the dedup depend on the insertion order, so it stays one loop in triangle
  * order); the pack chunks run beside it on the other threads (14 November 2026). It reads g->polys and writes only g->faces; the chunks write only pw and stw. */
-typedef struct { gpu_compose *g; uint32_t *pw, *stw; int faces; } pack_ctx;
+typedef struct { gpu_compose *g; uint32_t *pw, *stw; int faces, faces_async; } pack_ctx;
 static void faces_build(gpu_compose *g)
 {
     df_reset(&g->faces);
@@ -1062,10 +1076,45 @@ static void faces_build(gpu_compose *g)
         df_add(&g->faces, tr->paint_owner, &tri, &plane);
     }
 }
+/* Part B (16 November 2026): the decal face list is one serial loop in triangle order (5.5 ms at the end of the flight), and it needs only the classified polygons, so
+ * it runs on a thread of its own from the end of the classify, beside the binning and the pack chunks. Same loop, same list, byte for byte. One setup caller at a time:
+ * a call that returns early leaves it running, and the next call (or the destroy) waits for it before touching the lists. */
+static struct { SDL_Thread *th; SDL_Semaphore *go, *done; gpu_compose *g; int quit, running; } g_fth;
+static int faces_thread_main(void *u)
+{
+    (void)u;
+    for (;;) {
+        SDL_WaitSemaphore(g_fth.go);
+        if (g_fth.quit) break;
+        faces_build(g_fth.g);
+        SDL_SignalSemaphore(g_fth.done);
+    }
+    return 0;
+}
+static void faces_wait(void) { if (g_fth.running) { SDL_WaitSemaphore(g_fth.done); g_fth.running = 0; } }
+static int faces_start(gpu_compose *g)
+{
+    faces_wait();
+    if (!g_fth.th) {
+        g_fth.go = SDL_CreateSemaphore(0); g_fth.done = SDL_CreateSemaphore(0);
+        if (g_fth.go && g_fth.done) g_fth.th = SDL_CreateThread(faces_thread_main, "faces", NULL);
+        if (!g_fth.th) return 0;
+    }
+    g_fth.g = g; g_fth.running = 1;
+    SDL_SignalSemaphore(g_fth.go);
+    return 1;
+}
+static void faces_thread_shutdown(void)
+{
+    faces_wait();
+    if (!g_fth.th) return;
+    g_fth.quit = 1; SDL_SignalSemaphore(g_fth.go); SDL_WaitThread(g_fth.th, NULL); g_fth.th = NULL;
+    SDL_DestroySemaphore(g_fth.go); SDL_DestroySemaphore(g_fth.done); g_fth.go = g_fth.done = NULL; g_fth.quit = 0;
+}
 static void pack_job(void *vc, int k)
 {
     const pack_ctx *c = (const pack_ctx *)vc;
-    if (k == 0) { if (c->faces) faces_build(c->g); return; }
+    if (k == 0) { if (c->faces && !c->faces_async) faces_build(c->g); return; }
     k--;
     const size_t np = c->g->polys.n, ns = c->g->strokes.n;
     const size_t p0 = np * k / SETUP_CHUNKS, p1 = np * (k + 1) / SETUP_CHUNKS, s0 = ns * k / SETUP_CHUNKS, s1 = ns * (k + 1) / SETUP_CHUNKS;
@@ -1089,6 +1138,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     g->profile_pending = g->profile != NULL;
 #endif
+    faces_wait();            /* a previous call that returned early may have left the face list running */
     GS(g)->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
     const int w = in->w, h = in->h, tw = in->tw;
@@ -1151,8 +1201,9 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
      * does that setup; the main submission below then leaves the bands out. The passes, their order and their data are the same (command buffers run in
      * submission order), so the result is the same. Not with the per-pass timing or the timestamp profile, which time the passes in one buffer. */
     static int bands_first = -1;
-    if (bands_first < 0) { const char *bf = getenv("F117_GPU_BANDS_FIRST"); bands_first = !(bf && bf[0] == '0') && !getenv("F117_GPU_PASS_TIMES") && !getenv("F117_GPU_TIMESTAMP_LOG"); }
+    if (bands_first < 0) { const char *bf = getenv("F117_GPU_BANDS_FIRST"); bands_first = (bf && bf[0] == '1') && !getenv("F117_GPU_PASS_TIMES") && !getenv("F117_GPU_TIMESTAMP_LOG"); }
     int did_bands = 0;
+    const Uint64 t_bands_built = SDL_GetTicksNS();
     if (bands_first) {
         const SDL_GPUBufferUsageFlags rb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, rwb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
         const Uint32 pb = (Uint32)(px * 4), bb = (Uint32)((nband ? nband : 1) * 256);
@@ -1188,9 +1239,19 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
             did_bands = 1;
         }
     }
+    const Uint64 t_pre_classify = SDL_GetTicksNS();
     if (!classify_records(g, in, tw, h, sw, &nstrokes)) return 0;
+    {   static int on = -1; static unsigned n; static double a, b, c2;
+        if (on < 0) on = getenv("F117_CLASSIFY_SPLIT") != NULL;
+        if (on) {
+            const Uint64 now = SDL_GetTicksNS();
+            a += (t_bands_built - t_start) / 1e6; b += (t_pre_classify - t_bands_built) / 1e6; c2 += (now - t_pre_classify) / 1e6;
+            if (++n % 60 == 0) fprintf(stderr, "[classify-split] phase: before bands %.2f ms, bands-first upload+submit %.2f, classify_records %.2f\n", a / n, b / n, c2 / n);
+        }
+    }
     CADD(g_cyc, 5, CYC() - c_loop); CADD(g_cnt, 5, 1);
     const Uint64 t_classified = SDL_GetTicksNS();
+    const int faces_async = decal_faces_enabled() && setup_threads() > 1 && faces_start(g);
     const int tilesx = (tw + TILE - 1) / TILE, tilesy = (h + TILE - 1) / TILE;
     size_t npents = 0, nsents = 0;
     if (!bin_tiles(&g->polys, tilesx, tilesy, &g->poly_off, &g->poly_ents, &npents)) return 0;
@@ -1202,7 +1263,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (!g->polys.n) memset(pw, 0, 160);        /* the one-triangle minimum upload of an empty list stays zero, as before */
     if (!g->strokes.n) memset(stw, 0, 160);
     const int use_faces = decal_faces_enabled();
-    { pack_ctx pc = { g, pw, stw, use_faces }; pool_run(pack_job, &pc, SETUP_CHUNKS + 1); }
+    {   const Uint64 pk0 = SDL_GetTicksNS();
+        pack_ctx pc = { g, pw, stw, use_faces, faces_async }; pool_run(pack_job, &pc, SETUP_CHUNKS + 1); faces_wait();
+        static int on = -1; static unsigned n; static double sw_;
+        if (on < 0) on = getenv("F117_CLASSIFY_SPLIT") != NULL;
+        if (on) { sw_ += (SDL_GetTicksNS() - pk0) / 1e6; if (++n % 60 == 0) fprintf(stderr, "[classify-split] pack pool wall %.2f ms (the face list runs beside the binning, on its own thread)\n", sw_ / n); }
+    }
     uint32_t flags[256];
     for (int k = 0; k < 256; k++) flags[k] = in->tagflags[k];
 
