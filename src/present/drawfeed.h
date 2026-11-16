@@ -90,7 +90,7 @@ typedef struct {
     int            state;         /* DRAWLIVE_FREE, _STAGED (collected, not yet shown) or _PUBLISHED */
 } drawlive_step;
 
-#define DRAWLIVE_POOL 7           /* steps: two published (three in rerun), one released late (defer_release), the rest collected and waiting */
+#define DRAWLIVE_POOL 9           /* steps: two published (three in rerun), one released late (defer_release), the rest collected and waiting */
 #define DRAWLIVE_QUEUE 16
 enum { DRAWLIVE_FREE, DRAWLIVE_STAGED, DRAWLIVE_PUBLISHED };
 
@@ -200,6 +200,7 @@ int drawlive_collect(drawlive *r, drawfeed *f);
  * paired). Frees the older steps; nothing may be rendering. */
 void drawlive_publish(drawlive *r);
 void drawlive_release_pending(drawlive *r);
+void drawlive_release_pending_n(drawlive *r, int n);
 unsigned long long drawlive_job_fingerprint(const drawlive *r);   /* F117_COPY_FP */
 void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan);   /* after drawlive_prepare_rerun, when no job draws from the job list */
 

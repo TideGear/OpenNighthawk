@@ -2,6 +2,7 @@
  * gpu_replace): the CPU clips and projects the polygons and strokes, splits them into triangles and bins them into 16 x 16 tiles with the weights evaluated in
  * double at each tile's first pixel; the passes are the shaders in src/present/gpu. */
 #include "gpu_compose.h"
+#include "tls.h"
 
 #define STROKE_WORDS 24     /* words of one stroke record (strokes_x.hlsl: the same stride) */
 #include "exact.h"
@@ -38,6 +39,25 @@ typedef struct { ctri *t; size_t n, cap; } clist;
 
 typedef struct { void *p; size_t n, cap; } vec;     /* a growing array of bytes */
 
+/* One picture's GPU resources and bookkeeping. The compositor keeps two sets so that the setup of the next picture (a second thread, Part B pipeline) can fill one while the
+ * first still holds the GPU's work of the previous picture; which set a call uses is the calling thread's (gpu_compose_use_set), 0 unless it says otherwise. */
+typedef struct {
+    gbuf bt, pt, pe, po, pal, st, se, so, sw, hid, tf, src, tag, dac;
+    gbuf colour, index_, invz, owner, strokez, outpix;
+    SDL_GPUTransferBuffer *up, *down;
+    Uint32 up_cap, down_cap;
+    SDL_GPUTransferBuffer *upb;             /* the band triangles' own upload, for F117_GPU_BANDS_FIRST (the bands pass is submitted before the rest of the setup is done) */
+    Uint32 upb_cap;
+    double setup_ms, gpu_ms, copy_ms, wait_ms;
+    int begun;                              /* gpu_compose_begin has run and gpu_compose_finish has not */
+    gpu_compose_in params;                  /* the begun frame's replace parameters (the pointers in it are not kept) */
+    Uint32 pbytes, game_bytes;
+    size_t npix_game;
+    SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
+    Uint32 up2_cap;
+    Uint64 t_begin;
+} gset;
+
 struct gpu_compose {
     SDL_GPUDevice *dev;
     SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present;
@@ -46,32 +66,23 @@ struct gpu_compose {
     int cur_write, last_written;
     int tgt_w, tgt_h;
     SDL_GPUTransferBuffer *tgt_down;
-    gbuf bt, pt, pe, po, pal, st, se, so, sw, hid, tf, src, tag, dac;
-    gbuf colour, index_, invz, owner, strokez, outpix;
+    gset set[2];
     Uint32 pix_cap;
-    SDL_GPUTransferBuffer *up, *down;
-    Uint32 up_cap, down_cap;
-    SDL_GPUTransferBuffer *upb;             /* the band triangles' own upload, for F117_GPU_BANDS_FIRST (the bands pass is submitted before the rest of the setup is done) */
-    Uint32 upb_cap;
     clist polys, strokes;
     clist cpoly[SETUP_CHUNKS], cstroke[SETUP_CHUNKS];     /* the classify loop's per-chunk lists, merged in order into polys and strokes */
     vec cword[SETUP_CHUNKS];
     decal_face_cache faces;
     vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
-    double setup_ms, gpu_ms, copy_ms, wait_ms;
     int said;
-    int begun;                              /* gpu_compose_begin has run and gpu_compose_finish has not */
-    gpu_compose_in params;                  /* the begun frame's replace parameters (the pointers in it are not kept) */
-    Uint32 pbytes, game_bytes;
-    size_t npix_game;
-    SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
-    Uint32 up2_cap;
-    Uint64 t_begin;
     void *profile;
     void *(*profile_list)(SDL_GPUCommandBuffer *);
     FILE *profile_log;
     int profile_pending, profile_failed;
 };
+
+static F117_TLS int g_set_tls;
+void gpu_compose_use_set(int k) { g_set_tls = k & 1; }
+#define GS(g) (&(g)->set[g_set_tls])
 
 static void profile_init(gpu_compose *g)
 {
@@ -216,13 +227,16 @@ void gpu_compose_destroy(gpu_compose *g)
     if (g->profile_log) fclose(g->profile_log);
 #endif
     if (g->dev) {
-        gbuf *all[] = { &g->bt, &g->pt, &g->pe, &g->po, &g->pal, &g->st, &g->se, &g->so, &g->sw, &g->hid, &g->tf, &g->src, &g->tag, &g->dac,
-                        &g->colour, &g->index_, &g->invz, &g->owner, &g->strokez, &g->outpix };
-        for (size_t i = 0; i < sizeof all / sizeof *all; i++) if (all[i]->buf) SDL_ReleaseGPUBuffer(g->dev, all[i]->buf);
-        if (g->up) SDL_ReleaseGPUTransferBuffer(g->dev, g->up);
-        if (g->down) SDL_ReleaseGPUTransferBuffer(g->dev, g->down);
-        if (g->up2) SDL_ReleaseGPUTransferBuffer(g->dev, g->up2);
-        if (g->upb) SDL_ReleaseGPUTransferBuffer(g->dev, g->upb);
+        for (int si = 0; si < 2; si++) {
+            gset *q = &g->set[si];
+            gbuf *all[] = { &q->bt, &q->pt, &q->pe, &q->po, &q->pal, &q->st, &q->se, &q->so, &q->sw, &q->hid, &q->tf, &q->src, &q->tag, &q->dac,
+                            &q->colour, &q->index_, &q->invz, &q->owner, &q->strokez, &q->outpix };
+            for (size_t i = 0; i < sizeof all / sizeof *all; i++) if (all[i]->buf) SDL_ReleaseGPUBuffer(g->dev, all[i]->buf);
+            if (q->up) SDL_ReleaseGPUTransferBuffer(g->dev, q->up);
+            if (q->down) SDL_ReleaseGPUTransferBuffer(g->dev, q->down);
+            if (q->up2) SDL_ReleaseGPUTransferBuffer(g->dev, q->up2);
+            if (q->upb) SDL_ReleaseGPUTransferBuffer(g->dev, q->upb);
+        }
         if (g->p_bands) SDL_ReleaseGPUComputePipeline(g->dev, g->p_bands);
         if (g->p_polys) SDL_ReleaseGPUComputePipeline(g->dev, g->p_polys);
         if (g->p_strokes) SDL_ReleaseGPUComputePipeline(g->dev, g->p_strokes);
@@ -243,14 +257,14 @@ void gpu_compose_destroy(gpu_compose *g)
 
 void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, double *copy_ms)
 {
-    if (copy_ms) *copy_ms = g ? g->copy_ms : 0.0;
-    if (setup_ms) *setup_ms = g ? g->setup_ms : 0.0;
-    if (gpu_ms) *gpu_ms = g ? g->gpu_ms : 0.0;
+    if (copy_ms) *copy_ms = g ? GS(g)->copy_ms : 0.0;
+    if (setup_ms) *setup_ms = g ? GS(g)->setup_ms : 0.0;
+    if (gpu_ms) *gpu_ms = g ? GS(g)->gpu_ms : 0.0;
 }
 
 double gpu_compose_wait_ms(const gpu_compose *g)
 {
-    return g ? g->wait_ms : 0.0;
+    return g ? GS(g)->wait_ms : 0.0;
 }
 
 /* ---- CPU setup ---- */
@@ -1075,7 +1089,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     g->profile_pending = g->profile != NULL;
 #endif
-    g->begun = 0;
+    GS(g)->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
     const int w = in->w, h = in->h, tw = in->tw;
     const size_t px = (size_t)tw * h;
@@ -1142,31 +1156,31 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     if (bands_first) {
         const SDL_GPUBufferUsageFlags rb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, rwb = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
         const Uint32 pb = (Uint32)(px * 4), bb = (Uint32)((nband ? nband : 1) * 256);
-        int ok = gbuf_ensure(g->dev, &g->bt, rb, bb);
-        gbuf *early[] = { &g->colour, &g->index_, &g->invz, &g->owner };
+        int ok = gbuf_ensure(g->dev, &GS(g)->bt, rb, bb);
+        gbuf *early[] = { &GS(g)->colour, &GS(g)->index_, &GS(g)->invz, &GS(g)->owner };
         for (int k = 0; ok && k < 4; k++) ok = gbuf_ensure(g->dev, early[k], rwb, pb);
-        if (ok && g->upb_cap < bb) {
-            if (g->upb) SDL_ReleaseGPUTransferBuffer(g->dev, g->upb);
+        if (ok && GS(g)->upb_cap < bb) {
+            if (GS(g)->upb) SDL_ReleaseGPUTransferBuffer(g->dev, GS(g)->upb);
             SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bb + bb / 2, 0 };
-            g->upb = SDL_CreateGPUTransferBuffer(g->dev, &ti); g->upb_cap = g->upb ? ti.size : 0;
-            ok = g->upb != NULL;
+            GS(g)->upb = SDL_CreateGPUTransferBuffer(g->dev, &ti); GS(g)->upb_cap = GS(g)->upb ? ti.size : 0;
+            ok = GS(g)->upb != NULL;
         }
         if (ok) {
-            Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, g->upb, true);
+            Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->upb, true);
             ok = m != NULL;
-            if (ok) { memset(m, 0, bb); if (nband) memcpy(m, bw, (size_t)nband * 256); SDL_UnmapGPUTransferBuffer(g->dev, g->upb); }
+            if (ok) { memset(m, 0, bb); if (nband) memcpy(m, bw, (size_t)nband * 256); SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->upb); }
         }
         SDL_GPUCommandBuffer *cb0 = ok ? SDL_AcquireGPUCommandBuffer(g->dev) : NULL;
         if (cb0) {
             SDL_GPUCopyPass *cp0 = SDL_BeginGPUCopyPass(cb0);
-            SDL_GPUTransferBufferLocation from = { g->upb, 0 }; SDL_GPUBufferRegion to = { g->bt.buf, 0, bb };
+            SDL_GPUTransferBufferLocation from = { GS(g)->upb, 0 }; SDL_GPUBufferRegion to = { GS(g)->bt.buf, 0, bb };
             SDL_UploadToGPUBuffer(cp0, &from, &to, false);
             SDL_EndGPUCopyPass(cp0);
-            SDL_GPUStorageBufferReadWriteBinding rw[4] = { { g->colour.buf, false }, { g->index_.buf, false }, { g->invz.buf, false }, { g->owner.buf, false } };
+            SDL_GPUStorageBufferReadWriteBinding rw[4] = { { GS(g)->colour.buf, false }, { GS(g)->index_.buf, false }, { GS(g)->invz.buf, false }, { GS(g)->owner.buf, false } };
             const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
             SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb0, NULL, 0, rw, 4);
             SDL_BindGPUComputePipeline(c, g->p_bands);
-            SDL_BindGPUComputeStorageBuffers(c, 0, &g->bt.buf, 1);
+            SDL_BindGPUComputeStorageBuffers(c, 0, &GS(g)->bt.buf, 1);
             SDL_PushGPUComputeUniformData(cb0, 0, u, sizeof u);
             SDL_DispatchGPUCompute(c, ((Uint32)tw + 63) / 64, (Uint32)h, 1);
             SDL_EndGPUComputePass(c);
@@ -1213,39 +1227,39 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 game_bytes = (Uint32)((npix_game + 7) & ~(size_t)3);
     const Uint32 nstroke_b = (Uint32)((nstrokes ? nstrokes : 1) * 4);
     seg segs[] = {
-        { &g->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
-        { &g->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 160), RO },
-        { &g->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
-        { &g->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
-        { &g->pal, in->palette, 1024, RO },
-        { &g->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
-        { &g->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
-        { &g->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
-        { &g->sw, sw, sw_bytes, RO },
-        { &g->tf, flags, 1024, RO },
+        { &GS(g)->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
+        { &GS(g)->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 160), RO },
+        { &GS(g)->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
+        { &GS(g)->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
+        { &GS(g)->pal, in->palette, 1024, RO },
+        { &GS(g)->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
+        { &GS(g)->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
+        { &GS(g)->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
+        { &GS(g)->sw, sw, sw_bytes, RO },
+        { &GS(g)->tf, flags, 1024, RO },
     };
     const int nseg = (int)(sizeof segs / sizeof *segs);
     Uint32 total = 0;
     for (int k = 0; k < nseg; k++) { if (!gbuf_ensure(g->dev, segs[k].b, segs[k].usage, segs[k].bytes)) return 0; total += (segs[k].bytes + 15u) & ~15u; }
-    if (!gbuf_ensure(g->dev, &g->hid, RW, nstroke_b)) return 0;
-    gbuf *pixbufs[] = { &g->colour, &g->index_, &g->invz, &g->owner, &g->strokez, &g->outpix };
+    if (!gbuf_ensure(g->dev, &GS(g)->hid, RW, nstroke_b)) return 0;
+    gbuf *pixbufs[] = { &GS(g)->colour, &GS(g)->index_, &GS(g)->invz, &GS(g)->owner, &GS(g)->strokez, &GS(g)->outpix };
     for (int k = 0; k < 6; k++) if (!gbuf_ensure(g->dev, pixbufs[k], RW, pbytes)) return 0;
-    if (g->up_cap < total) {
-        if (g->up) SDL_ReleaseGPUTransferBuffer(g->dev, g->up);
+    if (GS(g)->up_cap < total) {
+        if (GS(g)->up) SDL_ReleaseGPUTransferBuffer(g->dev, GS(g)->up);
         SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, total + total / 2, 0 };
-        g->up = SDL_CreateGPUTransferBuffer(g->dev, &ti); g->up_cap = g->up ? ti.size : 0;
-        if (!g->up) return 0;
+        GS(g)->up = SDL_CreateGPUTransferBuffer(g->dev, &ti); GS(g)->up_cap = GS(g)->up ? ti.size : 0;
+        if (!GS(g)->up) return 0;
     }
-    if (g->down_cap < pbytes) {
-        if (g->down) SDL_ReleaseGPUTransferBuffer(g->dev, g->down);
+    if (GS(g)->down_cap < pbytes) {
+        if (GS(g)->down) SDL_ReleaseGPUTransferBuffer(g->dev, GS(g)->down);
         SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, pbytes, 0 };
-        g->down = SDL_CreateGPUTransferBuffer(g->dev, &ti); g->down_cap = g->down ? pbytes : 0;
-        if (!g->down) return 0;
+        GS(g)->down = SDL_CreateGPUTransferBuffer(g->dev, &ti); GS(g)->down_cap = GS(g)->down ? pbytes : 0;
+        if (!GS(g)->down) return 0;
     }
-    if (!gbuf_ensure(g->dev, &g->src, RO, game_bytes) || !gbuf_ensure(g->dev, &g->tag, RO, game_bytes) || !gbuf_ensure(g->dev, &g->dac, RO, 768)) return 0;
+    if (!gbuf_ensure(g->dev, &GS(g)->src, RO, game_bytes) || !gbuf_ensure(g->dev, &GS(g)->tag, RO, game_bytes) || !gbuf_ensure(g->dev, &GS(g)->dac, RO, 768)) return 0;
     const Uint64 t_prepared = SDL_GetTicksNS();
     {
-        Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, g->up, true), *p = m;
+        Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->up, true), *p = m;
         if (!m) return 0;
         for (int k = 0; k < nseg; k++) {
             const size_t have = segs[k].data ? segs[k].bytes : 0;
@@ -1253,12 +1267,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
             memset(p, 0, segs[k].bytes);
             if (segs[k].data) {
                 size_t n = have;
-                if (segs[k].b == &g->src || segs[k].b == &g->tag) n = npix_game;
+                if (segs[k].b == &GS(g)->src || segs[k].b == &GS(g)->tag) n = npix_game;
                 memcpy(p, segs[k].data, n < segs[k].bytes ? n : segs[k].bytes);
             }
             p += (segs[k].bytes + 15u) & ~15u;
         }
-        SDL_UnmapGPUTransferBuffer(g->dev, g->up);
+        SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->up);
     }
     const Uint64 t_setup = SDL_GetTicksNS();
 
@@ -1269,7 +1283,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     {
         Uint32 at = 0;
         for (int k = 0; k < nseg; k++) {
-            SDL_GPUTransferBufferLocation from = { g->up, at };
+            SDL_GPUTransferBufferLocation from = { GS(g)->up, at };
             SDL_GPUBufferRegion to = { segs[k].b->buf, 0, segs[k].bytes };
             if (!(did_bands && k == 0)) SDL_UploadToGPUBuffer(cp, &from, &to, false);
             at += (segs[k].bytes + 15u) & ~15u;
@@ -1280,13 +1294,13 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     Uint64 pmark = SDL_GetTicksNS();
     if (pass_times_on()) { pmark = t_setup; pass_split(g, &cb, 0, &pmark); if (!cb) return 0; }
 
-    SDL_GPUBuffer *b_colour = g->colour.buf, *b_index = g->index_.buf, *b_invz = g->invz.buf, *b_owner = g->owner.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
+    SDL_GPUBuffer *b_colour = GS(g)->colour.buf, *b_index = GS(g)->index_.buf, *b_invz = GS(g)->invz.buf, *b_owner = GS(g)->owner.buf, *b_strokez = GS(g)->strokez.buf, *b_out = GS(g)->outpix.buf;
     if (!did_bands) {   /* bands: the clear, the sky and ground, depth and owner zero (already submitted with F117_GPU_BANDS_FIRST) */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
         const Uint32 u[4] = { (Uint32)tw, (Uint32)h, nband, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_bands);
-        SDL_BindGPUComputeStorageBuffers(c, 0, &g->bt.buf, 1);
+        SDL_BindGPUComputeStorageBuffers(c, 0, &GS(g)->bt.buf, 1);
         SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 63) / 64, (Uint32)h, 1);
         SDL_EndGPUComputePass(c);
@@ -1295,7 +1309,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     if (g->polys.n) {
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
-        SDL_GPUBuffer *ro[4] = { g->pt.buf, g->pe.buf, g->po.buf, g->pal.buf };
+        SDL_GPUBuffer *ro[4] = { GS(g)->pt.buf, GS(g)->pe.buf, GS(g)->po.buf, GS(g)->pal.buf };
         const Uint32 u[4] = { (Uint32)tw, (Uint32)h, (Uint32)tilesx, exact_on() ? 1u : 0u };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_polys);
@@ -1307,8 +1321,8 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (pass_times_on()) pass_split(g, &cb, 2, &pmark);
     }
     for (int mode = nstrokes ? 0 : 1; mode < 2; mode++) {      /* strokes: the points behind their own surface, then the pixels (always: it writes the stroke depth the replace step reads) */
-        SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { g->hid.buf, false }, { b_strokez, false } };
-        SDL_GPUBuffer *ro[4] = { g->st.buf, g->se.buf, g->so.buf, g->sw.buf };
+        SDL_GPUStorageBufferReadWriteBinding rw[6] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false }, { GS(g)->hid.buf, false }, { b_strokez, false } };
+        SDL_GPUBuffer *ro[4] = { GS(g)->st.buf, GS(g)->se.buf, GS(g)->so.buf, GS(g)->sw.buf };
         const Uint32 u[8] = { (Uint32)mode, (Uint32)tw, (Uint32)h, (Uint32)tilesx, nstrokes, exact_on() ? 1u : 0u, face_offset, decal_simple_on() };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 6);
         SDL_BindGPUComputePipeline(c, g->p_strokes);
@@ -1320,11 +1334,11 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         profile_mark(g, cb, mode == 0 ? "points_end" : "strokes_end");
         if (pass_times_on()) pass_split(g, &cb, 3 + mode, &pmark);
     }
-    g->params = *in; g->params.recs = NULL; g->params.palette = NULL; g->params.src = NULL; g->params.tag = NULL; g->params.dac = NULL; g->params.tagflags = NULL;
-    g->pbytes = pbytes; g->game_bytes = game_bytes; g->npix_game = npix_game;
+    GS(g)->params = *in; GS(g)->params.recs = NULL; GS(g)->params.palette = NULL; GS(g)->params.src = NULL; GS(g)->params.tag = NULL; GS(g)->params.dac = NULL; GS(g)->params.tagflags = NULL;
+    GS(g)->pbytes = pbytes; GS(g)->game_bytes = game_bytes; GS(g)->npix_game = npix_game;
     profile_resolve(g, cb);
     SDL_SubmitGPUCommandBuffer(cb);               /* the raster passes run while the caller makes the game's picture */
-    g->setup_ms = (double)(t_setup - t_start) / 1e6;
+    GS(g)->setup_ms = (double)(t_setup - t_start) / 1e6;
     if (getenv("F117_REMASTER_TIMING")) {   /* diagnostic: where the CPU setup goes, every 120th picture (stderr) */
         static double sum[5], mb, ents, trisn; static unsigned count;
         sum[0] += (double)(t_classified - t_start) / 1e6; sum[1] += (double)(t_binned - t_classified) / 1e6; sum[2] += (double)(t_packed - t_binned) / 1e6;
@@ -1340,47 +1354,47 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
                     ms * (double)g_cyc[3] / tot, (double)g_cnt[3] / count, ms * (double)g_cyc[4] / tot, g_cnt[3] ? (double)g_cyc[3] / (double)g_cnt[3] : 0.0, g_cnt[4] ? (double)g_cyc[4] / (double)g_cnt[4] : 0.0);
         }
     }
-    g->t_begin = SDL_GetTicksNS();
-    g->begun = 1;
+    GS(g)->t_begin = SDL_GetTicksNS();
+    GS(g)->begun = 1;
     return 1;
 }
 
 int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out)
 {
-    if (!g || !g->begun || !src || !tag || !dac) return 0;
-    g->begun = 0;
-    const int w = g->params.w, h = g->params.h, tw = g->params.tw;
-    const Uint32 pbytes = g->pbytes, game_bytes = g->game_bytes;
+    if (!g || !GS(g)->begun || !src || !tag || !dac) return 0;
+    GS(g)->begun = 0;
+    const int w = GS(g)->params.w, h = GS(g)->params.h, tw = GS(g)->params.tw;
+    const Uint32 pbytes = GS(g)->pbytes, game_bytes = GS(g)->game_bytes;
     const Uint32 off_tag = (game_bytes + 15u) & ~15u, off_dac = off_tag + ((game_bytes + 15u) & ~15u), total2 = off_dac + 768;
-    if (g->up2_cap < total2) {
-        if (g->up2) SDL_ReleaseGPUTransferBuffer(g->dev, g->up2);
+    if (GS(g)->up2_cap < total2) {
+        if (GS(g)->up2) SDL_ReleaseGPUTransferBuffer(g->dev, GS(g)->up2);
         SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, total2 + total2 / 4, 0 };
-        g->up2 = SDL_CreateGPUTransferBuffer(g->dev, &ti); g->up2_cap = g->up2 ? ti.size : 0;
-        if (!g->up2) return 0;
+        GS(g)->up2 = SDL_CreateGPUTransferBuffer(g->dev, &ti); GS(g)->up2_cap = GS(g)->up2 ? ti.size : 0;
+        if (!GS(g)->up2) return 0;
     }
     {
-        Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, g->up2, true);
+        Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->up2, true);
         if (!m) return 0;
         memset(m, 0, total2);
-        memcpy(m, src, g->npix_game); memcpy(m + off_tag, tag, g->npix_game); memcpy(m + off_dac, dac, 768);
-        SDL_UnmapGPUTransferBuffer(g->dev, g->up2);
+        memcpy(m, src, GS(g)->npix_game); memcpy(m + off_tag, tag, GS(g)->npix_game); memcpy(m + off_dac, dac, 768);
+        SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->up2);
     }
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
     if (!cb) return 0;
     profile_mark(g, cb, "picture_upload_begin");
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
     {
-        SDL_GPUTransferBufferLocation f1 = { g->up2, 0 }, f2 = { g->up2, off_tag }, f3 = { g->up2, off_dac };
-        SDL_GPUBufferRegion t1 = { g->src.buf, 0, game_bytes }, t2 = { g->tag.buf, 0, game_bytes }, t3 = { g->dac.buf, 0, 768 };
+        SDL_GPUTransferBufferLocation f1 = { GS(g)->up2, 0 }, f2 = { GS(g)->up2, off_tag }, f3 = { GS(g)->up2, off_dac };
+        SDL_GPUBufferRegion t1 = { GS(g)->src.buf, 0, game_bytes }, t2 = { GS(g)->tag.buf, 0, game_bytes }, t3 = { GS(g)->dac.buf, 0, 768 };
         SDL_UploadToGPUBuffer(cp, &f1, &t1, false); SDL_UploadToGPUBuffer(cp, &f2, &t2, false); SDL_UploadToGPUBuffer(cp, &f3, &t3, false);
     }
     SDL_EndGPUCopyPass(cp);
     profile_mark(g, cb, "picture_upload_end");
-    SDL_GPUBuffer *b_colour = g->colour.buf, *b_invz = g->invz.buf, *b_strokez = g->strokez.buf, *b_out = g->outpix.buf;
+    SDL_GPUBuffer *b_colour = GS(g)->colour.buf, *b_invz = GS(g)->invz.buf, *b_strokez = GS(g)->strokez.buf, *b_out = GS(g)->outpix.buf;
     {   /* the replace step */
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_invz, false }, { b_strokez, false }, { b_out, false } };
-        SDL_GPUBuffer *ro[4] = { g->tf.buf, g->src.buf, g->tag.buf, g->dac.buf };
-        const int32_t u[12] = { w, h, tw, g->params.xoff, g->params.x0, g->params.x1, g->params.y0, g->params.y1, g->params.complete, 0, 0, 0 };
+        SDL_GPUBuffer *ro[4] = { GS(g)->tf.buf, GS(g)->src.buf, GS(g)->tag.buf, GS(g)->dac.buf };
+        const int32_t u[12] = { w, h, tw, GS(g)->params.xoff, GS(g)->params.x0, GS(g)->params.x1, GS(g)->params.y0, GS(g)->params.y1, GS(g)->params.complete, 0, 0, 0 };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 4);
         SDL_BindGPUComputePipeline(c, g->p_replace);
         SDL_BindGPUComputeStorageBuffers(c, 0, ro, 4);
@@ -1421,7 +1435,7 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     profile_mark(g, cb, "present_end");
     if (wide_out) {
         cp = SDL_BeginGPUCopyPass(cb);
-        SDL_GPUBufferRegion bk = { b_out, 0, pbytes }; SDL_GPUTransferBufferLocation into = { g->down, 0 }; SDL_DownloadFromGPUBuffer(cp, &bk, &into);
+        SDL_GPUBufferRegion bk = { b_out, 0, pbytes }; SDL_GPUTransferBufferLocation into = { GS(g)->down, 0 }; SDL_DownloadFromGPUBuffer(cp, &bk, &into);
         SDL_EndGPUCopyPass(cp);
     }
     profile_mark(g, cb, "download_end");
@@ -1441,17 +1455,17 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     }
 #endif
     const Uint64 t_gpu = SDL_GetTicksNS();
-    g->wait_ms = (double)(t_gpu - t_wait) / 1e6;          /* how long the caller blocked on the GPU: its work not hidden behind the caller's */
+    GS(g)->wait_ms = (double)(t_gpu - t_wait) / 1e6;          /* how long the caller blocked on the GPU: its work not hidden behind the caller's */
     if (g->targets[0]) { g->last_written = g->cur_write; g->cur_write ^= 1; }
 
     if (wide_out) {
-        const void *got = SDL_MapGPUTransferBuffer(g->dev, g->down, false);
+        const void *got = SDL_MapGPUTransferBuffer(g->dev, GS(g)->down, false);
         if (!got) return 0;
         memcpy(wide_out, got, pbytes);
-        SDL_UnmapGPUTransferBuffer(g->dev, g->down);
+        SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->down);
     }
-    g->gpu_ms = (double)(t_gpu - g->t_begin) / 1e6;       /* from the end of the first half: the raster passes overlap what the caller did meanwhile */
-    g->copy_ms = (double)(SDL_GetTicksNS() - t_gpu) / 1e6;
+    GS(g)->gpu_ms = (double)(t_gpu - GS(g)->t_begin) / 1e6;       /* from the end of the first half: the raster passes overlap what the caller did meanwhile */
+    GS(g)->copy_ms = (double)(SDL_GetTicksNS() - t_gpu) / 1e6;
     return 1;
 }
 

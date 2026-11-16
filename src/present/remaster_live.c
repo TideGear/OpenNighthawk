@@ -332,13 +332,15 @@ static int word_style(unsigned word, unsigned darken, unsigned *idx)
 /* the game's palette entry as 0xAARRGGBB; the DAC holds six bits a channel */
 static const uint8_t *g_palette_override;                /* the composite on the present worker reads the frame's own palette, never the live machine's (which runs meanwhile); a plain variable, not thread-local: the composite's row helpers read it too */
 void remaster_live_set_palette(const uint8_t *dac) { g_palette_override = dac; }
+static F117_TLS const uint8_t *g_palette_thread;         /* the pipeline's setup thread reads its own picture's palette while the compose thread reads the previous one's */
+void remaster_live_set_palette_thread(const uint8_t *dac) { g_palette_thread = dac; }
 /* The thread that runs a copy (the main thread) never uses the override: it belongs to the composite on the worker, which may be running at the same time
  * (the copy overlaps the previous picture's composite), and a copy's colours come from its own machine's palette, as when nothing overlapped. */
 static F117_TLS int g_override_ignored;
 void remaster_live_ignore_palette_override(int on) { g_override_ignored = on; }
 static uint32_t dac_colour(const machine_t *m, unsigned index)
 {
-    const uint8_t *ov = g_override_ignored ? NULL : g_palette_override;
+    const uint8_t *ov = g_override_ignored ? NULL : g_palette_thread ? g_palette_thread : g_palette_override;
     const uint8_t *d = ov ? &ov[(index & 255) * 3] : &m->dac[(index & 255) * 3];
     const unsigned r = d[0] << 2 | d[0] >> 4, g = d[1] << 2 | d[1] >> 4, b = d[2] << 2 | d[2] >> 4;
     return 0xFF000000u | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
@@ -923,15 +925,22 @@ static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h
 int remaster_live_gpu_begin(remaster_live *r, const machine_t *m, int n, int wide_w)
 {
     if (!g_gpu_begin_fn || !g_gpu_finish_fn || !r || !r->have_done || n < 1) return 0;
-    const int w = 320 * n, h = 200 * n;
     r->gpu_begun = 0;
+    return r->gpu_begun = remaster_live_gpu_begin_ex(r, m, n, wide_w);
+}
+
+int remaster_live_gpu_begin_ex(remaster_live *r, const machine_t *m, int n, int wide_w)
+{
+    if (!g_gpu_begin_fn || !g_gpu_finish_fn || !r || !r->have_done || n < 1) return 0;
+    const int w = 320 * n, h = 200 * n;
     if (!(wide_w > w)) return 0;
     uint32_t palette[256];
     gpu_compose_in gin;
     if (!gpu_prepare(r, m, n, w, h, wide_w, (wide_w - w) / 2, scene_is_complete(r), &gin, palette)) return 0;
-    r->gpu_begun = g_gpu_begin_fn(&gin);
-    return r->gpu_begun;
+    return g_gpu_begin_fn(&gin);
 }
+
+void remaster_live_set_gpu_begun(remaster_live *r, int begun) { if (r) r->gpu_begun = begun != 0; }
 
 int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
                           const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask, int wide_w, uint32_t *wide_out)
@@ -2287,51 +2296,64 @@ static double stage2_move(const remaster_prim *p, const remaster_prim *q)
     return worst;
 }
 
-int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, double t)
+struct remaster_stage2_pairs { int *ab, *ba; size_t na, nb, cap_a, cap_b; };
+remaster_stage2_pairs *remaster_stage2_pairs_new(void) { return (remaster_stage2_pairs *)calloc(1, sizeof(remaster_stage2_pairs)); }
+void remaster_stage2_pairs_free(remaster_stage2_pairs *p) { if (p) { free(p->ab); free(p->ba); free(p); } }
+
+/* The pairing of the primitives of step scene a with those of step scene b, made once per interval: ab[i] is the primitive of b that a's i-th moves towards (-1: none), ba[j] the inverse.
+ * Same key, the k-th of its key in one step with the best unused among the k-th +- STAGE2_WINDOW of the other, refused when a vertex would move more than STAGE2_MAX_MOVE game pixels. */
+int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
 {
-    if (!r || !r->deferred || !a || !b || !a->n || !b->n) return 0;
+    if (!pr || !a || !b || !a->n || !b->n) return 0;
+    if (pr->cap_a < a->n) { int *q = (int *)realloc(pr->ab, a->n * sizeof *q); if (!q) return 0; pr->ab = q; pr->cap_a = a->n; }
+    if (pr->cap_b < b->n) { int *q = (int *)realloc(pr->ba, b->n * sizeof *q); if (!q) return 0; pr->ba = q; pr->cap_b = b->n; }
+    pr->na = a->n; pr->nb = b->n;
+    stage2_key *fk = (stage2_key *)malloc(b->n * sizeof *fk), *nk = (stage2_key *)malloc(a->n * sizeof *nk);
+    if (!fk || !nk) { free(fk); free(nk); return 0; }
+    for (size_t i = 0; i < a->n; i++) { nk[i].key = stage2_pkey(&a->prim[i]); nk[i].i = (uint32_t)i; pr->ab[i] = -1; }
+    for (size_t j = 0; j < b->n; j++) { fk[j].key = stage2_pkey(&b->prim[j]); fk[j].i = (uint32_t)j; pr->ba[j] = -1; }
+    qsort(fk, b->n, sizeof *fk, stage2_cmp);
+    qsort(nk, a->n, sizeof *nk, stage2_cmp);
+    size_t fi = 0;
+    for (size_t ns = 0; ns < a->n;) {
+        size_t ne = ns;
+        while (ne < a->n && nk[ne].key == nk[ns].key) ne++;
+        while (fi < b->n && fk[fi].key < nk[ns].key) fi++;
+        size_t fs = fi, fe = fi;
+        while (fe < b->n && fk[fe].key == nk[ns].key) fe++;
+        const long fn = (long)(fe - fs);
+        for (size_t q = ns; q < ne && fn > 0; q++) {
+            const remaster_prim *p = &a->prim[nk[q].i];
+            long best = -1; double bd = 1e300;
+            const long centre = (long)(q - ns) < fn ? (long)(q - ns) : fn - 1;
+            for (long d = -STAGE2_WINDOW; d <= STAGE2_WINDOW; d++) {
+                const long j = centre + d;
+                if (j < 0 || j >= fn) continue;
+                const uint32_t fj = fk[fs + (size_t)j].i;
+                const remaster_prim *c = &b->prim[fj];
+                if (pr->ba[fj] >= 0 || c->inv_depth_scale != p->inv_depth_scale) continue;
+                const double mv = stage2_move(p, c);
+                if (mv <= STAGE2_MAX_MOVE * STAGE2_MAX_MOVE && mv < bd) { bd = mv; best = (long)fj; }
+            }
+            if (best >= 0) { pr->ba[best] = (int)nk[q].i; pr->ab[nk[q].i] = (int)best; }
+        }
+        ns = ne;
+    }
+    free(fk); free(nk);
+    return 1;
+}
+
+int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t)
+{
+    if (!r || !r->deferred || !a || !b || !pr || !a->n || !b->n || pr->na != a->n || pr->nb != b->n) return 0;
     const int nb = t >= 0.5;
     const remaster_frame_copy *nr = nb ? b : a, *fr = nb ? a : b;
+    const int *match = nb ? pr->ba : pr->ab;
     const double wf = nb ? 1.0 - t : t;                       /* how far the nearer step's vertices move towards the other step */
-    stage2_key *fk = (stage2_key *)malloc(fr->n * sizeof *fk), *nk = (stage2_key *)malloc(nr->n * sizeof *nk);
-    int *match = (int *)malloc(nr->n * sizeof *match);
-    unsigned char *used = (unsigned char *)calloc(fr->n, 1);
-    if (!fk || !nk || !match || !used) { free(fk); free(nk); free(match); free(used); return 0; }
-    for (size_t i = 0; i < fr->n; i++) { fk[i].key = stage2_pkey(&fr->prim[i]); fk[i].i = (uint32_t)i; }
-    for (size_t i = 0; i < nr->n; i++) { nk[i].key = stage2_pkey(&nr->prim[i]); nk[i].i = (uint32_t)i; match[i] = -1; }
-    qsort(fk, fr->n, sizeof *fk, stage2_cmp);
-    qsort(nk, nr->n, sizeof *nk, stage2_cmp);
-    {   /* the groups of one key, in step with each other */
-        size_t fi = 0;
-        for (size_t ns = 0; ns < nr->n;) {
-            size_t ne = ns;
-            while (ne < nr->n && nk[ne].key == nk[ns].key) ne++;
-            while (fi < fr->n && fk[fi].key < nk[ns].key) fi++;
-            size_t fs = fi, fe = fi;
-            while (fe < fr->n && fk[fe].key == nk[ns].key) fe++;
-            const long fn = (long)(fe - fs);
-            for (size_t q = ns; q < ne && fn > 0; q++) {
-                const remaster_prim *p = &nr->prim[nk[q].i];
-                long best = -1; double bd = 1e300;
-                const long centre = (long)(q - ns) < fn ? (long)(q - ns) : fn - 1;
-                for (long d = -STAGE2_WINDOW; d <= STAGE2_WINDOW; d++) {
-                    const long j = centre + d;
-                    if (j < 0 || j >= fn) continue;
-                    const uint32_t fj = fk[fs + (size_t)j].i;
-                    const remaster_prim *c = &fr->prim[fj];
-                    if (used[fj] || c->inv_depth_scale != p->inv_depth_scale) continue;
-                    const double mv = stage2_move(p, c);
-                    if (mv <= STAGE2_MAX_MOVE * STAGE2_MAX_MOVE && mv < bd) { bd = mv; best = (long)fj; }
-                }
-                if (best >= 0) { used[best] = 1; match[nk[q].i] = (int)best; }
-            }
-            ns = ne;
-        }
-    }
     remaster_frame *o = &r->staged;
     if (o->cap < nr->n) {
         remaster_prim *q = (remaster_prim *)realloc(o->prim, nr->n * sizeof *q);
-        if (!q) { free(fk); free(nk); free(match); free(used); return 0; }
+        if (!q) return 0;
         o->prim = q; o->cap = nr->n;
     }
     for (size_t i = 0; i < nr->n; i++) {
@@ -2347,7 +2369,6 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         o->prim[i] = p;
     }
     o->n = nr->n;
-    free(fk); free(nk); free(match); free(used);
     int32_t tmp[BAND_REC_FINE];
     memset(tmp, 0, sizeof tmp);
     const int bn = a->have_band && b->have_band ? band_blend(a->band, BAND_REC_BASE, b->band, BAND_REC_BASE, t, tmp, BAND_REC_FINE) : 0;

@@ -208,6 +208,7 @@ static int wide_prepare(int wide_w)
 
 /* The Enhanced picture's fine pixels with the 3D view replaced by the Remastered render (remaster_live_composite); the
  * original fine picture when there is nothing to compose. */
+static int g_pipe;                      /* F117_PIPELINE=1 (Part B): the setup of the next picture runs on its own thread while the previous picture is drawn; the picture shown is one frame older (docs/gpu-compositor.md) */
 static int g_pw_compose = 1;            /* F117_NO_WORKER_COMPOSE=1: the main thread composes, as before */
 static int diag_pic_fp(void) { static int on = -1; if (on < 0) on = getenv("F117_PIC_FP") != NULL; return on; }     /* diagnostics that fingerprint each picture and composite (docs/gpu-compositor.md, step 5) */
 static int diag_copy_fp(void) { static int on = -1; if (on < 0) on = getenv("F117_COPY_FP") != NULL; return on; }
@@ -234,7 +235,7 @@ static int gpu_compose_cb(const gpu_compose_in *in, uint32_t *wide_out)
 static int gpu_compose_begin_cb(const gpu_compose_in *in)
 {
     if (!g_gpu) return 0;
-    SDL_LockMutex(g_gpu_lock);
+    if (!g_pipe) SDL_LockMutex(g_gpu_lock);     /* (the pipeline's setup thread touches only its buffer set, never the targets the lock guards: the previous picture's finish runs meanwhile) */
     const int ok = gpu_compose_begin(g_gpu, in);
     if (ok && getenv("F117_REMASTER_TIMING")) {
         static double setup_sum; static unsigned samples;
@@ -244,7 +245,7 @@ static int gpu_compose_begin_cb(const gpu_compose_in *in)
         if (++samples % 120 == 0)
             fprintf(stderr, "[gpu-setup] mean of %u: CPU preparation %.2f ms, latest scene %u records\n", samples, setup_sum / samples, in->nrec);
     }
-    SDL_UnlockMutex(g_gpu_lock);
+    if (!g_pipe) SDL_UnlockMutex(g_gpu_lock);
     return ok;
 }
 static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out)
@@ -647,20 +648,74 @@ static FILE *g_present_log;           /* --present-log */
  * frame. The worker only reads the published steps; the main thread publishes
  * new ones only while the worker is idle (docs/presentation.md). */
 typedef struct {
-    SDL_Thread *thread;
-    SDL_Semaphore *go, *done;
-    int busy, quit;
+    int busy;
+    int set;                              /* the GPU compositor's buffer set this picture uses (pipeline: alternates) */
+    int a_ok, a_released, a_done, b_released;   /* pipeline: the setup stage's result and where the picture is in its two stages */
+    int rel_mark;                         /* pipeline: how many steps were queued for release when the picture was planned */
     drawlive_plan plan;
     present_frame frame;
     int got;
     int ww, composed;                     /* the wide picture's width the composite is to use; whether the worker composed this picture */
     const uint8_t *fine;                  /* the composed picture (g_rbuf), when composed */
 } present_worker;
-static present_worker g_pw;
+static present_worker g_pws[2];
+static present_worker *g_pwc = &g_pws[0];
+#define g_pw (*g_pwc)
+/* The threads and their queues. Legacy (no pipeline): one thread does a picture's setup, picture step and compose. Pipeline: `sthread` does the setup (stage A) of the newest
+ * picture while `thread` does the picture step and compose (stage B) of the one before; the main thread shows the picture B finished, one frame later than the legacy order. */
+static struct {
+    SDL_Thread *thread, *sthread;
+    SDL_Semaphore *go, *done, *sgo, *sdone;
+    int quit;
+    int bq[8], bh, bt, aq[8], ah, at;
+    int fifo[2], nfifo, jobs;             /* the pictures in flight, oldest first, by slot; how many have been planned */
+} g_pwx;
 static int g_pw_pending;               /* a job is planned and not yet released to the worker: it is released just before the present call, after the main thread has uploaded the previous picture (the composite fills buffers the upload reads) */
+/* Pipeline: the newest picture's stage A (its setup) starts as soon as its plan is filled in: it reads only its own scene and palette, not the buffers the main thread uploads from. */
+static int g_a_new;                   /* a stage A was started this iteration */
+static void pw_release_a(void)
+{
+    if (g_pipe && g_pw_pending && g_pwx.nfifo > 0) {
+        const int s = g_pwx.fifo[g_pwx.nfifo - 1];
+        g_pw_pending = 0; g_a_new = 1;
+        g_pws[s].a_released = 1;
+        g_pwx.aq[g_pwx.at++ & 7] = s;
+        SDL_SignalSemaphore(g_pwx.sgo);
+    }
+}
 static void pw_release(void)
 {
-    if (g_pw_pending) { g_pw_pending = 0; SDL_SignalSemaphore(g_pw.go); }
+    if (!g_pipe) { if (g_pw_pending) { g_pw_pending = 0; SDL_SignalSemaphore(g_pwx.go); } return; }
+    pw_release_a();
+    for (int i = 0; i < g_pwx.nfifo; i++) {         /* stage B, in order, for the first picture whose A has finished */
+        present_worker *w = &g_pws[g_pwx.fifo[i]];
+        if (w->b_released) continue;
+        if (w->a_done) { w->b_released = 1; g_pwx.bq[g_pwx.bt++ & 7] = g_pwx.fifo[i]; SDL_SignalSemaphore(g_pwx.go); }
+        break;
+    }
+}
+/* Stage A of the pipeline (on its own thread): the GPU compositor's setup for the scene committed for this picture, the same call the legacy worker makes first. */
+static int pw_a_applies(const present_worker *w)
+{
+    return g_gpu && g_pw_compose && g_rlive_copy && w->ww && !compose_skipped() && (w->plan.rerun_ready || w->plan.rerun_inline || w->plan.stage2) && !getenv("F117_GPU_NO_OVERLAP");
+}
+static int present_setup_main(void *u)
+{
+    (void)u;
+    for (;;) {
+        SDL_WaitSemaphore(g_pwx.sgo);
+        if (g_pwx.quit) break;
+        present_worker *w = &g_pws[g_pwx.aq[g_pwx.ah++ & 7]];
+        gpu_compose_use_set(w->set);
+        w->a_ok = 0;
+        if (pw_a_applies(w)) {
+            remaster_live_set_palette_thread(w->frame.dac);
+            w->a_ok = remaster_live_gpu_begin_ex(g_rlive_copy, &H.m, g_scale, w->ww);
+            remaster_live_set_palette_thread(NULL);
+        }
+        SDL_SignalSemaphore(g_pwx.sdone);
+    }
+    return 0;
 }
 static uint64_t g_frame_ips;          /* guest clocks in one host frame */
 
@@ -677,9 +732,26 @@ static void pal_note(pal_set *s, const uint8_t *dac)
     if (s->n < PAL_SET_MAX) s->h[s->n++] = h;
 }
 
+/* Pipeline bookkeeping on the main thread. Which slot this iteration works on: the oldest picture in flight when its stage B has been released (its result is shown now), else the free slot (it takes the next picture). */
+static void pw_select(void)
+{
+    int sel = 0;
+    g_a_new = 0;
+    if (g_pwx.nfifo > 0) sel = (g_pwx.nfifo == 2 || g_pws[g_pwx.fifo[0]].b_released) ? g_pwx.fifo[0] : g_pwx.fifo[0] ^ 1;
+    g_pwc = &g_pws[sel];
+}
+/* Waits for the setup stage still running, if any (there is at most one: the newest picture's). */
+static void pw_wait_a(void)
+{
+    for (int i = 0; i < g_pwx.nfifo; i++) {
+        present_worker *w = &g_pws[g_pwx.fifo[i]];
+        if (w->a_released && !w->a_done) { SDL_WaitSemaphore(g_pwx.sdone); w->a_done = 1; }
+    }
+}
 static int present_worker_main(void *u)
 {
-    present_worker *w = (present_worker *)u;
+    (void)u;
+    present_worker *w = &g_pws[0];
     /* Diagnostic CPU elapsed times; GPU execution overlaps these stages. */
     const char *timing_path = getenv("F117_WORKER_TIMING");
     FILE *timing = timing_path && *timing_path ? fopen(timing_path, "w") : NULL;
@@ -688,10 +760,15 @@ static int present_worker_main(void *u)
         fprintf(stderr, "[worker-timing] cannot open %s\n", timing_path);
     if (timing) fprintf(timing, "frame,got,composed,gpu_begin_ns,picture_ns,compose_ns,total_ns,gpu_wait_ns,gpu_span_ns\n");
     for (;;) {
-        SDL_WaitSemaphore(w->go);
-        if (w->quit) break;
+        SDL_WaitSemaphore(g_pwx.go);
+        if (g_pwx.quit) break;
+        if (g_pipe) {     /* stage B of the next picture in order; its setup (stage A) has finished */
+            w = &g_pws[g_pwx.bq[g_pwx.bh++ & 7]];
+            gpu_compose_use_set(w->set);
+            remaster_live_set_gpu_begun(g_rlive_copy, w->a_ok);
+        }
         const Uint64 wt0 = timing ? SDL_GetTicksNS() : 0;
-        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && !compose_skipped() && (w->plan.rerun_ready || w->plan.rerun_inline || w->plan.stage2) && !getenv("F117_GPU_NO_OVERLAP")) {
+        if (!g_pipe && pw_a_applies(w)) {
             /* the GPU draws the scene (it needs none of the game's own picture) while this thread makes that picture below */
             remaster_live_set_palette(w->frame.dac);
             remaster_live_gpu_begin(g_rlive_copy, &H.m, g_scale, w->ww);
@@ -720,7 +797,7 @@ static int present_worker_main(void *u)
                     (unsigned long long)(wt3 - wt2), (unsigned long long)(wt3 - wt0),
                     (unsigned long long)(gwait * 1e6), (unsigned long long)(gspan * 1e6));
         }
-        SDL_SignalSemaphore(w->done);
+        SDL_SignalSemaphore(g_pwx.done);
     }
     if (timing) fclose(timing);
     return 0;
@@ -1262,7 +1339,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                 static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot, copy_overlay_rect, copy_overlay_line };
                 if (g_rlive_copy) rerun_set_collector(&coll);
                 /* worker mode: the copy stages its frame and the loop commits it (this object exists only once the game is loaded, after the worker thread was made) */
-                if (g_rlive_copy && g_pw.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);
+                if (g_rlive_copy && g_pwx.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);
             }
         }
     }
@@ -2108,11 +2185,16 @@ int main(int argc, char **argv)
         const double hz = mode && mode->refresh_rate >= 10 ? mode->refresh_rate : 60.0;
         g_frame_ips = (uint64_t)((double)H.m.ips / hz);
         if (!getenv("F117_PRESENT_THREADS_OFF")) {
-            g_pw.go = SDL_CreateSemaphore(0);
-            g_pw.done = SDL_CreateSemaphore(0);
-            if (g_pw.go && g_pw.done) g_pw.thread = SDL_CreateThread(present_worker_main, "present-draw", &g_pw);
-            if (g_pw.thread && g_rlive_copy && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);   /* the copy stages its frame; the loop commits it after the copy */
-            if (g_pw.thread) g_live.defer_release = 1;   /* the oldest step is released after the loop has waited for the worker */
+            g_pwx.go = SDL_CreateSemaphore(0);
+            g_pwx.done = SDL_CreateSemaphore(0);
+            if (getenv("F117_PIPELINE") && atoi(getenv("F117_PIPELINE")) != 0) {
+                g_pwx.sgo = SDL_CreateSemaphore(0); g_pwx.sdone = SDL_CreateSemaphore(0);
+                g_pipe = g_pwx.sgo && g_pwx.sdone && (g_pwx.sthread = SDL_CreateThread(present_setup_main, "present-setup", NULL)) != NULL;
+                if (g_pipe) fprintf(stderr, "[pipeline] on: the next picture's setup runs while the previous one is drawn; the picture shown is one frame older\n");
+            }
+            if (g_pwx.go && g_pwx.done) g_pwx.thread = SDL_CreateThread(present_worker_main, "present-draw", NULL);
+            if (g_pwx.thread && g_rlive_copy && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);   /* the copy stages its frame; the loop commits it after the copy */
+            if (g_pwx.thread) g_live.defer_release = 1;   /* the oldest step is released after the loop has waited for the worker */
             for (int k = 0; k < PAL_HELPERS; k++) {
                 g_pal[k].go = SDL_CreateSemaphore(0);
                 g_pal[k].done = SDL_CreateSemaphore(0);
@@ -2793,7 +2875,7 @@ int main(int argc, char **argv)
                 }
                 if (g_replay == 2) {
                     const uint64_t cl0 = g_loop_timing ? SDL_GetTicksNS() : 0;
-                    if (g_pw.thread) drawlive_collect(&g_live, &g_feed);
+                    if (g_pwx.thread) drawlive_collect(&g_live, &g_feed);
                     else drawlive_update(&g_live, &g_feed);
                     if (g_loop_timing) g_iter_collect_ns += SDL_GetTicksNS() - cl0;
                 }
@@ -2971,7 +3053,7 @@ int main(int argc, char **argv)
         int fine_ready = 0;
         if (g_replay == 2) {
             present_capture(&H.m, &H.frame);
-            if (g_pw.thread) {
+            if (g_pwx.thread) {
                 /* The machine as it stands now: the next plan and its palette come from this, not from the
                  * frame shown below, which carries the previous plan's picture and palette (handing that on
                  * froze the palette: the driver's colour cycling, e.g. the gun rounds, and every fade). */
@@ -2983,6 +3065,7 @@ int main(int argc, char **argv)
                 /* Overlap (docs/gpu-compositor.md, step 5): while the worker still draws the previous picture, publish, plan and run the copy for the next one, and
                  * only then wait. Safe because the plan carries the steps it names and the replayed picture, the oldest step is released after the wait, the copy
                  * writes its own record list and staged frame (committed after the wait), and the wide width is unchanged. F117_NO_COPY_OVERLAP=1: as before. */
+                if (g_pipe) pw_select();
                 int early = 0, early_planned = 0, early_copied = 0;
                 drawlive_plan eplan;
                 {
@@ -3000,9 +3083,11 @@ int main(int argc, char **argv)
                                 rerun_set_wide(ww0 ? ww0 * 130 / (320 * g_scale) : 100);
                                 if (overlap_mode >= 2) {
                                     remaster_live_ignore_palette_override(1);   /* the worker may be composing with its frame's palette override */
+                                    const uint64_t ec0 = g_loop_timing ? SDL_GetTicksNS() : 0;
                                     drawlive_prepare_rerun(&g_live, &eplan);
                                     remaster_live_ignore_palette_override(0);
                                     early_copied = 1;
+                                    if (g_loop_timing) { const uint64_t ec1 = SDL_GetTicksNS(); g_bt[4] += ec1 - ec0; bt0 = ec1; }   /* the early copy is counted as the copy, not as the wait */
                                 }
                             }
                         }
@@ -3012,9 +3097,10 @@ int main(int argc, char **argv)
                 g_fine = NULL;
                 if (g_pw.busy) {
                     pw_release();                            /* (a job planned and never released would be waited for for ever) */
-                    SDL_WaitSemaphore(g_pw.done);
+                    SDL_WaitSemaphore(g_pwx.done);
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_wait_ns = bt1 - bt0; g_bt[1] += frame_wait_ns; bt0 = bt1; }
                     g_pw.busy = 0;
+                    if (g_pipe) { g_pwx.fifo[0] = g_pwx.fifo[1]; g_pwx.nfifo--; }
                     older = g_pw.plan.older; newer = g_pw.plan.newer; t_shown = g_pw.plan.t_shown;
                     got = g_pw.got;
                     if (got) {
@@ -3073,6 +3159,11 @@ int main(int argc, char **argv)
                 }
                 if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[2] += bt1 - bt0; bt0 = bt1; }
                 if (!early) drawlive_publish(&g_live);   /* the worker is idle: nothing renders from the old steps (early: published before the wait) */
+                if (g_pipe) {   /* the picture planned a frame later may still draw from the steps queued after its plan: free only what was queued before it */
+                    const int keep = g_pwx.nfifo > 0 ? g_pws[g_pwx.fifo[0]].rel_mark : g_live.nrelease;
+                    drawlive_release_pending_n(&g_live, keep);
+                    for (int i = 0; i < g_pwx.nfifo; i++) g_pws[g_pwx.fifo[i]].rel_mark -= keep;
+                } else
                 drawlive_release_pending(&g_live);  /* (defer_release: the oldest step goes now that the worker is idle) */
                 drawlive_plan plan;
                 /* Interpolation shows the clock as it stands (a frame later than the drawing, which
@@ -3090,13 +3181,14 @@ int main(int argc, char **argv)
                         /* Part B Stage 2 (docs/gpu-compositor.md): one render copy per game step (at t = 1, the step's own scene), kept with the previous step's; every picture of
                          * the interval blends the two at its t and shows the nearer step's own picture layer. A step whose copy is not ready (composition skipped, no previous
                          * step) falls back to the copy for that picture. F117_STAGE2_LOG=1 prints the counts and the cost of a step and of a blend every 200 pictures. */
-                        static remaster_frame_copy *s_a, *s_b;
+                        static remaster_frame_copy *s_a, *s_b; static remaster_stage2_pairs *s_pairs;
                         static uint64_t s_older = ~0ull, s_newer = ~0ull;
                         static int s_have_a, s_log = -1;
                         static unsigned s_steps, s_blended, s_failed, s_copy_n, s_blend_n;
                         static double s_copy_ms, s_blend_ms;
                         if (s_log < 0) s_log = getenv("F117_STAGE2_LOG") != NULL;
-                        if (!s_a) { s_a = remaster_frame_copy_new(); s_b = remaster_frame_copy_new(); }
+                        if (!s_a) { s_a = remaster_frame_copy_new(); s_b = remaster_frame_copy_new(); s_pairs = remaster_stage2_pairs_new(); }
+                        if (g_pipe) pw_wait_a();                 /* the setup of the previous picture reads the committed scene: finished before any commit below replaces it */
                         if (plan.older != s_older || plan.newer != s_newer) {
                             const Uint64 s_t0 = SDL_GetTicksNS();
                             drawlive_plan p0 = plan, p1 = plan;
@@ -3108,11 +3200,12 @@ int main(int argc, char **argv)
                             }
                             drawlive_prepare_rerun(&g_live, &p1); drawlive_commit_rerun(&g_live, &p1); remaster_live_commit(g_rlive_copy);
                             if (!(p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, s_b))) s_have_a = 0;
+                            if (s_have_a && !remaster_stage2_pair(s_pairs, s_a, s_b)) s_have_a = 0;
                             s_older = plan.older; s_newer = plan.newer; s_steps++;
                             if (p1.rerun_ready) { s_copy_ms += (double)(SDL_GetTicksNS() - s_t0) / 1e6; s_copy_n++; }
                         }
                         const Uint64 s_t1 = SDL_GetTicksNS();
-                        const int s_ok = s_have_a && remaster_live_stage2_blend(g_rlive_copy, s_a, s_b, plan.t);
+                        const int s_ok = s_have_a && remaster_live_stage2_blend(g_rlive_copy, s_a, s_b, s_pairs, plan.t);
                         if (s_ok) { s_blend_ms += (double)(SDL_GetTicksNS() - s_t1) / 1e6; s_blend_n++; plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0; s_blended++; }
                         else { s_failed++; drawlive_prepare_rerun(&g_live, &plan); }
                         if (s_log && ((s_blended + s_failed) % 200) == 0)
@@ -3139,6 +3232,7 @@ int main(int argc, char **argv)
                     } else if (!early_copied)
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread (early: it ran before the wait) */
                     drawlive_commit_rerun(&g_live, &plan);   /* its records go to the job */
+                    if (g_pipe) pw_wait_a();                 /* the setup of the previous picture reads the committed scene: it must have finished before the next replaces it */
                     if (g_rlive_copy) remaster_live_commit(g_rlive_copy);   /* its frame becomes the one the worker will compose (deferred mode: the worker is idle here) */
                     if (g_rlive_copy && plan.rerun_ready && diag_copy_fp()) {   /* diagnostic: what this copy produced, to compare runs */
                         static unsigned n_fp;
@@ -3149,7 +3243,14 @@ int main(int argc, char **argv)
                     g_pw.plan = plan;
                     g_pw.frame = fresh;
                     g_pw.busy = 1;
-                    g_pw_pending = 1;                        /* released before the present call (pw_release) */
+                    if (g_pipe) {
+                        g_pw.set = g_pwx.jobs++ & 1;
+                        g_pw.a_released = g_pw.a_done = g_pw.b_released = 0; g_pw.a_ok = 0;
+                        g_pw.rel_mark = g_live.nrelease;
+                        g_pwx.fifo[g_pwx.nfifo++] = (int)(g_pwc - g_pws);
+                    }
+                    g_pw_pending = 1;
+                    pw_release_a();                        /* released before the present call (pw_release) */
                 }
             } else {
                 drawlive_update(&g_live, &g_feed);
@@ -3389,6 +3490,7 @@ int main(int argc, char **argv)
             SDL_UpdateTexture(tex_menu, NULL, menu_pixels, 640 * 4);
             SDL_RenderTexture(ren, tex_menu, NULL, &dst);
         }
+        if (g_pipe && !g_a_new) pw_wait_a();     /* no picture was planned this iteration: the setup still running is the previous one's */
         pw_release();
         const uint64_t lt_pr0 = SDL_GetTicksNS();
         g_cost_ns = lt_pr0 - g_iter_ns;                         /* everything this iteration did before presenting: the machine, the picture, the upload */
@@ -3452,12 +3554,21 @@ int main(int argc, char **argv)
         }
     }
 
-    if (g_pw.thread) {
-        pw_release();
-        if (g_pw.busy) SDL_WaitSemaphore(g_pw.done);
-        g_pw.quit = 1;
-        SDL_SignalSemaphore(g_pw.go);
-        SDL_WaitThread(g_pw.thread, NULL);
+    if (g_pwx.thread) {
+        if (g_pipe) {
+            pw_wait_a();
+            for (int i = 0; i < 2; i++) pw_release();
+            for (int i = 0; i < g_pwx.nfifo; i++) if (g_pws[g_pwx.fifo[i]].b_released) SDL_WaitSemaphore(g_pwx.done);
+            g_pwx.quit = 1;
+            SDL_SignalSemaphore(g_pwx.sgo);
+            SDL_WaitThread(g_pwx.sthread, NULL);
+        } else {
+            pw_release();
+            if (g_pw.busy) SDL_WaitSemaphore(g_pwx.done);
+            g_pwx.quit = 1;
+        }
+        SDL_SignalSemaphore(g_pwx.go);
+        SDL_WaitThread(g_pwx.thread, NULL);
     }
     for (int k = 0; k < PAL_HELPERS; k++)
         if (g_pal[k].thread) {

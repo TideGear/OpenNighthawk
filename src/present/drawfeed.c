@@ -540,6 +540,15 @@ void drawlive_release_pending(drawlive *r)
     r->nrelease = 0;
 }
 
+/* Frees the first n queued steps only (the pipeline: a picture planned later may still draw from the others) and keeps the rest queued. */
+void drawlive_release_pending_n(drawlive *r, int n)
+{
+    if (n > r->nrelease) n = r->nrelease;
+    for (int q = 0; q < n; q++) release_step(r, r->release_q[q]);
+    for (int q = n; q < r->nrelease; q++) r->release_q[q - n] = r->release_q[q];
+    r->nrelease -= n;
+}
+
 void drawlive_publish(drawlive *r)
 {
     for (int q = 0; q < r->nqueue; q++) {

@@ -40,6 +40,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
 /* While set (on the calling thread), remaster_live_compose reads colours from this 768-byte six-bit palette instead of the machine's: the composite can then
  * run on another thread than the machine's, with the palette of the frame it belongs to. NULL: the machine's. */
 void remaster_live_set_palette(const uint8_t *dac);
+void remaster_live_set_palette_thread(const uint8_t *dac);   /* this thread only (the pipeline's setup thread): its palette, ahead of the shared override */
 void remaster_live_ignore_palette_override(int on);   /* this thread, a copy's, ignores the override the worker set */
 /* The GPU compositor (gpu_compose.h), registered by the app: given a composite's raster calls and the replace step's inputs it writes the wide picture and returns 1, or
  * returns 0 and the CPU compositor is used. NULL: always the CPU. F117_GPU_COMPOSE_CHECK also runs the CPU compositor and compares. */
@@ -49,6 +50,9 @@ typedef int (*remaster_gpu_finish_fn)(const uint8_t *src, const uint8_t *tag, co
 void remaster_live_set_gpu(remaster_gpu_fn run, remaster_gpu_begin_fn begin, remaster_gpu_finish_fn finish);
 /* Starts the GPU compositor on the scene before the game's own picture exists, so the two overlap; the next remaster_live_compose of this scene finishes it. 1 when started. */
 int remaster_live_gpu_begin(remaster_live *r, const machine_t *m, int n, int wide_w);
+/* The pipeline's form: the result is returned and r->gpu_begun is left alone (the compose of the previous picture, on another thread, reads it); remaster_live_set_gpu_begun sets it for the compose that follows. */
+int remaster_live_gpu_begin_ex(remaster_live *r, const machine_t *m, int n, int wide_w);
+void remaster_live_set_gpu_begun(remaster_live *r, int begun);
 /* Terrain dots: how many coarser levels beyond its own ring an object's dark dots are drawn (0 the original's reach .. 3 the whole map). */
 void remaster_live_set_dot_levels(int levels);
 void remaster_live_set_far_light_size(int perspective);   /* Far light size (R35): 0 Original (default), 1 Perspective; F117_FAR_LIGHT_SIZE overrides */
@@ -98,8 +102,13 @@ typedef struct remaster_frame_copy remaster_frame_copy;
 remaster_frame_copy *remaster_frame_copy_new(void);
 void remaster_frame_copy_free(remaster_frame_copy *c);
 int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out);
-/* Part B Stage 2 (F117_STAGE2): stage, in a deferred-mode instance, the scene of a picture at t between the scenes a (t = 0) and b (t = 1); remaster_live_commit makes it the done frame. 0: not made. */
-int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, double t);
+/* Part B Stage 2 (F117_STAGE2): the pairing of two step scenes' primitives (made once per interval) and the scene of a picture at t between them, staged in a deferred-mode instance
+ * (remaster_live_commit makes it the done frame). 0: not made. */
+typedef struct remaster_stage2_pairs remaster_stage2_pairs;
+remaster_stage2_pairs *remaster_stage2_pairs_new(void);
+void remaster_stage2_pairs_free(remaster_stage2_pairs *p);
+int remaster_stage2_pair(remaster_stage2_pairs *p, const remaster_frame_copy *a, const remaster_frame_copy *b);
+int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pairs, double t);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
 /* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */
 size_t remaster_frame_copy_prims(const remaster_frame_copy *c);
