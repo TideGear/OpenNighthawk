@@ -1217,3 +1217,33 @@ Late flight: mean -0.9 ms, p95 -2.7, p99 -2.9. Runway: mean unchanged, p95 -0.7,
 **Measured** (late flight, 4K Maximum, Model detail Full, hidden window, vsync off, GPU idle, one run at a time; frame time over the whole run, ms): legacy order mean 23.85, p95 32.0, p99 34.1; pipeline mean 20.7, p95 29.7, p99 32.4 (three runs 20.67, 20.76, 20.71). The worker's own total fell from 22.55 to 11.2 ms mean (p95 13.4), so the setup/GPU overlap works as designed. It did not carry through because **the main thread's early copy (`drawlive_prepare_rerun` to `run_copy` to `rerun_draw`, the render copy run for each in-between picture) takes 19.8 ms a frame** (`F117_LOOP_TIMING`, "the copy 19.8"); in the legacy order that copy hid behind the 22 ms job, now it is the loop's floor. Starting stage A at the fill, instead of at the end of the iteration, changed nothing (20.76 against 20.67).
 
 **What this means for the targets.** On the late flight the copy alone (19.8 mean) is over 16.7 ms, so no change to setup or GPU can reach 0 frames over 16.7 ms while one copy runs per displayed frame on one thread. Ways out, each needing the owner: (1) parallel copies (two render copies on two threads, each from its own snapshot: a second `remaster_live` and machine copy, the matched code's statics and the observer made per-copy; the owner's list names "parallel copies" after the pipeline); (2) Stage 2, the scene once per game step with the in-between pictures interpolated from it (changes what the in-between picture is built from); (3) the native renderer (owner 3 Nov). The pipeline itself gains 3 ms and adds one frame of latency, so it is not worth landing alone.
+
+### Part B: the blend check at 4K Maximum, and the route the owner asked for (15 November 2026, evening)
+
+Owner, 15 Nov 17:21: "This game is decades old. 4k 120 should be easy. Figure out how to make it happen."
+
+**Blend check** (`F117_BLEND_CHECK=1`, 4K Maximum, Model detail Full, build of `cbd5d73`, one run at a time; the copy at t = 0 and t = 1 blended in camera space against the copy at t). A full late-flight run would have taken 8 to 9 hours (three copies a frame), so it is sampled: `private/partb/pair_x.sh` with `F117_SKIP_COMPOSE_BEFORE` and an exit clock, and `private/partb/blend_windows.sh`. Outputs: `private/partb/blend_*_out.txt`.
+
+| Sample | Checked frames | Primitives paired | Vertices within 0.25 game pixel | Mid-t (0.15 to 0.85) vertices 4 or more game pixels off |
+|---|---|---|---|---|
+| Late flight, from the start (stopped) | 1,471 | 100.0% | 97.1% | 0.42% |
+| Late flight, clock 1.5 billion | 31 | 99.8% | | 1.05% |
+| Late flight, clock 2.5 billion | 31 | 100.0% | | 0.15% |
+| Late flight, clocks 3.6 to 4.45 billion | 121 | 100.0% | 98.1% | 0.22% |
+| Late flight, clocks 4.45 to 5.1 billion | 91 | 100.0% | 95.5% | 0.42% |
+| Late flight, clock 6.0 billion | 31 | 100.0% | | 0.51% |
+| Late flight, clock 7.5 billion | 31 | 100.0% | | 0.21% |
+| Late flight, clock 9.0 billion | 31 | 100.0% | 99.3% | 0.06% |
+| Runway (clocks to 4.8 billion) | 691 | 99.5% | 94.3% | 1.68% |
+
+Outside the mid-t band almost nothing is 4 or more pixels off. Models 37, 39 and 26 lead every sample (26 at 1 to 3% of its own vertices). The copy at t = 0 or t = 1 is never one of the live game's own recorded steps (0.0%), as on 4 November: the copy adds the far scenery and the wider view. Not done: pictures of the worst frames, and the cause of the large errors (wrong pairing or real motion).
+
+**Why 4K 120 is hard today.** A late-flight picture is about 67,000 primitives (81,000 triangles), which a hardware rasteriser draws at 4K in a small part of 8.3 ms. The time goes into three things done again for every displayed picture: the render copy (the game's whole frame composition, 19.8 ms on the main thread), the CPU setup for the compute rasteriser (classify, bin, pack, upload: 11.7 to 18.6 ms), and the exact per-pixel compute passes (12.2 ms: bands 4.4, stroke pixels 4.2, polygons 1.9, upload 1.6). The game steps at 15 Hz, so at 120 fps the same scene is rebuilt eight times a step.
+
+**Route (not built; estimates, to be measured first).**
+1. Scene once per game step: run the copy once when a step arrives (at t = 1; whether that equals the next interval's t = 0 is to be checked first), on a scene thread, off the display loop. Keep the two newest step scenes. The game's own picture layer (cockpit, HUD) also changes only per step.
+2. Hardware rasterisation (the owner's route B of 10 November, never built): paired primitives go to the GPU once per step as vertex buffers holding both steps' positions; the vertex shader blends by t and projects; triangles are drawn by the graphics pipeline with a depth buffer, in the game's order where the layering rules need it. Bands become a full-screen pixel shader, strokes and dots instanced quads, replace and present one full-screen pass.
+3. Per displayed picture the CPU then sets t and submits a few draws, and the GPU draws about 81,000 triangles. Expected well under 8.3 ms at 4K, but that is a prediction: the first step is a throughput test from a recorded late-flight trace.
+4. The exact compute compositor stays as the oracle and as a switchable fallback; step pictures (t = 1) are held to it within a measured tolerance, in-between pictures by the blend check and the owner's eye. Unpaired primitives are drawn from the nearer step.
+
+Risks: the 0.2 to 1.7% of mid-t vertices that blend badly (pairing by the game's object identity and blending rotation as rotation are the known remedies), the layering rules under a depth buffer, and the decal and stroke rules that read neighbouring pixels.
