@@ -696,6 +696,14 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             if (r->scale) { r->shown_hi = b->picture_hi; r->shown_tag = b->picture_tag; }
             return 1;
         }
+        if (plan->stage2 && !plan->extrapolate) {        /* the nearer step's own picture; its scene is the blend the host staged */
+            const drawlive_step *nr = plan->t >= 0.5 ? b : a;
+            memcpy(f->vram, nr->picture, 64000);
+            if (r->scale) { r->shown_hi = nr->picture_hi; r->shown_tag = nr->picture_tag; }
+            r->shown_copy = 1;
+            r->inbetweens++;
+            return 1;
+        }
         if (r->rerun && !plan->extrapolate) {
             const uint8_t *p = plan->rerun_ready ? draw_copy(r, a, &r->rlist_job) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
             {   /* F117_RERUN_FALLBACK_AT=N (diagnostic): the Nth picture made on a copy is treated as late, as a slow machine would */

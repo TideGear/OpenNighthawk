@@ -691,7 +691,7 @@ static int present_worker_main(void *u)
         SDL_WaitSemaphore(w->go);
         if (w->quit) break;
         const Uint64 wt0 = timing ? SDL_GetTicksNS() : 0;
-        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && !compose_skipped() && (w->plan.rerun_ready || w->plan.rerun_inline) && !getenv("F117_GPU_NO_OVERLAP")) {
+        if (g_gpu && g_pw_compose && g_rlive_copy && w->ww && !compose_skipped() && (w->plan.rerun_ready || w->plan.rerun_inline || w->plan.stage2) && !getenv("F117_GPU_NO_OVERLAP")) {
             /* the GPU draws the scene (it needs none of the game's own picture) while this thread makes that picture below */
             remaster_live_set_palette(w->frame.dac);
             remaster_live_gpu_begin(g_rlive_copy, &H.m, g_scale, w->ww);
@@ -2989,7 +2989,7 @@ int main(int argc, char **argv)
                     static int overlap_mode = -1;   /* F117_OVERLAP_MODE: 0 as before; 1 publish and plan before the wait, copy after it; 2 (default) the copy before the wait too: the picture costs the larger of its halves, not their sum (docs/gpu-compositor.md, step 5) */
                     if (overlap_mode < 0) { const char *e = getenv("F117_OVERLAP_MODE"); overlap_mode = e ? atoi(e) : 2; }
                     static int overlap = -1;
-                    if (overlap < 0) overlap = overlap_mode >= 1 && !getenv("F117_NO_COPY_OVERLAP") && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY");
+                    if (overlap < 0) overlap = overlap_mode >= 1 && !getenv("F117_NO_COPY_OVERLAP") && !getenv("F117_BLEND_CHECK") && !getenv("F117_STAGE2") && !getenv("F117_NO_DEFERRED_COPY");
                     if (overlap && g_pw.busy && g_remaster && g_rlive && g_rlive_copy && g_scale >= 1 && !g_live.check && g_live.defer_release) {
                         const int ww0 = wide_width();
                         if (ww0 == g_pw.ww && (ww0 == 0 || (g_wtex && g_wpix && g_ww == ww0))) {
@@ -3086,7 +3086,39 @@ int main(int argc, char **argv)
                         rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);
                         g_pw.ww = ww;
                     } else g_pw.ww = 0;
-                    if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_BLEND_CHECK")) {
+                    if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_STAGE2")) {
+                        /* Part B Stage 2 (docs/gpu-compositor.md): one render copy per game step (at t = 1, the step's own scene), kept with the previous step's; every picture of
+                         * the interval blends the two at its t and shows the nearer step's own picture layer. A step whose copy is not ready (composition skipped, no previous
+                         * step) falls back to the copy for that picture. F117_STAGE2_LOG=1 prints the counts and the cost of a step and of a blend every 200 pictures. */
+                        static remaster_frame_copy *s_a, *s_b;
+                        static uint64_t s_older = ~0ull, s_newer = ~0ull;
+                        static int s_have_a, s_log = -1;
+                        static unsigned s_steps, s_blended, s_failed, s_copy_n, s_blend_n;
+                        static double s_copy_ms, s_blend_ms;
+                        if (s_log < 0) s_log = getenv("F117_STAGE2_LOG") != NULL;
+                        if (!s_a) { s_a = remaster_frame_copy_new(); s_b = remaster_frame_copy_new(); }
+                        if (plan.older != s_older || plan.newer != s_newer) {
+                            const Uint64 s_t0 = SDL_GetTicksNS();
+                            drawlive_plan p0 = plan, p1 = plan;
+                            p0.t = 0.0; p1.t = 1.0;
+                            if (s_have_a && s_newer == plan.older) { remaster_frame_copy *tmp = s_a; s_a = s_b; s_b = tmp; }
+                            else {
+                                drawlive_prepare_rerun(&g_live, &p0); drawlive_commit_rerun(&g_live, &p0); remaster_live_commit(g_rlive_copy);
+                                s_have_a = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, s_a);
+                            }
+                            drawlive_prepare_rerun(&g_live, &p1); drawlive_commit_rerun(&g_live, &p1); remaster_live_commit(g_rlive_copy);
+                            if (!(p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, s_b))) s_have_a = 0;
+                            s_older = plan.older; s_newer = plan.newer; s_steps++;
+                            if (p1.rerun_ready) { s_copy_ms += (double)(SDL_GetTicksNS() - s_t0) / 1e6; s_copy_n++; }
+                        }
+                        const Uint64 s_t1 = SDL_GetTicksNS();
+                        const int s_ok = s_have_a && remaster_live_stage2_blend(g_rlive_copy, s_a, s_b, plan.t);
+                        if (s_ok) { s_blend_ms += (double)(SDL_GetTicksNS() - s_t1) / 1e6; s_blend_n++; plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0; s_blended++; }
+                        else { s_failed++; drawlive_prepare_rerun(&g_live, &plan); }
+                        if (s_log && ((s_blended + s_failed) % 200) == 0)
+                            fprintf(stderr, "[stage2] clock %llu: %u steps, %u pictures blended, %u fell back to the copy; copy work %.1f ms a step, blend %.2f ms a picture\n", (unsigned long long)H.m.cpu.icount,
+                                    s_steps, s_blended, s_failed, s_copy_n ? s_copy_ms / s_copy_n : 0.0, s_blend_n ? s_blend_ms / s_blend_n : 0.0);
+                    } else if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_BLEND_CHECK")) {
                         /* piece 2: the copy at t = 0 and t = 1, then at t; the blend of the first two against the third */
                         static remaster_frame_copy *ca, *cb, *cc;
                         if (!ca) { ca = remaster_frame_copy_new(); cb = remaster_frame_copy_new(); cc = remaster_frame_copy_new(); }

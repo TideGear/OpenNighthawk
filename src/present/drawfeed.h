@@ -104,6 +104,7 @@ typedef struct {
     double   t_shown;
     int      rerun_ready;         /* rerun: drawlive_prepare_rerun has the copy's records for this plan */
     int      rerun_inline;        /* rerun: the render may run the copy itself (it is on the machine's thread) */
+    int      stage2;              /* Part B Stage 2: the scene is a blend of two step scenes (staged by the host), the picture layer is the nearer step's own: no copy */
     int      sa, sb;              /* the published steps (indexes) the picture is drawn between: always set by drawlive_plan_interp (the ring's own older and newer, or the smoothed clock's pair), else -1 */
     const uint8_t *picture, *picture_hi, *picture_tag;   /* the replayed picture the ring showed when the plan was made, for a PLAN_REPLAY or a fallback: the worker reads these, not the live ring */
 } drawlive_plan;

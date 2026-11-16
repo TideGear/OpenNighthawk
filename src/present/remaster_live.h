@@ -98,6 +98,8 @@ typedef struct remaster_frame_copy remaster_frame_copy;
 remaster_frame_copy *remaster_frame_copy_new(void);
 void remaster_frame_copy_free(remaster_frame_copy *c);
 int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out);
+/* Part B Stage 2 (F117_STAGE2): stage, in a deferred-mode instance, the scene of a picture at t between the scenes a (t = 0) and b (t = 1); remaster_live_commit makes it the done frame. 0: not made. */
+int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, double t);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
 /* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */
 size_t remaster_frame_copy_prims(const remaster_frame_copy *c);

@@ -22,6 +22,10 @@ struct remaster_frame_copy {
     remaster_prim *prim;
     size_t n, cap;
     int origin[2];
+    /* Part B Stage 2 (F117_STAGE2): what a step's scene needs besides its primitives, so two of them can be blended into a picture */
+    int32_t band[BAND_REC_FINE];
+    int have_band, window[4], complete;
+    long hud_at;
 };
 #ifdef _WIN32
 #include <windows.h>
@@ -139,16 +143,17 @@ struct remaster_live {
      * DS:D6B4 + 8 * id, signed pixel offsets from the origin) and how many do not */
     struct { uint16_t model; unsigned seen, match, differ, behind_mine, behind_game, off1, off8, farther; } check[256];
     unsigned nchecks;
-    int32_t band_rec[BAND_REC_BASE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
+    int32_t band_rec[BAND_REC_FINE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
     int have_band;
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
-    int32_t done_band[BAND_REC_BASE];
+    int32_t done_band[BAND_REC_FINE];
     int done_have_band, have_done, done_origin[2], done_window[4];
     /* Deferred mode (remaster_live_set_deferred): a copy stages its finished frame here instead of replacing `done`, which a worker may be reading; the main
      * thread makes it the done frame with remaster_live_commit at a point where the worker is idle. */
     remaster_frame staged;
-    int32_t staged_band[BAND_REC_BASE];
+    int32_t staged_band[BAND_REC_FINE];
     int staged_have_band, have_staged, staged_origin[2], staged_window[4], staged_complete;
+    long staged_hud_at; int staged_hud_set;   /* Stage 2: the HUD split of a blended frame, handed to done_hud_at by the commit */
     int deferred, copy_open;
     long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
@@ -228,6 +233,7 @@ void remaster_live_commit(remaster_live *r)
         r->done_have_band = r->staged_have_band; r->have_done = r->done.n > 0;
         r->done_complete = r->staged_complete;
         memcpy(r->done_origin, r->staged_origin, sizeof r->origin); memcpy(r->done_window, r->staged_window, sizeof r->window);
+        if (r->staged_hud_set) { r->done_hud_at = r->staged_hud_at; r->staged_hud_set = 0; }
         r->have_staged = 0;
     } else {
         r->done.n = 0; r->have_done = 0; r->done_complete = 0;
@@ -407,7 +413,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         band_state st;
         band_exact_list ex;
         band_fine_list fine;
-        const int loaded = band_state_load(band_rec, BAND_REC_BASE, &st);
+        const int loaded = band_state_load(band_rec, BAND_REC_FINE, &st);
         const int rx = loaded ? band_exact(&st, &ex) : -1, rf = loaded && !rx ? band_fine(&st, &ex, &fine) : -1;
         if (loaded && !rx && !rf) {
             const double far_z = 10000000.0;
@@ -860,7 +866,7 @@ static int scene_is_complete(const remaster_live *r)
         band_state background;
         band_exact_list exact;
         band_fine_list fine;
-        complete = band_state_load(r->done_band, BAND_REC_BASE, &background) &&
+        complete = band_state_load(r->done_band, BAND_REC_FINE, &background) &&
             !band_exact(&background, &exact) && !band_fine(&background, &exact, &fine) && fine.n > 0;
     }
     return complete;
@@ -2240,6 +2246,118 @@ int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
     memcpy(out->prim, r->done.prim, r->done.n * sizeof *out->prim);
     out->n = r->done.n;
     out->origin[0] = r->done_origin[0]; out->origin[1] = r->done_origin[1];
+    memcpy(out->band, r->done_band, sizeof out->band); out->have_band = r->done_have_band; memcpy(out->window, r->done_window, sizeof out->window);
+    out->complete = r->done_complete; out->hud_at = r->done_hud_at;
+    return 1;
+}
+
+/* ---- Part B Stage 2: a picture's scene from two step scenes (F117_STAGE2; docs/gpu-compositor.md) ----------------------------------------------------------
+ * The scene of an in-between picture is the blend of the scenes of the two game steps it lies between, not a render copy at its own t. The blend takes the primitives of the
+ * nearer step in their own order (painter order and the HUD split are kept) and moves each one's vertices towards its partner in the other step, paired by (kind, vertex count,
+ * model, face, colour word) and, among several of the same key, the unused one whose first vertex is nearest on the screen; a primitive with no partner is drawn as the nearer step
+ * has it. The band state is blended by band_blend (the camera height, and the pitch and roll on the shortest arc). Origin, window and the rest come from the nearer step. */
+static double blend_pos(const remaster_prim *p, int axis);
+typedef struct { uint64_t key; uint32_t i; } stage2_key;
+static uint64_t stage2_pkey(const remaster_prim *p)
+{
+    uint64_t h = 1469598103934665603ull;
+#define MIX2(x) do { h ^= (uint64_t)(x); h *= 1099511628211ull; } while (0)
+    MIX2(p->kind); MIX2(p->n); MIX2(p->model); MIX2(p->face); MIX2(p->colour_word);
+#undef MIX2
+    return h;
+}
+static int stage2_cmp(const void *x, const void *y)
+{
+    const stage2_key *a = (const stage2_key *)x, *b = (const stage2_key *)y;
+    if (a->key != b->key) return a->key < b->key ? -1 : 1;
+    return a->i < b->i ? -1 : a->i > b->i;
+}
+#define STAGE2_WINDOW 12              /* the k-th primitive of a key in one step is paired with the best unused one among the k-th +- this many of the same key in the other */
+#define STAGE2_MAX_MOVE 96.0          /* game pixels: a pair any of whose vertices would move farther than this between two steps is not a pair (it would draw as a sliver across the picture) */
+
+static double stage2_move(const remaster_prim *p, const remaster_prim *q)
+{
+    double worst = 0.0;
+    for (int v = 0; v < p->n && v < q->n; v++) {         /* every vertex, on the screen; vertices behind the near plane are clamped, as blend_pos does */
+        const double z1 = p->v[v].z > 65536 ? (double)p->v[v].z : 65536.0, z2 = q->v[v].z > 65536 ? (double)q->v[v].z : 65536.0;
+        const double dx = 256.0 * ((double)p->v[v].x / z1 - (double)q->v[v].x / z2), dy = 256.0 * ((double)p->v[v].y / z1 - (double)q->v[v].y / z2);
+        const double d = dx * dx + dy * dy;
+        if (d > worst) worst = d;
+    }
+    return worst;
+}
+
+int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, double t)
+{
+    if (!r || !r->deferred || !a || !b || !a->n || !b->n) return 0;
+    const int nb = t >= 0.5;
+    const remaster_frame_copy *nr = nb ? b : a, *fr = nb ? a : b;
+    const double wf = nb ? 1.0 - t : t;                       /* how far the nearer step's vertices move towards the other step */
+    stage2_key *fk = (stage2_key *)malloc(fr->n * sizeof *fk), *nk = (stage2_key *)malloc(nr->n * sizeof *nk);
+    int *match = (int *)malloc(nr->n * sizeof *match);
+    unsigned char *used = (unsigned char *)calloc(fr->n, 1);
+    if (!fk || !nk || !match || !used) { free(fk); free(nk); free(match); free(used); return 0; }
+    for (size_t i = 0; i < fr->n; i++) { fk[i].key = stage2_pkey(&fr->prim[i]); fk[i].i = (uint32_t)i; }
+    for (size_t i = 0; i < nr->n; i++) { nk[i].key = stage2_pkey(&nr->prim[i]); nk[i].i = (uint32_t)i; match[i] = -1; }
+    qsort(fk, fr->n, sizeof *fk, stage2_cmp);
+    qsort(nk, nr->n, sizeof *nk, stage2_cmp);
+    {   /* the groups of one key, in step with each other */
+        size_t fi = 0;
+        for (size_t ns = 0; ns < nr->n;) {
+            size_t ne = ns;
+            while (ne < nr->n && nk[ne].key == nk[ns].key) ne++;
+            while (fi < fr->n && fk[fi].key < nk[ns].key) fi++;
+            size_t fs = fi, fe = fi;
+            while (fe < fr->n && fk[fe].key == nk[ns].key) fe++;
+            const long fn = (long)(fe - fs);
+            for (size_t q = ns; q < ne && fn > 0; q++) {
+                const remaster_prim *p = &nr->prim[nk[q].i];
+                long best = -1; double bd = 1e300;
+                const long centre = (long)(q - ns) < fn ? (long)(q - ns) : fn - 1;
+                for (long d = -STAGE2_WINDOW; d <= STAGE2_WINDOW; d++) {
+                    const long j = centre + d;
+                    if (j < 0 || j >= fn) continue;
+                    const uint32_t fj = fk[fs + (size_t)j].i;
+                    const remaster_prim *c = &fr->prim[fj];
+                    if (used[fj] || c->inv_depth_scale != p->inv_depth_scale) continue;
+                    const double mv = stage2_move(p, c);
+                    if (mv <= STAGE2_MAX_MOVE * STAGE2_MAX_MOVE && mv < bd) { bd = mv; best = (long)fj; }
+                }
+                if (best >= 0) { used[best] = 1; match[nk[q].i] = (int)best; }
+            }
+            ns = ne;
+        }
+    }
+    remaster_frame *o = &r->staged;
+    if (o->cap < nr->n) {
+        remaster_prim *q = (remaster_prim *)realloc(o->prim, nr->n * sizeof *q);
+        if (!q) { free(fk); free(nk); free(match); free(used); return 0; }
+        o->prim = q; o->cap = nr->n;
+    }
+    for (size_t i = 0; i < nr->n; i++) {
+        remaster_prim p = nr->prim[i];
+        if (match[i] >= 0) {
+            const remaster_prim *q = &fr->prim[match[i]];
+            for (int v = 0; v < p.n && v < q->n; v++) {
+                p.v[v].x += (int32_t)floor(wf * ((double)q->v[v].x - p.v[v].x) + 0.5);
+                p.v[v].y += (int32_t)floor(wf * ((double)q->v[v].y - p.v[v].y) + 0.5);
+                p.v[v].z += (int32_t)floor(wf * ((double)q->v[v].z - p.v[v].z) + 0.5);
+            }
+        }
+        o->prim[i] = p;
+    }
+    o->n = nr->n;
+    free(fk); free(nk); free(match); free(used);
+    int32_t tmp[BAND_REC_FINE];
+    memset(tmp, 0, sizeof tmp);
+    const int bn = a->have_band && b->have_band ? band_blend(a->band, BAND_REC_BASE, b->band, BAND_REC_BASE, t, tmp, BAND_REC_FINE) : 0;
+    memset(r->staged_band, 0, sizeof r->staged_band);
+    if (bn > 0) memcpy(r->staged_band, tmp, sizeof tmp); else memcpy(r->staged_band, nr->band, sizeof r->staged_band);
+    r->staged_have_band = nr->have_band;
+    r->staged_complete = nr->complete;
+    memcpy(r->staged_origin, nr->origin, sizeof r->staged_origin); memcpy(r->staged_window, nr->window, sizeof r->staged_window);
+    r->staged_hud_at = nr->hud_at; r->staged_hud_set = 1;
+    r->have_staged = o->n > 0; r->copy_open = 1;
     return 1;
 }
 
