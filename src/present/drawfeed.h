@@ -171,6 +171,7 @@ typedef struct {
     /* rerun (rerun.h): in-between pictures drawn by the original on a copy of the machine */
     int            rerun;
     rerun_list     rlist;         /* the copy being made writes here */
+    rerun_list     rlist_scene;   /* Part B Stage 2: the records of a step's scene copy (not drawn from: the picture layer is the step's own) */
     rerun_list     rlist_job;     /* the records the worker draws from: the copy's list is swapped in when the job is handed over (drawlive_prepare_rerun), so a later copy never overwrites it */
     interp_rec    *splice;
     int            nsplice, csplice;
@@ -239,6 +240,11 @@ int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f);
 int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
                          drawlive_plan *plan);
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f);
+/* Part B Stage 2: the scene of the newest step, a copy of the newest pair at t = 1 run in slices. begin: 1 started (the snapshots are no longer needed), 0 not started (no copy possible
+ * now). step: 0 while running, 1 when finished; ok: the copy presented and closed its frame. The scene arrives in the collector of rerun_set_collector (the host's choice of instance). */
+int drawlive_scene_begin(drawlive *r);
+int drawlive_scene_step(drawlive *r, uint64_t budget_ns);
+int drawlive_scene_ok(void);
 
 /* rerun: run the copy of the machine a plan's in-between picture needs, on the machine's thread, so another thread
  * can then render the plan. A render never runs a copy unless the plan says it may (rerun_inline: the single-threaded

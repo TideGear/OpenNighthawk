@@ -2343,6 +2343,29 @@ int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a
     return 1;
 }
 
+typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf; remaster_prim *out; int parts; } stage2_blend_job;
+static void (*g_s2_run)(void (*)(void *, int), void *, int);
+static int g_s2_parts;
+void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *, int), int parts) { g_s2_run = run; g_s2_parts = parts; }
+static void stage2_blend_part(void *arg, int part)
+{
+    stage2_blend_job *j = (stage2_blend_job *)arg;
+    const int parts = j->parts > 0 ? j->parts : g_s2_parts;
+    const size_t n = j->nr->n, from = n * (size_t)part / (size_t)parts, to = n * (size_t)(part + 1) / (size_t)parts;
+    for (size_t i = from; i < to; i++) {
+        remaster_prim p = j->nr->prim[i];
+        if (j->match[i] >= 0) {
+            const remaster_prim *q = &j->fr->prim[j->match[i]];
+            for (int v = 0; v < p.n && v < q->n; v++) {
+                p.v[v].x += (int32_t)floor(j->wf * ((double)q->v[v].x - p.v[v].x) + 0.5);
+                p.v[v].y += (int32_t)floor(j->wf * ((double)q->v[v].y - p.v[v].y) + 0.5);
+                p.v[v].z += (int32_t)floor(j->wf * ((double)q->v[v].z - p.v[v].z) + 0.5);
+            }
+        }
+        j->out[i] = p;
+    }
+}
+
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t)
 {
     if (!r || !r->deferred || !a || !b || !pr || !a->n || !b->n || pr->na != a->n || pr->nb != b->n) return 0;
@@ -2356,17 +2379,10 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         if (!q) return 0;
         o->prim = q; o->cap = nr->n;
     }
-    for (size_t i = 0; i < nr->n; i++) {
-        remaster_prim p = nr->prim[i];
-        if (match[i] >= 0) {
-            const remaster_prim *q = &fr->prim[match[i]];
-            for (int v = 0; v < p.n && v < q->n; v++) {
-                p.v[v].x += (int32_t)floor(wf * ((double)q->v[v].x - p.v[v].x) + 0.5);
-                p.v[v].y += (int32_t)floor(wf * ((double)q->v[v].y - p.v[v].y) + 0.5);
-                p.v[v].z += (int32_t)floor(wf * ((double)q->v[v].z - p.v[v].z) + 0.5);
-            }
-        }
-        o->prim[i] = p;
+    {   /* the blend of each primitive is independent of the others: on the host's helper threads when it gave them */
+        stage2_blend_job job = { nr, fr, match, wf, o->prim, 0 };
+        if (g_s2_run && g_s2_parts > 1 && nr->n >= 2048) g_s2_run(stage2_blend_part, &job, g_s2_parts);
+        else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
     }
     o->n = nr->n;
     int32_t tmp[BAND_REC_FINE];

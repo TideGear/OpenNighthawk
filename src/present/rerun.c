@@ -1842,8 +1842,20 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     return 0;
 }
 
-int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
+/* ---- A copy run in slices (Part B, Stage 2): rerun_begin does the setup, rerun_step runs the copy for a wall-time budget and puts the real observer back in between, so the
+ * display loop can spend a few milliseconds a frame on a copy instead of seventeen at once. The copy needs the snapshots only in rerun_begin (it takes its own copy of the
+ * memory and of the fixes' state there); one copy at a time. rerun_draw below is begin and step without a budget. */
+static struct {
+    int running, began, ok, check;
+    rerun_list *out;
+    const machine_t *real_machine;
+    uint64_t start, limit, a_icount;
+} g_job;
+static void *g_cpend, *g_cfix;     /* the copy's own observer and fixes state, kept while the real ones are in place between slices */
+
+int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
 {
+    if (g_job.running) return 0;
     out->nvals = 0;
     out->nrec = 0;
     out->presented = 0;
@@ -2009,23 +2021,73 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
             }
         }
     }
-    /* run it under its own observer, the real one's pending state set aside */
-    const f117_observer *real = g_f117_observer;
+    /* the copy's own observer and fixes state, made now from the real ones and the snapshot's, so no snapshot is read after this */
+    if (!g_cpend && !(g_cpend = malloc(observe_pending_size()))) return 0;
+    if (!g_cfix && !(g_cfix = malloc(fixes_pending_size()))) return 0;
     observe_pending_save(g_pending);
     fixes_pending_save(g_fix_pending);
     fixes_pending_restore(a->fix_pending);
+    fixes_pending_save(g_cfix);
     observe_pending_clear();
+    observe_pending_save(g_cpend);
+    observe_pending_restore(g_pending);
+    fixes_pending_restore(g_fix_pending);
+    g_job.out = out; g_job.check = check; g_job.real_machine = real_machine; g_job.a_icount = a->m.cpu.icount;
+    g_job.start = s->cpu.icount; g_job.limit = g_job.start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
+    g_job.running = 1; g_job.began = 0; g_job.ok = 0;
+    return 1;
+}
+
+/* Runs the copy for about budget_ns of wall time (~0: to the end). 0: still running; 1: finished (rerun_job_ok says whether the list is good). */
+int rerun_job_ok(void) { return g_job.ok; }
+int rerun_job_running(void) { return g_job.running; }
+
+int rerun_step(uint64_t budget_ns)
+{
+    if (!g_job.running) return 1;
+    machine_t *s = &g_copy;
+    rerun_list *out = g_job.out;
+    const machine_t *real_machine = g_job.real_machine;
+    const int check = g_job.check;
+    const uint64_t start = g_job.start, limit = g_job.limit;
+    const f117_observer *real = g_f117_observer;
+    observe_pending_save(g_pending);
+    fixes_pending_save(g_fix_pending);
+    observe_pending_restore(g_cpend);
+    fixes_pending_restore(g_cfix);
     observe_set(&g_copy_obs);
     g_out = out;
-    g_done = 0;
-    g_blocked = 0;
-    const uint64_t start = s->cpu.icount, limit = start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
-    if (g_prof < 0) g_prof = getenv("F117_PROFILE") != NULL;
-    if (g_prof) { g_prof_m = s; memset(g_prof_set, 0, sizeof g_prof_set); g_prof_ic[0] = s->cpu.icount; g_prof_ms[0] = walk_ms(); g_prof_set[0] = 1; }
-    if (g_collector.begin) g_collector.begin(g_collector.user);
-    while (!g_done && s->cpu.icount < limit)
-        if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
+    if (!g_job.began) {
+        g_job.began = 1;
+        g_done = 0;
+        g_blocked = 0;
+        if (g_prof < 0) g_prof = getenv("F117_PROFILE") != NULL;
+        if (g_prof) { g_prof_m = s; memset(g_prof_set, 0, sizeof g_prof_set); g_prof_ic[0] = s->cpu.icount; g_prof_ms[0] = walk_ms(); g_prof_set[0] = 1; }
+        if (g_collector.begin) g_collector.begin(g_collector.user);
+    }
+    const double t0 = walk_ms();
+    int failed = 0;
+    static double acc_run, acc_end, acc_post, worst_run; static unsigned njobs; static int tdiag = -1;
+    if (tdiag < 0) tdiag = getenv("F117_RERUN_STEP_DIAG") != NULL;
+    while (!g_done && s->cpu.icount < limit) {
+        if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) { failed = 1; break; }
+        if (budget_ns != ~0ull && (walk_ms() - t0) * 1e6 >= (double)budget_ns) break;
+    }
+    const int finished = g_done || failed || s->cpu.icount >= limit;
+    const double t_run = walk_ms() - t0;
+    acc_run += t_run; if (t_run > worst_run) worst_run = t_run;
+    if (!finished) {                       /* between slices: keep the copy's state, put the real one back */
+        observe_pending_save(g_cpend);
+        fixes_pending_save(g_cfix);
+        g_out = NULL;
+        observe_set(real);
+        observe_pending_restore(g_pending);
+        fixes_pending_restore(g_fix_pending);
+        return 0;
+    }
+    const double te0 = walk_ms();
     if (g_collector.end) g_collector.end(g_collector.user);
+    acc_end += walk_ms() - te0;
     if (g_prof) {
         rerun_prof_mark(7);
         /* labels: 0 the copy starts, 1 the per-frame draw routine is entered (the end of the frame being drawn), 2 the game's terrain walk begins (the far
@@ -2055,7 +2117,7 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
         static unsigned reported;
         if (reported++ < 4)
             fprintf(stderr,"[scenery] draw clock %llu walk calls %u collector %d\n",
-                (unsigned long long)a->m.cpu.icount,g_walk_calls,g_collector.exec != NULL);
+                (unsigned long long)g_job.a_icount,g_walk_calls,g_collector.exec != NULL);
     }
     g_out = NULL;
     observe_set(real);
@@ -2094,5 +2156,16 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
         out->rec[out->nrec++] = r;
         at += 4 + (size_t)p[1];
     }
-    return out->presented && g_done && !g_blocked;
+    g_job.ok = out->presented && g_done && !g_blocked;
+    g_job.running = 0;
+    acc_post += walk_ms() - te0 - (walk_ms() - te0 > 0 ? 0 : 0);
+    if (tdiag && ++njobs % 10 == 0) fprintf(stderr, "[rerun-step] %u copies: machine run %.2f ms, collector end + post %.2f ms (end alone %.2f), longest single slice %.2f ms\n", njobs, acc_run / njobs, acc_post / njobs, acc_end / njobs, worst_run);
+    return 1;
+}
+
+int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
+{
+    if (!rerun_begin(a, b, t, out, check)) return 0;
+    while (!rerun_step(~0ull)) {}
+    return g_job.ok;
 }

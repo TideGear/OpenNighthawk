@@ -136,6 +136,52 @@ static int g_remaster;                 /* --presentation remastered */
 static uint8_t *g_rbuf; static size_t g_rbuf_cap;
 static uint32_t *g_rrgb; static uint8_t *g_rmask; static int g_rtrue;   /* the true colour of the Remastered pixels, when composed */
 static remaster_live *g_remaster_src;       /* the frame the last remaster_apply used (the wide view uses the same) */
+/* Part B Stage 2 (F117_STAGE2): the scenes of the last three game steps, the copy being sliced across frames, and the pairing of the two steps being shown. */
+static struct {
+    remaster_live *scene;
+    remaster_frame_copy *sc[4];
+    uint64_t seq[4];
+    int next, job;
+    uint64_t job_seq, launched;
+    remaster_stage2_pairs *pairs[3];                      /* [0] and [1] made on the pairing thread, [2] made at once when neither is ready */
+    uint64_t pa[3], pb[3];                                /* the step scenes a pairing is for */
+    int pvalid[3], pnext;
+    unsigned started, finished, late, extrap, boot, slices, blended;
+    double slice_ms_max, slice_ms, pair_ms, begin_ms, blend_ms; unsigned blend_n, pairs_made;
+} g_s2;
+static unsigned g_s2_ev;
+/* F117_STAGE2_EVENTS=CLOCK (diagnostic): the first 80 events from that machine clock on */
+static unsigned long long s2_ev_from(void) { static long long v = -2; if (v == -2) { const char *e = getenv("F117_STAGE2_EVENTS"); v = e ? strtoll(e, NULL, 0) : -1; } return v < 0 ? ~0ull : (unsigned long long)v; }
+#define S2EV(...) do { if (g_s2_ev < 80 && H.m.cpu.icount >= s2_ev_from()) { g_s2_ev++; fprintf(stderr, "[s2-event] " __VA_ARGS__); } } while (0)
+/* The pairing of two step scenes (about 7 ms) runs on a thread of its own: it reads two scene slots, which are not rewritten for two more steps, and writes one pairing buffer. */
+static struct { SDL_Thread *th; SDL_Semaphore *go, *done; int busy, buf; const remaster_frame_copy *a, *b; int ok; } g_pth;
+static int pair_thread_main(void *u)
+{
+    (void)u;
+    for (;;) {
+        SDL_WaitSemaphore(g_pth.go);
+        g_pth.ok = remaster_stage2_pair(g_s2.pairs[g_pth.buf], g_pth.a, g_pth.b);
+        SDL_SignalSemaphore(g_pth.done);
+    }
+    return 0;
+}
+/* A scene copy has finished (rerun_step returned 1): keep its scene and start the pairing with the step before it on the pairing thread. */
+static void s2_job_done(void)
+{
+    S2EV("job for step %llu finished (ok %d) at clock %llu, slices so far %u\n", (unsigned long long)g_s2.job_seq, drawlive_scene_ok(), (unsigned long long)H.m.cpu.icount, g_s2.slices);
+    g_s2.job = 0;
+    if (drawlive_scene_ok() && remaster_live_done_clone(g_s2.scene, g_s2.sc[g_s2.next])) {
+        const int k = g_s2.next;
+        g_s2.seq[k] = g_s2.job_seq; g_s2.next = (g_s2.next + 1) % 4; g_s2.finished++;
+        for (int q = 0; q < 4; q++) if (g_s2.seq[q] + 1 == g_s2.job_seq && g_pth.th && !g_pth.busy) {
+            const int pbuf = g_s2.pnext; g_s2.pnext ^= 1;
+            g_s2.pa[pbuf] = g_s2.seq[q]; g_s2.pb[pbuf] = g_s2.job_seq; g_s2.pvalid[pbuf] = 0;
+            g_pth.buf = pbuf; g_pth.a = g_s2.sc[q]; g_pth.b = g_s2.sc[k]; g_pth.busy = 1;
+            SDL_SignalSemaphore(g_pth.go);
+            break;
+        }
+    }
+}
 static remaster_live *g_rlive_copy;       /* Remastered's collector for the rerun copies (rerun.h): the frame of the picture a copy drew */
 static remaster_live *g_rlive;         /* F117_REMASTER_FRAME=N:FILE.ppm: Remastered's view of the running game (remaster_live.h) */
 static unsigned g_rlive_base;
@@ -475,42 +521,45 @@ static void side_run(const machine_t *m, uint64_t ips)
 }
 
 /* The rerun copies' collector (rerun_set_collector): only Remastered's entries, into the copy's own instance. A copy has no sound hook. */
-static void copy_begin(void *user) { (void)user; if (g_rlive_copy) remaster_live_copy_begin(g_rlive_copy); }
+/* Part B Stage 2: a scene copy (sliced across frames) collects into an instance of its own, so it never touches the frame the worker composes from. g_coll is set around its slices. */
+static remaster_live *g_coll;
+#define COLL() (g_coll ? g_coll : g_rlive_copy)
+static void copy_begin(void *user) { (void)user; if (COLL()) remaster_live_copy_begin(COLL()); }
 static int copy_exec(void *user, machine_t *m, unsigned index)
 {
     (void)user;
-    if (!g_rlive_copy || index < g_rlive_base) return 0;
-    return remaster_live_exec(g_rlive_copy, m, index - g_rlive_base);
+    if (!COLL() || index < g_rlive_base) return 0;
+    return remaster_live_exec(COLL(), m, index - g_rlive_base);
 }
 
 static int copy_native(void *user, machine_t *m, const rerun_native *n)
 {
     (void)user;
-    return g_rlive_copy ? remaster_live_native(g_rlive_copy, m, n) : 0;
+    return COLL() ? remaster_live_native(COLL(), m, n) : 0;
 }
 
 static void copy_placement_return(void *user, machine_t *m, int returned)
 {
     (void)user;
-    if (g_rlive_copy) remaster_live_placement_return(g_rlive_copy, m, returned);
+    if (COLL()) remaster_live_placement_return(COLL(), m, returned);
 }
 
 static void copy_overlay_line(void *user, double x0, double y0, double x1, double y1, unsigned colour_word)
 {
     (void)user;
-    if (g_rlive_copy) remaster_live_overlay_line(g_rlive_copy, x0, y0, x1, y1, colour_word);
+    if (COLL()) remaster_live_overlay_line(COLL(), x0, y0, x1, y1, colour_word);
 }
 
 static void copy_overlay_rect(void *user, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer)
 {
     (void)user;
-    if (g_rlive_copy) remaster_live_overlay_rect(g_rlive_copy, x, y, w, h, colour_word, clip_rows, layer);
+    if (COLL()) remaster_live_overlay_rect(COLL(), x, y, w, h, colour_word, clip_rows, layer);
 }
 
 static void copy_overlay_dot(void *user, double x, double y, unsigned colour_word)
 {
     (void)user;
-    if (g_rlive_copy) remaster_live_overlay_dot(g_rlive_copy, x, y, colour_word);
+    if (COLL()) remaster_live_overlay_dot(COLL(), x, y, colour_word);
 }
 
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
@@ -1338,6 +1387,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
                 static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot, copy_overlay_rect, copy_overlay_line };
                 if (g_rlive_copy) rerun_set_collector(&coll);
+                if (getenv("F117_STAGE2")) g_s2.scene = remaster_live_new(960, 720, ~0u, NULL);   /* Stage 2: the sliced scene copies' own instance (not deferred: its done frame is cloned at once) */
                 /* worker mode: the copy stages its frame and the loop commits it (this object exists only once the game is loaded, after the worker thread was made) */
                 if (g_rlive_copy && g_pwx.thread && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY")) remaster_live_set_deferred(g_rlive_copy, 1);
             }
@@ -1480,8 +1530,50 @@ static void default_data_folder(char *out, size_t cap)
     SDL_free(base);
 }
 
+#ifdef _WIN32
+/* F117_CRASH_TRACE=1 (diagnostic): on a crash, the fault and a symbolised stack on stderr (dbghelp.dll loaded at run time; the .pdb beside the executable). */
+#include <dbghelp.h>
+typedef BOOL (WINAPI *symInit_fn)(HANDLE, PCSTR, BOOL);
+typedef BOOL (WINAPI *symFromAddr_fn)(HANDLE, DWORD64, PDWORD64, PSYMBOL_INFO);
+typedef BOOL (WINAPI *symLine_fn)(HANDLE, DWORD64, PDWORD, PIMAGEHLP_LINE64);
+static LONG WINAPI crash_trace_filter(EXCEPTION_POINTERS *ep)
+{
+    static volatile LONG once;
+    if (InterlockedExchange(&once, 1)) return EXCEPTION_CONTINUE_SEARCH;
+    fprintf(stderr, "[crash] exception %08lX at %p (thread %lu)", (unsigned long)ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress, (unsigned long)GetCurrentThreadId());
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ep->ExceptionRecord->NumberParameters >= 2)
+        fprintf(stderr, ", %s address %p", ep->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading", (void *)ep->ExceptionRecord->ExceptionInformation[1]);
+    fprintf(stderr, "\n");
+    HMODULE dh = LoadLibraryA("dbghelp.dll");
+    symInit_fn init = dh ? (symInit_fn)GetProcAddress(dh, "SymInitialize") : NULL;
+    symFromAddr_fn from = dh ? (symFromAddr_fn)GetProcAddress(dh, "SymFromAddr") : NULL;
+    symLine_fn line = dh ? (symLine_fn)GetProcAddress(dh, "SymGetLineFromAddr64") : NULL;
+    char dir[MAX_PATH]; GetModuleFileNameA(NULL, dir, sizeof dir);
+    char *slash = strrchr(dir, '\\'); if (slash) *slash = 0;
+    const HANDLE proc = GetCurrentProcess();
+    if (init) init(proc, dir, TRUE);
+    void *frames[32];
+    const USHORT n = CaptureStackBackTrace(0, 32, frames, NULL);
+    for (USHORT i = 0; i < n; i++) {
+        char buf[sizeof(SYMBOL_INFO) + 256];
+        SYMBOL_INFO *sym = (SYMBOL_INFO *)buf; memset(sym, 0, sizeof *sym); sym->SizeOfStruct = sizeof(SYMBOL_INFO); sym->MaxNameLen = 255;
+        DWORD64 disp = 0; DWORD ld = 0; IMAGEHLP_LINE64 il; memset(&il, 0, sizeof il); il.SizeOfStruct = sizeof il;
+        const int have = from && from(proc, (DWORD64)(uintptr_t)frames[i], &disp, sym);
+        const int haveline = have && line && line(proc, (DWORD64)(uintptr_t)frames[i], &ld, &il);
+        fprintf(stderr, "[crash]   #%u %p %s%s", (unsigned)i, frames[i], have ? sym->Name : "?", haveline ? " " : "");
+        if (haveline) fprintf(stderr, "%s:%lu", il.FileName, (unsigned long)il.LineNumber);
+        fprintf(stderr, "\n");
+    }
+    fflush(stderr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+    if (getenv("F117_CRASH_TRACE")) SetUnhandledExceptionFilter(crash_trace_filter);
+#endif
     g_settings_child=getenv("F117_SETTINGS_CHILD")!=NULL;
     const char *data = NULL, *save = NULL, *log_path = NULL;
     int data_option=0;
@@ -2227,7 +2319,7 @@ int main(int argc, char **argv)
                         g_cpar[k].done = SDL_CreateSemaphore(0);
                         if (g_cpar[k].go && g_cpar[k].done) { g_cpar[k].thread = SDL_CreateThread(par_helper_main, "copy-scenery", &g_cpar[k]); cmade += g_cpar[k].thread != NULL; }
                     }
-                    if (cparts > 1 && cmade + 1 == cparts) rerun_set_parallel(par_run_copy, cparts);
+                    if (cparts > 1 && cmade + 1 == cparts) { rerun_set_parallel(par_run_copy, cparts); remaster_live_set_stage2_parallel(par_run_copy, cparts); }
                 }
             }
         }
@@ -3107,7 +3199,12 @@ int main(int argc, char **argv)
                         memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
                         memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
                         H.frame.text = g_pw.frame.text;
-                        g_fine = g_pw.composed ? g_pw.fine : remaster_apply(g_live.shown_hi);   /* composed on the worker, or here when it was a live-machine picture */
+                        if (g_pw.composed) g_fine = g_pw.fine;
+                        else {   /* composed here (a picture the worker did not make): on the pipeline, never beside the setup thread, and on the buffer set of the picture that has just finished */
+                            if (g_pipe) { pw_wait_a(); gpu_compose_use_set(g_pw.set); }
+                            g_fine = remaster_apply(g_live.shown_hi);
+                            if (g_pipe) gpu_compose_use_set(0);
+                        }   /* composed on the worker, or here when it was a live-machine picture */
                         if (diag_pic_fp()) {   /* diagnostic: fingerprints of the job's picture layer output and its composite, to compare runs */
                             static unsigned n_pf; unsigned long long hv = 1469598103934665603ull, hh = hv, hf = hv;
                             for (size_t q = 0; q < sizeof H.frame.vram; q++) { hv ^= H.frame.vram[q]; hv *= 1099511628211ull; }
@@ -3177,40 +3274,91 @@ int main(int argc, char **argv)
                         rerun_set_wide(ww ? ww * 130 / (320 * g_scale) : 100);
                         g_pw.ww = ww;
                     } else g_pw.ww = 0;
-                    if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_STAGE2")) {
-                        /* Part B Stage 2 (docs/gpu-compositor.md): one render copy per game step (at t = 1, the step's own scene), kept with the previous step's; every picture of
-                         * the interval blends the two at its t and shows the nearer step's own picture layer. A step whose copy is not ready (composition skipped, no previous
-                         * step) falls back to the copy for that picture. F117_STAGE2_LOG=1 prints the counts and the cost of a step and of a blend every 200 pictures. */
-                        static remaster_frame_copy *s_a, *s_b; static remaster_stage2_pairs *s_pairs;
-                        static uint64_t s_older = ~0ull, s_newer = ~0ull;
-                        static int s_have_a, s_log = -1;
-                        static unsigned s_steps, s_blended, s_failed, s_copy_n, s_blend_n;
-                        static double s_copy_ms, s_blend_ms;
-                        if (s_log < 0) s_log = getenv("F117_STAGE2_LOG") != NULL;
-                        if (!s_a) { s_a = remaster_frame_copy_new(); s_b = remaster_frame_copy_new(); s_pairs = remaster_stage2_pairs_new(); }
-                        if (g_pipe) pw_wait_a();                 /* the setup of the previous picture reads the committed scene: finished before any commit below replaces it */
-                        if (plan.older != s_older || plan.newer != s_newer) {
-                            const Uint64 s_t0 = SDL_GetTicksNS();
+                    if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && g_s2.scene) {
+                        /* Part B Stage 2 (docs/gpu-compositor.md). The scene of each game step is made once, by a copy of the newest pair at t = 1 that runs in slices of a few
+                         * milliseconds across the display frames (the copy has to run on the machine's thread, but not all at once); the picture of an interval blends the
+                         * scenes of its two steps at its t and shows the nearer step's own picture layer. The copy of a step starts when the step is published, about a step before
+                         * its interval is shown. A scene that is late holds the previous one (counted); at the start, the copies are made at once. */
+                        static int s_log = -1; static double s_slice_ms = -1;
+                        if (s_log < 0) { s_log = getenv("F117_STAGE2_LOG") != NULL; const char *e = getenv("F117_STAGE2_SLICE_MS"); s_slice_ms = e ? atof(e) : 3.0; }
+                        if (!g_s2.sc[0]) {
+                            for (int k = 0; k < 4; k++) { g_s2.sc[k] = remaster_frame_copy_new(); g_s2.seq[k] = ~0ull; }
+                            for (int k = 0; k < 3; k++) { g_s2.pairs[k] = remaster_stage2_pairs_new(); g_s2.pa[k] = g_s2.pb[k] = ~0ull; }
+                            g_s2.launched = ~0ull;
+                            g_pth.go = SDL_CreateSemaphore(0); g_pth.done = SDL_CreateSemaphore(0);
+                            if (g_pth.go && g_pth.done) g_pth.th = SDL_CreateThread(pair_thread_main, "stage2-pair", NULL);
+                        }
+                        if (g_pth.busy && SDL_TryWaitSemaphore(g_pth.done)) {            /* the pairing thread has finished one */
+                            g_pth.busy = 0;
+                            g_s2.pvalid[g_pth.buf] = g_pth.ok;
+                        }
+                        {   /* the newest published step's scene: start its copy (the first slice follows at once) */
+                            const drawlive_step *na, *nb;
+                            drawlive_steps(&g_live, &na, &nb);
+                            if (nb && !g_s2.job && nb->seq != g_s2.launched) {
+                                const double b0 = (double)SDL_GetTicksNS() / 1e6;
+                                g_s2.launched = nb->seq;
+                                g_coll = g_s2.scene;
+                                if (drawlive_scene_begin(&g_live)) { g_s2.job = 1; g_s2.job_seq = nb->seq; g_s2.started++; S2EV("job for step %llu started at clock %llu\n", (unsigned long long)nb->seq, (unsigned long long)H.m.cpu.icount); }
+                                g_coll = NULL;
+                                g_s2.begin_ms += (double)SDL_GetTicksNS() / 1e6 - b0;
+                            }
+                        }
+                        if (g_s2.job) {                          /* this frame's slice of the running copy */
+                            const double sl0 = (double)SDL_GetTicksNS() / 1e6;
+                            g_coll = g_s2.scene;
+                            const int done = drawlive_scene_step(&g_live, (uint64_t)(s_slice_ms * 1e6));
+                            g_coll = NULL;
+                            const double sl = (double)SDL_GetTicksNS() / 1e6 - sl0;
+                            g_s2.slices++; g_s2.slice_ms += sl; if (sl > g_s2.slice_ms_max) g_s2.slice_ms_max = sl;
+                            if (done) s2_job_done();
+                        }
+                        int ka = -1, kb = -1, kp = -1;
+                        for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == plan.older) ka = k; if (g_s2.seq[k] == plan.newer) kb = k; }
+                        if ((ka < 0 || kb < 0) && !g_s2.job && g_s2.finished == 0) {
+                            /* the start: the two scenes of this interval at once, as the legacy copy would make them */
                             drawlive_plan p0 = plan, p1 = plan;
                             p0.t = 0.0; p1.t = 1.0;
-                            if (s_have_a && s_newer == plan.older) { remaster_frame_copy *tmp = s_a; s_a = s_b; s_b = tmp; }
-                            else {
-                                drawlive_prepare_rerun(&g_live, &p0); drawlive_commit_rerun(&g_live, &p0); remaster_live_commit(g_rlive_copy);
-                                s_have_a = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, s_a);
-                            }
+                            S2EV("boot copies for steps %llu and %llu at clock %llu\n", (unsigned long long)plan.older, (unsigned long long)plan.newer, (unsigned long long)H.m.cpu.icount);
+                            if (g_pipe) pw_wait_a();             /* the commits below replace the scene the previous picture's setup reads */
+                            drawlive_prepare_rerun(&g_live, &p0); drawlive_commit_rerun(&g_live, &p0); remaster_live_commit(g_rlive_copy);
+                            if (p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, g_s2.sc[g_s2.next])) { g_s2.seq[g_s2.next] = plan.older; ka = g_s2.next; g_s2.next = (g_s2.next + 1) % 4; }
                             drawlive_prepare_rerun(&g_live, &p1); drawlive_commit_rerun(&g_live, &p1); remaster_live_commit(g_rlive_copy);
-                            if (!(p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, s_b))) s_have_a = 0;
-                            if (s_have_a && !remaster_stage2_pair(s_pairs, s_a, s_b)) s_have_a = 0;
-                            s_older = plan.older; s_newer = plan.newer; s_steps++;
-                            if (p1.rerun_ready) { s_copy_ms += (double)(SDL_GetTicksNS() - s_t0) / 1e6; s_copy_n++; }
+                            if (ka >= 0 && p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, g_s2.sc[g_s2.next])) { g_s2.seq[g_s2.next] = plan.newer; kb = g_s2.next; g_s2.next = (g_s2.next + 1) % 4; g_s2.boot++; }
+                            else ka = -1;
                         }
-                        const Uint64 s_t1 = SDL_GetTicksNS();
-                        const int s_ok = s_have_a && remaster_live_stage2_blend(g_rlive_copy, s_a, s_b, s_pairs, plan.t);
-                        if (s_ok) { s_blend_ms += (double)(SDL_GetTicksNS() - s_t1) / 1e6; s_blend_n++; plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0; s_blended++; }
-                        else { s_failed++; drawlive_prepare_rerun(&g_live, &plan); }
-                        if (s_log && ((s_blended + s_failed) % 200) == 0)
-                            fprintf(stderr, "[stage2] clock %llu: %u steps, %u pictures blended, %u fell back to the copy; copy work %.1f ms a step, blend %.2f ms a picture\n", (unsigned long long)H.m.cpu.icount,
-                                    s_steps, s_blended, s_failed, s_copy_n ? s_copy_ms / s_copy_n : 0.0, s_blend_n ? s_blend_ms / s_blend_n : 0.0);
+                        int ok = 0;
+                        double use_t = plan.t;
+                        if (ka >= 0 && kb >= 0) {
+                            for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pa[q] == plan.older && g_s2.pb[q] == plan.newer) kp = q;      /* its pairing: made on the thread, or in progress, or none */
+                            if (kp >= 0 && !g_s2.pvalid[kp]) {
+                                if (g_pth.busy && g_pth.buf == kp) { SDL_WaitSemaphore(g_pth.done); g_pth.busy = 0; g_s2.pvalid[kp] = g_pth.ok; }
+                                if (!g_s2.pvalid[kp]) kp = -1;
+                            }
+                            if (kp < 0) {                        /* none: made now (the start, or a step whose neighbour was missed) */
+                                const double pr0 = (double)SDL_GetTicksNS() / 1e6;
+                                if (remaster_stage2_pair(g_s2.pairs[2], g_s2.sc[ka], g_s2.sc[kb])) { kp = 2; g_s2.pa[2] = plan.older; g_s2.pb[2] = plan.newer; g_s2.pvalid[2] = 1; }
+                                g_s2.pair_ms += (double)SDL_GetTicksNS() / 1e6 - pr0; g_s2.pairs_made++;
+                            }
+                            ok = kp >= 0;
+                        } else {                                 /* this interval's scene (or its pairing) is not ready: carry on from the previous interval, the same pairing at t above 1 (a straight extrapolation) */
+                            for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pvalid[q] && g_s2.pb[q] == plan.older) kp = q;
+                            if (kp >= 0) {
+                                ka = kb = -1;
+                                for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == g_s2.pa[kp]) ka = k; if (g_s2.seq[k] == g_s2.pb[kp]) kb = k; }
+                                ok = ka >= 0 && kb >= 0; use_t = 1.0 + plan.t; if (use_t > 1.5) use_t = 1.5; g_s2.extrap += ok;
+                            }
+                        }
+                        const double bl0 = (double)SDL_GetTicksNS() / 1e6;
+                        if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t)) {
+                            g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
+                            plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
+                        } else { S2EV("no blend: ok %d ka %d kb %d kp %d older %llu newer %llu job %d finished %u\n", ok, ka, kb, kp, (unsigned long long)plan.older, (unsigned long long)plan.newer, g_s2.job, g_s2.finished); if (g_s2.job) { g_coll = g_s2.scene; while (!drawlive_scene_step(&g_live, ~0ull)) {} g_coll = NULL; s2_job_done(); }      /* the legacy copy needs the copy machine free */
+                            drawlive_prepare_rerun(&g_live, &plan); }      /* no scene yet: the legacy copy for this picture (so the worker composes it: never on the main thread beside the setup thread) */
+                        if (s_log && (g_s2.blended % 40) == 0 && g_s2.blended)
+                            fprintf(stderr, "[stage2] clock %llu: %u copies started, %u finished, %u slices (%.2f ms each, longest %.1f), %u pictures extrapolated, %u boot; copy begin %.2f ms, pairing at once %.2f ms (%u), blend %.2f ms a picture\n", (unsigned long long)H.m.cpu.icount,
+                                    g_s2.started, g_s2.finished, g_s2.slices, g_s2.slices ? g_s2.slice_ms / g_s2.slices : 0.0, g_s2.slice_ms_max, g_s2.extrap, g_s2.boot, g_s2.started ? g_s2.begin_ms / g_s2.started : 0.0,
+                                    g_s2.pairs_made ? g_s2.pair_ms / g_s2.pairs_made : 0.0, g_s2.pairs_made, g_s2.blend_n ? g_s2.blend_ms / g_s2.blend_n : 0.0);
                     } else if (g_remaster && g_rlive_copy && plan.kind == PLAN_BETWEEN && !plan.extrapolate && getenv("F117_BLEND_CHECK")) {
                         /* piece 2: the copy at t = 0 and t = 1, then at t; the blend of the first two against the third */
                         static remaster_frame_copy *ca, *cb, *cc;

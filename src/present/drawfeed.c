@@ -333,6 +333,23 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
 }
 
+int drawlive_scene_begin(drawlive *r)
+{
+    if (!r->rerun || r->ib < 0) return 0;
+    const int ia = r->smooth ? r->im : r->ia, ib = r->ib;
+    if (ia < 0 || ib < 0) return 0;
+    const drawlive_step *a = &r->step[ia], *b = &r->step[ib];
+    if (!a->have_compose || !a->snap.valid) return 0;
+    {   /* F117_SKIP_COMPOSE_BEFORE, as run_copy */
+        static uint64_t until; static int init;
+        if (!init) { const char *e = getenv("F117_SKIP_COMPOSE_BEFORE"); until = e ? strtoull(e, NULL, 0) : 0; init = 1; }
+        if (until && a->snap.m.cpu.icount < until) return 0;
+    }
+    return rerun_begin(&a->snap, b->have_compose ? &b->snap : NULL, 1.0, &r->rlist_scene, 0);
+}
+int drawlive_scene_step(drawlive *r, uint64_t budget_ns) { (void)r; return rerun_step(budget_ns); }
+int drawlive_scene_ok(void) { return rerun_job_ok(); }
+
 /* F117_COPY_FP (diagnostic): a fingerprint of the job's copy records (kinds, clocks, values). */
 unsigned long long drawlive_job_fingerprint(const drawlive *r)
 {

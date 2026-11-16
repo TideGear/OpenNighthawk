@@ -51,6 +51,13 @@ void rerun_set_pick_order(int fast);
 void rerun_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts);
 int rerun_why_model(unsigned model);   /* diagnostic: F117_FAR_WHY lists the model */
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
+/* The same copy in slices (Part B, Stage 2): rerun_begin does the setup and takes everything it needs from the snapshots (they may be released after it returns); rerun_step runs the copy
+ * for about budget_ns of wall time and returns 0 while it is unfinished (the real observer is in place between calls), 1 when it has finished; rerun_job_ok tells whether the list is good.
+ * One copy at a time, on the machine's thread, as rerun_draw. */
+int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
+int rerun_step(uint64_t budget_ns);
+int rerun_job_ok(void);
+int rerun_job_running(void);
 
 /* An optional collector for the copies (Remastered's, docs/remastered-design.md "Plan: Remastered from the rerun copy"): a
  * copy runs with its host hooks cleared, so its execution hooks (the snapshot keeps machine_t.exec_hook) reach nobody. With a
