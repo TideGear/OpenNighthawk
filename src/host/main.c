@@ -67,6 +67,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
