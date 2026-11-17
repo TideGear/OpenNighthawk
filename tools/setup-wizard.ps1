@@ -3,11 +3,12 @@
 # workspace. A Windows PowerShell 5.1 pipeline inside one process would turn any tool's warning on standard error into a fatal error, so the
 # build runs in a child whose combined output is read line by line.
 # Scripted use: -AcceptLicences asks nothing and takes the defaults (or -InstallDir, -NoDesktopShortcut, -StartMenu, -KeepBuildFiles).
+# -LauncherProgress (used by RecompLauncher through prepare.cmd) also prints lines like 'progress 0.40 Compiling the game' on standard output as the stages pass.
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',
       [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[switch]$KeepBuildFiles,[switch]$NoSystemEntries,[string]$MacSource,[string]$Mt32Roms,
       [ValidateSet('original','enhanced','remastered')][string]$Presentation,[ValidateSet('wide','4:3')][string]$RemasterView,
-      [ValidateSet('original','near','far','maximum')][string]$DrawDistance,[switch]$AcceptLicences)
+      [ValidateSet('original','near','far','maximum')][string]$DrawDistance,[switch]$AcceptLicences,[switch]$LauncherProgress)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
 . (Join-Path $PSScriptRoot 'setup-licences.ps1')
@@ -130,6 +131,13 @@ function Test-Mt32Folder([string]$folder) {
 
 $exitCode = 1
 try {
+    $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
+    if ($LauncherProgress) {
+        if (-not $AcceptLicences) { throw 'Accept the build-tool licences in Easy Setup before continuing.' }
+        if (-not $Data) { throw 'Select the folder holding VGAME.EXE in Easy Setup.' }
+        if (-not $InstallDir) { $InstallDir = $repo }
+        if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk\launcher-work' }
+    }
     Say 'OpenNighthawk Setup Wizard' 'Cyan'
     Say 'This builds OpenNighthawk on this PC from your own copy of F-117A (GOG or Steam). It takes about 5 to 15 minutes.'
     Log ('Started ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '; Windows ' + [Environment]::OSVersion.Version + ', PowerShell ' + $PSVersionTable.PSVersion)
@@ -197,7 +205,6 @@ try {
         Write-F117Heading 'Install location'
         Write-F117Text 'While it builds, setup needs about 1.5 GB of free space for the build tools and the compiler''s intermediate files. It deletes them at the end; the installed game is about 35 MB.'
         Write-F117Text 'The default is the folder Windows provides for programs installed for your user only: no administrator rights are needed, and the game can keep its settings file beside itself. Any folder you can write to works too, for example D:\Games\OpenNighthawk (not inside your F-117A game folder).' 'Gray'
-        $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
         $given = $InstallDir
         while ($true) {
             $typed = if ($given) { $given } else { Ask 'Install folder' $defaultInstall "Press Enter to use $defaultInstall, or type another folder." }
@@ -214,9 +221,7 @@ try {
         if (-not $NoDesktopShortcut) { $NoDesktopShortcut = -not (Ask-YesNo 'Add a desktop shortcut?' $true) }
         if (-not $StartMenu) { $StartMenu = Ask-YesNo 'Add OpenNighthawk to the Start menu?' $true }
     } elseif (-not $InstallDir) { $InstallDir = $defaultInstall }
-    $InstallDir = Assert-F117OutputPath -Path $InstallDir -GameDirectory $Data
-    $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
-    if ($InstallDir -ieq $repo -or $InstallDir.StartsWith($repo + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Choose an install folder outside the source folder.' }
+    $InstallDir = Assert-F117OutputPath -Path $InstallDir -GameDirectory $Data -LauncherInstall:$LauncherProgress
     if ($InstallDir -ieq $Work -or $InstallDir.StartsWith($Work + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Choose an install folder outside the build workspace.' }
     Open-Log (Join-Path $InstallDir 'logs')
     Log "Install folder: $InstallDir"
@@ -315,6 +320,7 @@ try {
     if ($NoDesktopShortcut) { $argsList += '-NoDesktopShortcut' }
     if ($StartMenu) { $argsList += '-StartMenu' }
     if ($NoSystemEntries) { $argsList += '-NoSystemEntries' }
+    if ($LauncherProgress) { $argsList += '-LauncherInstall' }
     if ($MacSource) { $argsList += @('-MacSource',(& $quote $MacSource)) }
 
     # A finished workspace from an earlier run is removed first, so a rerun (an update) builds fresh. Only a folder setup made is touched.
@@ -332,10 +338,16 @@ try {
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.CreateNoWindow = $true
+    if ($LauncherProgress) {
+        $psi.FileName = Join-Path $PSHOME 'powershell.exe'
+        $psi.Arguments = '-NonInteractive ' + ($argsList -join ' ')
+        $psi.RedirectStandardError = $true
+    }
     $child = [Diagnostics.Process]::Start($psi)
+    if ($LauncherProgress) { $childErrors = $child.StandardError.ReadToEndAsync() }
     $spin = '|/-\'; $tick = 0; $status = ''; $recent = [Collections.Generic.Queue[string]]::new()
     $stage = ''; $stageClock = [Diagnostics.Stopwatch]::StartNew(); $progress = $null
-    $hasConsole = $true
+    $hasConsole = -not $LauncherProgress
     try { $null = [Console]::WindowWidth; if ([Console]::IsOutputRedirected) { $hasConsole = $false } } catch { $hasConsole = $false }
     function Line-Width { if ($hasConsole) { [Math]::Max(20, [Console]::WindowWidth - 1) } else { 79 } }
     function Show-Status([string]$text) {
@@ -346,6 +358,27 @@ try {
         $script:status = $text
     }
     function Clear-Status { if ($script:status) { [Console]::Write("`r" + (' ' * (Line-Width)) + "`r"); $script:status = '' } }
+    # RecompLauncher's progress lines ('progress 0.4 Text', the number from 0 to 1). Only with -LauncherProgress; the stage lines of tools/setup.ps1 map to fixed
+    # points, and the compiler's '[n/m]' lines fill the span from 0.25 to 0.90 (the compile is most of the time).
+    $script:lastProgress = -1.0
+    function Emit-Progress([double]$fraction, [string]$text) {
+        if (-not $LauncherProgress) { return }
+        if ($fraction -le $script:lastProgress) { return }
+        $script:lastProgress = $fraction
+        [Console]::Out.WriteLine(('progress {0} {1}' -f $fraction.ToString('0.00', [Globalization.CultureInfo]::InvariantCulture), $text))
+        [Console]::Out.Flush()
+    }
+    function Stage-Progress([string]$stage) {
+        if     ($stage -like 'Downloading Python*')        { Emit-Progress 0.03 'Downloading Python' }
+        elseif ($stage -like 'Checking your game files*')  { Emit-Progress 0.08 'Checking your game files' }
+        elseif ($stage -like 'Game files verified*')       { Emit-Progress 0.12 'Game files verified' }
+        elseif ($stage -like 'Downloading build tools*')   { Emit-Progress 0.15 'Downloading build tools' }
+        elseif ($stage -like 'Downloading SDL*')           { Emit-Progress 0.22 'Downloading SDL and Munt' }
+        elseif ($stage -like 'Installing to*')             { Emit-Progress 0.92 'Installing the game' }
+        elseif ($stage -like 'Importing the Mac sounds*')  { Emit-Progress 0.95 'Importing the Mac sounds' }
+        elseif ($stage -like 'Build complete*')            { Emit-Progress 0.97 'Cleaning up' }
+    }
+    Emit-Progress 0.01 'Starting setup'
     $reader = $child.StandardOutput
     $task = $reader.ReadLineAsync()
     while ($true) {
@@ -368,11 +401,17 @@ try {
             $stageClock.Restart()
             Write-Host ("[{0:mm\:ss}] " -f $started.Elapsed) -ForegroundColor Cyan -NoNewline
             Write-Host $stage -ForegroundColor $(if ($stage -like '*not imported*') { 'Magenta' } else { 'White' })
+            Stage-Progress $stage
         } elseif ($line -match '^\[(\d+)/(\d+)\]') {
             $progress = "compiled $($Matches[1]) of $($Matches[2]) files"
+            if ([int]$Matches[2] -gt 0) { Emit-Progress (0.25 + 0.65 * [double][int]$Matches[1] / [double][int]$Matches[2]) "Compiling the game: $($Matches[1]) of $($Matches[2]) files" }
         }
     }
     $child.WaitForExit()
+    if ($LauncherProgress -and $childErrors.Result) {
+        Log $childErrors.Result
+        [Console]::Error.WriteLine($childErrors.Result)
+    }
     Clear-Status
     $exitCode = $child.ExitCode
     Log "Build exit code $exitCode"
@@ -423,10 +462,11 @@ try {
     }
 
     Write-Host ''
+    Emit-Progress 1.0 'Done'
     Say ("OpenNighthawk is installed in {0} ({1:mm\:ss})." -f $InstallDir, $started.Elapsed) 'Cyan'
     if ($NoDesktopShortcut -and -not $StartMenu) { Say ('Start it with ' + (Join-Path $InstallDir 'f117a.exe') + '. Press the ` key in the game for settings.') }
     else { Say 'Start it from the shortcut. Press the ` key in the game for settings.' }
-    Say 'To uninstall: Windows Settings, Apps, OpenNighthawk, or double-click uninstall.cmd in the install folder.' 'Gray'
+    if (-not $LauncherProgress) { Say 'To uninstall: Windows Settings, Apps, OpenNighthawk, or double-click uninstall.cmd in the install folder.' 'Gray' }
     Say "Setup log: $logPath" 'Gray'
     $exitCode = 0
 } catch {

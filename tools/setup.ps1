@@ -3,7 +3,7 @@
 # everything else this prints goes only to the log. It can also be run directly with -AcceptLicences.
 [CmdletBinding()]
 param([string]$Data,[string]$Work,[string]$ArchiveFolder,[ValidateSet('Zig','VisualStudio')][string]$Compiler='Zig',[string]$ShortcutPath,
-      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[string]$MacSource,[switch]$NoSystemEntries,[switch]$AcceptLicences)
+      [string]$InstallDir,[switch]$NoDesktopShortcut,[switch]$StartMenu,[string]$MacSource,[switch]$NoSystemEntries,[switch]$AcceptLicences,[switch]$LauncherInstall)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'     # Windows PowerShell's download progress bar slows Invoke-WebRequest many times over
 . (Join-Path $PSScriptRoot 'setup-paths.ps1')
@@ -17,7 +17,7 @@ $ProgressPreference = 'SilentlyContinue'     # Windows PowerShell's download pro
 if (-not $Work) { $Work = Join-Path $env:LOCALAPPDATA 'OpenNighthawk/setup-work' }
 $Work = Assert-F117OutputPath -Path $Work -GameDirectory $Data
 if ($ShortcutPath) { $ShortcutPath = Assert-F117OutputPath -Path $ShortcutPath -GameDirectory $Data }
-if ($InstallDir) { $InstallDir = Assert-F117OutputPath -Path $InstallDir -GameDirectory $Data }
+if ($InstallDir) { $InstallDir = Assert-F117OutputPath -Path $InstallDir -GameDirectory $Data -LauncherInstall:$LauncherInstall }
 
 Confirm-F117Licences -Compiler $Compiler -Accept:$AcceptLicences
 $workHandle = Open-F117SetupWork -Path $Work -GameDirectory $Data
@@ -63,10 +63,12 @@ if ($InstallDir) {
     foreach ($file in $files) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $InstallDir $file.Name) -Force }
     $exe = Join-Path $InstallDir 'f117a.exe'
     if (-not (Test-Path -LiteralPath $exe)) { throw 'Installing the game executable failed.' }
-    # The marker the uninstaller requires before it deletes anything, and the uninstaller itself.
-    [IO.File]::WriteAllText((Join-Path $InstallDir '.opennighthawk-install'), "OpenNighthawk install made by setup`r`n")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.cmd') -Destination (Join-Path $InstallDir 'uninstall.cmd') -Force
+    if (-not $LauncherInstall) {
+        # The marker the uninstaller requires before it deletes anything, and the uninstaller itself.
+        [IO.File]::WriteAllText((Join-Path $InstallDir '.opennighthawk-install'), "OpenNighthawk install made by setup`r`n")
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.cmd') -Destination (Join-Path $InstallDir 'uninstall.cmd') -Force
+    }
 }
 
 if ($MacSource) {
