@@ -5,7 +5,8 @@ function Assert-F117OutputPath {
     param([Parameter(Mandatory=$true)][string]$Path,[string]$GameDirectory,[switch]$LauncherInstall)
     $absolute = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path).TrimEnd('\','/')
     $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
-    $source = if (-not ($LauncherInstall -and $absolute -ieq $repo)) { $repo }
+    $allowPackageRoot = $LauncherInstall -and $absolute -ieq $repo -and -not (Test-Path -LiteralPath (Join-Path $repo '.git'))
+    $source = if (-not $allowPackageRoot) { $repo }
     foreach ($protected in @($source,$GameDirectory)) {
         if (-not $protected) { continue }
         $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($protected).TrimEnd('\','/')

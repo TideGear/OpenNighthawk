@@ -359,10 +359,12 @@ try {
     }
     function Clear-Status { if ($script:status) { [Console]::Write("`r" + (' ' * (Line-Width)) + "`r"); $script:status = '' } }
     # RecompLauncher's progress lines ('progress 0.4 Text', the number from 0 to 1). Only with -LauncherProgress; the stage lines of tools/setup.ps1 map to fixed
-    # points, and the compiler's '[n/m]' lines fill the span from 0.25 to 0.90 (the compile is most of the time).
+    # points. Only the main build's '[n/m]' lines fill 0.25 to 0.90: the
+    # translator first runs a separate, much shorter build.
     $script:lastProgress = -1.0
     function Emit-Progress([double]$fraction, [string]$text) {
         if (-not $LauncherProgress) { return }
+        $fraction = [Math]::Round($fraction, 2)
         if ($fraction -le $script:lastProgress) { return }
         $script:lastProgress = $fraction
         [Console]::Out.WriteLine(('progress {0} {1}' -f $fraction.ToString('0.00', [Globalization.CultureInfo]::InvariantCulture), $text))
@@ -374,6 +376,7 @@ try {
         elseif ($stage -like 'Game files verified*')       { Emit-Progress 0.12 'Game files verified' }
         elseif ($stage -like 'Downloading build tools*')   { Emit-Progress 0.15 'Downloading build tools' }
         elseif ($stage -like 'Downloading SDL*')           { Emit-Progress 0.22 'Downloading SDL and Munt' }
+        elseif ($stage -like 'Compiling OpenNighthawk*')    { Emit-Progress 0.25 'Compiling OpenNighthawk' }
         elseif ($stage -like 'Installing to*')             { Emit-Progress 0.92 'Installing the game' }
         elseif ($stage -like 'Importing the Mac sounds*')  { Emit-Progress 0.95 'Importing the Mac sounds' }
         elseif ($stage -like 'Build complete*')            { Emit-Progress 0.97 'Cleaning up' }
@@ -404,7 +407,9 @@ try {
             Stage-Progress $stage
         } elseif ($line -match '^\[(\d+)/(\d+)\]') {
             $progress = "compiled $($Matches[1]) of $($Matches[2]) files"
-            if ([int]$Matches[2] -gt 0) { Emit-Progress (0.25 + 0.65 * [double][int]$Matches[1] / [double][int]$Matches[2]) "Compiling the game: $($Matches[1]) of $($Matches[2]) files" }
+            if ($stage -like 'Compiling OpenNighthawk*' -and [int]$Matches[2] -gt 0) {
+                Emit-Progress (0.25 + 0.65 * [double][int]$Matches[1] / [double][int]$Matches[2]) "Compiling the game: $($Matches[1]) of $($Matches[2]) files"
+            }
         }
     }
     $child.WaitForExit()
