@@ -1,0 +1,21 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "F-117A Nighthawk Stealth Fighter 2.0",
+  "system": "PC (DOS)",
+  "type": "recomp",
+  "original": {
+    "revision": "473.04 (GOG and Steam)"
+  },
+  "project": "OpenNighthawk",
+  "status": "playable",
+  "targets": ["Windows"],
+  "toolchain": "OpenNighthawk recompiler",
+  "approach": "Static translation of DOS x86 machine code to native C, with named C replacements verified in lockstep against a reference interpreter.",
+  "maintainers": [
+    {
+      "name": "TideGear",
+      "link": "https://github.com/TideGear"
+    }
+  ],
+  "notes": "Playable from setup through flight, debriefing, and career play. The Windows setup release builds locally from the player's own GOG or Steam installation. Includes switchable fixes, controller support, and optional enhanced visuals."
+}
