@@ -1,5 +1,7 @@
 # OpenNighthawk (F-117A Recompilation)
 
+<p><img src="docs/images/ON_Title_Composite.png" alt="OpenNighthawk title screen" height="180">&nbsp;&nbsp;<img src="docs/images/ON_In-Flight.png" alt="OpenNighthawk in flight" height="180"></p>
+
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
 > Atari Interactive, Inc., MicroProse, or any other rights holder.
