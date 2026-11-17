@@ -1374,3 +1374,21 @@ Risks: the 0.2 to 1.7% of mid-t vertices that blend badly (pairing by the game's
 **Remaining gap, both flights:** late flight early and middle: 0.7% to 3% of frames over 16.7 ms (target 0), 98% over 8.3 ms; end of the flight: 100% over 16.7 ms (median 23 ms); runway not measured with Stage 2; no vsynced run at 60 Hz yet; two replays each not yet shown.
 
 **Next, in order:** (1) several setup threads: each picture's setup is independent once the step scenes exist; the compositor's CPU scratch lists (`g->polys`, `strokes`, `cpoly`, `cstroke`, `cword`, the decal face cache and the word vectors) must move into the buffer set (`gset`), the buffer sets from 2 to 4, and the setup pool must serve concurrent callers (or each setup thread gets its own chunks), stage B kept in order; (2) otherwise or as well, move classify, pack, bin and the upload (about 17 of the 21 ms) to GPU compute, which was route B's original R2 and R3, with `F117_SETUP_CHECK`-style word-for-word checks against the CPU lists; (3) the runway and the two replays; (4) the start-up warm-up of Stage 2 (the boot copies); (5) a visible vsynced run; (6) the owner's picture checks and the HUD-at-step-rate decision before any default-on.
+
+### Part B, route B: trimming the setup stage (16 November 2026)
+
+**Setup at the end of the flight went from 23 to 13.5 ms a picture** (10.15 to 10.3 billion clocks, Stage 2 and the pipeline, `F117_SETUP_TIMING`). Each step was measured first (`F117_CLASSIFY_SPLIT`, `F117_REMASTER_TIMING`) and checked against the serial result:
+
+| Step | Finding | Change | Setup after |
+|---|---|---|---|
+| Pool width | 8 and 16 setup threads gave the same 23 to 25 ms (four runs); classify's pool wall was 3.1 ms with balanced chunks (longest chunk 0.9 ms) | none | 23 |
+| Bands first | its upload and submit cost 3.4 ms of setup CPU, on the critical path | `F117_GPU_BANDS_FIRST` now off by default (`=1` on) | 20.8 |
+| Decal face list | pack's 5.5 ms wall was that one serial loop (5.52 of 5.55 ms) | built on its own thread, then fed from the classify's chunks as each finishes; the same triangles in the same order, so the same list | 16.0 to 14.7 (pack 3.9 to 2.4) |
+| Upload copy | every byte of the 36 MB was zeroed and then copied, into write-combined memory, from one thread | only the tail past the data is zeroed; the copy is in 1 MB pieces on the pool (2.2 to 1.2 ms) | 16.0 |
+| Scene recording | polygons (stage 1) and lines (stages 2 and 3) of `draw_scene_ex` are independent, and the recorder's state is thread-local | lines recorded on a helper thread, appended after the polygons: the serial order (`F117_RECORD_SPLIT=0` off; `F117_RECORD_CHECK=1` compares both recordings byte for byte: 0 of 120 differ) | 13.5 |
+
+**What bounds the frame now** (`F117_LOOP_TIMING`, late flight end): per frame the scene-copy slice is 7.1 ms, the picture apply 1.9 ms and the wait on the worker 4.8 ms. The next picture's setup (stage A) starts only after the main thread has noticed the previous one finished and committed the staged scene (the swap in `remaster_live_commit`, under `pw_wait_a`), often while it is inside a copy slice, so the period is about the apply plus a setup, 15.4 ms against a measured median of 15.3. The worker's GPU span at the end is 11.6 ms. Median frame 23 to 15.3 to 15.7 ms; p95 about 20 ms; 28 to 38% of frames over 16.7 ms (one run each); 100% over 8.3 ms.
+
+**Next:** (1) the setup thread commits the staged scene and starts the next setup itself when one is ready; (2) two pictures' setup at once (compositor scratch into the buffer set, a scene instance per picture); (3) the 42 to 51 ms worst setup pictures; (4) the classify merge (a 35 MB copy, 1.2 ms) by letting bin and pack read the chunk lists. Details and the order are in the top of `handoff.md`.
+
+**A capture trap:** a replay with `F117_SKIP_COMPOSE_BEFORE` composes cold at its first picture, and that picture lacks the far scenery (the distant coast and its lights). Take shots at least 1.5 billion clocks after the skip ends (`private/partb/shots_scout.sh`, `SKIPTO`).
