@@ -146,6 +146,7 @@
   ],
   "saves": [
     "{config}/OpenNighthawk/save",
+    "{config}/OpenNighthawk/save.fixset",
     "{install}/f117a.ini"
   ],
   "folders": {
