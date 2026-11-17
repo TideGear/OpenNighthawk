@@ -1,7 +1,5 @@
 # OpenNighthawk (F-117A Recompilation)
 
-<a href="https://recomplauncher.com"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
-
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
 > Atari Interactive, Inc., MicroProse, or any other rights holder.
