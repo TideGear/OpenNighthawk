@@ -917,6 +917,10 @@ Each is fixed; the named regressions keep the failing seed or case.
       *Rules:* presentation never feeds the simulation, proved by equal simulation state across the three presentations on the same
       inputs; the mission clock stays real; saves carry their fix set and warn across the bug boundary. Conveniences that change play
       (save anywhere, difficulty) are not planned; if added they sit apart from both settings, off by default.
+- [ ] **Controller-only startup and exit** (owner, 16 Nov 2026): make the original DOS setup prompts, the settings and quitting usable from the couch, and honor Big Picture fullscreen preferences.
+- [ ] **Portable saves and settings** (owner, 16 Nov 2026): honor `portable.txt`, so players can move an install and its data together.
+- [ ] **Rotating runtime logs** (owner, 16 Nov 2026): keep recent crash diagnostics in a known folder. The launcher manifest currently points to setup logs.
+- [ ] **Document every INI option** (owner, 16 Nov 2026): bring the commented example (`f117a.example.ini`) up to date with the full settings and command-line reference.
 
 ## Possible future work (decided against for now, not scored)
 
