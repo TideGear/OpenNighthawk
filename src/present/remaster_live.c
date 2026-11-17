@@ -877,6 +877,92 @@ static int scene_is_complete(const remaster_live *r)
 /* The GPU compositor's inputs from the scene alone (not the game's picture, tags or palette): the scene's raster calls are recorded by running its drawing with the per-thread
  * hook set to skip the CPU's fill, and the window and flags are filled in. The drawing never touches the target's buffers while recording, so a stand-in target serves. 0 when
  * recording failed. palette receives the 256 colours the AND, OR and stipple fills read (the current palette). */
+/* Part B (16 November 2026): the scene's raster calls are recorded in two parts on two threads. Stage 1 of draw_scene_ex (the clear, the bands and the polygons) is
+ * recorded on the calling thread, stages 2 and 3 (the whole-line pass, then the ordinary line pass and the mask) on a helper thread, and the helper's records are appended to
+ * the caller's: the order of a serial draw (stage 0 runs 1, 2, 3 in that order). The stages already run one after another on separate calls in the CPU compositor with the
+ * target state reset for each (scene_rows_part), so neither reads state the other leaves. The recorder's state (the hook, the record buffer, the flags) is thread-local.
+ * F117_RECORD_SPLIT=0 records serially; F117_RECORD_CHECK=1 records both ways every picture and compares the records byte for byte. One caller at a time (the helper's
+ * job is a static). */
+#ifdef _WIN32
+static struct { HANDLE th, go, done; const scene_job *sj; int quit; gpu_trace_rec *recs; size_t n; int failed; } g_rec;
+static void rec_run_lines(void)
+{
+    g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+    scene_job b = *g_rec.sj; b.timing = NULL;
+    b.stage = 2; run_parts(scene_rows_part, &b, 1);
+    b.stage = 3; run_parts(scene_rows_part, &b, 1);
+    remaster_trace_hook = NULL; g_record_only = 0;
+    g_rec.recs = g_trace_recs; g_rec.n = g_trace_n; g_rec.failed = g_record_failed;
+}
+static DWORD WINAPI rec_thread_main(LPVOID u)
+{
+    (void)u;
+    for (;;) {
+        WaitForSingleObject(g_rec.go, INFINITE);
+        if (g_rec.quit) break;
+        rec_run_lines();
+        ReleaseSemaphore(g_rec.done, 1, NULL);
+    }
+    return 0;
+}
+static int rec_split_ready(void)
+{
+    if (g_rec.th) return 1;
+    g_rec.go = CreateSemaphoreA(NULL, 0, 1, NULL); g_rec.done = CreateSemaphoreA(NULL, 0, 1, NULL);
+    if (g_rec.go && g_rec.done) g_rec.th = CreateThread(NULL, 0, rec_thread_main, NULL, 0, NULL);
+    return g_rec.th != NULL;
+}
+#endif
+
+/* Records the scene (stage 0) serially, or in two parts when the helper is available. Returns with the records in g_trace_recs / g_trace_n. */
+static void record_scene(scene_job *sj)
+{
+    static int mode = -1;      /* 0 serial, 1 split, 2 split and checked against serial */
+    if (mode < 0) {
+        const char *e = getenv("F117_RECORD_SPLIT");
+        mode = e && e[0] == '0' ? 0 : getenv("F117_RECORD_CHECK") ? 2 : 1;
+    }
+#ifdef _WIN32
+    if (mode && rec_split_ready()) {
+        g_rec.sj = sj; g_rec.recs = NULL; g_rec.n = 0; g_rec.failed = 0;
+        ReleaseSemaphore(g_rec.go, 1, NULL);
+        g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+        scene_job a = *sj; a.stage = 1; run_parts(scene_rows_part, &a, 1);
+        remaster_trace_hook = NULL; g_record_only = 0;
+        WaitForSingleObject(g_rec.done, INFINITE);
+        if (g_rec.failed) g_record_failed = 1;
+        if (!g_record_failed && g_rec.n) {
+            const size_t need = g_trace_n + g_rec.n;
+            if (need > g_trace_cap) {
+                size_t cap = g_trace_cap ? g_trace_cap : 4096; while (cap < need) cap *= 2;
+                gpu_trace_rec *q = (gpu_trace_rec *)realloc(g_trace_recs, cap * sizeof *q);
+                if (!q) g_record_failed = 1; else { g_trace_recs = q; g_trace_cap = cap; }
+            }
+            if (!g_record_failed) { memcpy(g_trace_recs + g_trace_n, g_rec.recs, g_rec.n * sizeof *g_trace_recs); g_trace_n = need; }
+        }
+        if (mode == 2) {       /* the serial recording, compared with this one byte for byte */
+            static unsigned n, bad;
+            const size_t n1 = g_trace_n; gpu_trace_rec *saved = (gpu_trace_rec *)malloc((n1 ? n1 : 1) * sizeof *saved);
+            if (saved) {
+                memcpy(saved, g_trace_recs, n1 * sizeof *saved);
+                g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+                run_parts(scene_rows_part, sj, 1);
+                remaster_trace_hook = NULL; g_record_only = 0;
+                const int same = g_trace_n == n1 && !memcmp(saved, g_trace_recs, n1 * sizeof *saved);
+                n++; if (!same) bad++;
+                if (!same && bad < 4) fprintf(stderr, "[record-check] the split recording differs from the serial one (picture %u: %zu vs %zu records)\n", n, n1, g_trace_n);
+                if (n % 120 == 0) fprintf(stderr, "[record-check] %u pictures checked, %u differ\n", n, bad);
+                free(saved);
+            }
+        }
+        return;
+    }
+#endif
+    g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+    run_parts(scene_rows_part, sj, 1);
+    remaster_trace_hook = NULL; g_record_only = 0;
+}
+
 static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h, int tw, int xoff, int complete, gpu_compose_in *gin, uint32_t *palette)
 {
     static uint8_t stand_in[64];
@@ -892,9 +978,7 @@ static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h
     double tm[4] = { 0 };
     sj.timing = timed ? &tm : NULL; sj.row_tile = 0;
     const double t_prepare = timed ? now_ms() : 0.0;
-    g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
-    run_parts(scene_rows_part, &sj, 1);
-    remaster_trace_hook = NULL; g_record_only = 0;
+    record_scene(&sj);
     if (timed) {        /* diagnostic: where the scene recording goes, every 120th picture (stderr): the clear, the bands, the primitives, the lines */
         static double sum[5], recs; static unsigned count;
         for (int k = 0; k < 4; k++) sum[k] += tm[k];
