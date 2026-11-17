@@ -1,0 +1,175 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "OpenNighthawk",
+  "repo": "TideGear/OpenNighthawk",
+  "game": {
+    "kind": "folder",
+    "label": "Your installed GOG or Steam copy of F-117A Nighthawk Stealth Fighter 2.0. Select the folder containing VGAME.EXE.",
+    "check": {
+      "file": "VGAME.EXE"
+    }
+  },
+  "start": {
+    "program": [
+      "f117a.exe"
+    ],
+    "args": [
+      "--data",
+      "{game}"
+    ]
+  },
+  "prepare": {
+    "program": [
+      "prepare.cmd"
+    ],
+    "args": [
+      "-Data",
+      "{game}"
+    ],
+    "label": "Verify your game files and build OpenNighthawk (5–15 minutes)",
+    "timeout": 3600,
+    "options": [
+      {
+        "id": "build_tools",
+        "label": "Accept the build-tool licences and download the required tools",
+        "note": "Setup checks downloads from their publishers and removes the temporary tools after building.",
+        "args": [
+          "-AcceptLicences"
+        ],
+        "os": [
+          "windows"
+        ],
+        "license": {
+          "name": "OpenNighthawk build-tool licences",
+          "url": "https://github.com/TideGear/OpenNighthawk/blob/master/docs/provenance.md"
+        }
+      }
+    ]
+  },
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [
+        {
+          "path": "{install}/f117a.ini"
+        }
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "id": "window",
+      "label": "Display mode",
+      "help": "Choose whether the game opens in a window or fills the display.",
+      "choices": [
+        { "label": "Windowed", "set": { "fullscreen": "no" } },
+        { "label": "Fullscreen", "set": { "fullscreen": "yes" } }
+      ],
+      "defaults": {
+        "fullscreen": "no"
+      }
+    },
+    {
+      "id": "picture",
+      "label": "Presentation",
+      "help": "Original keeps the DOS picture. Enhanced and Remastered add display-rate frames between simulation steps.",
+      "choices": [
+        { "label": "Original", "set": { "presentation": "original" } },
+        { "label": "Enhanced", "set": { "presentation": "enhanced" } },
+        { "label": "Remastered", "set": { "presentation": "remastered" } }
+      ],
+      "defaults": {
+        "presentation": "original"
+      }
+    },
+    {
+      "id": "framing",
+      "label": "Remastered framing",
+      "help": "Choose a widescreen flight view or the original 4:3 framing.",
+      "choices": [
+        { "label": "Widescreen", "set": { "remaster-view": "wide" } },
+        { "label": "4:3", "set": { "remaster-view": "4:3" } }
+      ],
+      "defaults": {
+        "remaster-view": "wide",
+        "presentation": "original"
+      },
+      "when": {
+        "presentation": "remastered"
+      }
+    },
+    {
+      "id": "distance",
+      "label": "Draw distance",
+      "help": "Draw scenery farther away in Remastered mode, at a higher rendering cost.",
+      "choices": [
+        { "label": "Original", "set": { "draw-distance": "original" } },
+        { "label": "Near", "set": { "draw-distance": "near" } },
+        { "label": "Far", "set": { "draw-distance": "far" } },
+        { "label": "Maximum", "set": { "draw-distance": "maximum" } }
+      ],
+      "defaults": {
+        "draw-distance": "original",
+        "presentation": "original"
+      },
+      "when": {
+        "presentation": "remastered"
+      }
+    },
+    {
+      "id": "fixes",
+      "label": "Gameplay fixes",
+      "help": "Recommended fixes bugs in the DOS release. Custom uses the fixes selected in the game.",
+      "choices": [
+        { "label": "Recommended", "set": { "fixes": "recommended" } },
+        { "label": "Original", "set": { "fixes": "original" } },
+        { "label": "Custom", "set": { "fixes": "custom" } }
+      ],
+      "defaults": {
+        "fixes": "recommended"
+      }
+    },
+    {
+      "id": "subtitles",
+      "label": "Radio subtitles",
+      "help": "Show text for radio calls when using the PC speaker or Roland sound driver.",
+      "choices": [
+        { "label": "Off", "set": { "subtitles": "no" } },
+        { "label": "On", "set": { "subtitles": "yes" } }
+      ],
+      "defaults": {
+        "subtitles": "no"
+      }
+    }
+  ],
+  "saves": [
+    "{config}/OpenNighthawk/save",
+    "{install}/f117a.ini"
+  ],
+  "folders": {
+    "saves": [
+      {
+        "path": "{config}/OpenNighthawk/save"
+      }
+    ],
+    "logs": [
+      {
+        "path": "{install}/logs"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "id": "saves",
+      "label": "Open saved pilots",
+      "open": "saves"
+    },
+    {
+      "id": "logs",
+      "label": "Open setup logs",
+      "open": "logs"
+    }
+  ]
+}

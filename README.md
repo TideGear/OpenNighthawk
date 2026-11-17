@@ -1,5 +1,7 @@
 # OpenNighthawk (F-117A Recompilation)
 
+<a href="https://recomplauncher.com"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
 > Atari Interactive, Inc., MicroProse, or any other rights holder.
@@ -102,6 +104,11 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
 
 ## Quick start
 
+When installing through RecompLauncher on 64-bit Windows, select the GOG or Steam game
+folder containing `VGAME.EXE`. Easy Setup downloads build tools after you
+accept their licences and builds OpenNighthawk locally. Allow 5 to 15 minutes
+and about 2 GB of temporary disk space.
+
 1. **Own the game.** Buy F-117A on [Steam](https://store.steampowered.com/app/328920/) or
    [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20) and install it
    ([why](#you-need-your-own-copy-of-the-game)).
@@ -170,6 +177,10 @@ a PC with neither installed has not yet been verified.
 
 The game is translated and compiled on your machine from your own copy.
 Source releases contain no game data, generated C or prebuilt game executable.
+When publishing a release, package the tagged source with
+`py tools/package-source.py --ref TAG --out OUTSIDE_REPO\OpenNighthawk-setup-TAG-windows-x64.zip`.
+The packager includes the launcher manifest and tells RecompLauncher to rebuild
+when players update to that source revision.
 Setup installs the game (about 35 MB) to `%LOCALAPPDATA%\Programs\OpenNighthawk`
 unless you choose another folder, adds the shortcuts you ask for and an entry in
 Windows Settings, Apps, and removes its build files (about 1.4 GB) when it

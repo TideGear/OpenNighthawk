@@ -5,6 +5,7 @@ Developer tool only: end users extract the resulting zip without Git.
 """
 import argparse
 import hashlib
+import json
 import pathlib
 import stat
 import subprocess
@@ -37,7 +38,7 @@ def check_archive(path):
                     or any(part.lower() in {'private', 'generated', 'build', 'sessions', 'save-start'} for part in p.parts)):
                 raise ValueError(f'Forbidden game/build artifact: {name}')
         required = {'README.md', 'LICENSE', 'CMakeLists.txt', 'setup.cmd', 'tools/verify_install.py', 'recompiler/recomp.py',
-                    'tools/setup.ps1', 'tools/setup-wizard.ps1', 'tools/setup-mac.ps1', 'tools/mac_sounds.py', 'tools/uninstall.ps1', 'tools/uninstall.cmd'}
+                    'prepare.cmd', 'recomplauncher.json', 'tools/setup.ps1', 'tools/setup-wizard.ps1', 'tools/setup-mac.ps1', 'tools/mac_sounds.py', 'tools/uninstall.ps1', 'tools/uninstall.cmd'}
         missing = required - set(names)
         if missing:
             raise ValueError(f'Missing source files: {sorted(missing)}')
@@ -60,9 +61,21 @@ def main():
     commit = subprocess.check_output(['git', 'rev-parse', '--verify', args.ref + '^{commit}'], cwd=ROOT, text=True).strip()
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
+        source = pathlib.Path(scratch) / 'committed.zip'
         candidate = pathlib.Path(scratch) / 'source.zip'
-        subprocess.run(['git', 'archive', '--format=zip', '--output=' + str(candidate), commit], cwd=ROOT, check=True)
-        count = check_archive(candidate)
+        subprocess.run(['git', 'archive', '--format=zip', '--output=' + str(source), commit], cwd=ROOT, check=True)
+        count = check_archive(source)
+        # Updates replace the sources. The launcher must rebuild the local
+        # executable even when the setup procedure itself hasn't changed.
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(candidate, 'w') as release:
+            release.comment = original.comment
+            for entry in original.infolist():
+                data = original.read(entry)
+                if entry.filename == 'recomplauncher.json':
+                    manifest = json.loads(data)
+                    manifest['prepare']['version'] = commit
+                    data = (json.dumps(manifest, indent=2, ensure_ascii=False) + '\n').encode('utf-8')
+                release.writestr(entry, data)
         digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
         candidate.rename(out)
     out.with_suffix(out.suffix + '.sha256').write_text(f'{digest}  {out.name}\ncommit {commit}\n', encoding='utf-8')
