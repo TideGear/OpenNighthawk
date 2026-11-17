@@ -200,6 +200,10 @@ def compute(data):
                                  (c.get("creditable_bytes", c["bytes"]) + supplemental.get("bytes", 0))),
         "fixes_share": share,
     }
+    if "partb" in data:
+        # Part B (route B): the mean, over the stretches, of the share of frames within the budget; a stretch not measured counts as 0.
+        stretches = data["partb"]["stretches"]
+        measures["partb_frames_ok"] = sum(0.0 if s["over_pct"] is None else 1.0 - s["over_pct"] / 100.0 for s in stretches) / len(stretches)
     if "gameplay" in c:
         g = c["gameplay"]
         measures["gameplay_score"] = (g["matched_route_run"] + g["stays_original_reviewed"]) / g["denominator"]
@@ -224,6 +228,40 @@ def compute(data):
     return out, rows, (fixed, catalogued, closed)
 
 
+MONTHS = {m: k + 1 for k, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
+
+
+def evidence_date(text):
+    """The newest 'D Mon YYYY' date in an item's evidence text (the date it was last argued for), or None."""
+    import datetime
+    import re
+    best = None
+    for d, m, y in re.findall(r"\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (20\d\d)\b", text):
+        try:
+            day = datetime.date(int(y), MONTHS[m], int(d))
+        except ValueError:
+            continue
+        if best is None or day > best:
+            best = day
+    return best
+
+
+def stale_report(data, days):
+    """Estimates whose newest evidence date is older than `days` days (the items to look at when work has landed), oldest first."""
+    import datetime
+    today = datetime.date.today()
+    out = []
+    for phase, items in data["phases"].items():
+        for i in items:
+            if i["kind"] != "estimate":
+                continue
+            when = evidence_date(i.get("evidence", ""))
+            age = (today - when).days if when else None
+            if age is None or age > days:
+                out.append((age if age is not None else 10 ** 6, phase, i["item"], when))
+    return sorted(out, reverse=True)
+
+
 def title(pct):
     return "(%s, All %.2f%%)" % (", ".join("%s %.2f%%" % (p, pct[p]) for p in sorted(pct) if p != "All"), pct["All"])
 
@@ -231,6 +269,8 @@ def title(pct):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--title", action="store_true", help="print only the commit-title suffix")
+    ap.add_argument("--stale", nargs="?", const=7, type=int, metavar="DAYS",
+                    help="list the estimates whose newest evidence date is older than DAYS (default 7): the items to re-argue when work has landed")
     ap.add_argument("--census", help="reimp_names.py TSV: refresh the census figures in progress.json")
     ap.add_argument("--named-cover", help="with --census: directory of func_lockstep F117_NAMED_COVER files")
     ap.add_argument("--route-cover", help="with --census: directory of interpreter --coverage captures of every route")
@@ -245,6 +285,12 @@ def main():
         with open(DATA, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
+    if a.stale is not None:
+        stale = stale_report(data, a.stale)
+        for age, phase, item, when in stale:
+            print("%-3s %s  %s" % (phase, ("%d days" % age if when else "no date").rjust(9), item))
+        print("%d estimates with evidence older than %d days" % (len(stale), a.stale))
+        return
     pct, rows, (fixed, catalogued, closed) = compute(data)
     if a.title:
         print(title(pct))

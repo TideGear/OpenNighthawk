@@ -175,37 +175,37 @@
       {
         "item": "Remastered: depth-correct drawing (no far object drawn over a nearer one)",
         "weight": 2.0,
-        "done": 0.7,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "31 Oct 2026. A depth buffer, and the faces fed in the original's back-to-front order so AND/OR overlays land after the surfaces they modify (120A:0E5B ported). Seen right in the takeoff frames (hangars, runway markings, distant aircraft); not yet checked in a crowded scene or by the owner."
+        "evidence": "17 Nov 2026: raised from 0.7. Integer-plane exact depth in the GPU compositor (exact.h, docs/gpu-compositor.md) with its pictures equal to the CPU compositor pixel for pixel on the gate (901 checksums, 0 differing pixels in the live and 4K shots); the layering of every margin overlay read from the matched code and checked behind and in front (docs/wide-margin-audit.md, 13 Nov 2026). Not done: the owner has not approved it, and far objects can still show a nearer object's edge until the camera is closer (owner screenshots, 24 Oct). Earlier: 31 Oct 2026. A depth buffer, and the faces fed in the original's back-to-front order so AND/OR overlays land after the surfaces they modify (120A:0E5B ported). Seen right in the takeoff frames (hangars, runway markings, distant aircraft); not yet checked in a crowded scene or by the owner."
       },
       {
         "item": "Remastered: widescreen with HUD and cockpit placed for it",
         "weight": 2.0,
-        "done": 0.82,
+        "done": 0.9,
         "kind": "estimate",
-        "evidence": "1 Nov 2026 (evening): objects outside the game's own field of view are now asked for in the copy: its cull (VGAME 0x0E3AC) has its side allowance raised by (f - 1) x |z| for the wide canvas's width factor (exec hook in the rerun copy only; 100% is the unmodified baseline exactly, 150% +0.4% and 200% +0.8% draw data on the takeoff); not yet seen in a picture, and an edge object the original culls may now show. Earlier: 31 Oct 2026. In a window wider than 4:3 the world fills the window and the game's own picture stays whole in the middle with the crosshair centred (remaster_live_wide), mouse mapped through it; shot at 1920 x 1080. 1 Nov 2026: window shapes tried on the owner's takeoff roll (Remastered, scale 3): 1920 x 1080, 2560 x 1080 (21:9: the world fills the width, the cockpit and crosshair stay centred, the hangars and a building show in the margins), 3440 x 1440 and 1280 x 800; the canvas is 1.2 times the window's shape in each case, no fault. The margins' lights are depth-tested against hangars (R12) and the door lines keep their width. Not done: objects wholly outside the game's own field of view are not drawn in the margins (the game culls them before asking; the plan is the rerun copy with a wider view), a wider projection, the owner's look."
+        "evidence": "17 Nov 2026: raised from 0.82. The margins draw what the 4:3 area draws, 2D included (owner, 10 Nov): far scenery, lights, dots, aircraft, smoke puffs and wreck dots in the margins with their layering rules read from the matched code (docs/wide-margin-audit.md, 10 to 14 Nov 2026); HUD symbology stays in its clip box (owner, 11 Nov). Not done: the owner has not approved it. Earlier: 1 Nov 2026 (evening): objects outside the game's own field of view are now asked for in the copy: its cull (VGAME 0x0E3AC) has its side allowance raised by (f - 1) x |z| for the wide canvas's width factor (exec hook in the rerun copy only; 100% is the unmodified baseline exactly, 150% +0.4% and 200% +0.8% draw data on the takeoff); not yet seen in a picture, and an edge object the original culls may now show. Earlier: 31 Oct 2026. In a window wider than 4:3 the world fills the window and the game's own picture stays whole in the middle with the crosshair centred (remaster_live_wide), mouse mapped through it; shot at 1920 x 1080. 1 Nov 2026: window shapes tried on the owner's takeoff roll (Remastered, scale 3): 1920 x 1080, 2560 x 1080 (21:9: the world fills the width, the cockpit and crosshair stay centred, the hangars and a building show in the margins), 3440 x 1440 and 1280 x 800; the canvas is 1.2 times the window's shape in each case, no fault. The margins' lights are depth-tested against hangars (R12) and the door lines keep their width. Not done: objects wholly outside the game's own field of view are not drawn in the margins (the game culls them before asking; the plan is the rerun copy with a wider view), a wider projection, the owner's look."
       },
       {
         "item": "Remastered: longer draw distance (R6)",
         "weight": 1.0,
-        "done": 0.25,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "3 Nov 2026: Remastered wide views now run a three-cell terrain pass in the private render copy. On a fresh airborne North Cape land/coast replay it adds 177 pixels at the widened edge (0 cells: 79 primitives/29,102 model requests; 3 cells: 103/32,273). Original and Enhanced live drawing are unchanged, and the full-slot native rerun test passes. Partial credit only: no distant buildings or several land routes yet; movement, ring transitions, coastline interaction and representative performance remain open. See docs/scenery-distance.md."
+        "evidence": "17 Nov 2026: raised from 0.25. Draw distance Original, Near, Far and Maximum (menu, --draw-distance, draw-distance =; Maximum is every ring to the limit of the guest's 16-bit cell offsets) with the native terrain walk and its options on by default (4 Nov), far dots, far aircraft past 4,800 units, flares and puffs (11 to 13 Nov), Model detail Full so lights no longer pop in, the choosing on helper threads and the per-ring reach cap (docs/scenery-distance.md). Measured at 4K Maximum with Model detail Full in the late-flight replay (docs/gpu-compositor.md). Not done: the owner has not approved it; remaining horizon mismatches are listed in docs/scenery-distance.md. Earlier: 3 Nov 2026: Remastered wide views now run a three-cell terrain pass in the private render copy. On a fresh airborne North Cape land/coast replay it adds 177 pixels at the widened edge (0 cells: 79 primitives/29,102 model requests; 3 cells: 103/32,273). Original and Enhanced live drawing are unchanged, and the full-slot native rerun test passes. Partial credit only: no distant buildings or several land routes yet; movement, ring transitions, coastline interaction and representative performance remain open. See docs/scenery-distance.md."
       },
       {
         "item": "Remastered: no road or coastline jitter",
         "weight": 0.5,
-        "done": 0.0,
+        "done": 0.6,
         "kind": "estimate",
-        "evidence": "3 Nov 2026: corrected per-ring camera quantization/eye floors, world-scaled ground near clipping and stale native terrain footprints in the composite (81e0e11). All twelve reported coast views were reviewed; a moving foreground-ground regression and both rejected faulty-render controls accompany identical sampled guest RAM across presentations. Owner reports the shoreline seems fixed in a quick recomp check. Their crashes-on dirt/water taxi test was also in the recomp, not GOG. Road motion, broader terrain transitions/theatres and a complete motion review remain open; no blanket jitter-free or renderer approval claim."
+        "evidence": "17 Nov 2026: raised from 0.0. The Remastered redraw has no road or coastline jitter (README; docs/presentation.md): the per-ring camera quantisation and ground clipping fixes of 3 Nov, the shoreline reviewed on twelve coast views, and the owner's report that the shoreline seems fixed. The original has the jitter, so judgement is against it. Not done: road motion, theatres and a complete motion review; the owner has not approved it. Earlier: 3 Nov 2026: corrected per-ring camera quantization/eye floors, world-scaled ground near clipping and stale native terrain footprints in the composite (81e0e11). All twelve reported coast views were reviewed; a moving foreground-ground regression and both rejected faulty-render controls accompany identical sampled guest RAM across presentations. Owner reports the shoreline seems fixed in a quick recomp check. Their crashes-on dirt/water taxi test was also in the recomp, not GOG. Road motion, broader terrain transitions/theatres and a complete motion review remain open; no blanket jitter-free or renderer approval claim."
       },
       {
         "item": "Remastered: interpolation between logic steps",
         "weight": 0.5,
-        "done": 0.6,
+        "done": 0.7,
         "kind": "estimate",
-        "evidence": "1 Nov 2026: the Remastered picture is made for every in-between picture, not every logic step: it takes its frame from the throwaway machine copy that drew that picture (the same moment as the picture it replaces pixels of). Measured on the owner's takeoff roll with --present-log (1920 x 1080, scale 3, 7.0 G to 7.3 G): 44.6 distinct pictures a second against 15 logic steps (Enhanced about 56, held to the display's rate), none repeated. A moving takeoff at about 80 knots shows no misalignment between the composite's mask and its fill; the owner's report of a second image lagging behind (R5) was reduced by about a third by this change but not shown gone. The composite now runs on four threads (rows shared; the scene in three barrier stages; checked against one thread on 1,681 pictures of the roll with 0 differing pixels): 60.2 pictures a second at 1920 x 1080 on the owner's takeoff roll, against 48.1 on one thread (one run at a time, --present-log). Not done: the owner's look (R5, the second lagging image, is not confirmed gone), fast turning flight at 60 a second, the picture's cost at 4K."
+        "evidence": "17 Nov 2026: raised from 0.6. Stage 2 (F117_STAGE2, off by default): the scene of each game step is made once and each in-between picture blends the two step scenes at its time with the pictures of the exact compute compositor (docs/gpu-compositor.md); the picture at 4K is measured. Not done: the HUD updates at the step rate, 0.06 to 1.7% of mid-t vertices (models 37, 39, 26) are 4 or more game pixels off, and the owner has not approved it. Earlier: 1 Nov 2026: the Remastered picture is made for every in-between picture, not every logic step: it takes its frame from the throwaway machine copy that drew that picture (the same moment as the picture it replaces pixels of). Measured on the owner's takeoff roll with --present-log (1920 x 1080, scale 3, 7.0 G to 7.3 G): 44.6 distinct pictures a second against 15 logic steps (Enhanced about 56, held to the display's rate), none repeated. A moving takeoff at about 80 knots shows no misalignment between the composite's mask and its fill; the owner's report of a second image lagging behind (R5) was reduced by about a third by this change but not shown gone. The composite now runs on four threads (rows shared; the scene in three barrier stages; checked against one thread on 1,681 pictures of the roll with 0 differing pixels): 60.2 pictures a second at 1920 x 1080 on the owner's takeoff roll, against 48.1 on one thread (one run at a time, --present-log). Not done: the owner's look (R5, the second lagging image, is not confirmed gone), fast turning flight at 60 a second, the picture's cost at 4K."
       },
       {
         "item": "Remastered: the owner has looked and approved",
@@ -283,6 +283,13 @@
         "done": 0.0,
         "kind": "estimate",
         "evidence": "The owner's own check."
+      },
+      {
+        "item": "Remastered at 4K, 60 frames a second locked, exact pictures (Part B, route B)",
+        "weight": 6.0,
+        "done": "partb_frames_ok",
+        "kind": "measured",
+        "evidence": "Scored from the partb block of this file (frames within 16.7 ms in steady state, mean over the stretches; an unmeasured stretch counts 0). 17 Nov 2026: the heaviest stretch went from every frame over budget (median 23 ms) to about 30% over (median about 15.5 ms) through the setup trims and the pipeline; two setups at once, the runway, two replays of each flight and a vsynced run remain. 4K 120 is not part of it: the exact raster's GPU span is 11.6 ms at the end of the late flight."
       }
     ]
   },
@@ -661,5 +668,29 @@
         }
       }
     }
+  },
+  "partb": {
+    "about": "Part B, route B: 4K 60 locked with the exact compute compositor (docs/gpu-compositor.md, handoff.md). done = the mean, over the stretches below, of the share of frames within budget_ms in steady state. A stretch not measured counts as 0: nothing is credited that has not been shown. Update a stretch whenever it is measured again, with its date, in the same commit as the work; M1 is met when every stretch is measured and has 0 frames over budget in two replays.",
+    "budget_ms": 16.7,
+    "stretches": [
+      {
+        "name": "runway (takeoff roll)",
+        "over_pct": null,
+        "date": null,
+        "evidence": "not yet measured with Stage 2"
+      },
+      {
+        "name": "late flight, early and middle (session-20261108-211031)",
+        "over_pct": 2.0,
+        "date": "15 Nov 2026",
+        "evidence": "Stage 2 and the pipeline, 4K Maximum, Model detail Full: 0.7 to 3% of frames over 16.7 ms (legacy 38.5%); measured before the 16 Nov setup trims, not repeated since"
+      },
+      {
+        "name": "late flight, end (10.15 to 10.3 billion clocks)",
+        "over_pct": 30.0,
+        "date": "17 Nov 2026",
+        "evidence": "interleaved A/B, two runs each, median frame 15.2 to 15.5 ms, p95 about 21 ms, 30% and 33% over 16.7 ms (legacy: every frame, median 23 ms)"
+      }
+    ]
   }
 }

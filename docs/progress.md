@@ -30,7 +30,8 @@ the current figures are quoted in [../handoff.md](../handoff.md).
 
 A phase's percentage is the weighted completion of its items over the sum of
 their weights. Phase 1's and Phase 2's weights sum to 100; Phase 3's sum to
-131 (the original 100 plus 31 for the re-release features, below). **All** is
+137 (the original 100, 31 for the re-release features, below, and 6 for Part B, 4K at 60
+frames a second, added 17 Nov 2026). **All** is
 the scored phases weighted by their share of the effort: Phase 1 42, Phase 2
 29, Phase 3 24 (normalised over their sum). Phase 1 is the largest because
 building an exact recompilation, its machine and its proof was the bulk of the
@@ -52,7 +53,24 @@ and explained (31.5, the previous all-code measure below), matched functions
 replacing translations (54, the gameplay score) and the accounted-for
 checklist (10). The first three were scaled together from 100 to 90 on
 24 October 2026, keeping their proportions, when the checklist was added.
-Phase 3 has one measured item, the fixes (below).
+Phase 3 has two measured items, the fixes (below) and Part B.
+
+### Phase 3: Part B, 4K at 60 frames a second (owner goal, 15 to 17 November 2026)
+
+The item "Remastered at 4K, 60 frames a second locked, exact pictures" (weight 6) is **measured**, from the `partb`
+block of `progress.json`: each stretch of the replays (the runway; the late flight's early and middle; the late flight's
+end) records the share of frames over the 16.7 ms budget in steady state, the date and the evidence. The item's
+completion is the mean over the stretches of the share within budget; **a stretch that has not been measured counts as 0**, so
+nothing is credited that has not been shown. It reaches 100% only when every stretch is measured with 0 frames over
+budget (the milestone). Whoever measures a stretch again updates its row in the same commit as the work, so the title's
+figures move with the renderer's progress. 4K at 120 frames a second is not part of it: the exact compute raster's GPU
+span is 11.6 ms at the end of the late flight, so 120 is an owner decision, not scored work.
+
+**Keeping the estimates honest.** An estimate is only raised with new evidence, and it goes stale when work lands
+that nothing re-argues. `py tools/progress.py --stale [DAYS]` lists the estimates whose newest evidence date is older than DAYS
+(default 7); look at it before committing renderer or presentation work, and re-argue the items the work touched (new
+evidence text with its date, then the figure). The figures drop when an item is added for work that was not scored
+(17 Nov 2026: P3 94.03% to 93.40%), which is the intended reading.
 
 ### Phase 2: the gameplay score (owner, 21 October 2026)
 

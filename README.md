@@ -118,7 +118,7 @@ and about 2 GB of temporary disk space.
 
 ## Status
 
-Progress: **P1 100.00%, P2 96.93%, P3 94.03%, All 97.55%**. Work commit titles start with the
+Progress: **P1 100.00%, P2 96.93%, P3 93.40%, All 97.39%**. Work commit titles start with the
 current figures (`py tools/progress.py --title`); [docs/progress.md](docs/progress.md) says what
 they measure and [docs/roadmap.md](docs/roadmap.md) what is done and what is left.
 
