@@ -1095,7 +1095,7 @@ static void faces_build_chunks(gpu_compose *g)
 {
     df_reset(&g->faces);
     for (int k = 0; k < SETUP_CHUNKS; k++) {
-        while (!SDL_GetAtomicInt(&g_cdone[k])) YieldProcessor();
+        while (!SDL_GetAtomicInt(&g_cdone[k])) SDL_CPUPauseInstruction();
         const clist *l = &g->cpoly[k];
         for (size_t j = 0; j < l->n; j++) faces_add_tri(g, &l->t[j]);
     }
