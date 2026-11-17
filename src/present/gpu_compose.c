@@ -19,6 +19,7 @@
 #endif
 
 #define TILE 16
+#define GSETS 2             /* buffer sets and CPU scratch sets: a picture's setup works in one of them */
 #define SETUP_CHUNKS 32     /* the classify loop's record ranges (more than threads, for balance) */
 #define MAX_POLY 16
 
@@ -39,6 +40,18 @@ typedef struct { ctri *t; size_t n, cap; } clist;
 
 typedef struct { void *p; size_t n, cap; } vec;     /* a growing array of bytes */
 
+/* The CPU setup's lists and arrays for one picture: the classified triangles, the per-chunk lists they are merged from, the decal face list and the words packed for the upload. */
+typedef struct {
+    clist polys, strokes;
+    clist cpoly[SETUP_CHUNKS], cstroke[SETUP_CHUNKS];     /* the classify loop's per-chunk lists, merged in order into polys and strokes */
+    vec cword[SETUP_CHUNKS];
+    decal_face_cache faces;
+    vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
+    SDL_AtomicInt cdone[SETUP_CHUNKS];                    /* classify chunk k is finished (the face list thread reads the chunks in order as they finish) */
+    int faces_early;                                      /* the face list thread was started by the classify, before it ran */
+    struct { SDL_Thread *th; SDL_Semaphore *go, *done; int quit, running, chunks; } fth;      /* this set's decal face list thread */
+} gscratch;
+
 /* One picture's GPU resources and bookkeeping. The compositor keeps two sets so that the setup of the next picture (a second thread, Part B pipeline) can fill one while the
  * first still holds the GPU's work of the previous picture; which set a call uses is the calling thread's (gpu_compose_use_set), 0 unless it says otherwise. */
 typedef struct {
@@ -56,6 +69,7 @@ typedef struct {
     SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
     Uint32 up2_cap;
     Uint64 t_begin;
+    gscratch sc;                            /* this picture's CPU setup lists (Part B, 16 November 2026: per set, so two pictures' setups can run at once) */
 } gset;
 
 struct gpu_compose {
@@ -66,13 +80,8 @@ struct gpu_compose {
     int cur_write, last_written;
     int tgt_w, tgt_h;
     SDL_GPUTransferBuffer *tgt_down;
-    gset set[2];
+    gset set[GSETS];
     Uint32 pix_cap;
-    clist polys, strokes;
-    clist cpoly[SETUP_CHUNKS], cstroke[SETUP_CHUNKS];     /* the classify loop's per-chunk lists, merged in order into polys and strokes */
-    vec cword[SETUP_CHUNKS];
-    decal_face_cache faces;
-    vec band_words, poly_words, poly_ents, poly_off, stroke_tri_words, stroke_ents, stroke_off, stroke_words;
     int said;
     void *profile;
     void *(*profile_list)(SDL_GPUCommandBuffer *);
@@ -81,8 +90,9 @@ struct gpu_compose {
 };
 
 static F117_TLS int g_set_tls;
-void gpu_compose_use_set(int k) { g_set_tls = k & 1; }
+void gpu_compose_use_set(int k) { g_set_tls = k % GSETS; }
 #define GS(g) (&(g)->set[g_set_tls])
+#define SC(g) (&GS(g)->sc)
 
 static void profile_init(gpu_compose *g)
 {
@@ -215,10 +225,8 @@ gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir
 }
 
 static void setup_pool_shutdown(void);
-static void faces_thread_shutdown(void);
+static void faces_thread_shutdown(gpu_compose *g);
 static int faces_start_chunks(gpu_compose *g);
-static SDL_AtomicInt g_cdone[SETUP_CHUNKS];     /* classify chunk k is finished (the face list thread reads the chunks in order as they finish) */
-static int g_faces_early;                       /* the face list thread was started by the classify, before it ran */
 
 void gpu_compose_destroy(gpu_compose *g)
 {
@@ -250,13 +258,16 @@ void gpu_compose_destroy(gpu_compose *g)
         if (g->tgt_down) SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down);
         if (g->own_device) SDL_DestroyGPUDevice(g->dev);
     }
-    free(g->faces.words);
-    free(g->polys.t); free(g->strokes.t);
-    for (int k = 0; k < SETUP_CHUNKS; k++) { free(g->cpoly[k].t); free(g->cstroke[k].t); free(g->cword[k].p); }
-    faces_thread_shutdown();
+    faces_thread_shutdown(g);
     setup_pool_shutdown();
-    free(g->band_words.p); free(g->poly_words.p); free(g->poly_ents.p); free(g->poly_off.p);
-    free(g->stroke_tri_words.p); free(g->stroke_ents.p); free(g->stroke_off.p); free(g->stroke_words.p);
+    for (int si = 0; si < GSETS; si++) {
+        gscratch *sc = &g->set[si].sc;
+        free(sc->faces.words);
+        free(sc->polys.t); free(sc->strokes.t);
+        for (int k = 0; k < SETUP_CHUNKS; k++) { free(sc->cpoly[k].t); free(sc->cstroke[k].t); free(sc->cword[k].p); }
+        free(sc->band_words.p); free(sc->poly_words.p); free(sc->poly_ents.p); free(sc->poly_off.p);
+        free(sc->stroke_tri_words.p); free(sc->stroke_ents.p); free(sc->stroke_off.p); free(sc->stroke_words.p);
+    }
     free(g);
 }
 
@@ -784,7 +795,7 @@ typedef struct {
     pool_fn fn; void *arg; int njobs;
     SDL_AtomicInt next, quit;
 } setup_pool;
-static setup_pool *g_pool;
+static setup_pool *g_pool[GSETS];       /* one fork-join pool per set: the setups of two pictures can run at once */
 static int g_setup_threads = -1;
 
 static int pool_worker(void *u)
@@ -802,14 +813,16 @@ static int pool_worker(void *u)
 
 static void setup_pool_shutdown(void)
 {
-    setup_pool *p = g_pool;
-    if (!p) return;
-    g_pool = NULL;
-    SDL_SetAtomicInt(&p->quit, 1);
-    for (int i = 0; i < p->nworkers; i++) SDL_SignalSemaphore(p->go);
-    for (int i = 0; i < p->nworkers; i++) SDL_WaitThread(p->th[i], NULL);
-    SDL_DestroySemaphore(p->go); SDL_DestroySemaphore(p->done);
-    free(p);
+    for (int si = 0; si < GSETS; si++) {
+        setup_pool *p = g_pool[si];
+        if (!p) continue;
+        g_pool[si] = NULL;
+        SDL_SetAtomicInt(&p->quit, 1);
+        for (int i = 0; i < p->nworkers; i++) SDL_SignalSemaphore(p->go);
+        for (int i = 0; i < p->nworkers; i++) SDL_WaitThread(p->th[i], NULL);
+        SDL_DestroySemaphore(p->go); SDL_DestroySemaphore(p->done);
+        free(p);
+    }
 }
 
 /* How many threads the setup uses (including the caller): F117_SETUP_THREADS, default 8 (at most half the logical cores), 1 = serial. */
@@ -828,15 +841,16 @@ static int setup_threads(void)
 static void pool_run(pool_fn fn, void *arg, int njobs)
 {
     const int nt = setup_threads();
-    if (nt > 1 && !g_pool) {
+    setup_pool **pp = &g_pool[g_set_tls];
+    if (nt > 1 && !*pp) {
         setup_pool *p = (setup_pool *)calloc(1, sizeof *p);
         if (p) {
             p->go = SDL_CreateSemaphore(0); p->done = SDL_CreateSemaphore(0);
             for (int i = 0; i < nt - 1 && p->go && p->done; i++) { p->th[i] = SDL_CreateThread(pool_worker, "setup", p); if (!p->th[i]) break; p->nworkers++; }
-            g_pool = p;
+            *pp = p;
         }
     }
-    setup_pool *p = g_pool;
+    setup_pool *p = *pp;
     if (!p || p->nworkers == 0) { for (int j = 0; j < njobs; j++) fn(arg, j); return; }
     p->fn = fn; p->arg = arg; p->njobs = njobs;
     SDL_SetAtomicInt(&p->next, 0);
@@ -901,15 +915,17 @@ static int bin_tiles_threaded(const clist *l, int tilesx, int tilesy, vec *off_v
 {
     if (setup_threads() <= 1 || l->n < 2048) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
     const int ntiles = tilesx * tilesy;
-    static uint32_t *cnt; static size_t cnt_cap;
+    static uint32_t *cnt_s[GSETS]; static size_t cnt_cap_s[GSETS];
+    uint32_t *cnt = cnt_s[g_set_tls]; size_t cnt_cap = cnt_cap_s[g_set_tls];
     if (cnt_cap < (size_t)BIN_CHUNKS * ntiles) {
         uint32_t *q = (uint32_t *)realloc(cnt, (size_t)BIN_CHUNKS * ntiles * 4);
         if (!q) return bin_tiles_fast(l, tilesx, tilesy, off_v, ents_v, nents_out);
         cnt = q; cnt_cap = (size_t)BIN_CHUNKS * ntiles;
+        cnt_s[g_set_tls] = cnt; cnt_cap_s[g_set_tls] = cnt_cap;
     }
     uint32_t *off = (uint32_t *)vec_reserve(off_v, ((size_t)ntiles + 1) * 4);
     if (!off) return 0;
-    static bin_ctx c;
+    bin_ctx c; memset(&c, 0, sizeof c);
     c.l = l; c.tilesx = tilesx; c.ntiles = ntiles; c.off = off; c.cnt = cnt; c.ents = NULL;
     c.per = (l->n + BIN_CHUNKS - 1) / BIN_CHUNKS;
     off[0] = 0;
@@ -968,7 +984,7 @@ static int classify_serial(clist *pl, clist *sl, uint32_t *sw, uint32_t *nstroke
 }
 
 typedef struct {
-    gpu_compose *g; const gpu_compose_in *in; int w, h;
+    gpu_compose *g; gscratch *sc; const gpu_compose_in *in; int w, h;
     uint32_t per;                       /* records a chunk */
     volatile int fail;
     uint32_t drawn[SETUP_CHUNKS], sofs[SETUP_CHUNKS];       /* strokes drawn in a chunk; strokes drawn before it */
@@ -978,21 +994,21 @@ typedef struct {
 
 static Uint64 g_chunk_ns[SETUP_CHUNKS];   /* F117_CLASSIFY_SPLIT diagnostic: each chunk's own time */
 static void classify_job_body(void *vc, int k);
-static void classify_job(void *vc, int k) { classify_job_body(vc, k); SDL_SetAtomicInt(&g_cdone[k], 1); }
+static void classify_job(void *vc, int k) { classify_job_body(vc, k); SDL_SetAtomicInt(&((cls_ctx *)vc)->sc->cdone[k], 1); }
 static void classify_job_body(void *vc, int k)
 {
-    cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g; const gpu_compose_in *in = c->in;
-    /* Part B (14 November 2026): the chunk's list headers and its stroke count live in locals and are stored once at the end. The 32 headers (g->cpoly[k], g->cstroke[k])
+    cls_ctx *c = (cls_ctx *)vc; gscratch *sc = c->sc; const gpu_compose_in *in = c->in;
+    /* Part B (14 November 2026): the chunk's list headers and its stroke count live in locals and are stored once at the end. The 32 headers (sc->cpoly[k], sc->cstroke[k])
      * and c->drawn[k] sit next to each other in memory, and every triangle and stroke wrote them from a different thread: false sharing, which kept the classify no
      * faster on 8 threads than on one. */
-    clist lp = g->cpoly[k], ls = g->cstroke[k]; lp.n = 0; ls.n = 0;
+    clist lp = sc->cpoly[k], ls = sc->cstroke[k]; lp.n = 0; ls.n = 0;
     clist *pl = &lp, *sl = &ls; uint32_t drawn_local = 0;
-    g->cpoly[k].n = 0; g->cstroke[k].n = 0; c->drawn[k] = 0;
+    sc->cpoly[k].n = 0; sc->cstroke[k].n = 0; c->drawn[k] = 0;
     const uint64_t a64 = (uint64_t)k * c->per;
     if (a64 >= in->nrec) return;
     const uint32_t a = (uint32_t)a64, b = (uint32_t)(a64 + c->per < in->nrec ? a64 + c->per : in->nrec);
     const Uint64 t_job0 = SDL_GetTicksNS(); (void)t_job0;
-    uint32_t *words = (uint32_t *)vec_reserve(&g->cword[k], (size_t)(b - a) * STROKE_WORDS * 4);
+    uint32_t *words = (uint32_t *)vec_reserve(&sc->cword[k], (size_t)(b - a) * STROKE_WORDS * 4);
     if (!words) { c->fail = 1; return; }
     for (uint32_t i = a; i < b; i++) {
         const gpu_trace_rec *r = &in->recs[i];
@@ -1008,29 +1024,29 @@ static void classify_job_body(void *vc, int k)
             if (drawn) drawn_local++;
         }
     }
-    g->cpoly[k] = lp; g->cstroke[k] = ls; c->drawn[k] = drawn_local;      /* one store each (the lists may have grown) */
+    sc->cpoly[k] = lp; sc->cstroke[k] = ls; c->drawn[k] = drawn_local;      /* one store each (the lists may have grown) */
     g_chunk_ns[k] = SDL_GetTicksNS() - t_job0;
 }
 
 static void merge_job(void *vc, int k)
 {
-    cls_ctx *c = (cls_ctx *)vc; gpu_compose *g = c->g;
-    const clist *pl = &g->cpoly[k], *sl = &g->cstroke[k];
-    if (pl->n) memcpy(g->polys.t + c->pofs[k], pl->t, pl->n * sizeof(ctri));
-    for (size_t j = 0; j < sl->n; j++) { ctri *d = &g->strokes.t[c->tofs[k] + j]; *d = sl->t[j]; d->w7 += c->sofs[k]; }
-    if (c->drawn[k]) memcpy(c->sw + (size_t)c->sofs[k] * STROKE_WORDS, g->cword[k].p, (size_t)c->drawn[k] * STROKE_WORDS * 4);
+    cls_ctx *c = (cls_ctx *)vc; gscratch *sc = c->sc;
+    const clist *pl = &sc->cpoly[k], *sl = &sc->cstroke[k];
+    if (pl->n) memcpy(sc->polys.t + c->pofs[k], pl->t, pl->n * sizeof(ctri));
+    for (size_t j = 0; j < sl->n; j++) { ctri *d = &sc->strokes.t[c->tofs[k] + j]; *d = sl->t[j]; d->w7 += c->sofs[k]; }
+    if (c->drawn[k]) memcpy(c->sw + (size_t)c->sofs[k] * STROKE_WORDS, sc->cword[k].p, (size_t)c->drawn[k] * STROKE_WORDS * 4);
 }
 
-/* The classify of polygons and lines, into g->polys, g->strokes and sw (nrec * STROKE_WORDS words). */
+/* The classify of polygons and lines, into SC(g)->polys, SC(g)->strokes and sw (nrec * STROKE_WORDS words). */
 static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int h, uint32_t *sw, uint32_t *nstrokes_out)
 {
     const int nt = setup_threads();
-    if (nt <= 1 || in->nrec < 2048) return classify_serial(&g->polys, &g->strokes, sw, nstrokes_out, in, w, h);
-    static cls_ctx c;                   /* one render worker calls this; the context is reused */
-    c.g = g; c.in = in; c.w = w; c.h = h; c.fail = 0; c.sw = sw;
+    if (nt <= 1 || in->nrec < 2048) return classify_serial(&SC(g)->polys, &SC(g)->strokes, sw, nstrokes_out, in, w, h);
+    cls_ctx c; memset(&c, 0, sizeof c);
+    c.g = g; c.sc = SC(g); c.in = in; c.w = w; c.h = h; c.fail = 0; c.sw = sw;
     c.per = (in->nrec + SETUP_CHUNKS - 1) / SETUP_CHUNKS;
-    g_faces_early = 0;
-    if (decal_faces_enabled()) { for (int k = 0; k < SETUP_CHUNKS; k++) SDL_SetAtomicInt(&g_cdone[k], 0); g_faces_early = faces_start_chunks(g); }
+    SC(g)->faces_early = 0;
+    if (decal_faces_enabled()) { for (int k = 0; k < SETUP_CHUNKS; k++) SDL_SetAtomicInt(&SC(g)->cdone[k], 0); SC(g)->faces_early = faces_start_chunks(g); }
     const Uint64 t_pool0 = SDL_GetTicksNS();
     pool_run(classify_job, &c, SETUP_CHUNKS);
     {   static int on = -1; static unsigned n; static double sp, ss, sm, sx;
@@ -1045,10 +1061,10 @@ static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int
     size_t np = 0, nsz = 0; uint32_t nd = 0;
     for (int k = 0; k < SETUP_CHUNKS; k++) {
         c.pofs[k] = np; c.tofs[k] = nsz; c.sofs[k] = nd;
-        np += g->cpoly[k].n; nsz += g->cstroke[k].n; nd += c.drawn[k];
+        np += SC(g)->cpoly[k].n; nsz += SC(g)->cstroke[k].n; nd += c.drawn[k];
     }
-    if (!clist_reserve(&g->polys, np) || !clist_reserve(&g->strokes, nsz)) return 0;
-    g->polys.n = np; g->strokes.n = nsz;
+    if (!clist_reserve(&SC(g)->polys, np) || !clist_reserve(&SC(g)->strokes, nsz)) return 0;
+    SC(g)->polys.n = np; SC(g)->strokes.n = nsz;
     pool_run(merge_job, &c, SETUP_CHUNKS);
     *nstrokes_out = nd;
     static int check = -1;
@@ -1057,11 +1073,11 @@ static int classify_records(gpu_compose *g, const gpu_compose_in *in, int w, int
         static unsigned n, bad; clist rp = { 0 }, rs = { 0 }; uint32_t rn = 0;
         uint32_t *rw = (uint32_t *)malloc((size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
         int ok = rw && classify_serial(&rp, &rs, rw, &rn, in, w, h);
-        if (ok) ok = rp.n == g->polys.n && rs.n == g->strokes.n && rn == nd &&
-                     (!rp.n || !memcmp(rp.t, g->polys.t, rp.n * sizeof(ctri))) && (!rs.n || !memcmp(rs.t, g->strokes.t, rs.n * sizeof(ctri))) &&
+        if (ok) ok = rp.n == SC(g)->polys.n && rs.n == SC(g)->strokes.n && rn == nd &&
+                     (!rp.n || !memcmp(rp.t, SC(g)->polys.t, rp.n * sizeof(ctri))) && (!rs.n || !memcmp(rs.t, SC(g)->strokes.t, rs.n * sizeof(ctri))) &&
                      (!rn || !memcmp(rw, sw, (size_t)rn * STROKE_WORDS * 4));
         n++; if (!ok) bad++;
-        if (!ok && bad < 4) fprintf(stderr, "[setup-check] differs at picture %u (polys %zu vs %zu, strokes %zu vs %zu, drawn %u vs %u)\n", n, rp.n, g->polys.n, rs.n, g->strokes.n, rn, nd);
+        if (!ok && bad < 4) fprintf(stderr, "[setup-check] differs at picture %u (polys %zu vs %zu, strokes %zu vs %zu, drawn %u vs %u)\n", n, rp.n, SC(g)->polys.n, rs.n, SC(g)->strokes.n, rn, nd);
         if (n % 120 == 0) fprintf(stderr, "[setup-check] %u pictures checked, %u differ\n", n, bad);
         free(rp.t); free(rs.t); free(rw);
     }
@@ -1074,85 +1090,90 @@ typedef struct { up_piece *p; } up_ctx;
 static void up_job(void *vc, int k) { const up_piece *q = &((up_ctx *)vc)->p[k]; memcpy(q->dst, q->src, q->n); }
 
 /* Job 0 of the pack pool builds the decal face list (serial by nature: the chains and the dedup depend on the insertion order, so it stays one loop in triangle
- * order); the pack chunks run beside it on the other threads (14 November 2026). It reads g->polys and writes only g->faces; the chunks write only pw and stw. */
-typedef struct { gpu_compose *g; uint32_t *pw, *stw; int faces, faces_async; } pack_ctx;
-static void faces_add_tri(gpu_compose *g, const ctri *tr)
+ * order); the pack chunks run beside it on the other threads (14 November 2026). It reads SC(g)->polys and writes only SC(g)->faces; the chunks write only pw and stw. */
+typedef struct { gscratch *sc; uint32_t *pw, *stw; int faces, faces_async; } pack_ctx;
+static void faces_add_tri(gscratch *sc, const ctri *tr)
 {
     if (tr->kind) return; /* logic fills do not write surface depth */
     ex_tri tri; memcpy(tri.q, tr->q, sizeof tri.q); tri.area = tr->area;
     ex_planes plane = {0}; plane.ox = tr->dox; plane.oy = tr->doy;
     plane.base[0] = (uint64_t)tr->dbase; plane.px[0] = (uint64_t)tr->dpx; plane.py[0] = (uint64_t)tr->dpy;
-    df_add(&g->faces, tr->paint_owner, &tri, &plane);
+    df_add(&sc->faces, tr->paint_owner, &tri, &plane);
 }
-static void faces_build(gpu_compose *g)
+static void faces_build(gscratch *sc)
 {
-    df_reset(&g->faces);
-    for (size_t k = 0; k < g->polys.n; ++k) faces_add_tri(g, &g->polys.t[k]);
+    df_reset(&sc->faces);
+    for (size_t k = 0; k < sc->polys.n; ++k) faces_add_tri(sc, &sc->polys.t[k]);
 }
-/* The same list built from the classify's chunk lists (cpoly[0..SETUP_CHUNKS-1], whose concatenation in order is g->polys), each as soon as its chunk is finished, so
+/* The same list built from the classify's chunk lists (cpoly[0..SETUP_CHUNKS-1], whose concatenation in order is polys), each as soon as its chunk is finished, so
  * the work overlaps the classify. Same triangles in the same order: the same list. */
-static void faces_build_chunks(gpu_compose *g)
+static void faces_build_chunks(gscratch *sc)
 {
-    df_reset(&g->faces);
+    df_reset(&sc->faces);
     for (int k = 0; k < SETUP_CHUNKS; k++) {
-        while (!SDL_GetAtomicInt(&g_cdone[k])) SDL_CPUPauseInstruction();
-        const clist *l = &g->cpoly[k];
-        for (size_t j = 0; j < l->n; j++) faces_add_tri(g, &l->t[j]);
+        while (!SDL_GetAtomicInt(&sc->cdone[k])) SDL_CPUPauseInstruction();
+        const clist *l = &sc->cpoly[k];
+        for (size_t j = 0; j < l->n; j++) faces_add_tri(sc, &l->t[j]);
     }
 }
 /* Part B (16 November 2026): the decal face list is one serial loop in triangle order (5.5 ms at the end of the flight), and it needs only the classified polygons, so
- * it runs on a thread of its own from the end of the classify, beside the binning and the pack chunks. Same loop, same list, byte for byte. One setup caller at a time:
- * a call that returns early leaves it running, and the next call (or the destroy) waits for it before touching the lists. */
-static struct { SDL_Thread *th; SDL_Semaphore *go, *done; gpu_compose *g; int quit, running, chunks; } g_fth;
+ * it runs on a thread of its own from the end of the classify, beside the binning and the pack chunks. Same loop, same list, byte for byte. One thread per scratch set: a
+ * call that returns early leaves it running, and the next call on the set (or the destroy) waits for it before touching the lists. */
+typedef struct { gscratch *sc; } fth_arg;
+static fth_arg g_fth_arg[GSETS];
 static int faces_thread_main(void *u)
 {
-    (void)u;
+    gscratch *sc = ((fth_arg *)u)->sc;
     for (;;) {
-        SDL_WaitSemaphore(g_fth.go);
-        if (g_fth.quit) break;
-        if (g_fth.chunks) faces_build_chunks(g_fth.g); else faces_build(g_fth.g);
-        SDL_SignalSemaphore(g_fth.done);
+        SDL_WaitSemaphore(sc->fth.go);
+        if (sc->fth.quit) break;
+        if (sc->fth.chunks) faces_build_chunks(sc); else faces_build(sc);
+        SDL_SignalSemaphore(sc->fth.done);
     }
     return 0;
 }
-static void faces_wait(void) { if (g_fth.running) { SDL_WaitSemaphore(g_fth.done); g_fth.running = 0; } }
-static int faces_start_mode(gpu_compose *g, int chunks);
-static int faces_start(gpu_compose *g) { return faces_start_mode(g, 0); }
-static int faces_start_chunks(gpu_compose *g) { return setup_threads() > 1 && faces_start_mode(g, 1); }
+static void faces_wait(gscratch *sc) { if (sc->fth.running) { SDL_WaitSemaphore(sc->fth.done); sc->fth.running = 0; } }
 static int faces_start_mode(gpu_compose *g, int chunks)
 {
-    faces_wait();
-    g_fth.chunks = chunks;
-    if (!g_fth.th) {
-        g_fth.go = SDL_CreateSemaphore(0); g_fth.done = SDL_CreateSemaphore(0);
-        if (g_fth.go && g_fth.done) g_fth.th = SDL_CreateThread(faces_thread_main, "faces", NULL);
-        if (!g_fth.th) return 0;
+    gscratch *sc = SC(g);
+    faces_wait(sc);
+    sc->fth.chunks = chunks;
+    if (!sc->fth.th) {
+        sc->fth.go = SDL_CreateSemaphore(0); sc->fth.done = SDL_CreateSemaphore(0);
+        g_fth_arg[g_set_tls].sc = sc;
+        if (sc->fth.go && sc->fth.done) sc->fth.th = SDL_CreateThread(faces_thread_main, "faces", &g_fth_arg[g_set_tls]);
+        if (!sc->fth.th) return 0;
     }
-    g_fth.g = g; g_fth.running = 1;
-    SDL_SignalSemaphore(g_fth.go);
+    sc->fth.running = 1;
+    SDL_SignalSemaphore(sc->fth.go);
     return 1;
 }
-static void faces_thread_shutdown(void)
+static int faces_start(gpu_compose *g) { return faces_start_mode(g, 0); }
+static int faces_start_chunks(gpu_compose *g) { return setup_threads() > 1 && faces_start_mode(g, 1); }
+static void faces_thread_shutdown(gpu_compose *g)
 {
-    faces_wait();
-    if (!g_fth.th) return;
-    g_fth.quit = 1; SDL_SignalSemaphore(g_fth.go); SDL_WaitThread(g_fth.th, NULL); g_fth.th = NULL;
-    SDL_DestroySemaphore(g_fth.go); SDL_DestroySemaphore(g_fth.done); g_fth.go = g_fth.done = NULL; g_fth.quit = 0;
+    for (int si = 0; si < GSETS; si++) {
+        gscratch *sc = &g->set[si].sc;
+        faces_wait(sc);
+        if (!sc->fth.th) continue;
+        sc->fth.quit = 1; SDL_SignalSemaphore(sc->fth.go); SDL_WaitThread(sc->fth.th, NULL); sc->fth.th = NULL;
+        SDL_DestroySemaphore(sc->fth.go); SDL_DestroySemaphore(sc->fth.done); sc->fth.go = sc->fth.done = NULL; sc->fth.quit = 0;
+    }
 }
 static void pack_job(void *vc, int k)
 {
     const pack_ctx *c = (const pack_ctx *)vc;
-    if (k == 0) { if (c->faces && !c->faces_async) faces_build(c->g); return; }
+    if (k == 0) { if (c->faces && !c->faces_async) faces_build(c->sc); return; }
     k--;
-    const size_t np = c->g->polys.n, ns = c->g->strokes.n;
+    const size_t np = c->sc->polys.n, ns = c->sc->strokes.n;
     const size_t p0 = np * k / SETUP_CHUNKS, p1 = np * (k + 1) / SETUP_CHUNKS, s0 = ns * k / SETUP_CHUNKS, s1 = ns * (k + 1) / SETUP_CHUNKS;
     if (p1 > p0) memset(c->pw + p0 * 40, 0, (p1 - p0) * 160);
     if (s1 > s0) memset(c->stw + s0 * 40, 0, (s1 - s0) * 160);
     for (size_t j = p0; j < p1; j++) {
-        const ctri *tr = &c->g->polys.t[j]; uint32_t *wd = c->pw + j * 40;
+        const ctri *tr = &c->sc->polys.t[j]; uint32_t *wd = c->pw + j * 40;
         tri_words(wd, tr); wd[7] = tr->w7; wd[8] = tr->paint_index; wd[9] = tr->paint_owner; wd[10] = tr->kind;
     }
-    for (size_t j = s0; j < s1; j++) { const ctri *tr = &c->g->strokes.t[j]; uint32_t *wd = c->stw + j * 40; tri_words(wd, tr); wd[7] = tr->w7; }
+    for (size_t j = s0; j < s1; j++) { const ctri *tr = &c->sc->strokes.t[j]; uint32_t *wd = c->stw + j * 40; tri_words(wd, tr); wd[7] = tr->w7; }
 }
 
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
@@ -1166,7 +1187,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     g->profile_pending = g->profile != NULL;
 #endif
-    faces_wait();            /* a previous call that returned early may have left the face list running */
+    faces_wait(SC(g));       /* a previous call on this set that returned early may have left the face list running */
     GS(g)->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
     const int w = in->w, h = in->h, tw = in->tw;
@@ -1183,12 +1204,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     /* classify the records: the clear and the bands first, then polygons, then the lines; anything else is not handled */
     int phase = 0;
-    g->polys.n = 0; g->strokes.n = 0;
+    SC(g)->polys.n = 0; SC(g)->strokes.n = 0;
     uint32_t nband = 0, nstrokes = 0;
-    uint32_t *bw = (uint32_t *)vec_reserve(&g->band_words, (size_t)4096 * 64 * 4);
-    uint32_t *sw = (uint32_t *)vec_reserve(&g->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
+    uint32_t *bw = (uint32_t *)vec_reserve(&SC(g)->band_words, (size_t)4096 * 64 * 4);
+    uint32_t *sw = (uint32_t *)vec_reserve(&SC(g)->stroke_words, (size_t)(in->nrec ? in->nrec : 1) * STROKE_WORDS * 4);
     if (!bw || !sw) return 0;
-    const size_t band_cap = g->band_words.cap / (64 * 4);
+    const size_t band_cap = SC(g)->band_words.cap / (64 * 4);
     const unsigned long long c_loop = CYC();
     /* the order rules first (serial, cheap), then the bands (serial: a handful a picture), then the polygons and lines (several threads) */
     for (uint32_t i = 0; i < in->nrec; i++) {
@@ -1267,7 +1288,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
             did_bands = 1;
         }
     }
-    g_faces_early = 0;       /* set by classify_records when it started the face list itself */
+    SC(g)->faces_early = 0;       /* set by classify_records when it started the face list itself */
     const Uint64 t_pre_classify = SDL_GetTicksNS();
     if (!classify_records(g, in, tw, h, sw, &nstrokes)) return 0;
     {   static int on = -1; static unsigned n; static double a, b, c2;
@@ -1280,20 +1301,20 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     CADD(g_cyc, 5, CYC() - c_loop); CADD(g_cnt, 5, 1);
     const Uint64 t_classified = SDL_GetTicksNS();
-    const int faces_async = g_faces_early || (decal_faces_enabled() && setup_threads() > 1 && faces_start(g));
+    const int faces_async = SC(g)->faces_early || (decal_faces_enabled() && setup_threads() > 1 && faces_start(g));
     const int tilesx = (tw + TILE - 1) / TILE, tilesy = (h + TILE - 1) / TILE;
     size_t npents = 0, nsents = 0;
-    if (!bin_tiles(&g->polys, tilesx, tilesy, &g->poly_off, &g->poly_ents, &npents)) return 0;
-    if (!bin_tiles(&g->strokes, tilesx, tilesy, &g->stroke_off, &g->stroke_ents, &nsents)) return 0;
+    if (!bin_tiles(&SC(g)->polys, tilesx, tilesy, &SC(g)->poly_off, &SC(g)->poly_ents, &npents)) return 0;
+    if (!bin_tiles(&SC(g)->strokes, tilesx, tilesy, &SC(g)->stroke_off, &SC(g)->stroke_ents, &nsents)) return 0;
     const Uint64 t_binned = SDL_GetTicksNS();
-    uint32_t *pw = (uint32_t *)vec_reserve(&g->poly_words, (g->polys.n ? g->polys.n : 1) * 160);
-    uint32_t *stw = (uint32_t *)vec_reserve(&g->stroke_tri_words, (g->strokes.n ? g->strokes.n : 1) * 160);
+    uint32_t *pw = (uint32_t *)vec_reserve(&SC(g)->poly_words, (SC(g)->polys.n ? SC(g)->polys.n : 1) * 160);
+    uint32_t *stw = (uint32_t *)vec_reserve(&SC(g)->stroke_tri_words, (SC(g)->strokes.n ? SC(g)->strokes.n : 1) * 160);
     if (!pw || !stw) return 0;
-    if (!g->polys.n) memset(pw, 0, 160);        /* the one-triangle minimum upload of an empty list stays zero, as before */
-    if (!g->strokes.n) memset(stw, 0, 160);
+    if (!SC(g)->polys.n) memset(pw, 0, 160);        /* the one-triangle minimum upload of an empty list stays zero, as before */
+    if (!SC(g)->strokes.n) memset(stw, 0, 160);
     const int use_faces = decal_faces_enabled();
     {   const Uint64 pk0 = SDL_GetTicksNS();
-        pack_ctx pc = { g, pw, stw, use_faces, faces_async }; pool_run(pack_job, &pc, SETUP_CHUNKS + 1); faces_wait();
+        pack_ctx pc = { SC(g), pw, stw, use_faces, faces_async }; pool_run(pack_job, &pc, SETUP_CHUNKS + 1); faces_wait(SC(g));
         static int on = -1; static unsigned n; static double sw_;
         if (on < 0) on = getenv("F117_CLASSIFY_SPLIT") != NULL;
         if (on) { sw_ += (SDL_GetTicksNS() - pk0) / 1e6; if (++n % 60 == 0) fprintf(stderr, "[classify-split] pack pool wall %.2f ms (the face list runs beside the binning, on its own thread)\n", sw_ / n); }
@@ -1304,14 +1325,14 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 stroke_words = (nstrokes ? nstrokes : 1) * STROKE_WORDS;
     Uint32 face_offset = 0, sw_bytes = stroke_words * 4;
     if (use_faces) {
-        if (g->faces.failed) return 0;
-        const size_t face_words = DF_START + g->faces.count * DF_STRIDE;
+        if (SC(g)->faces.failed) return 0;
+        const size_t face_words = DF_START + SC(g)->faces.count * DF_STRIDE;
         if (face_words > UINT32_MAX / 4 - stroke_words) return 0;
         sw_bytes += (Uint32)(face_words * 4);
-        sw = (uint32_t *)vec_reserve(&g->stroke_words, sw_bytes);
+        sw = (uint32_t *)vec_reserve(&SC(g)->stroke_words, sw_bytes);
         if (!sw) return 0;
         face_offset = stroke_words;
-        memcpy(sw + face_offset, g->faces.words, face_words * 4);
+        memcpy(sw + face_offset, SC(g)->faces.words, face_words * 4);
     }
 
     const Uint64 t_packed = SDL_GetTicksNS();
@@ -1323,13 +1344,13 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     const Uint32 nstroke_b = (Uint32)((nstrokes ? nstrokes : 1) * 4);
     seg segs[] = {
         { &GS(g)->bt, bw, (Uint32)((nband ? nband : 1) * 256), RO },
-        { &GS(g)->pt, pw, (Uint32)((g->polys.n ? g->polys.n : 1) * 160), RO },
-        { &GS(g)->pe, g->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
-        { &GS(g)->po, g->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
+        { &GS(g)->pt, pw, (Uint32)((SC(g)->polys.n ? SC(g)->polys.n : 1) * 160), RO },
+        { &GS(g)->pe, SC(g)->poly_ents.p, (Uint32)((npents ? npents : 1) * 36), RO },
+        { &GS(g)->po, SC(g)->poly_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &GS(g)->pal, in->palette, 1024, RO },
-        { &GS(g)->st, stw, (Uint32)((g->strokes.n ? g->strokes.n : 1) * 160), RO },
-        { &GS(g)->se, g->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
-        { &GS(g)->so, g->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
+        { &GS(g)->st, stw, (Uint32)((SC(g)->strokes.n ? SC(g)->strokes.n : 1) * 160), RO },
+        { &GS(g)->se, SC(g)->stroke_ents.p, (Uint32)((nsents ? nsents : 1) * 36), RO },
+        { &GS(g)->so, SC(g)->stroke_off.p, (Uint32)(((size_t)tilesx * tilesy + 1) * 4), RO },
         { &GS(g)->sw, sw, sw_bytes, RO },
         { &GS(g)->tf, flags, 1024, RO },
     };
@@ -1358,7 +1379,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         if (!m) return 0;
         /* Part B (16 November 2026): each segment's data is copied once, in 1 MB pieces on the setup pool, and only the bytes after the data are zeroed. The upload memory
          * is write-combined, so the earlier zero-then-copy wrote every byte twice from one thread. The bytes uploaded are the same. */
-        static up_piece pieces[512]; int np = 0, spill = 0;
+        static up_piece pieces_s[GSETS][512]; up_piece *pieces = pieces_s[g_set_tls]; int np = 0, spill = 0;
         for (int k = 0; k < nseg; k++) {
             const Uint32 bytes = segs[k].bytes;
             if (did_bands && k == 0) { p += (bytes + 15u) & ~15u; continue; }      /* the band triangles went in the early submission */
@@ -1413,7 +1434,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         profile_mark(g, cb, "bands_end");
         if (pass_times_on()) pass_split(g, &cb, 1, &pmark);
     }
-    if (g->polys.n) {
+    if (SC(g)->polys.n) {
         SDL_GPUStorageBufferReadWriteBinding rw[4] = { { b_colour, false }, { b_index, false }, { b_invz, false }, { b_owner, false } };
         SDL_GPUBuffer *ro[4] = { GS(g)->pt.buf, GS(g)->pe.buf, GS(g)->po.buf, GS(g)->pal.buf };
         const Uint32 u[4] = { (Uint32)tw, (Uint32)h, (Uint32)tilesx, exact_on() ? 1u : 0u };
@@ -1449,7 +1470,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
         static double sum[5], mb, ents, trisn; static unsigned count;
         sum[0] += (double)(t_classified - t_start) / 1e6; sum[1] += (double)(t_binned - t_classified) / 1e6; sum[2] += (double)(t_packed - t_binned) / 1e6;
         sum[3] += (double)(t_prepared - t_packed) / 1e6; sum[4] += (double)(t_setup - t_prepared) / 1e6;
-        mb += (double)total / 1048576.0; ents += (double)(npents + nsents); trisn += (double)(g->polys.n + g->strokes.n);
+        mb += (double)total / 1048576.0; ents += (double)(npents + nsents); trisn += (double)(SC(g)->polys.n + SC(g)->strokes.n);
         if (++count % 120 == 0)
             fprintf(stderr, "[gpu-phases] mean of %u: classify %.2f, bin %.2f, pack %.2f, buffers %.2f, copy %.2f ms; %.0f triangles, %.0f entries, %.1f MB uploaded\n",
                     count, sum[0] / count, sum[1] / count, sum[2] / count, sum[3] / count, sum[4] / count, trisn / count, ents / count, mb / count);
