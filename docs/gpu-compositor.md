@@ -1434,3 +1434,16 @@ Risks: the 0.2 to 1.7% of mid-t vertices that blend badly (pairing by the game's
 | Airfield and hangar (`r38-validate/hangar/hangar.trc`) | 99.921% | 238 px (0.031%) |
 
 (`r36/sea.trc` is not comparable: recorded before the sea smoothing existed.) The hardware path therefore reproduces the compute compositor to about a pixel here and there on four recorded frames, with the rules above still approximate. Next: the ground rule and the decal rules on the remaining differences, then the app (scene once per step, blend in the vertex shader).
+
+### Part B: the hardware path in the app, first measurement (17 November 2026, night; `F117_HW_RASTER=1`, off by default)
+
+`gpu_compose_begin` hands the records to `hw_begin` when the variable is set (and `hw_init` found its shaders; otherwise the compute path runs). Same inputs and outputs: the scene is drawn with the graphics pipeline into four RGBA8 targets (colour, index bits 0 to 3, index bits 4 to 7, flags: valid, touched by a logic fill, OR 0x80 count or stroke, drawn after the bands), a resolve pass looks the palette up and applies `band_palette_sea`, and a compute pass exports colour and the two "drawn" depths into the pixel buffers `gpu_compose_finish`'s replace step reads. Each picture still builds its vertices on the CPU from the records (4.5 ms, 138,000 triangles) and uploads them (2.1 ms): `F117_HW_TIMING`. In-app check against the compute compositor (`F117_GPU_COMPOSE_CHECK`): about 10,000 to 12,000 of 768,000 pixels differ (1.4%). Light check and gate pass with it off by default.
+
+**Late flight, clocks 10.15 to 10.3 billion, interleaved ABAB, `F117_STAGE2=1 F117_PIPELINE=1 F117_CHOOSE_THREADS=8 F117_STAGE2_SLICE_MS=10 F117_STAGE2_DELAY=0.25`, other load under 3%:**
+
+| | frames | mean | median | p95 | over 16.7 ms |
+|---|---|---|---|---|---|
+| compute path (hwC, hwE) | 131, 130 | 18.6, 18.7 | 16.1, 16.3 | 26.7, 26.9 | 44%, 44% |
+| hardware path (hwB, hwD) | 175, 162 | 13.9, 14.9 | 11.8, 14.2 | 22.4, 23.6 | 21%, 28% |
+
+Not 4K 60 yet. Worker timing in a hardware run (`F117_WORKER_TIMING`): the game's own 2D picture (`drawlive_render`) 8.1 ms, compose 3.4 ms, GPU wait 2.4 ms. The quarter of frames over 16.7 ms matches the copy's slice (one picture in four carries a 9 to 14 ms slice on the main thread). Next: the copy off the main thread's frame; the 2D layer once per step; scene buffers once per step with the blend in the vertex shader (handoff top lists the design); then M1 on both flights and the runway.

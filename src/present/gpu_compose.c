@@ -27,6 +27,7 @@ typedef struct { double x, y, z; } dv3;
 typedef struct { double x, y, iz; } sv;
 
 typedef struct { SDL_GPUBuffer *buf; Uint32 cap; } gbuf;
+typedef struct { size_t first, count; int kind; } hw_seg_t;
 
 typedef struct {
     float a1, b1, a2, b2, ciz, diz1, diz2;
@@ -69,10 +70,18 @@ typedef struct {
     SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
     Uint32 up2_cap;
     Uint64 t_begin;
+    struct {                                /* the hardware-rasterised path's (F117_HW_RASTER) per-set resources */
+        SDL_GPUTexture *pt[4], *tout, *tpal, *dpt; int w, h;
+        SDL_GPUBuffer *vb; Uint32 vcap;
+        SDL_GPUTransferBuffer *up; Uint32 upcap;
+        vec v; int nseg; hw_seg_t seg[8192];
+    } hw;
     gscratch sc;                            /* this picture's CPU setup lists (Part B, 16 November 2026: per set, so two pictures' setups can run at once) */
 } gset;
 
 struct gpu_compose {
+    char shader_dir[512];
+    struct { int tried, ok; SDL_GPUGraphicsPipeline *pipe[6], *rpipe; SDL_GPUComputePipeline *pexport; SDL_GPUSampler *smp; } hw;
     SDL_GPUDevice *dev;
     SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present;
     int own_device;
@@ -202,6 +211,7 @@ static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, i
     if (!g) return NULL;
     g->dev = device;
     g->own_device = own;
+    snprintf(g->shader_dir, sizeof g->shader_dir, "%s", shader_dir ? shader_dir : ".");
     g->p_bands = load_pipeline(g->dev, shader_dir, "gpu_bands_x.dxil", 1, 4, 0, 64, 1);
     g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys_x.dxil", 4, 4, 0, 16, 16);
     g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes_x.dxil", 4, 6, 0, 16, 16);
@@ -251,7 +261,18 @@ void gpu_compose_destroy(gpu_compose *g)
             if (q->down) SDL_ReleaseGPUTransferBuffer(g->dev, q->down);
             if (q->up2) SDL_ReleaseGPUTransferBuffer(g->dev, q->up2);
             if (q->upb) SDL_ReleaseGPUTransferBuffer(g->dev, q->upb);
+            for (int k = 0; k < 4; k++) if (q->hw.pt[k]) SDL_ReleaseGPUTexture(g->dev, q->hw.pt[k]);
+            if (q->hw.tout) SDL_ReleaseGPUTexture(g->dev, q->hw.tout);
+            if (q->hw.tpal) SDL_ReleaseGPUTexture(g->dev, q->hw.tpal);
+            if (q->hw.dpt) SDL_ReleaseGPUTexture(g->dev, q->hw.dpt);
+            if (q->hw.vb) SDL_ReleaseGPUBuffer(g->dev, q->hw.vb);
+            if (q->hw.up) SDL_ReleaseGPUTransferBuffer(g->dev, q->hw.up);
+            free(q->hw.v.p);
         }
+        for (int k = 0; k < 6; k++) if (g->hw.pipe[k]) SDL_ReleaseGPUGraphicsPipeline(g->dev, g->hw.pipe[k]);
+        if (g->hw.rpipe) SDL_ReleaseGPUGraphicsPipeline(g->dev, g->hw.rpipe);
+        if (g->hw.pexport) SDL_ReleaseGPUComputePipeline(g->dev, g->hw.pexport);
+        if (g->hw.smp) SDL_ReleaseGPUSampler(g->dev, g->hw.smp);
         if (g->p_bands) SDL_ReleaseGPUComputePipeline(g->dev, g->p_bands);
         if (g->p_polys) SDL_ReleaseGPUComputePipeline(g->dev, g->p_polys);
         if (g->p_strokes) SDL_ReleaseGPUComputePipeline(g->dev, g->p_strokes);
@@ -1179,6 +1200,325 @@ static void pack_job(void *vc, int k)
     for (size_t j = s0; j < s1; j++) { const ctri *tr = &c->sc->strokes.t[j]; uint32_t *wd = c->stw + j * 40; tri_words(wd, tr); wd[7] = tr->w7; }
 }
 
+/* ---- The hardware-rasterised composite (F117_HW_RASTER=1; owner's decision of 17 November 2026: pictures may differ from the exact compositor by a pixel here and there).
+ * The records the compute path classifies are drawn here with the graphics pipeline: polygons with a depth buffer, the AND / OR / stipple fills as blend MIN / MAX / 0.5 on index
+ * bit planes, the strokes as quads, then a resolve pass (palette lookup, the sea's smoothing) and an export pass into the pixel buffers the replace step reads. Same inputs and
+ * outputs as gpu_compose_begin's compute passes; docs/gpu-compositor.md, "the hardware path". The rules still approximated: the ground rule (owner bit 11), the same-object decal
+ * tolerance, the neighbour rules of strokes. */
+typedef struct { float x, y, d, c[4]; uint32_t idx, own, dith; } hw_vtx;
+enum { HK_POLY, HK_LINE, HK_ZRESET, HK_AND, HK_OR, HK_STIP, HK_N };
+typedef hw_seg_t hw_seg;
+#define HW_SEGS 8192
+static int hw_on(void) { static int on = -1; if (on < 0) { const char *e = getenv("F117_HW_RASTER"); on = e && e[0] && e[0] != '0'; } return on; }
+
+static SDL_GPUShader *hw_shader(SDL_GPUDevice *d, const char *dir, const char *name, SDL_GPUShaderStage st, const char *entry, Uint32 samplers)
+{
+    char path[1024]; snprintf(path, sizeof path, "%s/%s", dir, name);
+    size_t sz = 0; void *code = SDL_LoadFile(path, &sz);
+    if (!code) return NULL;
+    SDL_GPUShaderCreateInfo ci; memset(&ci, 0, sizeof ci);
+    ci.code = (const Uint8 *)code; ci.code_size = sz; ci.entrypoint = entry; ci.format = SDL_GPU_SHADERFORMAT_DXIL; ci.stage = st; ci.num_samplers = samplers;
+    SDL_GPUShader *s = SDL_CreateGPUShader(d, &ci);
+    SDL_free(code);
+    return s;
+}
+enum { HB_OVR, HB_NONE, HB_MIN, HB_MAX, HB_STIP, HB_ADD };
+static SDL_GPUColorTargetDescription hw_target(SDL_GPUTextureFormat f, int b)
+{
+    SDL_GPUColorTargetDescription t; memset(&t, 0, sizeof t); t.format = f;
+    SDL_GPUColorTargetBlendState *s = &t.blend_state;
+    if (b == HB_NONE) { s->enable_color_write_mask = true; s->color_write_mask = 0; }
+    else if (b == HB_MIN || b == HB_MAX || b == HB_ADD) {
+        s->enable_blend = true; s->src_color_blendfactor = s->src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE; s->dst_color_blendfactor = s->dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        s->color_blend_op = s->alpha_blend_op = b == HB_MIN ? SDL_GPU_BLENDOP_MIN : b == HB_ADD ? SDL_GPU_BLENDOP_ADD : SDL_GPU_BLENDOP_MAX;
+    } else if (b == HB_STIP) {
+        s->enable_blend = true; s->src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA; s->dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA; s->color_blend_op = SDL_GPU_BLENDOP_ADD;
+        s->src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE; s->dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO; s->alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    }
+    return t;
+}
+
+/* the pipelines, once; 0 when a shader or pipeline is missing (the caller then uses the compute path) */
+static int hw_init(gpu_compose *g)
+{
+    if (g->hw.tried) return g->hw.ok;
+    g->hw.tried = 1;
+    SDL_GPUDevice *d = g->dev; const char *dir = g->shader_dir;
+    SDL_GPUShader *vs = hw_shader(d, dir, "gpu_hw_vs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "vs", 0), *ps = hw_shader(d, dir, "gpu_hw_ps.dxil", SDL_GPU_SHADERSTAGE_FRAGMENT, "ps", 0);
+    SDL_GPUShader *rvs = hw_shader(d, dir, "gpu_hw_rvs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "rvs", 0), *rps = hw_shader(d, dir, "gpu_hw_rps.dxil", SDL_GPU_SHADERSTAGE_FRAGMENT, "rps", 5);
+    if (!vs || !ps || !rvs || !rps) { fprintf(stderr, "[hw-raster] shaders missing in %s: the compute path is used\n", dir); return 0; }
+    char path[1024]; snprintf(path, sizeof path, "%s/gpu_hw_export.dxil", dir);
+    size_t sz = 0; void *code = SDL_LoadFile(path, &sz);
+    if (code) {
+        SDL_GPUComputePipelineCreateInfo ci; memset(&ci, 0, sizeof ci);
+        ci.code = (const Uint8 *)code; ci.code_size = sz; ci.entrypoint = "main"; ci.format = SDL_GPU_SHADERFORMAT_DXIL;
+        ci.num_readonly_storage_textures = 2; ci.num_readwrite_storage_buffers = 3; ci.num_uniform_buffers = 1; ci.threadcount_x = 16; ci.threadcount_y = 16; ci.threadcount_z = 1;
+        g->hw.pexport = SDL_CreateGPUComputePipeline(d, &ci);
+        SDL_free(code);
+    }
+    if (!g->hw.pexport) { fprintf(stderr, "[hw-raster] the export shader is missing or refused: the compute path is used\n"); return 0; }
+    SDL_GPUVertexBufferDescription vb = { 0, sizeof(hw_vtx), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 };
+    SDL_GPUVertexAttribute at[6] = { { 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 0 }, { 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, 8 }, { 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 12 },
+                                     { 3, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 28 }, { 4, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 32 }, { 5, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 36 } };
+    const SDL_GPUTextureFormat FC = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    static const int blends[HK_N][4] = { { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { 0, 0, 0, 0 },
+                                         { HB_NONE, HB_MIN, HB_MIN, HB_ADD }, { HB_NONE, HB_MAX, HB_MAX, HB_ADD }, { HB_STIP, HB_NONE, HB_NONE, HB_OVR } };
+    for (int k = 0; k < HK_N; k++) {
+        if (k == HK_ZRESET) continue;
+        SDL_GPUColorTargetDescription ct[4]; for (int j = 0; j < 4; j++) ct[j] = hw_target(FC, blends[k][j]);
+        SDL_GPUGraphicsPipelineCreateInfo pi; memset(&pi, 0, sizeof pi);
+        pi.vertex_shader = vs; pi.fragment_shader = ps;
+        pi.vertex_input_state.vertex_buffer_descriptions = &vb; pi.vertex_input_state.num_vertex_buffers = 1; pi.vertex_input_state.vertex_attributes = at; pi.vertex_input_state.num_vertex_attributes = 6;
+        pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL; pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE; pi.rasterizer_state.enable_depth_clip = false;
+        pi.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        pi.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL; pi.depth_stencil_state.enable_depth_test = true; pi.depth_stencil_state.enable_depth_write = (k == HK_POLY);
+        pi.target_info.color_target_descriptions = ct; pi.target_info.num_color_targets = 4; pi.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT; pi.target_info.has_depth_stencil_target = true;
+        g->hw.pipe[k] = SDL_CreateGPUGraphicsPipeline(d, &pi);
+        if (!g->hw.pipe[k]) { fprintf(stderr, "[hw-raster] pipeline %d refused: %s\n", k, SDL_GetError()); return 0; }
+    }
+    {
+        SDL_GPUColorTargetDescription ct = hw_target(FC, HB_OVR);
+        SDL_GPUGraphicsPipelineCreateInfo pi; memset(&pi, 0, sizeof pi);
+        pi.vertex_shader = rvs; pi.fragment_shader = rps; pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL; pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE; pi.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        pi.target_info.color_target_descriptions = &ct; pi.target_info.num_color_targets = 1;
+        g->hw.rpipe = SDL_CreateGPUGraphicsPipeline(d, &pi);
+        if (!g->hw.rpipe) { fprintf(stderr, "[hw-raster] resolve pipeline refused: %s\n", SDL_GetError()); return 0; }
+    }
+    SDL_GPUSamplerCreateInfo si; memset(&si, 0, sizeof si); si.min_filter = si.mag_filter = SDL_GPU_FILTER_NEAREST; si.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+    si.address_mode_u = si.address_mode_v = si.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    g->hw.smp = SDL_CreateGPUSampler(d, &si);
+    if (!g->hw.smp) return 0;
+    fprintf(stderr, "[hw-raster] on: pictures are drawn with the graphics pipeline (a pixel here and there from the exact compositor)\n");
+    g->hw.ok = 1;
+    return 1;
+}
+
+typedef struct { double x, y, z; } hw_dv;
+static int hw_clip(const remaster_v3 *in, int n, double nz, hw_dv *out)
+{
+    int m = 0;
+    for (int i = 0; i < n && m < 38; i++) {
+        const remaster_v3 a = in[i], b = in[(i + 1) % n];
+        const int ia = a.z >= nz, ib = b.z >= nz;
+        if (ia) out[m++] = (hw_dv){ a.x, a.y, a.z };
+        if (ia != ib) { const double k = (nz - a.z) / ((double)b.z - a.z); out[m++] = (hw_dv){ a.x + k * ((double)b.x - a.x), a.y + k * ((double)b.y - a.y), nz }; }
+    }
+    return m;
+}
+static int hw_push(vec *v, float x, float y, float d, uint32_t col, uint32_t idx, uint32_t own, int dith)
+{
+    const size_t n = v->n / sizeof(hw_vtx);
+    if (!vec_reserve(v, (n + 1) * sizeof(hw_vtx))) return 0;
+    hw_vtx *q = (hw_vtx *)v->p + n;
+    q->x = x; q->y = y; q->d = d;
+    q->c[0] = (float)((col >> 16) & 255) / 255.0f; q->c[1] = (float)((col >> 8) & 255) / 255.0f; q->c[2] = (float)(col & 255) / 255.0f; q->c[3] = 1.0f;
+    q->idx = idx; q->own = own; q->dith = (uint32_t)dith;
+    return 1;
+}
+
+static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
+{
+    if (s->hw.w == w && s->hw.h == h && s->hw.pt[0]) return 1;
+    for (int k = 0; k < 4; k++) if (s->hw.pt[k]) { SDL_ReleaseGPUTexture(g->dev, s->hw.pt[k]); s->hw.pt[k] = NULL; }
+    if (s->hw.tout) { SDL_ReleaseGPUTexture(g->dev, s->hw.tout); s->hw.tout = NULL; }
+    if (s->hw.dpt) { SDL_ReleaseGPUTexture(g->dev, s->hw.dpt); s->hw.dpt = NULL; }
+    SDL_GPUTextureCreateInfo ti; memset(&ti, 0, sizeof ti);
+    ti.type = SDL_GPU_TEXTURETYPE_2D; ti.width = (Uint32)w; ti.height = (Uint32)h; ti.layer_count_or_depth = 1; ti.num_levels = 1; ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    ti.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ;
+    for (int k = 0; k < 4; k++) if (!(s->hw.pt[k] = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
+    if (!(s->hw.tout = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
+    ti.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT; ti.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    if (!(s->hw.dpt = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
+    if (!s->hw.tpal) {
+        SDL_GPUTextureCreateInfo pi = ti; pi.width = 256; pi.height = 1; pi.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; pi.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        if (!(s->hw.tpal = SDL_CreateGPUTexture(g->dev, &pi))) return 0;
+    }
+    s->hw.w = w; s->hw.h = h;
+    return 1;
+}
+
+/* the same job as gpu_compose_begin's compute path, for F117_HW_RASTER; 1 on success, 0 when the compute path has to be used */
+static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
+{
+    if (!hw_init(g)) return 0;
+    gset *s = GS(g);
+    const int w = in->w, h = in->h, tw = in->tw;
+    const size_t px = (size_t)tw * h;
+    s->hw.nseg = 0;
+    vec *vv = &s->hw.v; vv->n = 0;
+    hw_seg *S = s->hw.seg; int nseg = 0;
+    double maxiz = 0;
+    for (uint32_t i = 0; i < in->nrec; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LINE) { const double sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0; if (r->near_z > 0 && sc / r->near_z > maxiz) maxiz = sc / r->near_z; }
+    }
+    const float DS = maxiz > 0 ? (float)(1.0 / maxiz) : 1.0f;
+    const double fw = (double)tw, fh = (double)h;
+#define HNDCX(x) ((float)((x) * 2.0 / fw - 1.0))
+#define HNDCY(y) ((float)(1.0 - (y) * 2.0 / fh))
+#define HSEG(hf, hc, hk) do { if ((hc) && nseg < HW_SEGS) { S[nseg].first = (hf); S[nseg].count = (hc); S[nseg].kind = (hk); nseg++; } } while (0)
+    int cur = HK_POLY; size_t curfirst = 0;
+    for (uint32_t i = 0; i < in->nrec; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0;
+        const size_t nv0 = vv->n / sizeof(hw_vtx);
+        if (r->kind == REMASTER_T_CLEAR) {
+            const uint32_t own = 16;
+            if (!hw_push(vv, -1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0) ||
+                !hw_push(vv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, 1, -1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0)) return 0;
+        } else if (r->kind == REMASTER_T_ZRESET) {
+            HSEG(curfirst, nv0 - curfirst, cur); curfirst = nv0; cur = HK_POLY;
+            if (nseg < HW_SEGS) { S[nseg].first = 0; S[nseg].count = 0; S[nseg].kind = HK_ZRESET; nseg++; }
+        } else if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_SHADED || r->kind == REMASTER_T_LOGIC) {
+            hw_dv c[40]; const int m = hw_clip(r->v, r->n, nz, c); if (m < 3) continue;
+            float px_[40], py_[40], pd[40];
+            for (int k = 0; k < m; k++) { px_[k] = HNDCX(cx + sx * c[k].x / c[k].z); py_[k] = HNDCY(cy + sy * c[k].y / c[k].z); pd[k] = (float)(sc / c[k].z * DS); }
+            int sk = HK_POLY; uint32_t own = r->kind == REMASTER_T_SHADED ? 16u : 0u, idx = r->paint_index, col0 = r->color;
+            if (r->kind == REMASTER_T_LOGIC) {
+                idx = r->value & 255u;
+                if (r->op == REMASTER_STIPPLE) { sk = HK_STIP; own = 2; col0 = in->palette[r->value & 255]; }
+                else if (r->op == REMASTER_OR) { sk = HK_OR; own = 1 | (r->value == 0x80 ? 4u : 0u); }
+                else { sk = HK_AND; own = 1; }
+            }
+            if (sk != cur) { HSEG(curfirst, nv0 - curfirst, cur); cur = sk; curfirst = nv0; }
+            for (int k = 1; k + 1 < m; k++) {
+                const int idxs[3] = { 0, k, k + 1 };
+                for (int q = 0; q < 3; q++) {
+                    const int vi = idxs[q]; uint32_t col = col0;
+                    if (r->kind == REMASTER_T_SHADED && vi < r->n) col = r->colors[vi];
+                    if (!hw_push(vv, px_[vi], py_[vi], pd[vi], col, idx, own, r->kind == REMASTER_T_SHADED)) return 0;
+                }
+            }
+        }
+    }
+    HSEG(curfirst, vv->n / sizeof(hw_vtx) - curfirst, cur);
+    {   /* the strokes and dots: quads with square caps, depth scaled by 1 / 0.97 (the decal tolerance) */
+        const size_t line0 = vv->n / sizeof(hw_vtx);
+        for (uint32_t i = 0; i < in->nrec; i++) {
+            const gpu_trace_rec *r = &in->recs[i]; if (r->kind != REMASTER_T_LINE) continue;
+            const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0, bias = r->line_bias > 0 ? r->line_bias : 1.5;
+            if (r->v[0].z < nz && r->v[1].z < nz) continue;
+            hw_dv a = { r->v[0].x, r->v[0].y, r->v[0].z }, b = { r->v[1].x, r->v[1].y, r->v[1].z };
+            if (a.z < nz) { const double k = (nz - a.z) / (b.z - a.z); a = (hw_dv){ a.x + k * (b.x - a.x), a.y + k * (b.y - a.y), nz }; }
+            else if (b.z < nz) { const double k = (nz - b.z) / (a.z - b.z); b = (hw_dv){ b.x + k * (a.x - b.x), b.y + k * (a.y - b.y), nz }; }
+            const double ax = cx + sx * a.x / a.z, ay = cy + sy * a.y / a.z, bx = cx + sx * b.x / b.z, by = cy + sy * b.y / b.z;
+            double dx = bx - ax, dy = by - ay, L = sqrt(dx * dx + dy * dy); const double hwid = (r->width > 1.0 ? r->width : 1.0) * 0.5;
+            if (L < 1e-6) { dx = 1; dy = 0; L = 1; }
+            const double nx = -dy / L * hwid, ny = dx / L * hwid, ex = dx / L * hwid, ey = dy / L * hwid;
+            const double ax0 = ax - ex, ay0 = ay - ey, bx0 = bx + ex, by0 = by + ey;
+            const float da = (float)(bias * sc / a.z * DS / 0.97), db = (float)(bias * sc / b.z * DS / 0.97);
+            const uint32_t pi = r->paint_index, own = 8;
+            if (!hw_push(vv, HNDCX(ax0 + nx), HNDCY(ay0 + ny), da, r->color, pi, own, 0) || !hw_push(vv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
+                !hw_push(vv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0) || !hw_push(vv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
+                !hw_push(vv, HNDCX(bx0 - nx), HNDCY(by0 - ny), db, r->color, pi, own, 0) || !hw_push(vv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0)) return 0;
+        }
+        HSEG(line0, vv->n / sizeof(hw_vtx) - line0, HK_LINE);
+    }
+#undef HNDCX
+#undef HNDCY
+#undef HSEG
+    const Uint64 t_built = SDL_GetTicksNS();
+    if (!hw_ensure_tex(g, s, tw, h)) return 0;
+    const Uint32 vbytes = (Uint32)(vv->n ? vv->n : sizeof(hw_vtx));
+    const Uint32 pbytes = (Uint32)(px * 4), game_bytes = (Uint32)(((size_t)w * h + 7) & ~(size_t)3);
+    const SDL_GPUBufferUsageFlags RO = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, RW = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+    if (s->hw.vcap < vbytes) {
+        if (s->hw.vb) SDL_ReleaseGPUBuffer(g->dev, s->hw.vb);
+        Uint32 cap = s->hw.vcap ? s->hw.vcap : (1u << 20); while (cap < vbytes) cap *= 2;
+        SDL_GPUBufferCreateInfo bi = { SDL_GPU_BUFFERUSAGE_VERTEX, cap, 0 };
+        s->hw.vb = SDL_CreateGPUBuffer(g->dev, &bi); s->hw.vcap = s->hw.vb ? cap : 0;
+        if (!s->hw.vb) return 0;
+    }
+    gbuf *pixbufs[] = { &s->colour, &s->index_, &s->invz, &s->owner, &s->strokez, &s->outpix };
+    for (int k = 0; k < 6; k++) if (!gbuf_ensure(g->dev, pixbufs[k], RW, pbytes)) return 0;
+    if (!gbuf_ensure(g->dev, &s->tf, RO, 1024) || !gbuf_ensure(g->dev, &s->src, RO, game_bytes) || !gbuf_ensure(g->dev, &s->tag, RO, game_bytes) || !gbuf_ensure(g->dev, &s->dac, RO, 768)) return 0;
+    if (s->down_cap < pbytes) {                    /* finish's readback (verification) */
+        if (s->down) SDL_ReleaseGPUTransferBuffer(g->dev, s->down);
+        SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, pbytes, 0 };
+        s->down = SDL_CreateGPUTransferBuffer(g->dev, &ti); s->down_cap = s->down ? pbytes : 0;
+        if (!s->down) return 0;
+    }
+    const Uint32 total = vbytes + 1024 + 1024;
+    if (s->hw.upcap < total) {
+        if (s->hw.up) SDL_ReleaseGPUTransferBuffer(g->dev, s->hw.up);
+        SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, total + total / 2, 0 };
+        s->hw.up = SDL_CreateGPUTransferBuffer(g->dev, &ti); s->hw.upcap = s->hw.up ? ti.size : 0;
+        if (!s->hw.up) return 0;
+    }
+    {
+        Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, s->hw.up, true);
+        if (!m) return 0;
+        if (vv->n) memcpy(m, vv->p, vv->n); else memset(m, 0, sizeof(hw_vtx));
+        memcpy(m + vbytes, in->palette, 1024);
+        uint32_t *fl = (uint32_t *)(m + vbytes + 1024);
+        for (int k = 0; k < 256; k++) fl[k] = in->tagflags[k];
+        SDL_UnmapGPUTransferBuffer(g->dev, s->hw.up);
+    }
+    SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
+    if (!cb) return 0;
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
+    { SDL_GPUTransferBufferLocation f = { s->hw.up, 0 }; SDL_GPUBufferRegion t = { s->hw.vb, 0, vbytes }; SDL_UploadToGPUBuffer(cp, &f, &t, false); }
+    { SDL_GPUTextureTransferInfo f = { s->hw.up, vbytes, 256, 1 }; SDL_GPUTextureRegion t; memset(&t, 0, sizeof t); t.texture = s->hw.tpal; t.w = 256; t.h = 1; t.d = 1; SDL_UploadToGPUTexture(cp, &f, &t, false); }
+    { SDL_GPUTransferBufferLocation f = { s->hw.up, vbytes + 1024 }; SDL_GPUBufferRegion t = { s->tf.buf, 0, 1024 }; SDL_UploadToGPUBuffer(cp, &f, &t, false); }
+    SDL_EndGPUCopyPass(cp);
+    int first = 1, clear_depth = 1;
+    for (int k = 0; k < nseg; k++) {
+        if (S[k].kind == HK_ZRESET) { clear_depth = 1; continue; }
+        SDL_GPUColorTargetInfo cti[4]; memset(cti, 0, sizeof cti);
+        for (int j = 0; j < 4; j++) { cti[j].texture = s->hw.pt[j]; cti[j].load_op = first ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; cti[j].store_op = SDL_GPU_STOREOP_STORE; }
+        SDL_GPUDepthStencilTargetInfo dti; memset(&dti, 0, sizeof dti); dti.texture = s->hw.dpt; dti.load_op = clear_depth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; dti.store_op = SDL_GPU_STOREOP_STORE; dti.clear_depth = 0.0f;
+        dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE; dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cb, cti, 4, &dti);
+        if (!rp) { fprintf(stderr, "[hw-raster] render pass refused: %s\n", SDL_GetError()); SDL_CancelGPUCommandBuffer(cb); return 0; }
+        SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[S[k].kind]); SDL_GPUBufferBinding bb = { s->hw.vb, 0 }; SDL_BindGPUVertexBuffers(rp, 0, &bb, 1);
+        SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
+        SDL_EndGPURenderPass(rp);
+        first = 0; clear_depth = 0;
+    }
+    {   /* resolve: the palette lookup and the sea's smoothing, into tout */
+        SDL_GPUColorTargetInfo cti; memset(&cti, 0, sizeof cti); cti.texture = s->hw.tout; cti.load_op = SDL_GPU_LOADOP_DONT_CARE; cti.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cb, &cti, 1, NULL);
+        if (!rp) { fprintf(stderr, "[hw-raster] resolve pass refused: %s\n", SDL_GetError()); SDL_CancelGPUCommandBuffer(cb); return 0; }
+        SDL_BindGPUGraphicsPipeline(rp, g->hw.rpipe);
+        SDL_GPUTextureSamplerBinding sb[5] = { { s->hw.pt[0], g->hw.smp }, { s->hw.pt[1], g->hw.smp }, { s->hw.pt[2], g->hw.smp }, { s->hw.pt[3], g->hw.smp }, { s->hw.tpal, g->hw.smp } };
+        SDL_BindGPUFragmentSamplers(rp, 0, sb, 5);
+        SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(rp);
+    }
+    {   /* export into the pixel buffers the replace step reads */
+        SDL_GPUStorageBufferReadWriteBinding rw[3] = { { s->colour.buf, false }, { s->invz.buf, false }, { s->strokez.buf, false } };
+        SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 3);
+        if (!c) { fprintf(stderr, "[hw-raster] export pass refused: %s\n", SDL_GetError()); SDL_CancelGPUCommandBuffer(cb); return 0; }
+        SDL_BindGPUComputePipeline(c, g->hw.pexport);
+        SDL_GPUTexture *rt[2] = { s->hw.tout, s->hw.pt[3] };
+        SDL_BindGPUComputeStorageTextures(c, 0, rt, 2);
+        const Uint32 u[4] = { (Uint32)tw, (Uint32)h, 0, 0 };
+        SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
+        SDL_DispatchGPUCompute(c, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
+        SDL_EndGPUComputePass(c);
+    }
+    const Uint64 t_prepass = SDL_GetTicksNS();
+    SDL_SubmitGPUCommandBuffer(cb);
+    s->params = *in; s->params.recs = NULL; s->params.palette = NULL; s->params.src = NULL; s->params.tag = NULL; s->params.dac = NULL; s->params.tagflags = NULL;
+    s->pbytes = pbytes; s->game_bytes = game_bytes; s->npix_game = (size_t)w * h;
+    s->setup_ms = (double)(t_built - t_start) / 1e6;
+    for (int k = 0; k < 9; k++) g_last_phase[k] = 0;
+    g_last_phase[0] = (double)(t_built - t_start) / 1e6; g_last_phase[4] = (double)(t_prepass - t_built) / 1e6; g_last_phase[5] = (double)(vv->n / sizeof(hw_vtx) / 3);
+    {   /* F117_HW_TIMING (diagnostic): the CPU side of a hardware picture, mean of each 120 */
+        static int on = -1; static double sb, sg; static unsigned n; static double nvs;
+        if (on < 0) on = getenv("F117_HW_TIMING") != NULL;
+        if (on) {
+            sb += (double)(t_built - t_start) / 1e6; sg += (double)(t_prepass - t_built) / 1e6; nvs += (double)(vv->n / sizeof(hw_vtx) / 3);
+            if (++n % 120 == 0) fprintf(stderr, "[hw-timing] mean of %u: vertices built in %.2f ms (%.0f triangles), uploaded and submitted in %.2f ms\n", n, sb / n, nvs / n, sg / n);
+        }
+    }
+    s->t_begin = SDL_GetTicksNS();
+    s->begun = 1;
+    return 1;
+}
+
 int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 {
     if (!g || !in) return 0;
@@ -1193,6 +1533,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     faces_wait(SC(g));       /* a previous call on this set that returned early may have left the face list running */
     GS(g)->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
+    if (hw_on() && hw_begin(g, in, t_start)) return 1;
     const int w = in->w, h = in->h, tw = in->tw;
     const size_t px = (size_t)tw * h;
     if (px * 4 > 0x7FFFFFFFu) { say(g, "the picture is too large"); return 0; }
