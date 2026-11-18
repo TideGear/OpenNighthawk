@@ -46,6 +46,10 @@ EXPECTED = [
     ("ROSTER.FIL", 802, "1977ab817899c3bc33f28a9ca5ee2f894e33ea7ae5f8d033e4c89b0be743bdb3"),
 ]
 
+# Files the game itself rewrites (the pilot roster when a pilot is made or a mission flown, the sound setup logs when SETUP runs). The translation reads
+# none of them, so a copy that has been played is still the right version: they are reported, never refused.
+PLAYER_DATA = ("ROSTER.FIL", "ASOUND.LOG", "ISOUND.LOG", "RSOUND.LOG")
+
 # GOG's DOSBox: the reference tools/fidelity.py runs. Not part of the game;
 # Steam ships a different build (0.74) with different settings.
 GOG_DOSBOX = [
@@ -71,22 +75,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install folder")
     a = ap.parse_args()
-    def check(items):
+    def check(items, optional=()):
         bad = 0
         for rel, size, digest in items:
             p = find_ci(a.data, rel)
+            soft = rel in optional
             if not p:
-                print("  MISSING    %s" % rel)
-                bad += 1
+                print("  MISSING    %s%s" % (rel, " (not needed: player data)" if soft else ""))
+                bad += not soft
                 continue
             h = hashlib.sha256(open(p, "rb").read()).hexdigest()
             ok = h == digest and os.path.getsize(p) == size
-            bad += not ok
-            print("  %-10s %s" % ("ok" if ok else "DIFFERENT", rel))
+            bad += not (ok or soft)
+            if soft and not ok: check.soft += 1
+            print("  %-10s %s%s" % ("ok" if ok else "DIFFERENT", rel, " (player data or a setup log: playing or running the game's SETUP changes it; accepted)" if soft and not ok else ""))
         return bad
+    check.soft = 0
     print("The game:")
-    bad = check(EXPECTED)
-    print("%d of %d game files match the verified version" % (len(EXPECTED) - bad, len(EXPECTED)))
+    bad = check(EXPECTED, PLAYER_DATA)
+    print("%d of %d game files match the verified version%s" % (len(EXPECTED) - bad - check.soft, len(EXPECTED),
+          "; %d player-data or log file(s) differ and are accepted" % check.soft if check.soft else ""))
     print("GOG's DOSBox (the fidelity reference; optional):")
     dbad = check(GOG_DOSBOX)
     print("%d of %d match GOG's" % (len(GOG_DOSBOX) - dbad, len(GOG_DOSBOX)))
