@@ -111,3 +111,9 @@ The 1 November pictures-per-second measurement, the ONTests build notes and the 
 - The stray session `session-20261108-170558` (made by a test launch of mine without a private save folder) was deleted from AppData with his approval; nothing else was deleted.
 - R38: first candidate rejected; revised result "much better" (9 Nov); validated and on by default that evening.
 - New reports of 8 Nov 21:20: R39 (performance) and, under R38, lines that grow thick near mountains and stay spotted far away. The dated verification notes of those two days are in `git log` and in [gpu-compositor.md](gpu-compositor.md).
+
+## Player reports (users of the released build)
+
+| # | What the player saw | Status | Known so far |
+|---|---|---|---|
+| U1 | 18 Nov 2026, RecompLauncher v2026.11.13, Windows 10 22H2, i7-3770K, RTX 2070, no log: "It can't detect my original GOG or Steam version of F-117A. It keeps saying that it's not the right version." | FIXED in source (bd15de0), awaiting the player's confirmation; cause not proven | `tools/verify_install.py` compared `ROSTER.FIL` and the three sound-setup logs byte for byte, but the game rewrites them when a pilot is made or SETUP runs, and the translation reads none of them; a copy that has been played was refused as the wrong version. They are now accepted and reported as player data; the code and driver files must still match (a changed `VGAME.EXE` is refused). If the player's report persists, the cause is a different build of the game files: ask for the output of `py tools/verify_install.py --data FOLDER` (it names the differing file) or the setup log in `logs` under the install folder. Not yet released: a new release is needed for the launcher to carry it (ask the owner first). |
