@@ -219,6 +219,7 @@ void drawlive_set_rerun(drawlive *r)
     const char *clock = getenv("F117_PRESENT_CLOCK");
     r->smooth = !(clock && !strcmp(clock, "raw"));      /* the smoothed clock, unless F117_PRESENT_CLOCK=raw */
     r->ema_alpha = 0.4; r->pull_in = 0.025;
+    if (getenv("F117_STAGE2")) { const char *dl = getenv("F117_STAGE2_DELAY"); r->extra_delay = dl && *dl ? atof(dl) : 0.75; if (r->extra_delay < 0) r->extra_delay = 0; if (r->extra_delay > 1) r->extra_delay = 1; }
     const char *a = getenv("F117_PRESENT_CLOCK_ALPHA"), *p = getenv("F117_PRESENT_CLOCK_PULL");   /* tuning only */
     if (a && atof(a) > 0 && atof(a) <= 1) r->ema_alpha = atof(a);
     if (p && atof(p) > 0 && atof(p) <= 1) r->pull_in = atof(p);
@@ -642,9 +643,9 @@ static int plan_smooth(drawlive *r, uint64_t icount, drawlive_plan *plan)
     const drawlive_step *newest = &r->step[r->ib];
     const uint64_t oldest_seq = r->ia >= 0 ? r->step[r->ia].seq : r->step[r->im].seq;
     const double N = (double)newest->seq;
-    if (!r->play_icount) { r->play_pos = N - 1.0; r->play_icount = icount; }
+    if (!r->play_icount) { r->play_pos = N - 1.0 - r->extra_delay; r->play_icount = icount; }
     if (icount > r->play_icount) {
-        const double rate = 1.0 + r->pull_in * ((N - 1.0) - r->play_pos);
+        const double rate = 1.0 + r->pull_in * ((N - 1.0 - r->extra_delay) - r->play_pos);
         r->play_pos += (rate > 0.2 ? rate : 0.2) * (double)(icount - r->play_icount) / r->ema;
     }
     r->play_icount = icount;
@@ -722,7 +723,26 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             if (r->scale) { r->shown_hi = b->picture_hi; r->shown_tag = b->picture_tag; }
             return 1;
         }
-        if (plan->stage2 && !plan->extrapolate) {        /* the nearer step's own picture; its scene is the blend the host staged */
+        if (plan->stage2 && !plan->extrapolate) {        /* the picture layer (the HUD), then the scene: the blend the host staged */
+            {   /* The picture layer at this picture's own time (17 November 2026): the two steps' draw lists interpolated and drawn, as the Enhanced path does, with no machine copy.
+                 * The nearer step's finished picture moved the HUD's horizon bar and pitch ladder at the game's 15 steps a second while the world under them moved every picture. */
+                static int hud_step = -1;
+                if (hud_step < 0) hud_step = getenv("F117_STAGE2_HUD_STEP") != NULL;      /* =1: the nearer step's own picture, as before */
+                if (!hud_step && b->pair && a->parsed && b->parsed) {
+                    int sb;
+                    interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
+                                        (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD | INTERP_BANDS | INTERP_HUD_HOLD : 0),
+                                        &r->ilist, &sb, r->istats);
+                    const uint8_t *hp = draw_list(r, sb ? b : a);
+                    if (hp) {
+                        memcpy(f->vram, hp, 64000);
+                        if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
+                        r->shown_copy = 1;
+                        r->inbetweens++;
+                        return 1;
+                    }
+                }
+            }
             const drawlive_step *nr = plan->t >= 0.5 ? b : a;
             memcpy(f->vram, nr->picture, 64000);
             if (r->scale) { r->shown_hi = nr->picture_hi; r->shown_tag = nr->picture_tag; }

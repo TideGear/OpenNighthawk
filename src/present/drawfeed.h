@@ -144,6 +144,7 @@ typedef struct {
     int            smooth, im;
     double         play_pos, ema;
     double         ema_alpha, pull_in;   /* clock tuning: weight of a new step duration, pull towards one step behind */
+    double         extra_delay;          /* Part B Stage 2: steps the smoothed playback position is held further behind (F117_STAGE2_DELAY, default 0.75 with F117_STAGE2): the step's own scene is ready before its pictures are drawn, so no picture is extrapolated; at most 1 */
     uint64_t       play_icount, last_end;
     int            newest;         /* the last step kept, staged or published, -1 none */
     int            queue[DRAWLIVE_QUEUE]; /* collected steps (their index) and exact-frame failures (-1), in order */

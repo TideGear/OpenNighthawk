@@ -963,6 +963,8 @@ static void record_scene(scene_job *sj)
     remaster_trace_hook = NULL; g_record_only = 0;
 }
 
+static F117_TLS double g_last_record_ms, g_last_record_n;
+void remaster_live_last_record(double *ms, double *records) { *ms = g_last_record_ms; *records = g_last_record_n; }
 static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h, int tw, int xoff, int complete, gpu_compose_in *gin, uint32_t *palette)
 {
     static uint8_t stand_in[64];
@@ -978,7 +980,9 @@ static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h
     double tm[4] = { 0 };
     sj.timing = timed ? &tm : NULL; sj.row_tile = 0;
     const double t_prepare = timed ? now_ms() : 0.0;
+    const double t_rec0 = now_ms();
     record_scene(&sj);
+    g_last_record_ms = now_ms() - t_rec0; g_last_record_n = (double)g_trace_n;
     if (timed) {        /* diagnostic: where the scene recording goes, every 120th picture (stderr): the clear, the bands, the primitives, the lines */
         static double sum[5], recs; static unsigned count;
         for (int k = 0; k < 4; k++) sum[k] += tm[k];
@@ -2450,10 +2454,21 @@ static void stage2_blend_part(void *arg, int part)
     stage2_blend_job *j = (stage2_blend_job *)arg;
     const int parts = j->parts > 0 ? j->parts : g_s2_parts;
     const size_t n = j->nr->n, from = n * (size_t)part / (size_t)parts, to = n * (size_t)(part + 1) / (size_t)parts;
+    static int freeze_lights = -1;     /* F117_STAGE2_FREEZE_LIGHTS=1 (experiment): lines and dots (the lights) keep the nearer step's own place, no blend */
+    if (freeze_lights < 0) freeze_lights = getenv("F117_STAGE2_FREEZE_LIGHTS") != NULL;
     for (size_t i = from; i < to; i++) {
         remaster_prim p = j->nr->prim[i];
-        if (j->match[i] >= 0) {
+        if (j->match[i] >= 0 && !(freeze_lights && p.kind != SCENE_POLYGON)) {
             const remaster_prim *q = &j->fr->prim[j->match[i]];
+            /* A light (a line or dot) whose first vertex moves more than F117_STAGE2_LIGHT_MAX game pixels (default 1.5) between the two steps stays where the nearer step has it: such a move is
+             * a wrong partner or a near object, and blending it made the coast's lights flicker (a third more flipping pixels than the original path); the small, steady moves of far lights are blended. */
+            static double light_max = -1.0;
+            if (light_max < 0.0) { const char *e = getenv("F117_STAGE2_LIGHT_MAX"); light_max = e && *e ? atof(e) : 1.5; }
+            if (p.kind != SCENE_POLYGON && p.n >= 1 && q->n >= 1 && light_max < 1e6) {
+                const double zr = p.v[0].z > 0 ? (double)p.v[0].z : 1.0;
+                const double mx = fabs((double)q->v[0].x - p.v[0].x), my = fabs((double)q->v[0].y - p.v[0].y);
+                if ((mx > my ? mx : my) * 256.0 > light_max * zr) { j->out[i] = p; continue; }
+            }
             for (int v = 0; v < p.n && v < q->n; v++) {
                 p.v[v].x += (int32_t)floor(j->wf * ((double)q->v[v].x - p.v[v].x) + 0.5);
                 p.v[v].y += (int32_t)floor(j->wf * ((double)q->v[v].y - p.v[v].y) + 0.5);

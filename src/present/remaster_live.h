@@ -40,6 +40,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k);
 /* While set (on the calling thread), remaster_live_compose reads colours from this 768-byte six-bit palette instead of the machine's: the composite can then
  * run on another thread than the machine's, with the palette of the frame it belongs to. NULL: the machine's. */
 void remaster_live_set_palette(const uint8_t *dac);
+void remaster_live_last_record(double *ms, double *records);   /* F117_SETUP_SLOW: the last scene recording on this thread: milliseconds, records */
 void remaster_live_set_palette_thread(const uint8_t *dac);   /* this thread only (the pipeline's setup thread): its palette, ahead of the shared override */
 void remaster_live_ignore_palette_override(int on);   /* this thread, a copy's, ignores the override the worker set */
 /* The GPU compositor (gpu_compose.h), registered by the app: given a composite's raster calls and the replace step's inputs it writes the wide picture and returns 1, or

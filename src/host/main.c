@@ -800,6 +800,16 @@ static int present_setup_main(void *u)
                 if (on) {
                     const double ms = (double)(SDL_GetTicksNS() - a0) / 1e6;
                     sum += ms; if (ms > worst) worst = ms; if (ms > 12.0) over++;
+                    {   /* F117_SETUP_SLOW=MS: each setup longer than that, with its phases (the first 80 lines) */
+                        static double slow_ms = -2, last_end = 0; static unsigned slow_n;
+                        const double since_prev = last_end > 0 ? (double)a0 / 1e6 - last_end : 0.0; last_end = (double)SDL_GetTicksNS() / 1e6;
+                        if (slow_ms == -2) { const char *e = getenv("F117_SETUP_SLOW"); slow_ms = e ? atof(e) : -1; }
+                        if (slow_ms > 0 && ms > slow_ms && slow_n < 80) {
+                            double ph[9], rec, recn; gpu_compose_last_phases(ph); remaster_live_last_record(&rec, &recn); slow_n++;
+                            fprintf(stderr, "[setup-slow] picture %u clock %llu: %.1f ms = record %.1f (%.0f records) + classify %.1f + bin %.1f + pack %.1f + buffers %.1f + copy %.1f; %.0f triangles, %.1f MB; acquire %.1f, submit %.1f; %.1f ms since the previous setup ended\n",
+                                    n + 1, (unsigned long long)H.m.cpu.icount, ms, rec, recn, ph[0], ph[1], ph[2], ph[3], ph[4], ph[5], ph[6], ph[7], ph[8], since_prev);
+                        }
+                    }
                     if (++n % 60 == 0) fprintf(stderr, "[setup] %u pictures: mean %.2f ms, worst %.2f, %u over 12 ms\n", n, sum / n, worst, over);
                 }
             }
@@ -3414,6 +3424,16 @@ int main(int argc, char **argv)
                                 c_pair = (double)SDL_GetTicksNS() / 1e6 - pr0;
                             }
                         }
+                        {   /* F117_STAGE2_TRACE=CLOCK (diagnostic): every picture from that clock: which pairing it shows and at what t (proper = this interval's own pairing; extrap = the previous interval's at t above 1; held = the newest pairing at its end) */
+                            static uint64_t tr_from = ~0ull; static int tr_init, tr_n;
+                            if (!tr_init) { const char *e = getenv("F117_STAGE2_TRACE"); tr_from = e ? strtoull(e, NULL, 0) : ~0ull; tr_init = 1; }
+                            if (tr_from != ~0ull && H.m.cpu.icount >= tr_from && tr_n < 600) {
+                                const int proper = kp >= 0 && ok && g_s2.pa[kp] == plan.older && g_s2.pb[kp] == plan.newer;
+                                tr_n++;
+                                fprintf(stderr, "[s2-trace] clock %llu interval %llu-%llu t %.3f: %s use_t %.3f ok %d job %d have_scenes %d\n", (unsigned long long)H.m.cpu.icount,
+                                        (unsigned long long)plan.older, (unsigned long long)plan.newer, plan.t, !ok ? "NO-BLEND" : proper ? "proper" : use_t > 1.0 ? "extrap" : "held", use_t, ok, g_s2.job, have_scenes);
+                            }
+                        }
                         const double bl0 = (double)SDL_GetTicksNS() / 1e6;
                         if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t)) {
                             g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
@@ -3548,6 +3568,35 @@ int main(int argc, char **argv)
                     }
                     fprintf(stderr, "[shot-steps] clock %llu older %llu end %llu%s newer %llu end %llu%s t %.6f\n", (unsigned long long)H.m.cpu.icount, (unsigned long long)older, eo, fo ? "" : "?", (unsigned long long)newer, en, fn ? "" : "?", t_shown);
                 }
+                static int shots_half = -1;
+                if (shots_half < 0) shots_half = getenv("F117_PRESENT_SHOTS_HALF") != NULL;
+                if (shots_half) {   /* F117_PRESENT_SHOTS_HALF=1 (diagnostic, for motion clips): every picture kept in memory at half size (2 x 2 averaged) and all written when COUNT are held, so the loop is not slowed by file writes */
+                    static struct { uint64_t clock; uint8_t *rgb; int w, h; } held[4096]; static int nheld;
+                    const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+                    const int w2 = w / 2, h2 = h / 2;
+                    uint8_t *rgb = nheld < 4096 ? (uint8_t *)malloc((size_t)w2 * h2 * 3) : NULL;
+                    if (rgb) {
+                        for (int y = 0; y < h2; y++)
+                            for (int x = 0; x < w2; x++) {
+                                const uint32_t a = px[(size_t)(2 * y) * w + 2 * x], b = px[(size_t)(2 * y) * w + 2 * x + 1], c = px[(size_t)(2 * y + 1) * w + 2 * x], d = px[(size_t)(2 * y + 1) * w + 2 * x + 1];
+                                uint8_t *o = rgb + ((size_t)y * w2 + x) * 3;
+                                o[0] = (uint8_t)((((a >> 16) & 255) + ((b >> 16) & 255) + ((c >> 16) & 255) + ((d >> 16) & 255) + 2) / 4);
+                                o[1] = (uint8_t)((((a >> 8) & 255) + ((b >> 8) & 255) + ((c >> 8) & 255) + ((d >> 8) & 255) + 2) / 4);
+                                o[2] = (uint8_t)(((a & 255) + (b & 255) + (c & 255) + (d & 255) + 2) / 4);
+                            }
+                        held[nheld].clock = H.m.cpu.icount; held[nheld].rgb = rgb; held[nheld].w = w2; held[nheld].h = h2; nheld++;
+                        left--;
+                    } else left = 0;
+                    if (!left) {
+                        for (int k = 0; k < nheld; k++) {
+                            char hp[900]; snprintf(hp, sizeof hp, "%s%llu.ppm", shots, (unsigned long long)held[k].clock);
+                            FILE *hf = fopen(hp, "wb");
+                            if (hf) { fprintf(hf, "P6\n%d %d\n255\n", held[k].w, held[k].h); fwrite(held[k].rgb, 1, (size_t)held[k].w * held[k].h * 3, hf); fclose(hf); }
+                            free(held[k].rgb);
+                        }
+                        nheld = 0;
+                    }
+                } else {
                 char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
                 FILE *sf = fopen(path, "wb");
                 if (sf) {
@@ -3563,6 +3612,7 @@ int main(int argc, char **argv)
                         for (int k = 0; k < 64; k++) if (cnt[k]) fprintf(stderr, " %d:%lu", k, cnt[k]);
                         fprintf(stderr, " (kind %d)\n", g_live.diag_kind);
                     }
+                }
                 }
             }
         }

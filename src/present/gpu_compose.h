@@ -56,6 +56,8 @@ int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out
 void gpu_compose_times(const gpu_compose *g, double *setup_ms, double *gpu_ms, double *copy_ms);
 /* Milliseconds the last gpu_compose_finish blocked waiting for the GPU's fence (the GPU work the caller's own work did not hide). For diagnostics. */
 double gpu_compose_wait_ms(const gpu_compose *g);
+/* The phases of the last setup run on this thread (F117_SETUP_SLOW): classify, bin, pack, buffers, copy in ms, triangles, MB uploaded, command buffer acquire (ms after the copy), submit (ms). */
+void gpu_compose_last_phases(double out[9]);
 /* The calling thread's buffer set (0 or 1) for begin and finish: two pictures can then be in flight (Part B pipeline). 0 by default. */
 void gpu_compose_use_set(int k);
 

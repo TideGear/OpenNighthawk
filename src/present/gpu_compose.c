@@ -91,6 +91,9 @@ struct gpu_compose {
 
 static F117_TLS int g_set_tls;
 void gpu_compose_use_set(int k) { g_set_tls = k % GSETS; }
+/* F117_SETUP_SLOW diagnostic: the phases of the last setup this thread ran: classify, bin, pack, buffers, copy (ms), triangles, MB uploaded */
+static F117_TLS double g_last_phase[9];
+void gpu_compose_last_phases(double out[9]) { for (int k = 0; k < 9; k++) out[k] = g_last_phase[k]; }
 #define GS(g) (&(g)->set[g_set_tls])
 #define SC(g) (&GS(g)->sc)
 
@@ -1405,6 +1408,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
 
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
     if (!cb) return 0;
+    const Uint64 t_acquired = SDL_GetTicksNS();
     profile_mark(g, cb, "upload_begin");
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
     {
@@ -1464,8 +1468,13 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     GS(g)->params = *in; GS(g)->params.recs = NULL; GS(g)->params.palette = NULL; GS(g)->params.src = NULL; GS(g)->params.tag = NULL; GS(g)->params.dac = NULL; GS(g)->params.tagflags = NULL;
     GS(g)->pbytes = pbytes; GS(g)->game_bytes = game_bytes; GS(g)->npix_game = npix_game;
     profile_resolve(g, cb);
+    const Uint64 t_prepass = SDL_GetTicksNS();
     SDL_SubmitGPUCommandBuffer(cb);               /* the raster passes run while the caller makes the game's picture */
+    g_last_phase[7] = (double)(t_acquired - t_setup) / 1e6; g_last_phase[8] = (double)(SDL_GetTicksNS() - t_prepass) / 1e6;
     GS(g)->setup_ms = (double)(t_setup - t_start) / 1e6;
+    g_last_phase[0] = (double)(t_classified - t_start) / 1e6; g_last_phase[1] = (double)(t_binned - t_classified) / 1e6; g_last_phase[2] = (double)(t_packed - t_binned) / 1e6;
+    g_last_phase[3] = (double)(t_prepared - t_packed) / 1e6; g_last_phase[4] = (double)(t_setup - t_prepared) / 1e6;
+    g_last_phase[5] = (double)(SC(g)->polys.n + SC(g)->strokes.n); g_last_phase[6] = (double)total / 1048576.0;
     if (getenv("F117_REMASTER_TIMING")) {   /* diagnostic: where the CPU setup goes, every 120th picture (stderr) */
         static double sum[5], mb, ents, trisn; static unsigned count;
         sum[0] += (double)(t_classified - t_start) / 1e6; sum[1] += (double)(t_binned - t_classified) / 1e6; sum[2] += (double)(t_packed - t_binned) / 1e6;
