@@ -16,6 +16,7 @@
 #include "remaster_raster.h"
 #include "scene_mesh.h"
 
+#include "tls.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -45,7 +46,7 @@ typedef struct {
     size_t n, cap;
 } remaster_frame;
 
-extern unsigned remaster_scene_dropped[3];   /* counters, for diagnostics */
+extern F117_TLS unsigned remaster_scene_dropped[3];   /* counters, for diagnostics */
 
 void remaster_frame_clear(remaster_frame *f);
 void remaster_frame_free(remaster_frame *f);
@@ -71,5 +72,9 @@ void remaster_scene_lod_shift(unsigned bits);
 void remaster_scene_set_full_detail(int on);     /* Model detail: 1 Full (default, every model at its finest version), 0 Original (by distance) */
 int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, uint16_t ds, uint16_t bank_segment,
                        uint16_t model, const int16_t position[3], remaster_frame *f);
+/* The same with the pose segment and the bank page given as pointers (a helper thread's private copy of the pose segment: SCENE_SEGMENT bytes), and the object number taken from the scene. */
+int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *bank, uint16_t model, const int16_t position[3], remaster_frame *f);
+/* The next object number of this scene (what an add takes), for objects built on another scene and merged in order. */
+uint32_t remaster_scene_next_serial(remaster_scene *s);
 
 #endif

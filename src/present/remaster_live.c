@@ -1531,11 +1531,11 @@ static void model_camera_correction(machine_t *m, const double camera_offset[3],
 
 /* A model's primitives from `first` are in the frame: shrink them about the object's origin when it was drawn at a coarser scale than its own ring
  * (the position is in the coarser units, the model's vertices are not), shift them by the ring-rounding correction, and set the inverse-depth scale. */
-static void finish_model(remaster_live *r, remaster_frame *f, size_t first, int shrink, double inv_depth, const int32_t correction[3])
+static void finish_model(remaster_scene *sc, remaster_frame *f, size_t first, int shrink, double inv_depth, const int32_t correction[3])
 {
     if (shrink > 0) {
         int32_t origin[3];
-        remaster_scene_origin(r->scene, origin);
+        remaster_scene_origin(sc, origin);
         for (size_t i = first; i < f->n; ++i) {
             remaster_prim *p = &f->prim[i];
             for (int vertex = 0; vertex < p->n; ++vertex) {
@@ -1840,7 +1840,7 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
             memcpy(cached->matrix, dsp, sizeof cached->matrix);
             cached->valid = 1;
         }
-        finish_model(r, target, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), cached->value);
+        finish_model(r->scene, target, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), cached->value);
     }
     memcpy(dsp, saved, TEMPLATE_LEN);
     if (timing) {
@@ -2015,7 +2015,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             if (r->frame.n > first) {
                 int32_t correction[3];
                 model_camera_correction(m, r->pending_camera_offset, correction);
-                finish_model(r, &r->frame, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, correction);
+                finish_model(r->scene, &r->frame, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, correction);
             }
             if (n >= 0 && r->pending_terrain) capture_template(r, m);
             if (n >= 0 && r->nchk) check_native(r, m, first);
@@ -2190,6 +2190,23 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         }
         if (validate_on() && r->frames == 40) report_validation(r);
         if (r->out_path && !r->written && r->frames == r->want_frame && r->frame.n) write_frame(r, m);
+        {   /* F117_FRAME_HASH=FROM (diagnostic): one line per completed frame from that clock, a hash of every primitive, to compare two runs (F117_FAR_PAR=0 against the default) */
+            static int hs = -1; static unsigned long long from;
+            if (hs < 0) { const char *e = getenv("F117_FRAME_HASH"); hs = e != NULL; from = e ? strtoull(e, NULL, 0) : 0; }
+            if (hs && r->frame.n > 2000 && m->cpu.icount >= from) {
+                uint64_t h = 1469598103934665603ull, hf[6] = { 1, 1, 1, 1, 1, 1 };
+                const unsigned char *b = (const unsigned char *)r->frame.prim;
+                for (size_t i = 0; i < r->frame.n; i++) {
+                    const remaster_prim *q = &r->frame.prim[i];
+                    uint32_t w[6] = { (uint32_t)q->kind, (uint32_t)q->n, (q->owner & 0xFFFu) | (i && (q->owner >> 12) != (r->frame.prim[i - 1].owner >> 12) ? 0x1000u : 0u), q->colour_word, (uint32_t)q->shade | (uint32_t)q->darken << 8 | (uint32_t)q->source << 16 | (uint32_t)q->shrink << 24, q->face | (uint32_t)q->model << 16 };
+                    for (int k = 0; k < 6; k++) { h = (h ^ w[k]) * 1099511628211ull; hf[k] = (hf[k] ^ w[k]) * 1099511628211ull; }
+                    for (int v = 0; v < q->n; v++) { h = (h ^ (uint32_t)q->v[v].x) * 1099511628211ull; h = (h ^ (uint32_t)q->v[v].y) * 1099511628211ull; h = (h ^ (uint32_t)q->v[v].z) * 1099511628211ull; }
+                    uint64_t dbits; memcpy(&dbits, &q->inv_depth_scale, 8); h = (h ^ dbits) * 1099511628211ull;
+                }
+                (void)b;
+                fprintf(stderr, "[frame-hash] clock %llu prims %zu hash %016llx complete %d fields %llx %llx %llx %llx %llx %llx\n", (unsigned long long)m->cpu.icount, r->frame.n, (unsigned long long)h, r->frame_complete, (unsigned long long)hf[0], (unsigned long long)hf[1], (unsigned long long)hf[2], (unsigned long long)hf[3], (unsigned long long)hf[4], (unsigned long long)hf[5]);
+            }
+        }
         if (r->deferred) {                      /* the completed frame is staged: the main thread commits it when the worker is idle */
             remaster_frame tmp = r->staged; r->staged = r->frame; r->frame = tmp;
             memcpy(r->staged_band, r->band_rec, sizeof r->staged_band);
@@ -2587,6 +2604,194 @@ typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf
 static void (*g_s2_run)(void (*)(void *, int), void *, int);
 static int g_s2_parts;
 void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *, int), int parts) { g_s2_run = run; g_s2_parts = parts; }
+
+/* ---- The far scenery's native placements on helper threads (F117_FAR_PAR). remaster_live_native places one object at a time: it patches the pose into the machine's memory,
+ * lets the scene reader build the primitives, and restores the memory. Here the same steps run on private copies: each helper has its own scene (mesh cache), its own copy of
+ * the pose segment (taken once per batch; the template patch and its restore touch only that copy) and its own frame, for a contiguous range of the picks. The merge (commit)
+ * is in pick order on the calling thread and gives every object the number the serial path would have: the scene's next number. A pick the helper cannot make exactly as
+ * native would (no template yet, a stale one, the scene reader refusing) is left to the serial path, which also keeps its counters. */
+typedef struct { uint32_t first, n; uint8_t part, took, incomplete; } nat_rec;     /* took: 0 left to the serial path, 1 out of range (nothing drawn, no number used), 2 drawn */
+typedef struct { remaster_scene *scene; remaster_frame frame; uint8_t *ds; ring_correction corr[4]; } nat_worker;
+static nat_worker g_nw[8];
+static nat_rec *g_nrec; static size_t g_nrec_cap;
+typedef struct { remaster_live *r; const machine_t *m; const rerun_native *spec; const unsigned char *elig; size_t n; int parts; int refresh_matrix, range_cull; size_t ds_at; } nat_job;
+
+static uint16_t nld16(const uint8_t *ds, unsigned off) { return (uint16_t)(ds[off] | ds[off + 1] << 8); }
+static void nst16(uint8_t *ds, unsigned off, uint16_t v) { ds[off] = (uint8_t)v; ds[off + 1] = (uint8_t)(v >> 8); }
+
+static void nat_part(void *vj, int part)
+{
+    nat_job *j = (nat_job *)vj;
+    nat_worker *w = &g_nw[part];
+    const remaster_live *r = j->r;
+    const machine_t *m = j->m;
+    const size_t k0 = j->n * (size_t)part / (size_t)j->parts, k1 = j->n * (size_t)(part + 1) / (size_t)j->parts;
+    remaster_frame_clear(&w->frame);
+    memcpy(w->ds, m->mem + j->ds_at, SCENE_SEGMENT);
+    for (int i = 0; i < 4; i++) w->corr[i].valid = 0;
+    uint8_t *dsp = w->ds + TEMPLATE_AT;
+    for (size_t k = k0; k < k1; k++) {
+        nat_rec *rc = &g_nrec[k];
+        rc->took = 0; rc->part = (uint8_t)part; rc->first = (uint32_t)w->frame.n; rc->n = 0; rc->incomplete = 0;
+        if (!j->elig[k]) continue;
+        const rerun_native *n = &j->spec[k];
+        if (((size_t)n->bank << 4) + SCENE_SEGMENT > 0x100000) continue;
+        unsigned t = 0;
+        while (t < r->ntmpl && !(r->tmpl[t].bank == n->bank && r->tmpl[t].model == n->model)) t++;
+        if (t == r->ntmpl || r->tmpl[t].parts < 0) continue;
+        const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18);
+        const int light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
+        const int refresh = j->refresh_matrix && !matrix_same && r->tmpl[t].parts == 1;
+        if ((!matrix_same && !refresh) || !light_same) continue;
+        uint32_t translation[3] = { 0, 0, 0 };
+        for (int kk = 0; kk < 3; kk++)
+            for (int row = 0; row < 3; row++)
+                translation[kk] += (uint32_t)((int32_t)n->pos[row] * (int16_t)nld16(w->ds, (unsigned)(TEMPLATE_AT + 2 * (3 * row + kk))));
+        const uint8_t *pose = r->tmpl[t].bytes;
+        if (j->range_cull && !pose[0x7D8E - TEMPLATE_AT]) {
+            const uint16_t size = pose[0x7D5E - TEMPLATE_AT] | (uint16_t)pose[0x7D5F - TEMPLATE_AT] << 8;
+            if (model_range(m, n->bank, n->model, translation, size) == 0) { rc->took = 1; continue; }
+        }
+        uint8_t saved[TEMPLATE_LEN];
+        const uint8_t keep48c4 = w->ds[0x48C4];
+        memcpy(saved, dsp, TEMPLATE_LEN);
+        memcpy(dsp, r->tmpl[t].bytes, TEMPLATE_LEN);
+        if (refresh) {
+            memcpy(dsp, saved, 18);
+            for (int row = 0; row < 3; row++)
+                for (int col = 0; col < 3; col++) {
+                    uint32_t sum = 0;
+                    for (int kk = 0; kk < 3; kk++) {
+                        const int16_t orientation = (int16_t)nld16(w->ds, (unsigned)(0x7B5E + 6 * kk + 2 * row));
+                        const int16_t camera = (int16_t)nld16(w->ds, (unsigned)(TEMPLATE_AT + 6 * kk + 2 * col));
+                        sum += (uint32_t)((int32_t)orientation * camera);
+                    }
+                    nst16(w->ds, (unsigned)(0x7B4C + 6 * row + 2 * col), (uint16_t)(sum >> 15));
+                }
+        }
+        for (int i = 0; i < 3; i++) nst16(w->ds, (unsigned)(0x7CCC + 2 * i), (uint16_t)n->pos[i]);
+        {
+            uint16_t eye[3];
+            for (int i = 0; i < 3; i++) eye[i] = (uint16_t)(0 - (uint16_t)n->pos[i]);
+            if (r->tmpl[t].parts == 1) {
+                uint16_t out[3];
+                for (int kk = 0; kk < 3; kk++) {
+                    uint16_t sum = 0;
+                    for (int row = 0; row < 3; row++)
+                        sum = (uint16_t)(sum + (uint16_t)(((int32_t)(int16_t)eye[row] * (int16_t)nld16(w->ds, (unsigned)(0x7B5E + 6 * row + 2 * kk))) >> 16));
+                    out[kk] = (uint16_t)(sum << 1);
+                }
+                for (int i = 0; i < 3; i++) eye[i] = out[i];
+            }
+            for (int i = 0; i < 3; i++) nst16(w->ds, (unsigned)(0x7C6C + 2 * i), eye[i]);
+        }
+        for (int kk = 0; kk < 3; kk++) {
+            const uint32_t acc = translation[kk];
+            nst16(w->ds, (unsigned)(0x7CD2 + 4 * kk), (uint16_t)acc);
+            nst16(w->ds, (unsigned)(0x7CD4 + 4 * kk), (uint16_t)(acc >> 16));
+            if (r->tmpl[t].parts == 1) {
+                nst16(w->ds, (unsigned)(0x7CDE + 4 * kk), (uint16_t)acc);
+                nst16(w->ds, (unsigned)(0x7CE0 + 4 * kk), (uint16_t)(acc >> 16));
+            }
+        }
+        w->ds[0x48C4] = n->darken;
+        const size_t first = w->frame.n;
+        unsigned dropped[3];
+        memcpy(dropped, remaster_scene_dropped, sizeof dropped);
+        remaster_scene_lod_shift((unsigned)n->shrink);
+        const int added = remaster_scene_add_at(w->scene, w->ds, m->mem + ((size_t)n->bank << 4), n->model, n->pos, &w->frame);
+        if (added < 0) {                                  /* refused: the serial path counts it and lets the game place it */
+            w->frame.n = first;
+            memcpy(dsp, saved, TEMPLATE_LEN); w->ds[0x48C4] = keep48c4;
+            continue;
+        }
+        const int incomplete = memcmp(dropped, remaster_scene_dropped, sizeof dropped) != 0;
+        if (n->shrink / 2 > g_dot_levels) {
+            size_t wr = first;
+            for (size_t i = first; i < w->frame.n; i++) {
+                const remaster_prim *q = &w->frame.prim[i];
+                uint32_t c;
+                int dark = 0;
+                if (q->kind == SCENE_DOTS || (q->kind == SCENE_LINES && q->n == 2 && !memcmp(&q->v[0], &q->v[1], sizeof q->v[0])))
+                    dark = word_colour(m, q->colour_word, q->darken, &c) && (c >> 16 & 255) < 80 && (c >> 8 & 255) < 80 && (c & 255) < 80;
+                if (!dark) w->frame.prim[wr++] = w->frame.prim[i];
+            }
+            w->frame.n = wr;
+        }
+        if (w->frame.n > first) {
+            ring_correction local = {0};
+            ring_correction *cached = n->level >= 1 && n->level <= 4 ? &w->corr[n->level - 1] : &local;
+            if (!cached->valid || memcmp(cached->eye, n->eye, sizeof cached->eye) || memcmp(cached->matrix, dsp, sizeof cached->matrix)) {
+                double offset[3];
+                remaster_ring_camera_offset(n->eye, (unsigned)n->level, offset);
+                model_camera_correction((machine_t *)m, offset, cached->value);
+                memcpy(cached->eye, n->eye, sizeof cached->eye);
+                memcpy(cached->matrix, dsp, sizeof cached->matrix);
+                cached->valid = 1;
+            }
+            finish_model(w->scene, &w->frame, first, n->shrink, ldexp(1.0, 2 * (4 - n->level)), cached->value);
+        }
+        memcpy(dsp, saved, TEMPLATE_LEN); w->ds[0x48C4] = keep48c4;
+        rc->first = (uint32_t)first; rc->n = (uint32_t)(w->frame.n - first); rc->incomplete = (uint8_t)incomplete;
+        rc->took = 2;
+    }
+}
+
+int remaster_live_native_batch(remaster_live *r, machine_t *m, const void *vspec, const unsigned char *elig, size_t n, unsigned char *took)
+{
+    static int off = -1;
+    if (off < 0) off = getenv("F117_NATIVE_CHECK") || getenv("F117_NATIVE_TIMING") || getenv("F117_NATIVE_SIZES") || getenv("F117_FAR_WHY") || getenv("F117_FAR_DOTS_OFF");
+    if (off || !g_s2_run || g_s2_parts < 2) return 0;
+    const uint16_t ds = m->cpu.seg[S_DS];
+    const size_t ds_at = (size_t)ds << 4;
+    if (ds_at + SCENE_SEGMENT > 0x100000) return 0;
+    if (g_dot_levels < 0) { const char *e = getenv("F117_FAR_DARK_DOTS"); g_dot_levels = e ? (e[0] == '1' ? 3 : 0) : 1; }
+    static int refresh_matrix = -1, range_cull = -1;
+    if (refresh_matrix < 0) refresh_matrix = env_default_on("F117_NATIVE_REFRESH_PART");
+    if (range_cull < 0) range_cull = env_default_on("F117_NATIVE_RANGE_CULL");
+    if (n > g_nrec_cap) {
+        nat_rec *q = (nat_rec *)realloc(g_nrec, (n + n / 2) * sizeof *q);
+        if (!q) return 0;
+        g_nrec = q; g_nrec_cap = n + n / 2;
+    }
+    const int parts = g_s2_parts > 8 ? 8 : g_s2_parts;
+    for (int i = 0; i < parts; i++) {
+        if (!g_nw[i].scene) g_nw[i].scene = remaster_scene_new();
+        if (!g_nw[i].ds) g_nw[i].ds = (uint8_t *)malloc(SCENE_SEGMENT);
+        if (!g_nw[i].scene || !g_nw[i].ds) return 0;
+    }
+    nat_job job = { r, m, (const rerun_native *)vspec, elig, n, parts, refresh_matrix, range_cull, ds_at };
+    g_s2_run(nat_part, &job, parts);
+    for (size_t k = 0; k < n; k++) took[k] = g_nrec[k].took != 0;
+    return 1;
+}
+
+void remaster_live_native_commit(remaster_live *r, machine_t *m, size_t k)
+{
+    (void)m;
+    const nat_rec *rc = &g_nrec[k];
+    if (rc->took != 2) return;                             /* out of range: the serial path draws nothing and uses no number */
+    const uint32_t serial = remaster_scene_next_serial(r->scene);
+    remaster_frame *f = &r->frame;
+    if (f->n + rc->n > f->cap) {
+        size_t cap = f->cap ? f->cap : 256;
+        while (cap < f->n + rc->n) cap *= 2;
+        remaster_prim *p = (remaster_prim *)realloc(f->prim, cap * sizeof *p);
+        if (!p) return;
+        f->prim = p; f->cap = cap;
+    }
+    const remaster_prim *src = g_nw[rc->part].frame.prim + rc->first;
+    for (uint32_t i = 0; i < rc->n; i++) {
+        remaster_prim *d = &f->prim[f->n + i];
+        *d = src[i];
+        d->owner = serial << 12 | (src[i].owner & 0xFFFu);
+        d->source = 1;
+    }
+    f->n += rc->n;
+    if (rc->incomplete) r->frame_complete = 0;
+    r->added++; r->native_drawn++;
+    r->src_native_prims += rc->n; r->src_native_objs++;
+}
 static void stage2_blend_part(void *arg, int part)
 {
     stage2_blend_job *j = (stage2_blend_job *)arg;

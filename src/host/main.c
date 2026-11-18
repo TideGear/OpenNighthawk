@@ -557,6 +557,18 @@ static int copy_native(void *user, machine_t *m, const rerun_native *n)
     return COLL() ? remaster_live_native(COLL(), m, n) : 0;
 }
 
+static int copy_native_batch(void *user, machine_t *m, const rerun_native *spec, const unsigned char *elig, size_t n, unsigned char *took)
+{
+    (void)user;
+    return COLL() ? remaster_live_native_batch(COLL(), m, spec, elig, n, took) : 0;
+}
+
+static void copy_native_commit(void *user, machine_t *m, size_t k)
+{
+    (void)user;
+    if (COLL()) remaster_live_native_commit(COLL(), m, k);
+}
+
 static void copy_placement_return(void *user, machine_t *m, int returned)
 {
     (void)user;
@@ -1445,7 +1457,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_overlay_dot, copy_overlay_rect, copy_overlay_line };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_native_batch, copy_native_commit, copy_overlay_dot, copy_overlay_rect, copy_overlay_line };
                 if (g_rlive_copy) rerun_set_collector(&coll);
                 if (getenv("F117_STAGE2")) g_s2.scene = remaster_live_new(960, 720, ~0u, NULL);   /* Stage 2: the sliced scene copies' own instance (not deferred: its done frame is cloned at once) */
                 g_rlive_copies[0] = g_rlive_copy;

@@ -83,6 +83,11 @@ typedef struct {
     void *user;
     int  (*native)(void *user, machine_t *m, const rerun_native *n);   /* 1: drawn; 0: no template yet, the copy places it itself */
     void (*placement_return)(void *user, machine_t *m, int returned);
+    /* Far scenery on helper threads (F117_FAR_PAR): native_batch builds the native placements of the picks flagged in elig (spec[k], k < n) at once, each in its own private
+     * frame, and sets took[k] for those it made exactly as native would; native_commit(k) then appends pick k's primitives to the copy's frame, in pick order, as native would have.
+     * Picks not taken go the serial way. Returns 0 when it did not run (nothing taken). */
+    int  (*native_batch)(void *user, machine_t *m, const rerun_native *spec, const unsigned char *elig, size_t n, unsigned char *took);
+    void (*native_commit)(void *user, machine_t *m, size_t k);
     /* A dot the game draws flat at a screen position (x, y in its 320 x 200 pixels, unclamped) that its own cull dropped because it lies outside the
      * 4:3 window, but which the wide picture shows (R41/R42): the renderer draws it in the margins. colour_word as a model's (FFxxh: palette pixel xx). */
     void (*overlay_dot)(void *user, double x, double y, unsigned colour_word);

@@ -1129,10 +1129,45 @@ static int far_scenery_body(machine_t *m)
         nodefer[n_nodefer].at = at; nodefer[n_nodefer].was = *p; n_nodefer++;
         *p &= 0x7F;
     }
+    /* F117_FAR_PAR (default on, 0 off): the native placements built on helper threads first, merged below in pick order (the collector's native_batch / native_commit) */
+    static rerun_native *bspec; static unsigned char *belig, *btook; static size_t bcap; static double batch_ms_acc, commit_ms_acc;
+    int batched = 0;
+    {
+        static int par_on = -1;
+        if (par_on < 0) { const char *e = getenv("F117_FAR_PAR"); par_on = e ? atoi(e) != 0 : 1; }
+        if (par_on && g_collector.native && g_collector.native_batch && g_collector.native_commit && npick >= 2048) {
+            if (npick > bcap) {
+                free(bspec); free(belig); free(btook);
+                bcap = npick + npick / 2;
+                bspec = (rerun_native *)malloc(bcap * sizeof *bspec); belig = (unsigned char *)malloc(bcap); btook = (unsigned char *)malloc(bcap);
+                if (!bspec || !belig || !btook) { free(bspec); free(belig); free(btook); bspec = NULL; belig = btook = NULL; bcap = 0; }
+            }
+            if (bcap) {
+                for (size_t k = 0; k < npick; k++) {
+                    const far_pick *pk = &picks[k];
+                    const far_inst *f = &g_inst[pk->idx];
+                    rerun_native *spec = &bspec[k];
+                    belig[k] = !(pk->own && pk->defers);
+                    const unsigned bank_idx = (pk->model & 0x7FFF) >> 8;
+                    spec->bank = rd16(m->mem, ds, (uint16_t)(0xB78A + 2 * bank_idx));
+                    spec->model = (uint16_t)(pk->model & 0x7F);
+                    spec->pos[0] = (int16_t)(uint16_t)(pk->x - pk->ox);
+                    spec->pos[1] = (int16_t)(uint16_t)(pk->z - pk->oz);
+                    spec->pos[2] = (int16_t)(uint16_t)(0 - (uint16_t)(pk->y - pk->oy));
+                    spec->darken = pk->darken; spec->level = pk->level; spec->shrink = 2 * (pk->level - f->ring);
+                    spec->eye[0] = eye_long[0]; spec->eye[1] = eye_long[1]; spec->eye[2] = eye_long[2];
+                }
+                const double bt0 = stats ? walk_ms() : 0.0;
+                batched = g_collector.native_batch(g_collector.user, m, bspec, belig, npick, btook);
+                if (stats) batch_ms_acc += walk_ms() - bt0;
+            }
+        }
+    }
     for (size_t k = 0; k < npick; k++) {
         if ((k & 63) == 63) rerun_yield_point();      /* a sliced copy gives the display loop its turn here (state is clean between picks) */
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
+        if (batched && btook[k]) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit(g_collector.user, m, k); if (stats) commit_ms_acc += walk_ms() - ct0; native++; continue; }
         if (g_collector.native && !(pk->own && pk->defers)) {
             rerun_native spec;
             const unsigned bank_idx = (pk->model & 0x7FFF) >> 8;
@@ -1202,7 +1237,8 @@ static int far_scenery_body(machine_t *m)
         if (stats) {
             fallback_ms += guest_ms;
             sel_ms += ms1 - ms0; run_ms += walk_ms() - ms1; picked += (unsigned)npick; total += (unsigned)g_ninst; nat += native; gst += guest;
-            ++n; if (n <= 5 || n % 300 == 0) fprintf(stderr, "[far] mean of %u: %.2f ms choosing (%u objects listed), %.2f ms placing %.0f survivors (%.0f native, %.0f by the game in %.2f ms)\n", n, sel_ms / n, total / n, run_ms / n, (double)picked / n, (double)nat / n, (double)gst / n, fallback_ms / n);
+            ++n; static int every = 0; if (!every) { const char *e = getenv("F117_WIDE_WALK_STATS"); every = e && atoi(e) > 1 ? atoi(e) : 300; }
+            if (n <= 5 || n % every == 0) fprintf(stderr, "[far] batch %.2f ms, commits %.2f ms a copy; mean of %u: %.2f ms choosing (%u objects listed), %.2f ms placing %.0f survivors (%.0f native, %.0f by the game in %.2f ms)\n", batch_ms_acc / n, commit_ms_acc / n, n, sel_ms / n, total / n, run_ms / n, (double)picked / n, (double)nat / n, (double)gst / n, fallback_ms / n);
         }
     }
     return 0;

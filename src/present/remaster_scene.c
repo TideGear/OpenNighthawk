@@ -12,7 +12,7 @@
 #define CACHE_SIZE 1024
 #define CACHED_VERTICES 16
 
-unsigned remaster_scene_dropped[3];   /* primitives left out: a vertex the game did not make (dots), (edges), a chain that is not one */
+F117_TLS unsigned remaster_scene_dropped[3];   /* primitives left out: a vertex the game did not make (dots), (edges), a chain that is not one */
 
 typedef struct {
     uint64_t bank;                  /* the bank's signature */
@@ -294,7 +294,13 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
 {
     const size_t ds_at = (size_t)ds << 4, bank_at = (size_t)bank_segment << 4;
     if (ds_at + SCENE_SEGMENT > mem_size || bank_at + SCENE_SEGMENT > mem_size) return -1;
-    const uint8_t *dsp = mem + ds_at, *bank = mem + bank_at;
+    return remaster_scene_add_at(s, mem + ds_at, mem + bank_at, model, position, f);
+}
+
+uint32_t remaster_scene_next_serial(remaster_scene *s) { s->serial = (s->serial + 1) & 0xFFFFF; return s->serial; }
+
+int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *bank, uint16_t model, const int16_t position[3], remaster_frame *f)
+{
     int16_t camera[9];
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
     uint32_t depth32 = scene_model_depth(position, camera);
