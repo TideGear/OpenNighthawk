@@ -43,12 +43,14 @@ typedef struct {
     const uint8_t *mem;           /* guest memory, read at each frame's close */
     drawfeed_frame frame[DRAWFEED_FRAMES];
     unsigned       head, count;   /* the oldest closed frame and how many are closed */
+    unsigned       open;          /* the open frame's slot, always (head + count) % DRAWFEED_FRAMES; kept apart so the observer reads it while the collector thread pops */
     int            presented;     /* the frame being collected has presented */
     int            want_seed;     /* dump the pages at the next phase */
     uint64_t       closed, dropped;
     int            rerun;         /* snapshot the machine at each frame's view composition */
     rerun_snap     next_snap;     /* taken at a composition after the open frame presented: it draws the next frame */
     int            have_next_snap;
+    void          *lk;            /* the collector thread (drawlive_collector_start): guards the ring (head, count, closed, dropped) between the observer and the thread */
 } drawfeed;
 
 /* Set up (the observer included; install it with observe_set(&f->obs)). */
@@ -177,6 +179,11 @@ typedef struct {
     interp_rec    *splice;
     int            nsplice, csplice;
     uint64_t       rerun_drawn, rerun_fell_back, rerun_t0_exact, rerun_t0_inexact, rerun_insn;
+    /* the collector thread (drawlive_collector_start): replays and closes the frames the observer has closed, off the machine's thread */
+    void          *lk, *cv, *thread;   /* lk guards the step states, the queue and newest between the thread and publish/release; cv wakes either side */
+    int            hrun, hbusy, hblocked, hsync;
+    drawfeed      *hfeed;
+    drawfeed_frame hwork;              /* the frame the thread is closing (taken out of the ring so the observer never waits for it) */
 } drawlive;
 
 void drawlive_init(drawlive *r);
@@ -205,6 +212,24 @@ void drawlive_release_pending(drawlive *r);
 void drawlive_release_pending_n(drawlive *r, int n);
 unsigned long long drawlive_job_fingerprint(const drawlive *r);   /* F117_COPY_FP */
 void drawlive_commit_rerun(drawlive *r, const drawlive_plan *plan);   /* after drawlive_prepare_rerun, when no job draws from the job list */
+
+/* The collector thread (F117_COLLECT_THREAD=1, with the picture worker): the replay of each closed frame (about 3 to 5 ms of the machine
+ * thread's step frame, the sub-pixel builder) and the close run on a helper thread. The host calls drawlive_collector_kick in place of
+ * drawlive_collect, drawlive_publish and the release calls as before (they take the lock). sync: kick waits until every closed frame
+ * has been taken (or the thread is blocked for a free step), so the results do not depend on timing (the replays and gates). */
+typedef struct {                  /* the host's portable calls (SDL), so this library needs no SDL headers */
+    void *(*mutex_new)(void);
+    void  (*lock)(void *);
+    void  (*unlock)(void *);
+    void *(*cond_new)(void);
+    void  (*wait)(void *cond, void *mutex, int ms);
+    void  (*broadcast)(void *cond);
+    void *(*spawn)(int (*fn)(void *), void *arg);
+    void  (*join)(void *thread);
+} drawlive_sync_ops;
+int drawlive_collector_start(drawlive *r, drawfeed *f, int sync, const drawlive_sync_ops *ops);
+void drawlive_collector_kick(drawlive *r, int wait);
+void drawlive_collector_stop(drawlive *r);
 
 /* drawlive_collect then drawlive_publish: the single-threaded form. */
 int drawlive_update(drawlive *r, drawfeed *f);

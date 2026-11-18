@@ -101,6 +101,15 @@ static host_t H;
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
 static uint64_t g_bt[6];                 /* F117_LOOP_TIMING: the build's steps (collect, wait for the worker, apply the picture, publish and plan, the copy, other) */
+static void *co_mutex_new(void) { return SDL_CreateMutex(); }
+static void co_lock(void *m) { SDL_LockMutex((SDL_Mutex *)m); }
+static void co_unlock(void *m) { SDL_UnlockMutex((SDL_Mutex *)m); }
+static void *co_cond_new(void) { return SDL_CreateCondition(); }
+static void co_wait(void *c, void *m, int ms) { SDL_WaitConditionTimeout((SDL_Condition *)c, (SDL_Mutex *)m, ms); }
+static void co_broadcast(void *c) { SDL_BroadcastCondition((SDL_Condition *)c); }
+static void *co_spawn(int (*fn)(void *), void *arg) { return SDL_CreateThread((SDL_ThreadFunction)fn, "collector", arg); }
+static void co_join(void *t) { SDL_WaitThread((SDL_Thread *)t, NULL); }
+static const drawlive_sync_ops g_collector_ops = { co_mutex_new, co_lock, co_unlock, co_cond_new, co_wait, co_broadcast, co_spawn, co_join };
 static uint64_t g_iter_run_ns, g_iter_collect_ns;   /* this loop iteration's machine step, and the draw-feed collection inside it (F117_SLOW_FRAME_TRACE) */
 static uint64_t g_iter_ns, g_cost_ns;     /* the loop iteration's start, and its work before the present call (the --present-log cost column) */
 static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
@@ -2363,6 +2372,10 @@ int main(int argc, char **argv)
             if (g_pwx.thread && g_rlive_copy && !g_rlive_copies[0]) g_rlive_copies[0] = g_rlive_copy;
             if (g_pwx.thread && g_rlive_copy && !getenv("F117_BLEND_CHECK") && !getenv("F117_NO_DEFERRED_COPY"))
                 for (int k = 0; k < 2; k++) if (g_rlive_copies[k]) remaster_live_set_deferred(g_rlive_copies[k], 1);   /* the copy stages its frame; the loop commits it after the copy */
+            if (g_pwx.thread && getenv("F117_COLLECT_THREAD") && atoi(getenv("F117_COLLECT_THREAD")) != 0 && g_replay == 2) {   /* the replay of each closed frame on a helper thread (docs/gpu-compositor.md); sync (a fixed cadence or F117_COLLECT_SYNC) keeps the results independent of timing */
+                const int sync = getenv("F117_REPLAY_FIXED_CADENCE") != NULL || getenv("F117_COLLECT_SYNC") != NULL;
+                if (drawlive_collector_start(&g_live, &g_feed, sync, &g_collector_ops)) fprintf(stderr, "[collector] on%s: closed frames are replayed on a helper thread\n", sync ? " (synchronised)" : "");
+            }
             if (g_pwx.thread) g_live.defer_release = 1;   /* the oldest step is released after the loop has waited for the worker */
             for (int k = 0; k < PAL_HELPERS; k++) {
                 g_pal[k].go = SDL_CreateSemaphore(0);
@@ -3056,7 +3069,7 @@ int main(int argc, char **argv)
                 }
                 if (g_replay == 2) {
                     const uint64_t cl0 = g_loop_timing ? SDL_GetTicksNS() : 0;
-                    if (g_pwx.thread) drawlive_collect(&g_live, &g_feed);
+                    if (g_pwx.thread) { if (g_live.thread) drawlive_collector_kick(&g_live, 0); else drawlive_collect(&g_live, &g_feed); }
                     else drawlive_update(&g_live, &g_feed);
                     if (g_loop_timing) g_iter_collect_ns += SDL_GetTicksNS() - cl0;
                 }
@@ -3241,7 +3254,7 @@ int main(int argc, char **argv)
                 static present_frame fresh;
                 uint64_t bt0 = g_loop_timing ? SDL_GetTicksNS() : 0, bt1;
                 fresh = H.frame;
-                drawlive_collect(&g_live, &g_feed);
+                if (g_live.thread) drawlive_collector_kick(&g_live, 1); else drawlive_collect(&g_live, &g_feed);
                 if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[0] += bt1 - bt0; bt0 = bt1; }
                 /* Overlap (docs/gpu-compositor.md, step 5): while the worker still draws the previous picture, publish, plan and run the copy for the next one, and
                  * only then wait. Safe because the plan carries the steps it names and the replayed picture, the oldest step is released after the wait, the copy
@@ -3859,6 +3872,7 @@ int main(int argc, char **argv)
         }
     }
 
+    drawlive_collector_stop(&g_live);
     if (g_pwx.thread) {
         if (g_pipe) {
             pw_wait_a();

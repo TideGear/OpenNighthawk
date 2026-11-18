@@ -25,12 +25,14 @@ static double probe_ms(void)
 static double g_pc_memcmp, g_pc_start, g_pc_picture, g_pc_fine, g_pc_snap, g_pc_keep, g_pc_pair, g_pc_n;
 static double g_probe_replay, g_probe_close, g_probe_open; static unsigned g_probe_n, g_probe_calls;
 
+static const drawlive_sync_ops *g_ops;   /* the host's lock, condition and thread calls (drawlive_collector_start) */
+
 /* a frame with no present closes after this many phases all the same */
 #define MAX_PHASES 8
 
 static drawfeed_frame *open_frame(drawfeed *f)
 {
-    return &f->frame[(f->head + f->count) % DRAWFEED_FRAMES];
+    return &f->frame[f->open];
 }
 
 static void append(drawfeed_frame *fr, char kind, uint64_t icount, const int32_t *v, int n)
@@ -70,6 +72,7 @@ static void on_phase(void *user, uint64_t icount)
     if (fr->phases && (f->presented || fr->phases >= MAX_PHASES)) {
         fr->end = icount;
         memcpy(fr->display, f->mem + 0xA0000, sizeof fr->display);
+        if (f->lk) g_ops->lock(f->lk);
         f->closed++;
         if (f->count == DRAWFEED_FRAMES - 1) {         /* nobody took the oldest: drop it */
             f->head = (f->head + 1) % DRAWFEED_FRAMES;
@@ -78,6 +81,8 @@ static void on_phase(void *user, uint64_t icount)
             f->want_seed = 1;                           /* the replay must start again */
         }
         f->count++;
+        f->open = (f->open + 1) % DRAWFEED_FRAMES;
+        if (f->lk) g_ops->unlock(f->lk);
         begin(f, icount);
         fr = open_frame(f);
         if (f->have_next_snap) {
@@ -158,9 +163,12 @@ const drawfeed_frame *drawfeed_oldest(const drawfeed *f)
 
 void drawfeed_pop(drawfeed *f)
 {
-    if (!f->count) return;
-    f->head = (f->head + 1) % DRAWFEED_FRAMES;
-    f->count--;
+    if (f->lk) g_ops->lock(f->lk);
+    if (f->count) {
+        f->head = (f->head + 1) % DRAWFEED_FRAMES;
+        f->count--;
+    }
+    if (f->lk) g_ops->unlock(f->lk);
 }
 
 void drawfeed_reseed(drawfeed *f)
@@ -475,6 +483,11 @@ static int free_step(const drawlive *r)
     return -1;
 }
 
+/* The collector thread's lock (drawlive_collector_start): no-ops when there is none. */
+static void qlock(const drawlive *r) { if (r->lk) g_ops->lock(r->lk); }
+static void qunlock(const drawlive *r) { if (r->lk) g_ops->unlock(r->lk); }
+static void qwake(const drawlive *r) { if (r->cv) g_ops->broadcast(r->cv); }
+
 /* A frame closes into a step when the replay equals its display; the step is
  * queued for drawlive_publish, with its pairing against the step kept before. */
 static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
@@ -485,7 +498,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
     if (memcmp(disp->b, fr->display, 64000)) {
         r->inexact++;
         if (getenv("F117_MAP_DIAG")) fprintf(stderr, "[mapdiag] frame %llu not equal to the display: list reset, kept rectangles lost (%d kept)\n", (unsigned long long)fr->seq, r->list.noverlay);
-        r->queue[r->nqueue++] = -1;                    /* nothing is shown until the next exact frame */
+        qlock(r); r->queue[r->nqueue++] = -1; qunlock(r);   /* nothing is shown until the next exact frame */
         drawlist_reset_keep_overlays(&r->list);
         if (r->scale) hires_init(r->hr, r->scale);
         drawfeed_reseed(f);
@@ -493,7 +506,9 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
     }
     const double c0 = probe_ms();
     r->exact++;
+    qlock(r);
     const int k = free_step(r);
+    qunlock(r);
     drawlive_step *s = &r->step[k];
     if (r->interp) {
         swap_lists(&s->start, &r->pending_start);
@@ -529,9 +544,11 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         }
     }
     { const double c5 = probe_ms(); g_pc_start += c1 - c0; g_pc_picture += c2 - c1; g_pc_fine += c3 - c2; g_pc_snap += c4 - c3; g_pc_keep += c5 - c4; g_pc_n++; }
+    qlock(r);
     s->state = DRAWLIVE_STAGED;
     r->newest = k;
     r->queue[r->nqueue++] = k;
+    qunlock(r);
 }
 
 int drawlive_collect(drawlive *r, drawfeed *f)
@@ -558,6 +575,90 @@ int drawlive_collect(drawlive *r, drawfeed *f)
     return taken;
 }
 
+/* The collector thread: takes each closed frame out of the ring (so the observer never waits on it), replays it and closes it into a step. */
+static void take_frame(drawfeed *f, drawfeed_frame *w)
+{
+    drawfeed_frame *s = &f->frame[f->head];
+    int32_t *rec = w->rec; const size_t cap = w->cap;
+    w->seq = s->seq; w->start = s->start; w->end = s->end; w->phases = s->phases; w->seeded = s->seeded;
+    w->rec = s->rec; w->len = s->len; w->cap = s->cap;
+    s->rec = rec; s->len = 0; s->cap = cap;
+    memcpy(w->display, s->display, sizeof w->display);
+    rerun_snap_swap(&w->snap, &s->snap);
+    w->have_compose = s->have_compose; s->have_compose = 0;
+    f->head = (f->head + 1) % DRAWFEED_FRAMES;
+    f->count--;
+}
+
+static int collector_main(void *p)
+{
+    drawlive *r = (drawlive *)p;
+    drawfeed *f = r->hfeed;
+    void *lk = r->lk, *cv = r->cv;
+    g_ops->lock(lk);
+    while (r->hrun) {
+        if (!(f->count > 0 && free_step(r) >= 0 && r->nqueue < DRAWLIVE_QUEUE - 1)) {   /* nothing closed, or waiting for a publish to free a step */
+            r->hblocked = f->count > 0;
+            r->hbusy = 0;
+            g_ops->broadcast(cv);
+            g_ops->wait(cv, lk, 2);
+            continue;
+        }
+        r->hblocked = 0;
+        r->hbusy = 1;
+        take_frame(f, &r->hwork);
+        g_ops->unlock(lk);
+        replay_available(r, &r->hwork);
+        close_frame(r, f, &r->hwork);
+        r->next_seq = r->hwork.seq + 1;
+        r->pending_active = 0;
+        g_ops->lock(lk);
+        r->hbusy = 0;
+        g_ops->broadcast(cv);
+    }
+    g_ops->unlock(lk);
+    return 0;
+}
+
+int drawlive_collector_start(drawlive *r, drawfeed *f, int sync, const drawlive_sync_ops *ops)
+{
+    if (r->thread || r->check || !ops) return 0;
+    g_ops = ops;
+    r->lk = ops->mutex_new();
+    r->cv = ops->cond_new();
+    if (!r->lk || !r->cv) return 0;
+    f->lk = r->lk;
+    r->hfeed = f; r->hrun = 1; r->hsync = sync;
+    r->thread = ops->spawn(collector_main, r);
+    if (!r->thread) { r->hrun = 0; f->lk = NULL; return 0; }
+    return 1;
+}
+
+/* Wake the thread; with sync, wait until it has taken every closed frame (or is waiting for a free step). */
+void drawlive_collector_kick(drawlive *r, int wait)
+{
+    if (!r->thread) return;
+    void *lk = r->lk;
+    g_ops->lock(lk);
+    r->hblocked = 0;
+    g_ops->broadcast(r->cv);
+    if (r->hsync && wait)
+        while (r->hrun && (r->hbusy || (r->hfeed->count > 0 && !r->hblocked))) g_ops->wait(r->cv, lk, 5);
+    g_ops->unlock(lk);
+}
+
+void drawlive_collector_stop(drawlive *r)
+{
+    if (!r->thread) return;
+    g_ops->lock(r->lk);
+    r->hrun = 0;
+    g_ops->broadcast(r->cv);
+    g_ops->unlock(r->lk);
+    g_ops->join(r->thread);
+    r->thread = NULL;
+    r->hfeed->lk = NULL;
+}
+
 static void release_step(drawlive *r, int k)
 {
     interp_pairing_free(r->step[k].pair);
@@ -568,21 +669,28 @@ static void release_step(drawlive *r, int k)
 /* The steps drawlive_publish queued for release (defer_release): free them when no job can draw from them any more (the loop calls this after the wait). */
 void drawlive_release_pending(drawlive *r)
 {
+    qlock(r);
     for (int q = 0; q < r->nrelease; q++) release_step(r, r->release_q[q]);
     r->nrelease = 0;
+    qwake(r);
+    qunlock(r);
 }
 
 /* Frees the first n queued steps only (the pipeline: a picture planned later may still draw from the others) and keeps the rest queued. */
 void drawlive_release_pending_n(drawlive *r, int n)
 {
+    qlock(r);
     if (n > r->nrelease) n = r->nrelease;
     for (int q = 0; q < n; q++) release_step(r, r->release_q[q]);
     for (int q = n; q < r->nrelease; q++) r->release_q[q - n] = r->release_q[q];
     r->nrelease -= n;
+    qwake(r);
+    qunlock(r);
 }
 
 void drawlive_publish(drawlive *r)
 {
+    qlock(r);
     for (int q = 0; q < r->nqueue; q++) {
         const int k = r->queue[q];
         if (k < 0) { r->shown = 0; continue; }
@@ -609,6 +717,8 @@ void drawlive_publish(drawlive *r)
         if (r->check && r->rerun && (r->smooth ? r->im : r->ia) >= 0) check_rerun(r);
     }
     r->nqueue = 0;
+    qwake(r);
+    qunlock(r);
 }
 
 int drawlive_update(drawlive *r, drawfeed *f)
