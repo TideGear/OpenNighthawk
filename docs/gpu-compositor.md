@@ -1421,3 +1421,16 @@ Risks: the 0.2 to 1.7% of mid-t vertices that blend badly (pairing by the game's
 7. *The 2D layer* (cockpit, HUD, merged original picture; 5.8 to 6 ms per picture on the worker today): once per step into its own texture, composited per picture.
 
 **Order of work** (the goal's): build offline in hwtest against `late.trc`, `sea.trc`, `earlier.trc`, `middle.trc`, `hangar.trc`; report the differing pixels per rule (first the sea, which is most of the 64%), fix the large ones; then integrate behind `F117_HW_RASTER=1`, off by default, and A/B against route B; then M1 on both flights, then the picture gate.
+
+### Part B: the hardware path offline, first result (17 November 2026, night)
+
+`private/partb/hwtest/hwtest3.c` with `hw3.hlsl` (not in CMake) draws a recorded composite (`gpu_trace.h`) with the SDL GPU graphics pipeline and compares the colour with the CPU compositor's result in the trace. The sea's logic fills, which made 64% of pixels wrong in the first test, are drawn as follows: the palette index is kept in two RGBA8 bit-plane targets (bits 0 to 3 and 4 to 7, one bit per channel), AND is blend MIN, OR is blend MAX, the stipple is a 0.5 colour blend, a flags target holds valid, touched and the count of OR 0x80 fills (ADD blend; the sea's smoothing applies only to the first, as in `fill_triangle_logic`), the depth test gates them with no depth write; a resolve pass looks the palette up and applies `band_palette_sea` (the shared `band_palette.h`, compiled as HLSL). Strokes and dots are quads with square caps, depth scaled by 1/0.97 for the decal tolerance. Not modelled: the ground rule (owner bit 11: a ground object is never hidden by, and does not hide, by the plain depth), the same-object decal tolerance (0.99), `point_behind_own_surface` and the neighbour rules, the stroke-against-stroke order, the 1e-15 depth a logic fill leaves.
+
+| Trace (1536 x 600, 4:3 scene) | identical pixels | off by over 32 levels |
+|---|---|---|
+| Late flight (`owner-211031/late.trc`) | 99.757% | 314 px (0.034%) |
+| Earlier (`r38-ranges/earlier.trc`) | 99.859% | 111 px (0.012%) |
+| Middle (`r38-ranges/middle.trc`) | 99.791% | 131 px (0.014%) |
+| Airfield and hangar (`r38-validate/hangar/hangar.trc`) | 99.921% | 238 px (0.031%) |
+
+(`r36/sea.trc` is not comparable: recorded before the sea smoothing existed.) The hardware path therefore reproduces the compute compositor to about a pixel here and there on four recorded frames, with the rules above still approximate. Next: the ground rule and the decal rules on the remaining differences, then the app (scene once per step, blend in the vertex shader).
