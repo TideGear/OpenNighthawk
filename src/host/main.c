@@ -156,15 +156,17 @@ static struct {
 static unsigned g_s2_ev;
 /* F117_STAGE2_EVENTS=CLOCK (diagnostic): the first 80 events from that machine clock on */
 static unsigned long long s2_ev_from(void) { static long long v = -2; if (v == -2) { const char *e = getenv("F117_STAGE2_EVENTS"); v = e ? strtoll(e, NULL, 0) : -1; } return v < 0 ? ~0ull : (unsigned long long)v; }
-#define S2EV(...) do { if (g_s2_ev < 80 && H.m.cpu.icount >= s2_ev_from()) { g_s2_ev++; fprintf(stderr, "[s2-event] " __VA_ARGS__); } } while (0)
+#define S2EV(...) do { if (g_s2_ev < 400 && H.m.cpu.icount >= s2_ev_from()) { g_s2_ev++; fprintf(stderr, "[s2-event] " __VA_ARGS__); } } while (0)
 /* The pairing of two step scenes (about 7 ms) runs on a thread of its own: it reads two scene slots, which are not rewritten for two more steps, and writes one pairing buffer. */
-static struct { SDL_Thread *th; SDL_Semaphore *go, *done; int busy, buf; const remaster_frame_copy *a, *b; int ok; } g_pth;
+static struct { SDL_Thread *th; SDL_Semaphore *go, *done; int busy, buf; const remaster_frame_copy *a, *b; int ok; double ms, end_ms, launch_ms; } g_pth;
 static int pair_thread_main(void *u)
 {
     (void)u;
     for (;;) {
         SDL_WaitSemaphore(g_pth.go);
+        const double pt0 = (double)SDL_GetTicksNS() / 1e6;
         g_pth.ok = remaster_stage2_pair(g_s2.pairs[g_pth.buf], g_pth.a, g_pth.b);
+        g_pth.ms = (double)SDL_GetTicksNS() / 1e6 - pt0; g_pth.end_ms = (double)SDL_GetTicksNS() / 1e6;
         SDL_SignalSemaphore(g_pth.done);
     }
     return 0;
@@ -178,13 +180,14 @@ static void s2_pair_launch(void)
     const int pbuf = g_s2.pnext; g_s2.pnext ^= 1;
     g_s2.pa[pbuf] = g_s2.pq_sa; g_s2.pb[pbuf] = g_s2.pq_sb; g_s2.pvalid[pbuf] = 0;
     g_pth.buf = pbuf; g_pth.a = g_s2.sc[g_s2.pq_a]; g_pth.b = g_s2.sc[g_s2.pq_b]; g_pth.busy = 1;
+    g_pth.launch_ms = (double)SDL_GetTicksNS() / 1e6;
     SDL_SignalSemaphore(g_pth.go);
 }
 
 /* A scene copy has finished (rerun_step returned 1): keep its scene and start the pairing with the step before it on the pairing thread. */
 static void s2_job_done(void)
 {
-    S2EV("job for step %llu finished (ok %d) at clock %llu, slices so far %u\n", (unsigned long long)g_s2.job_seq, drawlive_scene_ok(), (unsigned long long)H.m.cpu.icount, g_s2.slices);
+    S2EV("job for step %llu finished (ok %d) at clock %llu, slices so far %u, host ms %.2f\n", (unsigned long long)g_s2.job_seq, drawlive_scene_ok(), (unsigned long long)H.m.cpu.icount, g_s2.slices, (double)SDL_GetTicksNS() / 1e6);
     g_s2.job = 0;
     if (drawlive_scene_ok() && remaster_live_done_take(g_s2.scene, g_s2.sc[g_s2.next])) {
         const int k = g_s2.next;
@@ -942,6 +945,7 @@ typedef struct {
 } par_helper;
 static par_helper g_par[PAR_HELPERS];
 static par_helper g_cpar[PAR_HELPERS];                /* the render copy's own helpers (the far scenery's choosing), apart from the composite's */
+static par_helper g_ppar[PAR_HELPERS];                /* the Stage 2 pairing thread's own helpers (a pool serves one caller at a time) */
 
 static int par_helper_main(void *u)
 {
@@ -971,6 +975,7 @@ static void par_run_on(par_helper *pool, void (*fn)(void *, int), void *arg, int
 }
 static void par_run(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_par, fn, arg, parts); }
 static void par_run_copy(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_cpar, fn, arg, parts); }
+static void par_run_pair(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_ppar, fn, arg, parts); }
 
 /* The fine picture through the frame's palette, in bands on the helpers. */
 static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, size_t n)
@@ -2381,6 +2386,18 @@ int main(int argc, char **argv)
                     }
                     if (cparts > 1 && cmade + 1 == cparts) { rerun_set_parallel(par_run_copy, cparts); remaster_live_set_stage2_parallel(par_run_copy, cparts); }
                 }
+                {   /* the pairing's own pool: F117_PAIR_THREADS (1 turns it off), default 8 with the pairing thread */
+                    int pparts = 8;
+                    const char *pt = getenv("F117_PAIR_THREADS");
+                    if (pt && atoi(pt) >= 1 && atoi(pt) <= 1 + PAR_HELPERS) pparts = atoi(pt);
+                    int pmade = 0;
+                    for (int k = 0; k + 1 < pparts; k++) {
+                        g_ppar[k].go = SDL_CreateSemaphore(0);
+                        g_ppar[k].done = SDL_CreateSemaphore(0);
+                        if (g_ppar[k].go && g_ppar[k].done) { g_ppar[k].thread = SDL_CreateThread(par_helper_main, "stage2-pair-help", &g_ppar[k]); pmade += g_ppar[k].thread != NULL; }
+                    }
+                    if (pparts > 1 && pmade + 1 == pparts) remaster_live_set_stage2_pair_parallel(par_run_pair, pparts);
+                }
             }
         }
     }
@@ -3356,6 +3373,7 @@ int main(int argc, char **argv)
                         if (g_pth.busy && SDL_TryWaitSemaphore(g_pth.done)) {            /* the pairing thread has finished one */
                             g_pth.busy = 0;
                             g_s2.pvalid[g_pth.buf] = g_pth.ok;
+                            S2EV("pairing for step %llu: %.2f ms of work, launched host ms %.2f, finished %.2f, noticed %.2f\n", (unsigned long long)g_s2.pb[g_pth.buf], g_pth.ms, g_pth.launch_ms, g_pth.end_ms, (double)SDL_GetTicksNS() / 1e6);
                         }
                         s2_pair_launch();
                         {   /* the newest published step's scene: start its copy (the first slice follows at once) */
@@ -3365,7 +3383,7 @@ int main(int argc, char **argv)
                                 const double b0 = (double)SDL_GetTicksNS() / 1e6;
                                 g_s2.launched = nb->seq;
                                 g_coll = g_s2.scene;
-                                if (drawlive_scene_begin(&g_live)) { g_s2.job = 1; g_s2.job_seq = nb->seq; g_s2.started++; S2EV("job for step %llu started at clock %llu\n", (unsigned long long)nb->seq, (unsigned long long)H.m.cpu.icount); }
+                                if (drawlive_scene_begin(&g_live)) { g_s2.job = 1; g_s2.job_seq = nb->seq; g_s2.started++; S2EV("job for step %llu (the step ended at clock %llu) started at clock %llu, host ms %.2f\n", (unsigned long long)nb->seq, (unsigned long long)nb->end, (unsigned long long)H.m.cpu.icount, (double)SDL_GetTicksNS() / 1e6); }
                                 g_coll = NULL;
                                 g_s2.begin_ms += (double)SDL_GetTicksNS() / 1e6 - b0;
                                 c_begin = (double)SDL_GetTicksNS() / 1e6 - b0;

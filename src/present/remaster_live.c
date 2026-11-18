@@ -2402,22 +2402,87 @@ struct remaster_stage2_pairs { int *ab, *ba; size_t na, nb, cap_a, cap_b; };
 remaster_stage2_pairs *remaster_stage2_pairs_new(void) { return (remaster_stage2_pairs *)calloc(1, sizeof(remaster_stage2_pairs)); }
 void remaster_stage2_pairs_free(remaster_stage2_pairs *p) { if (p) { free(p->ab); free(p->ba); free(p); } }
 
-/* The pairing of the primitives of step scene a with those of step scene b, made once per interval: ab[i] is the primitive of b that a's i-th moves towards (-1: none), ba[j] the inverse.
- * Same key, the k-th of its key in one step with the best unused among the k-th +- STAGE2_WINDOW of the other, refused when a vertex would move more than STAGE2_MAX_MOVE game pixels. */
-int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
+/* The pairing on helper threads (17 November 2026). The pairing thread had 41 ms of work at the end of the late flight (keys 3, two qsorts 12, matching 27) and the pictures of a step waited for it.
+ * Every part has an order-independent form with the serial result exactly: the keys of each primitive are independent; the sort is by (key, index), a total order, so chunks sorted on
+ * their own and merged give the same array; the matching works inside one key group at a time and a group reads and writes only its own entries of ab and ba, so the groups can be
+ * split into ranges at group boundaries. F117_STAGE2_PAIR_SERIAL=1 runs the serial reference; F117_STAGE2_PAIR_CHECK=1 runs both every pairing and compares ab and ba byte for byte. */
+static void (*g_s2_prun)(void (*)(void *, int), void *, int);
+static int g_s2_pparts;
+void remaster_live_set_stage2_pair_parallel(void (*run)(void (*)(void *, int), void *, int), int parts) { g_s2_prun = run; g_s2_pparts = parts; }
+
+typedef struct {
+    const remaster_frame_copy *a, *b;
+    stage2_key *nk, *fk;
+    int *ab, *ba;
+    int parts;                                      /* jobs of one dispatch (at most 8) */
+    size_t start[9];                                /* the matching ranges' first entries of nk, on group boundaries */
+} pair_job;
+
+static void pair_keys_part(void *vj, int part)
 {
-    if (!pr || !a || !b || !a->n || !b->n) return 0;
-    if (pr->cap_a < a->n) { int *q = (int *)realloc(pr->ab, a->n * sizeof *q); if (!q) return 0; pr->ab = q; pr->cap_a = a->n; }
-    if (pr->cap_b < b->n) { int *q = (int *)realloc(pr->ba, b->n * sizeof *q); if (!q) return 0; pr->ba = q; pr->cap_b = b->n; }
-    pr->na = a->n; pr->nb = b->n;
-    stage2_key *fk = (stage2_key *)malloc(b->n * sizeof *fk), *nk = (stage2_key *)malloc(a->n * sizeof *nk);
-    if (!fk || !nk) { free(fk); free(nk); return 0; }
-    for (size_t i = 0; i < a->n; i++) { nk[i].key = stage2_pkey(&a->prim[i]); nk[i].i = (uint32_t)i; pr->ab[i] = -1; }
-    for (size_t j = 0; j < b->n; j++) { fk[j].key = stage2_pkey(&b->prim[j]); fk[j].i = (uint32_t)j; pr->ba[j] = -1; }
-    qsort(fk, b->n, sizeof *fk, stage2_cmp);
-    qsort(nk, a->n, sizeof *nk, stage2_cmp);
-    size_t fi = 0;
-    for (size_t ns = 0; ns < a->n;) {
+    pair_job *j = (pair_job *)vj;
+    const size_t na = j->a->n, nb = j->b->n;
+    const size_t a0 = na * (size_t)part / (size_t)j->parts, a1 = na * (size_t)(part + 1) / (size_t)j->parts;
+    const size_t b0 = nb * (size_t)part / (size_t)j->parts, b1 = nb * (size_t)(part + 1) / (size_t)j->parts;
+    for (size_t i = a0; i < a1; i++) { j->nk[i].key = stage2_pkey(&j->a->prim[i]); j->nk[i].i = (uint32_t)i; j->ab[i] = -1; }
+    for (size_t i = b0; i < b1; i++) { j->fk[i].key = stage2_pkey(&j->b->prim[i]); j->fk[i].i = (uint32_t)i; j->ba[i] = -1; }
+}
+
+/* sort jobs: parts/2 chunks of nk, then parts/2 chunks of fk */
+static void pair_sort_part(void *vj, int job)
+{
+    pair_job *j = (pair_job *)vj;
+    const int half = j->parts / 2;
+    stage2_key *arr = job < half ? j->nk : j->fk;
+    const size_t n = job < half ? j->a->n : j->b->n;
+    const int c = job < half ? job : job - half;
+    const size_t from = n * (size_t)c / (size_t)half, to = n * (size_t)(c + 1) / (size_t)half;
+    qsort(arr + from, to - from, sizeof *arr, stage2_cmp);
+}
+
+static void pair_merge2(const stage2_key *s, size_t a0, size_t a1, size_t b0, size_t b1, stage2_key *d)
+{
+    size_t i = a0, k = b0, o = a0;
+    while (i < a1 && k < b1) d[o++] = stage2_cmp(&s[i], &s[k]) <= 0 ? s[i++] : s[k++];
+    while (i < a1) d[o++] = s[i++];
+    while (k < b1) d[o++] = s[k++];
+}
+
+/* the sorted chunks (half of them) merged into one sorted array, through a scratch array of the same size */
+static int pair_merge_chunks(stage2_key *arr, size_t n, int chunks)
+{
+    if (chunks <= 1) return 1;
+    stage2_key *tmp = (stage2_key *)malloc((n ? n : 1) * sizeof *tmp);
+    if (!tmp) return 0;
+    size_t bounds[9];
+    for (int c = 0; c <= chunks; c++) bounds[c] = n * (size_t)c / (size_t)chunks;
+    stage2_key *src = arr, *dst = tmp;
+    int runs = chunks;
+    while (runs > 1) {
+        int out = 0;
+        size_t nb[9];
+        for (int c = 0; c < runs; c += 2) {
+            if (c + 1 < runs) { pair_merge2(src, bounds[c], bounds[c + 1], bounds[c + 1], bounds[c + 2], dst); nb[out++] = bounds[c]; }
+            else { memcpy(dst + bounds[c], src + bounds[c], (bounds[c + 1] - bounds[c]) * sizeof *dst); nb[out++] = bounds[c]; }
+        }
+        nb[out] = n;
+        for (int c = 0; c <= out; c++) bounds[c] = nb[c];
+        runs = out;
+        stage2_key *t = src; src = dst; dst = t;
+    }
+    if (src != arr) memcpy(arr, src, n * sizeof *arr);
+    free(tmp);
+    return 1;
+}
+
+/* the matching of the key groups that start in nk[ns0, ns1): the same loop as the serial one, with fi found by a search */
+static void pair_match_range(const remaster_frame_copy *a, const remaster_frame_copy *b, const stage2_key *nk, const stage2_key *fk, int *ab, int *ba, size_t ns0, size_t ns1)
+{
+    if (ns0 >= ns1) return;
+    size_t lo = 0, hi = b->n;                       /* the first entry of fk whose key is not below nk[ns0].key */
+    while (lo < hi) { const size_t mid = lo + (hi - lo) / 2; if (fk[mid].key < nk[ns0].key) lo = mid + 1; else hi = mid; }
+    size_t fi = lo;
+    for (size_t ns = ns0; ns < ns1;) {
         size_t ne = ns;
         while (ne < a->n && nk[ne].key == nk[ns].key) ne++;
         while (fi < b->n && fk[fi].key < nk[ns].key) fi++;
@@ -2433,15 +2498,88 @@ int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a
                 if (j < 0 || j >= fn) continue;
                 const uint32_t fj = fk[fs + (size_t)j].i;
                 const remaster_prim *c = &b->prim[fj];
-                if (pr->ba[fj] >= 0 || c->inv_depth_scale != p->inv_depth_scale) continue;
+                if (ba[fj] >= 0 || c->inv_depth_scale != p->inv_depth_scale) continue;
                 const double mv = stage2_move(p, c);
                 if (mv <= STAGE2_MAX_MOVE * STAGE2_MAX_MOVE && mv < bd) { bd = mv; best = (long)fj; }
             }
-            if (best >= 0) { pr->ba[best] = (int)nk[q].i; pr->ab[nk[q].i] = (int)best; }
+            if (best >= 0) { ba[best] = (int)nk[q].i; ab[nk[q].i] = (int)best; }
         }
         ns = ne;
     }
+}
+
+static void pair_match_part(void *vj, int part)
+{
+    pair_job *j = (pair_job *)vj;
+    pair_match_range(j->a, j->b, j->nk, j->fk, j->ab, j->ba, j->start[part], j->start[part + 1]);
+}
+
+/* The pairing of the primitives of step scene a with those of step scene b, made once per interval: ab[i] is the primitive of b that a's i-th moves towards (-1: none), ba[j] the inverse.
+ * Same key, the k-th of its key in one step with the best unused among the k-th +- STAGE2_WINDOW of the other, refused when a vertex would move more than STAGE2_MAX_MOVE game pixels. */
+static int stage2_pair_run(int *ab, int *ba, const remaster_frame_copy *a, const remaster_frame_copy *b, int parallel, double *t_keys, double *t_sort, double *t_match)
+{
+    stage2_key *fk = (stage2_key *)malloc(b->n * sizeof *fk), *nk = (stage2_key *)malloc(a->n * sizeof *nk);
+    if (!fk || !nk) { free(fk); free(nk); return 0; }
+    pair_job job; memset(&job, 0, sizeof job);
+    job.a = a; job.b = b; job.nk = nk; job.fk = fk; job.ab = ab; job.ba = ba;
+    const int par = parallel && g_s2_prun && g_s2_pparts >= 2 && a->n >= 2048 && b->n >= 2048;
+    job.parts = par ? (g_s2_pparts > 8 ? 8 : g_s2_pparts) & ~1 : 1;       /* an even number of jobs (the sort splits them between the two arrays) */
+    if (job.parts < 2) job.parts = 1;
+    const double t0 = now_ms();
+    if (job.parts > 1) g_s2_prun(pair_keys_part, &job, job.parts); else pair_keys_part(&job, 0);
+    const double t1 = now_ms();
+    if (job.parts > 1) {
+        g_s2_prun(pair_sort_part, &job, job.parts);
+        if (!pair_merge_chunks(nk, a->n, job.parts / 2) || !pair_merge_chunks(fk, b->n, job.parts / 2)) { free(fk); free(nk); return 0; }
+    } else {
+        qsort(fk, b->n, sizeof *fk, stage2_cmp);
+        qsort(nk, a->n, sizeof *nk, stage2_cmp);
+    }
+    const double t2 = now_ms();
+    if (job.parts > 1) {
+        job.start[0] = 0;
+        for (int c = 1; c < job.parts; c++) {
+            size_t s = a->n * (size_t)c / (size_t)job.parts;
+            if (s < job.start[c - 1]) s = job.start[c - 1];
+            while (s > 0 && s < a->n && nk[s].key == nk[s - 1].key) s++;       /* on a group boundary */
+            job.start[c] = s;
+        }
+        job.start[job.parts] = a->n;
+        g_s2_prun(pair_match_part, &job, job.parts);
+    } else pair_match_range(a, b, nk, fk, ab, ba, 0, a->n);
+    const double t3 = now_ms();
     free(fk); free(nk);
+    *t_keys += t1 - t0; *t_sort += t2 - t1; *t_match += t3 - t2;
+    return 1;
+}
+
+int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
+{
+    if (!pr || !a || !b || !a->n || !b->n) return 0;
+    if (pr->cap_a < a->n) { int *q = (int *)realloc(pr->ab, a->n * sizeof *q); if (!q) return 0; pr->ab = q; pr->cap_a = a->n; }
+    if (pr->cap_b < b->n) { int *q = (int *)realloc(pr->ba, b->n * sizeof *q); if (!q) return 0; pr->ba = q; pr->cap_b = b->n; }
+    pr->na = a->n; pr->nb = b->n;
+    static int mode = -1;                           /* 0 parallel, 1 serial, 2 parallel and checked against serial */
+    if (mode < 0) mode = getenv("F117_STAGE2_PAIR_SERIAL") ? 1 : getenv("F117_STAGE2_PAIR_CHECK") ? 2 : 0;
+    double tk = 0, ts = 0, tm = 0;
+    if (!stage2_pair_run(pr->ab, pr->ba, a, b, mode != 1, &tk, &ts, &tm)) return 0;
+    if (mode == 2) {
+        static unsigned n, bad;
+        int *ab2 = (int *)malloc(a->n * sizeof *ab2), *ba2 = (int *)malloc(b->n * sizeof *ba2);
+        double x = 0, y = 0, z = 0;
+        if (ab2 && ba2 && stage2_pair_run(ab2, ba2, a, b, 0, &x, &y, &z)) {
+            const int same = !memcmp(ab2, pr->ab, a->n * sizeof *ab2) && !memcmp(ba2, pr->ba, b->n * sizeof *ba2);
+            n++; if (!same) bad++;
+            if (!same && bad < 4) fprintf(stderr, "[pair-check] the parallel pairing differs from the serial one (pairing %u, %zu and %zu primitives)\n", n, a->n, b->n);
+            if (n % 20 == 0) fprintf(stderr, "[pair-check] %u pairings checked, %u differ\n", n, bad);
+        }
+        free(ab2); free(ba2);
+    }
+    {   /* F117_STAGE2_PAIR_TIMING (diagnostic): the parts of a pairing, mean of each 20 */
+        static int on = -1; static double sk, ss, sm; static unsigned n;
+        if (on < 0) on = getenv("F117_STAGE2_PAIR_TIMING") != NULL;
+        if (on) { sk += tk; ss += ts; sm += tm; if (++n % 20 == 0) fprintf(stderr, "[pair-timing] mean of %u: keys %.2f ms, sorts %.2f, matching %.2f (%zu and %zu primitives)\n", n, sk / n, ss / n, sm / n, a->n, b->n); }
+    }
     return 1;
 }
 

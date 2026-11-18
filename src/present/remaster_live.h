@@ -113,6 +113,8 @@ void remaster_stage2_pairs_free(remaster_stage2_pairs *p);
 int remaster_stage2_pair(remaster_stage2_pairs *p, const remaster_frame_copy *a, const remaster_frame_copy *b);
 /* The host's helper threads for the blend (the same signature as rerun_set_parallel's); parts threads including the caller. */
 void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *, int), int parts);
+/* The pairing's own helper pool (not the copy's, which the main thread's blend shares): run(fn, arg, parts) runs fn(arg, 0..parts-1), parts at most 8. */
+void remaster_live_set_stage2_pair_parallel(void (*run)(void (*)(void *, int), void *, int), int parts);
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pairs, double t);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
 /* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */
