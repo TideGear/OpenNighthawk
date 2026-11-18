@@ -16,11 +16,17 @@ C="F117_REPLAY_FIXED_CADENCE=1 F117_PRESENT_HASH_FROM=3900000000 F117_REMASTER_T
 hashes() {   # TAG DEST [env...]
   local tag=$1 dest=$2; shift 2
   mkdir -p "$dest"
+  # The three distances are independent runs (own work folder and own output file each) and deterministic, so they run at the same time (17 Nov 2026: the gate's longest
+  # stage-1 chain was these three one after another); F117_GUARDS_SERIAL=1 runs them one after another as before.
   for d in near far maximum; do
-    "$HERE/bench.sh" "h_${tag}_$d" $d $C "$@" >/dev/null 2>&1
-    grep -h -i "hash" "$WORK/h_${tag}_$d/out.txt" | grep -v native > "$dest/hash_${tag}_$d.txt"
-    echo "$tag $d: $(wc -l < "$dest/hash_${tag}_$d.txt") checksums"
+    (
+      "$HERE/bench.sh" "h_${tag}_$d" $d $C "$@" >/dev/null 2>&1
+      grep -h -i "hash" "$WORK/h_${tag}_$d/out.txt" | grep -v native > "$dest/hash_${tag}_$d.txt"
+      echo "$tag $d: $(wc -l < "$dest/hash_${tag}_$d.txt") checksums"
+    ) &
+    [ -n "${F117_GUARDS_SERIAL:-}" ] && wait
   done
+  wait
 }
 case "$1" in
   baseline) hashes base "$BASE" ;;
