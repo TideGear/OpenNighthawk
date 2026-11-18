@@ -278,18 +278,32 @@ static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
  * (with a scale, its fine picture goes to inter_hi). */
 static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec)
 {
+    static double t_copy, t_feed, t_hi, t_guard; static unsigned n; static int prb = -1;
+    if (prb < 0) prb = getenv("F117_DRAW_PROBE") != NULL;
+    const double d0 = prb ? probe_ms() : 0;
     drawlist_copy(&r->scratch, &skel->start);
     hires *h = NULL;
     if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
-    for (int i = 0; i < nrec; i++) feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n);
+    const double d1 = prb ? probe_ms() : 0;
+    if (prb) { static double kt[128]; static unsigned kn[128], np; for (int i = 0; i < nrec; i++) { const double q0 = probe_ms(); feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n); const int k = rec[i].kind & 127; kt[k] += probe_ms() - q0; kn[k]++; }
+        if (++np % 300 == 0) { for (int k = 0; k < 128; k++) if (kn[k] && kt[k] / np > 0.02) fprintf(stderr, "[kindprobe] '%c' %.3f ms/picture, %.1f recs/picture, %.2f us each\n", k, kt[k] / np, (double)kn[k] / np, 1000.0 * kt[k] / kn[k]); } }
+    else for (int i = 0; i < nrec; i++) feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n);
+    const double d2 = prb ? probe_ms() : 0;
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
     if (!disp || disp->size < 64000) return NULL;
+    double d3 = d2, d4 = d2;
     if (r->scale) {
         memcpy(r->inter_hi, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
         if (r->inter_tag && disp->tag) memcpy(r->inter_tag, disp->tag, (size_t)320 * r->scale * 200 * r->scale);
+        d3 = prb ? probe_ms() : 0;
         uint64_t flat = 0, agree = 0;
         hires_guard_masked_tag(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree,
                                r->inter_tag && disp->tag ? r->inter_tag : NULL);
+        d4 = prb ? probe_ms() : 0;
+    }
+    if (prb) {
+        t_copy += d1 - d0; t_feed += d2 - d1; t_hi += d3 - d2; t_guard += d4 - d3;
+        if (++n % 300 == 0) fprintf(stderr, "[drawprobe] per picture: start copy %.3f, feed %.3f, hi copy %.3f, guard %.3f ms (scale %d, %d recs)\n", t_copy / n, t_feed / n, t_hi / n, t_guard / n, r->scale, nrec);
     }
     return disp->b;
 }
