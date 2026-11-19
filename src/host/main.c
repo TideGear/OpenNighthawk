@@ -101,13 +101,23 @@ static host_t H;
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
 static uint64_t g_bt[6];                 /* F117_LOOP_TIMING: the build's steps (collect, wait for the worker, apply the picture, publish and plan, the copy, other) */
+/* F117_THREAD_PRIO=1: the loop's own threads (main, picture worker, setup, pairing, helpers, collector) at high priority, so other programs' work does not take their cores in the middle of a frame (tested under the scripted load, 18 Nov: docs/gpu-compositor.md). */
+static void prio_up(void)
+{
+    static int on = -1;
+    if (on < 0) on = getenv("F117_THREAD_PRIO") != NULL && atoi(getenv("F117_THREAD_PRIO")) != 0;
+    if (on) SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_HIGH);
+}
+static int co_entry(void *arg);
 static void *co_mutex_new(void) { return SDL_CreateMutex(); }
 static void co_lock(void *m) { SDL_LockMutex((SDL_Mutex *)m); }
 static void co_unlock(void *m) { SDL_UnlockMutex((SDL_Mutex *)m); }
 static void *co_cond_new(void) { return SDL_CreateCondition(); }
 static void co_wait(void *c, void *m, int ms) { SDL_WaitConditionTimeout((SDL_Condition *)c, (SDL_Mutex *)m, ms); }
 static void co_broadcast(void *c) { SDL_BroadcastCondition((SDL_Condition *)c); }
-static void *co_spawn(int (*fn)(void *), void *arg) { return SDL_CreateThread((SDL_ThreadFunction)fn, "collector", arg); }
+typedef struct { int (*fn)(void *); void *arg; } co_boot;
+static int co_entry(void *p) { co_boot b = *(co_boot *)p; free(p); prio_up(); return b.fn(b.arg); }
+static void *co_spawn(int (*fn)(void *), void *arg) { co_boot *b = (co_boot *)malloc(sizeof *b); if (!b) return NULL; b->fn = fn; b->arg = arg; return SDL_CreateThread(co_entry, "collector", b); }
 static void co_join(void *t) { SDL_WaitThread((SDL_Thread *)t, NULL); }
 static const drawlive_sync_ops g_collector_ops = { co_mutex_new, co_lock, co_unlock, co_cond_new, co_wait, co_broadcast, co_spawn, co_join };
 static uint64_t g_iter_run_ns, g_iter_collect_ns;   /* this loop iteration's machine step, and the draw-feed collection inside it (F117_SLOW_FRAME_TRACE) */
@@ -170,6 +180,7 @@ static unsigned long long s2_ev_from(void) { static long long v = -2; if (v == -
 static struct { SDL_Thread *th; SDL_Semaphore *go, *done; int busy, buf; const remaster_frame_copy *a, *b; int ok; double ms, end_ms, launch_ms; } g_pth;
 static int pair_thread_main(void *u)
 {
+    prio_up();
     (void)u;
     for (;;) {
         SDL_WaitSemaphore(g_pth.go);
@@ -804,6 +815,7 @@ static int pw_a_applies(const present_worker *w)
 }
 static int present_setup_main(void *u)
 {
+    prio_up();
     (void)u;
     for (;;) {
         SDL_WaitSemaphore(g_pwx.sgo);
@@ -875,6 +887,7 @@ static void pw_wait_a(void)
 }
 static int present_worker_main(void *u)
 {
+    prio_up();
     (void)u;
     present_worker *w = &g_pws[0];
     /* Diagnostic CPU elapsed times; GPU execution overlaps these stages. */
@@ -945,6 +958,7 @@ static pal_helper g_pal[PAL_HELPERS];
 
 static int pal_helper_main(void *u)
 {
+    prio_up();
     pal_helper *p = (pal_helper *)u;
     for (;;) {
         SDL_WaitSemaphore(p->go);
@@ -971,6 +985,7 @@ static par_helper g_ppar[PAR_HELPERS];                /* the Stage 2 pairing thr
 static int par_helper_main(void *u)
 {
     par_helper *p = (par_helper *)u;
+    prio_up();
     for (;;) {
         SDL_WaitSemaphore(p->go);
         if (p->quit) break;
@@ -2426,6 +2441,7 @@ int main(int argc, char **argv)
             }
         }
     }
+    prio_up();
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;

@@ -193,6 +193,8 @@ void drawlive_init(drawlive *r)
     memset(r, 0, sizeof *r);
     drawlist_init(&r->list);
     drawlist_init(&r->pending_start);
+    drawlist_init(&r->pending_prehud);
+    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }
     r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
 }
@@ -205,12 +207,14 @@ void drawlive_set_scale(drawlive *r, int n)
     r->hr = (hires *)malloc(sizeof *r->hr);
     r->scratch_hr = (hires *)malloc(sizeof *r->scratch_hr);
     r->pending_hires = (hires *)malloc(sizeof *r->pending_hires);
+    r->pending_prehud_hires = (hires *)malloc(sizeof *r->pending_hires);
     hires_init(r->hr, n);
     r->inter_hi = (uint8_t *)calloc(bytes, 1);
     const char *diag = getenv("F117_PRESENT_DIAG");
     if (diag && *diag) { drawlist_diag_enable(1); r->inter_tag = (uint8_t *)calloc(bytes, 1); }
     for (int k = 0; k < DRAWLIVE_POOL; k++) {
         r->step[k].start_hires = (hires *)malloc(sizeof *r->hr);
+        r->step[k].prehud_hires = (hires *)malloc(sizeof *r->hr);
         r->step[k].picture_hi = (uint8_t *)calloc(bytes, 1);
         if (r->inter_tag) r->step[k].picture_tag = (uint8_t *)calloc(bytes, 1);
     }
@@ -284,18 +288,29 @@ static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
 
 /* Draw the in-between list on a copy of the replay at the skeleton's start
  * (with a scale, its fine picture goes to inter_hi). */
-static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec)
+static const uint8_t *draw_recs_ex(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec, int use_pre)
 {
     static double t_copy, t_feed, t_hi, t_guard; static unsigned n; static int prb = -1;
     if (prb < 0) prb = getenv("F117_DRAW_PROBE") != NULL;
     const double d0 = prb ? probe_ms() : 0;
-    drawlist_copy(&r->scratch, &skel->start);
+    if (prb) { static unsigned calls, wantpre, havepre; calls++; if (r->prehud_on) wantpre++; if (skel->have_prehud) havepre++; if (calls % 600 == 0) fprintf(stderr, "[prehud] calls %u, prehud_on %u, step has snapshot %u, use_pre %d\n", calls, wantpre, havepre, use_pre); }
+    int from = 0;
+    if (use_pre) { for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; } if (!rec || nrec <= 0 || rec[from].kind != 'h') use_pre = 0; }
+    drawlist_copy(&r->scratch, use_pre ? &skel->prehud : &skel->start);
     hires *h = NULL;
-    if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
+    if (r->scale) { memcpy(r->scratch_hr, use_pre ? skel->prehud_hires : skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
+    if (!use_pre) from = 0;
     const double d1 = prb ? probe_ms() : 0;
-    if (prb) { static double kt[128]; static unsigned kn[128], np; for (int i = 0; i < nrec; i++) { const double q0 = probe_ms(); feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n); const int k = rec[i].kind & 127; kt[k] += probe_ms() - q0; kn[k]++; }
+    if (prb) { static double kt[128], seg_t[3]; static unsigned kn[128], seg_n[3], np; int seg = 0; for (int i = from; i < nrec; i++) { const double q0 = probe_ms(); feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n); const int k = rec[i].kind & 127; const double dq = probe_ms() - q0; kt[k] += dq; kn[k]++; if (rec[i].kind == 'h') seg = 1; else if (rec[i].kind == 'p') seg = 2; seg_t[seg] += dq; seg_n[seg]++; }
+        if (np % 300 == 299) fprintf(stderr, "[segprobe] per picture: before h %.3f ms (%.0f recs), h to p %.3f ms (%.0f recs), p to end %.3f ms (%.0f recs)\n",seg_t[0] / (np + 1), (double)seg_n[0] / (np + 1), seg_t[1] / (np + 1), (double)seg_n[1] / (np + 1), seg_t[2] / (np + 1), (double)seg_n[2] / (np + 1));
         if (++np % 300 == 0) { for (int k = 0; k < 128; k++) if (kn[k] && kt[k] / np > 0.02) fprintf(stderr, "[kindprobe] '%c' %.3f ms/picture, %.1f recs/picture, %.2f us each\n", k, kt[k] / np, (double)kn[k] / np, 1000.0 * kt[k] / kn[k]); } }
-    else for (int i = 0; i < nrec; i++) feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n);
+    else for (int i = from; i < nrec; i++) feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n);
+    if (prb) {   /* where the HUD's state record ('h') sits in the list: the records before it and after it */
+        static unsigned nh, sb4, saft; static double fb;
+        int first_h = -1; for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { first_h = i; break; }
+        if (first_h >= 0) { nh++; sb4 += (unsigned)first_h; saft += (unsigned)(nrec - first_h); fb += (double)first_h / nrec; }
+        if (nh && nh % 300 == 0) fprintf(stderr, "[hudpos] 'h' at record %.0f on average of %.0f (%.0f%% in): %.0f records before it, %.0f after\n",(double)sb4 / nh, (double)(sb4 + saft) / nh, 100.0 * fb / nh, (double)sb4 / nh, (double)saft / nh);
+    }
     const double d2 = prb ? probe_ms() : 0;
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
     if (!disp || disp->size < 64000) return NULL;
@@ -314,6 +329,14 @@ static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const in
         if (++n % 300 == 0) fprintf(stderr, "[drawprobe] per picture: start copy %.3f, feed %.3f, hi copy %.3f, guard %.3f ms (scale %d, %d recs)\n", t_copy / n, t_feed / n, t_hi / n, t_guard / n, r->scale, nrec);
     }
     return disp->b;
+}
+
+static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec) { return draw_recs_ex(r, skel, rec, nrec, 0); }
+
+/* The in-between picture's HUD pass only, on the step's replay as it stood when the pass began (F117_PREHUD): the records before the HUD are the step's own, whose pixels outside the HUD the scene or the static cockpit decide. */
+static const uint8_t *draw_list_hud(drawlive *r, const drawlive_step *skel)
+{
+    return draw_recs_ex(r, skel, r->ilist.rec, r->ilist.n, r->prehud_on && skel->have_prehud);
 }
 
 static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
@@ -454,13 +477,20 @@ static void replay_available(drawlive *r, const drawfeed_frame *fr)
         r->pending_seq = fr->seq;
         r->pending_at = 0;
         r->pending_active = 1;
+        r->pending_prehud_have = 0;
     }
     char kind;
     uint64_t icount;
     const int32_t *v;
     int n;
-    while (drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n))
+    while (drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n)) {
+        if (kind == 'h' && r->prehud_on && r->interp && r->scale && !r->pending_prehud_have) {   /* the HUD pass begins: keep the replay as it stands */
+            drawlist_copy(&r->pending_prehud, &r->list);
+            memcpy(r->pending_prehud_hires, r->hr, sizeof *r->hr);
+            r->pending_prehud_have = 1;
+        }
         feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
+    }
 }
 
 /* Transfer ownership of the cached fine pages without copying them again.
@@ -517,6 +547,11 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
             s->start_hires = r->pending_hires;
             r->pending_hires = old;
         }
+    }
+    if (r->interp && r->prehud_on && r->scale) {
+        swap_lists(&s->prehud, &r->pending_prehud);
+        hires *oh = s->prehud_hires; s->prehud_hires = r->pending_prehud_hires; r->pending_prehud_hires = oh;
+        s->have_prehud = r->pending_prehud_have;
     }
     const double c1 = probe_ms();
     memcpy(s->picture, disp->b, 64000);
@@ -857,7 +892,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
                     interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
                                         (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD | INTERP_BANDS | INTERP_HUD_HOLD : 0),
                                         &r->ilist, &sb, r->istats);
-                    const uint8_t *hp = draw_list(r, sb ? b : a);
+                    const uint8_t *hp = draw_list_hud(r, sb ? b : a);
                     if (hp) {
                         memcpy(f->vram, hp, 64000);
                         if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }

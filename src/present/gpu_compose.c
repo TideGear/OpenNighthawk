@@ -828,6 +828,7 @@ static int g_setup_threads = -1;
 static int pool_worker(void *u)
 {
     setup_pool *p = (setup_pool *)u;
+    { static int on = -1; if (on < 0) on = getenv("F117_THREAD_PRIO") != NULL && atoi(getenv("F117_THREAD_PRIO")) != 0; if (on) SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_HIGH); }   /* F117_THREAD_PRIO, as in main.c */
     for (;;) {
         SDL_WaitSemaphore(p->go);
         if (SDL_GetAtomicInt(&p->quit)) break;

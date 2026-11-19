@@ -81,6 +81,9 @@ typedef struct {
     interp_frame  *parsed;
     drawlist       start;
     hires         *start_hires;   /* the sub-pixel builder at its start (with a scale) */
+    drawlist       prehud;        /* F117_PREHUD: the replay as it stood when the frame's HUD pass began (its first 'h' record): a picture redraws only the records from there */
+    hires         *prehud_hires;
+    int            have_prehud;
     uint8_t        picture[64000];
     uint8_t       *picture_hi;    /* and the fine picture it left */
     uint8_t       *picture_tag;   /* diagnostic: that picture's origin plane (diagtag.h), or NULL */
@@ -125,6 +128,9 @@ typedef struct {
     uint64_t next_seq;
     drawlist pending_start;        /* start of the frame currently being collected */
     hires *pending_hires;
+    drawlist pending_prehud;       /* the same for the frame being collected */
+    hires *pending_prehud_hires;
+    int pending_prehud_have, prehud_on;
     uint64_t pending_seq;
     size_t pending_at;
     int pending_active;
