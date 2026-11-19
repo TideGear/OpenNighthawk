@@ -40,6 +40,8 @@ typedef struct {
 typedef struct { ctri *t; size_t n, cap; } clist;
 
 typedef struct { void *p; size_t n, cap; } vec;     /* a growing array of bytes */
+#define HW_CHUNKS 8
+typedef struct { vec poly, line; int nseg, fail; uint32_t from, to; hw_seg_t seg[8192]; } hw_chunk;   /* one slice of the records' vertices, built on a setup thread (hw_begin) */
 
 /* The CPU setup's lists and arrays for one picture: the classified triangles, the per-chunk lists they are merged from, the decal face list and the words packed for the upload. */
 typedef struct {
@@ -75,6 +77,7 @@ typedef struct {
         SDL_GPUBuffer *vb; Uint32 vcap;
         SDL_GPUTransferBuffer *up; Uint32 upcap;
         vec v; int nseg; hw_seg_t seg[8192];
+        hw_chunk ch[HW_CHUNKS];
     } hw;
     gscratch sc;                            /* this picture's CPU setup lists (Part B, 16 November 2026: per set, so two pictures' setups can run at once) */
 } gset;
@@ -1340,34 +1343,26 @@ static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
 }
 
 /* the same job as gpu_compose_begin's compute path, for F117_HW_RASTER; 1 on success, 0 when the compute path has to be used */
-static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
+typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; } hw_build_ctx;
+/* Chunk k of the hardware path's vertex build: the polygons and logic fills of the records from..to in order (with the segments of equal kind they make), then their strokes. */
+static void hw_build_job(void *vc, int k)
 {
-    if (!hw_init(g)) return 0;
-    gset *s = GS(g);
-    const int w = in->w, h = in->h, tw = in->tw;
-    const size_t px = (size_t)tw * h;
-    s->hw.nseg = 0;
-    vec *vv = &s->hw.v; vv->n = 0;
-    hw_seg *S = s->hw.seg; int nseg = 0;
-    double maxiz = 0;
-    for (uint32_t i = 0; i < in->nrec; i++) {
-        const gpu_trace_rec *r = &in->recs[i];
-        if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LINE) { const double sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0; if (r->near_z > 0 && sc / r->near_z > maxiz) maxiz = sc / r->near_z; }
-    }
-    const float DS = maxiz > 0 ? (float)(1.0 / maxiz) : 1.0f;
-    const double fw = (double)tw, fh = (double)h;
+    hw_build_ctx *x = (hw_build_ctx *)vc; hw_chunk *ck = &x->ch[k]; const gpu_compose_in *in = x->in;
+    const double fw = x->fw, fh = x->fh; const float DS = x->DS;
+    vec *pv = &ck->poly, *lv = &ck->line; pv->n = 0; lv->n = 0; ck->nseg = 0; ck->fail = 0;
+    hw_seg *S = ck->seg; int nseg = 0;
 #define HNDCX(x) ((float)((x) * 2.0 / fw - 1.0))
 #define HNDCY(y) ((float)(1.0 - (y) * 2.0 / fh))
 #define HSEG(hf, hc, hk) do { if ((hc) && nseg < HW_SEGS) { S[nseg].first = (hf); S[nseg].count = (hc); S[nseg].kind = (hk); nseg++; } } while (0)
     int cur = HK_POLY; size_t curfirst = 0;
-    for (uint32_t i = 0; i < in->nrec; i++) {
+    for (uint32_t i = ck->from; i < ck->to; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0;
-        const size_t nv0 = vv->n / sizeof(hw_vtx);
+        const size_t nv0 = pv->n / sizeof(hw_vtx);
         if (r->kind == REMASTER_T_CLEAR) {
             const uint32_t own = 16;
-            if (!hw_push(vv, -1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0) ||
-                !hw_push(vv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, 1, -1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(vv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0)) return 0;
+            if (!hw_push(pv, -1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(pv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(pv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0) ||
+                !hw_push(pv, 1, 1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(pv, 1, -1, 1e-6f, r->color, 0xFFFF, own, 0) || !hw_push(pv, -1, -1, 1e-6f, r->color, 0xFFFF, own, 0)) { ck->fail = 1; return; }
         } else if (r->kind == REMASTER_T_ZRESET) {
             HSEG(curfirst, nv0 - curfirst, cur); curfirst = nv0; cur = HK_POLY;
             if (nseg < HW_SEGS) { S[nseg].first = 0; S[nseg].count = 0; S[nseg].kind = HK_ZRESET; nseg++; }
@@ -1388,15 +1383,14 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
                 for (int q = 0; q < 3; q++) {
                     const int vi = idxs[q]; uint32_t col = col0;
                     if (r->kind == REMASTER_T_SHADED && vi < r->n) col = r->colors[vi];
-                    if (!hw_push(vv, px_[vi], py_[vi], pd[vi], col, idx, own, r->kind == REMASTER_T_SHADED)) return 0;
+                    if (!hw_push(pv, px_[vi], py_[vi], pd[vi], col, idx, own, r->kind == REMASTER_T_SHADED)) { ck->fail = 1; return; }
                 }
             }
         }
     }
-    HSEG(curfirst, vv->n / sizeof(hw_vtx) - curfirst, cur);
+    HSEG(curfirst, pv->n / sizeof(hw_vtx) - curfirst, cur);
     {   /* the strokes and dots: quads with square caps, depth scaled by 1 / 0.97 (the decal tolerance) */
-        const size_t line0 = vv->n / sizeof(hw_vtx);
-        for (uint32_t i = 0; i < in->nrec; i++) {
+        for (uint32_t i = ck->from; i < ck->to; i++) {
             const gpu_trace_rec *r = &in->recs[i]; if (r->kind != REMASTER_T_LINE) continue;
             const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0, bias = r->line_bias > 0 ? r->line_bias : 1.5;
             if (r->v[0].z < nz && r->v[1].z < nz) continue;
@@ -1410,18 +1404,72 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
             const double ax0 = ax - ex, ay0 = ay - ey, bx0 = bx + ex, by0 = by + ey;
             const float da = (float)(bias * sc / a.z * DS / 0.97), db = (float)(bias * sc / b.z * DS / 0.97);
             const uint32_t pi = r->paint_index, own = 8;
-            if (!hw_push(vv, HNDCX(ax0 + nx), HNDCY(ay0 + ny), da, r->color, pi, own, 0) || !hw_push(vv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
-                !hw_push(vv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0) || !hw_push(vv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
-                !hw_push(vv, HNDCX(bx0 - nx), HNDCY(by0 - ny), db, r->color, pi, own, 0) || !hw_push(vv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0)) return 0;
+            if (!hw_push(lv, HNDCX(ax0 + nx), HNDCY(ay0 + ny), da, r->color, pi, own, 0) || !hw_push(lv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
+                !hw_push(lv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0) || !hw_push(lv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
+                !hw_push(lv, HNDCX(bx0 - nx), HNDCY(by0 - ny), db, r->color, pi, own, 0) || !hw_push(lv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0)) { ck->fail = 1; return; }
         }
-        HSEG(line0, vv->n / sizeof(hw_vtx) - line0, HK_LINE);
     }
+    ck->nseg = nseg;
 #undef HNDCX
 #undef HNDCY
 #undef HSEG
+}
+
+typedef struct { uint8_t *m; hw_chunk *ch; int nch; size_t pbase[HW_CHUNKS], lbase[HW_CHUNKS], poly_total; } hw_copy_ctx;
+static void hw_copy_job(void *vc, int k)
+{
+    hw_copy_ctx *x = (hw_copy_ctx *)vc;
+    if (k < x->nch) { const vec *v = &x->ch[k].poly; if (v->n) memcpy(x->m + x->pbase[k] * sizeof(hw_vtx), v->p, v->n); }
+    else { const int j = k - x->nch; const vec *v = &x->ch[j].line; if (v->n) memcpy(x->m + (x->poly_total + x->lbase[j]) * sizeof(hw_vtx), v->p, v->n); }
+}
+
+static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
+{
+    if (!hw_init(g)) return 0;
+    gset *s = GS(g);
+    const int w = in->w, h = in->h, tw = in->tw;
+    const size_t px = (size_t)tw * h;
+    s->hw.nseg = 0;
+    vec *vv = &s->hw.v; vv->n = 0;
+    hw_seg *S = s->hw.seg; int nseg = 0;
+    double maxiz = 0;
+    for (uint32_t i = 0; i < in->nrec; i++) {
+        const gpu_trace_rec *r = &in->recs[i];
+        if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_LINE) { const double sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0; if (r->near_z > 0 && sc / r->near_z > maxiz) maxiz = sc / r->near_z; }
+    }
+    const float DS = maxiz > 0 ? (float)(1.0 / maxiz) : 1.0f;
+    const double fw = (double)tw, fh = (double)h;
+    int nch = 1;
+    size_t nvtx = 0;
+    hw_copy_ctx cc; memset(&cc, 0, sizeof cc);
+    {   /* the vertices on the setup pool, in contiguous chunks of the records: the same vertices in the same order as one serial pass, merged here */
+        static int serial = -1; if (serial < 0) serial = getenv("F117_HW_BUILD_SERIAL") != NULL;     /* =1: one chunk, the serial order (the check that the chunks merge to the same vertices) */
+        nch = in->nrec >= 4096 && !serial ? HW_CHUNKS : 1;
+        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS };
+        for (int k = 0; k < nch; k++) { s->hw.ch[k].from = (uint32_t)((uint64_t)in->nrec * k / nch); s->hw.ch[k].to = (uint32_t)((uint64_t)in->nrec * (k + 1) / nch); }
+        pool_run(hw_build_job, &bx, nch);
+        for (int k = 0; k < nch; k++) if (s->hw.ch[k].fail) return 0;
+        size_t base = 0;
+        for (int k = 0; k < nch; k++) {
+            const hw_chunk *c = &s->hw.ch[k];
+            for (int j = 0; j < c->nseg; j++) {
+                hw_seg_t sg = c->seg[j];
+                if (sg.kind != HK_ZRESET) sg.first += base;
+                if (nseg > 0 && sg.kind != HK_ZRESET && S[nseg - 1].kind == sg.kind && S[nseg - 1].first + S[nseg - 1].count == sg.first) { S[nseg - 1].count += sg.count; continue; }
+                if (nseg < HW_SEGS) S[nseg++] = sg;
+            }
+            cc.pbase[k] = base; base += c->poly.n / sizeof(hw_vtx);
+        }
+        cc.poly_total = base;
+        size_t lbase = 0;
+        for (int k = 0; k < nch; k++) { cc.lbase[k] = lbase; lbase += s->hw.ch[k].line.n / sizeof(hw_vtx); }
+        if (lbase && nseg < HW_SEGS) { S[nseg].first = base; S[nseg].count = lbase; S[nseg].kind = HK_LINE; nseg++; }
+        nvtx = base + lbase;
+        cc.ch = s->hw.ch; cc.nch = nch;
+    }
     const Uint64 t_built = SDL_GetTicksNS();
     if (!hw_ensure_tex(g, s, tw, h)) return 0;
-    const Uint32 vbytes = (Uint32)(vv->n ? vv->n : sizeof(hw_vtx));
+    const Uint32 vbytes = (Uint32)(nvtx ? nvtx * sizeof(hw_vtx) : sizeof(hw_vtx));
     const Uint32 pbytes = (Uint32)(px * 4), game_bytes = (Uint32)(((size_t)w * h + 7) & ~(size_t)3);
     const SDL_GPUBufferUsageFlags RO = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, RW = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
     if (s->hw.vcap < vbytes) {
@@ -1450,7 +1498,8 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
     {
         Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, s->hw.up, true);
         if (!m) return 0;
-        if (vv->n) memcpy(m, vv->p, vv->n); else memset(m, 0, sizeof(hw_vtx));
+        cc.m = m;
+        if (nvtx) pool_run(hw_copy_job, &cc, 2 * nch); else memset(m, 0, sizeof(hw_vtx));
         memcpy(m + vbytes, in->palette, 1024);
         uint32_t *fl = (uint32_t *)(m + vbytes + 1024);
         for (int k = 0; k < 256; k++) fl[k] = in->tagflags[k];
@@ -1505,12 +1554,12 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
     s->pbytes = pbytes; s->game_bytes = game_bytes; s->npix_game = (size_t)w * h;
     s->setup_ms = (double)(t_built - t_start) / 1e6;
     for (int k = 0; k < 9; k++) g_last_phase[k] = 0;
-    g_last_phase[0] = (double)(t_built - t_start) / 1e6; g_last_phase[4] = (double)(t_prepass - t_built) / 1e6; g_last_phase[5] = (double)(vv->n / sizeof(hw_vtx) / 3);
+    g_last_phase[0] = (double)(t_built - t_start) / 1e6; g_last_phase[4] = (double)(t_prepass - t_built) / 1e6; g_last_phase[5] = (double)(nvtx / 3);
     {   /* F117_HW_TIMING (diagnostic): the CPU side of a hardware picture, mean of each 120 */
         static int on = -1; static double sb, sg; static unsigned n; static double nvs;
         if (on < 0) on = getenv("F117_HW_TIMING") != NULL;
         if (on) {
-            sb += (double)(t_built - t_start) / 1e6; sg += (double)(t_prepass - t_built) / 1e6; nvs += (double)(vv->n / sizeof(hw_vtx) / 3);
+            sb += (double)(t_built - t_start) / 1e6; sg += (double)(t_prepass - t_built) / 1e6; nvs += (double)(nvtx / 3);
             if (++n % 120 == 0) fprintf(stderr, "[hw-timing] mean of %u: vertices built in %.2f ms (%.0f triangles), uploaded and submitted in %.2f ms\n", n, sb / n, nvs / n, sg / n);
         }
     }

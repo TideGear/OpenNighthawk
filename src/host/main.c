@@ -3417,7 +3417,16 @@ int main(int argc, char **argv)
                         if (g_s2.job) {                          /* this frame's slice of the running copy */
                             const double sl0 = (double)SDL_GetTicksNS() / 1e6;
                             g_coll = g_s2.scene;
-                            const int done = drawlive_scene_step(&g_live, (uint64_t)(s_slice_ms * 1e6));
+                            static double s_adapt = -2;       /* F117_STAGE2_SLICE_ADAPT=T (ms): this slice gets what is left of T after the time this frame has already spent (the machine step, the picture), between 1.5 ms and the slice size; 0 off */
+                            if (s_adapt < -1) { const char *e = getenv("F117_STAGE2_SLICE_ADAPT"); s_adapt = e ? atof(e) : 0.0; }
+                            double budget_ms = s_slice_ms;
+                            if (s_adapt > 0) {
+                                const double spent = (double)(SDL_GetTicksNS() - g_iter_ns) / 1e6;
+                                budget_ms = s_adapt - spent;
+                                if (budget_ms < 1.5) budget_ms = 1.5;
+                                if (budget_ms > s_slice_ms) budget_ms = s_slice_ms;
+                            }
+                            const int done = drawlive_scene_step(&g_live, (uint64_t)(budget_ms * 1e6));
                             g_coll = NULL;
                             const double sl = (double)SDL_GetTicksNS() / 1e6 - sl0;
                             c_slice = sl;
