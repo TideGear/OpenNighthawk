@@ -933,6 +933,13 @@ static void (*g_choose_par)(void (*fn)(void *, int), void *arg, int parts);
 static int g_choose_parts;
 void rerun_set_parallel(void (*run)(void (*fn)(void *, int), void *arg, int parts), int parts) { g_choose_par = run; g_choose_parts = parts; }
 
+/* F117_FAR_YIELD (default on, 0 off): the far scenery's phases may yield to the display loop between them (see far_scenery_body). */
+static void far_yield(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_FAR_YIELD"); on = e ? atoi(e) != 0 : 1; }
+    if (on) rerun_yield_point();
+}
 static int far_scenery_body(machine_t *m);
 static int far_scenery(machine_t *m)
 {
@@ -1083,8 +1090,10 @@ static int far_scenery_body(machine_t *m)
             npick += bufs[j].n; tr_seen += bufs[j].seen; tr_culled += bufs[j].culled; tr_deep += bufs[j].deep;
         }
     }
+    far_yield();       /* F117_FAR_YIELD (default on): a sliced copy can give the display loop its turn between the far scenery's phases too (choosing, sort, the batch were one stretch of 7 to 8 ms that no slice budget could split) */
     const double sort_t0 = walk_ms();
     far_sort_picks(picks, npick);
+    far_yield();
     { static double acc; static unsigned nn; acc += walk_ms() - sort_t0; if (++nn % 600 == 0 && getenv("F117_SORT_PROBE")) fprintf(stderr, "[sort] %.3f ms a copy to sort %zu picks\n", acc / nn, npick); }
     {   /* F117_FAR_TRACE=FROM: one line a copy from that clock: the attitude, and what the far scenery chose */
         static int tr = -1; static unsigned long long tr_from;
@@ -1157,16 +1166,26 @@ static int far_scenery_body(machine_t *m)
                     spec->darken = pk->darken; spec->level = pk->level; spec->shrink = 2 * (pk->level - f->ring);
                     spec->eye[0] = eye_long[0]; spec->eye[1] = eye_long[1]; spec->eye[2] = eye_long[2];
                 }
+                far_yield();
                 const double bt0 = stats ? walk_ms() : 0.0;
                 batched = g_collector.native_batch(g_collector.user, m, bspec, belig, npick, btook);
                 if (stats) batch_ms_acc += walk_ms() - bt0;
+                far_yield();
             }
         }
     }
+    /* F117_FAR_PAR_COMMIT (default on, 0 off): a run of picks the batch took is committed at once (the copying on the helper threads) when the next pick that is not one of them comes, or at the end:
+     * the same frame, serial numbers and order as one commit after another, since nothing else adds to the frame inside a run. */
+    static int range_on = -1;
+    if (range_on < 0) { const char *e = getenv("F117_FAR_PAR_COMMIT"); range_on = e ? atoi(e) != 0 : 1; }
+    const int use_range = range_on && g_collector.native_commit_range;
+    size_t run0 = 0; int in_run = 0;
     for (size_t k = 0; k < npick; k++) {
         if ((k & 63) == 63) rerun_yield_point();      /* a sliced copy gives the display loop its turn here (state is clean between picks) */
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
+        if (use_range && batched && btook[k]) { if (!in_run) { run0 = k; in_run = 1; } native++; continue; }
+        if (in_run) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit_range(g_collector.user, m, run0, k); if (stats) commit_ms_acc += walk_ms() - ct0; in_run = 0; }
         if (batched && btook[k]) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit(g_collector.user, m, k); if (stats) commit_ms_acc += walk_ms() - ct0; native++; continue; }
         if (g_collector.native && !(pk->own && pk->defers)) {
             rerun_native spec;
@@ -1215,6 +1234,7 @@ static int far_scenery_body(machine_t *m)
         }
         g_walk_busy = 0; g_scale_shift = 0; remaster_prim_source = 0;
     }
+    if (in_run) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit_range(g_collector.user, m, run0, npick); if (stats) commit_ms_acc += walk_ms() - ct0; in_run = 0; }
     g_walk_busy = 0; g_scale_shift = 0; remaster_prim_source = 0;
     while (n_nodefer) { n_nodefer--; m->mem[(((uint32_t)ds << 4) + nodefer[n_nodefer].at) & 0xFFFFF] = nodefer[n_nodefer].was; }
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp; m->run_until = until; c->stop_at = stop;

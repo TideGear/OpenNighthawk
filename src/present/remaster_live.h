@@ -65,6 +65,7 @@ void remaster_live_placement_return(remaster_live *r, machine_t *m, int returned
 /* The far scenery's native placements on helper threads (rerun_collector.native_batch / native_commit); spec is an array of rerun_native. */
 int remaster_live_native_batch(remaster_live *r, machine_t *m, const void *spec, const unsigned char *elig, size_t n, unsigned char *took);
 void remaster_live_native_commit(remaster_live *r, machine_t *m, size_t k);
+void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0, size_t k1);   /* picks k0 .. k1 - 1 at once, the same frame as one commit after another */
 /* A flat dot the copy's game dropped outside the 4:3 window (rerun_collector.overlay_dot): one game pixel at that screen position (a square polygon),
    just beyond the near plane so it draws over the scene as the game's flat dot does. x, y in the game's 320 x 200 pixels (the pixel's corner). */
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word);

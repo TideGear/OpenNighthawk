@@ -99,6 +99,9 @@ typedef struct {
     /* The overlays' layers, in the order the original draws the flat things (later on top): 3 far dots (moving-objects pass, 983E), 2 smoke puffs (deferred, drawn by the compose walk D87C
      * after them), 1 tracers and 0 the blast (the display pass 9EFA, the last thing the frame draws; tracers before the blast). Each layer sits at its own depth, 0.2 percent apart, so a
      * tie cannot reorder them. */
+    /* native_commit for the picks k0 .. k1 - 1 (all of them taken by native_batch, no other pick between them), at once: the same frame as the one-at-a-time commits, with the
+     * copying done on the helper threads (F117_FAR_PAR_COMMIT). NULL: the host has none. */
+    void (*native_commit_range)(void *user, machine_t *m, size_t k0, size_t k1);
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */

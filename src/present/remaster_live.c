@@ -2792,6 +2792,62 @@ void remaster_live_native_commit(remaster_live *r, machine_t *m, size_t k)
     r->added++; r->native_drawn++;
     r->src_native_prims += rc->n; r->src_native_objs++;
 }
+/* The commit of a run of picks at once: the serial numbers and the destination offsets are taken in pick order (a prefix sum over what each pick drew), then the primitives are copied
+ * into their places on the helper threads (disjoint ranges of the frame), so the frame is byte for byte what one commit after another makes. */
+typedef struct { remaster_prim *dst; const uint32_t *k; const uint32_t *serial; const size_t *off; size_t n; int parts; } commit_job;
+static void commit_part(void *vj, int part)
+{
+    commit_job *j = (commit_job *)vj;
+    const size_t from = j->n * (size_t)part / (size_t)j->parts, to = j->n * (size_t)(part + 1) / (size_t)j->parts;
+    for (size_t q = from; q < to; q++) {
+        const nat_rec *rc = &g_nrec[j->k[q]];
+        const remaster_prim *src = g_nw[rc->part].frame.prim + rc->first;
+        remaster_prim *d = j->dst + j->off[q];
+        for (uint32_t i = 0; i < rc->n; i++) {
+            d[i] = src[i];
+            d[i].owner = j->serial[q] << 12 | (src[i].owner & 0xFFFu);
+            d[i].source = 1;
+        }
+    }
+}
+
+void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0, size_t k1)
+{
+    (void)m;
+    static uint32_t *ks, *serials; static size_t *offs; static size_t cap;
+    if (k1 <= k0) return;
+    const size_t span = k1 - k0;
+    if (span > cap) {
+        free(ks); free(serials); free(offs);
+        cap = span + span / 2;
+        ks = (uint32_t *)malloc(cap * sizeof *ks); serials = (uint32_t *)malloc(cap * sizeof *serials); offs = (size_t *)malloc(cap * sizeof *offs);
+        if (!ks || !serials || !offs) { free(ks); free(serials); free(offs); ks = NULL; serials = NULL; offs = NULL; cap = 0; for (size_t k = k0; k < k1; k++) remaster_live_native_commit(r, m, k); return; }
+    }
+    remaster_frame *f = &r->frame;
+    size_t n = 0, total = 0; int incomplete = 0;
+    for (size_t k = k0; k < k1; k++) {
+        const nat_rec *rc = &g_nrec[k];
+        if (rc->took != 2) continue;
+        ks[n] = (uint32_t)k; serials[n] = remaster_scene_next_serial(r->scene); offs[n] = f->n + total;
+        total += rc->n; if (rc->incomplete) incomplete = 1;
+        n++;
+    }
+    if (f->n + total > f->cap) {
+        size_t c = f->cap ? f->cap : 256;
+        while (c < f->n + total) c *= 2;
+        remaster_prim *p = (remaster_prim *)realloc(f->prim, c * sizeof *p);
+        if (!p) return;
+        f->prim = p; f->cap = c;
+    }
+    commit_job job = { f->prim, ks, serials, offs, n, 1 };
+    if (g_s2_run && g_s2_parts > 1 && total >= 8192) { job.parts = g_s2_parts > 8 ? 8 : g_s2_parts; g_s2_run(commit_part, &job, job.parts); }
+    else commit_part(&job, 0);
+    f->n += total;
+    if (incomplete) r->frame_complete = 0;
+    r->added += (unsigned)n; r->native_drawn += (unsigned)n;
+    r->src_native_prims += total; r->src_native_objs += n;
+}
+
 static void stage2_blend_part(void *arg, int part)
 {
     stage2_blend_job *j = (stage2_blend_job *)arg;
