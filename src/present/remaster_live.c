@@ -2614,6 +2614,8 @@ typedef struct { uint32_t first, n; uint8_t part, took, incomplete; } nat_rec;  
 typedef struct { remaster_scene *scene; remaster_frame frame; uint8_t *ds; ring_correction corr[4]; } nat_worker;
 static nat_worker g_nw[8];
 static nat_rec *g_nrec; static size_t g_nrec_cap;
+/* decline reasons (diagnostic): 0 bank range, 1 no template, 2 template parts<0, 3 matrix differs, 4 light differs, 5 refused */
+unsigned g_decl[6];
 typedef struct { remaster_live *r; const machine_t *m; const rerun_native *spec; const unsigned char *elig; size_t n; int parts; int refresh_matrix, range_cull; size_t ds_at; } nat_job;
 
 static uint16_t nld16(const uint8_t *ds, unsigned off) { return (uint16_t)(ds[off] | ds[off + 1] << 8); }
@@ -2635,14 +2637,15 @@ static void nat_part(void *vj, int part)
         rc->took = 0; rc->part = (uint8_t)part; rc->first = (uint32_t)w->frame.n; rc->n = 0; rc->incomplete = 0;
         if (!j->elig[k]) continue;
         const rerun_native *n = &j->spec[k];
-        if (((size_t)n->bank << 4) + SCENE_SEGMENT > 0x100000) continue;
+        if (((size_t)n->bank << 4) + SCENE_SEGMENT > 0x100000) { g_decl[0]++; continue; }
         unsigned t = 0;
         while (t < r->ntmpl && !(r->tmpl[t].bank == n->bank && r->tmpl[t].model == n->model)) t++;
-        if (t == r->ntmpl || r->tmpl[t].parts < 0) continue;
+        if (t == r->ntmpl) { g_decl[1]++; continue; }
+        if (r->tmpl[t].parts < 0) { g_decl[2]++; continue; }
         const int matrix_same = !memcmp(dsp, r->tmpl[t].bytes, 18);
         const int light_same = !memcmp(dsp + (0x7C9C - TEMPLATE_AT), r->tmpl[t].bytes + (0x7C9C - TEMPLATE_AT), 6);
         const int refresh = j->refresh_matrix && !matrix_same && r->tmpl[t].parts == 1;
-        if ((!matrix_same && !refresh) || !light_same) continue;
+        if ((!matrix_same && !refresh) || !light_same) { g_decl[3 + (!light_same)]++; continue; }
         uint32_t translation[3] = { 0, 0, 0 };
         for (int kk = 0; kk < 3; kk++)
             for (int row = 0; row < 3; row++)
@@ -2701,7 +2704,7 @@ static void nat_part(void *vj, int part)
         remaster_scene_lod_shift((unsigned)n->shrink);
         const int added = remaster_scene_add_at(w->scene, w->ds, m->mem + ((size_t)n->bank << 4), n->model, n->pos, &w->frame);
         if (added < 0) {                                  /* refused: the serial path counts it and lets the game place it */
-            w->frame.n = first;
+            w->frame.n = first; g_decl[5]++;
             memcpy(dsp, saved, TEMPLATE_LEN); w->ds[0x48C4] = keep48c4;
             continue;
         }

@@ -1259,6 +1259,7 @@ static int far_scenery_body(machine_t *m)
             sel_ms += ms1 - ms0; run_ms += walk_ms() - ms1; picked += (unsigned)npick; total += (unsigned)g_ninst; nat += native; gst += guest; gst_inel += guest_inel;
             ++n; static int every = 0; if (!every) { const char *e = getenv("F117_WIDE_WALK_STATS"); every = e && atoi(e) > 1 ? atoi(e) : 300; }
             if (n <= 5 || n % every == 0) fprintf(stderr, "[far] batch %.2f ms, commits %.2f ms a copy; mean of %u: %.2f ms choosing (%u objects listed), %.2f ms placing %.0f survivors (%.0f native, %.0f by the game in %.2f ms)\n", batch_ms_acc / n, commit_ms_acc / n, n, sel_ms / n, total / n, run_ms / n, (double)picked / n, (double)nat / n, (double)gst / n, fallback_ms / n);
+            if (n <= 5 || n % every == 0) { extern unsigned g_decl[6]; fprintf(stderr, "[far] declines so far (bank, no template, parts<0, matrix, light, refused): %u %u %u %u %u %u\n", g_decl[0], g_decl[1], g_decl[2], g_decl[3], g_decl[4], g_decl[5]); }
             if (n <= 5 || n % every == 0) fprintf(stderr, "[far] of the guest-placed: %.0f a copy are own-cell deferring objects (not eligible for the native path), %.0f declined by it\n", (double)gst_inel / n, (double)(gst - gst_inel) / n);
         }
     }
