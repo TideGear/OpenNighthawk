@@ -2,6 +2,7 @@
 #include "rerun.h"
 #include "tls.h"
 #include "observe.h"
+#include "../recomp/recomp_rt.h"
 #include "../fixes/fixes.h"
 
 #include <math.h>
@@ -1910,11 +1911,32 @@ static void *g_fiber, *g_main_fiber;
 static int g_in_fiber, g_fiber_done;
 static double g_deadline_ms = 1e300;
 static int g_fiber_failed;
+/* F117_COPY_THREAD=1 (Part B, off by default): a Stage 2 scene copy runs on a thread of its own (rerun_step_scene), start to finish, while the display loop carries on; the loop only
+ * polls for the end. The thread has its own observer and fixes state (thread-local), and parks at the copy's yield points while the runtime changes its program table (a module load or
+ * an override switch: recomp_set_quiesce), when the job in flight is marked stale and its result is dropped. */
+static volatile LONG g_q_flag, g_q_parked, g_thr_done, g_thr_started, g_stale;
+static HANDLE g_thr_go, g_thr_fin, g_thr_h;
+static DWORD g_thr_id;
+static void (*g_thr_init)(void);
+static int g_thr_mode = -1;
 #endif
+void rerun_set_thread_init(void (*fn)(void))
+{
+#ifdef _WIN32
+    g_thr_init = fn;
+#else
+    (void)fn;
+#endif
+}
 static void rerun_yield_point(void)
 {
 #ifdef _WIN32
     if (g_in_fiber && walk_ms() >= g_deadline_ms) SwitchToFiber(g_main_fiber);
+    if (g_q_flag && GetCurrentThreadId() == g_thr_id) {      /* the runtime is changing its program table: wait here until it is done */
+        InterlockedExchange(&g_q_parked, 1);
+        while (g_q_flag) Sleep(0);
+        InterlockedExchange(&g_q_parked, 0);
+    }
 #endif
 }
 static machine_t *g_run_machine;
@@ -2131,15 +2153,24 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
     fixes_pending_restore(g_fix_pending);
     g_job.out = out; g_job.check = check; g_job.real_machine = real_machine; g_job.a_icount = a->m.cpu.icount;
     g_job.start = s->cpu.icount; g_job.limit = g_job.start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
+#ifdef _WIN32
+    g_stale = 0;
+#endif
     g_job.running = 1; g_job.began = 0; g_job.ok = 0;
     return 1;
 }
 
 /* Runs the copy for about budget_ns of wall time (~0: to the end). 0: still running; 1: finished (rerun_job_ok says whether the list is good). */
-int rerun_job_ok(void) { return g_job.ok; }
+int rerun_job_ok(void)
+{
+#ifdef _WIN32
+    if (g_stale) return 0;                       /* the program table changed while the copy ran: its picture belongs to the old one */
+#endif
+    return g_job.ok;
+}
 int rerun_job_running(void) { return g_job.running; }
 
-int rerun_step(uint64_t budget_ns)
+static int rerun_step_run(uint64_t budget_ns)
 {
     if (!g_job.running) return 1;
     machine_t *s = &g_copy;
@@ -2280,6 +2311,62 @@ int rerun_step(uint64_t budget_ns)
     acc_post += walk_ms() - te0 - (walk_ms() - te0 > 0 ? 0 : 0);
     if (tdiag && ++njobs % 10 == 0) fprintf(stderr, "[rerun-step] %u copies: machine run %.2f ms, collector end + post %.2f ms (end alone %.2f), longest single slice %.2f ms\n", njobs, acc_run / njobs, acc_post / njobs, acc_end / njobs, worst_run);
     return 1;
+}
+
+int rerun_step(uint64_t budget_ns) { return rerun_step_run(budget_ns); }
+
+#ifdef _WIN32
+static void rerun_quiesce_request(void)
+{
+    if (!g_thr_h || !g_thr_started || g_thr_done) return;       /* no job in flight on the thread */
+    g_stale = 1;
+    InterlockedExchange(&g_q_flag, 1);
+    const DWORD t0 = GetTickCount();
+    while (!g_q_parked && !g_thr_done && GetTickCount() - t0 < 5000) Sleep(0);
+    if (!g_q_parked && !g_thr_done) fprintf(stderr, "[rerun] the copy thread did not park within 5 s; going on\n");
+}
+static void rerun_quiesce_release(void) { InterlockedExchange(&g_q_flag, 0); }
+static DWORD WINAPI copy_thread_main(LPVOID u)
+{
+    (void)u;
+    if (g_thr_init) g_thr_init();
+    for (;;) {
+        WaitForSingleObject(g_thr_go, INFINITE);
+        rerun_step_run(~0ull);
+        InterlockedExchange(&g_thr_done, 1);
+        SetEvent(g_thr_fin);
+    }
+    return 0;
+}
+#endif
+
+/* A Stage 2 scene copy: the sliced step of the display loop, or (F117_COPY_THREAD=1) the whole job on the copy thread, polled. Budget ~0: wait for the end. 0 running, 1 finished. */
+int rerun_step_scene(uint64_t budget_ns)
+{
+#ifdef _WIN32
+    if (g_thr_mode < 0) { const char *e = getenv("F117_COPY_THREAD"); g_thr_mode = e ? atoi(e) : 0; }   /* 1: polled; 2: the loop waits for the end (a deterministic comparison with the sliced copy) */
+    if (g_thr_mode == 2) budget_ns = ~0ull;
+    if (g_thr_mode) {
+        if (!g_thr_h) {
+            g_thr_go = CreateEventA(NULL, FALSE, FALSE, NULL);
+            g_thr_fin = CreateEventA(NULL, TRUE, FALSE, NULL);
+            if (g_thr_go && g_thr_fin) g_thr_h = CreateThread(NULL, 64u << 20, copy_thread_main, NULL, 0x00010000u /* STACK_SIZE_PARAM_IS_A_RESERVATION */, &g_thr_id);
+            if (!g_thr_h) { g_thr_mode = 0; fprintf(stderr, "[rerun] the copy thread could not be made: the sliced copy stays\n"); }
+            else recomp_set_quiesce(rerun_quiesce_request, rerun_quiesce_release);
+        }
+        if (g_thr_h) {
+            if (!g_thr_started) {
+                if (!g_job.running) return 1;
+                g_thr_started = 1; g_thr_done = 0; ResetEvent(g_thr_fin); SetEvent(g_thr_go);
+            }
+            if (budget_ns == ~0ull) WaitForSingleObject(g_thr_fin, INFINITE);
+            if (!g_thr_done) return 0;
+            g_thr_started = 0;
+            return 1;
+        }
+    }
+#endif
+    return rerun_step_run(budget_ns);
 }
 
 int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)

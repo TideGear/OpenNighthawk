@@ -57,6 +57,9 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
 int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
 int rerun_step(uint64_t budget_ns);
 int rerun_job_ok(void);
+/* The Stage 2 scene copy's step: rerun_step, or with F117_COPY_THREAD=1 the whole job on a thread of its own (poll: 0 running, 1 finished; budget ~0 waits). The thread runs `init` once first. */
+int rerun_step_scene(uint64_t budget_ns);
+void rerun_set_thread_init(void (*fn)(void));
 int rerun_job_running(void);
 
 /* An optional collector for the copies (Remastered's, docs/remastered-design.md "Plan: Remastered from the rerun copy"): a

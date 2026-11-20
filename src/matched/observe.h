@@ -7,6 +7,7 @@
 #ifndef F117R_OBSERVE_H
 #define F117R_OBSERVE_H
 
+#include "../present/tls.h"
 #include <stddef.h>
 #include <stdint.h>
 #include "machine.h"
@@ -84,7 +85,7 @@ typedef struct f117_observer {
     void (*compose)(void *user, machine_t *m);
 } f117_observer;
 
-extern const f117_observer *g_f117_observer;
+extern F117_TLS const f117_observer *g_f117_observer;   /* per thread: the render copy runs on its own thread with its own observer */
 
 /* Install (or clear, with NULL) the observer. */
 void observe_set(const f117_observer *o);

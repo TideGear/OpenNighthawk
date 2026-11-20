@@ -393,7 +393,7 @@ int drawlive_scene_begin(drawlive *r)
     }
     return rerun_begin(&a->snap, b->have_compose ? &b->snap : NULL, 1.0, &r->rlist_scene, 0);
 }
-int drawlive_scene_step(drawlive *r, uint64_t budget_ns) { (void)r; return rerun_step(budget_ns); }
+int drawlive_scene_step(drawlive *r, uint64_t budget_ns) { (void)r; return rerun_step_scene(budget_ns); }
 int drawlive_scene_ok(void) { return rerun_job_ok(); }
 
 /* F117_COPY_FP (diagnostic): a fingerprint of the job's copy records (kinds, clocks, values). */

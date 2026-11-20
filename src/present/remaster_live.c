@@ -2604,6 +2604,9 @@ typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf
 static void (*g_s2_run)(void (*)(void *, int), void *, int);
 static int g_s2_parts;
 void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *, int), int parts) { g_s2_run = run; g_s2_parts = parts; }
+/* The blend runs on the display loop's thread while the scene copy (native batch, commit) may run on the copy thread: each needs a pool of its own. Same parts as the stage 2 pool. */
+static void (*g_blend_run)(void (*)(void *, int), void *, int);
+void remaster_live_set_blend_parallel(void (*run)(void (*)(void *, int), void *, int)) { g_blend_run = run; }
 
 /* ---- The far scenery's native placements on helper threads (F117_FAR_PAR). remaster_live_native places one object at a time: it patches the pose into the machine's memory,
  * lets the scene reader build the primitives, and restores the memory. Here the same steps run on private copies: each helper has its own scene (mesh cache), its own copy of
@@ -2896,7 +2899,7 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
     }
     {   /* the blend of each primitive is independent of the others: on the host's helper threads when it gave them */
         stage2_blend_job job = { nr, fr, match, wf, o->prim, 0 };
-        if (g_s2_run && g_s2_parts > 1 && nr->n >= 2048) g_s2_run(stage2_blend_part, &job, g_s2_parts);
+        if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
     }
     o->n = nr->n;

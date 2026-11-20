@@ -200,13 +200,20 @@ int recomp_override_add(const recomp_override *o)
     return g_nov++;
 }
 
+/* The render copy may run guest code on its own thread. Anything that changes the program table (a module load or unload, an override switched) first asks it to park at a safe point
+ * (request: returns when no other thread is inside the runtime) and lets it go after (release). Not set: nothing to do. */
+static void (*g_q_request)(void), (*g_q_release)(void);
+void recomp_set_quiesce(void (*request)(void), void (*release)(void)) { g_q_request = request; g_q_release = release; }
+
 int recomp_override_enable(const char *id, int on)
 {
+    if (g_q_request) g_q_request();
     int n = 0;
     for (int i = 0; i < g_nov; i++)
         if (!g_ov[i].matched && (!strcmp(id, "all") || !strcmp(id, g_ov[i].id))) { g_ov_on[i] = on != 0; n++; }
     for (int i = 0; i < MAX_INST; i++) if (g_rt.inst[i].live) place_overrides(&g_rt.inst[i]);
     count_live_overrides();
+    if (g_q_release) g_q_release();
     return n;
 }
 
@@ -497,9 +504,21 @@ static uint32_t block_bytes(machine_t *m, uint16_t seg)
     return end ? (uint32_t)(end - seg) * 16u : 0x10000u;
 }
 
+static void module_load_inner(void *user, machine_t *m, const char *name,
+                              const uint8_t *file, size_t len, int kind,
+                              uint16_t load_seg, uint16_t reloc);
 void recomp_module_load(void *user, machine_t *m, const char *name,
                         const uint8_t *file, size_t len, int kind,
                         uint16_t load_seg, uint16_t reloc)
+{
+    if (g_q_request) g_q_request();
+    module_load_inner(user, m, name, file, len, kind, load_seg, reloc);
+    if (g_q_release) g_q_release();
+}
+
+static void module_load_inner(void *user, machine_t *m, const char *name,
+                              const uint8_t *file, size_t len, int kind,
+                              uint16_t load_seg, uint16_t reloc)
 {
     (void)user; (void)reloc;
     const uint64_t h = fnv1a64(file, len);
@@ -568,12 +587,19 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
             mod ? "translated" : "no translation (interpreted)");
 }
 
+/* the render copy writes code bytes of its own memory on its own thread: the generation counts must not lose a bump */
+#ifdef _MSC_VER
+#include <intrin.h>
+#define GEN_BUMP(g) _InterlockedIncrement((volatile long *)&(g))
+#else
+#define GEN_BUMP(g) __atomic_add_fetch(&(g), 1, __ATOMIC_RELAXED)
+#endif
 void cpu_code_written(cpu_t *c, uint32_t lin)
 {
     instance *in = g_rt.by_para[lin >> 4];
     g_rt.code_writes++;
     if (in && lin >= in->lo && lin < in->hi) {
-        in->gen++;
+        GEN_BUMP(in->gen);
         /* Which translated bytes get rewritten, once each: a byte the
          * program writes as it runs is data the discovery took for code,
          * or code that really is modified - either way worth knowing. */

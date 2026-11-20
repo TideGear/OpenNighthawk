@@ -9,6 +9,7 @@
  * override_sites) to give each address a region of its own; keep each
  * entry's id, module, hash, segment and offset on one line in this form.
  */
+#include "../present/tls.h"
 #include "fixes.h"
 #include "recomp_rt.h"
 #include "x86_sem.h"
@@ -276,7 +277,7 @@ static int fix_d1accel_increment(machine_t *m)
  * replaces the initial 0; 0x0450 zero-extends the rating (`sub dx,dx`), so -12
  * adds as +65,524. The fixes compare signed and sign-extend (`cwd`). Both leave
  * every other path, and both clocks, as they were. */
-static int d12_logged;
+static F117_TLS int d12_logged;
 static int fix_d12_best(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -338,8 +339,8 @@ static int fix_d4_table(machine_t *m)
  * a fixed flight is the original's to the instruction until record 31. */
 #define D34_ROOM  30
 #define D34_EXTRA 4096
-static uint8_t d34_ext[D34_EXTRA][5];
-static int d34_n, d34_found_logged;
+static F117_TLS uint8_t d34_ext[D34_EXTRA][5];
+static F117_TLS int d34_n, d34_found_logged;
 
 static uint16_t ds_read16(cpu_t *c, uint16_t off) { return seg_read16(c, c->seg[S_DS], off); }
 static void ds_write16(cpu_t *c, uint16_t off, uint16_t v)
@@ -529,8 +530,8 @@ static int fix_d2_speech(machine_t *m)
  * original, hash for hash. */
 #define D1_FPS_X10 116
 #define D1_GOG_IPS 9000000u          /* GOG DOSBox's cycles=9000, the default */
-static uint64_t d1_next;             /* clock at which the next frame may start */
-static int d1_logged;
+static F117_TLS uint64_t d1_next;             /* clock at which the next frame may start */
+static F117_TLS int d1_logged;
 static int fix_on(const char *id);
 static int fix_d1_pace(machine_t *m)
 {
@@ -562,7 +563,7 @@ static int fix_d1_pace(machine_t *m)
  * stores -2048 (0x6C17): the bomb can dive harder than that and never less, so the guidance can
  * steepen a dive and nothing else, and a bomb released beyond Z / 6.4 of range falls short. With the
  * fix the compare and the store are skipped and the guidance's own demand stands. */
-static int d8_logged;
+static F117_TLS int d8_logged;
 static int fix_d8_clamp(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -583,7 +584,7 @@ static int fix_d8_clamp(machine_t *m)
  * them, from any bearing: flat ground, no base or carrier among them. Not proven a defect (docs/bugs.md D6);
  * with the fix a cover of 0 reads as the lowest nonzero value, 4, so those sectors are no better than any
  * other. The two instructions at 0x55EB (the load and the AND) are replaced. */
-static int d6_logged;
+static F117_TLS int d6_logged;
 static int fix_d6_cover(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -614,7 +615,7 @@ static int fix_d6_cover(machine_t *m)
 static const uint8_t D3_KEYPAD[0x53] = {
     [0x47] = '7', [0x48] = '8', [0x49] = '9', [0x4B] = '4', [0x4D] = '6',
     [0x4F] = '1', [0x50] = '2', [0x51] = '3', [0x52] = '0' };
-static int d3_logged;
+static F117_TLS int d3_logged;
 static int fix_d3_keypad(machine_t *m)
 {
     cpu_t *c = &m->cpu;

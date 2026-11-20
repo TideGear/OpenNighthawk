@@ -7,10 +7,11 @@
 #include "../present/hud_state.h"
 #include "../present/band_state.h"
 #include "../present/scene_capture.h"
+#include "../present/tls.h"
 #include <stdlib.h>
 #include <string.h>
 
-const f117_observer *g_f117_observer;
+F117_TLS const f117_observer *g_f117_observer;
 
 void observe_set(const f117_observer *o) { g_f117_observer = o; }
 
@@ -23,7 +24,7 @@ typedef struct {
     uint16_t model, bank;
     int16_t position[3];
 } pose_observer_state;
-static pose_observer_state g_pose;
+static F117_TLS pose_observer_state g_pose;
 
 void observe_pose_set(observe_pose_fn fn, void *user)
 {
@@ -193,7 +194,7 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
  * clamped to the viewport, and the page bytes there ('b'); the next event the
  * observer sees - nothing draws in between - records the same bytes again
  * ('a'). Replaying the fill style on the 'b' bytes must give the 'a' bytes. */
-static struct {
+static F117_TLS struct {
     int n;
     uint16_t es;
     struct { int16_t y, x0; uint16_t at, len; } row[256];
@@ -259,8 +260,8 @@ static int hook_game_draw(machine_t *m)
         cpu_t *c = &m->cpu;
         const uint16_t drv = peek16(c, (uint16_t)(c->seg[S_DS]), 0x01B5 + 3);
         if (drv) {
-            static int32_t v[2 + 65536];
-            static uint8_t bytes[65536];
+            static F117_TLS int32_t v[2 + 65536];
+            static F117_TLS uint8_t bytes[65536];
             const uint16_t page = peek16(c, drv, 0x0194), origin = peek16(c, drv, 0x0196);
             v[0] = page; v[1] = origin;
             peek_page(c, page, bytes);
@@ -383,7 +384,7 @@ void observe_hud_pass(machine_t *m)
      * library call, or its record's clock would move (the 'n' records' stamps, by one instruction) */
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS];
-    static int32_t v[HUD_REC_BASE];
+    static F117_TLS int32_t v[HUD_REC_BASE];
     int n = 0;
     v[n++] = HUD_REC_VERSION;
     for (int k = 0; k < HUD_NWORDS; k++) v[n++] = peek16(c, ds, (uint16_t)(HUD_DS_LO + 2 * k));
@@ -414,7 +415,7 @@ void observe_panel_pass(machine_t *m)
     if (!o || !o->prim || !o->hud) return;
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS];
-    static int32_t v[HUD_PANEL_MAX];
+    static F117_TLS int32_t v[HUD_PANEL_MAX];
     const int32_t head[HUD_PANEL_N] = { HUD_PANEL_VERSION, peek16(c, ds, 0x98F6), peek16(c, ds, 0xE586), peek16(c, ds, 0xE474),
                                         peek16(c, ds, 0xB07E), peek16(c, ds, 0xB194), peek8(c, ds, 0x294A), peek8(c, ds, 0x294B) };
     int n = 0;
@@ -576,7 +577,7 @@ static uint16_t slot_target_seg(machine_t *m, uint16_t slot)
     return peek16(c, c->seg[S_CS], (uint16_t)(slot + 3));
 }
 
-static struct {
+static F117_TLS struct {
     int on;
     uint16_t page, x0, y0, w, h;
     uint16_t at[200];
@@ -588,7 +589,7 @@ static struct {
  * changed byte ('x': entry, page segment, count, then offset, now and before
  * for each). A nested entry can split a caller's drawing, so each boundary
  * starts a fresh capture. */
-static struct {
+static F117_TLS struct {
     int on, entry;
     uint16_t page;
     uint8_t before[65536];
@@ -596,7 +597,7 @@ static struct {
 /* A library entry can name a work page in its driver state and still draw
  * straight to VGA memory. Keep the display alongside the active page while
  * an otherwise uncaptured entry runs. */
-static struct {
+static F117_TLS struct {
     int on, entry;
     uint8_t before[65536];
 } g_any_display;
@@ -646,8 +647,8 @@ static void any_emit(machine_t *m, int entry, uint16_t page,
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return;
     cpu_t *c = &m->cpu;
-    static int32_t v[3 + 3 * 65536];
-    static uint8_t now[65536];
+    static F117_TLS int32_t v[3 + 3 * 65536];
+    static F117_TLS uint8_t now[65536];
     int n = 0;
     v[n++] = entry; v[n++] = page;
     const int count_at = n++;
@@ -821,7 +822,7 @@ static int hook_lib_blit(machine_t *m)
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
     const uint16_t drv = slot_target_seg(m, 0x01EC), ss = c->seg[S_SS], sp = c->r[R_SP];
-    static int32_t v[10 + 64000];
+    static F117_TLS int32_t v[10 + 64000];
     int n = 10;
     for (int k = 0; k < 8; k++) v[k] = (int16_t)peek16(c, ss, (uint16_t)(sp + 4 + 2 * k));
     v[8] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (v[0] & 0xFF)));
@@ -888,7 +889,7 @@ static int hook_lib_text(machine_t *m)
     const uint16_t blk = entry == 5 ? peek16(c, ss, (uint16_t)(sp + 4)) : c->r[R_BP];
     const uint16_t str = entry == 5 ? peek16(c, ss, (uint16_t)(sp + 6)) : c->r[R_BX];
     const uint16_t drv = slot_target_seg(m, c->ip);
-    static int32_t v[64 + 256 + 256 + 32768];
+    static F117_TLS int32_t v[64 + 256 + 256 + 32768];
     int n = 0;
     v[n++] = entry;
     v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, blk) & 0xFF)));   /* the page's segment */
@@ -946,7 +947,7 @@ static int hook_lib_sprite(machine_t *m)
     const uint16_t ss = c->seg[S_SS];
     const uint16_t blk = entry == 73 || entry == 71 ? peek16(c, ss, (uint16_t)(c->r[R_SP] + 4)) : c->r[R_BP];
     const uint16_t drv = slot_target_seg(m, c->ip);
-    static int32_t v[16 + 64000];
+    static F117_TLS int32_t v[16 + 64000];
     int n = 0;
     v[n++] = entry;
     v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, (uint16_t)(blk + 6)) & 0xFF)));
@@ -982,7 +983,7 @@ static int hook_lib_scaled(machine_t *m)
     const uint16_t blk = peek16(c, ss, (uint16_t)(sp + 4));
     const uint16_t drv = slot_target_seg(m, c->ip);
     const uint16_t soff = peek16(c, ss, (uint16_t)(sp + 0x0E)), sseg = peek16(c, ss, (uint16_t)(sp + 0x10));
-    static int32_t v[32 + 64000];
+    static F117_TLS int32_t v[32 + 64000];
     int n = 0;
     v[n++] = 22;
     v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, blk) & 0xFF)));
@@ -1058,7 +1059,7 @@ static int hook_lib_copy(machine_t *m)
     cpu_t *c = &m->cpu;
     const int entry = (c->ip - 0x011A) / 5;
     const uint16_t drv = slot_target_seg(m, c->ip);
-    static int32_t v[8 + 64000];
+    static F117_TLS int32_t v[8 + 64000];
     int n = 0;
     v[n++] = entry;
     if (entry == 44) {

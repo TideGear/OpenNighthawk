@@ -64,6 +64,9 @@ typedef struct {
 int  recomp_override_add(const recomp_override *o);
 /* Switch every override with this id ("all" for every one); how many. */
 int  recomp_override_enable(const char *id, int on);
+/* Hooks the render copy's thread uses: request() before the program table changes (a module load, an override switch) must return only when no other thread runs guest code
+ * through the runtime, release() after it. Left unset: nothing to do. */
+void recomp_set_quiesce(void (*request)(void), void (*release)(void));
 void recomp_override_list(FILE *f);
 /* Overrides sharing a place, printed; the count of those not in `allowed` ("MODULE SEG:OFF"). */
 int recomp_override_duplicates(FILE *f, const char *const *allowed);

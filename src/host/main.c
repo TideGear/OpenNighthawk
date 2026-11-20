@@ -607,8 +607,10 @@ static void side_run(const machine_t *m, uint64_t ips)
 
 /* The rerun copies' collector (rerun_set_collector): only Remastered's entries, into the copy's own instance. A copy has no sound hook. */
 /* Part B Stage 2: a scene copy (sliced across frames) collects into an instance of its own, so it never touches the frame the worker composes from. g_coll is set around its slices. */
-static remaster_live *g_coll;
+static F117_TLS remaster_live *g_coll;
 #define COLL() (g_coll ? g_coll : g_rlive_copy)
+/* F117_COPY_THREAD: the scene copy's thread collects into the Stage 2 scene instance for good (g_coll is per thread) */
+static void copy_thread_init(void) { g_coll = g_s2.scene; remaster_live_ignore_palette_override(1); }   /* a copy's colours come from its own machine's palette, as on the main thread */
 static void copy_begin(void *user) { (void)user; if (COLL()) remaster_live_copy_begin(COLL()); }
 static int copy_exec(void *user, machine_t *m, unsigned index)
 {
@@ -1032,6 +1034,7 @@ typedef struct {
 } par_helper;
 static par_helper g_par[PAR_HELPERS];
 static par_helper g_cpar[PAR_HELPERS];                /* the render copy's own helpers (the far scenery's choosing), apart from the composite's */
+static par_helper g_bpar[PAR_HELPERS];                /* the Stage 2 blend's own helpers: the scene copy may run on its own thread (F117_COPY_THREAD) beside the display loop */
 static par_helper g_ppar[PAR_HELPERS];                /* the Stage 2 pairing thread's own helpers (a pool serves one caller at a time) */
 
 static int par_helper_main(void *u)
@@ -1064,6 +1067,7 @@ static void par_run_on(par_helper *pool, void (*fn)(void *, int), void *arg, int
 static void par_run(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_par, fn, arg, parts); }
 static void par_run_copy(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_cpar, fn, arg, parts); }
 static void par_run_pair(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_ppar, fn, arg, parts); }
+static void par_run_blend(void (*fn)(void *, int), void *arg, int parts) { par_run_on(g_bpar, fn, arg, parts); }
 
 /* The fine picture through the frame's palette, in bands on the helpers. */
 static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, size_t n)
@@ -2477,6 +2481,15 @@ int main(int argc, char **argv)
                         if (g_cpar[k].go && g_cpar[k].done) { g_cpar[k].thread = SDL_CreateThread(par_helper_main, "copy-scenery", &g_cpar[k]); cmade += g_cpar[k].thread != NULL; }
                     }
                     if (cparts > 1 && cmade + 1 == cparts) { rerun_set_parallel(par_run_copy, cparts); remaster_live_set_stage2_parallel(par_run_copy, cparts); }
+                    if (cparts > 1 && cmade + 1 == cparts && getenv("F117_COPY_THREAD") && atoi(getenv("F117_COPY_THREAD"))) {
+                        int bmade = 0;
+                        for (int k = 0; k + 1 < cparts; k++) {
+                            g_bpar[k].go = SDL_CreateSemaphore(0);
+                            g_bpar[k].done = SDL_CreateSemaphore(0);
+                            if (g_bpar[k].go && g_bpar[k].done) { g_bpar[k].thread = SDL_CreateThread(par_helper_main, "blend-rows", &g_bpar[k]); bmade += g_bpar[k].thread != NULL; }
+                        }
+                        if (bmade + 1 == cparts) remaster_live_set_blend_parallel(par_run_blend);
+                    }
                 }
                 {   /* the pairing's own pool: F117_PAIR_THREADS (1 turns it off), default 8 with the pairing thread */
                     int pparts = 8;
@@ -3462,6 +3475,7 @@ int main(int argc, char **argv)
                             for (int k = 0; k < 4; k++) { g_s2.sc[k] = remaster_frame_copy_new(); g_s2.seq[k] = ~0ull; }
                             for (int k = 0; k < 3; k++) { g_s2.pairs[k] = remaster_stage2_pairs_new(); g_s2.pa[k] = g_s2.pb[k] = ~0ull; }
                             g_s2.launched = ~0ull;
+                            rerun_set_thread_init(copy_thread_init);
                             g_pth.go = SDL_CreateSemaphore(0); g_pth.done = SDL_CreateSemaphore(0);
                             if (g_pth.go && g_pth.done) g_pth.th = SDL_CreateThread(pair_thread_main, "stage2-pair", NULL);
                         }
