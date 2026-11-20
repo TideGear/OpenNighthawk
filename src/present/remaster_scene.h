@@ -32,6 +32,7 @@ typedef struct {
     uint8_t darken;                         /* the object's byte at DS:48C4 (model_fill_begin darkens shaded colours by it) */
     uint16_t face;
     uint16_t model;
+    uint32_t mesh_item;                     /* material command offset and edge id; stable across camera motion (Stage 2 pairing) */
     uint32_t owner;                         /* the object (one request of the frame) and face it belongs to: request << 12 | face */
     uint8_t flat;                           /* part of a ground object (every polygon of it level: the runway, an apron); also bit 11 of owner */
     double inv_depth_scale;                 /* native inverse depth to common world units (0: 1) */

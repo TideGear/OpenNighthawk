@@ -184,6 +184,7 @@ static void init_primitive(remaster_prim *p, const emit_ctx *x, const scene_mate
     p->darken = x->darken;
     p->face = c->face;
     p->model = x->model;
+    p->mesh_item = (uint32_t)c->offset << 8 | 255u;
     p->owner = x->serial << 12 | (c->face & 0xFFFu);
     p->flat = 0;
     p->inv_depth_scale = 0.0; p->shrink = 0;
@@ -199,6 +200,7 @@ static int emit(void *user, const scene_material *c)
             if (!grow(x->f)) { x->ok = 0; return 0; }
             remaster_prim *q = &x->f->prim[x->f->n];
             init_primitive(q, x, c);
+            q->mesh_item = (uint32_t)c->offset << 8 | c->item[k];
             put_vertex(q, x->geometry, e->a);
             put_vertex(q, x->geometry, e->b);
             x->f->n++;

@@ -36,6 +36,17 @@ int main(int argc, char **argv)
     in.w = rp.w; in.h = rp.h; in.tw = rp.tw; in.xoff = rp.xoff; in.x0 = rp.x0; in.x1 = rp.x1; in.y0 = rp.y0; in.y1 = rp.y1; in.complete = rp.complete;
     in.src = src; in.tag = tag; in.dac = dac; in.tagflags = rp.tagflags;
     if (!gpu_compose_run(g, &in, got)) { fprintf(stderr, "the GPU compositor declined this frame\n"); return 1; }
+    const char *dump = getenv("GPU_CHAIN_DUMP");
+    if (dump) {
+        FILE *image = fopen(dump, "wb");
+        if (!image) { fprintf(stderr, "cannot write picture %s\n", dump); return 2; }
+        fprintf(image, "P6\n%d %d\n255\n", rp.tw, rp.h);
+        for (size_t i = 0; i < px; i++) {
+            const unsigned char rgb[3] = { (unsigned char)(got[i] >> 16), (unsigned char)(got[i] >> 8), (unsigned char)got[i] };
+            fwrite(rgb, 1, 3, image);
+        }
+        if (fclose(image)) return 2;
+    }
     size_t bad = 0, big = 0; int maxd = 0;
     for (size_t i = 0; i < px; i++)
         if (got[i] != want[i]) {

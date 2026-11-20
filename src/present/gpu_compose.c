@@ -1344,7 +1344,35 @@ static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
 }
 
 /* the same job as gpu_compose_begin's compute path, for F117_HW_RASTER; 1 on success, 0 when the compute path has to be used */
-typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; } hw_build_ctx;
+typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; int clip_bands; } hw_build_ctx;
+/* The wide sky strips can extend tens of thousands of pixels beyond the viewport.
+ * Clip their shared edges in double precision before the hardware's float clipper.
+ * Carry the gradient with the edge; rounding colours here would introduce seams. */
+typedef struct { double x, y, c[3]; } hw_band_vertex;
+static int hw_band_clip(hw_band_vertex *v, int n, double w, double h)
+{
+    hw_band_vertex tmp[48];
+    for (int edge = 0; edge < 4 && n; edge++) {
+        const int axis = edge / 2;
+        const double bound = edge & 1 ? (axis ? h : w) : 0.0;
+        int out = 0;
+        for (int k = 0; k < n; k++) {
+            const hw_band_vertex a = v[k], b = v[(k + 1) % n];
+            const double av = axis ? a.y : a.x, bv = axis ? b.y : b.x;
+            const int ai = edge & 1 ? av <= bound : av >= bound, bi = edge & 1 ? bv <= bound : bv >= bound;
+            if (ai) tmp[out++] = a;
+            if (ai != bi) {
+                const double t = (bound - av) / (bv - av);
+                hw_band_vertex p = { a.x + t * (b.x - a.x), a.y + t * (b.y - a.y), { 0, 0, 0 } };
+                if (axis) p.y = bound; else p.x = bound;
+                for (int j = 0; j < 3; j++) p.c[j] = a.c[j] + t * (b.c[j] - a.c[j]);
+                tmp[out++] = p;
+            }
+        }
+        n = out; memcpy(v, tmp, (size_t)n * sizeof *v);
+    }
+    return n;
+}
 /* Chunk k of the hardware path's vertex build: the polygons and logic fills of the records from..to in order (with the segments of equal kind they make), then their strokes. */
 static void hw_build_job(void *vc, int k)
 {
@@ -1368,6 +1396,28 @@ static void hw_build_job(void *vc, int k)
             HSEG(curfirst, nv0 - curfirst, cur); curfirst = nv0; cur = HK_POLY;
             if (nseg < HW_SEGS) { S[nseg].first = 0; S[nseg].count = 0; S[nseg].kind = HK_ZRESET; nseg++; }
         } else if (r->kind == REMASTER_T_POLYGON || r->kind == REMASTER_T_SHADED || r->kind == REMASTER_T_LOGIC) {
+            if (x->clip_bands && r->kind == REMASTER_T_SHADED && r->n >= 3 && r->n <= 16) {
+                hw_band_vertex b[48]; int valid = 1;
+                for (int k = 0; k < r->n; k++) {
+                    if (r->v[k].z < nz) { valid = 0; break; }
+                    b[k].x = cx + sx * (double)r->v[k].x / r->v[k].z;
+                    b[k].y = cy + sy * (double)r->v[k].y / r->v[k].z;
+                    for (int j = 0; j < 3; j++) b[k].c[j] = (double)(r->colors[k] >> (16 - 8 * j) & 255) / 255.0;
+                }
+                if (!valid) continue;
+                const int m = hw_band_clip(b, r->n, fw, fh);
+                if (cur != HK_POLY) { HSEG(curfirst, nv0 - curfirst, cur); cur = HK_POLY; curfirst = nv0; }
+                for (int k = 1; k + 1 < m; k++) {
+                    const int ix[3] = { 0, k, k + 1 };
+                    for (int j = 0; j < 3; j++) {
+                        const hw_band_vertex *v = &b[ix[j]];
+                        if (!hw_push(pv, HNDCX(v->x), HNDCY(v->y), (float)(sc / r->v[0].z * DS), 0, r->paint_index, 16, 1)) { ck->fail = 1; return; }
+                        hw_vtx *dst = (hw_vtx *)pv->p + pv->n / sizeof(hw_vtx) - 1;
+                        for (int channel = 0; channel < 3; channel++) dst->c[channel] = (float)v->c[channel];
+                    }
+                }
+                continue;
+            }
             hw_dv c[40]; const int m = hw_clip(r->v, r->n, nz, c); if (m < 3) continue;
             float px_[40], py_[40], pd[40];
             for (int k = 0; k < m; k++) { px_[k] = HNDCX(cx + sx * c[k].x / c[k].z); py_[k] = HNDCY(cy + sy * c[k].y / c[k].z); pd[k] = (float)(sc / c[k].z * DS); }
@@ -1446,7 +1496,9 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
     {   /* the vertices on the setup pool, in contiguous chunks of the records: the same vertices in the same order as one serial pass, merged here */
         static int serial = -1; if (serial < 0) serial = getenv("F117_HW_BUILD_SERIAL") != NULL;     /* =1: one chunk, the serial order (the check that the chunks merge to the same vertices) */
         nch = in->nrec >= 4096 && !serial ? HW_CHUNKS : 1;
-        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS };
+        static int clip_bands = -1;
+        if (clip_bands < 0) { const char *e = getenv("F117_HW_CLIP_BANDS"); clip_bands = e && atoi(e) != 0; }
+        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS, clip_bands };
         for (int k = 0; k < nch; k++) { s->hw.ch[k].from = (uint32_t)((uint64_t)in->nrec * k / nch); s->hw.ch[k].to = (uint32_t)((uint64_t)in->nrec * (k + 1) / nch); }
         pool_run(hw_build_job, &bx, nch);
         for (int k = 0; k < nch; k++) if (s->hw.ch[k].fail) return 0;

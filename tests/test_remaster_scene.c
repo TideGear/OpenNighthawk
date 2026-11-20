@@ -77,6 +77,8 @@ int main(void)
     const int n = remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f);
     CHECK(n == 2 && f.n == 2);
     CHECK(f.prim[0].kind == SCENE_LINES && f.prim[1].kind == SCENE_DOTS);
+    CHECK(f.prim[0].mesh_item != f.prim[1].mesh_item);
+    const uint32_t line_item = f.prim[0].mesh_item, dot_item = f.prim[1].mesh_item;
     CHECK(f.prim[1].n == 1);                                 /* the fixture's dots command names one vertex, number 1 */
     CHECK(f.prim[1].v[0].x == g.camera[1][0] && f.prim[1].v[0].y == g.camera[1][1] && f.prim[1].v[0].z == g.camera[1][2]);
     CHECK(f.prim[0].n == 2);                                  /* a segment: two vertices */
@@ -87,6 +89,8 @@ int main(void)
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 2 && f.n == 2);
     /* a frame collects several requests */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 0, position, &f) == 2 && f.n == 4);
+    CHECK(f.prim[0].mesh_item == line_item && f.prim[2].mesh_item == line_item);
+    CHECK(f.prim[1].mesh_item == dot_item && f.prim[3].mesh_item == dot_item);
     /* what cannot be read is refused, not guessed at */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0xF800, 0x2000, 0, position, &f) == -1);       /* a data segment past the memory */
     CHECK(remaster_scene_add(s, mem, sizeof mem, 0x4000, 0x2000, 9, position, &f) == -1);       /* a model the bank does not have */

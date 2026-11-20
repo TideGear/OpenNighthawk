@@ -2386,11 +2386,13 @@ int remaster_live_done_take(remaster_live *r, remaster_frame_copy *out)
  * has it. The band state is blended by band_blend (the camera height, and the pitch and roll on the shortest arc). Origin, window and the rest come from the nearer step. */
 static double blend_pos(const remaster_prim *p, int axis);
 typedef struct { uint64_t key; uint32_t i; } stage2_key;
+static int g_stage2_mesh_key;
 static uint64_t stage2_pkey(const remaster_prim *p)
 {
     uint64_t h = 1469598103934665603ull;
 #define MIX2(x) do { h ^= (uint64_t)(x); h *= 1099511628211ull; } while (0)
     MIX2(p->kind); MIX2(p->n); MIX2(p->model); MIX2(p->face); MIX2(p->colour_word);
+    if (g_stage2_mesh_key) MIX2(p->mesh_item);
 #undef MIX2
     return h;
 }
@@ -2572,6 +2574,9 @@ static int stage2_pair_run(int *ab, int *ba, const remaster_frame_copy *a, const
 
 int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
 {
+    /* Experimental: keep repeated lights on their own mesh edges rather than the nearest identical-looking edge. Read before helpers start. */
+    static int mesh_key_init;
+    if (!mesh_key_init) { const char *e = getenv("F117_STAGE2_MESH_KEY"); g_stage2_mesh_key = e && atoi(e) != 0; mesh_key_init = 1; }
     if (!pr || !a || !b || !a->n || !b->n) return 0;
     if (pr->cap_a < a->n) { int *q = (int *)realloc(pr->ab, a->n * sizeof *q); if (!q) return 0; pr->ab = q; pr->cap_a = a->n; }
     if (pr->cap_b < b->n) { int *q = (int *)realloc(pr->ba, b->n * sizeof *q); if (!q) return 0; pr->ba = q; pr->cap_b = b->n; }
@@ -2869,7 +2874,7 @@ static void stage2_blend_part(void *arg, int part)
              * a wrong partner or a near object, and blending it made the coast's lights flicker (a third more flipping pixels than the original path); the small, steady moves of far lights are blended. */
             static double light_max = -1.0;
             if (light_max < 0.0) { const char *e = getenv("F117_STAGE2_LIGHT_MAX"); light_max = e && *e ? atof(e) : 1.5; }
-            if (p.kind != SCENE_POLYGON && p.n >= 1 && q->n >= 1 && light_max < 1e6) {
+            if (!g_stage2_mesh_key && p.kind != SCENE_POLYGON && p.n >= 1 && q->n >= 1 && light_max < 1e6) {
                 const double zr = p.v[0].z > 0 ? (double)p.v[0].z : 1.0;
                 const double mx = fabs((double)q->v[0].x - p.v[0].x), my = fabs((double)q->v[0].y - p.v[0].y);
                 if ((mx > my ? mx : my) * 256.0 > light_max * zr) { j->out[i] = p; continue; }
