@@ -77,6 +77,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <intrin.h>
 #include <mmsystem.h>
 #endif
 
@@ -123,6 +124,50 @@ static const drawlive_sync_ops g_collector_ops = { co_mutex_new, co_lock, co_unl
 static double g_ph[8];   /* F117_SLOW_FRAME_TRACE: this iteration's copy-block phases in ms: slice, job done, begin, pairing, blend, block total, commit_rerun, live_commit */
 static uint64_t g_iter_run_ns, g_iter_collect_ns;   /* this loop iteration's machine step, and the draw-feed collection inside it (F117_SLOW_FRAME_TRACE) */
 static uint64_t g_iter_ns, g_cost_ns;     /* the loop iteration's start, and its work before the present call (the --present-log cost column) */
+
+/* F117_WORK_METER=1 (also on with F117_SLOW_FRAME_TRACE): the main thread's own CPU time per loop iteration (QueryThreadCycleTime, cycles turned into ms by the TSC rate measured at the
+ * first use), beside the wall time. A late frame (cost over 16.7 ms) is "self-caused" when the thread's CPU time plus its waits on our own threads exceed 16.7 ms, and "preempted" when the wall
+ * time exceeds CPU + waits by more than 2 ms (the OS gave the core to someone else): work metrics that stay valid when the PC is busy. */
+static uint64_t g_iter_cyc;
+static double g_cyc_per_ms;
+static uint64_t thread_cycles(void)
+{
+#ifdef _WIN32
+    ULONG64 c = 0; QueryThreadCycleTime(GetCurrentThread(), &c); return (uint64_t)c;
+#else
+    return 0;
+#endif
+}
+static void work_meter_init(void)
+{
+    if (g_cyc_per_ms > 0) return;
+#ifdef _WIN32
+    const uint64_t t0 = SDL_GetTicksNS(); const uint64_t c0 = __rdtsc();
+    while (SDL_GetTicksNS() - t0 < 30000000ull) {}
+    g_cyc_per_ms = (double)(__rdtsc() - c0) / ((double)(SDL_GetTicksNS() - t0) / 1e6);
+#else
+    g_cyc_per_ms = 1.0;           /* no thread cycle counter here: the CPU column reads 0 */
+#endif
+}
+static void work_meter_frame(double wall_ms, double wait_ms)
+{
+    static double cpu[1200]; static unsigned n, late, self, pre, over33;
+    const double cpu_ms = g_cyc_per_ms > 0 ? (double)(thread_cycles() - g_iter_cyc) / g_cyc_per_ms : 0.0;
+    if (n < 1200) cpu[n] = cpu_ms;
+    n++;
+    if (wall_ms > 16.7) {
+        late++;
+        if (cpu_ms + wait_ms > 16.7) self++;
+        else if (wall_ms - cpu_ms - wait_ms > 2.0) pre++;
+        if (wall_ms > 33.0) over33++;
+    }
+    if (n == 600) {
+        double v[600]; for (int k = 0; k < 600; k++) v[k] = cpu[k];
+        for (int a = 1; a < 600; a++) { const double x = v[a]; int b = a; while (b > 0 && v[b - 1] > x) { v[b] = v[b - 1]; b--; } v[b] = x; }
+        fprintf(stderr, "[work-meter] 600 frames: main-thread CPU median %.2f p99 %.2f max %.2f ms; late (wall >16.7): %u, self-caused %u, preempted %u, other %u; over 33: %u\n", v[300], v[593], v[599], late, self, pre, late - self - pre, over33);
+        n = late = self = pre = over33 = 0;
+    }
+}
 static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
 /* Ctrl+Alt+C: the picture as shown, saved as screenshots/<session>-clock<flight clock>.bmp beside the sessions folder: the
  * session names the flight, the clock the moment a replay of it jumps to */
@@ -2453,10 +2498,12 @@ int main(int argc, char **argv)
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
     const int slow_frame_trace = getenv("F117_SLOW_FRAME_TRACE") != NULL;
+    const int work_meter_on = slow_frame_trace || getenv("F117_WORK_METER") != NULL;
+    if (work_meter_on) work_meter_init();
     const char *frame_hash_from = getenv("F117_PRESENT_HASH_FROM");
     const uint64_t frame_hash_clock = frame_hash_from ? strtoull(frame_hash_from, NULL, 0) : 0;
     const uint64_t replay_frame_clocks = player && getenv("F117_REPLAY_FIXED_CADENCE") ? ips / 60 : 0;
-    g_loop_timing = slow_frame_trace || getenv("F117_LOOP_TIMING") != NULL;
+    g_loop_timing = slow_frame_trace || work_meter_on || getenv("F117_LOOP_TIMING") != NULL;
     g_pw_compose = getenv("F117_NO_WORKER_COMPOSE") == NULL;
     int replay_x4 = 4;                              /* a replay's speed in quarters: 4 is normal */
     int jump_typing = 0;                            /* a replay: G pressed, the second to jump to being typed */
@@ -2469,7 +2516,7 @@ int main(int argc, char **argv)
     int mouse_buttons = 0;
 
     while (running) {
-        g_iter_ns = SDL_GetTicksNS();
+        g_iter_ns = SDL_GetTicksNS(); g_iter_cyc = thread_cycles();
         /* A bounded integration script uses ordinary SDL keys, never guest edits.
          * Comma-separated SDL key names; Open means the normal menu shortcut. */
         {
@@ -3849,6 +3896,7 @@ int main(int argc, char **argv)
         pw_release_ex(1);
         const uint64_t lt_pr0 = SDL_GetTicksNS();
         g_cost_ns = lt_pr0 - g_iter_ns;                         /* everything this iteration did before presenting: the machine, the picture, the upload */
+        if (work_meter_on && got) work_meter_frame((double)g_cost_ns / 1e6, (double)frame_wait_ns / 1e6);
         SDL_RenderPresent(ren);
         g_lt_present += SDL_GetTicksNS() - lt_pr0;
         if (slow_frame_trace && got && g_cost_ns >= 12000000ull)
