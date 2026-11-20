@@ -1508,11 +1508,13 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
     }
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
     if (!cb) return 0;
+    profile_mark(g, cb, "hw_upload_begin");
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cb);
     { SDL_GPUTransferBufferLocation f = { s->hw.up, 0 }; SDL_GPUBufferRegion t = { s->hw.vb, 0, vbytes }; SDL_UploadToGPUBuffer(cp, &f, &t, false); }
     { SDL_GPUTextureTransferInfo f = { s->hw.up, vbytes, 256, 1 }; SDL_GPUTextureRegion t; memset(&t, 0, sizeof t); t.texture = s->hw.tpal; t.w = 256; t.h = 1; t.d = 1; SDL_UploadToGPUTexture(cp, &f, &t, false); }
     { SDL_GPUTransferBufferLocation f = { s->hw.up, vbytes + 1024 }; SDL_GPUBufferRegion t = { s->tf.buf, 0, 1024 }; SDL_UploadToGPUBuffer(cp, &f, &t, false); }
     SDL_EndGPUCopyPass(cp);
+    profile_mark(g, cb, "hw_upload_end");
     int first = 1, clear_depth = 1;
     for (int k = 0; k < nseg; k++) {
         if (S[k].kind == HK_ZRESET) { clear_depth = 1; continue; }
@@ -1527,6 +1529,7 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         SDL_EndGPURenderPass(rp);
         first = 0; clear_depth = 0;
     }
+    profile_mark(g, cb, "hw_raster_end");
     {   /* resolve: the palette lookup and the sea's smoothing, into tout */
         SDL_GPUColorTargetInfo cti; memset(&cti, 0, sizeof cti); cti.texture = s->hw.tout; cti.load_op = SDL_GPU_LOADOP_DONT_CARE; cti.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cb, &cti, 1, NULL);
@@ -1537,6 +1540,7 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
         SDL_EndGPURenderPass(rp);
     }
+    profile_mark(g, cb, "hw_resolve_end");
     {   /* export into the pixel buffers the replace step reads */
         SDL_GPUStorageBufferReadWriteBinding rw[3] = { { s->colour.buf, false }, { s->invz.buf, false }, { s->strokez.buf, false } };
         SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, rw, 3);
@@ -1549,6 +1553,8 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         SDL_DispatchGPUCompute(c, ((Uint32)tw + 15) / 16, ((Uint32)h + 15) / 16, 1);
         SDL_EndGPUComputePass(c);
     }
+    profile_mark(g, cb, "hw_export_end");
+    profile_resolve(g, cb);
     const Uint64 t_prepass = SDL_GetTicksNS();
     SDL_SubmitGPUCommandBuffer(cb);
     s->params = *in; s->params.recs = NULL; s->params.palette = NULL; s->params.src = NULL; s->params.tag = NULL; s->params.dac = NULL; s->params.tagflags = NULL;
