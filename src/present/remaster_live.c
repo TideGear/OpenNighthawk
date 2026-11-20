@@ -26,6 +26,7 @@ struct remaster_frame_copy {
     int32_t band[BAND_REC_FINE];
     int have_band, window[4], complete;
     long hud_at;
+    int16_t cam[12]; int have_cam;          /* reprojection (F117_STAGE2_REPROJECT): the view matrix at DS:7B28 (9 words) and heading, pitch, roll (2DEE..2DF2) the copy drew with */
 };
 #ifdef _WIN32
 #include <windows.h>
@@ -145,14 +146,17 @@ struct remaster_live {
     unsigned nchecks;
     int32_t band_rec[BAND_REC_FINE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
     int have_band;
+    int16_t cam_rec[12]; int have_cam, cam_kinds;   /* the frame in progress: its view matrix and attitude (first model request), and how many different matrices it saw */
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
     int32_t done_band[BAND_REC_FINE];
     int done_have_band, have_done, done_origin[2], done_window[4];
+    int16_t done_cam[12]; int done_have_cam;
     /* Deferred mode (remaster_live_set_deferred): a copy stages its finished frame here instead of replacing `done`, which a worker may be reading; the main
      * thread makes it the done frame with remaster_live_commit at a point where the worker is idle. */
     remaster_frame staged;
     int32_t staged_band[BAND_REC_FINE];
     int staged_have_band, have_staged, staged_origin[2], staged_window[4], staged_complete;
+    int16_t staged_cam[12]; int staged_have_cam;
     long staged_hud_at; int staged_hud_set;   /* Stage 2: the HUD split of a blended frame, handed to done_hud_at by the commit */
     int deferred, copy_open;
     long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
@@ -207,7 +211,7 @@ void remaster_live_copy_begin(remaster_live *r)
     remaster_frame_clear(&r->frame);
     r->pending = 0;
     r->nunits = 0;
-    r->have_band = 0;
+    r->have_band = 0; r->have_cam = 0; r->cam_kinds = 0;
     if (r->deferred) {              /* the done frame stays as the worker has it; the copy's result is staged and committed later */
         r->have_staged = 0; r->staged.n = 0; r->copy_open = 1;
         r->frame_complete = 0;
@@ -231,6 +235,7 @@ void remaster_live_commit(remaster_live *r)
         remaster_frame tmp = r->done; r->done = r->staged; r->staged = tmp;
         memcpy(r->done_band, r->staged_band, sizeof r->done_band);
         r->done_have_band = r->staged_have_band; r->have_done = r->done.n > 0;
+        memcpy(r->done_cam, r->staged_cam, sizeof r->done_cam); r->done_have_cam = r->staged_have_cam;
         r->done_complete = r->staged_complete;
         memcpy(r->done_origin, r->staged_origin, sizeof r->origin); memcpy(r->done_window, r->staged_window, sizeof r->window);
         if (r->staged_hud_set) { r->done_hud_at = r->staged_hud_at; r->staged_hud_set = 0; }
@@ -1915,6 +1920,14 @@ int remaster_live_native(remaster_live *r, machine_t *m, const void *spec)
 
 int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
 {
+    if (k == 0 && !rerun_extra_active()) {   /* the view matrix and attitude of this frame, for Stage 2 reprojection */
+        const uint16_t cds = m->cpu.seg[S_DS];
+        int16_t c[12];
+        for (int a = 0; a < 9; a++) c[a] = (int16_t)peek16(m, cds, (uint16_t)(0x7B28 + 2 * a));
+        for (int a = 0; a < 3; a++) c[9 + a] = (int16_t)peek16(m, cds, (uint16_t)(0x2DEE + 2 * a));
+        if (!r->have_cam) { memcpy(r->cam_rec, c, sizeof c); r->have_cam = 1; r->cam_kinds = 1; }
+        else if (memcmp(r->cam_rec, c, 9 * sizeof c[0])) r->cam_kinds++;
+    }
     static int reach_log = -1, extra_count = -1;
     if (reach_log < 0) { reach_log = getenv("F117_REACH_LOG") != NULL; extra_count = getenv("F117_EXTRA_COUNT") != NULL; }
     if (reach_log && !rerun_extra_active()) {   /* diagnostic: where each model's body stops being drawn (the game's own walk only) */
@@ -2211,12 +2224,14 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             remaster_frame tmp = r->staged; r->staged = r->frame; r->frame = tmp;
             memcpy(r->staged_band, r->band_rec, sizeof r->staged_band);
             r->staged_have_band = r->have_band; r->have_staged = r->staged.n > 0;
+            memcpy(r->staged_cam, r->cam_rec, sizeof r->staged_cam); r->staged_have_cam = r->have_cam;
             r->staged_complete = r->frame_complete;
             memcpy(r->staged_origin, r->origin, sizeof r->origin); memcpy(r->staged_window, r->window, sizeof r->window);
         } else {                                /* the completed frame becomes the one a composite uses */
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
             memcpy(r->done_band, r->band_rec, sizeof r->done_band);
             r->done_have_band = r->have_band; r->have_done = r->done.n > 0;
+            memcpy(r->done_cam, r->cam_rec, sizeof r->done_cam); r->done_have_cam = r->have_cam;
             r->done_complete = r->frame_complete;
             memcpy(r->done_origin, r->origin, sizeof r->origin); memcpy(r->done_window, r->window, sizeof r->window);
         }
@@ -2231,6 +2246,11 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             r->have_band = 1;
         }
         r->frames++;
+        { static int ck = -1; static unsigned nck; if (ck < 0) ck = getenv("F117_CAM_KINDS") != NULL; static unsigned nmulti, nall;
+          if (ck) { nall++; if (r->cam_kinds > 1) nmulti++;
+                    if (r->cam_kinds > 1 && nck < 20) { nck++; fprintf(stderr, "[cam-kinds] frame %u: %d view matrices (heading %d)\n", r->frames, r->cam_kinds, r->cam_rec[9]); }
+                    if (nall % 100 == 0) fprintf(stderr, "[cam-kinds] %u frames, %u with more than one view matrix\n", nall, nmulti); } }
+        r->have_cam = 0; r->cam_kinds = 0;
         remaster_frame_clear(&r->frame);
         r->frame_complete = 1;
         r->pending = 0;
@@ -2362,6 +2382,7 @@ int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
     out->origin[0] = r->done_origin[0]; out->origin[1] = r->done_origin[1];
     memcpy(out->band, r->done_band, sizeof out->band); out->have_band = r->done_have_band; memcpy(out->window, r->done_window, sizeof out->window);
     out->complete = r->done_complete; out->hud_at = r->done_hud_at;
+    memcpy(out->cam, r->done_cam, sizeof out->cam); out->have_cam = r->done_have_cam;
     return 1;
 }
 
@@ -2376,6 +2397,7 @@ int remaster_live_done_take(remaster_live *r, remaster_frame_copy *out)
     out->origin[0] = r->done_origin[0]; out->origin[1] = r->done_origin[1];
     memcpy(out->band, r->done_band, sizeof out->band); out->have_band = r->done_have_band; memcpy(out->window, r->done_window, sizeof out->window);
     out->complete = r->done_complete; out->hud_at = r->done_hud_at;
+    memcpy(out->cam, r->done_cam, sizeof out->cam); out->have_cam = r->done_have_cam;
     return 1;
 }
 
@@ -2417,7 +2439,8 @@ static double stage2_move(const remaster_prim *p, const remaster_prim *q)
     return worst;
 }
 
-struct remaster_stage2_pairs { int *ab, *ba; size_t na, nb, cap_a, cap_b; };
+struct remaster_stage2_pairs { int *ab, *ba; size_t na, nb, cap_a, cap_b;
+    int ncls, have_delta; double cls[8], delta[8][3];   /* reprojection: the camera's travel from step a to step b in each depth scale's units (median over paired primitives) */ };
 remaster_stage2_pairs *remaster_stage2_pairs_new(void) { return (remaster_stage2_pairs *)calloc(1, sizeof(remaster_stage2_pairs)); }
 void remaster_stage2_pairs_free(remaster_stage2_pairs *p) { if (p) { free(p->ab); free(p->ba); free(p); } }
 
@@ -2572,6 +2595,113 @@ static int stage2_pair_run(int *ab, int *ba, const remaster_frame_copy *a, const
     return 1;
 }
 
+/* ---- Stage 2 reprojection (F117_STAGE2_REPROJECT=1, R45) ----------------------------------------------------------------------------------------------------
+ * The game's view matrix at DS:7B28 (element [3 world + axis], 16384 = 1) is M = R diag(1, ys, 1), R = diag(1, -1, -1) Ry(heading) Rx(pitch) Rz(roll) with the angles at
+ * DS:2DEE..2DF2 (65536 a turn) and ys about 0.75 (fitted on 714 matrices of the owner's runway bank, worst element 0.0009), and a camera-space vertex is v = M^T w.
+ * The rerun copy at t moves each angle and the position linearly (rerun.c nudge). So a primitive that does not move in the world is drawn at t by taking it back to
+ * world directions with its own step's camera, w = R S^-1 v, moving it by the camera's travel (t of the way), and forward with the camera at t, v' = S_t R_t^T w:
+ * no partner needed. The travel per depth scale is the median of w_a - w_b over the paired primitives (wrong partners do not move a median). A paired primitive whose
+ * own w_a - w_b disagrees with it moves in the world (an aircraft, a weapon): its world places are blended. HUD and flat overlays keep the screen blend. */
+typedef struct { double R[3][3], s[3]; } s2_cam;
+static int g_s2_reproj = -1;
+static void s2_mat_rot(int axis, double a, double o[3][3])
+{
+    const double c = cos(a), sn = sin(a);
+    memset(o, 0, 9 * sizeof(double));
+    if (axis == 0) { o[0][0] = 1; o[1][1] = c; o[1][2] = -sn; o[2][1] = sn; o[2][2] = c; }
+    else if (axis == 1) { o[0][0] = c; o[0][2] = sn; o[1][1] = 1; o[2][0] = -sn; o[2][2] = c; }
+    else { o[0][0] = c; o[0][1] = -sn; o[1][0] = sn; o[1][1] = c; o[2][2] = 1; }
+}
+static void s2_mat_mul(const double x[3][3], const double y[3][3], double o[3][3])
+{
+    double r[3][3];
+    for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) r[i][j] = x[i][0] * y[0][j] + x[i][1] * y[1][j] + x[i][2] * y[2][j];
+    memcpy(o, r, sizeof r);
+}
+static double s2_ycol(const int16_t c[12])
+{
+    return sqrt((double)c[1] * c[1] + (double)c[4] * c[4] + (double)c[7] * c[7]) / 16384.0;
+}
+/* The camera of copy a moved t of the way to copy b's, as the rerun moves the angles (each by its own signed difference). */
+static void s2_cam_at(const int16_t a[12], const int16_t b[12], double t, s2_cam *o)
+{
+    double ang[3];
+    for (int k = 0; k < 3; k++) {
+        const int16_t d = (int16_t)(uint16_t)((uint16_t)b[9 + k] - (uint16_t)a[9 + k]);
+        ang[k] = ((double)(uint16_t)a[9 + k] + t * d) * (6.283185307179586 / 65536.0);
+    }
+    double ry[3][3], rx[3][3], rz[3][3], m[3][3];
+    s2_mat_rot(1, ang[0], ry); s2_mat_rot(0, ang[1], rx); s2_mat_rot(2, ang[2], rz);
+    s2_mat_mul(ry, rx, m); s2_mat_mul(m, rz, m);
+    for (int j = 0; j < 3; j++) { o->R[0][j] = m[0][j]; o->R[1][j] = -m[1][j]; o->R[2][j] = -m[2][j]; }
+    o->s[0] = 1.0; o->s[2] = 1.0;
+    o->s[1] = s2_ycol(a) + t * (s2_ycol(b) - s2_ycol(a));
+}
+static void s2_to_world(const s2_cam *c, const remaster_v3 *v, double w[3])
+{
+    const double u[3] = { v->x / c->s[0], v->y / c->s[1], v->z / c->s[2] };
+    for (int i = 0; i < 3; i++) w[i] = c->R[i][0] * u[0] + c->R[i][1] * u[1] + c->R[i][2] * u[2];
+}
+static int32_t s2_clamp32(double x) { return x > 2147483000.0 ? 2147483000 : x < -2147483000.0 ? -2147483000 : (int32_t)llround(x); }
+static void s2_to_view(const s2_cam *c, const double w[3], remaster_v3 *v)
+{
+    v->x = s2_clamp32(c->s[0] * (c->R[0][0] * w[0] + c->R[1][0] * w[1] + c->R[2][0] * w[2]));
+    v->y = s2_clamp32(c->s[1] * (c->R[0][1] * w[0] + c->R[1][1] * w[1] + c->R[2][1] * w[2]));
+    v->z = s2_clamp32(c->s[2] * (c->R[0][2] * w[0] + c->R[1][2] * w[1] + c->R[2][2] * w[2]));
+}
+static int s2_reprojectable(const remaster_frame_copy *f, size_t i)
+{
+    const remaster_prim *p = &f->prim[i];
+    return !(f->hud_at >= 0 && (long)i >= f->hud_at) && p->owner < 0xFFFFF000u && p->n >= 1;
+}
+static int s2_cls_find(const remaster_stage2_pairs *pr, double scale)
+{
+    for (int k = 0; k < pr->ncls; k++) if (pr->cls[k] == scale) return k;
+    return -1;
+}
+static int s2_dcmp(const void *x, const void *y) { const double a = *(const double *)x, b = *(const double *)y; return a < b ? -1 : a > b; }
+/* The camera's travel a to b per depth scale: the median of w_a - w_b over paired, reprojectable primitives in front of both cameras. */
+static void s2_travel(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
+{
+    pr->have_delta = 0; pr->ncls = 0;
+    if (!a->have_cam || !b->have_cam) return;
+    s2_cam ca, cb;
+    s2_cam_at(a->cam, a->cam, 0.0, &ca); s2_cam_at(b->cam, b->cam, 0.0, &cb);
+    double *d = (double *)malloc(a->n * 3 * sizeof *d);
+    unsigned char *k = (unsigned char *)malloc(a->n);
+    if (!d || !k) { free(d); free(k); return; }
+    size_t n = 0;
+    const size_t stride = a->n > 4096 ? a->n / 4096 : 1;     /* a median needs a few thousand samples, not all (the pairing thread has a deadline) */
+    for (size_t i = 0; i < a->n; i += stride) {
+        const int j = pr->ab[i];
+        if (j < 0 || !s2_reprojectable(a, i) || !s2_reprojectable(b, (size_t)j)) continue;
+        const remaster_prim *p = &a->prim[i], *q = &b->prim[j];
+        if (p->v[0].z <= 65536 || q->v[0].z <= 65536) continue;
+        const double sc = p->inv_depth_scale > 0 ? p->inv_depth_scale : 1.0;
+        int c = s2_cls_find(pr, sc);
+        if (c < 0) { if (pr->ncls >= 8) continue; c = pr->ncls++; pr->cls[c] = sc; }
+        double wa[3], wb[3];
+        s2_to_world(&ca, &p->v[0], wa); s2_to_world(&cb, &q->v[0], wb);
+        for (int x = 0; x < 3; x++) d[3 * n + x] = wa[x] - wb[x];
+        k[n++] = (unsigned char)c;
+    }
+    double *col = (double *)malloc((n ? n : 1) * sizeof *col);
+    int good = 0;
+    for (int c = 0; c < pr->ncls && col; c++) {
+        size_t m = 0;
+        for (int x = 0; x < 3; x++) {
+            m = 0;
+            for (size_t i = 0; i < n; i++) if (k[i] == c) col[m++] = d[3 * i + x];
+            if (m < 8) break;
+            qsort(col, m, sizeof *col, s2_dcmp);
+            pr->delta[c][x] = col[m / 2];
+        }
+        if (m < 8) pr->cls[c] = -1.0; else good++;      /* too few to trust: that scale keeps the screen blend */
+    }
+    pr->have_delta = good > 0;
+    free(col); free(d); free(k);
+}
+
 int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
 {
     /* Experimental: keep repeated lights on their own mesh edges rather than the nearest identical-looking edge. Read before helpers start. */
@@ -2602,10 +2732,13 @@ int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a
         if (on < 0) on = getenv("F117_STAGE2_PAIR_TIMING") != NULL;
         if (on) { sk += tk; ss += ts; sm += tm; if (++n % 20 == 0) fprintf(stderr, "[pair-timing] mean of %u: keys %.2f ms, sorts %.2f, matching %.2f (%zu and %zu primitives)\n", n, sk / n, ss / n, sm / n, a->n, b->n); }
     }
+    if (g_s2_reproj < 0) { const char *e = getenv("F117_STAGE2_REPROJECT"); g_s2_reproj = e && atoi(e) != 0; }
+    if (g_s2_reproj) s2_travel(pr, a, b); else pr->have_delta = 0;
     return 1;
 }
 
-typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf; remaster_prim *out; int parts; } stage2_blend_job;
+typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf; remaster_prim *out; int parts;
+    int reproj, near_is_a; double off; s2_cam cn, cf, ct; const remaster_stage2_pairs *pr; } stage2_blend_job;
 static void (*g_s2_run)(void (*)(void *, int), void *, int);
 static int g_s2_parts;
 void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *, int), int parts) { g_s2_run = run; g_s2_parts = parts; }
@@ -2868,6 +3001,30 @@ static void stage2_blend_part(void *arg, int part)
     if (freeze_lights < 0) freeze_lights = getenv("F117_STAGE2_FREEZE_LIGHTS") != NULL;
     for (size_t i = from; i < to; i++) {
         remaster_prim p = j->nr->prim[i];
+        if (j->reproj && s2_reprojectable(j->nr, i)) {          /* reprojection (see s2_cam): static scenery by the camera, moving things by their world places */
+            const int c = s2_cls_find(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0);
+            if (c >= 0) {
+                const double *dl = j->pr->delta[c];
+                const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;
+                int moving = 0;
+                if (q && q->n == p.n && s2_reprojectable(j->fr, (size_t)j->match[i]) && p.v[0].z > 65536 && q->v[0].z > 65536) {
+                    double wn[3], wo[3], r2 = 0, w2 = 0;
+                    s2_to_world(&j->cn, &p.v[0], wn); s2_to_world(&j->cf, &q->v[0], wo);
+                    for (int x = 0; x < 3; x++) { const double own = j->near_is_a ? wn[x] - wo[x] : wo[x] - wn[x]; r2 += (own - dl[x]) * (own - dl[x]); w2 += wn[x] * wn[x]; }
+                    const double tol = 16.0 + 0.004 * sqrt(w2);
+                    moving = r2 > tol * tol && r2 < 262144.0 * 262144.0;   /* a quarter of a terrain cell (4096 units, 2^20 here) or more off the travel is a partner in the wrong cell (repeated lights), not motion */
+                }
+                for (int v = 0; v < p.n; v++) {
+                    double w[3];
+                    s2_to_world(&j->cn, &j->nr->prim[i].v[v], w);
+                    if (moving) { double wo[3]; s2_to_world(&j->cf, &q->v[v], wo); for (int x = 0; x < 3; x++) w[x] += j->wf * (wo[x] - w[x]); }
+                    else for (int x = 0; x < 3; x++) w[x] += j->off * dl[x];
+                    s2_to_view(&j->ct, w, &p.v[v]);
+                }
+                j->out[i] = p;
+                continue;
+            }
+        }
         if (j->match[i] >= 0 && !(freeze_lights && p.kind != SCENE_POLYGON)) {
             const remaster_prim *q = &j->fr->prim[j->match[i]];
             /* A light (a line or dot) whose first vertex moves more than F117_STAGE2_LIGHT_MAX game pixels (default 1.5) between the two steps stays where the nearer step has it: such a move is
@@ -2889,6 +3046,17 @@ static void stage2_blend_part(void *arg, int part)
     }
 }
 
+/* Fills a blend job's reprojection fields (off when the switch is off, a copy has no camera, or the pairing found no travel). */
+static void s2_job_reproj(stage2_blend_job *j, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t, int nb)
+{
+    if (g_s2_reproj < 0) { const char *e = getenv("F117_STAGE2_REPROJECT"); g_s2_reproj = e && atoi(e) != 0; }
+    j->reproj = g_s2_reproj && pr->have_delta && a->have_cam && b->have_cam;
+    if (!j->reproj) return;
+    j->pr = pr; j->near_is_a = !nb; j->off = nb ? 1.0 - t : -t;
+    s2_cam ca, cb;
+    s2_cam_at(a->cam, a->cam, 0.0, &ca); s2_cam_at(b->cam, b->cam, 0.0, &cb); s2_cam_at(a->cam, b->cam, t, &j->ct);
+    j->cn = nb ? cb : ca; j->cf = nb ? ca : cb;
+}
 static int s2_u64_cmp(const void *x, const void *y) { const uint64_t a = *(const uint64_t *)x, b = *(const uint64_t *)y; return a < b ? -1 : a > b; }
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t)
 {
@@ -2905,6 +3073,7 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
     }
     {   /* the blend of each primitive is independent of the others: on the host's helper threads when it gave them */
         stage2_blend_job job = { nr, fr, match, wf, o->prim, 0 };
+        s2_job_reproj(&job, a, b, pr, t, nb);
         if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
     }
@@ -3056,6 +3225,16 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
     if (on < 0) { const char *e = getenv("F117_STAGE2_MESH_KEY"); g_stage2_mesh_key = e && atoi(e) != 0; on = getenv("F117_STAGE2_TRUTH") != NULL; }
     if (!on || !a->n || !b->n || !at->n) return;
     static unsigned calls;
+    {   /* the three copies' view matrices and attitudes, for fitting the game's rotation convention */
+        static unsigned logged;
+        if (logged < 400 && a->have_cam && b->have_cam && at->have_cam) {
+            logged++;
+            const remaster_frame_copy *c3[3] = { a, b, at };
+            fprintf(stderr, "[s2-cam] t %.4f", t);
+            for (int q = 0; q < 3; q++) { fprintf(stderr, " |"); for (int w = 0; w < 12; w++) fprintf(stderr, " %d", c3[q]->cam[w]); }
+            fprintf(stderr, "%s", "\n");
+        }
+    }
     /* [blended kind 0 poly / 1 light][0 paired, 1 unpaired][bucket < 0.5, < 1, < 2, < 4, < 16, >= 16]; [kind][bucket] for the nearer step held */
     static unsigned long long h[2][2][6], hold[2][6];
     remaster_stage2_pairs *pr = remaster_stage2_pairs_new();
@@ -3068,6 +3247,7 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
         const remaster_frame_copy *nr = nb ? b : a, *fr = nb ? a : b;
         const int *match = nb ? pr->ba : pr->ab;
         stage2_blend_job job = { nr, fr, match, nb ? 1.0 - t : t, out, 1 };
+        s2_job_reproj(&job, a, b, pr, t, nb);
         stage2_blend_part(&job, 0);
         static double sv[4096]; size_t ns = 0;
         for (size_t i = 0; i < nr->n; i++) {
@@ -3077,6 +3257,15 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
             const int k = e < 0.5 ? 0 : e < 1 ? 1 : e < 2 ? 2 : e < 4 ? 3 : e < 16 ? 4 : 5, kh = eh < 0.5 ? 0 : eh < 1 ? 1 : eh < 2 ? 2 : eh < 4 ? 3 : eh < 16 ? 4 : 5;
             h[kd][match[i] < 0][k]++;
             hold[kd][kh]++;
+            {   /* by depth scale: count, within 0.5, 4 or more */
+                static double cs[16]; static unsigned long long cn[16][3]; static int ncs;
+                const double sc = nr->prim[i].inv_depth_scale > 0 ? nr->prim[i].inv_depth_scale : 1.0;
+                int ci = 0; while (ci < ncs && cs[ci] != sc) ci++;
+                if (ci == ncs && ncs < 16) cs[ncs++] = sc;
+                if (ci < 16) { cn[ci][0]++; if (e < 0.5) cn[ci][1]++; if (e >= 4) cn[ci][2]++; }
+                if (i + 1 == nr->n && (calls + 1) % 30 == 0)
+                    for (int q2 = 0; q2 < ncs; q2++) fprintf(stderr, "[s2-truth-scale] scale %.6g: %llu, <0.5 %.1f%%, >=4 %.1f%%, in travel %d\n", cs[q2], cn[q2][0], 100.0 * cn[q2][1] / cn[q2][0], 100.0 * cn[q2][2] / cn[q2][0], s2_cls_find(pr, cs[q2]) >= 0);
+            }
             if (match[i] >= 0 && ns < 4096) {   /* how far along its own a-to-b path the truth is, for primitives that move more than 4 game pixels in the step */
                 const remaster_prim *pa = nb ? &fr->prim[match[i]] : &nr->prim[i], *pb = nb ? &nr->prim[i] : &fr->prim[match[i]];
                 const double ax = blend_pos(pa, 0), ay = blend_pos(pa, 1), dx = blend_pos(pb, 0) - ax, dy = blend_pos(pb, 1) - ay, L2 = dx * dx + dy * dy;
@@ -3103,6 +3292,46 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
                             q ? "" : "none ", q ? blend_pos(q, 0) : 0.0, q ? blend_pos(q, 1) : 0.0, blend_pos(&out[i], 0), blend_pos(&out[i], 1), bx, by, e, cx, cy);
                 }
             }
+        }
+        if (pr->have_delta && a->have_cam && b->have_cam) {   /* the model check: step a's paired primitives reprojected to step b (t = 1) against their partners */
+            static unsigned long long mk[16][4]; static double mcs[16]; static int mncs; static unsigned mcalls;
+            s2_cam ca2, cb2;
+            s2_cam_at(a->cam, a->cam, 0.0, &ca2); s2_cam_at(b->cam, b->cam, 0.0, &cb2);
+            for (size_t i = 0; i < a->n; i++) {
+                const int j2 = pr->ab[i];
+                if (j2 < 0 || !s2_reprojectable(a, i) || a->prim[i].v[0].z <= 65536 || b->prim[j2].v[0].z <= 65536) continue;
+                const double sc = a->prim[i].inv_depth_scale > 0 ? a->prim[i].inv_depth_scale : 1.0;
+                const int c = s2_cls_find(pr, sc);
+                if (c < 0) continue;
+                double w[3]; remaster_v3 v; remaster_prim pp = a->prim[i];
+                s2_to_world(&ca2, &a->prim[i].v[0], w);
+                for (int x = 0; x < 3; x++) w[x] -= pr->delta[c][x];
+                s2_to_view(&cb2, w, &v); pp.v[0] = v;
+                const double e = s2t_dist(&pp, &b->prim[j2]);
+                int ci = 0; while (ci < mncs && mcs[ci] != sc) ci++;
+                if (ci == mncs && mncs < 16) mcs[mncs++] = sc;
+                if (ci < 16) { mk[ci][0]++; if (e < 0.5) mk[ci][1]++; if (e < 2) mk[ci][2]++; if (e >= 16) mk[ci][3]++; }
+            }
+            if (mcalls == 40 || mcalls == 120) {   /* one frame's pairs, for fitting offline: cams, then scale and the first vertices of a and its partner */
+                static int dumped;
+                FILE *df = fopen(dumped++ ? "s2_pairs_2.txt" : "s2_pairs_1.txt", "w");
+                if (df) {
+                    for (int w2 = 0; w2 < 12; w2++) fprintf(df, "%d ", a->cam[w2]);
+                    fprintf(df, "%s", "\n");
+                    for (int w2 = 0; w2 < 12; w2++) fprintf(df, "%d ", b->cam[w2]);
+                    fprintf(df, "%s", "\n");
+                    for (size_t i = 0; i < a->n; i++) {
+                        const int j2 = pr->ab[i];
+                        if (j2 < 0 || !s2_reprojectable(a, i)) continue;
+                        const remaster_prim *p3 = &a->prim[i], *q3 = &b->prim[j2];
+                        fprintf(df, "%g %d %d %d %d %d %d %d %d\n", p3->inv_depth_scale > 0 ? p3->inv_depth_scale : 1.0, p3->model, p3->v[0].x, p3->v[0].y, p3->v[0].z, q3->v[0].x, q3->v[0].y, q3->v[0].z, p3->kind);
+                    }
+                    fclose(df);
+                }
+            }
+            if (++mcalls % 30 == 0)
+                for (int q2 = 0; q2 < mncs; q2++) fprintf(stderr, "[s2-model] scale %.6g: a reprojected to b against the partner: %llu, <0.5 %.1f%%, <2 %.1f%%, >=16 %.1f%% (wrong partners or moving things)\n",
+                                                        mcs[q2], mk[q2][0], 100.0 * mk[q2][1] / mk[q2][0], 100.0 * mk[q2][2] / mk[q2][0], 100.0 * mk[q2][3] / mk[q2][0]);
         }
         if (ns >= 8) {   /* this frame: t, and the quartiles of the truth's place along the a-to-b path (t when the motion is even) */
             qsort(sv, ns, sizeof *sv, s2t_dcmp);

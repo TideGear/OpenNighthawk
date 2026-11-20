@@ -220,3 +220,24 @@ widely (at t 0.377 about 0.21 to 0.38). The camera's turn and travel inside a st
 time profile, so no single screen-space blend (or remap of t) can follow both; with wrong partners and
 unpaired snaps this is what banks show. Scenery that does not move in the world could instead be
 reprojected: back to world space with step a's camera, forward with the camera at t, no pairing.
+
+Reprojection (F117_STAGE2_REPROJECT=1, off by default). Each copy now keeps the view matrix at DS:7B28
+and the attitude at DS:2DEE..2DF2 from its first model request (one matrix per frame in 1,900 frames).
+Fitted on 714 matrices: M = R diag(1, ys, 1) with R = diag(1, -1, -1) Ry(heading) Rx(pitch) Rz(roll),
+ys about 0.75, worst element error 0.0009; a camera-space vertex is v = M^T w. A blended picture takes
+each scenery primitive of the nearer step back to world directions with that step's camera, moves it by
+the camera's travel (t of the way; the median of w_a - w_b over paired primitives per depth scale,
+computed on the pairing thread), and forward with the camera at t (each angle moved as the rerun moves
+it). A pair whose own travel differs from the median by more than the rounding tolerance but less than
+a quarter terrain cell (2^18 in these units) is treated as moving and blended in world space. HUD and
+flat overlays keep the screen blend.
+
+The offline model check exposed the wrong partners: within a depth scale the per-pair travel clusters
+at the true travel and at offsets of one terrain cell (2^20 units) in x or z, repeated lights (models
+37 and 39) paired with the same light in the next cell during fast banks. Against the default
+renderer's copy at t (owner's runway bank, 210 pictures): paired lights within 0.5 game pixels 61.5% to
+90.8%, off by 4 or more 6.9% to 1.0%; paired polygons 61.3% to 88.8%; unpaired lights 13.9% to 61.9%.
+By depth scale 4, 16 and 64: 97.6 to 98.7% within 0.5. Scale 1 (the nearest ring) is at 71.6%; its
+worst cases are primitives at depths 10 to 120 with vertices far off the screen, and a few near lights
+whose place in the reference copy is not linear in t. Live (EAGER=5): blend 0.56 ms a picture, pairing
+0.7 to 1.0 ms (was 0.3), own pairing 60 to 71% across three runs (host timing varies).
