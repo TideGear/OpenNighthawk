@@ -120,6 +120,7 @@ static int co_entry(void *p) { co_boot b = *(co_boot *)p; free(p); prio_up(); re
 static void *co_spawn(int (*fn)(void *), void *arg) { co_boot *b = (co_boot *)malloc(sizeof *b); if (!b) return NULL; b->fn = fn; b->arg = arg; return SDL_CreateThread(co_entry, "collector", b); }
 static void co_join(void *t) { SDL_WaitThread((SDL_Thread *)t, NULL); }
 static const drawlive_sync_ops g_collector_ops = { co_mutex_new, co_lock, co_unlock, co_cond_new, co_wait, co_broadcast, co_spawn, co_join };
+static double g_ph[8];   /* F117_SLOW_FRAME_TRACE: this iteration's copy-block phases in ms: slice, job done, begin, pairing, blend, block total, commit_rerun, live_commit */
 static uint64_t g_iter_run_ns, g_iter_collect_ns;   /* this loop iteration's machine step, and the draw-feed collection inside it (F117_SLOW_FRAME_TRACE) */
 static uint64_t g_iter_ns, g_cost_ns;     /* the loop iteration's start, and its work before the present call (the --present-log cost column) */
 static uint64_t g_lt_run, g_lt_build, g_lt_upload, g_lt_present, g_lt_last, g_lt_icount, g_lt_disc;
@@ -3075,7 +3076,7 @@ int main(int argc, char **argv)
                 if (exit_after && target > exit_after) target = exit_after;
             }
             const uint64_t lt_run0 = SDL_GetTicksNS();
-            g_iter_collect_ns = 0;
+            g_iter_collect_ns = 0; memset(g_ph, 0, sizeof g_ph);
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
                 if (until > target) until = target;
@@ -3515,6 +3516,7 @@ int main(int argc, char **argv)
                             plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
                         } else { S2EV("no blend: ok %d ka %d kb %d kp %d older %llu newer %llu job %d finished %u\n", ok, ka, kb, kp, (unsigned long long)plan.older, (unsigned long long)plan.newer, g_s2.job, g_s2.finished); if (g_s2.job) { g_coll = g_s2.scene; while (!drawlive_scene_step(&g_live, ~0ull)) {} g_coll = NULL; s2_job_done(); }      /* the legacy copy needs the copy machine free */
                             drawlive_prepare_rerun(&g_live, &plan); }      /* no scene yet: the legacy copy for this picture (so the worker composes it: never on the main thread beside the setup thread) */
+                        g_ph[0] = c_slice; g_ph[1] = c_done; g_ph[2] = c_begin; g_ph[3] = c_pair; g_ph[4] = c_blend; g_ph[5] = (double)SDL_GetTicksNS() / 1e6 - br0;
                         {   /* F117_STAGE2_SLOW=MS (diagnostic): the pictures whose Stage 2 branch took longer than that, with its parts */
                             static double slow_ms = -2; static unsigned slow_n;
                             if (slow_ms == -2) { const char *e = getenv("F117_STAGE2_SLOW"); slow_ms = e ? atof(e) : -1; }
@@ -3546,11 +3548,15 @@ int main(int argc, char **argv)
  if (g_pw.ww > 0 && getenv("F117_BLEND_PICTURE")) remaster_blend_picture_check(g_rlive_copy, &H.m, g_scale, g_pw.ww, ca, cb, plan.t); }
                     } else if (!early_copied)
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread (early: it ran before the wait) */
+                    const double pc0 = (double)SDL_GetTicksNS() / 1e6;
                     drawlive_commit_rerun(&g_live, &plan);   /* its records go to the job */
+                    g_ph[6] = (double)SDL_GetTicksNS() / 1e6 - pc0;
                     pev("main-wait-begin");
                     if (g_pipe && !g_rlive_copies[1]) pw_wait_a();   /* one shared instance: the setup of the previous picture reads the committed scene and must have finished before the next replaces it */
                     pev("main-wait-end");
+                    const double lc0 = (double)SDL_GetTicksNS() / 1e6;
                     if (g_rlive_copy) remaster_live_commit(g_rlive_copy);   /* its frame becomes the one the worker will compose (deferred mode: the worker is idle here) */
+                    g_ph[7] = (double)SDL_GetTicksNS() / 1e6 - lc0;
                     if (g_rlive_copy && plan.rerun_ready && diag_copy_fp()) {   /* diagnostic: what this copy produced, to compare runs */
                         static unsigned n_fp;
                         fprintf(stderr, "[copyfp] %u clock %llu t %.6f frame %016llx records %016llx\n", ++n_fp, (unsigned long long)H.m.cpu.icount, plan.t,
@@ -3846,9 +3852,10 @@ int main(int argc, char **argv)
         SDL_RenderPresent(ren);
         g_lt_present += SDL_GetTicksNS() - lt_pr0;
         if (slow_frame_trace && got && g_cost_ns >= 12000000ull)
-            fprintf(stderr, "[slow-frame] clock %llu total %.3f ms, worker wait %.3f, render copy %.3f, machine step %.3f, of it draw-feed collection %.3f\n",
+            fprintf(stderr, "[slow-frame] clock %llu total %.3f ms, worker wait %.3f, render copy %.3f, machine step %.3f, of it draw-feed collection %.3f; copy phases: slice %.1f, done %.1f, begin %.1f, pair %.1f, blend %.1f, s2 block %.1f, commit_rerun %.1f, live_commit %.1f\n",
                     (unsigned long long)H.m.cpu.icount, (double)g_cost_ns / 1e6,
-                    (double)frame_wait_ns / 1e6, (double)frame_copy_ns / 1e6, (double)g_iter_run_ns / 1e6, (double)g_iter_collect_ns / 1e6);
+                    (double)frame_wait_ns / 1e6, (double)frame_copy_ns / 1e6, (double)g_iter_run_ns / 1e6, (double)g_iter_collect_ns / 1e6,
+                    g_ph[0], g_ph[1], g_ph[2], g_ph[3], g_ph[4], g_ph[5], g_ph[6], g_ph[7]);
         if (g_loop_timing) {                                  /* F117_LOOP_TIMING: where the loop's wall time goes, every 2 s */
             const uint64_t now = SDL_GetTicksNS();
             if (!g_lt_last) { g_lt_last = now; g_lt_icount = H.m.cpu.icount; g_lt_disc = discarded_clocks; }

@@ -1111,7 +1111,7 @@ static int far_scenery_body(machine_t *m)
     const uint8_t on = m->trap_on;
     const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
     const uint64_t until = m->run_until, stop = c->stop_at;
-    int bad = 0; unsigned native = 0, guest = 0;
+    int bad = 0; unsigned native = 0, guest = 0, guest_inel = 0;
     static int stats = -1;
     if (stats < 0) stats = getenv("F117_WIDE_WALK_STATS") != NULL;
     double guest_ms = 0.0;
@@ -1202,7 +1202,7 @@ static int far_scenery_body(machine_t *m)
             remaster_prim_source = 0;
             if (took) { native++; continue; }
         }
-        guest++;
+        guest++; if (pk->own && pk->defers) guest_inel++;
         remaster_prim_source = pk->own && pk->defers ? 3 : 2;
         const double guest_start = stats ? walk_ms() : 0.0;
         { static int set_flags = -1; if (set_flags < 0) set_flags = getenv("F117_NATIVE_C06E") != NULL;   /* experiment: the walk sets [C070] and [C06E] from [98A4] before each entry */
@@ -1253,12 +1253,13 @@ static int far_scenery_body(machine_t *m)
         if (tr) { const unsigned d = rd16(m->mem, ds, 0x49F4); if (d > mx) mx = d; fprintf(stderr, "[far-trace] deferred %u of 50 (most %u), guest-placed %u, native %u\n", d, mx, guest, native); }
     }
     {
-        static double sel_ms, run_ms, fallback_ms; static unsigned n, picked, total, nat, gst;
+        static double sel_ms, run_ms, fallback_ms; static unsigned n, picked, total, nat, gst, gst_inel;
         if (stats) {
             fallback_ms += guest_ms;
-            sel_ms += ms1 - ms0; run_ms += walk_ms() - ms1; picked += (unsigned)npick; total += (unsigned)g_ninst; nat += native; gst += guest;
+            sel_ms += ms1 - ms0; run_ms += walk_ms() - ms1; picked += (unsigned)npick; total += (unsigned)g_ninst; nat += native; gst += guest; gst_inel += guest_inel;
             ++n; static int every = 0; if (!every) { const char *e = getenv("F117_WIDE_WALK_STATS"); every = e && atoi(e) > 1 ? atoi(e) : 300; }
             if (n <= 5 || n % every == 0) fprintf(stderr, "[far] batch %.2f ms, commits %.2f ms a copy; mean of %u: %.2f ms choosing (%u objects listed), %.2f ms placing %.0f survivors (%.0f native, %.0f by the game in %.2f ms)\n", batch_ms_acc / n, commit_ms_acc / n, n, sel_ms / n, total / n, run_ms / n, (double)picked / n, (double)nat / n, (double)gst / n, fallback_ms / n);
+            if (n <= 5 || n % every == 0) fprintf(stderr, "[far] of the guest-placed: %.0f a copy are own-cell deferring objects (not eligible for the native path), %.0f declined by it\n", (double)gst_inel / n, (double)(gst - gst_inel) / n);
         }
     }
     return 0;
