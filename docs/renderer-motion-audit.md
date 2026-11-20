@@ -190,3 +190,20 @@ The immediately preceding two PIC writes and their cumulative I/O hashes
 matched. This narrows the observed divergence to when the MIDI burst begins.
 The trace covers CPU output callbacks, not BIOS calls that invoke pc_io_write
 directly, or DOS file writes.
+
+The owner's 20 Nov 14:28 runs (menus 2 and 3 with both earlier fixes) still showed motion that
+advances and then steps back. The present log's (older + t) is the plan, not the drawn picture, so
+F117_STAGE2_TRACE was replayed on the owner's runway session (clocks 3.22 to 3.47 billion). Only 1 to
+24% of pictures had their own pairing; the rest extrapolated (clamped at t 1.5) or held the newest
+pairing, which lies at least half a step behind the last extrapolation. The drawn position went back
+half a step 6 to 44 times in 251 pictures (private/r45/s2_score.py). Event times showed why: a step's
+scene was usable about six display frames after the step ended and was needed after about three. The
+copy is about 7 ms of work, but at 4K its adaptive slices got the 1.5 ms minimum, the next copy started
+a frame after the last finished, and a 0.3 ms pairing was noticed a frame late.
+
+F117_STAGE2_EAGER (off by default) takes bits: 1 starts the next copy in the same frame, 2 gives the
+needed copy a larger slice (F117_STAGE2_EAGER_SLICE), 4 waits up to 3 ms for the needed pairing.
+Value 5 gave 69 to 71% own pairing, no held pictures and no backward steps in three runs, with 0, 0
+and 2 frame gaps over 20 ms (baseline 0). Value 7 reached 100% but made one frame per step late (62 of
+251) even with a 4 ms slice. The remaining misses are a step's first picture, extrapolated an eighth of
+a step. Reaching 100% within the latency budget needs the copy off the main thread.

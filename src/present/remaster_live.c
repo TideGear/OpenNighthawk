@@ -2889,6 +2889,7 @@ static void stage2_blend_part(void *arg, int part)
     }
 }
 
+static int s2_u64_cmp(const void *x, const void *y) { const uint64_t a = *(const uint64_t *)x, b = *(const uint64_t *)y; return a < b ? -1 : a > b; }
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t)
 {
     if (!r || !r->deferred || !a || !b || !pr || !a->n || !b->n || pr->na != a->n || pr->nb != b->n) return 0;
@@ -2908,6 +2909,30 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
     }
     o->n = nr->n;
+    {   /* F117_STAGE2_PAIRSTAT=1 (diagnostic): per blended picture, the nearer step's primitives by kind: paired, unpaired with no primitive of the same key in the other step
+         * (vertex count, colour, face or mesh item changed), unpaired although that key exists (refused by the window, the move limit or the depth scale) */
+        static int stat = -1;
+        if (stat < 0) stat = getenv("F117_STAGE2_PAIRSTAT") != NULL;
+        if (stat) {
+            uint64_t *keys = (uint64_t *)malloc((fr->n ? fr->n : 1) * sizeof *keys);
+            if (keys) {
+                for (size_t i = 0; i < fr->n; i++) keys[i] = stage2_pkey(&fr->prim[i]);
+                qsort(keys, fr->n, sizeof *keys, s2_u64_cmp);
+                unsigned c[3][3] = {{0}};
+                for (size_t i = 0; i < nr->n; i++) {
+                    const int kd = nr->prim[i].kind >= 0 && nr->prim[i].kind < 3 ? nr->prim[i].kind : 0;
+                    if (match[i] >= 0) { c[kd][0]++; continue; }
+                    const uint64_t k = stage2_pkey(&nr->prim[i]);
+                    size_t lo = 0, hi = fr->n;
+                    while (lo < hi) { const size_t mid = lo + (hi - lo) / 2; if (keys[mid] < k) lo = mid + 1; else hi = mid; }
+                    c[kd][lo < fr->n && keys[lo] == k ? 2 : 1]++;
+                }
+                fprintf(stderr, "[s2-pairstat] t %.3f near %c n %zu/%zu poly %u/%u/%u lines %u/%u/%u dots %u/%u/%u\n", t, nb ? 'b' : 'a', nr->n, fr->n,
+                        c[0][0], c[0][1], c[0][2], c[1][0], c[1][1], c[1][2], c[2][0], c[2][1], c[2][2]);
+                free(keys);
+            }
+        }
+    }
     int32_t tmp[BAND_REC_FINE];
     memset(tmp, 0, sizeof tmp);
     const int bn = a->have_band && b->have_band ? band_blend(a->band, BAND_REC_BASE, b->band, BAND_REC_BASE, t, tmp, BAND_REC_FINE) : 0;

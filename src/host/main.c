@@ -3515,6 +3515,13 @@ int main(int argc, char **argv)
                             S2EV("pairing for step %llu: %.2f ms of work, launched host ms %.2f, finished %.2f, noticed %.2f\n", (unsigned long long)g_s2.pb[g_pth.buf], g_pth.ms, g_pth.launch_ms, g_pth.end_ms, (double)SDL_GetTicksNS() / 1e6);
                         }
                         s2_pair_launch();
+                        /* F117_STAGE2_EAGER=1 (experiment, R45): a copy that finishes lets the next step's copy start in the same frame, the copy the next pictures need gets its full slice,
+                         * and the pairing this picture needs is waited for up to 3 ms (the scene was usable about six frames after its step, and needed after about three: extrapolation and holds) */
+                        static int s_eager = -1;
+                        static double s_eager_ms = -1;
+                        if (s_eager < 0) { const char *e = getenv("F117_STAGE2_EAGER"); s_eager = e ? atoi(e) : 0; const char *m = getenv("F117_STAGE2_EAGER_SLICE"); s_eager_ms = m ? atof(m) : -1; }   /* bits: 1 next copy in the same frame, 2 the needed copy gets a larger slice (F117_STAGE2_EAGER_SLICE ms, default the full slice), 4 wait up to 3 ms for the needed pairing */
+                        for (int s2_pass = 0; s2_pass < ((s_eager & 1) ? 2 : 1); s2_pass++) {
+                        int s2_done_now = 0;
                         {   /* the newest published step's scene: start its copy (the first slice follows at once) */
                             const drawlive_step *na, *nb;
                             drawlive_steps(&g_live, &na, &nb);
@@ -3540,12 +3547,21 @@ int main(int argc, char **argv)
                                 if (budget_ms < 1.5) budget_ms = 1.5;
                                 if (budget_ms > s_slice_ms) budget_ms = s_slice_ms;
                             }
+                            if ((s_eager & 2) && g_s2.job_seq <= (uint64_t)plan.newer + (plan.t > 0.5 ? 1u : 0u)) { const double want = s_eager_ms > 0 ? s_eager_ms : s_slice_ms; if (budget_ms < want) budget_ms = want; }
                             const int done = drawlive_scene_step(&g_live, (uint64_t)(budget_ms * 1e6));
                             g_coll = NULL;
                             const double sl = (double)SDL_GetTicksNS() / 1e6 - sl0;
                             c_slice = sl;
                             g_s2.slices++; g_s2.slice_ms += sl; if (sl > g_s2.slice_ms_max) g_s2.slice_ms_max = sl;
-                            if (done) { const double d0 = (double)SDL_GetTicksNS() / 1e6; s2_job_done(); c_done = (double)SDL_GetTicksNS() / 1e6 - d0; }
+                            if (done) { const double d0 = (double)SDL_GetTicksNS() / 1e6; s2_job_done(); c_done = (double)SDL_GetTicksNS() / 1e6 - d0; s2_done_now = 1; }
+                        }
+                        if (!s2_done_now) break;
+                        }
+                        if ((s_eager & 4) && g_pth.busy && g_s2.pa[g_pth.buf] == plan.older && g_s2.pb[g_pth.buf] == plan.newer && SDL_WaitSemaphoreTimeout(g_pth.done, 3)) {
+                            g_pth.busy = 0;
+                            g_s2.pvalid[g_pth.buf] = g_pth.ok;
+                            S2EV("pairing for step %llu waited for: %.2f ms of work, noticed %.2f\n", (unsigned long long)g_s2.pb[g_pth.buf], g_pth.ms, (double)SDL_GetTicksNS() / 1e6);
+                            s2_pair_launch();
                         }
                         int ka = -1, kb = -1, kp = -1;
                         for (int k = 0; k < 4; k++) { if (g_s2.seq[k] == plan.older) ka = k; if (g_s2.seq[k] == plan.newer) kb = k; }
