@@ -122,6 +122,7 @@ void remaster_live_set_blend_parallel(void (*run)(void (*)(void *, int), void *,
 void remaster_live_set_stage2_pair_parallel(void (*run)(void (*)(void *, int), void *, int), int parts);
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pairs, double t);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
+void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);   /* F117_STAGE2_TRUTH=1 with F117_BLEND_CHECK */
 /* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */
 size_t remaster_frame_copy_prims(const remaster_frame_copy *c);
 int remaster_live_ring_match(const remaster_frame_copy *c, int *which_similar, size_t *similar_prims);

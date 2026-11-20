@@ -207,3 +207,16 @@ Value 5 gave 69 to 71% own pairing, no held pictures and no backward steps in th
 and 2 frame gaps over 20 ms (baseline 0). Value 7 reached 100% but made one frame per step late (62 of
 251) even with a 4 ms slice. The remaining misses are a step's first picture, extrapolated an eighth of
 a step. Reaching 100% within the latency budget needs the copy off the main thread.
+
+The owner's 15:03 look with EAGER=5: better; menu 2 still some scrub jitter, menu 3 none seen (the
+runway stripes flicker there); in both, lights, some lines and edges still go wrong when banking.
+F117_BLEND_CHECK with F117_STAGE2_TRUTH=1 judges Stage 2's own pairing and blend of the copies at
+t = 0 and 1 against the copy at t (default renderer, owner's runway bank, 210 pictures, game pixels;
+one is nine screen pixels at 4K). Paired lights: 61.5% within 0.5, 6.7% off by 4 to 16, 0.2% by 16 or
+more. Unpaired lights (8% of lights, the fast movers): 7.2% off by 16 or more; unpaired polygons 4.1%.
+Along each paired primitive's own a-to-b path the truth's median place follows t on average (0.119 at
+0.127, 0.372 at 0.377, 0.631 at 0.624, 0.880 at 0.877), but within one picture the quartiles spread
+widely (at t 0.377 about 0.21 to 0.38). The camera's turn and travel inside a step do not share one
+time profile, so no single screen-space blend (or remap of t) can follow both; with wrong partners and
+unpaired snaps this is what banks show. Scenery that does not move in the world could instead be
+reprojected: back to world space with step a's camera, forward with the camera at t, no pairing.

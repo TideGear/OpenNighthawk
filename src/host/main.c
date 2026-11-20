@@ -3644,7 +3644,7 @@ int main(int argc, char **argv)
                         drawlive_prepare_rerun(&g_live, &p0); drawlive_commit_rerun(&g_live, &p0); if (g_rlive_copy) remaster_live_commit(g_rlive_copy); const int oka = p0.rerun_ready && remaster_live_done_clone(g_rlive_copy, ca);
                         drawlive_prepare_rerun(&g_live, &p1); drawlive_commit_rerun(&g_live, &p1); if (g_rlive_copy) remaster_live_commit(g_rlive_copy); const int okb = p1.rerun_ready && remaster_live_done_clone(g_rlive_copy, cb);
                         drawlive_prepare_rerun(&g_live, &plan);
-                        if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) { remaster_blend_report(ca, cb, cc, plan.t);
+                        if (oka && okb && plan.rerun_ready && remaster_live_done_clone(g_rlive_copy, cc)) { remaster_blend_report(ca, cb, cc, plan.t); remaster_stage2_truth_report(ca, cb, cc, plan.t);
                             {   /* is the copy at t = 0 / t = 1 one of the live game's own recorded steps? */
                                 static unsigned long long total, exact_a, exact_b; int sim = -1; size_t simn = 0;
                                 const int ma = remaster_live_ring_match(ca, &sim, &simn), mb = remaster_live_ring_match(cb, &sim, &simn);

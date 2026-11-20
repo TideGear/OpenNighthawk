@@ -3030,6 +3030,100 @@ void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_co
     free(ab); free(aat);
 }
 
+/* F117_BLEND_CHECK with F117_STAGE2_TRUTH=1 (diagnostic, R45): Stage 2's own pairing and blend of the copies at t = 0 and t = 1, judged against the copy at t. For each blended
+ * primitive, the distance in game pixels from its first vertex to the nearest primitive of the same key in the copy at t; the same for the nearer step held unblended, for scale.
+ * Split by kind (polygons; lines and dots) and by paired or unpaired; a large error with a partner is a wrong partner, a large one without is a snap. */
+static double s2t_dist(const remaster_prim *p, const remaster_prim *q)
+{
+    const double px = blend_pos(p, 0), py = blend_pos(p, 1), qx = blend_pos(q, 0), qy = blend_pos(q, 1);
+    return sqrt((px - qx) * (px - qx) + (py - qy) * (py - qy));
+}
+typedef struct { uint64_t key; uint32_t i; } s2t_key;
+static int s2t_dcmp(const void *x, const void *y) { const double a = *(const double *)x, b = *(const double *)y; return a < b ? -1 : a > b; }
+static int s2t_cmp(const void *x, const void *y) { const s2t_key *a = (const s2t_key *)x, *b = (const s2t_key *)y; return a->key < b->key ? -1 : a->key > b->key; }
+static double s2t_nearest(const remaster_prim *p, const remaster_frame_copy *at, const s2t_key *keys)
+{
+    const uint64_t k = stage2_pkey(p);
+    size_t lo = 0, hi = at->n;
+    while (lo < hi) { const size_t mid = lo + (hi - lo) / 2; if (keys[mid].key < k) lo = mid + 1; else hi = mid; }
+    double best = 1e9;
+    for (size_t j = lo; j < at->n && keys[j].key == k; j++) { const double d = s2t_dist(p, &at->prim[keys[j].i]); if (d < best) best = d; }
+    return best;
+}
+void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_STAGE2_MESH_KEY"); g_stage2_mesh_key = e && atoi(e) != 0; on = getenv("F117_STAGE2_TRUTH") != NULL; }
+    if (!on || !a->n || !b->n || !at->n) return;
+    static unsigned calls;
+    /* [blended kind 0 poly / 1 light][0 paired, 1 unpaired][bucket < 0.5, < 1, < 2, < 4, < 16, >= 16]; [kind][bucket] for the nearer step held */
+    static unsigned long long h[2][2][6], hold[2][6];
+    remaster_stage2_pairs *pr = remaster_stage2_pairs_new();
+    s2t_key *keys = (s2t_key *)malloc(at->n * sizeof *keys);
+    remaster_prim *out = (remaster_prim *)malloc((a->n > b->n ? a->n : b->n) * sizeof *out);
+    if (pr && keys && out && remaster_stage2_pair(pr, a, b)) {
+        for (size_t j = 0; j < at->n; j++) { keys[j].key = stage2_pkey(&at->prim[j]); keys[j].i = (uint32_t)j; }
+        qsort(keys, at->n, sizeof *keys, s2t_cmp);
+        const int nb = t >= 0.5;
+        const remaster_frame_copy *nr = nb ? b : a, *fr = nb ? a : b;
+        const int *match = nb ? pr->ba : pr->ab;
+        stage2_blend_job job = { nr, fr, match, nb ? 1.0 - t : t, out, 1 };
+        stage2_blend_part(&job, 0);
+        static double sv[4096]; size_t ns = 0;
+        for (size_t i = 0; i < nr->n; i++) {
+            const int kd = nr->prim[i].kind == SCENE_POLYGON ? 0 : 1;
+            if (nr->prim[i].v[0].z <= 65536 || out[i].v[0].z <= 65536) continue;      /* behind or at the near plane: no screen position */
+            const double e = s2t_nearest(&out[i], at, keys), eh = s2t_nearest(&nr->prim[i], at, keys);
+            const int k = e < 0.5 ? 0 : e < 1 ? 1 : e < 2 ? 2 : e < 4 ? 3 : e < 16 ? 4 : 5, kh = eh < 0.5 ? 0 : eh < 1 ? 1 : eh < 2 ? 2 : eh < 4 ? 3 : eh < 16 ? 4 : 5;
+            h[kd][match[i] < 0][k]++;
+            hold[kd][kh]++;
+            if (match[i] >= 0 && ns < 4096) {   /* how far along its own a-to-b path the truth is, for primitives that move more than 4 game pixels in the step */
+                const remaster_prim *pa = nb ? &fr->prim[match[i]] : &nr->prim[i], *pb = nb ? &nr->prim[i] : &fr->prim[match[i]];
+                const double ax = blend_pos(pa, 0), ay = blend_pos(pa, 1), dx = blend_pos(pb, 0) - ax, dy = blend_pos(pb, 1) - ay, L2 = dx * dx + dy * dy;
+                if (L2 > 16.0) {
+                    double tx = 0, ty = 0, td = 1e9; const uint64_t k3 = stage2_pkey(pa);
+                    const double ex = ax + t * dx, ey = ay + t * dy;      /* the truth nearest the linear guess */
+                    size_t lo2 = 0, hi2 = at->n;
+                    while (lo2 < hi2) { const size_t mid = lo2 + (hi2 - lo2) / 2; if (keys[mid].key < k3) lo2 = mid + 1; else hi2 = mid; }
+                    for (size_t j = lo2; j < at->n && keys[j].key == k3; j++) { const remaster_prim *c = &at->prim[keys[j].i]; const double qx = blend_pos(c, 0) - ex, qy = blend_pos(c, 1) - ey; if (qx * qx + qy * qy < td) { td = qx * qx + qy * qy; tx = blend_pos(c, 0); ty = blend_pos(c, 1); } }
+                    if (td < 1e8) sv[ns++] = ((tx - ax) * dx + (ty - ay) * dy) / L2;
+                }
+            }
+            {   /* examples of the worst: the nearer step's place, its partner's, the blend, and the nearest in the copy at t */
+                static int shown;
+                if (e >= 4 && shown < 60 && (calls % 7) == 0) {
+                    shown++;
+                    const remaster_prim *q = match[i] >= 0 ? &fr->prim[match[i]] : NULL;
+                    double bx = 0, by = 0, bd = 1e9; const uint64_t k2 = stage2_pkey(&out[i]);
+                    for (size_t j = 0; j < at->n; j++) if (stage2_pkey(&at->prim[j]) == k2) { const double d = s2t_dist(&out[i], &at->prim[j]); if (d < bd) { bd = d; bx = blend_pos(&at->prim[j], 0); by = blend_pos(&at->prim[j], 1); } }
+                    double cx = 0, cy = 0, cd = 1e9;            /* the other step's same-key primitive nearest to the truth: the partner it should perhaps have had */
+                    for (size_t j = 0; j < fr->n; j++) if (stage2_pkey(&fr->prim[j]) == k2) { const double d = sqrt((blend_pos(&fr->prim[j], 0) - bx) * (blend_pos(&fr->prim[j], 0) - bx) + (blend_pos(&fr->prim[j], 1) - by) * (blend_pos(&fr->prim[j], 1) - by)); if (d < cd) { cd = d; cx = blend_pos(&fr->prim[j], 0); cy = blend_pos(&fr->prim[j], 1); } }
+                    fprintf(stderr, "[s2-truth-ex] t %.3f %s kind %d n %d model %d z %.1f: near (%.1f,%.1f) partner %s(%.1f,%.1f) blend (%.1f,%.1f) truth (%.1f,%.1f) err %.1f; other step nearest truth (%.1f,%.1f)\n",
+                            t, nb ? "b" : "a", nr->prim[i].kind, nr->prim[i].n, nr->prim[i].model, nr->prim[i].v[0].z / 65536.0, blend_pos(&nr->prim[i], 0), blend_pos(&nr->prim[i], 1),
+                            q ? "" : "none ", q ? blend_pos(q, 0) : 0.0, q ? blend_pos(q, 1) : 0.0, blend_pos(&out[i], 0), blend_pos(&out[i], 1), bx, by, e, cx, cy);
+                }
+            }
+        }
+        if (ns >= 8) {   /* this frame: t, and the quartiles of the truth's place along the a-to-b path (t when the motion is even) */
+            qsort(sv, ns, sizeof *sv, s2t_dcmp);
+            fprintf(stderr, "[s2-truth-t] t %.3f along p25 %.3f p50 %.3f p75 %.3f (%zu moving)\n", t, sv[ns / 4], sv[ns / 2], sv[3 * ns / 4], ns);
+        }
+        if (++calls % 30 == 0) {
+            static const char *kn[2] = { "poly", "lights" };
+            for (int kd = 0; kd < 2; kd++) {
+                for (int u = 0; u < 3; u++) {
+                    const unsigned long long *x = u < 2 ? h[kd][u] : hold[kd];
+                    unsigned long long tot = 0; for (int q = 0; q < 6; q++) tot += x[q];
+                    if (!tot) continue;
+                    fprintf(stderr, "[s2-truth] %u frames %s %-8s %8llu: <0.5 %.1f%% <1 %.1f%% <2 %.1f%% <4 %.1f%% <16 %.2f%% >=16 %.2f%%\n", calls, kn[kd], u == 0 ? "paired" : u == 1 ? "unpaired" : "held",
+                            tot, 100.0 * x[0] / tot, 100.0 * x[1] / tot, 100.0 * x[2] / tot, 100.0 * x[3] / tot, 100.0 * x[4] / tot, 100.0 * x[5] / tot);
+                }
+            }
+        }
+    }
+    remaster_stage2_pairs_free(pr); free(keys); free(out);
+}
+
 /* The picture-space check: the scene the copy produced at t (r's completed frame) and the scene built by blending the copies at t = 0 and t = 1, each drawn by the same CPU scene renderer into
  * the wide canvas, and compared pixel for pixel. Unpaired primitives of the first step are kept when t is under a half, those of the second added when it is not. */
 void remaster_blend_picture_check(remaster_live *r, const machine_t *m, int n, int tw, const remaster_frame_copy *a, const remaster_frame_copy *b, double t)
