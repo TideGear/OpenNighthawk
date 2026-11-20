@@ -110,3 +110,83 @@ native path must maintain its motion under normal use.
 Neither experimental switch is enabled by default. R45 remains open. The R46
 vertical-cull experiment and per-aircraft point-test logging are being built in
 the isolated `codex/r46-aircraft-cull` worktree, not in the gated main tree.
+
+A traced replay at 9.336 billion produced 101 Stage 2 decisions. Of 19
+extrapolations, 17 occurred with both scenes available and two with a missing
+scene. No held frames were logged. A candidate that polled for completed
+pairings again immediately before scene selection passed 42 host and
+presentation tests but did not pass the replay screen. It extrapolated on
+26 of 101 decisions, 25 with both scenes available. The candidate was reverted.
+Collect scene publication and pairing launch/completion times together next
+to distinguish insufficient lead time from the cost of building the pairs.
+
+A follow-up replay with both event and selection traces located the deadline
+miss. It extrapolated three times (steps 2084, 2085 and 2087). All three scene
+copies took three display iterations to finish and published on the very
+iteration that first needed their new pairing. Pairing started immediately
+after publication and finished 6.43 to 7.34 ms later. In the preceding
+two-iteration cases the pair was already ready by the first selection.
+The renderer needs the scene ready earlier, or needs reusable pairing work
+prepared before its final scene is published. Tightening the display loop's
+polling alone cannot recover that lead time. The earlier runs' higher miss
+counts also show why a single capture is insufficient for acceptance.
+
+A controlled replay with the existing asynchronous copy thread and the same
+bank settings reported 101/101 proper blend decisions, versus 98/101 with
+sliced copies in the event-trace run. The 44 aligned pictures had identical
+margin residual scores against the default (0.05965 spatial, 0.06842 temporal).
+The final machine hashes differed at the identical stop clock 9,436,000,000:
+sliced ff17cf5012db1926, threaded 513e772390302dc8. This is a failed parity
+screen, not evidence to enable the copy thread. Reproduce and locate the first
+machine-state divergence before treating threaded deadline gains as usable.
+
+Live replay checkpoints reproduced the machine-state divergence. With
+F117_REPLAY_HASH_EVERY=100000000, the sliced and threaded runs shared 95
+clock samples. The first 89 matched. The first mismatch was 9,000,009,691,
+after both matched at 8,900,009,691 and after scene composition resumed at
+8,936,000,000. The final sliced hash repeated exactly (ff17cf5012db1926).
+The threaded hash differed both from sliced and from the earlier threaded
+run (9e1239d952f44062 on repeat). This rules out a shutdown-only mismatch.
+The next parity probe should compare live memory, CPU, I/O and scanout
+separately within that window.
+
+An aligned 46-picture temporal residual map shows the remaining visible
+differences concentrated on the sloping horizon, small lights below it,
+and the HUD. The analysis subtracts the default at each matched game time,
+then measures how the residual changes from picture to picture.
+
+The tighter replay probe compared 71 live checkpoints from clocks
+8,935,009,691 through 9,005,009,691. All RAM hashes, IP, flags, and the two
+logged scanout counters matched. The I/O accumulator first diverged at
+8,954,009,691 and differed at 52 checkpoints. It folds port writes (including
+their instruction clock) and DOS write bytes, so a shift in the clock of a
+port write can change it without changing RAM. Other CPU registers and scanout
+buffers were not separately fingerprinted in this probe.
+
+The runtime audit found a shared verification cache keyed by module generation
+rather than by the memory being verified. The snapshot thread could therefore
+trust a live-memory verdict or publish a snapshot verdict for live execution.
+Snapshot writes also bumped the live generation. The experimental repair
+gives the existing copy thread a snapshot mode: verify translated regions
+directly against private bytes, skip live invalidation and dispatch counters,
+and avoid creating or dropping floating instances. This closes the identified
+cache path, but parity and copy cost must be screened before crediting the fix.
+
+The direct-verification snapshot candidate built and ran to completion,
+but failed the narrowed parity screen. Over 71 identical checkpoint clocks
+the first I/O mismatch was still at 8,954,009,691 (52 differing samples),
+and RAM now differed at four samples. Final machine hashes at 9,005,000,000
+were 5e6eb14eb9a9fc24 (sliced) and 27ea0de14676edf9 (candidate).
+The candidate was reverted. The identified cache sharing alone does not
+explain the divergence. Trace the live I/O events around the first
+mismatch before choosing the next runtime change.
+
+The host-only port trace reproduced the divergence with 179 writes in each
+mode. The first mismatch was write 154, a MIDI byte E7 to port 0330 from
+058D:0C82. The sliced run began the write at 8,957,137,883 and the threaded
+run at 8,957,135,913, 1,970 instruction clocks earlier. The next three bytes
+(65, 53, B7) had the same offset and values. The bus delay was still 43 clocks.
+The immediately preceding two PIC writes and their cumulative I/O hashes
+matched. This narrows the observed divergence to when the MIDI burst begins.
+The trace covers CPU output callbacks, not BIOS calls that invoke pc_io_write
+directly, or DOS file writes.

@@ -98,6 +98,22 @@ typedef struct {
 } host_t;
 
 static host_t H;
+static io_write_fn replay_out_delegate;
+static uint64_t replay_out_from, replay_out_until;
+
+static void replay_trace_out(cpu_t *cpu, uint16_t port, uint32_t value, int width)
+{
+    /* Snapshot CPUs inherit the callback but only live writes belong here. */
+    const int trace = cpu == &H.m.cpu && cpu->icount >= replay_out_from &&
+                      cpu->icount < replay_out_until;
+    const uint64_t before = cpu->icount;
+    replay_out_delegate(cpu, port, value, width);
+    if (trace)
+        fprintf(H.m.log, "[replay-out] %llu/%llu %04x:%04x port %04x width %d value %08x hash %016llx\n",
+                (unsigned long long)before, (unsigned long long)cpu->icount,
+                (unsigned)cpu->op_cs, (unsigned)cpu->op_ip, (unsigned)port, width,
+                (unsigned)value, (unsigned long long)H.m.io_hash);
+}
 
 /* --present replay */
 static int g_loop_timing;                 /* F117_LOOP_TIMING */
@@ -2333,7 +2349,9 @@ int main(int argc, char **argv)
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) g_setup_sound = 0;                  /* a replay brings its own inputs, SETUP's answers included */
-    if (replay) g_shot_legacy = 1;                  /* Tab in a replay keeps the screenshots/<session>-clock<N>.bmp names the test scripts read */
+    /* Tab in a replay saves to Pictures\OpenNighthawk like a live flight (owner, 20 Nov); the acceptance test's
+     * replay (F117_SHOT_AUTOTEST) or F117_SHOT_LEGACY keeps the screenshots/<session>-clock<N>.bmp names it reads */
+    if (replay && (getenv("F117_SHOT_AUTOTEST") || getenv("F117_SHOT_LEGACY"))) g_shot_legacy = 1;
     if (!time_us) time_us = machine_local_time_us();
     if (!replay) save_fixset_check(save, win);      /* a replay brings its recorded set */
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
@@ -2341,6 +2359,18 @@ int main(int argc, char **argv)
         return 1;
     }
     H.m.sim_hz = sim_hz;
+    if (replay && H.m.log) {
+        const char *from = getenv("F117_REPLAY_OUT_FROM");
+        const char *until = getenv("F117_REPLAY_OUT_UNTIL");
+        if (from && until) {
+            replay_out_from = strtoull(from, NULL, 10);
+            replay_out_until = strtoull(until, NULL, 10);
+            if (replay_out_until > replay_out_from) {
+                replay_out_delegate = H.m.cpu.io_write;
+                H.m.cpu.io_write = replay_trace_out;
+            }
+        }
+    }
     /* Every live session is recorded unless told otherwise: a log costs a
      * few kilobytes, and it is what lets any session be replayed under both
      * engines later (tools/run_route.py style, f117run --replay). */
@@ -3946,6 +3976,34 @@ int main(int argc, char **argv)
                 g_lt_run = g_lt_build = g_lt_upload = g_lt_present = 0; g_lt_iter = 0;
             }
             g_lt_iter++;
+        }
+        /* Compare live machine state across renderer modes at fixed replay
+         * intervals so a final hash mismatch can be localized before shutdown. */
+        if (g_replay && H.m.log) {
+            static int hash_interval_read;
+            static uint64_t hash_interval, next_hash;
+            if (!hash_interval_read) {
+                const char *value = getenv("F117_REPLAY_HASH_EVERY");
+                if (value) hash_interval = strtoull(value, NULL, 10);
+                const char *from = getenv("F117_REPLAY_HASH_FROM");
+                next_hash = from ? strtoull(from, NULL, 10) : hash_interval;
+                hash_interval_read = 1;
+            }
+            const uint64_t clock = H.m.cpu.icount;
+            if (hash_interval && clock >= next_hash) {
+                fprintf(H.m.log, "[replay-hash] clock %llu hash %016llx\n",
+                        (unsigned long long)clock, (unsigned long long)machine_state_hash(&H.m));
+                uint64_t ram = 1469598103934665603ull;
+                for (size_t i = 0; i < MEM_SIZE; i++)
+                    ram = (ram ^ H.m.mem[i]) * 1099511628211ull;
+                fprintf(H.m.log, "[replay-state] %llu ram %016llx io %016llx ip %04x flags %04x scan %llu/%llu\n",
+                        (unsigned long long)clock, (unsigned long long)ram,
+                        (unsigned long long)H.m.io_hash, (unsigned)H.m.cpu.ip, (unsigned)H.m.cpu.flags,
+                        (unsigned long long)H.m.scan_frame, (unsigned long long)H.m.scan_time);
+                const uint64_t until_next = hash_interval - clock % hash_interval;
+                if (until_next > UINT64_MAX - clock) hash_interval = 0;
+                else next_hash = clock + until_next;
+            }
         }
         if (g_present_log && !display_logged) {
             int width = 0, height = 0, vsync = 0;
