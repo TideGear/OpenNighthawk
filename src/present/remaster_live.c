@@ -2773,7 +2773,7 @@ int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a
 
 typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf; remaster_prim *out; int parts;
     int reproj, near_is_a; double off; s2_cam cn, cf, ct; const remaster_stage2_pairs *pr;
-    int have_view; double view_matrix[3][3], view_shift[3];
+    int have_view, view_static; double view_matrix[3][3], view_shift[3];
 } stage2_blend_job;
 static void (*g_s2_run)(void (*)(void *, int), void *, int);
 static int g_s2_parts;
@@ -3064,6 +3064,20 @@ static void stage2_blend_part(void *arg, int part)
                     const double tol = 16.0 + 0.004 * sqrt(w2);
                     moving = r2 > tol * tol && r2 < 262144.0 * 262144.0;   /* a quarter of a terrain cell (4096 units, 2^20 here) or more off the travel is a partner in the wrong cell (repeated lights), not motion */
                 }
+                if (!moving && j->have_view && j->view_static) {    /* still in the world (a parked jet): the same camera as the terrain, so it cannot slide against the ground */
+                    const double scale = p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0;
+                    for (int v = 0; v < p.n; v++) {
+                        const remaster_v3 old = p.v[v];
+                        int32_t xyz[3];
+                        for (int axis = 0; axis < 3; axis++) {
+                            const double *mm = j->view_matrix[axis];
+                            xyz[axis] = s2_clamp32(mm[0] * old.x + mm[1] * old.y + mm[2] * old.z + j->view_shift[axis] * scale);
+                        }
+                        p.v[v] = (remaster_v3){ xyz[0], xyz[1], xyz[2] };
+                    }
+                    j->out[i] = p;
+                    continue;
+                }
                 for (int v = 0; v < p.n; v++) {
                     double w[3];
                     s2_to_world(&j->cn, &j->nr->prim[i].v[v], w);
@@ -3201,6 +3215,11 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         stage2_blend_job job = { nr, fr, match, wf, o->prim, 0 };
         s2_job_reproj(&job, a, b, pr, t, nb);
         have_view = job.have_view = s2_terrain_view(&job, view);
+        {   /* F117_STAGE2_VIEW_STATIC=0: models that stay still in the world keep the scene-pair camera (the first version) */
+            static int view_static = -1;
+            if (view_static < 0) { const char *e = getenv("F117_STAGE2_VIEW_STATIC"); view_static = !(e && atoi(e) == 0); }
+            job.view_static = view_static;
+        }
         if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
     }

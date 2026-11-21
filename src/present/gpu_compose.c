@@ -28,7 +28,7 @@ typedef struct { double x, y, iz; } sv;
 
 typedef struct { SDL_GPUBuffer *buf; Uint32 cap; } gbuf;
 typedef struct { size_t first, count; int kind; } hw_seg_t;
-enum { HK_POLY, HK_LINE, HK_ZRESET, HK_AND, HK_OR, HK_STIP, HK_DOT, HK_GROUND, HK_GROUND_TIE, HK_N };
+enum { HK_POLY, HK_LINE, HK_ZRESET, HK_AND, HK_OR, HK_STIP, HK_DOT, HK_GROUND, HK_GROUND_TIE, HK_UNDER, HK_OBJ, HK_GROUND_OBJ, HK_LINE_GROUND, HK_N };   /* HK_OBJ: a polygon of an object (owner not 0, not ground): stencil bit 2 marks it; HK_GROUND_OBJ: ground over such a pixel */
 
 typedef struct {
     float a1, b1, a2, b2, ciz, diz1, diz2;
@@ -1224,6 +1224,31 @@ static int hw_ground_ties(void)
     return on;
 }
 
+/* F117_HW_GROUND_UNDER=0 turns off the over-the-ground rule (on with F117_HW_GROUND_TIES) */
+static int hw_ground_under(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *value = getenv("F117_HW_GROUND_UNDER"); on = hw_ground_ties() && !(value && atoi(value) == 0); }
+    return on;
+}
+
+/* A later face of the same object wins a depth tie within a hundredth of a percent (the exact compositor's k = 0.9999): its depth is scaled
+ * by 1 / 0.9999 when built (a stripe painted on a hangar door showed a row of the door through it). On with F117_HW_GROUND_TIES; F117_HW_POLY_TIE=0 off. */
+static int hw_poly_tie(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *value = getenv("F117_HW_POLY_TIE"); on = hw_ground_ties() && !(value && atoi(value) == 0); }
+    return on;
+}
+
+/* lines with screen-aligned square ends, as the default draws them (on unless F117_HW_SQUARE_LINES=0) */
+static int hw_square_lines(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *value = getenv("F117_HW_SQUARE_LINES"); on = !(value && atoi(value) == 0); }
+    return on;
+}
+
 static SDL_GPUShader *hw_shader(SDL_GPUDevice *d, const char *dir, const char *name, SDL_GPUShaderStage st, const char *entry, Uint32 samplers)
 {
     char path[1024]; snprintf(path, sizeof path, "%s/%s", dir, name);
@@ -1261,7 +1286,9 @@ static int hw_init(gpu_compose *g)
     SDL_GPUShader *rvs = hw_shader(d, dir, "gpu_hw_rvs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "rvs", 0), *rps = hw_shader(d, dir, "gpu_hw_rps.dxil", SDL_GPU_SHADERSTAGE_FRAGMENT, "rps", 5);
     SDL_GPUShader *ground_vs = hw_ground_ties() ? hw_shader(d, dir, "gpu_hw_ground_vs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "ground_vs", 0) : NULL;
     if (!vs || !ps || !rvs || !rps) { fprintf(stderr, "[hw-raster] shaders missing in %s: the compute path is used\n", dir); return 0; }
-    if (hw_ground_ties() && !ground_vs) return 0;
+    SDL_GPUShader *under_vs = hw_ground_ties() ? hw_shader(d, dir, "gpu_hw_under_vs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "under_vs", 0) : NULL;
+    SDL_GPUShader *ground_obj_vs = hw_ground_ties() ? hw_shader(d, dir, "gpu_hw_ground_obj_vs.dxil", SDL_GPU_SHADERSTAGE_VERTEX, "ground_obj_vs", 0) : NULL;
+    if (hw_ground_ties() && (!ground_vs || !under_vs || !ground_obj_vs)) return 0;
     char path[1024]; snprintf(path, sizeof path, "%s/gpu_hw_export.dxil", dir);
     size_t sz = 0; void *code = SDL_LoadFile(path, &sz);
     if (code) {
@@ -1278,40 +1305,47 @@ static int hw_init(gpu_compose *g)
     const SDL_GPUTextureFormat FC = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     static const int blends[HK_N][4] = { { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { 0, 0, 0, 0 },
                                          { HB_NONE, HB_MIN, HB_MIN, HB_ADD }, { HB_NONE, HB_MAX, HB_MAX, HB_ADD }, { HB_STIP, HB_NONE, HB_NONE, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR },
-                                         { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR } };
+                                         { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_NONE, HB_NONE, HB_NONE, HB_NONE }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR } };
     for (int k = 0; k < HK_N; k++) {
         if (k == HK_ZRESET) continue;
         if (k >= HK_GROUND && !ground_vs) continue;
         SDL_GPUColorTargetDescription ct[4]; for (int j = 0; j < 4; j++) ct[j] = hw_target(FC, blends[k][j]);
         SDL_GPUGraphicsPipelineCreateInfo pi; memset(&pi, 0, sizeof pi);
-        pi.vertex_shader = k == HK_GROUND_TIE ? ground_vs : vs; pi.fragment_shader = ps;
+        pi.vertex_shader = k == HK_GROUND_TIE ? ground_vs : k == HK_UNDER ? under_vs : k == HK_GROUND_OBJ ? ground_obj_vs : vs; pi.fragment_shader = ps;
         pi.vertex_input_state.vertex_buffer_descriptions = &vb; pi.vertex_input_state.num_vertex_buffers = 1; pi.vertex_input_state.vertex_attributes = at; pi.vertex_input_state.num_vertex_attributes = 6;
         pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL; pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE; pi.rasterizer_state.enable_depth_clip = false;
         pi.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-        pi.depth_stencil_state.compare_op = k == HK_DOT ? SDL_GPU_COMPAREOP_ALWAYS : SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
+        pi.depth_stencil_state.compare_op = k == HK_DOT || k == HK_UNDER || k == HK_LINE_GROUND ? SDL_GPU_COMPAREOP_ALWAYS : SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
         pi.depth_stencil_state.enable_depth_test = true;
-        pi.depth_stencil_state.enable_depth_write = (k == HK_POLY || k == HK_DOT || k == HK_GROUND);
-        if (pi.depth_stencil_state.enable_depth_write || k == HK_LINE || k == HK_GROUND_TIE) {
+        pi.depth_stencil_state.enable_depth_write = (k == HK_POLY || k == HK_DOT || k == HK_GROUND || k == HK_UNDER || k == HK_OBJ || k == HK_GROUND_OBJ);
+        if (pi.depth_stencil_state.enable_depth_write || k == HK_LINE || k == HK_GROUND_TIE || k == HK_LINE_GROUND) {
             /* Stencil bit 0 protects old-style far dots from strokes. Bit 1 marks
              * ground so the coplanar redraw applies only over a ground surface. */
             SDL_GPUStencilOpState so; memset(&so, 0, sizeof so);
             so.fail_op = SDL_GPU_STENCILOP_KEEP; so.depth_fail_op = SDL_GPU_STENCILOP_KEEP;
-            so.pass_op = pi.depth_stencil_state.enable_depth_write ? SDL_GPU_STENCILOP_REPLACE : SDL_GPU_STENCILOP_KEEP;
-            so.compare_op = k == HK_LINE ? SDL_GPU_COMPAREOP_NOT_EQUAL : k == HK_GROUND_TIE ? SDL_GPU_COMPAREOP_EQUAL : SDL_GPU_COMPAREOP_ALWAYS;
+            /* HK_UNDER: where a polygon covers ground (bit 1), the depth goes to the far plane and the mark is cleared, so the
+             * polygon then draws over the ground and its own segment still sorts by depth (the exact compositor's k = 0). */
+            so.pass_op = k == HK_UNDER ? SDL_GPU_STENCILOP_ZERO : pi.depth_stencil_state.enable_depth_write ? SDL_GPU_STENCILOP_REPLACE : SDL_GPU_STENCILOP_KEEP;
+            /* Ground (reference 2) tests bit 2 (an object's pixel): HK_GROUND where it is clear, HK_GROUND_OBJ (depth / 1.03) where it is set. */
+            so.compare_op = k == HK_LINE || k == HK_GROUND_OBJ ? SDL_GPU_COMPAREOP_NOT_EQUAL : k == HK_GROUND_TIE || k == HK_UNDER || k == HK_LINE_GROUND || (k == HK_GROUND && ground_obj_vs) ? SDL_GPU_COMPAREOP_EQUAL : SDL_GPU_COMPAREOP_ALWAYS;
             pi.depth_stencil_state.enable_stencil_test = true; pi.depth_stencil_state.front_stencil_state = so; pi.depth_stencil_state.back_stencil_state = so;
-            pi.depth_stencil_state.compare_mask = k == HK_LINE ? 1 : k == HK_GROUND_TIE ? 2 : 3;
-            pi.depth_stencil_state.write_mask = 3;
+            pi.depth_stencil_state.compare_mask = k == HK_LINE ? 1 : k == HK_GROUND_TIE || k == HK_UNDER || k == HK_LINE_GROUND ? 2 : (k == HK_GROUND && ground_obj_vs) || k == HK_GROUND_OBJ ? 4 : 7;
+            pi.depth_stencil_state.write_mask = 7;
         }
         pi.target_info.color_target_descriptions = ct; pi.target_info.num_color_targets = 4; pi.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT; pi.target_info.has_depth_stencil_target = true;
         g->hw.pipe[k] = SDL_CreateGPUGraphicsPipeline(d, &pi);
         if (!g->hw.pipe[k]) {
             if (ground_vs) SDL_ReleaseGPUShader(d, ground_vs);
+            if (under_vs) SDL_ReleaseGPUShader(d, under_vs);
+            if (ground_obj_vs) SDL_ReleaseGPUShader(d, ground_obj_vs);
             fprintf(stderr, "[hw-raster] pipeline %d refused: %s\n", k, SDL_GetError());
             return 0;
         }
     }
     if (ground_vs) SDL_ReleaseGPUShader(d, ground_vs);
+    if (under_vs) SDL_ReleaseGPUShader(d, under_vs);
+    if (ground_obj_vs) SDL_ReleaseGPUShader(d, ground_obj_vs);
     {
         SDL_GPUColorTargetDescription ct = hw_target(FC, HB_OVR);
         SDL_GPUGraphicsPipelineCreateInfo pi; memset(&pi, 0, sizeof pi);
@@ -1375,7 +1409,7 @@ static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
 }
 
 /* the same job as gpu_compose_begin's compute path, for F117_HW_RASTER; 1 on success, 0 when the compute path has to be used */
-typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; int clip_bands, ground_ties; } hw_build_ctx;
+typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; int clip_bands, ground_ties, poly_tie, square_lines; } hw_build_ctx;
 /* The wide sky strips can extend tens of thousands of pixels beyond the viewport.
  * Clip their shared edges in double precision before the hardware's float clipper.
  * Carry the gradient with the edge; rounding colours here would introduce seams. */
@@ -1415,6 +1449,7 @@ static void hw_build_job(void *vc, int k)
 #define HNDCY(y) ((float)(1.0 - (y) * 2.0 / fh))
 #define HSEG(hf, hc, hk) do { if (hc) { if (nseg == HW_SEGS) { ck->fail = 1; return; } S[nseg++] = (hw_seg){ (hf), (hc), (hk) }; } } while (0)
     int cur = HK_POLY; size_t curfirst = 0;
+    uint32_t prev_obj = 0xFFFFFFFFu;        /* the object of the last polygon (hw_poly_tie) */
     for (uint32_t i = ck->from; i < ck->to; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0;
@@ -1456,6 +1491,12 @@ static void hw_build_job(void *vc, int k)
             int sk = HK_POLY; uint32_t own = r->kind == REMASTER_T_SHADED ? 16u : 0u, idx = r->paint_index, col0 = r->color;
             if (r->kind == REMASTER_T_POLYGON && r->paint_owner == 0xFFFFF7FEu) sk = HK_DOT;      /* a far dot */
             if (x->ground_ties && r->kind == REMASTER_T_POLYGON && (r->paint_owner & 0x800u)) sk = HK_GROUND;
+            if (x->ground_ties && r->kind == REMASTER_T_POLYGON && sk == HK_POLY && (r->paint_owner >> 12) != 0) sk = HK_OBJ;
+            if (r->kind == REMASTER_T_POLYGON && (sk == HK_POLY || sk == HK_OBJ) && x->poly_tie) {
+                const uint32_t obj = r->paint_owner >> 12;
+                if (obj == prev_obj) for (int k = 0; k < m; k++) pd[k] = (float)(pd[k] / 0.9999);
+                prev_obj = obj;
+            }
             if (r->kind == REMASTER_T_LOGIC) {
                 idx = r->value & 255u;
                 if (r->op == REMASTER_STIPPLE) { sk = HK_STIP; own = 2; col0 = in->palette[r->value & 255]; }
@@ -1489,6 +1530,26 @@ static void hw_build_job(void *vc, int k)
             const double ax0 = ax - ex, ay0 = ay - ey, bx0 = bx + ex, by0 = by + ey;
             const float da = (float)(bias * sc / a.z * DS / 0.97), db = (float)(bias * sc / b.z * DS / 0.97);
             const uint32_t pi = r->paint_index, own = 8;
+            if (x->square_lines) {
+                /* The default stamps a screen-aligned square along the line, so its ends are flat on top: the shape is the hull of the two end squares'
+                 * corners (a hexagon; a rectangle when the line is level or upright), each corner with its own end's depth. F117_HW_SQUARE_LINES=0: the old rotated quad. */
+                double P[8][3]; int np = 0;
+                for (int e = 0; e < 2; e++) for (int c = 0; c < 4; c++) {
+                    const double px = (e ? bx : ax) + ((c & 1) ? hwid : -hwid), py = (e ? by : ay) + ((c & 2) ? hwid : -hwid);
+                    P[np][0] = px; P[np][1] = py; P[np][2] = e ? db : da; np++;
+                }
+                int idx[8]; for (int q = 0; q < 8; q++) idx[q] = q;
+                for (int q = 1; q < 8; q++) { const int v = idx[q]; int w = q - 1; while (w >= 0 && (P[idx[w]][0] > P[v][0] || (P[idx[w]][0] == P[v][0] && P[idx[w]][1] > P[v][1]))) { idx[w + 1] = idx[w]; w--; } idx[w + 1] = v; }
+                int H[16], nh = 0;                         /* the hull, Andrew's monotone chain */
+                for (int q = 0; q < 8; q++) { while (nh >= 2 && (P[H[nh-1]][0] - P[H[nh-2]][0]) * (P[idx[q]][1] - P[H[nh-2]][1]) - (P[H[nh-1]][1] - P[H[nh-2]][1]) * (P[idx[q]][0] - P[H[nh-2]][0]) <= 0) nh--; H[nh++] = idx[q]; }
+                for (int q = 6, lo = nh + 1; q >= 0; q--) { while (nh >= lo && (P[H[nh-1]][0] - P[H[nh-2]][0]) * (P[idx[q]][1] - P[H[nh-2]][1]) - (P[H[nh-1]][1] - P[H[nh-2]][1]) * (P[idx[q]][0] - P[H[nh-2]][0]) <= 0) nh--; H[nh++] = idx[q]; }
+                nh--;                                      /* the last point repeats the first */
+                for (int q = 1; q + 1 < nh; q++) {
+                    const int t3[3] = { H[0], H[q], H[q + 1] };
+                    for (int v = 0; v < 3; v++) if (!hw_push(lv, HNDCX(P[t3[v]][0]), HNDCY(P[t3[v]][1]), (float)P[t3[v]][2], r->color, pi, own, 0)) { ck->fail = 1; return; }
+                }
+                continue;
+            }
             if (!hw_push(lv, HNDCX(ax0 + nx), HNDCY(ay0 + ny), da, r->color, pi, own, 0) || !hw_push(lv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
                 !hw_push(lv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0) || !hw_push(lv, HNDCX(ax0 - nx), HNDCY(ay0 - ny), da, r->color, pi, own, 0) ||
                 !hw_push(lv, HNDCX(bx0 - nx), HNDCY(by0 - ny), db, r->color, pi, own, 0) || !hw_push(lv, HNDCX(bx0 + nx), HNDCY(by0 + ny), db, r->color, pi, own, 0)) { ck->fail = 1; return; }
@@ -1532,7 +1593,7 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         nch = in->nrec >= 4096 && !serial ? HW_CHUNKS : 1;
         static int clip_bands = -1;
         if (clip_bands < 0) { const char *e = getenv("F117_HW_CLIP_BANDS"); clip_bands = e && atoi(e) != 0; }
-        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS, clip_bands, hw_ground_ties() };
+        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS, clip_bands, hw_ground_ties(), hw_poly_tie(), hw_square_lines() };
         for (int k = 0; k < nch; k++) { s->hw.ch[k].from = (uint32_t)((uint64_t)in->nrec * k / nch); s->hw.ch[k].to = (uint32_t)((uint64_t)in->nrec * (k + 1) / nch); }
         pool_run(hw_build_job, &bx, nch);
         for (int k = 0; k < nch; k++) if (s->hw.ch[k].fail) return 0;
@@ -1606,27 +1667,48 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
     SDL_EndGPUCopyPass(cp);
     profile_mark(g, cb, "hw_upload_end");
     int first = 1, clear_depth = 1;
+    SDL_GPURenderPass *rp = NULL;           /* one render pass until a depth reset (pipelines and stencil references change inside it) */
     for (int k = 0; k < nseg; k++) {
-        if (S[k].kind == HK_ZRESET) { clear_depth = 1; continue; }
+        if (S[k].kind == HK_ZRESET) { if (rp) { SDL_EndGPURenderPass(rp); rp = NULL; } clear_depth = 1; continue; }
+        if (!rp) {
         SDL_GPUColorTargetInfo cti[4]; memset(cti, 0, sizeof cti);
         for (int j = 0; j < 4; j++) { cti[j].texture = s->hw.pt[j]; cti[j].load_op = first ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; cti[j].store_op = SDL_GPU_STOREOP_STORE; }
         SDL_GPUDepthStencilTargetInfo dti; memset(&dti, 0, sizeof dti); dti.texture = s->hw.dpt; dti.load_op = clear_depth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; dti.store_op = SDL_GPU_STOREOP_STORE; dti.clear_depth = 0.0f;
         dti.stencil_load_op = clear_depth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; dti.stencil_store_op = SDL_GPU_STOREOP_STORE; dti.clear_stencil = 0;
-        SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cb, cti, 4, &dti);
+        rp = SDL_BeginGPURenderPass(cb, cti, 4, &dti);
         if (!rp) { fprintf(stderr, "[hw-raster] render pass refused: %s\n", SDL_GetError()); SDL_CancelGPUCommandBuffer(cb); return 0; }
+        first = 0; clear_depth = 0;
+        }
         const int kind = S[k].kind;
+        SDL_GPUBufferBinding ub = { s->hw.vb, 0 };
+        if ((kind == HK_POLY || kind == HK_OBJ) && hw_ground_under() && g->hw.pipe[HK_UNDER]) {
+            SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[HK_UNDER]);
+            SDL_SetGPUStencilReference(rp, 2);
+            SDL_BindGPUVertexBuffers(rp, 0, &ub, 1);
+            SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
+        }
         SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[kind]);
-        SDL_SetGPUStencilReference(rp, kind == HK_GROUND ? 2 : kind == HK_POLY ? 0 : 1);
+        SDL_SetGPUStencilReference(rp, kind == HK_GROUND ? 2 : kind == HK_POLY ? 0 : kind == HK_OBJ ? 4 : 1);
         SDL_GPUBufferBinding bb = { s->hw.vb, 0 }; SDL_BindGPUVertexBuffers(rp, 0, &bb, 1);
         SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
+        if (kind == HK_GROUND && g->hw.pipe[HK_GROUND_OBJ]) {
+            SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[HK_GROUND_OBJ]);
+            SDL_SetGPUStencilReference(rp, 2);
+            SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
+        }
+        if (kind == HK_LINE && hw_ground_under() && g->hw.pipe[HK_LINE_GROUND]) {
+            /* a ground object never hides another object's lines (the exact compositor's decal_hidden, !on_ground): over ground the depth is not tested */
+            SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[HK_LINE_GROUND]);
+            SDL_SetGPUStencilReference(rp, 2);
+            SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
+        }
         if (kind == HK_GROUND) {
             SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[HK_GROUND_TIE]);
             SDL_SetGPUStencilReference(rp, 2);
             SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
         }
-        SDL_EndGPURenderPass(rp);
-        first = 0; clear_depth = 0;
     }
+    if (rp) SDL_EndGPURenderPass(rp);
     profile_mark(g, cb, "hw_raster_end");
     {   /* resolve: the palette lookup and the sea's smoothing, into tout */
         SDL_GPUColorTargetInfo cti; memset(&cti, 0, sizeof cti); cti.texture = s->hw.tout; cti.load_op = SDL_GPU_LOADOP_DONT_CARE; cti.store_op = SDL_GPU_STOREOP_STORE;

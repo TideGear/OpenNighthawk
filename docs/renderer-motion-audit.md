@@ -329,3 +329,35 @@ Four switches, all off by default and set in private/partb/try_fastpath.bat for 
 The game state is identical in every screen (final hash 543f276fcf80a018 at 4,210 million). The default renderer is unchanged
 with the switches off (session-start exe against this build, menu 1: 0 differing pixels over 30 pictures, same machine hash).
 Diagnostic: F117_PRESENT_SHOTS_FROM takes a comma list (COUNT pictures per clock), F117_PRESENT_SHOTS_ROWS=N keeps the top N rows.
+
+Owner's 23:32-23:33 shots (menu 3 run 20261120-233336-path3; clocks from its present log, about 1.8, 2.4, 4.3 and 5.0-5.2 G), 21 Nov 00:30.
+Captures: D:/F117A-Scratch-Files/r45-owner-motion/s4_* (four windows, 180 pictures each), flick.py (wrong pixels against the
+default one picture back, and excess flips: pixels changing between pictures more often than in the default). The hardware path
+(menu 3) still approximated the exact compositor's depth rules (remaster_raster.c 260-277, decal_hidden). Now, all on with
+F117_HW_GROUND_TIES (each with its own off switch):
+- Over the ground (owner bit 11) a polygon always wins (k = 0): HK_UNDER, a pre-pass of each polygon segment that sets the depth of
+  ground pixels it covers to the far plane and clears their mark (F117_HW_GROUND_UNDER=0 off). The gray pads around the buildings
+  vanished into the green field in menu 3 (owner: "patches of color around the buildings flickered"); now as the default; window
+  4.95 G excess flips 275,851 to 213,594 (menu 2 198,873).
+- Ground over another object only where clearly in front (k = 1.03): object polygons (owner not 0, HK_OBJ) mark stencil bit 2;
+  ground is drawn normally where the bit is clear and at depth / 1.03 where it is set (HK_GROUND_OBJ).
+- A ground object never hides another object's lines: a second line pass over ground pixels without the depth test
+  (HK_LINE_GROUND). The hangars' yellow door stripes (one game pixel, lines) had a gray row of the apron through them (owner
+  23-32-26: "thin horizontal gray line through the yellow line"); rows 489-490 at x 2664 were 36,36,36, now 199,174,4 as the default.
+- A later face of the same object wins a tie within 0.01% (k = 0.9999): its depth is scaled when built (F117_HW_POLY_TIE=0 off).
+- Lines have screen-aligned square ends, as the default stamps them (owner: "the ends of the line should be squares that are flat
+  on top"): each line is the hull of its two end squares (F117_HW_SQUARE_LINES=0: the old rotated quad).
+- One render pass until each depth reset instead of one per segment.
+Window results (median wrong pixels a picture against the default, before these rules to after): runway 1.74 G 1,784 to 1,169;
+parked jets 2.33 G 6,399 to 6,099; green field 4.26 G 5,209 to 5,204; buildings 4.95 G 6,303 to 6,275; excess flips lower in all four.
+Stage 2 (menus 2 and 3): with the target view, models that stay still in the world (the parked jets) now take the same camera as
+the terrain instead of the scene pair's (F117_STAGE2_VIEW_STATIC=0 off); F117_STAGE2_FORCE_EXTRAP=T (diagnostic) makes pictures
+at t below T use the previous interval's pairing, as when the copy is late. With half the pictures extrapolated, the parked jets'
+area: median 204 to 158, mean 328 to 255 wrong pixels. The green field at 4.3 G (owner 23-33-08) appears over four pictures
+identically in the default, menu 2 and menu 3 (0, 546, 1,633, 2,488 pixels): the game's own ring boundary, not reproduced as a
+fast-path fault.
+4K 60 check (owner's request, 21 Nov 00:30): visible 4K window, vsync, menu 3 settings, runway replay 1.5 to 5.2 G, ABAB with
+the rules above off and on (private/partb/vis2.sh, vis2.py; D:/F117A-Scratch-Files/vis2/r1). Per run about 3,700 frames,
+median 16.59 to 16.61 ms, p99 19.4 to 19.7 ms both ways; frames over 20.9 ms: off 0 and 2, on 1 and 3; one frame of 36 ms in
+the second "on" run (none over 31.7 in the others). The GPU raster pass, sampled 11 to 13 pictures a run: median 2.8 to 9.9 ms
+(both ways within that range), the sample too small to resolve a difference.

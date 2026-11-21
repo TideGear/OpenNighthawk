@@ -3596,6 +3596,11 @@ int main(int argc, char **argv)
                         const int have_scenes = ka >= 0 && kb >= 0;
                         if (have_scenes)                         /* this interval's own pairing, when the thread has finished it: never waited for */
                             for (int q = 0; q < 3 && kp < 0; q++) if (g_s2.pvalid[q] && g_s2.pa[q] == plan.older && g_s2.pb[q] == plan.newer) kp = q;
+                        {   /* F117_STAGE2_FORCE_EXTRAP=T (diagnostic): a picture at t below T uses the previous interval's pairing, as when the copy is late (live play) */
+                            static double force_extrap = -1.0;
+                            if (force_extrap < 0.0) { const char *e = getenv("F117_STAGE2_FORCE_EXTRAP"); force_extrap = e ? atof(e) : 0.0; }
+                            if (kp >= 0 && plan.t < force_extrap) kp = -1;
+                        }
                         if (kp >= 0) ok = 1;
                         else {
                             /* not ready: carry on from the previous interval, its pairing at t above 1 (a straight extrapolation); else the newest pairing held at its end */
