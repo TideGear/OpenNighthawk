@@ -84,7 +84,7 @@ typedef struct {
 
 struct gpu_compose {
     char shader_dir[512];
-    struct { int tried, ok; SDL_GPUGraphicsPipeline *pipe[6], *rpipe; SDL_GPUComputePipeline *pexport; SDL_GPUSampler *smp; } hw;
+    struct { int tried, ok; SDL_GPUGraphicsPipeline *pipe[8], *rpipe; SDL_GPUComputePipeline *pexport; SDL_GPUSampler *smp; } hw;
     SDL_GPUDevice *dev;
     SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present;
     int own_device;
@@ -272,7 +272,7 @@ void gpu_compose_destroy(gpu_compose *g)
             if (q->hw.up) SDL_ReleaseGPUTransferBuffer(g->dev, q->hw.up);
             free(q->hw.v.p);
         }
-        for (int k = 0; k < 6; k++) if (g->hw.pipe[k]) SDL_ReleaseGPUGraphicsPipeline(g->dev, g->hw.pipe[k]);
+        for (int k = 0; k < 8; k++) if (g->hw.pipe[k]) SDL_ReleaseGPUGraphicsPipeline(g->dev, g->hw.pipe[k]);
         if (g->hw.rpipe) SDL_ReleaseGPUGraphicsPipeline(g->dev, g->hw.rpipe);
         if (g->hw.pexport) SDL_ReleaseGPUComputePipeline(g->dev, g->hw.pexport);
         if (g->hw.smp) SDL_ReleaseGPUSampler(g->dev, g->hw.smp);
@@ -1210,7 +1210,7 @@ static void pack_job(void *vc, int k)
  * outputs as gpu_compose_begin's compute passes; docs/gpu-compositor.md, "the hardware path". The rules still approximated: the ground rule (owner bit 11), the same-object decal
  * tolerance, the neighbour rules of strokes. */
 typedef struct { float x, y, d, c[4]; uint32_t idx, own, dith; } hw_vtx;
-enum { HK_POLY, HK_LINE, HK_ZRESET, HK_AND, HK_OR, HK_STIP, HK_N };
+enum { HK_POLY, HK_LINE, HK_ZRESET, HK_AND, HK_OR, HK_STIP, HK_DOT, HK_N };   /* HK_DOT: a far dot (owner F7FE), drawn over whatever is there, with a stencil mark the strokes skip (R45) */
 typedef hw_seg_t hw_seg;
 #define HW_SEGS 8192
 static int hw_on(void) { static int on = -1; if (on < 0) { const char *e = getenv("F117_HW_RASTER"); on = e && e[0] && e[0] != '0'; } return on; }
@@ -1266,7 +1266,7 @@ static int hw_init(gpu_compose *g)
                                      { 3, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 28 }, { 4, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 32 }, { 5, 0, SDL_GPU_VERTEXELEMENTFORMAT_UINT, 36 } };
     const SDL_GPUTextureFormat FC = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     static const int blends[HK_N][4] = { { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR }, { 0, 0, 0, 0 },
-                                         { HB_NONE, HB_MIN, HB_MIN, HB_ADD }, { HB_NONE, HB_MAX, HB_MAX, HB_ADD }, { HB_STIP, HB_NONE, HB_NONE, HB_OVR } };
+                                         { HB_NONE, HB_MIN, HB_MIN, HB_ADD }, { HB_NONE, HB_MAX, HB_MAX, HB_ADD }, { HB_STIP, HB_NONE, HB_NONE, HB_OVR }, { HB_OVR, HB_OVR, HB_OVR, HB_OVR } };
     for (int k = 0; k < HK_N; k++) {
         if (k == HK_ZRESET) continue;
         SDL_GPUColorTargetDescription ct[4]; for (int j = 0; j < 4; j++) ct[j] = hw_target(FC, blends[k][j]);
@@ -1276,8 +1276,19 @@ static int hw_init(gpu_compose *g)
         pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL; pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE; pi.rasterizer_state.enable_depth_clip = false;
         pi.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-        pi.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL; pi.depth_stencil_state.enable_depth_test = true; pi.depth_stencil_state.enable_depth_write = (k == HK_POLY);
-        pi.target_info.color_target_descriptions = ct; pi.target_info.num_color_targets = 4; pi.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT; pi.target_info.has_depth_stencil_target = true;
+        pi.depth_stencil_state.compare_op = k == HK_DOT ? SDL_GPU_COMPAREOP_ALWAYS : SDL_GPU_COMPAREOP_GREATER_OR_EQUAL; pi.depth_stencil_state.enable_depth_test = true; pi.depth_stencil_state.enable_depth_write = (k == HK_POLY || k == HK_DOT);
+        if (k == HK_POLY || k == HK_DOT || k == HK_LINE) {
+            /* The far dot (the compute path's owner F7FE rules): drawn over whatever is there, so the depth test is off for it; it sets stencil 1 (reference 1) and every other polygon
+             * that lands on the pixel after it sets it back to 0 (reference 0), so a deferred object covers it by its own depth and then rules the pixel; the strokes (all drawn after the
+             * polygons) leave a pixel marked 1 alone, as the compute strokes pass skips owner F7FE. */
+            SDL_GPUStencilOpState so; memset(&so, 0, sizeof so);
+            so.fail_op = SDL_GPU_STENCILOP_KEEP; so.depth_fail_op = SDL_GPU_STENCILOP_KEEP;
+            so.pass_op = k == HK_LINE ? SDL_GPU_STENCILOP_KEEP : SDL_GPU_STENCILOP_REPLACE;
+            so.compare_op = k == HK_LINE ? SDL_GPU_COMPAREOP_NOT_EQUAL : SDL_GPU_COMPAREOP_ALWAYS;
+            pi.depth_stencil_state.enable_stencil_test = true; pi.depth_stencil_state.front_stencil_state = so; pi.depth_stencil_state.back_stencil_state = so;
+            pi.depth_stencil_state.compare_mask = 0xFF; pi.depth_stencil_state.write_mask = 0xFF;
+        }
+        pi.target_info.color_target_descriptions = ct; pi.target_info.num_color_targets = 4; pi.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT; pi.target_info.has_depth_stencil_target = true;
         g->hw.pipe[k] = SDL_CreateGPUGraphicsPipeline(d, &pi);
         if (!g->hw.pipe[k]) { fprintf(stderr, "[hw-raster] pipeline %d refused: %s\n", k, SDL_GetError()); return 0; }
     }
@@ -1333,7 +1344,7 @@ static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
     ti.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ;
     for (int k = 0; k < 4; k++) if (!(s->hw.pt[k] = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
     if (!(s->hw.tout = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
-    ti.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT; ti.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    ti.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT; ti.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     if (!(s->hw.dpt = SDL_CreateGPUTexture(g->dev, &ti))) return 0;
     if (!s->hw.tpal) {
         SDL_GPUTextureCreateInfo pi = ti; pi.width = 256; pi.height = 1; pi.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; pi.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
@@ -1422,6 +1433,7 @@ static void hw_build_job(void *vc, int k)
             float px_[40], py_[40], pd[40];
             for (int k = 0; k < m; k++) { px_[k] = HNDCX(cx + sx * c[k].x / c[k].z); py_[k] = HNDCY(cy + sy * c[k].y / c[k].z); pd[k] = (float)(sc / c[k].z * DS); }
             int sk = HK_POLY; uint32_t own = r->kind == REMASTER_T_SHADED ? 16u : 0u, idx = r->paint_index, col0 = r->color;
+            if (r->kind == REMASTER_T_POLYGON && r->paint_owner == 0xFFFFF7FEu) sk = HK_DOT;      /* a far dot */
             if (r->kind == REMASTER_T_LOGIC) {
                 idx = r->value & 255u;
                 if (r->op == REMASTER_STIPPLE) { sk = HK_STIP; own = 2; col0 = in->palette[r->value & 255]; }
@@ -1573,10 +1585,10 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         SDL_GPUColorTargetInfo cti[4]; memset(cti, 0, sizeof cti);
         for (int j = 0; j < 4; j++) { cti[j].texture = s->hw.pt[j]; cti[j].load_op = first ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; cti[j].store_op = SDL_GPU_STOREOP_STORE; }
         SDL_GPUDepthStencilTargetInfo dti; memset(&dti, 0, sizeof dti); dti.texture = s->hw.dpt; dti.load_op = clear_depth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; dti.store_op = SDL_GPU_STOREOP_STORE; dti.clear_depth = 0.0f;
-        dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE; dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        dti.stencil_load_op = clear_depth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD; dti.stencil_store_op = SDL_GPU_STOREOP_STORE; dti.clear_stencil = 0;
         SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cb, cti, 4, &dti);
         if (!rp) { fprintf(stderr, "[hw-raster] render pass refused: %s\n", SDL_GetError()); SDL_CancelGPUCommandBuffer(cb); return 0; }
-        SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[S[k].kind]); SDL_GPUBufferBinding bb = { s->hw.vb, 0 }; SDL_BindGPUVertexBuffers(rp, 0, &bb, 1);
+        SDL_BindGPUGraphicsPipeline(rp, g->hw.pipe[S[k].kind]); SDL_SetGPUStencilReference(rp, S[k].kind == HK_POLY ? 0 : 1); SDL_GPUBufferBinding bb = { s->hw.vb, 0 }; SDL_BindGPUVertexBuffers(rp, 0, &bb, 1);
         SDL_DrawGPUPrimitives(rp, (Uint32)S[k].count, 1, (Uint32)S[k].first, 0);
         SDL_EndGPURenderPass(rp);
         first = 0; clear_depth = 0;

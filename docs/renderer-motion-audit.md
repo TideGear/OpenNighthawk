@@ -288,3 +288,16 @@ jet (model 3) vanished whenever its centre was low in the view. For an aircraft 
 Runway replay 2,350 to 2,440 million (90 pictures, default renderer): the jet is drawn in the margin where it was
 missing; the 4:3 area changes only where the jet's own wing tips cross its left edge (7,995 pixels in 18 pictures).
 Presentation tests 29/29.
+
+Far white dot on takeoff (owner, 21:40). The margin dot of a far aircraft (units past 4,800: the game draws none) had three faults.
+(1) rerun.c built the aircraft matrix array the other way round and multiplied by its transpose; the verified margin-dot
+prediction uses the game's [component][axis] orientation (the word at B082 + 6c + 2a). (2) B082 is copied from the aircraft's
+state at each game step, so within a step all four pictures put the dot in one place (logged 327,337 x4 then 306,346 x4) while
+the scene's matrix at 7B28 changes every picture (measured with F117_FAR_AIR_MATRIX_LOG: B082 constant, 7B28 moving). Relation
+measured on the takeoff bank: B082[c][a] = 2 x 7B28 word, the second column (vertical) divided by 0.75, rows 1 and 2 negated
+(0.8%). The dot is now projected at the overlay flush from 7B28 (324,337 319,340 314,342 ...), landing where the step matrix
+does at each step. (3) The hardware path (menu 3) drew the dot as a distant polygon: ground earlier in the frame hid most of it
+and the strokes, which the hardware path draws after all polygons, covered the rest. Now HK_DOT draws it ignoring depth with
+stencil 1; every other polygon sets stencil 0 where it lands; the strokes skip stencil 1 (the compute path's owner F7FE rules).
+Menu 3 draws the full square like the default (close-ups at 2,610, 2,640 and 2,660 million). Open: the game's own dots and tests
+for aircraft inside 4,800 still use the step's B082 in the in-between pictures.

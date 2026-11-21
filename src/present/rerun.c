@@ -1635,11 +1635,79 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
  * at the HUD pass or when the frame ends, whichever comes first; the layer (99) then paints them over what is in the frame and the deferred objects after them cover them. */
 static struct { double x, y, w; } g_pend[160];
 static int g_npend;
+static struct { int i, range; } g_air_late[64];
+static int g_air_nlate;
+static machine_t *g_air_late_m;
+static void far_air_project(machine_t *m, int i, int range);
 void rerun_flush_overlays(void)
 {
+    if (g_air_nlate && g_air_late_m) { for (int k = 0; k < g_air_nlate; k++) far_air_project(g_air_late_m, g_air_late[k].i, g_air_late[k].range); }
+    g_air_nlate = 0;
     for (int i = 0; i < g_npend; i++) if (g_collector.overlay_rect) g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
     g_npend = 0;
 }
+/* One far aircraft's dot from the game's current view matrix (B082..), the unit's record and the pose now in memory: the same arithmetic as the aircraft test's (R43). */
+static void far_air_project(machine_t *m, int i, int range)
+{
+    const uint16_t ds = m->cpu.seg[S_DS];
+    /* The game's matrix, [vector component][axis] = the word at B082 + 6c + 2a, as the aircraft test multiplies it (comp[a] = sum of M[c][a] * v[c], the same as the verified
+     * margin-dot prediction above). Until 20 Nov this code built the array the other way round and multiplied by its transpose, the inverse rotation: in a bank the dot went the
+     * wrong way (R45, the owner's far white dot). The game's own words for this frame are what the aircraft hook saved at its first call (g_air_orig: the words in memory by now are
+     * the hook's widened ones); without a call this frame, the words in memory are the game's. F117_FAR_AIR_EARLY=1 restores the old projection at the frame's start. */
+    static int old_way = -1;
+    if (old_way < 0) old_way = getenv("F117_FAR_AIR_EARLY") != NULL;
+    int16_t A[3][3];
+    for (int a = 0; a < 3; a++) for (int c = 0; c < 3; c++) A[a][c] = (int16_t)rd16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a));
+    int16_t M[3][3];
+    for (int c = 0; c < 3; c++) for (int a = 0; a < 3; a++) M[c][a] = old_way ? A[c][a] : g_air_done ? g_air_orig[c][a] : A[a][c];
+    /* The game's own B082 matrix is the same for every in-between picture of a step (it is copied from the aircraft's state at the step: owner, 20 Nov, with the log of both): the
+     * game's own dots move 15 times a second against a scene that moves every picture. The scene's view matrix at 7B28 is built for the picture's moment, and B082 is it, measured
+     * on the owner's takeoff and bank to 0.8%: twice every word, the second column (the vertical axis) divided by the 0.75 squash the game draws with, the second and third rows
+     * negated. The far dots use that for the picture's own moment (F117_FAR_AIR_STEP=1 keeps the step's B082). */
+    static int step_matrix = -1;
+    if (step_matrix < 0) step_matrix = getenv("F117_FAR_AIR_STEP") != NULL;
+    if (!old_way && !step_matrix) {
+        for (int c = 0; c < 3; c++) for (int a = 0; a < 3; a++) {
+            const double w = (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * (3 * c + a)));
+            double b = 2.0 * w * (a == 1 ? 4.0 / 3.0 : 1.0) * (c == 0 ? 1.0 : -1.0);
+            b = b > 32767.0 ? 32767.0 : b < -32768.0 ? -32768.0 : b;
+            M[c][a] = (int16_t)lround(b);
+        }
+    }
+    const int rows = rd16(m->mem, ds, 0x368C) != 0, zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] != 0;
+    const uint16_t rec = (uint16_t)(0xC16A + 36 * i);
+    {   /* F117_FAR_AIR_MATRIX_LOG=1 (diagnostic): the game's aircraft-test matrix (B082, as the game left it) beside the scene's view matrix (7B28) and the attitude (2DEE..2DF2), 40 lines */
+        static int ml = -1; static unsigned left = 40;
+        if (ml < 0) ml = getenv("F117_FAR_AIR_MATRIX_LOG") != NULL;
+        if (ml && left && i == 3) {
+            left--;
+            fprintf(stderr, "[air-matrix] clock %llu done %d B082", (unsigned long long)m->cpu.icount, g_air_done);
+            for (int c = 0; c < 3; c++) for (int a = 0; a < 3; a++) fprintf(stderr, " %d", g_air_done ? g_air_orig[c][a] : A[a][c]);
+            fprintf(stderr, " 7B28");
+            for (int w = 0; w < 9; w++) fprintf(stderr, " %d", (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * w)));
+            fprintf(stderr, " att %d %d %d\n", (int16_t)rd16(m->mem, ds, 0x2DEE), (int16_t)rd16(m->mem, ds, 0x2DF0), (int16_t)rd16(m->mem, ds, 0x2DF2));
+        }
+    }
+    const int16_t x = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 2)), y = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 4)), alt = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 6));
+        int16_t v[3];
+        air_vector(m, ds, x, y, alt, v);
+        int32_t comp[3];
+        for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(M[c][a], v[c]); }
+        if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }
+        if (comp[2] >= 0) return;                                                                 /* behind the eye */
+        const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
+        const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
+        const int sy = (int16_t)(q - (int16_t)(q >> 2)) + (rows ? (zoom ? 0x3C : 0x34) : 0x64);
+        const double depth = -(double)comp[2], w = depth > 8191.0 ? 8191.0 / depth : 1.0;          /* the one far-size rule */
+        {   static int flog = -1;                      /* F117_WIDE_DOTS_LOG=1: each unit the far-aircraft overlay draws */
+            if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
+            if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
+        }
+        if (g_npend < 160) { g_pend[g_npend].x = (double)sx + 0.5 - w / 2; g_pend[g_npend].y = (double)sy + 0.5 - w / 2; g_pend[g_npend].w = w; g_npend++; }   /* added to the frame by rerun_flush_overlays */
+}
+/* The units the walk hook found (R45, 20 Nov): their dots are projected when the overlays are flushed, not at the frame's start. At the walk hook the matrix at B082 is still the
+ * one the snapshot's step left, so every in-between picture of a step put the dot in one place and it moved only 15 times a second, against a scene that moves every picture
+ * (the owner's far white dot on takeoff, 'up and down more than it should when banking'). F117_FAR_AIR_EARLY=1 restores the projection at the frame's start. */
 static void far_aircraft_dots(machine_t *m)
 {
     {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
@@ -1664,21 +1732,11 @@ static void far_aircraft_dots(machine_t *m)
         int range = (dx > dy ? dx : dy) + ((dx > dy ? dy : dx) >> 1);
         if (range > 0x7FFF) range = 0x7FFF;
         if (on == 1 && (range < 4800 || range > g_distance)) continue;                              /* the game draws it, or the setting's reach ends */
-        int16_t v[3];
-        air_vector(m, ds, x, y, alt, v);
-        int32_t comp[3];
-        for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += air_fixmul(A[c][a], v[c]); }
-        if (zoom) { comp[0] >>= 1; comp[1] >>= 1; }
-        if (comp[2] >= 0) continue;                                                                 /* behind the eye */
-        const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
-        const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
-        const int sy = (int16_t)(q - (int16_t)(q >> 2)) + (rows ? (zoom ? 0x3C : 0x34) : 0x64);
-        const double depth = -(double)comp[2], w = depth > 8191.0 ? 8191.0 / depth : 1.0;          /* the one far-size rule */
-        {   static int flog = -1;                      /* F117_WIDE_DOTS_LOG=1: each unit the far-aircraft overlay draws */
-            if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
-            if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
+        {   static int early = -1;
+            if (early < 0) early = getenv("F117_FAR_AIR_EARLY") != NULL;
+            if (!early) { if (g_air_nlate < 64) { g_air_late[g_air_nlate].i = i; g_air_late[g_air_nlate].range = range; g_air_nlate++; } g_air_late_m = m; continue; }
         }
-        if (g_npend < 160) { g_pend[g_npend].x = (double)sx + 0.5 - w / 2; g_pend[g_npend].y = (double)sy + 0.5 - w / 2; g_pend[g_npend].w = w; g_npend++; }   /* added to the frame by rerun_flush_overlays */
+        far_air_project(m, i, range);
     }
 }
 
@@ -1749,6 +1807,7 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     if ((int)k == g_walk_k) {
         g_walk_calls++;
         g_npend = 0;                                /* a frame's pending far overlays never carry over */
+        g_air_nlate = 0;
         stage_puffs(m);
         far_aircraft_dots(m);
         {   /* F117_VIEW_LOG=1 (diagnostic): once per frame the view matrix words [49BE..] and the aircraft test's [B082..] (the turned-view reference warps one
@@ -1769,6 +1828,16 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
     }
     if ((int)k == g_air_ret_k) {         /* 9BDF: back from B5DC for an aircraft; the arguments x, y, alt are still at SS:SP */
         const uint16_t dsr = m->cpu.seg[S_DS], ssr = m->cpu.seg[S_SS], spr = m->cpu.r[R_SP];
+        {   /* F117_WIDE_AIR_CULL_LOG=FROM (diagnostic): each aircraft the loop tests from that clock on (2000 lines): its unit, whether it draws as a model, and where the game put it ([4A10], [4A18]) and how deep */
+            static int log_init; static uint64_t log_from; static unsigned log_left;
+            if (!log_init) { const char *e = getenv("F117_WIDE_AIR_CULL_LOG"); log_from = e ? strtoull(e, NULL, 0) : 0; log_left = e ? 2000 : 0; log_init = 1; }
+            if (log_left && m->cpu.icount >= log_from) {
+                log_left--;
+                fprintf(stderr, "[air-cull] clock %llu unit %u model %d x %d y %d depth %d\n", (unsigned long long)m->cpu.icount,
+                        (unsigned)rd16(m->mem, ssr, (uint16_t)(m->cpu.r[R_BP] - 34)), g_air_last_model,
+                        (int16_t)rd16(m->mem, dsr, 0x4A10), (int16_t)rd16(m->mem, dsr, 0x4A18), (int16_t)rd16(m->mem, dsr, 0xDEBE));
+            }
+        }
         if (!(m->mem[(((uint32_t)dsr << 4) + 0xC0A6) & 0xFFFFF] & 0x80)) {
             const int16_t x = (int16_t)rd16(m->mem, ssr, spr), y = (int16_t)rd16(m->mem, ssr, (uint16_t)(spr + 2)), alt = (int16_t)rd16(m->mem, ssr, (uint16_t)(spr + 4));
             const int16_t ox = (int16_t)(rd16(m->mem, dsr, 0xC0D0) - (uint16_t)x), oy = (int16_t)((uint16_t)y - rd16(m->mem, dsr, 0xC0DE));
@@ -2125,7 +2194,7 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
                         s->hooks.exec = wide_air_exec;
                         break;
                     }
-            if (g_air_k >= 0 && getenv("F117_WIDE_AIR_PROBE") && s->exec_hook_n < EXEC_HOOKS_MAX) {
+            if (g_air_k >= 0 && (getenv("F117_WIDE_AIR_PROBE") || getenv("F117_WIDE_AIR_CULL_LOG")) && s->exec_hook_n < EXEC_HOOKS_MAX) {
                 g_air_ret_k = (int)s->exec_hook_n;
                 s->exec_hook[s->exec_hook_n].cs = s->exec_hook[g_air_k].cs;
                 s->exec_hook[s->exec_hook_n].ip = 0x9BDF;
