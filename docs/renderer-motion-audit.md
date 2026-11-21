@@ -265,3 +265,18 @@ half size, on D:), cmp_tags.py and cmp_analyze.py. The default against a second 
 Still open: menu 2's scrub jitter (30% of pictures use the extrapolation until the copy thread has
 parity), menu 3's painted-stripe flicker, the coastline jitter, a distant light in the default and in
 both menus, and R46.
+
+Copy thread parity, 20 Nov 18:40 to 19:10. Port-write traces over the same 25-million-clock window
+(private/r45/bank_ports.sh): the live machine's 179 port writes with the thread off and with the
+waiting mode (F117_COPY_THREAD=2) are identical to the clock; the free-running thread (1) differs,
+and differs at a different place in each run, so a race, not a computation. A per-slice trace of the
+live machine's registers (F117_REPLAY_SLICE_TRACE=FROM,UNTIL, in the machine log) over 425 slices: of
+eight thread-on runs seven part from the thread-off run at slice 307 (clock 8,953,069,691, a loop at
+087b:0f2a whose counters differ, ending the slice at the same clock) and one is identical, and the
+seven differ from each other there. So the live machine does a different amount of that loop's work
+in the same clocks: one run executes it through a different engine or with a different clock charge.
+Ruled out: the retrace status (port 3DA) is a function of the machine's own clock; matched.c has no
+writable statics; a private copy of the runtime's per-region verdicts and code-write generations for
+the copy thread (reset each job) did not change it (six runs, all part at slice 307; reverted).
+Not yet tried: the copy thread interpreted only, to separate the recompiled runtime from the CPU
+layer; instruction-level traces of slice 307 in two runs.

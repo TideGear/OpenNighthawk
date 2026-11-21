@@ -3173,6 +3173,14 @@ int main(int argc, char **argv)
                 inputlog_feed(player, &H.m, until + ips);
                 const uint64_t sl0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
                 int rc = machine_run(&H.m, until);
+                {   /* F117_REPLAY_SLICE_TRACE=FROM,UNTIL (diagnostic): the live machine's registers after each slice in that clock window, to find where two runs part */
+                    static int st_init; static uint64_t st_from, st_until;
+                    if (!st_init) { st_init = 1; const char *e = getenv("F117_REPLAY_SLICE_TRACE"); if (e) { char *end; st_from = strtoull(e, &end, 0); if (*end == ',') st_until = strtoull(end + 1, NULL, 0); } }
+                    if (st_until && H.m.cpu.icount >= st_from && H.m.cpu.icount < st_until && H.m.log)
+                        fprintf(H.m.log, "[slice] %llu rc %d %04x:%04x ax %04x bx %04x cx %04x dx %04x si %04x di %04x bp %04x sp %04x fl %04x if %d\n", (unsigned long long)H.m.cpu.icount, rc,
+                                (unsigned)H.m.cpu.seg[S_CS], (unsigned)H.m.cpu.ip, (unsigned)H.m.cpu.r[R_AX], (unsigned)H.m.cpu.r[R_BX], (unsigned)H.m.cpu.r[R_CX], (unsigned)H.m.cpu.r[R_DX],
+                                (unsigned)H.m.cpu.r[R_SI], (unsigned)H.m.cpu.r[R_DI], (unsigned)H.m.cpu.r[R_BP], (unsigned)H.m.cpu.r[R_SP], (unsigned)H.m.cpu.flags, 0);
+                }
                 if (g_loop_timing && (SDL_GetPerformanceCounter() - sl0) * 1250 > SDL_GetPerformanceFrequency()) {   /* a 1 ms slice that took over 0.8 ms (normally about 0.3) */
                     const uint32_t lin = ((uint32_t)H.m.cpu.seg[S_CS] << 4) + H.m.cpu.ip;
                     int k = 0;
