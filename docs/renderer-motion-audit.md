@@ -241,3 +241,27 @@ By depth scale 4, 16 and 64: 97.6 to 98.7% within 0.5. Scale 1 (the nearest ring
 worst cases are primitives at depths 10 to 120 with vertices far off the screen, and a few near lights
 whose place in the reference copy is not linear in t. Live (EAGER=5): blend 0.56 ms a picture, pairing
 0.7 to 1.0 ms (was 0.3), own pairing 60 to 71% across three runs (host timing varies).
+
+Owner's 16:07 look (menus 1, 2, 3 with reprojection) and the comparison against the default. Capture
+harness: private/r45/cmp.sh (every picture of a 120-picture window at the same clocks in each mode,
+half size, on D:), cmp_tags.py and cmp_analyze.py. The default against a second default capture:
+0 differing pixels and 0 flips in six windows, so the comparison is exact. Findings:
+- With reprojection the ground in the left margin went blue in the bank (100% of the margin wrong in
+  6 pictures): a primitive clipped at its own step's near plane has an edge that moved with another
+  camera opens a gap. Primitives with a vertex nearer than 4 near-plane units (F117_STAGE2_REPROJECT_NEAR)
+  now keep the screen blend: worst margin 100% to 0.9%, the bank window's extra flips 965k to 35k.
+- Forced-ready (EAGER=7 with an unlimited slice) menus 2 and 3 agree with the live runs, so what
+  remains is in the pictures, not in late scenes. Menu 3 against menu 2: within 5% on flips and
+  0.01% on wrong pixels (the hardware path is in use; the stripe flicker is local, not yet isolated).
+- F117_STAGE2_DELAY=0.25 (a deliberate display delay) shows as about one picture of lag against the
+  default (0.88% to 0.67% wrong pixels at delay 0).
+- Reprojection adds flips along the horizon and runway edges in the takeoff windows (47k to 133k at
+  2.9 billion, 28k to 72k at 2.6 billion), measured in 27-level steps at half-pixel edges, about 0.05
+  game pixel: far below visible. Fine truth buckets (game pixels, takeoff window): reprojected paired
+  scenery within 0.1 for 80% and within 0.25 for 100% (screen blend: 74% and 97%); unpaired lights
+  within 0.25 for 94%, 4 or more off for 4 to 5%; held pictures 48% and 87%. The angles are now moved
+  in whole units as rerun.c does; the 0.1 to 0.25 band did not move.
+
+Still open: menu 2's scrub jitter (30% of pictures use the extrapolation until the copy thread has
+parity), menu 3's painted-stripe flicker, the coastline jitter, a distant light in the default and in
+both menus, and R46.

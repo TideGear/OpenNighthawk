@@ -2628,7 +2628,8 @@ static void s2_cam_at(const int16_t a[12], const int16_t b[12], double t, s2_cam
     double ang[3];
     for (int k = 0; k < 3; k++) {
         const int16_t d = (int16_t)(uint16_t)((uint16_t)b[9 + k] - (uint16_t)a[9 + k]);
-        ang[k] = ((double)(uint16_t)a[9 + k] + t * d) * (6.283185307179586 / 65536.0);
+        const double x = d * t;                       /* as rerun.c lerp_i moves the copy's angles: whole units, halves away from zero */
+        ang[k] = ((double)(uint16_t)a[9 + k] + (double)(int32_t)(x < 0 ? x - 0.5 : x + 0.5)) * (6.283185307179586 / 65536.0);
     }
     double ry[3][3], rx[3][3], rz[3][3], m[3][3];
     s2_mat_rot(1, ang[0], ry); s2_mat_rot(0, ang[1], rx); s2_mat_rot(2, ang[2], rz);
@@ -2652,7 +2653,13 @@ static void s2_to_view(const s2_cam *c, const double w[3], remaster_v3 *v)
 static int s2_reprojectable(const remaster_frame_copy *f, size_t i)
 {
     const remaster_prim *p = &f->prim[i];
-    return !(f->hud_at >= 0 && (long)i >= f->hud_at) && p->owner < 0xFFFFF000u && p->n >= 1;
+    if ((f->hud_at >= 0 && (long)i >= f->hud_at) || p->owner >= 0xFFFFF000u || p->n < 1) return 0;
+    /* a primitive with a vertex near or behind the near plane keeps the screen blend: the game clipped it at its own step's near plane, and that
+     * edge moved with another camera opens a gap at the picture's edge (the ground in the left margin went blue in the owner's bank, 20 Nov) */
+    static double near_limit = -1;
+    if (near_limit < 0) { const char *e = getenv("F117_STAGE2_REPROJECT_NEAR"); near_limit = e ? atof(e) : 4.0; }
+    for (int v = 0; v < p->n; v++) if (p->v[v].z < near_limit * 65536.0) return 0;
+    return 1;
 }
 static int s2_cls_find(const remaster_stage2_pairs *pr, double scale)
 {
@@ -3254,7 +3261,7 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
             const int kd = nr->prim[i].kind == SCENE_POLYGON ? 0 : 1;
             if (nr->prim[i].v[0].z <= 65536 || out[i].v[0].z <= 65536) continue;      /* behind or at the near plane: no screen position */
             const double e = s2t_nearest(&out[i], at, keys), eh = s2t_nearest(&nr->prim[i], at, keys);
-            const int k = e < 0.5 ? 0 : e < 1 ? 1 : e < 2 ? 2 : e < 4 ? 3 : e < 16 ? 4 : 5, kh = eh < 0.5 ? 0 : eh < 1 ? 1 : eh < 2 ? 2 : eh < 4 ? 3 : eh < 16 ? 4 : 5;
+            const int k = e < 0.1 ? 0 : e < 0.25 ? 1 : e < 0.5 ? 2 : e < 1 ? 3 : e < 4 ? 4 : 5, kh = eh < 0.1 ? 0 : eh < 0.25 ? 1 : eh < 0.5 ? 2 : eh < 1 ? 3 : eh < 4 ? 4 : 5;
             h[kd][match[i] < 0][k]++;
             hold[kd][kh]++;
             {   /* by depth scale: count, within 0.5, 4 or more */
@@ -3344,7 +3351,7 @@ void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_f
                     const unsigned long long *x = u < 2 ? h[kd][u] : hold[kd];
                     unsigned long long tot = 0; for (int q = 0; q < 6; q++) tot += x[q];
                     if (!tot) continue;
-                    fprintf(stderr, "[s2-truth] %u frames %s %-8s %8llu: <0.5 %.1f%% <1 %.1f%% <2 %.1f%% <4 %.1f%% <16 %.2f%% >=16 %.2f%%\n", calls, kn[kd], u == 0 ? "paired" : u == 1 ? "unpaired" : "held",
+                    fprintf(stderr, "[s2-truth] %u frames %s %-8s %8llu: <0.1 %.1f%% <0.25 %.1f%% <0.5 %.1f%% <1 %.1f%% <4 %.2f%% >=4 %.2f%%\n", calls, kn[kd], u == 0 ? "paired" : u == 1 ? "unpaired" : "held",
                             tot, 100.0 * x[0] / tot, 100.0 * x[1] / tot, 100.0 * x[2] / tot, 100.0 * x[3] / tot, 100.0 * x[4] / tot, 100.0 * x[5] / tot);
                 }
             }
