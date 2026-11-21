@@ -280,3 +280,11 @@ writable statics; a private copy of the runtime's per-region verdicts and code-w
 the copy thread (reset each job) did not change it (six runs, all part at slice 307; reverted).
 Not yet tried: the copy thread interpreted only, to separate the recompiled runtime from the CPU
 layer; instruction-level traces of slice 307 in two runs.
+
+R46 fixed (default, off with F117_WIDE_AIR_UP=100). The aircraft loop's point test (VGAME B5DC from 9BDF) cuts on the
+screen rows the original cockpit hides; beside the cockpit those rows are visible in the wide margins, so the parked
+jet (model 3) vanished whenever its centre was low in the view. For an aircraft outside the game's 45-degree cone
+(|x'| > |z'| from the game's own matrix) the y row of the test is divided by 3; inside the cone nothing changes.
+Runway replay 2,350 to 2,440 million (90 pictures, default renderer): the jet is drawn in the margin where it was
+missing; the 4:3 area changes only where the jet's own wing tips cross its left edge (7,995 pixels in 18 pictures).
+Presentation tests 29/29.

@@ -1895,9 +1895,22 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         else if (ret == 0x9DFD) model = depth < 0 && depth > -256;
         g_air_last_model = model;
         int16_t (*mat)[3] = model ? (reach_call ? g_air_w : g_air_ow) : g_air_orig;
+        /* R46 (owner, 20 Nov): the aircraft loop's point test also cuts on the screen rows the original cockpit hides, and in the wide margins those rows are visible beside it:
+         * the parked jet by the tower vanished while its place in the margin was on screen (default renderer, model 3, 2,359,016,397). For an aircraft the game's own test would drop
+         * horizontally (outside its 45-degree cone: the margins) the y row of the point test is divided by F117_WIDE_AIR_UP percent / 100 (default 300), so the vertical cut is that
+         * much farther out; an aircraft inside the cone keeps the game's own vertical test, so the 4:3 area is as before. 100 turns it off. The model's pose is not touched. */
+        static int up = -1;
+        if (up < 0) { const char *e = getenv("F117_WIDE_AIR_UP"); up = e ? atoi(e) : 300; if (up < 100) up = 100; }
+        int margin_air = 0;
+        if (model && ret == 0x9BDF && up > 100) {
+            int32_t xo = 0;
+            for (int c = 0; c < 3; c++) xo += air_fixmul(g_air_orig[c][0], v[c]);
+            const int32_t zo = z;
+            margin_air = abs(xo) > abs(zo);
+        }
         for (int a = 0; a < 3; a++)
             for (int c = 0; c < 3; c++)
-                wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a), (uint16_t)mat[c][a]);
+                wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * c + 2 * a), (uint16_t)(margin_air && a == 1 ? (int)mat[c][a] * 100 / up : mat[c][a]));
         wide_dot_at_entry(m, ds, ss, sp, (model && ret != 0x9DFD) ? 0 : ret);
     }
     return 0;
