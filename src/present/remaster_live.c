@@ -311,6 +311,7 @@ static int far_light_size(void)
     if (g_far_light_size < 0) remaster_live_set_far_light_size(1);     /* first use: the default, with the environment override applied */
     return g_far_light_size;
 }
+int remaster_live_far_light_size(void) { return far_light_size(); }
 static double far_width(const remaster_prim *p, int k0, int k1, double width)
 {
     if (!p->shrink || !far_light_size()) return width;
@@ -2705,7 +2706,8 @@ static int s2_cls_delta(const remaster_stage2_pairs *pr, double scale, double ou
     if (derive < 0) { const char *e = getenv("F117_STAGE2_TRAVEL_SCALE"); derive = !(e && atoi(e) == 0); }
     if (!derive) return 0;
     /* the nearest measured scale: 16, 64 and 128 measured agree with the ratio within 0.3% along the travel (runway takeoff, 21 Nov), while scale 1 (the
-     * game's own drawing, a mix) does not, so it is used only when nothing else was measured */
+     * game's own drawing, a mix) does not, so it is used only when nothing else was measured. (Tried 21 Nov: preferring a scale with 32 or more samples over
+     * a scale's own few: the parked jet's faces were judged moving in 38 to 43 live pictures a run instead of 0 to 2; a measured scale keeps its own.) */
     int best = -1; double bd = 0;
     for (int k = 0; k < pr->ncls; k++) {
         if (!(pr->cls[k] > 0)) continue;
@@ -3072,6 +3074,7 @@ static void stage2_blend_part(void *arg, int part)
     stage2_blend_job *j = (stage2_blend_job *)arg;
     const int parts = j->parts > 0 ? j->parts : g_s2_parts;
     const size_t n = j->nr->n, from = n * (size_t)part / (size_t)parts, to = n * (size_t)(part + 1) / (size_t)parts;
+    double tcls[8], tdl[8][3]; int ntc = 0, tok[8];      /* this part's travel per depth scale, looked up once (s2_cls_delta) */
     static int freeze_lights = -1;     /* F117_STAGE2_FREEZE_LIGHTS=1 (experiment): lines and dots (the lights) keep the nearer step's own place, no blend */
     if (freeze_lights < 0) freeze_lights = getenv("F117_STAGE2_FREEZE_LIGHTS") != NULL;
     for (size_t i = from; i < to; i++) {
@@ -3093,9 +3096,14 @@ static void stage2_blend_part(void *arg, int part)
         S2_PATH(j->reproj ? 7 : 8);
         if (j->reproj && s2_reprojectable(j->nr, i)) {          /* reprojection (see s2_cam): static scenery by the camera, moving things by their world places */
             double dlv[3];
-            const int c = s2_cls_delta(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0, dlv) ? 0 : -1;
+            const double psc = p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0;
+            int tk = 0; while (tk < ntc && tcls[tk] != psc) tk++;
+            if (tk == ntc) {
+                if (ntc < 8) { tcls[ntc] = psc; tok[ntc] = s2_cls_delta(j->pr, psc, tdl[ntc]); ntc++; }
+                else tk = -1;
+            }
+            const int c = (tk >= 0 ? (tok[tk] ? (dlv[0] = tdl[tk][0], dlv[1] = tdl[tk][1], dlv[2] = tdl[tk][2], 1) : 0) : s2_cls_delta(j->pr, psc, dlv)) ? 0 : -1;
             if (c < 0) S2_PATH(6);
-            else if (s2_cls_find(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0) < 0) S2_PATH(9);   /* derived travel (diagnostic code, reported as 8) */
             if (c >= 0) {
                 const double *dl = dlv;
                 const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;

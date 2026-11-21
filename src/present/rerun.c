@@ -1,5 +1,6 @@
 /* rerun.c - see rerun.h. */
 #include "rerun.h"
+#include "remaster_live.h"
 #include "tls.h"
 #include "observe.h"
 #include "../recomp/recomp_rt.h"
@@ -1745,7 +1746,13 @@ static void far_air_project(machine_t *m, int i, int range)
         const int64_t sx = ((int64_t)comp[0] * 256) / comp[2] + 0xA0;
         const int16_t q = (int16_t)(((int64_t)comp[1] * 256) / comp[2]);
         const int sy = (int16_t)(q - (int16_t)(q >> 2)) + (rows ? (zoom ? 0x3C : 0x34) : 0x64);
-        const double depth = -(double)comp[2], w = depth > 8191.0 ? 8191.0 / depth : 1.0;          /* the one far-size rule */
+        /* Size. Far light size Perspective (the default): an aircraft beyond the game's 4,800 is sized as the aircraft itself would look, one game pixel at the
+         * depth where the game swaps its model for a dot (the aircraft loop draws the model while [DEBE] = z' >> 3 stays above -32, so below a depth of 256:
+         * matched.c 34700, VGAME 9BDF) and smaller in proportion beyond, never under one screen pixel (remaster_live_overlay_rect grows it to that). At 4K that is
+         * one screen pixel from about 2,300 on, so every far aircraft. Lights keep the shared rule: a light is seen by its brightness, an aircraft at dusk only
+         * by its size (owner, 21 Nov, the recommendation taken). Original: the shared rule, one game pixel to 8,191 and 8,191 / depth beyond. */
+        const double depth = -(double)comp[2];
+        const double w = remaster_live_far_light_size() ? (depth > 256.0 ? 256.0 / depth : 1.0) : depth > 8191.0 ? 8191.0 / depth : 1.0;
         {   static int flog = -1;                      /* F117_WIDE_DOTS_LOG=1: each unit the far-aircraft overlay draws */
             if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));

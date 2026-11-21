@@ -399,3 +399,29 @@ window). Now each kept dot carries its machine, a flush takes only its own machi
 left, and the lists are per thread (copy thread); F117_FAR_AIR_SHARED=1 restores the shared list. Live replay 1.38 to 1.475 G, 50
 pictures each: missing in 23 (menu 2) and 19 (menu 3) before, 0 and 0 after; menu 1 at fixed cadence 0 differing pixels over 80
 pictures, machine hash 17f6c1d6c7063363 both; presentation and host tests 42/42.
+
+Far aircraft dots by real size (owner, 21 Nov 14:32, the recommendation taken). Far light size Perspective (the default): an aircraft beyond the
+game's 4,800 is one game pixel at depth 256, where the aircraft loop swaps its model for a dot ([DEBE] = z' >> 3 above -32, matched.c 34700,
+VGAME 9BDF), and 256 / depth beyond, never under one screen pixel (remaster_live_overlay_rect grows it): at 4K one screen pixel from about
+2,300, so every far aircraft. Lights keep the shared rule (one game pixel to 8,191, then 8,191 / depth): a light is seen by its brightness, an
+aircraft at dusk by its size. Original: the shared rule for both, unchanged. Menu 1, 1.38 to 1.46 G, 80 pictures: only the dot's 24 half-size
+pixels a picture change (the 9 x 9 block at 4K becomes one pixel; Desktop\ONShots\20261121-1449-far-aircraft-dot-before-after.png); with
+Original 0 differing pixels; machine hash 17f6c1d6c7063363 in all four runs. Note: an aircraft crossing 4,800 still changes from the game's own
+full-game-pixel dot to one screen pixel; the game's own dots inside 4,800 are untouched (option b would shrink those too).
+Stage 2 blend: each part looks the travel of a depth scale up once (same values). Tried and reverted: preferring a well-sampled scale (32+) over
+a scale's own few samples made the parked jets worse (17 to 33 live pictures over a game pixel off a run). Still open: in some pairings 8 of a
+parked jet's ~30 faces are judged moving (its own scale measured from 8 samples, all the jet's), and in a held stretch (t 1.000 for five
+pictures) they slide up to 34 game pixels; 0, 0, 2, 5 and 1 live pictures in five runs (11 a run before the travel fix). Next: decide still or
+moving per object (a model is rigid), not per face.
+
+R39 and 4K 60 on the owner's late flight (session-20261108-211031, 21 Nov 14:27-14:47; private/partb/late4k.sh, late4k.py, slowsplit.py;
+D:/F117A-Scratch-Files/late4k). Visible 4K window, vsync on (60 Hz), Maximum, Model detail Full, wide, ABAB, CPU load 5-7% mean. Frames over
+20.9 ms (a missed vsync) by stretch, two runs each:
+  menu 1 (default): 2-8 G 12-24%; 8-9 G 84-85% (median 22.4 ms); 9-10 G 100% (25.6); 10-10.4 G 100% (27.7). Whole flight 31.7%.
+  menu 3 (Stage 2 + hardware raster, try_fastpath.bat): 2-9 G 0.6-2.7% (median 16.2-16.4); 9-10 G 15-16% (17.6); 10-10.4 G 27-31% (19.0-19.3).
+  Whole flight 4.0-4.3%. Both: about 30 frames over 31.7 ms in the first stretch (loading).
+R39 reproduced in the default: the cost climbs with the scene from 7 G. The fast path holds 60 to 9 G and not after. Traced menu 3
+(F117_SLOW_FRAME_TRACE, frames costing over 12 ms): the worker wait (GPU side) is the same early and late (median 11.7 and 11.1 ms); what grows
+is main-thread CPU: the Stage 2 blend p90 1.1 to 5.5 ms and the copy's commit p90 5.3 to 8.7 ms. The travel fix is not the cause (with it off:
+blend median 1.40 both, 735 against 744 slow frames). So 4K 60 is not safe at the end of this flight; the remedies are the planned ones: the copy
+off the main thread (the copy thread's parity race, slice 307) and the blend on more helpers or off the critical path.
