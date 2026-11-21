@@ -2467,7 +2467,7 @@ static double stage2_move(const remaster_prim *p, const remaster_prim *q)
 }
 
 struct remaster_stage2_pairs { int *ab, *ba; size_t na, nb, cap_a, cap_b;
-    int ncls, have_delta; double cls[8], delta[8][3];   /* reprojection: the camera's travel from step a to step b in each depth scale's units (median over paired primitives) */ };
+    int ncls, have_delta; double cls[8], delta[8][3]; unsigned cnt[8];   /* reprojection: the camera's travel from step a to step b in each depth scale's units (median over paired primitives) */ };
 remaster_stage2_pairs *remaster_stage2_pairs_new(void) { return (remaster_stage2_pairs *)calloc(1, sizeof(remaster_stage2_pairs)); }
 void remaster_stage2_pairs_free(remaster_stage2_pairs *p) { if (p) { free(p->ab); free(p->ba); free(p); } }
 
@@ -2693,6 +2693,30 @@ static int s2_cls_find(const remaster_stage2_pairs *pr, double scale)
     for (int k = 0; k < pr->ncls; k++) if (pr->cls[k] == scale) return k;
     return -1;
 }
+/* The camera's travel in a depth scale's units: measured when that scale had enough paired samples; otherwise the nearest measured scale's travel times the ratio of the
+ * scales (a primitive's units are world units times its scale, as the target view's shift is). The travel sampling takes about 4,096 primitives, so a scale with few
+ * primitives (a parked jet's 31 faces at scale 128) was dropped and the jet fell back to the screen blend, sliding against the ground when the scene was late (owner,
+ * 21 Nov: the parked jets near the tower jitter during takeoff in menus 2 and 3). F117_STAGE2_TRAVEL_SCALE=0: no derived travel (the first version). Returns 0: none. */
+static int s2_cls_delta(const remaster_stage2_pairs *pr, double scale, double out[3])
+{
+    const int c = s2_cls_find(pr, scale);
+    if (c >= 0) { for (int x = 0; x < 3; x++) out[x] = pr->delta[c][x]; return 1; }
+    static int derive = -1;
+    if (derive < 0) { const char *e = getenv("F117_STAGE2_TRAVEL_SCALE"); derive = !(e && atoi(e) == 0); }
+    if (!derive) return 0;
+    /* the nearest measured scale: 16, 64 and 128 measured agree with the ratio within 0.3% along the travel (runway takeoff, 21 Nov), while scale 1 (the
+     * game's own drawing, a mix) does not, so it is used only when nothing else was measured */
+    int best = -1; double bd = 0;
+    for (int k = 0; k < pr->ncls; k++) {
+        if (!(pr->cls[k] > 0)) continue;
+        const double d = fabs(log(scale / pr->cls[k])) + (pr->cls[k] == 1.0 ? 1e6 : 0.0);
+        if (best < 0 || d < bd) { best = k; bd = d; }
+    }
+    if (best < 0) return 0;
+    const double f = scale / pr->cls[best];
+    for (int x = 0; x < 3; x++) out[x] = pr->delta[best][x] * f;
+    return 1;
+}
 static int s2_dcmp(const void *x, const void *y) { const double a = *(const double *)x, b = *(const double *)y; return a < b ? -1 : a > b; }
 /* The camera's travel a to b per depth scale: the median of w_a - w_b over paired, reprojectable primitives in front of both cameras. */
 static void s2_travel(remaster_stage2_pairs *pr, const remaster_frame_copy *a, const remaster_frame_copy *b)
@@ -2730,7 +2754,20 @@ static void s2_travel(remaster_stage2_pairs *pr, const remaster_frame_copy *a, c
             qsort(col, m, sizeof *col, s2_dcmp);
             pr->delta[c][x] = col[m / 2];
         }
-        if (m < 8) pr->cls[c] = -1.0; else good++;      /* too few to trust: that scale keeps the screen blend */
+        pr->cnt[c] = (unsigned)m;
+        if (m < 8) pr->cls[c] = -1.0; else good++;      /* too few to trust: derived from another scale (s2_cls_delta) */
+    }
+    {   /* F117_STAGE2_PATH_LOG: the measured travel of each good scale against the best-sampled one's, scaled by the ratio of the scales (1 when the travel is one motion in every scale) */
+        static int lg = -1; if (lg < 0) lg = getenv("F117_STAGE2_PATH_LOG") != NULL;
+        if (lg && good > 1) {
+            int best = -1; for (int c = 0; c < pr->ncls; c++) if (pr->cls[c] > 1.0 && (best < 0 || pr->cnt[c] > pr->cnt[best])) best = c;
+            if (best >= 0) fprintf(stderr, "[s2-travel] best scale %g (%u)", pr->cls[best], pr->cnt[best]);
+            for (int c = 0; best >= 0 && c < pr->ncls; c++) if (c != best && pr->cls[c] > 0) {
+                const double f = pr->cls[c] / pr->cls[best];
+                fprintf(stderr, " | scale %g (%u): %.1f %.1f %.1f predicted %.1f %.1f %.1f", pr->cls[c], pr->cnt[c], pr->delta[c][0], pr->delta[c][1], pr->delta[c][2], pr->delta[best][0] * f, pr->delta[best][1] * f, pr->delta[best][2] * f);
+            }
+            if (best >= 0) fputc(10, stderr);
+        }
     }
     pr->have_delta = good > 0;
     free(col); free(d); free(k);
@@ -3028,6 +3065,8 @@ void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0
     r->src_native_prims += total; r->src_native_objs += n;
 }
 
+static uint8_t *g_s2_path;          /* F117_STAGE2_PATH_LOG (diagnostic): per primitive of the nearer step, the blend path taken (see s2_path_report) */
+#define S2_PATH(code) do { if (g_s2_path) g_s2_path[i] = (uint8_t)(code); } while (0)
 static void stage2_blend_part(void *arg, int part)
 {
     stage2_blend_job *j = (stage2_blend_job *)arg;
@@ -3048,13 +3087,17 @@ static void stage2_blend_part(void *arg, int part)
                 }
                 p.v[v] = (remaster_v3){ xyz[0], xyz[1], xyz[2] };
             }
-            j->out[i] = p;
+            j->out[i] = p; S2_PATH(0);
             continue;
         }
+        S2_PATH(j->reproj ? 7 : 8);
         if (j->reproj && s2_reprojectable(j->nr, i)) {          /* reprojection (see s2_cam): static scenery by the camera, moving things by their world places */
-            const int c = s2_cls_find(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0);
+            double dlv[3];
+            const int c = s2_cls_delta(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0, dlv) ? 0 : -1;
+            if (c < 0) S2_PATH(6);
+            else if (s2_cls_find(j->pr, p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0) < 0) S2_PATH(9);   /* derived travel (diagnostic code, reported as 8) */
             if (c >= 0) {
-                const double *dl = j->pr->delta[c];
+                const double *dl = dlv;
                 const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;
                 int moving = 0;
                 if (q && q->n == p.n && s2_reprojectable(j->fr, (size_t)j->match[i]) && p.v[0].z > 65536 && q->v[0].z > 65536) {
@@ -3075,9 +3118,10 @@ static void stage2_blend_part(void *arg, int part)
                         }
                         p.v[v] = (remaster_v3){ xyz[0], xyz[1], xyz[2] };
                     }
-                    j->out[i] = p;
+                    j->out[i] = p; S2_PATH(1);
                     continue;
                 }
+                S2_PATH(moving ? 2 : 3);
                 for (int v = 0; v < p.n; v++) {
                     double w[3];
                     s2_to_world(&j->cn, &j->nr->prim[i].v[v], w);
@@ -3090,6 +3134,7 @@ static void stage2_blend_part(void *arg, int part)
             }
         }
         if (j->match[i] >= 0 && !(freeze_lights && p.kind != SCENE_POLYGON)) {
+            S2_PATH(g_s2_path && g_s2_path[i] == 6 ? 6 : g_s2_path && g_s2_path[i] == 7 ? 4 : 5);
             const remaster_prim *q = &j->fr->prim[j->match[i]];
             if (p.owner == 0xFFFFF7FDu) {
                 /* The rectangle uses a fixed vertex z and stores its physical depth in the scale.
@@ -3189,6 +3234,44 @@ static void s2_job_reproj(stage2_blend_job *j, const remaster_frame_copy *a, con
     s2_cam_at(a->cam, a->cam, 0.0, &ca); s2_cam_at(b->cam, b->cam, 0.0, &cb); s2_cam_at(a->cam, b->cam, t, &j->ct);
     j->cn = nb ? cb : ca; j->cf = nb ? ca : cb;
 }
+/* F117_STAGE2_PATH_LOG=1 (diagnostic): per blended picture, each model object that is neither terrain-placed nor flat (the parked jets, other aircraft): its model,
+ * request, how many of its primitives took each blend path (0 terrain view, 1 still model on the terrain's camera, 2 moving by its world places, 3 reprojected by the
+ * travel, 4 or 5 screen blend with its partner, 7 or 8 unpaired and held) and the mean screen place of its first vertices in game pixels (x' 256 / z' + A0). */
+static void s2_path_report(const remaster_frame_copy *nr, const remaster_prim *out, const uint8_t *code, double t, int nb, const rerun_forward_view *view, const stage2_blend_job *j)
+{
+    static unsigned pic;
+    pic++;
+    enum { MAXO = 24 };
+    struct { uint32_t req; uint16_t model; unsigned c[9]; double sx, sy, zmin, scale, dev; unsigned ns; } o[MAXO]; int no = 0;
+    for (size_t i = 0; i < nr->n; i++) {
+        const remaster_prim *p = &nr->prim[i];
+        if (p->terrain || p->flat || p->owner >= 0xFFFFF000u || (nr->hud_at >= 0 && (long)i >= nr->hud_at)) continue;
+        const uint32_t req = p->owner >> 12;
+        int k = 0; while (k < no && (o[k].req != req || o[k].model != p->model)) k++;
+        if (k == no) { if (no == MAXO) continue; memset(&o[no], 0, sizeof o[no]); o[no].req = req; o[no].model = p->model; o[no].zmin = 1e30; o[no].scale = p->inv_depth_scale; no++; }
+        for (int v = 0; v < p->n; v++) if (p->v[v].z / 65536.0 < o[k].zmin) o[k].zmin = p->v[v].z / 65536.0;
+        o[k].c[code[i] < 9 ? code[i] : 8]++;
+        if (j->have_view && out[i].n >= 1 && out[i].v[0].z > 65536) {   /* how far the drawn first vertex is from the still-model place (the terrain's camera), game pixels */
+            const double sc = p->inv_depth_scale > 0 ? p->inv_depth_scale : 1.0;
+            double w[3];
+            for (int axis = 0; axis < 3; axis++) { const double *mm = j->view_matrix[axis]; w[axis] = mm[0] * p->v[0].x + mm[1] * p->v[0].y + mm[2] * p->v[0].z + j->view_shift[axis] * sc; }
+            if (w[2] > 65536) {
+                const double dx = out[i].v[0].x * 256.0 / out[i].v[0].z - w[0] * 256.0 / w[2], dy = out[i].v[0].y * 256.0 / out[i].v[0].z - w[1] * 256.0 / w[2];
+                const double d = sqrt(dx * dx + dy * dy);
+                if (d > o[k].dev) o[k].dev = d;
+            }
+        }
+        if (out[i].n >= 1 && out[i].v[0].z > 65536) { o[k].sx += (double)out[i].v[0].x * 256.0 / out[i].v[0].z + 160.0; o[k].sy += (double)out[i].v[0].y * 256.0 / out[i].v[0].z; o[k].ns++; }
+    }
+    fprintf(stderr, "[s2-path] pic %u t %.3f nb %d eye %u %u h %d att %d %d %d view %d %d %d h %d objects %d", pic, t, nb, nr->eye[0], nr->eye[1], nr->height, nr->cam[9], nr->cam[10], nr->cam[11], view ? view->attitude[0] : 0, view ? view->attitude[1] : 0, view ? view->attitude[2] : 0, view ? view->height : 0, no);
+    for (int k = 0; k < no; k++) {
+        fprintf(stderr, " | m %u r %u", o[k].model, o[k].req);
+        for (int c = 0; c < 9; c++) if (o[k].c[c]) fprintf(stderr, " p%d:%u", c, o[k].c[c]);
+        if (o[k].ns) fprintf(stderr, " at %.2f %.2f", o[k].sx / o[k].ns, o[k].sy / o[k].ns);
+        fprintf(stderr, " zmin %.1f scale %g dev %.2f", o[k].zmin, o[k].scale, o[k].dev);
+    }
+    fputc(10, stderr);
+}
 static int s2_u64_cmp(const void *x, const void *y) { const uint64_t a = *(const uint64_t *)x, b = *(const uint64_t *)y; return a < b ? -1 : a > b; }
 int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pr, double t,
                                const rerun_forward_view *view)
@@ -3220,8 +3303,12 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
             if (view_static < 0) { const char *e = getenv("F117_STAGE2_VIEW_STATIC"); view_static = !(e && atoi(e) == 0); }
             job.view_static = view_static;
         }
+        static int path_log = -1; static size_t path_cap;
+        if (path_log < 0) path_log = getenv("F117_STAGE2_PATH_LOG") != NULL;
+        if (path_log && nr->n > path_cap) { free(g_s2_path); path_cap = nr->n + nr->n / 2; g_s2_path = (uint8_t *)calloc(path_cap, 1); if (!g_s2_path) path_cap = 0; }
         if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
+        if (path_log && g_s2_path) s2_path_report(nr, o->prim, g_s2_path, t, nb, view, &job);
     }
     o->n = nr->n;
     {   /* F117_STAGE2_PAIRSTAT=1 (diagnostic): per blended picture, the nearer step's primitives by kind: paired, unpaired with no primitive of the same key in the other step

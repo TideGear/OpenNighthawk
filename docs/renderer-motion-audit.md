@@ -361,3 +361,22 @@ the rules above off and on (private/partb/vis2.sh, vis2.py; D:/F117A-Scratch-Fil
 median 16.59 to 16.61 ms, p99 19.4 to 19.7 ms both ways; frames over 20.9 ms: off 0 and 2, on 1 and 3; one frame of 36 ms in
 the second "on" run (none over 31.7 in the others). The GPU raster pass, sampled 11 to 13 pictures a run: median 2.8 to 9.9 ms
 (both ways within that range), the sample too small to resolve a difference.
+
+Parked jets jitter during takeoff, menus 2 and 3 (owner, 21 Nov 13:40; everything else on the 00:40 checklist confirmed fixed).
+Cause: the camera's travel between two step scenes is measured per depth scale from a sample of about 4,096 paired primitives
+(s2_travel), and a scale with fewer than 8 samples was dropped. Near the tower the parked jets are the only primitives at scale 128
+(31 faces), so from about 2.41 G on the scale was dropped and the jets fell back to the screen blend with their partners, while the
+ground took the camera at the picture's own time. On time (fixed cadence) the two agree; at live speed, with late scenes extrapolated
+to t 1.5 during the rotation's pitch bounce (game pitch 768, 1024, 648), they do not. Fix (default on in Stage 2,
+F117_STAGE2_TRAVEL_SCALE=0 restores the old way): a scale without a measured travel takes the nearest measured scale's travel times the
+ratio of the scales. Where both were measured the rule holds: 128 = 2 x 64 (753,848 against 755,924 along the travel) and 64 = 4 x 16
+(0.3%); scale 1 (the game's own drawing, a mix) does not fit and is used only when nothing else was measured.
+Diagnostic F117_STAGE2_PATH_LOG=1: per blended picture each model object that is neither terrain nor flat, with the blend path of its
+faces (p0 terrain view, p1 still model on the terrain's camera, p2 moving, p4/p5 screen blend, p6 no travel for its scale, p7/p8 unpaired),
+its mean screen place, nearest vertex, scale, and `dev`, the largest distance in game pixels of a drawn first vertex from the still-model
+place; with [s2-travel] lines comparing each scale's measured travel with the best-sampled one's.
+Live runway replay 2.25 to 2.48 G (private/r45/owner-motion/jets4.sh, D:/F117A-Scratch-Files/r45-owner-motion/jd_*), two runs each way,
+jet faces on screen: old way 11 and 11 pictures more than 1 game pixel off the ground's camera, worst 25.2 and 23.9 game pixels; new way
+0 and 0, worst 0.3. At fixed cadence menu 2 matched menu 1 picture for picture before and after (16-picture strip at 2.404 G).
+The parked jets' size is the game's: the aircraft loop (VGAME 9A7C) draws aircraft at twice the size, and as models out to twice the
+distance, only in the cockpit view ([368C]) with altitude plus the nearest airfield's distance ([9922]) above 1,500; on the runway it does not.
