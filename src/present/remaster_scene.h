@@ -38,6 +38,7 @@ typedef struct {
     double inv_depth_scale;                 /* native inverse depth to common world units (0: 1) */
     uint8_t shrink;                         /* bits (2 per ring) by which a placed object is drawn coarser than its own ring; 0: the game's own drawing (R35) */
     uint8_t source;                         /* diagnostic: 0 the game's own drawing, 1 the native walk, 2 placed through the game, 3 placed through the game and deferred (rerun.c) */
+    uint8_t terrain;                        /* placed by the terrain walk, so its world geometry is stationary */
 } remaster_prim;
 
 extern int remaster_prim_source;            /* set by the far-scenery placement while it places an object (diagnostic, F117_PRIM_HIST) */

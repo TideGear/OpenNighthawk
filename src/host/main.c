@@ -683,6 +683,12 @@ static void copy_overlay_dot(void *user, double x, double y, unsigned colour_wor
     if (COLL()) remaster_live_overlay_dot(COLL(), x, y, colour_word);
 }
 
+static void copy_far_air_dot(void *user, double x, double y, double size, int depth, unsigned unit)
+{
+    (void)user;
+    if (COLL()) remaster_live_far_air_dot(COLL(), x, y, size, depth, unit);
+}
+
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
 {
     (void)user;
@@ -1553,7 +1559,7 @@ static void app_module_load(void *user, machine_t *m, const char *name, const ui
             if (g_rlive) g_rlive_base = remaster_live_arm(g_rlive, m, load_seg);
             if (g_rlive && !g_rlive_copy) {                 /* the copies' collector: the same watched entries (the snapshot keeps the table) */
                 g_rlive_copy = remaster_live_new(960, 720, ~0u, NULL);
-                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_native_batch, copy_native_commit, copy_overlay_dot, copy_overlay_rect, copy_overlay_line, copy_native_commit_range };
+                static const rerun_collector coll = { copy_begin, copy_exec, NULL, NULL, copy_native, copy_placement_return, copy_native_batch, copy_native_commit, copy_overlay_dot, copy_overlay_rect, copy_overlay_line, copy_native_commit_range, copy_far_air_dot };
                 if (g_rlive_copy) rerun_set_collector(&coll);
                 if (getenv("F117_STAGE2")) g_s2.scene = remaster_live_new(960, 720, ~0u, NULL);   /* Stage 2: the sliced scene copies' own instance (not deferred: its done frame is cloned at once) */
                 g_rlive_copies[0] = g_rlive_copy;
@@ -3625,7 +3631,15 @@ int main(int argc, char **argv)
                             }
                         }
                         const double bl0 = (double)SDL_GetTicksNS() / 1e6;
-                        if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t)) {
+                        static int s2_target_view = -1;
+                        if (s2_target_view < 0) {
+                            const char *value = getenv("F117_STAGE2_TARGET_VIEW");
+                            s2_target_view = value && atoi(value) != 0;
+                        }
+                        rerun_forward_view target_view;
+                        const int have_view = ok && s2_target_view && drawlive_stage2_view(&g_live, &plan, &target_view);
+                        if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t,
+                                                             have_view ? &target_view : NULL)) {
                             g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
                             c_blend = (double)SDL_GetTicksNS() / 1e6 - bl0;
                             plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
@@ -3744,15 +3758,26 @@ int main(int argc, char **argv)
             fprintf(stderr, "[present-hash] %llu %dx%d %016llx\n",
                     (unsigned long long)H.m.cpu.icount, w, h, (unsigned long long)hash);
         }
-        /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
-         * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
+        /* F117_PRESENT_SHOTS=PREFIX (diagnostic): pictures just made ready for display.
+         * Capture COUNT pictures per clock in the comma-separated FROM list, as PREFIX<icount>.ppm. */
         {
-            static const char *shots; static uint64_t from, left, step = 1, seen; static int shots_init;
+            static const char *shots, *next_from;
+            static uint64_t from, left, count, step = 1, seen;
+            static int shots_init, rows;
             if (!shots_init) {
                 shots_init = 1; shots = getenv("F117_PRESENT_SHOTS");
                 const char *f = getenv("F117_PRESENT_SHOTS_FROM"), *c = getenv("F117_PRESENT_SHOTS_COUNT");
-                from = f ? strtoull(f, NULL, 0) : 0; left = c ? strtoull(c, NULL, 0) : 60;
+                next_from = f;
+                count = c ? strtoull(c, NULL, 0) : 60;
+                const char *r = getenv("F117_PRESENT_SHOTS_ROWS");
+                rows = r ? atoi(r) : 0;
                 { const char *st = getenv("F117_PRESENT_SHOTS_STEP"); if (st && atoi(st) > 1) step = (uint64_t)atoi(st); }   /* every Nth picture */
+                from = 0; left = count;
+                if (next_from) {
+                    char *end;
+                    from = strtoull(next_from, &end, 0);
+                    next_from = *end == ',' ? end + 1 : NULL;
+                }
             }
             if (shots && left && H.m.cpu.icount >= from && (++seen % step) == 0) {
                 if (getenv("F117_SHOT_STEPS")) {      /* diagnostic (Part A, 14 Nov 2026): the steps this picture is drawn between, and their end clocks, to pair a shot with the records of the draw calls that made it */
@@ -3768,7 +3793,7 @@ int main(int argc, char **argv)
                 if (shots_half) {   /* F117_PRESENT_SHOTS_HALF=1 (diagnostic, for motion clips): every picture kept in memory at half size (2 x 2 averaged) and all written when COUNT are held, so the loop is not slowed by file writes */
                     static struct { uint64_t clock; uint8_t *rgb; int w, h; } held[4096]; static int nheld;
                     const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
-                    const int w2 = w / 2, h2 = h / 2;
+                    const int w2 = w / 2, h2 = (rows >= 2 && rows < h ? rows : h) / 2;
                     uint8_t *rgb = nheld < 4096 ? (uint8_t *)malloc((size_t)w2 * h2 * 3) : NULL;
                     if (rgb) {
                         for (int y = 0; y < h2; y++)
@@ -3808,6 +3833,12 @@ int main(int argc, char **argv)
                         fprintf(stderr, " (kind %d)\n", g_live.diag_kind);
                     }
                 }
+                }
+                if (!left && next_from) {
+                    char *end;
+                    from = strtoull(next_from, &end, 0);
+                    next_from = *end == ',' ? end + 1 : NULL;
+                    seen = 0; left = count;
                 }
             }
         }

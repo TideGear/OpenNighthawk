@@ -23,6 +23,13 @@ typedef struct {
     int       valid;
 } rerun_snap;
 
+typedef struct {
+    uint32_t eye[2];
+    int16_t height, attitude[3];
+} rerun_forward_view;
+
+int rerun_forward_view_at(const rerun_snap *a, const rerun_snap *b, double t, rerun_forward_view *view);
+
 void rerun_snap_take(rerun_snap *s, const machine_t *m);
 void rerun_snap_free(rerun_snap *s);
 void rerun_snap_swap(rerun_snap *a, rerun_snap *b);
@@ -105,6 +112,7 @@ typedef struct {
     /* native_commit for the picks k0 .. k1 - 1 (all of them taken by native_batch, no other pick between them), at once: the same frame as the one-at-a-time commits, with the
      * copying done on the helper threads (F117_FAR_PAR_COMMIT). NULL: the host has none. */
     void (*native_commit_range)(void *user, machine_t *m, size_t k0, size_t k1);
+    void (*far_air_dot)(void *user, double x, double y, double size, int depth, unsigned unit);
 } rerun_collector;
 void rerun_set_collector(const rerun_collector *c);   /* NULL clears it */
 /* The copies' view widened to this percent (100 = the game's own): the cull's side planes only, in the copy only. */

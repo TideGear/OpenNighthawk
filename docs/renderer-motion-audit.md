@@ -301,3 +301,31 @@ and the strokes, which the hardware path draws after all polygons, covered the r
 stencil 1; every other polygon sets stencil 0 where it lands; the strokes skip stencil 1 (the compute path's owner F7FE rules).
 Menu 3 draws the full square like the default (close-ups at 2,610, 2,640 and 2,660 million). Open: the game's own dots and tests
 for aircraft inside 4,800 still use the step's B082 in the in-between pictures.
+
+Owner's 22:23-22:24 shots (menu 2) and the open items, 20 Nov 23:30. Replay screens on the owner's runway session
+(scripts in private/r45/owner-motion, captures moved to D:/F117A-Scratch-Files/r45-owner-motion: run.sh, five 60-picture windows at 1,638, 2,868, 3,378, 3,466 and 4,100 million, fixed cadence, half size,
+rows 0-879), measured against the default renderer one picture back by feature tracks (features.py: per-picture mean edge distance of a
+feature mask in half-size pixels; series.py prints the per-picture values; water.py counts sea interruptions per column).
+Four switches, all off by default and set in private/partb/try_fastpath.bat for the owner's look:
+- F117_STAGE2_TARGET_VIEW=1: the scenery the terrain walk placed (prim flag `terrain`) and flat ground objects are moved from
+  the cached scene's camera to the camera at the picture's own time (eye BA3C/C056, height 2DF4 + 24, attitude 2DEE..2DF2,
+  moved from the two step snapshots as rerun.c nudges them), and the sky bands are rebuilt for that camera. An extrapolated
+  picture or a late scene no longer slides between steps. Back and forward both go through the fitted camera model
+  (s2_cam_at); with the copy's true matrix for the inverse (F117_STAGE2_VIEW_TRUE=1) the model's error did not cancel and the
+  lights sat a quarter pixel off. With the target view the scene switch stays on the older step until t 1
+  (F117_STAGE2_STABLE_NB=0: at 0.5 as before; measured: no difference).
+  Road edge near 3.6G (22-24-02): error 1.07, p95 4.20 to 0.07, 0.15. Gray area (22-24-15): 0.11, p95 0.46 to 0.01, 0.07.
+  Coast water jerk p95 0.03 to 0.01. Brown band in the sea (22-23-54): worst picture 424 sea interruptions (default 157) to 156.
+  Building lights (22-24-04): the 'scurry' is one picture at 3,482 million where the crosshair cluster was 2.09 pixels off;
+  now 0.53 at most; mean 0.12 to 0.09 (crosshair cluster), 0.06 to 0.11 (left cluster, jerk p95 0.24 to 0.19).
+- F117_FAR_AIR_DEPTH=1 (all menus): the far aircraft dot is an ordinary depth-tested polygon (owner F7FD) at its own depth
+  instead of a layer painted over what the terrain walk drew, so nearer terrain dots and the coastline cover it: 16 to 14
+  pixels in every picture of the takeoff window in menus 1, 2 and 3 (the two covered pixels are the coastline's).
+- F117_HW_GROUND_TIES=1 (menu 3): a ground polygon (owner bit 11) also wins over earlier ground within 3% of depth (the
+  exact compositor's k = 0.97 rule), drawn as a second pass of the ground segment limited to stencil bit 2 (ground); other
+  polygons clear the bit. Runway window: the hardware path drew 0 stripe pixels in all 60 pictures, now 5,642 (default 5,642).
+  The far dot before takeoff did not flicker at fixed cadence in either build (16 and 15 pixels in all 60 pictures, 1,400 million); at live cadence (F117_REPLAY_FIXED_CADENCE unset, menu 3) it is missing for a stretch, 1,405 to 1,440 million (27 of 40 pictures old build, 34 of 40 new): a whole run of scenes without it, not per-picture flicker. Not chased: the owner ranks it lowest (20 Nov 23:19, 'not sure it's an issue').
+- The hardware segment list fails over to the compute path instead of silently dropping segments past 8,192.
+The game state is identical in every screen (final hash 543f276fcf80a018 at 4,210 million). The default renderer is unchanged
+with the switches off (session-start exe against this build, menu 1: 0 differing pixels over 30 pictures, same machine hash).
+Diagnostic: F117_PRESENT_SHOTS_FROM takes a comma list (COUNT pictures per clock), F117_PRESENT_SHOTS_ROWS=N keeps the top N rows.

@@ -282,5 +282,6 @@ int drawlive_scene_ok(void);
  * can then render the plan. A render never runs a copy unless the plan says it may (rerun_inline: the single-threaded
  * drawlive_present_interp); otherwise an unprepared plan is interpolated. */
 void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan);
+int drawlive_stage2_view(const drawlive *r, const drawlive_plan *plan, rerun_forward_view *view);
 
 #endif

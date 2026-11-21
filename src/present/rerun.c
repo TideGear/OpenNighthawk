@@ -145,6 +145,28 @@ static void wr32(uint8_t *mem, uint16_t seg, uint16_t off, uint32_t v)
 
 static int32_t lerp_i(int32_t d, double t) { const double x = d * t; return (int32_t)(x < 0 ? x - 0.5 : x + 0.5); }
 
+int rerun_forward_view_at(const rerun_snap *a, const rerun_snap *b, double t, rerun_forward_view *view)
+{
+    if (!a->valid || !b->valid) return 0;
+    const uint16_t da = a->m.cpu.seg[S_DS], db = b->m.cpu.seg[S_DS];
+    if (rd16(a->mem, da, 0xC0A6) || rd16(b->mem, db, 0xC0A6)) return 0;
+    static const uint16_t xy[] = { 0xBA3C, 0xC056 };
+    for (int axis = 0; axis < 2; axis++) {
+        const uint32_t from = rd16(a->mem, da, xy[axis]) | (uint32_t)rd16(a->mem, da, xy[axis] + 2) << 16;
+        const uint32_t to = rd16(b->mem, db, xy[axis]) | (uint32_t)rd16(b->mem, db, xy[axis] + 2) << 16;
+        view->eye[axis] = from + (uint32_t)lerp_i((int32_t)(to - from), t);
+    }
+    const uint16_t height = rd16(a->mem, da, 0x2DF4);
+    const uint16_t height_b = rd16(b->mem, db, 0x2DF4);
+    view->height = (int16_t)(uint16_t)(height + lerp_i((int16_t)(uint16_t)(height_b - height), t) + 24);
+    for (int axis = 0; axis < 3; axis++) {
+        const uint16_t offset = (uint16_t)(0x2DEE + 2 * axis);
+        const uint16_t from = rd16(a->mem, da, offset), to = rd16(b->mem, db, offset);
+        view->attitude[axis] = (int16_t)(uint16_t)(from + lerp_i((int16_t)(uint16_t)(to - from), t));
+    }
+    return 1;
+}
+
 /* a 16-bit value moved t of the way along the signed (wrapping) difference */
 static void nudge16(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds, uint16_t at, double t)
 {
@@ -1633,7 +1655,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
 /* The far aircraft overlay (and the test row) are decided at the frame's start, but the original paints those dots in 983E, after the terrain walk's immediate objects and before the
  * deferred pass D87C. They are kept here and added to the frame by rerun_flush_overlays(), called when the first deferred model is requested (its caller is in DC46, 0DE00h to 0DFFFh),
  * at the HUD pass or when the frame ends, whichever comes first; the layer (99) then paints them over what is in the frame and the deferred objects after them cover them. */
-static struct { double x, y, w; } g_pend[160];
+static struct { double x, y, w; int depth; unsigned unit; } g_pend[160];
 static int g_npend;
 static struct { int i, range; } g_air_late[64];
 static int g_air_nlate;
@@ -1643,7 +1665,17 @@ void rerun_flush_overlays(void)
 {
     if (g_air_nlate && g_air_late_m) { for (int k = 0; k < g_air_nlate; k++) far_air_project(g_air_late_m, g_air_late[k].i, g_air_late[k].range); }
     g_air_nlate = 0;
-    for (int i = 0; i < g_npend; i++) if (g_collector.overlay_rect) g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
+    static int depth_test = -1;
+    if (depth_test < 0) {
+        const char *value = getenv("F117_FAR_AIR_DEPTH");
+        depth_test = value && atoi(value) != 0;
+    }
+    for (int i = 0; i < g_npend; i++) {
+        if (depth_test && g_collector.far_air_dot && g_pend[i].depth > 0)
+            g_collector.far_air_dot(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].depth, g_pend[i].unit);
+        else if (g_collector.overlay_rect)
+            g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
+    }
     g_npend = 0;
 }
 /* One far aircraft's dot from the game's current view matrix (B082..), the unit's record and the pose now in memory: the same arithmetic as the aircraft test's (R43). */
@@ -1703,7 +1735,14 @@ static void far_air_project(machine_t *m, int i, int range)
             if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
         }
-        if (g_npend < 160) { g_pend[g_npend].x = (double)sx + 0.5 - w / 2; g_pend[g_npend].y = (double)sy + 0.5 - w / 2; g_pend[g_npend].w = w; g_npend++; }   /* added to the frame by rerun_flush_overlays */
+        if (g_npend < 160) {
+            g_pend[g_npend].x = (double)sx + 0.5 - w / 2;
+            g_pend[g_npend].y = (double)sy + 0.5 - w / 2;
+            g_pend[g_npend].w = w;
+            g_pend[g_npend].depth = (int)depth;
+            g_pend[g_npend].unit = (unsigned)i;
+            g_npend++;
+        }
 }
 /* The units the walk hook found (R45, 20 Nov): their dots are projected when the overlays are flushed, not at the frame's start. At the walk hook the matrix at B082 is still the
  * one the snapshot's step left, so every in-between picture of a step put the dot in one place and it moved only 15 times a second, against a scene that moves every picture
@@ -1712,7 +1751,7 @@ static void far_aircraft_dots(machine_t *m)
 {
     {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
         static int row = -2; if (row == -2) { const char *e = getenv("F117_WIDE_DOT_ROW"); row = e ? atoi(e) : -1; }
-        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_npend++; } }
+        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_pend[g_npend].depth = 0; g_npend++; } }
     static int on = -1;
     if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 1; }      /* ON by default (owner, 13 Nov, after the picture); F117_WIDE_FAR_AIRCRAFT=0 turns it off; the reach is the Draw distance setting; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
     if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;

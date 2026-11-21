@@ -3,6 +3,7 @@
 struct VIn { float2 p : TEXCOORD0; float d : TEXCOORD1; float4 c : TEXCOORD2; uint idx : TEXCOORD3; uint own : TEXCOORD4; uint dith : TEXCOORD5; };
 struct VOut { float4 pos : SV_Position; float4 c : TEXCOORD0; nointerpolation uint idx : TEXCOORD1; nointerpolation uint own : TEXCOORD2; nointerpolation uint dith : TEXCOORD3; };
 VOut vs(VIn i) { VOut o; o.pos = float4(i.p.x, i.p.y, i.d, 1.0); o.c = i.c; o.idx = i.idx; o.own = i.own; o.dith = i.dith; return o; }
+VOut ground_vs(VIn i) { i.d /= 0.97; return vs(i); }
 struct POut { float4 col : SV_Target0; float4 a : SV_Target1; float4 b : SV_Target2; float4 f : SV_Target3; };
 static const uint bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
 POut ps(VOut i)

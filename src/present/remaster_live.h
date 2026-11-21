@@ -15,6 +15,7 @@
 
 #include <stdint.h>
 #include "gpu_compose.h"
+#include "rerun.h"
 
 typedef struct remaster_live remaster_live;
 
@@ -71,6 +72,7 @@ void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word);
 /* A w x h block of the game's pixels (a square polygon), the same way; clip_rows keeps only the rows inside the game's 3D clip window (r->window). */
 void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer);
+void remaster_live_far_air_dot(remaster_live *r, double x, double y, double size, int depth, unsigned unit);
 /* A line primitive of one game pixel's width between two points of the game's 320 x 200 screen, in front of the scene. */
 void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x1, double y1, unsigned colour_word);
 
@@ -120,7 +122,8 @@ void remaster_live_set_stage2_parallel(void (*run)(void (*)(void *, int), void *
 void remaster_live_set_blend_parallel(void (*run)(void (*)(void *, int), void *, int));
 /* The pairing's own helper pool (not the copy's, which the main thread's blend shares): run(fn, arg, parts) runs fn(arg, 0..parts-1), parts at most 8. */
 void remaster_live_set_stage2_pair_parallel(void (*run)(void (*)(void *, int), void *, int), int parts);
-int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pairs, double t);
+int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_stage2_pairs *pairs, double t,
+                               const rerun_forward_view *view);
 void remaster_blend_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);
 void remaster_stage2_truth_report(const remaster_frame_copy *a, const remaster_frame_copy *b, const remaster_frame_copy *at, double t);   /* F117_STAGE2_TRUTH=1 with F117_BLEND_CHECK */
 /* The same on pictures: the copy's scene at t against the scene built from the blend, each drawn by the CPU scene renderer into a canvas tw wide. */

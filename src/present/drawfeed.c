@@ -379,6 +379,14 @@ void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
     plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
 }
 
+int drawlive_stage2_view(const drawlive *r, const drawlive_plan *plan, rerun_forward_view *view)
+{
+    if (plan->sa < 0 || plan->sb < 0) return 0;
+    const drawlive_step *a = &r->step[plan->sa], *b = &r->step[plan->sb];
+    return a->seq == plan->older && b->seq == plan->newer &&
+           rerun_forward_view_at(&a->snap, &b->snap, plan->t, view);
+}
+
 int drawlive_scene_begin(drawlive *r)
 {
     if (!r->rerun || r->ib < 0) return 0;
