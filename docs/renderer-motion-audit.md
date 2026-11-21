@@ -380,3 +380,22 @@ jet faces on screen: old way 11 and 11 pictures more than 1 game pixel off the g
 0 and 0, worst 0.3. At fixed cadence menu 2 matched menu 1 picture for picture before and after (16-picture strip at 2.404 G).
 The parked jets' size is the game's: the aircraft loop (VGAME 9A7C) draws aircraft at twice the size, and as models out to twice the
 distance, only in the cockpit view ([368C]) with altitude plus the nearest airfield's distance ([9922]) above 1,500; on the runway it does not.
+
+The far white dot before takeoff (owner's circle, 21 Nov 14:21: the dot on the horizon far right, half-size picture about x 1725, y 236).
+What it is (F117_WIDE_DOTS_LOG, which now also prints the unit's place and the eye's): unit 3 of the aircraft table, model class 2, at
+(25,670, 15,400), first seen at altitude 18 and climbing (223 by 1.459 G) while moving south: an aircraft taking off from another
+field. The game draws no aircraft past 4,800 (octagonal range); this one is at range 10,237 (about 9,260 straight-line map units, depth
+7,679), so only the Remastered far-aircraft overlay shows it (Draw distance Maximum), at one game pixel (depth under 8,191, the one
+far-size rule). Its rate, 60 map units and 205 altitude units in about 2.9 s of game time, is a believable climb-out (about 400 knots,
+4,200 ft/min) if an altitude unit is a foot and a map unit 32 feet (the game's alt >> 5), which puts it near 90 km away; inferred from
+that consistency, not from a stated scale. Geometry: 7 map units up against the eye's 0.75 at 9,260 away is 0.04 degrees above the
+horizon, 0.17 game pixel: it belongs on the horizon row, and in the game's flat world nothing lies between, so drawing it is
+consistent with the overlay's rule. As realism it is generous: a fighter at that range is below the eye's resolution, at dusk with no
+lights. The original's own dots (one game pixel out to 4,800, about 47 km) are the same kind of aid.
+The blinking (menus 2 and 3, live speed only): whole step scenes had no far dots (F117_STAGE2_PATH_LOG [s2-fardot]: dots 0). The kept
+dots (rerun.c g_pend, g_air_late) were one shared list; a Stage 2 scene copy runs in slices across display frames, and when another
+copy reached its flush between the scene's walk hook and its own flush it took the scene's dots (102 such flushes in a 95-million-clock
+window). Now each kept dot carries its machine, a flush takes only its own machine's, a machine's new frame drops what its last frame
+left, and the lists are per thread (copy thread); F117_FAR_AIR_SHARED=1 restores the shared list. Live replay 1.38 to 1.475 G, 50
+pictures each: missing in 23 (menu 2) and 19 (menu 3) before, 0 and 0 after; menu 1 at fixed cadence 0 differing pixels over 80
+pictures, machine hash 17f6c1d6c7063363 both; presentation and host tests 42/42.

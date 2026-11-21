@@ -1655,28 +1655,43 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
 /* The far aircraft overlay (and the test row) are decided at the frame's start, but the original paints those dots in 983E, after the terrain walk's immediate objects and before the
  * deferred pass D87C. They are kept here and added to the frame by rerun_flush_overlays(), called when the first deferred model is requested (its caller is in DC46, 0DE00h to 0DFFFh),
  * at the HUD pass or when the frame ends, whichever comes first; the layer (99) then paints them over what is in the frame and the deferred objects after them cover them. */
-static struct { double x, y, w; int depth; unsigned unit; } g_pend[160];
-static int g_npend;
-static struct { int i, range; } g_air_late[64];
-static int g_air_nlate;
-static machine_t *g_air_late_m;
+/* Each kept dot carries the machine whose frame found it, and a flush takes only its own machine's (R45, 21 Nov: the far white dot before takeoff blinked off in
+ * menus 2 and 3 at live speed). A Stage 2 scene copy runs in slices across display frames; when another copy reached its flush between the scene's walk hook and
+ * the scene's own flush, it took the scene's dots (projected with the other copy's matrix into the other copy's frame) and the scene had none: whole steps without
+ * the dot. Per thread as well, for the copy thread. F117_FAR_AIR_SHARED=1 restores the shared list (the first version). */
+static F117_TLS struct { double x, y, w; int depth; unsigned unit; const machine_t *m; } g_pend[160];
+static F117_TLS int g_npend;
+static F117_TLS struct { int i, range; machine_t *m; } g_air_late[64];
+static F117_TLS int g_air_nlate;
 static void far_air_project(machine_t *m, int i, int range);
-void rerun_flush_overlays(void)
+static int far_air_shared(void) { static int s = -1; if (s < 0) s = getenv("F117_FAR_AIR_SHARED") != NULL; return s; }
+void rerun_flush_overlays(const machine_t *m)
 {
-    if (g_air_nlate && g_air_late_m) { for (int k = 0; k < g_air_nlate; k++) far_air_project(g_air_late_m, g_air_late[k].i, g_air_late[k].range); }
-    g_air_nlate = 0;
+    const int shared = far_air_shared();
+    {   int keep = 0, foreign = 0;
+        for (int k = 0; k < g_air_nlate; k++) {
+            if (shared || g_air_late[k].m == m || !m) { far_air_project(g_air_late[k].m, g_air_late[k].i, g_air_late[k].range); }
+            else { g_air_late[keep++] = g_air_late[k]; foreign++; }
+        }
+        g_air_nlate = shared ? 0 : keep;
+        static int flog = -1, shown;
+        if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
+        if (flog && foreign && shown++ < 200) { fprintf(stderr, "[far-aircraft] flush for machine %p left %d dots of another machine frame", (const void *)m, foreign); fputc(10, stderr); }
+    }
     static int depth_test = -1;
     if (depth_test < 0) {
         const char *value = getenv("F117_FAR_AIR_DEPTH");
         depth_test = value && atoi(value) != 0;
     }
+    int keep = 0;
     for (int i = 0; i < g_npend; i++) {
+        if (!shared && m && g_pend[i].m && g_pend[i].m != m) { g_pend[keep++] = g_pend[i]; continue; }
         if (depth_test && g_collector.far_air_dot && g_pend[i].depth > 0)
             g_collector.far_air_dot(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].depth, g_pend[i].unit);
         else if (g_collector.overlay_rect)
             g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
     }
-    g_npend = 0;
+    g_npend = keep;
 }
 /* One far aircraft's dot from the game's current view matrix (B082..), the unit's record and the pose now in memory: the same arithmetic as the aircraft test's (R43). */
 static void far_air_project(machine_t *m, int i, int range)
@@ -1734,6 +1749,7 @@ static void far_air_project(machine_t *m, int i, int range)
         {   static int flog = -1;                      /* F117_WIDE_DOTS_LOG=1: each unit the far-aircraft overlay draws */
             if (flog < 0) flog = getenv("F117_WIDE_DOTS_LOG") != NULL;
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
+            if (flog) fprintf(stderr, "[far-aircraft-pos] unit %d pos %d %d alt %d | eye %d %d alt %d\n", i, x, y, alt, (int16_t)rd16(m->mem, ds, 0xC0D0), (int16_t)rd16(m->mem, ds, 0xC0DE), (int16_t)rd16(m->mem, ds, 0x2DF4));
         }
         if (g_npend < 160) {
             g_pend[g_npend].x = (double)sx + 0.5 - w / 2;
@@ -1741,6 +1757,7 @@ static void far_air_project(machine_t *m, int i, int range)
             g_pend[g_npend].w = w;
             g_pend[g_npend].depth = (int)depth;
             g_pend[g_npend].unit = (unsigned)i;
+            g_pend[g_npend].m = m;
             g_npend++;
         }
 }
@@ -1751,10 +1768,18 @@ static void far_aircraft_dots(machine_t *m)
 {
     {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
         static int row = -2; if (row == -2) { const char *e = getenv("F117_WIDE_DOT_ROW"); row = e ? atoi(e) : -1; }
-        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_pend[g_npend].depth = 0; g_npend++; } }
+        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_pend[g_npend].depth = 0; g_pend[g_npend].m = m; g_npend++; } }
     static int on = -1;
     if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 1; }      /* ON by default (owner, 13 Nov, after the picture); F117_WIDE_FAR_AIRCRAFT=0 turns it off; the reach is the Draw distance setting; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
     if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;
+    if (!far_air_shared()) {   /* a new frame of this machine: what its last frame left unflushed is stale */
+        int keep = 0;
+        for (int k = 0; k < g_air_nlate; k++) if (g_air_late[k].m != m) g_air_late[keep++] = g_air_late[k];
+        g_air_nlate = keep;
+        keep = 0;
+        for (int k = 0; k < g_npend; k++) if (g_pend[k].m != m) g_pend[keep++] = g_pend[k];
+        g_npend = keep;
+    }
     const uint16_t ds = m->cpu.seg[S_DS];
     if (m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF] & 0x80) return;                           /* the cockpit view's camera; the outside views are not done */
     const int count = (int16_t)rd16(m->mem, ds, 0xDEFC);
@@ -1773,7 +1798,7 @@ static void far_aircraft_dots(machine_t *m)
         if (on == 1 && (range < 4800 || range > g_distance)) continue;                              /* the game draws it, or the setting's reach ends */
         {   static int early = -1;
             if (early < 0) early = getenv("F117_FAR_AIR_EARLY") != NULL;
-            if (!early) { if (g_air_nlate < 64) { g_air_late[g_air_nlate].i = i; g_air_late[g_air_nlate].range = range; g_air_nlate++; } g_air_late_m = m; continue; }
+            if (!early) { if (g_air_nlate < 64) { g_air_late[g_air_nlate].i = i; g_air_late[g_air_nlate].range = range; g_air_late[g_air_nlate].m = m; g_air_nlate++; } continue; }
         }
         far_air_project(m, i, range);
     }

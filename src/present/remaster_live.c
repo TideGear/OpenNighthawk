@@ -1990,7 +1990,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
     if (k == 0) {                                           /* the model request: return IP, CS, then the model */
         const uint16_t ss = m->cpu.seg[S_SS], sp = m->cpu.r[R_SP];
         {   const uint16_t caller = peek16(m, ss, sp);        /* the deferred pass D87C draws through DC46 (0DE00h to 0DFFFh); the immediate objects return into E2B6 */
-            if (caller >= 0xDE00 && caller < 0xE000) rerun_flush_overlays();
+            if (caller >= 0xDE00 && caller < 0xE000) rerun_flush_overlays(m);
         }
         if (r->pending) r->overwritten++;                   /* the previous request never reached a projection */
         r->pending = 1;
@@ -2119,7 +2119,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             }
         }
     } else if (k == 3) {                                    /* the HUD pass: what follows is drawn over the HUD */
-        rerun_flush_overlays();                             /* far overlays no deferred model came for */
+        rerun_flush_overlays(m);                            /* far overlays no deferred model came for */
         rerun_prof_mark(4);
         {   /* F117_DS_DUMP=N,FILE (diagnostic): the data segment as the Nth render copy reaches its HUD pass, to diff one walk mode against another */
             static int want = -2; static const char *path; static unsigned seen;
@@ -3262,6 +3262,10 @@ static void s2_path_report(const remaster_frame_copy *nr, const remaster_prim *o
             }
         }
         if (out[i].n >= 1 && out[i].v[0].z > 65536) { o[k].sx += (double)out[i].v[0].x * 256.0 / out[i].v[0].z + 160.0; o[k].sy += (double)out[i].v[0].y * 256.0 / out[i].v[0].z; o[k].ns++; }
+    }
+    {   unsigned nd = 0; double sx = 0, inv = 0;      /* the far aircraft dots (owner F7FD) of the nearer scene and the first one's place and depth scale */
+        for (size_t i = 0; i < nr->n; i++) if (nr->prim[i].owner == 0xFFFFF7FDu) { if (!nd && out[i].v[0].z > 0) { sx = (double)out[i].v[0].x * 256.0 / out[i].v[0].z + 160.0; inv = out[i].inv_depth_scale; } nd++; }
+        fprintf(stderr, "[s2-fardot] pic %u t %.3f dots %u x %.2f inv %g code %d", pic, t, nd, sx, inv, nd ? -1 : -2); fputc(10, stderr);
     }
     fprintf(stderr, "[s2-path] pic %u t %.3f nb %d eye %u %u h %d att %d %d %d view %d %d %d h %d objects %d", pic, t, nb, nr->eye[0], nr->eye[1], nr->height, nr->cam[9], nr->cam[10], nr->cam[11], view ? view->attitude[0] : 0, view ? view->attitude[1] : 0, view ? view->attitude[2] : 0, view ? view->height : 0, no);
     for (int k = 0; k < no; k++) {
