@@ -1,5 +1,7 @@
 # OpenNighthawk (F-117A Recompilation)
 
+<a href="https://recomplauncher.com/game/opennighthawk"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 <p><img src="docs/images/ON_Title_Composite.png" alt="OpenNighthawk title screen" height="180">&nbsp;&nbsp;<img src="docs/images/ON_In-Flight.png" alt="OpenNighthawk in flight" height="180"></p>
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
@@ -156,6 +158,12 @@ byte-identical to the one in `f11704 (473.04 Update).zip`). Steam's game files a
 `py tools/verify_install.py --data "C:\GOG Games\F-117A"` checks your copy
 against the SHA-256 of every file the project reads.
 
+`ROSTER.FIL` is the saved-pilot roster in that same game folder. It changes
+when you play, and may not exist until the original game has been started;
+setup accepts a missing or changed roster. Do not download a roster from
+somewhere else. If setup says the game version is wrong, its verification
+output names the actual game file that differs.
+
 **Test evidence follows the same rule.** Routes commit only the inputs a
 player would type or click; every capture, screenshot, recording, save and
 memory dump they produce is written to a private work directory, never into
@@ -179,8 +187,9 @@ The game is translated and compiled on your machine from your own copy.
 Source releases contain no game data, generated C or prebuilt game executable.
 When publishing a release, package the tagged source with
 `py tools/package-source.py --ref TAG --out OUTSIDE_REPO\OpenNighthawk-setup-TAG-windows-x64.zip`.
-The packager includes the launcher manifest and tells RecompLauncher to rebuild
-when players update to that source revision.
+The packager requires a valid format-1 `recomplauncher.json` at the ZIP root.
+RecompLauncher reruns its `prepare` step for each new release, rebuilding from
+the player's game copy.
 Setup installs the game (about 35 MB) to `%LOCALAPPDATA%\Programs\OpenNighthawk`
 unless you choose another folder, adds the shortcuts you ask for and an entry in
 Windows Settings, Apps, and removes its build files (about 1.4 GB) when it

@@ -152,6 +152,10 @@ jobs:
         run: python tests/test_progress.py
       - name: Scored commit-title guard regressions
         run: python tests/test_commit_title.py
+      - name: RecompLauncher release packaging regressions
+        run: python tests/test_package_source.py
+      - name: Accept normal player roster changes during setup verification
+        run: python tests/test_verify_install_roster.py
       - name: Phase 2 census classification regressions
         run: python tests/test_census_classify.py
       - name: Encoded static-code review validator

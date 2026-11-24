@@ -3,20 +3,27 @@
   "format": 1,
   "name": "OpenNighthawk",
   "repo": "TideGear/OpenNighthawk",
-  "game": {
-    "kind": "folder",
-    "label": "Your installed GOG or Steam copy of F-117A Nighthawk Stealth Fighter 2.0. Select the folder containing VGAME.EXE.",
-    "check": {
-      "file": "VGAME.EXE"
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your installed GOG or Steam copy of F-117A Nighthawk Stealth Fighter 2.0. Select the folder containing VGAME.EXE.",
+      "formats": [
+        {
+          "type": "folder"
+        }
+      ],
+      "check": {
+        "file": "VGAME.EXE"
+      }
     }
-  },
+  ],
   "start": {
     "program": [
       "f117a.exe"
     ],
     "args": [
       "--data",
-      "{game}"
+      "{input:game}"
     ]
   },
   "prepare": {
@@ -25,10 +32,9 @@
     ],
     "args": [
       "-Data",
-      "{game}"
+      "{input:game}"
     ],
     "label": "Verify your game files and build OpenNighthawk (5–15 minutes)",
-    "timeout": 3600,
     "options": [
       {
         "id": "build_tools",

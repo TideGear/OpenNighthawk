@@ -19,6 +19,11 @@ GAME_NAMES = {
     'asound.117', 'isound.117', 'rsound.117', 'nsound.117',
     'asound.log', 'isound.log', 'rsound.log', 'roster.fil',
 }
+REQUIRED_SOURCE_FILES = {
+    'README.md', 'LICENSE', 'CMakeLists.txt', 'setup.cmd', 'tools/verify_install.py', 'recompiler/recomp.py',
+    'prepare.cmd', 'tools/setup.ps1', 'tools/setup-wizard.ps1', 'tools/setup-mac.ps1', 'tools/mac_sounds.py',
+    'tools/uninstall.ps1', 'tools/uninstall.cmd',
+}
 
 
 def check_archive(path):
@@ -37,12 +42,23 @@ def check_archive(path):
                     or p.suffix.lower() in {'.exe', '.dll', '.obj', '.lib', '.rom', '.ppm', '.dxil'}
                     or any(part.lower() in {'private', 'generated', 'build', 'sessions', 'save-start'} for part in p.parts)):
                 raise ValueError(f'Forbidden game/build artifact: {name}')
-        required = {'README.md', 'LICENSE', 'CMakeLists.txt', 'setup.cmd', 'tools/verify_install.py', 'recompiler/recomp.py',
-                    'prepare.cmd', 'recomplauncher.json', 'tools/setup.ps1', 'tools/setup-wizard.ps1', 'tools/setup-mac.ps1', 'tools/mac_sounds.py', 'tools/uninstall.ps1', 'tools/uninstall.cmd'}
-        missing = required - set(names)
+        missing = REQUIRED_SOURCE_FILES - set(names)
         if missing:
             raise ValueError(f'Missing source files: {sorted(missing)}')
+        require_launcher_manifest(archive)
         return len(names)
+
+
+def require_launcher_manifest(archive):
+    try:
+        manifest = json.loads(archive.read('recomplauncher.json'))
+    except KeyError:
+        raise ValueError('Missing recomplauncher.json at the release archive root') from None
+    except json.JSONDecodeError as error:
+        raise ValueError(f'Invalid root recomplauncher.json: {error}') from error
+    if not isinstance(manifest, dict) or type(manifest.get('format')) is not int or manifest['format'] != 1:
+        raise ValueError('Root recomplauncher.json must be a format 1 object')
+    return manifest
 
 
 def main():
@@ -65,17 +81,10 @@ def main():
         candidate = pathlib.Path(scratch) / 'source.zip'
         subprocess.run(['git', 'archive', '--format=zip', '--output=' + str(source), commit], cwd=ROOT, check=True)
         count = check_archive(source)
-        # Updates replace the sources. The launcher must rebuild the local
-        # executable even when the setup procedure itself hasn't changed.
         with zipfile.ZipFile(source) as original, zipfile.ZipFile(candidate, 'w') as release:
             release.comment = original.comment
             for entry in original.infolist():
-                data = original.read(entry)
-                if entry.filename == 'recomplauncher.json':
-                    manifest = json.loads(data)
-                    manifest['prepare']['version'] = commit
-                    data = (json.dumps(manifest, indent=2, ensure_ascii=False) + '\n').encode('utf-8')
-                release.writestr(entry, data)
+                release.writestr(entry, original.read(entry))
         digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
         candidate.rename(out)
     out.with_suffix(out.suffix + '.sha256').write_text(f'{digest}  {out.name}\ncommit {commit}\n', encoding='utf-8')
