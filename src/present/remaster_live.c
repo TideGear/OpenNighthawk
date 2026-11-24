@@ -2813,6 +2813,7 @@ int remaster_stage2_pair(remaster_stage2_pairs *pr, const remaster_frame_copy *a
 typedef struct { const remaster_frame_copy *nr, *fr; const int *match; double wf; remaster_prim *out; int parts;
     int reproj, near_is_a; double off; s2_cam cn, cf, ct; const remaster_stage2_pairs *pr;
     int have_view, view_static; double view_matrix[3][3], view_shift[3];
+    const uint8_t *obj_moving;           /* per primitive of the nearer step: its object's still (0) or moving (1) decision, 255 none (s2_rigid_objects); NULL: per face */
 } stage2_blend_job;
 static void (*g_s2_run)(void (*)(void *, int), void *, int);
 static int g_s2_parts;
@@ -3067,6 +3068,57 @@ void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0
     r->src_native_prims += total; r->src_native_objs += n;
 }
 
+/* Whether one face of the nearer step moved in the world between the two steps beyond the camera's travel dl (its depth scale's): 1 moving, 0 still, -1 no
+ * test (no partner of the same shape, or at the near plane). A quarter of a terrain cell (4096 units, 2^20 here) or more off the travel is a partner in the
+ * wrong cell (repeated lights), not motion. */
+static int s2_face_moving(const stage2_blend_job *j, size_t i, const double dl[3])
+{
+    const remaster_prim *p = &j->nr->prim[i];
+    const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;
+    if (!(q && q->n == p->n && s2_reprojectable(j->fr, (size_t)j->match[i]) && p->v[0].z > 65536 && q->v[0].z > 65536)) return -1;
+    double wn[3], wo[3], r2 = 0, w2 = 0;
+    s2_to_world(&j->cn, &p->v[0], wn); s2_to_world(&j->cf, &q->v[0], wo);
+    for (int x = 0; x < 3; x++) { const double own = j->near_is_a ? wn[x] - wo[x] : wo[x] - wn[x]; r2 += (own - dl[x]) * (own - dl[x]); w2 += wn[x] * wn[x]; }
+    const double tol = 16.0 + 0.004 * sqrt(w2);
+    return r2 > tol * tol && r2 < 262144.0 * 262144.0;
+}
+/* A model is rigid: it is still or moving as a whole. Faces were decided one by one, and in some pairings 8 of a parked jet's ~30 faces were judged moving (its
+ * depth scale's travel measured from 8 samples), so in a held stretch they slid up to 34 game pixels off the rest (owner's parked jets, 21 Nov). Before the
+ * parallel blend, the faces of each model object (a run of one request, neither terrain nor flat) vote, and the majority of those with a test decides for all
+ * of them. F117_STAGE2_RIGID=0: per face (the first version). Returns the decisions (255: not a model face), or NULL when off. */
+static const uint8_t *s2_rigid_objects(const stage2_blend_job *j)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_STAGE2_RIGID"); on = !(e && atoi(e) == 0); }
+    if (!on || !j->reproj || !j->have_view || !j->view_static) return NULL;
+    static uint8_t *dec; static size_t cap;
+    const remaster_frame_copy *nr = j->nr;
+    if (nr->n > cap) { free(dec); cap = nr->n + nr->n / 2; dec = (uint8_t *)malloc(cap); if (!dec) { cap = 0; return NULL; } }
+    memset(dec, 255, nr->n);
+    size_t i = 0;
+    while (i < nr->n) {
+        const remaster_prim *p = &nr->prim[i];
+        const int model = !p->terrain && !p->flat && p->owner < 0xFFFFF000u && (nr->hud_at < 0 || (long)i < nr->hud_at);
+        if (!model) { i++; continue; }
+        const uint32_t req = p->owner >> 12;
+        size_t e = i;
+        unsigned still = 0, moved = 0;
+        while (e < nr->n && !nr->prim[e].terrain && !nr->prim[e].flat && nr->prim[e].owner < 0xFFFFF000u && (nr->prim[e].owner >> 12) == req && (nr->hud_at < 0 || (long)e < nr->hud_at)) {
+            if (s2_reprojectable(nr, e)) {
+                double dl[3];
+                if (s2_cls_delta(j->pr, nr->prim[e].inv_depth_scale > 0 ? nr->prim[e].inv_depth_scale : 1.0, dl)) {
+                    const int v = s2_face_moving(j, e, dl);
+                    if (v == 1) moved++; else if (v == 0) still++;
+                }
+            }
+            e++;
+        }
+        if (still + moved) memset(dec + i, moved > still ? 1 : 0, e - i);
+        i = e;
+    }
+    return dec;
+}
+static double g_blend_t[2];          /* F117_BLEND_TIMING: the last blend's object vote and parallel part, ms */
 static uint8_t *g_s2_path;          /* F117_STAGE2_PATH_LOG (diagnostic): per primitive of the nearer step, the blend path taken (see s2_path_report) */
 #define S2_PATH(code) do { if (g_s2_path) g_s2_path[i] = (uint8_t)(code); } while (0)
 static void stage2_blend_part(void *arg, int part)
@@ -3107,14 +3159,8 @@ static void stage2_blend_part(void *arg, int part)
             if (c >= 0) {
                 const double *dl = dlv;
                 const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;
-                int moving = 0;
-                if (q && q->n == p.n && s2_reprojectable(j->fr, (size_t)j->match[i]) && p.v[0].z > 65536 && q->v[0].z > 65536) {
-                    double wn[3], wo[3], r2 = 0, w2 = 0;
-                    s2_to_world(&j->cn, &p.v[0], wn); s2_to_world(&j->cf, &q->v[0], wo);
-                    for (int x = 0; x < 3; x++) { const double own = j->near_is_a ? wn[x] - wo[x] : wo[x] - wn[x]; r2 += (own - dl[x]) * (own - dl[x]); w2 += wn[x] * wn[x]; }
-                    const double tol = 16.0 + 0.004 * sqrt(w2);
-                    moving = r2 > tol * tol && r2 < 262144.0 * 262144.0;   /* a quarter of a terrain cell (4096 units, 2^20 here) or more off the travel is a partner in the wrong cell (repeated lights), not motion */
-                }
+                int moving = (j->obj_moving && j->obj_moving[i] != 255) ? j->obj_moving[i] : s2_face_moving(j, i, dl) == 1;
+                if (moving && !(q && q->n == p.n && q->v[0].z > 65536 && p.v[0].z > 65536 && s2_reprojectable(j->fr, (size_t)j->match[i]))) moving = 0;   /* the moving path needs this face's own partner */
                 if (!moving && j->have_view && j->view_static) {    /* still in the world (a parked jet): the same camera as the terrain, so it cannot slide against the ground */
                     const double scale = p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0;
                     for (int v = 0; v < p.n; v++) {
@@ -3250,13 +3296,13 @@ static void s2_path_report(const remaster_frame_copy *nr, const remaster_prim *o
     static unsigned pic;
     pic++;
     enum { MAXO = 24 };
-    struct { uint32_t req; uint16_t model; unsigned c[9]; double sx, sy, zmin, scale, dev; unsigned ns; } o[MAXO]; int no = 0;
+    struct { uint32_t req; uint16_t model; unsigned c[9]; double sx, sy, zmin, scale, dev, bx0, bx1, by0, by1; unsigned ns, nd; } o[MAXO]; int no = 0;
     for (size_t i = 0; i < nr->n; i++) {
         const remaster_prim *p = &nr->prim[i];
         if (p->terrain || p->flat || p->owner >= 0xFFFFF000u || (nr->hud_at >= 0 && (long)i >= nr->hud_at)) continue;
         const uint32_t req = p->owner >> 12;
         int k = 0; while (k < no && (o[k].req != req || o[k].model != p->model)) k++;
-        if (k == no) { if (no == MAXO) continue; memset(&o[no], 0, sizeof o[no]); o[no].req = req; o[no].model = p->model; o[no].zmin = 1e30; o[no].scale = p->inv_depth_scale; no++; }
+        if (k == no) { if (no == MAXO) continue; memset(&o[no], 0, sizeof o[no]); o[no].req = req; o[no].model = p->model; o[no].zmin = 1e30; o[no].bx0 = o[no].by0 = 1e30; o[no].bx1 = o[no].by1 = -1e30; o[no].scale = p->inv_depth_scale; no++; }
         for (int v = 0; v < p->n; v++) if (p->v[v].z / 65536.0 < o[k].zmin) o[k].zmin = p->v[v].z / 65536.0;
         o[k].c[code[i] < 9 ? code[i] : 8]++;
         if (j->have_view && out[i].n >= 1 && out[i].v[0].z > 65536) {   /* how far the drawn first vertex is from the still-model place (the terrain's camera), game pixels */
@@ -3267,6 +3313,13 @@ static void s2_path_report(const remaster_frame_copy *nr, const remaster_prim *o
                 const double dx = out[i].v[0].x * 256.0 / out[i].v[0].z - w[0] * 256.0 / w[2], dy = out[i].v[0].y * 256.0 / out[i].v[0].z - w[1] * 256.0 / w[2];
                 const double d = sqrt(dx * dx + dy * dy);
                 if (d > o[k].dev) o[k].dev = d;
+                if (d > 1.0) {   /* the screen extent of the faces more than a game pixel off (x' 256 / z' + 160, y' 256 / z'), to tell on-screen from off */
+                    o[k].nd++;
+                    for (int v = 0; v < out[i].n; v++) if (out[i].v[v].z > 0) {
+                        const double qx = out[i].v[v].x * 256.0 / out[i].v[v].z + 160.0, qy = out[i].v[v].y * 256.0 / out[i].v[v].z;
+                        if (qx < o[k].bx0) o[k].bx0 = qx; if (qx > o[k].bx1) o[k].bx1 = qx; if (qy < o[k].by0) o[k].by0 = qy; if (qy > o[k].by1) o[k].by1 = qy;
+                    }
+                }
             }
         }
         if (out[i].n >= 1 && out[i].v[0].z > 65536) { o[k].sx += (double)out[i].v[0].x * 256.0 / out[i].v[0].z + 160.0; o[k].sy += (double)out[i].v[0].y * 256.0 / out[i].v[0].z; o[k].ns++; }
@@ -3281,6 +3334,7 @@ static void s2_path_report(const remaster_frame_copy *nr, const remaster_prim *o
         for (int c = 0; c < 9; c++) if (o[k].c[c]) fprintf(stderr, " p%d:%u", c, o[k].c[c]);
         if (o[k].ns) fprintf(stderr, " at %.2f %.2f", o[k].sx / o[k].ns, o[k].sy / o[k].ns);
         fprintf(stderr, " zmin %.1f scale %g dev %.2f", o[k].zmin, o[k].scale, o[k].dev);
+        if (o[k].nd) fprintf(stderr, " devfaces %u box x %.1f..%.1f y %.1f..%.1f", o[k].nd, o[k].bx0, o[k].bx1, o[k].by0, o[k].by1);
     }
     fputc(10, stderr);
 }
@@ -3314,12 +3368,22 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
             static int view_static = -1;
             if (view_static < 0) { const char *e = getenv("F117_STAGE2_VIEW_STATIC"); view_static = !(e && atoi(e) == 0); }
             job.view_static = view_static;
+            const double bt0 = now_ms();
+            job.obj_moving = s2_rigid_objects(&job);       /* after the camera fields: each model object still or moving as a whole */
+            g_blend_t[0] = now_ms() - bt0;
         }
         static int path_log = -1; static size_t path_cap;
         if (path_log < 0) path_log = getenv("F117_STAGE2_PATH_LOG") != NULL;
         if (path_log && nr->n > path_cap) { free(g_s2_path); path_cap = nr->n + nr->n / 2; g_s2_path = (uint8_t *)calloc(path_cap, 1); if (!g_s2_path) path_cap = 0; }
+        const double bt1 = now_ms();
         if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
+        g_blend_t[1] = now_ms() - bt1;
+        {   /* F117_BLEND_TIMING=MS (diagnostic): a blend whose two timed parts took over MS: the primitives, the parts, the object vote and the parallel blend */
+            static double lim = -2; if (lim < -1) { const char *e = getenv("F117_BLEND_TIMING"); lim = e ? atof(e) : -1; }
+            if (lim >= 0 && g_blend_t[0] + g_blend_t[1] > lim)
+                fprintf(stderr, "[blend-timing] prims %zu parts %d pool %s view %d reproj %d: vote %.2f ms, blend %.2f ms\n", nr->n, g_s2_parts, g_blend_run ? "blend" : g_s2_run ? "copy" : "none", have_view, job.reproj, g_blend_t[0], g_blend_t[1]);
+        }
         if (path_log && g_s2_path) s2_path_report(nr, o->prim, g_s2_path, t, nb, view, &job);
     }
     o->n = nr->n;

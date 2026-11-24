@@ -411,8 +411,22 @@ full-game-pixel dot to one screen pixel; the game's own dots inside 4,800 are un
 Stage 2 blend: each part looks the travel of a depth scale up once (same values). Tried and reverted: preferring a well-sampled scale (32+) over
 a scale's own few samples made the parked jets worse (17 to 33 live pictures over a game pixel off a run). Still open: in some pairings 8 of a
 parked jet's ~30 faces are judged moving (its own scale measured from 8 samples, all the jet's), and in a held stretch (t 1.000 for five
-pictures) they slide up to 34 game pixels; 0, 0, 2, 5 and 1 live pictures in five runs (11 a run before the travel fix). Next: decide still or
-moving per object (a model is rigid), not per face.
+pictures) they slide up to 34 game pixels; 0, 0, 2, 5 and 1 live pictures in five runs (11 a run before the travel fix).
+Rigid-object vote (21 Nov 15:45, src/present/remaster_live.c): model faces vote still or moving per object request (s2_rigid_objects). Before the
+parallel blend, the faces of each model object vote; the majority of those with a test decides for all faces of that object.
+Guard added: a face judged moving whose partner is missing or not reprojectable falls back to still (cannot slide without partner).
+Live runway replay 2.25 to 2.48 G (private/r45/owner-motion/rigid.sh, jr_1..jr_4): in four runs (753-756 on-screen jet pictures each),
+pictures with any face judged moving dropped to 0 across all four runs (0, 0, 0, 0; baseline 11/run; travel fix alone 0-5/run).
+Over 1 game pixel off: 3, 2, 2, 2 pictures. Diagnostic F117_BLEND_TIMING added to instrument the vote and parallel blend duration.
+Residual explained (24 Nov): every one of those pictures is the same three faces of the near parked jet (model 3) as the camera passes it,
+2.43 to 2.45 G: depth down to 2.8 units, so s2_reprojectable refuses them (a vertex nearer than F117_STAGE2_REPROJECT_NEAR, 4: the near-plane
+gap rule of 20 Nov) and, unpaired, they are held (path 7). F117_STAGE2_PATH_LOG now prints the screen box of the faces over a game pixel off
+(devfaces): x -13,509 to -1,088, y 249 to 2,703 game pixels in every such picture, wholly outside the wide view (about x -53 to 373), so no
+screen pixel shows them; the jet's other 30 faces are 0.00 off. Four live runs with that build (jd_1..jd_4, 797-806 pictures each): faces judged
+moving 0, on-screen faces over a game pixel off 0 (off-screen only: 3, 2, 3, 3 pictures); final machine hash 6f1c98e5411558b6 in all, as
+before the vote. Menu 1 against HEAD (2e31094, built from it): 32 pictures 2.25 to 2.48 G byte-identical, same machine hash. Also fixed: the
+F117_BLEND_TIMING line had a literal newline in its string and used SDL_GetTicksNS in a library f117run links without SDL (the tree did not
+build); it now uses now_ms. Captures: D:/F117A-Scratch-Files/r45-owner-motion/jd_*, m1_head, m1_new.
 
 R39 and 4K 60 on the owner's late flight (session-20261108-211031, 21 Nov 14:27-14:47; private/partb/late4k.sh, late4k.py, slowsplit.py;
 D:/F117A-Scratch-Files/late4k). Visible 4K window, vsync on (60 Hz), Maximum, Model detail Full, wide, ABAB, CPU load 5-7% mean. Frames over
