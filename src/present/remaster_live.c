@@ -70,6 +70,15 @@ static int gpu_trace_hook(int kind, const remaster_target *t, const remaster_v3 
     return g_record_only;
 }
 
+/* The capacity a primitive array grows to for n: half as much again, so a scene that grows a little every step (late in a long flight) is not
+ * moved every step. Only spare room changes; the contents and counts are the same. F117_EXACT_GROW=1: exactly n (the first version). */
+static size_t s2_grow_cap(size_t n)
+{
+    static int exact = -1;
+    if (exact < 0) { const char *e = getenv("F117_EXACT_GROW"); exact = e && atoi(e) != 0; }
+    return exact ? n : n + n / 2;
+}
+
 /* Milliseconds from an arbitrary start, for F117_REMASTER_TIMING. */
 static double now_ms(void)
 {
@@ -2397,10 +2406,11 @@ void remaster_frame_copy_free(remaster_frame_copy *c) { if (c) { free(c->prim); 
 int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
 {
     if (!r || !out || !r->have_done) return 0;
-    if (out->cap < r->done.n) {
-        remaster_prim *q = (remaster_prim *)realloc(out->prim, r->done.n * sizeof *q);
+    if (out->cap < r->done.n) {        /* half as much again (F117_EXACT_GROW=1: exactly the count, the first version): late in a long flight the scene grows nearly every step, and an exact growth moved the whole copy each time */
+        const size_t cap = s2_grow_cap(r->done.n);
+        remaster_prim *q = (remaster_prim *)realloc(out->prim, cap * sizeof *q);
         if (!q) return 0;
-        out->prim = q; out->cap = r->done.n;
+        out->prim = q; out->cap = cap;
     }
     memcpy(out->prim, r->done.prim, r->done.n * sizeof *out->prim);
     out->n = r->done.n;
@@ -3118,7 +3128,7 @@ static const uint8_t *s2_rigid_objects(const stage2_blend_job *j)
     }
     return dec;
 }
-static double g_blend_t[2];          /* F117_BLEND_TIMING: the last blend's object vote and parallel part, ms */
+static double g_blend_t[4];          /* F117_BLEND_TIMING: the last blend's object vote, parallel part, output growth (realloc) and whole call, ms */
 static uint8_t *g_s2_path;          /* F117_STAGE2_PATH_LOG (diagnostic): per primitive of the nearer step, the blend path taken (see s2_path_report) */
 #define S2_PATH(code) do { if (g_s2_path) g_s2_path[i] = (uint8_t)(code); } while (0)
 static void stage2_blend_part(void *arg, int part)
@@ -3354,10 +3364,14 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
     const int *match = nb ? pr->ba : pr->ab;
     const double wf = nb ? 1.0 - t : t;                       /* how far the nearer step's vertices move towards the other step */
     remaster_frame *o = &r->staged;
-    if (o->cap < nr->n) {
-        remaster_prim *q = (remaster_prim *)realloc(o->prim, nr->n * sizeof *q);
+    const double bt_all = now_ms();
+    g_blend_t[2] = 0;
+    if (o->cap < nr->n) {               /* half as much again, not exactly the count: an exact growth moved the whole output (about 18 MB at 70,000 primitives, 3.6-4 ms) in a third to a half of the late flight's pictures after 9 G */
+        const size_t cap = s2_grow_cap(nr->n);
+        remaster_prim *q = (remaster_prim *)realloc(o->prim, cap * sizeof *q);
         if (!q) return 0;
-        o->prim = q; o->cap = nr->n;
+        o->prim = q; o->cap = cap;
+        g_blend_t[2] = now_ms() - bt_all;
     }
     int have_view;
     {   /* the blend of each primitive is independent of the others: on the host's helper threads when it gave them */
@@ -3379,11 +3393,6 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         if ((g_blend_run ? g_blend_run : g_s2_run) && g_s2_parts > 1 && nr->n >= 2048) (g_blend_run ? g_blend_run : g_s2_run)(stage2_blend_part, &job, g_s2_parts);
         else for (int part = 0; part < 1; part++) { job.parts = 1; stage2_blend_part(&job, part); }
         g_blend_t[1] = now_ms() - bt1;
-        {   /* F117_BLEND_TIMING=MS (diagnostic): a blend whose two timed parts took over MS: the primitives, the parts, the object vote and the parallel blend */
-            static double lim = -2; if (lim < -1) { const char *e = getenv("F117_BLEND_TIMING"); lim = e ? atof(e) : -1; }
-            if (lim >= 0 && g_blend_t[0] + g_blend_t[1] > lim)
-                fprintf(stderr, "[blend-timing] prims %zu parts %d pool %s view %d reproj %d: vote %.2f ms, blend %.2f ms\n", nr->n, g_s2_parts, g_blend_run ? "blend" : g_s2_run ? "copy" : "none", have_view, job.reproj, g_blend_t[0], g_blend_t[1]);
-        }
         if (path_log && g_s2_path) s2_path_report(nr, o->prim, g_s2_path, t, nb, view, &job);
     }
     o->n = nr->n;
@@ -3424,6 +3433,12 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
     memcpy(r->staged_origin, nr->origin, sizeof r->staged_origin); memcpy(r->staged_window, nr->window, sizeof r->staged_window);
     r->staged_hud_at = nr->hud_at; r->staged_hud_set = 1;
     r->have_staged = o->n > 0; r->copy_open = 1;
+    g_blend_t[3] = now_ms() - bt_all;
+    {   /* F117_BLEND_TIMING=MS (diagnostic): a blend call over MS: the primitives, the parts, the object vote, the parallel blend, the output growth (realloc), the whole call */
+        static double lim = -2; if (lim < -1) { const char *e = getenv("F117_BLEND_TIMING"); lim = e ? atof(e) : -1; }
+        if (lim >= 0 && g_blend_t[3] > lim)
+            fprintf(stderr, "[blend-timing] prims %zu parts %d pool %s view %d: vote %.2f ms, blend %.2f ms, grow %.2f ms, call %.2f ms\n", nr->n, g_s2_parts, g_blend_run ? "blend" : g_s2_run ? "copy" : "none", have_view, g_blend_t[0], g_blend_t[1], g_blend_t[2], g_blend_t[3]);
+    }
     return 1;
 }
 

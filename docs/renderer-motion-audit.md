@@ -439,3 +439,18 @@ R39 reproduced in the default: the cost climbs with the scene from 7 G. The fast
 is main-thread CPU: the Stage 2 blend p90 1.1 to 5.5 ms and the copy's commit p90 5.3 to 8.7 ms. The travel fix is not the cause (with it off:
 blend median 1.40 both, 735 against 744 slow frames). So 4K 60 is not safe at the end of this flight; the remedies are the planned ones: the copy
 off the main thread (the copy thread's parity race, slice 307) and the blend on more helpers or off the critical path.
+
+Step 2a, the late blend cost (24 Nov; private/partb/late4k_diag.sh: late4k2.sh's menu 3, hidden, F117_SLOW_FRAME_TRACE and F117_BLEND_TIMING=0,
+D:/F117A-Scratch-Files/late4k/d1..d3). The trace's "blend" phase in main.c is drawlive_stage2_view plus the whole remaster_live_stage2_blend call.
+Split (d3, per billion clocks, median/p90 ms): through 8 G the call is 0.90/1.13 to 1.49/1.77 (vote 0.15 to 0.25, parallel blend 0.76 to 1.24,
+both growing with the primitives, 35,000 to 63,000) and drawlive_stage2_view 0.03. From 9 G the call's p90 is 5.38 (10 G: 5.71) while the vote
+(p90 0.32) and the parallel blend (p90 1.67) stay small: the rest is the output array's growth. remaster_live_stage2_blend grew its output to
+exactly the new count (realloc to nr->n); late in the flight the scene grows nearly every step (63,000 to 75,000 primitives, about 250 bytes
+each), so 256 of 867 pictures at 9 G and 153 of 310 after 10 G reallocated and moved about 18 MB, 3.6 to 4.0 ms each. Not helper contention
+and not unsplit work (the blend ran on the copy's pool, 8 parts, every time). The vote added 0.15 to 0.3 ms (d2 against d1, the build before it).
+Fix: grow by half again (s2_grow_cap; F117_EXACT_GROW=1 the old way), also in remaster_live_done_clone (the scene copies grew the same way).
+Result (d4, same script): growths 256 at 9 G to 4, 153 after 10 G to 0; the blend phase median/p90 after 10 G 2.30/5.70 to 1.80/2.10 ms (9 G:
+1.80/5.40 to 1.70/2.00); before 9 G unchanged. Exact: late flight at fixed cadence (private/partb/late_exact.sh), 32 pictures from 9.5 G
+byte-identical with F117_EXACT_GROW=1 and without (two runs), final machine hash 172ae2ba9497b651 in all three; presentation and host tests
+42/42. The d4 run's machine load was 17.8% mean (d1 2.9%), so its frame totals are not an M1 number. The vote (0.31/0.37 ms after 10 G) is
+left serial: too small to be worth splitting. What still grows late is the copy's slice (p90 5.5 to 5.8 ms after 9 G): step 3, the copy thread.
