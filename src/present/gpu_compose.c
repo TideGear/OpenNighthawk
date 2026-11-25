@@ -1241,6 +1241,14 @@ static int hw_poly_tie(void)
     return on;
 }
 
+/* F117_HW_POLY_TIE_RUNS=0: one 1 / 0.9999 for every face after the first of a run (the old way, R49's shimmer) */
+static int hw_poly_tie_runs(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *value = getenv("F117_HW_POLY_TIE_RUNS"); on = !(value && atoi(value) == 0); }
+    return on;
+}
+
 /* lines with screen-aligned square ends, as the default draws them (on unless F117_HW_SQUARE_LINES=0) */
 static int hw_square_lines(void)
 {
@@ -1409,7 +1417,12 @@ static int hw_ensure_tex(gpu_compose *g, gset *s, int w, int h)
 }
 
 /* the same job as gpu_compose_begin's compute path, for F117_HW_RASTER; 1 on success, 0 when the compute path has to be used */
-typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; int clip_bands, ground_ties, poly_tie, square_lines; } hw_build_ctx;
+typedef struct { const gpu_compose_in *in; hw_chunk *ch; double fw, fh; float DS; int clip_bands, ground_ties, poly_tie, square_lines, poly_tie_runs; } hw_build_ctx;
+/* a polygon that takes part in the same-object tie: a flat polygon, not a far dot, not ground (with the ground rules on) */
+static int hw_tie_counted(const hw_build_ctx *x, const gpu_trace_rec *r)
+{
+    return x->poly_tie && r->kind == REMASTER_T_POLYGON && r->paint_owner != 0xFFFFF7FEu && !(x->ground_ties && (r->paint_owner & 0x800u));
+}
 /* The wide sky strips can extend tens of thousands of pixels beyond the viewport.
  * Clip their shared edges in double precision before the hardware's float clipper.
  * Carry the gradient with the edge; rounding colours here would introduce seams. */
@@ -1450,6 +1463,7 @@ static void hw_build_job(void *vc, int k)
 #define HSEG(hf, hc, hk) do { if (hc) { if (nseg == HW_SEGS) { ck->fail = 1; return; } S[nseg++] = (hw_seg){ (hf), (hc), (hk) }; } } while (0)
     int cur = HK_POLY; size_t curfirst = 0;
     uint32_t prev_obj = 0xFFFFFFFFu;        /* the object of the last polygon (hw_poly_tie) */
+    unsigned run_k = 0;                     /* its place in a run of one object's faces */
     for (uint32_t i = ck->from; i < ck->to; i++) {
         const gpu_trace_rec *r = &in->recs[i];
         const double cx = r->cx, cy = r->cy, sx = r->sx, sy = r->sy, nz = (double)r->near_z, sc = r->inv_depth_scale > 0 ? r->inv_depth_scale : 1.0;
@@ -1485,18 +1499,34 @@ static void hw_build_job(void *vc, int k)
                 }
                 continue;
             }
+            /* The same-object tie (hw_poly_tie). The exact rule: a later face wins while its depth is at least 0.9999 of the depth stored. The stored
+             * depth here is already scaled, so the k-th face of a run of one object's faces takes 1 / 0.9999^k: each then beats the one before it as in
+             * the exact compositor (a single 1 / 0.9999 for every face gave the faces of a run equal standing, and rounding picked between a hangar
+             * door's overlapping faces pixel by pixel: R49; F117_HW_POLY_TIE_RUNS=0 the old way). The run is decided before clipping and counted from
+             * the record stream, so a clipped-away face and a chunk boundary do not restart it. */
+            double tie_scale = 1.0;
+            if (hw_tie_counted(x, r)) {
+                const uint32_t obj = r->paint_owner >> 12;
+                if (prev_obj == 0xFFFFFFFFu && x->poly_tie_runs) {         /* the chunk's first counted face: count the run before it */
+                    run_k = 0;
+                    for (uint32_t j = i; j-- > 0; ) {
+                        const gpu_trace_rec *q = &in->recs[j];
+                        if (!hw_tie_counted(x, q)) continue;
+                        if ((q->paint_owner >> 12) != obj) break;
+                        run_k++;
+                    }
+                } else if (obj == prev_obj) run_k++;
+                else run_k = 0;
+                if (run_k) tie_scale = x->poly_tie_runs ? pow(0.9999, (double)run_k) : 0.9999;
+                prev_obj = obj;
+            }
             hw_dv c[40]; const int m = hw_clip(r->v, r->n, nz, c); if (m < 3) continue;
             float px_[40], py_[40], pd[40];
-            for (int k = 0; k < m; k++) { px_[k] = HNDCX(cx + sx * c[k].x / c[k].z); py_[k] = HNDCY(cy + sy * c[k].y / c[k].z); pd[k] = (float)(sc / c[k].z * DS); }
+            for (int k = 0; k < m; k++) { px_[k] = HNDCX(cx + sx * c[k].x / c[k].z); py_[k] = HNDCY(cy + sy * c[k].y / c[k].z); pd[k] = (float)(sc / c[k].z * DS / tie_scale); }
             int sk = HK_POLY; uint32_t own = r->kind == REMASTER_T_SHADED ? 16u : 0u, idx = r->paint_index, col0 = r->color;
             if (r->kind == REMASTER_T_POLYGON && r->paint_owner == 0xFFFFF7FEu) sk = HK_DOT;      /* a far dot */
             if (x->ground_ties && r->kind == REMASTER_T_POLYGON && (r->paint_owner & 0x800u)) sk = HK_GROUND;
             if (x->ground_ties && r->kind == REMASTER_T_POLYGON && sk == HK_POLY && (r->paint_owner >> 12) != 0) sk = HK_OBJ;
-            if (r->kind == REMASTER_T_POLYGON && (sk == HK_POLY || sk == HK_OBJ) && x->poly_tie) {
-                const uint32_t obj = r->paint_owner >> 12;
-                if (obj == prev_obj) for (int k = 0; k < m; k++) pd[k] = (float)(pd[k] / 0.9999);
-                prev_obj = obj;
-            }
             if (r->kind == REMASTER_T_LOGIC) {
                 idx = r->value & 255u;
                 if (r->op == REMASTER_STIPPLE) { sk = HK_STIP; own = 2; col0 = in->palette[r->value & 255]; }
@@ -1595,7 +1625,7 @@ static int hw_begin(gpu_compose *g, const gpu_compose_in *in, Uint64 t_start)
         nch = in->nrec >= 4096 && !serial ? HW_CHUNKS : 1;
         static int clip_bands = -1;
         if (clip_bands < 0) { const char *e = getenv("F117_HW_CLIP_BANDS"); clip_bands = e && atoi(e) != 0; }
-        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS, clip_bands, hw_ground_ties(), hw_poly_tie(), hw_square_lines() };
+        hw_build_ctx bx = { in, s->hw.ch, fw, fh, DS, clip_bands, hw_ground_ties(), hw_poly_tie(), hw_square_lines(), hw_poly_tie_runs() };
         for (int k = 0; k < nch; k++) { s->hw.ch[k].from = (uint32_t)((uint64_t)in->nrec * k / nch); s->hw.ch[k].to = (uint32_t)((uint64_t)in->nrec * (k + 1) / nch); }
         pool_run(hw_build_job, &bx, nch);
         for (int k = 0; k < nch; k++) if (s->hw.ch[k].fail) return 0;
