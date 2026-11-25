@@ -155,7 +155,7 @@ struct remaster_live {
     struct { uint16_t model; unsigned seen, match, differ, behind_mine, behind_game, off1, off8, farther; } check[256];
     unsigned nchecks;
     int32_t band_rec[BAND_REC_FINE];  /* the sky and ground band pass's starting state (band_state.h), for the frame in progress */
-    int have_band;
+    int have_band, camera_mfd;
     int16_t cam_rec[12]; int have_cam, cam_kinds;   /* the frame in progress: its view matrix and attitude (first model request), and how many different matrices it saw */
     remaster_frame done;                /* the last completed frame, with its band state, origin and window, for compositing */
     int32_t done_band[BAND_REC_FINE];
@@ -169,7 +169,7 @@ struct remaster_live {
     int16_t staged_cam[12]; int staged_have_cam;
     uint32_t eye[2], done_eye[2], staged_eye[2];
     int height, done_height, staged_height, forward, done_forward, staged_forward;
-    long staged_hud_at; int staged_hud_set;   /* Stage 2: the HUD split of a blended frame, handed to done_hud_at by the commit */
+    long staged_hud_at; int staged_hud_set;   /* HUD split of the frame to be committed */
     int deferred, copy_open;
     long hud_at, done_hud_at;           /* the frame's primitives before the HUD pass (-1: no HUD pass yet) */
     int origin[2], window[4];       /* the game's screen origin [8602],[8604] and clip window [85FA],[85FC],[85FE],[8600] */
@@ -223,16 +223,18 @@ void remaster_live_copy_begin(remaster_live *r)
     remaster_frame_clear(&r->frame);
     r->pending = 0;
     r->nunits = 0;
-    r->have_band = 0; r->have_cam = 0; r->cam_kinds = 0;
+    r->have_band = 0; r->camera_mfd = 0; r->have_cam = 0; r->cam_kinds = 0;
     if (r->deferred) {              /* the done frame stays as the worker has it; the copy's result is staged and committed later */
         r->have_staged = 0; r->staged.n = 0; r->copy_open = 1;
+        r->staged_hud_set = 0;
         r->frame_complete = 0;
     } else {
         r->have_done = 0;
         r->frame_complete = r->done_complete = 0;
         r->done.n = 0;
+        r->done_hud_at = -1;
     }
-    r->hud_at = r->done_hud_at = -1;
+    r->hud_at = -1;
 }
 
 void remaster_live_set_deferred(remaster_live *r, int on) { if (r) r->deferred = on != 0; }
@@ -2081,7 +2083,8 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             if (n >= 0 && r->nchk) check_native(r, m, first);
             static int skip_own_faces = -1;
             if (skip_own_faces < 0) skip_own_faces = env_default_on("F117_NATIVE_SKIP_OWN_FACES");
-            if (n >= 0 && (rerun_extra_active() || (skip_own_faces && r->replay_copy && r->pending_terrain))) {
+            if (n >= 0 && !r->camera_mfd &&
+                (rerun_extra_active() || (skip_own_faces && r->replay_copy && r->pending_terrain))) {
                 /* The copy's terrain geometry is in the frame now, and the
                  * renderer draws it from that, so the game's own face drawing is skipped (model_faces ends in a plain near RET). */
                 static int skip = -1;
@@ -2189,7 +2192,6 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             }
             r->src_native_prims = 0; r->src_native_objs = 0;
         }
-        r->done_hud_at = r->hud_at; r->hud_at = -1;
         {   /* F117_FAR_WHY (diagnostic): the frame being completed, and how many primitives of models 0, 3 and 6 it holds */
             static int wl = -1; static unsigned left = 40;
             if (wl < 0) wl = getenv("F117_FAR_WHY") != NULL;
@@ -2267,7 +2269,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 fprintf(stderr, "[frame-hash] clock %llu prims %zu hash %016llx complete %d fields %llx %llx %llx %llx %llx %llx\n", (unsigned long long)m->cpu.icount, r->frame.n, (unsigned long long)h, r->frame_complete, (unsigned long long)hf[0], (unsigned long long)hf[1], (unsigned long long)hf[2], (unsigned long long)hf[3], (unsigned long long)hf[4], (unsigned long long)hf[5]);
             }
         }
-        if (r->deferred) {                      /* the completed frame is staged: the main thread commits it when the worker is idle */
+        if (!r->camera_mfd && r->deferred) {    /* the completed frame is staged: the main thread commits it when the worker is idle */
             remaster_frame tmp = r->staged; r->staged = r->frame; r->frame = tmp;
             memcpy(r->staged_band, r->band_rec, sizeof r->staged_band);
             r->staged_have_band = r->have_band; r->have_staged = r->staged.n > 0;
@@ -2275,7 +2277,8 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             memcpy(r->staged_eye, r->eye, sizeof r->eye); r->staged_height = r->height; r->staged_forward = r->forward;
             r->staged_complete = r->frame_complete;
             memcpy(r->staged_origin, r->origin, sizeof r->origin); memcpy(r->staged_window, r->window, sizeof r->window);
-        } else {                                /* the completed frame becomes the one a composite uses */
+            r->staged_hud_at = r->hud_at; r->staged_hud_set = 1;
+        } else if (!r->camera_mfd) {            /* the completed frame becomes the one a composite uses */
             remaster_frame tmp = r->done; r->done = r->frame; r->frame = tmp;
             memcpy(r->done_band, r->band_rec, sizeof r->done_band);
             r->done_have_band = r->have_band; r->have_done = r->done.n > 0;
@@ -2283,9 +2286,14 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             memcpy(r->done_eye, r->eye, sizeof r->eye); r->done_height = r->height; r->done_forward = r->forward;
             r->done_complete = r->frame_complete;
             memcpy(r->done_origin, r->origin, sizeof r->origin); memcpy(r->done_window, r->window, sizeof r->window);
+            r->done_hud_at = r->hud_at;
         }
+        r->hud_at = -1;
         {                                       /* this frame's band pass starts here: its argument is the view block */
             const uint16_t ds = m->cpu.seg[S_DS], view = peek16(m, m->cpu.seg[S_SS], (uint16_t)(m->cpu.r[R_SP] + 2));
+            /* VGAME BCEF draws the camera MFD into [4070] and blits it into the cockpit.
+             * Keep its guest drawing in the picture layer and publish only the main scene. */
+            r->camera_mfd = view && view == peek16(m, ds, 0x4070);
             int n = 0;
             r->band_rec[n++] = BAND_REC_VERSION;
             r->band_rec[n++] = view;

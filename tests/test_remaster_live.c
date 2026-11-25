@@ -59,6 +59,31 @@ int main(void)
         }
         remaster_live_free(r);
     }
+    for (int mode = 0; mode < 3; mode++) {
+        remaster_live *r = remaster_live_new(320, 200, ~0u, NULL);
+        CHECK(r);
+        remaster_live_set_deferred(r, mode == 2);
+        if (mode) remaster_live_copy_begin(r);
+        put(ds, 0x4070, 0x1100, 2);
+        put(stack, 0x102, 0x1000, 2);
+        remaster_live_exec(r, m, 2); /* begin the main view */
+        put(stack, 0x104, 0, 2);
+        remaster_live_exec(r, m, 0);
+        remaster_live_exec(r, m, 1);
+        CHECK(remaster_live_prims(r) == 2);
+        put(stack, 0x102, 0x1100, 2);
+        remaster_live_exec(r, m, 2); /* finish the main view and begin the camera MFD */
+        for (int i = 0; i < 2; i++) {
+            remaster_live_exec(r, m, 0);
+            remaster_live_exec(r, m, 1);
+        }
+        CHECK(remaster_live_prims(r) == 4);
+        put(stack, 0x102, 0x1000, 2);
+        remaster_live_exec(r, m, 2); /* finish the MFD */
+        remaster_live_commit(r);
+        CHECK(remaster_live_done_prims(r) == 2);
+        remaster_live_free(r);
+    }
     free(src);free(tags);free(dst);free(mask);free(rgb);free(wide);free(m->mem);free(m);
     puts("remaster live background ownership passes"); return 0;
 }

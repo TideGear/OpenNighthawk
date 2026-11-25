@@ -1893,6 +1893,9 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         return 0;
     }
     if ((int)k == g_walk_k) {
+        /* VGAME BCEF's camera MFD uses the guest terrain walk, as the
+         * cockpit receives its image from the original drawing pass. */
+        if (rd16(m->mem, m->cpu.seg[S_SS], m->cpu.r[R_SP]) == 0xC254) return 0;
         g_walk_calls++;
         g_npend = 0;                                /* a frame's pending far overlays never carry over */
         g_air_nlate = 0;
