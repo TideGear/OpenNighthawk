@@ -171,7 +171,7 @@ static unsigned order_by_angle(const scene_mesh *mesh, const scene_geometry *g, 
     return m;
 }
 
-int remaster_prim_source;
+F117_TLS int remaster_prim_source;     /* per thread: the copy thread places objects while the live frame adds its own */
 
 static void init_primitive(remaster_prim *p, const emit_ctx *x, const scene_material *c)
 {

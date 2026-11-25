@@ -294,8 +294,12 @@ static int64_t cell_scaled(int level, uint32_t v)
     return s;
 }
 static int cell_base(int level, uint32_t v) { return (int)(cell_scaled(level, v) >> 12); }
-extern int remaster_prim_source;     /* remaster_scene.c: which placement is emitting primitives (diagnostic, F117_PRIM_HIST) */
-static int g_walk_k = -1, g_walk_busy;
+extern F117_TLS int remaster_prim_source;     /* remaster_scene.c: which placement is emitting primitives (diagnostic, F117_PRIM_HIST) */
+static int g_walk_k = -1;               /* the copy's own exec-hook index: set in rerun_begin before the job runs, read by the copy's hooks (shared on purpose) */
+/* The copy's far-scenery placement is running (rerun_extra_active). Per thread: with the copy on its own thread (F117_COPY_THREAD=1) a shared flag let the
+ * live machine's model hook see the copy's placement as its own, so the live game skipped drawing a model's faces (remaster_live_exec pops the return:
+ * less work, ahead in the same clocks, a different screen and machine hash; the copy thread's parity race, slice 307, 24 Nov). */
+F117_TLS static int g_walk_busy;
 static double walk_ms(void)
 {
 #ifdef _WIN32
@@ -2161,6 +2165,12 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
     s->opl_sched = NULL;
     s->opl_sched_n = s->opl_sched_i = s->opl_sched_cap = 0;
     s->trap_on = 0;
+    {   /* F117_COPY_INTERP=1 (diagnostic, the copy thread's parity race): the copy runs on the interpreter only, so it never enters the recompiled-code
+         * runtime's shared tables (lookup, verdicts, floating instances); the live machine keeps its own engine */
+        static int interp = -1;
+        if (interp < 0) { const char *e = getenv("F117_COPY_INTERP"); interp = e && atoi(e) != 0; }
+        if (interp) s->engine = ENGINE_INTERP;
+    }
     const uint16_t ds = s->cpu.seg[S_DS];
     if (b && b->valid && t > 0) nudge(g_copy_mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
     {   /* F117_TURN_VIEW=N (diagnostic, the turned-view reference, docs/wide-margin-audit.md): the copy's pilot turned by N units of the game's angle

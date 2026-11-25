@@ -454,3 +454,20 @@ Result (d4, same script): growths 256 at 9 G to 4, 153 after 10 G to 0; the blen
 byte-identical with F117_EXACT_GROW=1 and without (two runs), final machine hash 172ae2ba9497b651 in all three; presentation and host tests
 42/42. The d4 run's machine load was 17.8% mean (d1 2.9%), so its frame totals are not an M1 number. The vote (0.31/0.37 ms after 10 G) is
 left serial: too small to be worth splitting. What still grows late is the copy's slice (p90 5.5 to 5.8 ms after 9 G): step 3, the copy thread.
+
+Step 3, the copy thread's parity race: cause found and fixed (24 Nov; private/r45/bank_slice2.sh, D:/F117A-Scratch-Files/copy-race). The copy run
+interpreted only (F117_COPY_INTERP=1, diagnostic: the copy never enters the recompiled-code runtime) still parted from the thread-off run (four runs:
+at slice 307 and at 8,957,069,691), so the runtime's shared tables were not the cause. The parted slices showed the live machine ahead in the same
+clocks: one slice in other code (087b:06d2/06ec, MGRAPHIC, against 0f2a), the next at the same block copy (087b:121c) with less of it left. The cause:
+rerun.c's g_walk_busy (rerun_extra_active: the copy's far-scenery placement is running) was a plain static beside the thread-local g_coarse_busy. With
+the copy on its own thread, the live machine's model hook (remaster_live_exec, k == 1) saw the copy's placement as its own and skipped the live
+game's drawing of that model's faces (it pops the return), so the live game drew less, ran ahead and its screen and machine hash changed; it also
+skipped the live frame's camera capture (k == 0). Only with F117_COPY_THREAD=1 (off by default): the default and the sliced copy were never
+affected. Fix: g_walk_busy is thread-local (F117_TLS), as is the diagnostic remaster_prim_source. Slice traces 8.935 to 8.96 G, copy thread on,
+four runs: 425 of 425 slices identical to the thread-off run, final hash 3371c8426c7bbb59 in all (without the fix every run differed: 2 to 4
+slices, four different final hashes). New diagnostic: F117_REPLAY_INSN_TRACE=FROM,UNTIL,FILE (the live machine stepped and logged per instruction).
+Proof: whole late flight to 10.37 G at fixed cadence, menu 3 (private/partb/late_exact.sh with F117_REPLAY_HASH_EVERY=100000000), copy thread
+on twice and off once: 104 of 104 hash checkpoints identical, final hash e2868f7906ab544e in all three; copy-thread crash loop 6 of 6. Full gate
+gate_ct2: everything passed except the far-aircraft guards, whose 13 Nov baseline predated b22d0c9's dot size (the build before 24 Nov gives the
+same 28 differing pictures, and all 2,703 of its checksums equal this build's; with the far aircraft off all equal the original baseline): baseline
+regenerated from 2e31094 (old kept as baseline-farair-20261113), and this gate's CPU and GPU guard outputs equal it at all three distances.

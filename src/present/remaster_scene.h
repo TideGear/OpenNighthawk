@@ -41,7 +41,7 @@ typedef struct {
     uint8_t terrain;                        /* placed by the terrain walk, so its world geometry is stationary */
 } remaster_prim;
 
-extern int remaster_prim_source;            /* set by the far-scenery placement while it places an object (diagnostic, F117_PRIM_HIST) */
+extern F117_TLS int remaster_prim_source;            /* set by the far-scenery placement while it places an object (diagnostic, F117_PRIM_HIST) */
 
 typedef struct {
     remaster_prim *prim;

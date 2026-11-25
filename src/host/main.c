@@ -3176,9 +3176,27 @@ int main(int argc, char **argv)
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
                 if (until > target) until = target;
+                /* F117_REPLAY_INSN_TRACE=FROM,UNTIL,FILE (diagnostic, the copy thread's parity race): inside the window the live machine steps one instruction
+                 * boundary at a time and each is written to FILE (clock, CS:IP, registers, segments, flags), as f117run --trace does, to find where two runs part */
+                static int it_init; static uint64_t it_from, it_until; static FILE *it_file;
+                if (!it_init) {
+                    it_init = 1;
+                    const char *e = getenv("F117_REPLAY_INSN_TRACE");
+                    if (e) { char *p1, *p2; it_from = strtoull(e, &p1, 0); if (*p1 == ',') { it_until = strtoull(p1 + 1, &p2, 0); if (*p2 == ',') it_file = fopen(p2 + 1, "w"); } }
+                }
+                if (it_file && H.m.cpu.icount < it_until) {
+                    if (H.m.cpu.icount >= it_from) until = H.m.cpu.icount + 1;
+                    else if (it_from < until) until = it_from;
+                }
                 inputlog_feed(player, &H.m, until + ips);
                 const uint64_t sl0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
                 int rc = machine_run(&H.m, until);
+                if (it_file && H.m.cpu.icount > it_from && H.m.cpu.icount <= it_until) {
+                    const cpu_t *c = &H.m.cpu;
+                    fprintf(it_file, "%llu %04X:%04X AX=%04X BX=%04X CX=%04X DX=%04X SI=%04X DI=%04X BP=%04X SP=%04X DS=%04X ES=%04X SS=%04X FL=%04X\n", (unsigned long long)c->icount,
+                            c->seg[S_CS], c->ip, c->r[R_AX], c->r[R_BX], c->r[R_CX], c->r[R_DX], c->r[R_SI], c->r[R_DI], c->r[R_BP], c->r[R_SP], c->seg[S_DS], c->seg[S_ES], c->seg[S_SS], c->flags);
+                    if (H.m.cpu.icount >= it_until) { fclose(it_file); it_file = NULL; }
+                }
                 {   /* F117_REPLAY_SLICE_TRACE=FROM,UNTIL (diagnostic): the live machine's registers after each slice in that clock window, to find where two runs part */
                     static int st_init; static uint64_t st_from, st_until;
                     if (!st_init) { st_init = 1; const char *e = getenv("F117_REPLAY_SLICE_TRACE"); if (e) { char *end; st_from = strtoull(e, &end, 0); if (*end == ',') st_until = strtoull(end + 1, NULL, 0); } }
