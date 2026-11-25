@@ -891,7 +891,20 @@ static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t 
             last_reason = visible ? 0 : g_cull_reason;
             chosen = 1; pk.level = l; pk.model = w; pk.defers = (klass & 0x80) != 0 || same_type; pk.own = same_type ? 1 : 0;    /* (an own, deferring pick goes through the game) */
             if (!visible) { chosen = -1; tr_culled++; break; }
-            pk.darken = far_detail(m, ds, zh, klass & 7u);
+            {   /* The fade by depth takes the depth in the object's own ring's units (R47, 24 Nov): zh is in the drawn level's, 4 times coarser per level, so a far
+                 * object read 4 or 16 times nearer, faded too little, and turned darker at once when it moved to a finer level (the owner's mountains at 8.909 G
+                 * of the late flight, 188 lines from shrink 4 to 2). F117_FAR_FADE=0: the drawn level's depth (the first version); 1: the own ring's depth (the
+                 * game's fade carried on past its reach); 2: the own ring's depth held at the game's reach (8191), the fade the game gives at the edge of its drawing. */
+                static int fade = -1;
+                if (fade < 0) { const char *e = getenv("F117_FAR_FADE"); fade = e ? atoi(e) : 0; }   /* 0 until the owner has seen the pictures */
+                int16_t zf = zh;
+                if (fade && s) {
+                    int64_t own = (int64_t)(zh < 0 ? 0 : zh) << s;
+                    if (fade == 2 && own > 8191) own = 8191;
+                    zf = (int16_t)(own > 32767 ? 32767 : own);
+                }
+                pk.darken = far_detail(m, ds, zf, klass & 7u);
+            }
             {   /* F117_FAR_DARKEN=N (experiment, R29): every far pick's darken byte set to N, to test whether lights appear with it */
                 static int forced = -2; if (forced == -2) { const char *e = getenv("F117_FAR_DARKEN"); forced = e ? atoi(e) : -1; }
                 if (forced >= 0) pk.darken = (uint8_t)forced;

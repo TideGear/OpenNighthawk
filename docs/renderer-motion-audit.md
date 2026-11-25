@@ -471,3 +471,25 @@ on twice and off once: 104 of 104 hash checkpoints identical, final hash e2868f7
 gate_ct2: everything passed except the far-aircraft guards, whose 13 Nov baseline predated b22d0c9's dot size (the build before 24 Nov gives the
 same 28 differing pictures, and all 2,703 of its checksums equal this build's; with the far aircraft off all equal the original baseline): baseline
 regenerated from 2e31094 (old kept as baseline-farair-20261113), and this gate's CPU and GPU guard outputs equal it at all three distances.
+
+Visible 4K 60 A/B on the late flight, 24 Nov 16:25-16:32 (private/partb/late4k_diag.sh HIDDEN=0, menu 3, vsync, one valid pair; the owner quit the two b runs,
+so they exited at the logo). Frames over 20.9 ms, whole / 9-10 G / 10-10.4 G: copy thread off 0.70% /
+1.90% / 2.70% (2-9 G 0 to 0.5%); copy thread on 1.93% / 5.33% / 8.89% (from 6 G 1 to 4.4%). So on screen the copy thread makes it worse; with
+it off, after the 24 Nov blend fix, the end of the flight is near the goal (21 Nov: 15-16% and 27-31%). Earlier runs that day reported as
+visible (late4k v1, ab_*) were hidden: the app hides the window whenever F117_HIDDEN_WINDOW is set, even to 0 (script fixed), so they do not count.
+
+R47, mountain lines that darken on approach (owner, 24 Nov 16:31; late flight, menus 1, 2 and 3 alike, copy thread off and on). Found with
+F117_LINE_SERIES=FROM,UNTIL (new diagnostic: per composed picture, lines by shrink and source and the far-size width sums by shrink) and Tab shots
+every 100 M (private/partb/late_shots.sh): no sudden change in line counts, but at 8,908,669,691 exactly 188 lines move from shrink 4 to shrink 2
+(total unchanged), and the coast's mountains turn from light grey faces to dark faces with heavy outlines between 8.8 and 8.9 G (owner confirmed on
+the sheet). Their line width is continuous (width sums 48.1 before, 48.3 after), so not the far-size rule. Cause: rerun.c gives each far pick the
+game's fade by depth (far_detail, VGAME 1039:011A, the darken byte that darkens shaded colours) from zh in the drawn level's units, 4 times coarser
+per level, so far objects read 4 or 16 times nearer, are faded too little (too light), and darken at once when they move to a finer level, again
+at each level change. Switch F117_FAR_FADE (rerun.c): 0 the drawn level's depth (today, the default until the owner chooses); 1 the own ring's depth
+(the game's fade carried on past its reach); 2 the own ring's depth held at the game's reach (8191). Late flight (D:/F117A-Scratch-Files/late-shots/
+fade0..2): brightest land (90th percentile) at 8.2 / 8.6 / 8.906 / 9.25 G: 0: 28 / 28 / 28 / 23.7; 1: 21 / 21 / 22 / 23.7; 2: 21 / 22 / 22 / 23.7: with
+1 or 2 the far mountains already have the shade they have close up, so nothing pops; all three agree close up. Machine hash identical in all three;
+the cost is a shift and a compare per far pick, the drawing is the same. Runway flight (also dusk, day_fade0..2): options 1 and 2 change 600 to
+2,500 pixels a picture after takeoff, none black. Sheets: Desktop\ONShots\20261124-165529-R47-mountain-fade-far-vs-close.png and
+20261124-170024-R47-mountain-fade-daylight.png (dusk despite the name). Recommended: 1 (the game's own rule by true distance, no invented cut-off),
+after a check on a daylight flight that the farthest mountains do not go too dark (2 never darkens past the game's reach edge).

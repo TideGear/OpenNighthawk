@@ -984,6 +984,7 @@ static void record_scene(scene_job *sj)
 
 static F117_TLS double g_last_record_ms, g_last_record_n;
 void remaster_live_last_record(double *ms, double *records) { *ms = g_last_record_ms; *records = g_last_record_n; }
+static void line_series(const remaster_live *r, const machine_t *m);   /* F117_LINE_SERIES (diagnostic, R47), below */
 static int gpu_prepare(remaster_live *r, const machine_t *m, int n, int w, int h, int tw, int xoff, int complete, gpu_compose_in *gin, uint32_t *palette)
 {
     static uint8_t stand_in[64];
@@ -1044,10 +1045,34 @@ int remaster_live_gpu_begin_ex(remaster_live *r, const machine_t *m, int n, int 
     uint32_t palette[256];
     gpu_compose_in gin;
     if (!gpu_prepare(r, m, n, w, h, wide_w, (wide_w - w) / 2, scene_is_complete(r), &gin, palette)) return 0;
+    line_series(r, m);
     return g_gpu_begin_fn(&gin);
 }
 
 void remaster_live_set_gpu_begun(remaster_live *r, int begun) { if (r) r->gpu_begun = begun != 0; }
+
+/* F117_LINE_SERIES=FROM,UNTIL (diagnostic, R47: mountain lines that darken on approach): per composed picture in that clock window, the scene's
+ * polygons and its lines by shrink (0: drawn at its own ring) and source (the game's own drawing, the native walk, placed through the game) */
+static void line_series(const remaster_live *r, const machine_t *m)
+{
+    static int init; static uint64_t from, until;
+    if (!init) { init = 1; const char *e = getenv("F117_LINE_SERIES"); if (e) { char *p; from = strtoull(e, &p, 0); if (*p == ',') until = strtoull(p + 1, NULL, 0); } }
+    if (!until || m->cpu.icount < from || m->cpu.icount >= until) return;
+    unsigned poly = 0, lines = 0, by_shrink[8] = {0}, by_source[4] = {0}, dots = 0;
+    double wsum[8] = {0};              /* the far-size width factor (far_width of a 1-pixel line) summed by shrink */
+    for (size_t i = 0; i < r->done.n; i++) {
+        const remaster_prim *q = &r->done.prim[i];
+        if (q->kind == SCENE_POLYGON) { poly++; continue; }
+        if (q->kind != SCENE_LINES) { dots++; continue; }
+        const int s = q->shrink < 7 ? q->shrink : 7;
+        lines++; by_shrink[s]++; by_source[q->source & 3]++;
+        if (q->n >= 2) wsum[s] += far_width(q, 0, 1, 100.0) / 100.0;
+    }
+    fprintf(stderr, "[line-series] clock %llu poly %u dots %u lines %u shrink0..7 %u %u %u %u %u %u %u %u source game %u native %u guest %u deferred %u width sum by shrink %.2f %.2f %.2f %.2f %.2f\n",
+            (unsigned long long)m->cpu.icount, poly, dots, lines, by_shrink[0], by_shrink[1], by_shrink[2], by_shrink[3], by_shrink[4], by_shrink[5], by_shrink[6], by_shrink[7],
+            by_source[0], by_source[1], by_source[2], by_source[3],
+            wsum[0], wsum[1], wsum[2], wsum[3], wsum[4]);
+}
 
 int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uint8_t *src, const uint8_t *tag,
                           const uint8_t *dac, uint8_t *dst, uint32_t *rgb, uint8_t *mask, int wide_w, uint32_t *wide_out)
@@ -1058,6 +1083,7 @@ int remaster_live_compose(remaster_live *r, const machine_t *m, int n, const uin
      * reads its centre, and the margins and the centre together are the wide picture (wide_out). */
     const int tw = wide_w > w && mask && rgb && wide_out ? wide_w : w, xoff = (tw - w) / 2, wide = tw > w;
     int complete = scene_is_complete(r);
+    line_series(r, m);
     {   /* F117_PRIM_HIST=FROM (diagnostic): the primitives of the first composite from that clock, counted by model and kind (to diff one walk mode against another) */
         static unsigned done_hist; const char *hs = done_hist >= 6 ? NULL : getenv("F117_PRIM_HIST");
         if (hs && r->done.n > 50 && m->cpu.icount >= strtoull(hs, NULL, 0)) {
