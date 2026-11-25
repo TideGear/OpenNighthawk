@@ -338,7 +338,14 @@ int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *
          * axis's three matrix words (axis 1: measured, the runway and the jets' wings come out level with it). */
         static int axis = -1;
         if (axis < 0) { const char *e = getenv("F117_FLAT_AXIS"); axis = e ? atoi(e) : 1; }
+        /* Level: within about 14.6 degrees (R48). Measured on the Persian Gulf route and the runway flight: every ground object's least level
+         * polygon has a cosine of at least 0.9727 (13.4 degrees: runways, aprons, roads, sea, desert tiles), the hill models 10 and 11 at most 0.9627
+         * (15.7 degrees); the old 0.9 (25.8 degrees) took the hills for ground, so far scenery and its lights showed through a near ridge
+         * (a ground object never hides what stands on it). F117_FLAT_COS=0.9 the old way. */
+        static double level_cos = -1.0; static int flat_log = -1;
+        if (level_cos < 0.0) { const char *e = getenv("F117_FLAT_COS"); level_cos = e ? atof(e) : 0.9677; const char *l = getenv("F117_FLAT_LOG"); flat_log = l ? atoi(l) : 0; }
         int all_level = 0, polygons = 0;
+        double min_cos = 1.0;
         const double ux = camera[3 * axis], uy = camera[3 * axis + 1], uz = camera[3 * axis + 2];
         const double ul = sqrt(ux * ux + uy * uy + uz * uz);
         for (size_t i = frame_start; i < f->n; i++) {
@@ -349,9 +356,15 @@ int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *
             const double nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
             const double nl = sqrt(nx * nx + ny * ny + nz * nz);
             polygons++;
-            if (nl > 0.0 && fabs(nx * ux + ny * uy + nz * uz) > 0.9 * nl * ul) all_level++;
+            const double c = nl > 0.0 ? fabs(nx * ux + ny * uy + nz * uz) / (nl * ul) : 0.0;
+            if (c < min_cos) min_cos = c;
+            if (nl > 0.0 && c > level_cos) all_level++;
         }
         const uint8_t ground = polygons > 0 && all_level == polygons;
+        if (flat_log && polygons > 0 && min_cos > 0.85) {   /* F117_FLAT_LOG=1: each near-level object's least level polygon (diagnostic, R48) */
+            static F117_TLS unsigned logged;
+            if (logged++ < 200000u) fprintf(stderr, "[flat] model %u polygons %d min_cos %.5f ground %d shrink %u\n", (unsigned)model, polygons, min_cos, (int)ground, (unsigned)(f->n > frame_start ? f->prim[frame_start].shrink : 0));
+        }
         for (size_t i = frame_start; i < f->n; i++) {
             f->prim[i].flat = ground;
             if (ground) f->prim[i].owner |= 0x800u;
