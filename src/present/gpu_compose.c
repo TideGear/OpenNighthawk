@@ -1528,7 +1528,9 @@ static void hw_build_job(void *vc, int k)
             if (L < 1e-6) { dx = 1; dy = 0; L = 1; }
             const double nx = -dy / L * hwid, ny = dx / L * hwid, ex = dx / L * hwid, ey = dy / L * hwid;
             const double ax0 = ax - ex, ay0 = ay - ey, bx0 = bx + ex, by0 = by + ey;
-            const float da = (float)(bias * sc / a.z * DS / 0.97), db = (float)(bias * sc / b.z * DS / 0.97);
+            static double line_tol = -1.0;   /* F117_HW_LINE_TOL: the strokes' depth allowance (default 0.97, the decal tolerance); diagnostic for R49 */
+            if (line_tol < 0.0) { const char *e = getenv("F117_HW_LINE_TOL"); line_tol = e ? atof(e) : 0.97; if (line_tol <= 0.0) line_tol = 0.97; }
+            const float da = (float)(bias * sc / a.z * DS / line_tol), db = (float)(bias * sc / b.z * DS / line_tol);
             const uint32_t pi = r->paint_index, own = 8;
             if (x->square_lines) {
                 /* The default stamps a screen-aligned square along the line, so its ends are flat on top: the shape is the hull of the two end squares'
