@@ -3866,8 +3866,8 @@ int main(int argc, char **argv)
             }
         }
         {   /* F117_TAB_SHOT_AT=CLOCK,CLOCK,... (test tooling): the Tab screenshot at those machine clocks, for replays (Tab itself is not recorded) */
-            static int init; static uint64_t at[16]; static int n_at, next;
-            if (!init) { init = 1; const char *e = getenv("F117_TAB_SHOT_AT"); while (e && *e && n_at < 16) { at[n_at++] = strtoull(e, (char **)&e, 0); if (*e == ',') e++; else break; } }
+            static int init; static uint64_t at[1024]; static int n_at, next;
+            if (!init) { init = 1; const char *e = getenv("F117_TAB_SHOT_AT"); while (e && *e && n_at < 1024) { at[n_at++] = strtoull(e, (char **)&e, 0); if (*e == ',') e++; else break; } }
             while (next < n_at && H.m.cpu.icount >= at[next]) { next++; g_shot_now++; }
         }
         while (g_shot_now) {
