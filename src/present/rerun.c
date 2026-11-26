@@ -229,6 +229,7 @@ static void nudge_att(uint8_t *dst, uint16_t ds, const uint8_t *amem, uint16_t a
  * slot of the same type and state in both); the weapons in flight (VGAME 683E: twelve 1Ch-byte records at 3C3A;
  * +0/+2/+4 X/Y/height, +6 speed, +8/+0A/+0C heading/pitch/roll, +0E life, +10 type, only one alive with the same type
  * in both). */
+static F117_TLS struct { int valid; int32_t x, y; int16_t z; } g_proj_exact[RERUN_PROJECTILE_COUNT];
 static void nudge_projectile(uint8_t *dst, uint16_t ds, uint16_t at,
                              const uint8_t *a, uint16_t ads, const uint8_t *b, uint16_t bds, double t)
 {
@@ -239,11 +240,22 @@ static void nudge_projectile(uint8_t *dst, uint16_t ds, uint16_t at,
         const uint16_t base = rd16(a, ads, addr);
         wr16(dst, ds, addr, (uint16_t)(base + lerp_i(sdiff(base, rd16(b, bds, addr)), t)));
     }
+    {   /* the exact position in scene units (1/32 map unit), handed to BB0D by the copy's hook (projectile_exact_exec) */
+        const unsigned slot = (at - 0x3C3Au) / 0x1C;
+        if (slot < RERUN_PROJECTILE_COUNT) {
+            const uint16_t xa = rd16(a, ads, at), ya = rd16(a, ads, (uint16_t)(at + 2)), za = rd16(a, ads, (uint16_t)(at + 4));
+            g_proj_exact[slot].valid = 1;
+            g_proj_exact[slot].x = (int32_t)((uint32_t)xa << 5) + lerp_i((int32_t)sdiff(xa, rd16(b, bds, at)) * 32, t);
+            g_proj_exact[slot].y = (int32_t)((uint32_t)ya << 5) + lerp_i((int32_t)sdiff(ya, rd16(b, bds, (uint16_t)(at + 2))) * 32, t);
+            g_proj_exact[slot].z = (int16_t)(za + lerp_i(sdiff(za, rd16(b, bds, (uint16_t)(at + 4))), t));
+        }
+    }
     nudge_att(dst, ds, a, ads, b, bds, (uint16_t)(at + 8), (uint16_t)(at + 10), (uint16_t)(at + 12), t);
 }
 
 static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds, double t)
 {
+    for (int i = 0; i < RERUN_PROJECTILE_COUNT; i++) g_proj_exact[i].valid = 0;
     nudge32(dst, ds, amem, bmem, bds, 0xBA3C, t);
     nudge32(dst, ds, amem, bmem, bds, 0xC056, t);
     static const uint16_t own[] = { 0x2DEE, 0x2DF0, 0x2DF2, 0x2DF4, 0x2DF6 };
@@ -297,12 +309,14 @@ static int g_wide_pct;   /* defined below (rerun_set_wide) */
  * units). A missile one to four map units from the eye, interpolated between two steps and rounded to a whole map unit, snapped by up to
  * half a unit against a camera that moves smoothly in scene units: the owner's jittery missile (25 Nov 23:27). The restricted copy keeps
  * each reposed slot's exact position in scene units here and hands it to BB0D in place of the rounded one. */
-static struct { int valid; int32_t x, y; int16_t z; } g_proj_exact[RERUN_PROJECTILE_COUNT];
-static int projectile_copy_exec(void *user, machine_t *m, unsigned hook)
+static int g_proj_k = -1;      /* the render copy's BB0D hook (the wide copy): the same exact position for every picture copy, not only the restricted one */
+static F117_TLS uint64_t g_proj_icount0;
+static int projectile_exact_exec(machine_t *m)
 {
-    if (hook < 5) return remaster_live_exec(user, m, hook);
     cpu_t *c = &m->cpu;
     if (c->ip == 0xBB0D) {
+        if (getenv("F117_STAGE2_PROJECTILE_TRACE") && rd16(m->mem, c->seg[S_SS], c->r[R_SP]) == 0x9DE1)
+            fprintf(stderr, "[projectile-run] model call reached after %llu instructions\n", (unsigned long long)(c->icount - g_proj_icount0));
         /* The projectile loop's model call (9DDE, returning to 9DE1) with SI the slot's record offset: words at SP+4/6 the 32-bit x,
          * SP+8/A the 32-bit y, SP+C the height (matched.c, projectile loop and VGAME BB0D). Give it the exact interpolated position. */
         const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
@@ -314,8 +328,23 @@ static int projectile_copy_exec(void *user, machine_t *m, unsigned hook)
             wr16(m->mem, ss, (uint16_t)(sp + 10), (uint16_t)((uint32_t)g_proj_exact[slot].y >> 16));
             wr16(m->mem, ss, (uint16_t)(sp + 12), (uint16_t)g_proj_exact[slot].z);
         }
-        return 0;
     }
+    return 0;
+}
+static int projectile_copy_exec(void *user, machine_t *m, unsigned hook)
+{
+    if (hook < 5) {
+        const int r = remaster_live_exec(user, m, hook);
+        /* The per-frame draw routine's entry (VGAME 1450, the horizon bands: 16 sky and 16 ground fills in software, about 214,000 of this pass's
+         * 221,000 instructions, 4.5 of its 4.7 ms) paints nothing this pass keeps: only the projectile's own primitives are used. Return from it
+         * (a near call; the caller pops its argument). F117_PROJECTILE_COPY_SKY=1 runs it. */
+        static int sky = -1;
+        if (sky < 0) sky = getenv("F117_PROJECTILE_COPY_SKY") != NULL;
+        if (!sky && hook == 2 && m->cpu.ip == 0x1450) m->cpu.ip = cpu_pop16(&m->cpu);
+        return r;
+    }
+    cpu_t *c = &m->cpu;
+    if (c->ip == 0xBB0D) return projectile_exact_exec(m);
     {   /* The projectile loop's placement test (B5DC, called from 9D86 and returning to 9D89) decides whether a slot is on
          * screen ([4A10] is FFFFh when not) and whether it is a model or a dot ([DEBE] above -32). The scene copies make
          * that call with the view matrix the Remastered view uses (wide_air_exec: every row divided by the reach,
@@ -390,6 +419,10 @@ int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
 
     copy_machine_init(&copy, mem, a);
     copy.engine = ENGINE_INTERP;   /* this pass stops within a matched scene routine */
+    if (!getenv("F117_PROJECTILE_COPY_IRQ")) {   /* the pass draws a model; the sound driver's timer interrupt took about 90% of its 221,000 instructions (sampled 26 Nov: segments 291E and 087B), and nothing it does is drawn */
+        copy.pic_imr = 0xFF;
+        copy.irq0_next = ~0ull;
+    }
     if (b && b->valid && t > 0)
         nudge(mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
     for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
@@ -457,7 +490,16 @@ int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
     observe_set(NULL);
     observe_pending_clear();
     fixes_pending_restore(a->fix_pending);
-    const int result = machine_run(&copy, copy.cpu.icount + 1000000);
+    const uint64_t icount0 = copy.cpu.icount;
+    g_proj_icount0 = icount0;
+    if (getenv("F117_STAGE2_PROJECTILE_TRACE"))
+        fprintf(stderr, "[projectile-start] %04X:%04X sp %04X | next events: vsync %lld scan %lld irq0 %lld | ips %llu frame_len %llu\n", copy.cpu.seg[S_CS], copy.cpu.ip, copy.cpu.r[R_SP],
+                (long long)(copy.vsync_next - icount0), (long long)(copy.scan_next - icount0), (long long)(copy.irq0_next - icount0), (unsigned long long)copy.ips, (unsigned long long)copy.frame_len);
+    int result;
+    if (getenv("F117_STAGE2_PROJECTILE_IP")) {   /* diagnostic: where the pass spends its instructions (the IP every 4,000) */
+        do { result = machine_run(&copy, copy.cpu.icount + 4000); { const uint16_t ssg = copy.cpu.seg[S_SS], sp0 = copy.cpu.r[R_SP]; fprintf(stderr, "[projectile-ip] +%llu %04X:%04X sp %04X stack %04X %04X %04X %04X %04X %04X %04X %04X\n", (unsigned long long)(copy.cpu.icount - icount0), copy.cpu.seg[S_CS], copy.cpu.ip, sp0, rd16(copy.mem, ssg, sp0), rd16(copy.mem, ssg, (uint16_t)(sp0 + 2)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 4)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 6)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 8)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 10)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 12)), rd16(copy.mem, ssg, (uint16_t)(sp0 + 14))); } } while (result == RUN_SLICE);
+    } else result = machine_run(&copy, copy.cpu.icount + 1000000);
+    if (getenv("F117_STAGE2_PROJECTILE_TRACE")) fprintf(stderr, "[projectile-run] %llu instructions (result %d)\n", (unsigned long long)(copy.cpu.icount - icount0), result);
     fixes_pending_restore(fix_pending);
     observe_pending_restore(pending);
     observe_set(observer);
@@ -2120,6 +2162,7 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
                     (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 8)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 10)), rd16(m->mem, ss, sp));
         return 0;
     }
+    if ((int)k == g_proj_k) return projectile_exact_exec(m);   /* BB0D: a close projectile at its exact interpolated position (R52) */
     if ((int)k == g_walk_k) {
         /* VGAME BCEF's camera MFD uses the guest terrain walk, as the
          * cockpit receives its image from the original drawing pass. */
@@ -2401,6 +2444,7 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
         if (interp) s->engine = ENGINE_INTERP;
     }
     const uint16_t ds = s->cpu.seg[S_DS];
+    for (int i = 0; i < RERUN_PROJECTILE_COUNT; i++) g_proj_exact[i].valid = 0;   /* only a reposed copy has exact positions */
     if (b && b->valid && t > 0) nudge(g_copy_mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
     {   /* F117_TURN_VIEW=N (diagnostic, the turned-view reference, docs/wide-margin-audit.md): the copy's pilot turned by N units of the game's angle
          * (65536 = 360 degrees) before the frame is drawn. The forward view's heading is [2DEE] (matched.c, compose_forward: [E478] = [2DEE], the view
@@ -2504,6 +2548,13 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
                         s->hooks.exec = wide_air_exec;
                         break;
                     }
+            g_proj_k = -1;
+            if (g_air_k >= 0 && s->exec_hook_n < EXEC_HOOKS_MAX && !getenv("F117_WIDE_NO_PROJ_EXACT")) {   /* R52: the missile's exact position for this copy too */
+                g_proj_k = (int)s->exec_hook_n;
+                s->exec_hook[s->exec_hook_n].cs = s->exec_hook[g_air_k].cs;
+                s->exec_hook[s->exec_hook_n].ip = 0xBB0D;
+                s->exec_hook_n++;
+            }
             if (g_air_k >= 0 && (getenv("F117_WIDE_AIR_PROBE") || getenv("F117_WIDE_AIR_CULL_LOG")) && s->exec_hook_n < EXEC_HOOKS_MAX) {
                 g_air_ret_k = (int)s->exec_hook_n;
                 s->exec_hook[s->exec_hook_n].cs = s->exec_hook[g_air_k].cs;

@@ -210,7 +210,7 @@ struct machine {
  * presentation copy needs two additional addresses for independent render
  * overrides (aircraft and scenery) without consuming live slots. */
 #define EXEC_HOOKS_LIVE_MAX 8
-#define EXEC_HOOKS_MAX (EXEC_HOOKS_LIVE_MAX + 2)
+#define EXEC_HOOKS_MAX (EXEC_HOOKS_LIVE_MAX + 3)
     uint8_t  exec_hook_n;
     struct { uint16_t cs, ip; } exec_hook[EXEC_HOOKS_MAX];
     uint16_t trap_cs, trap_ip, trap_sp;

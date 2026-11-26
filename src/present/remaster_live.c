@@ -3229,6 +3229,15 @@ static void stage2_blend_part(void *arg, int part)
     if (freeze_lights < 0) freeze_lights = getenv("F117_STAGE2_FREEZE_LIGHTS") != NULL;
     for (size_t i = from; i < to; i++) {
         remaster_prim p = j->nr->prim[i];
+        if (p.projectile) {     /* F117_PROJ_BLEND_LOG=1 (diagnostic, R52): how the blend places a model projectile's face */
+            static int plog = -1;
+            if (plog < 0) plog = getenv("F117_PROJ_BLEND_LOG") != NULL;
+            if (plog) {
+                const remaster_prim *q = j->match[i] >= 0 ? &j->fr->prim[j->match[i]] : NULL;
+                fprintf(stderr, "[proj-blend] slot %u face %u wf %.3f reproj %d reprojectable %d partner %d near v0 %d,%d,%d far v0 %d,%d,%d\n", (unsigned)p.projectile, (unsigned)p.face, j->wf, j->reproj,
+                        s2_reprojectable(j->nr, i), q != NULL, p.v[0].x >> 12, p.v[0].y >> 12, p.v[0].z >> 12, q ? q->v[0].x >> 12 : 0, q ? q->v[0].y >> 12 : 0, q ? q->v[0].z >> 12 : 0);
+            }
+        }
         if (j->have_view && (p.terrain || p.flat) && (j->nr->hud_at < 0 || (long)i < j->nr->hud_at)) {
             const double scale = p.inv_depth_scale > 0 ? p.inv_depth_scale : 1.0;
             for (int v = 0; v < p.n; v++) {
