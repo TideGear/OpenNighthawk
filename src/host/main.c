@@ -3706,8 +3706,8 @@ int main(int argc, char **argv)
                                         pose_t -= 1.0;
                                     } else pose_t = 1.0;
                                 }
-                                const int copied = rerun_draw_projectiles(phase ? pose_a : a, phase ? pose_b : b,
-                                                                          phase ? pose_t : plan.t, pose_a, pose_b, pose_t,
+                                /* The whole restricted copy stands at the pose clock, not the plan clock. */
+                                const int copied = rerun_draw_projectiles(pose_a, pose_b, pose_t, pose_a, pose_b, pose_t,
                                                                           slots, projectile_scene);
                                 blended = copied && remaster_stage2_add_projectiles(g_rlive_copy, projectile_scene, slots);
                                 if (getenv("F117_STAGE2_PROJECTILE_TRACE"))
