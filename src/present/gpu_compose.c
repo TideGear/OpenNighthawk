@@ -66,6 +66,7 @@ typedef struct {
     SDL_GPUTransferBuffer *upb;             /* the band triangles' own upload, for F117_GPU_BANDS_FIRST (the bands pass is submitted before the rest of the setup is done) */
     Uint32 upb_cap;
     double setup_ms, gpu_ms, copy_ms, wait_ms;
+    SDL_GPUFence *lazy_fence;               /* F117_GPU_LAZY_FENCE: the last compose on this set was submitted and not waited for; waited for before the set is used again */
     int begun;                              /* gpu_compose_begin has run and gpu_compose_finish has not */
     gpu_compose_in params;                  /* the begun frame's replace parameters (the pointers in it are not kept) */
     Uint32 pbytes, game_bytes;
@@ -241,6 +242,14 @@ gpu_compose *gpu_compose_create_on(SDL_GPUDevice *device, const char *shader_dir
     return device ? compose_new(device, shader_dir, 0) : NULL;
 }
 
+static void lazy_fence_wait(gpu_compose *g)
+{
+    if (!GS(g)->lazy_fence) return;
+    SDL_WaitForGPUFences(g->dev, true, &GS(g)->lazy_fence, 1);
+    SDL_ReleaseGPUFence(g->dev, GS(g)->lazy_fence);
+    GS(g)->lazy_fence = NULL;
+}
+
 static void setup_pool_shutdown(void);
 static void faces_thread_shutdown(gpu_compose *g);
 static int faces_start_chunks(gpu_compose *g);
@@ -248,6 +257,10 @@ static int faces_start_chunks(gpu_compose *g);
 void gpu_compose_destroy(gpu_compose *g)
 {
     if (!g) return;
+    if (g->dev) {
+        SDL_WaitForGPUIdle(g->dev);
+        for (int si = 0; si < 2; si++) if (g->set[si].lazy_fence) { SDL_ReleaseGPUFence(g->dev, g->set[si].lazy_fence); g->set[si].lazy_fence = NULL; }
+    }
 #ifdef F117_GPU_TIMESTAMPS
     if (g->profile) {
         SDL_WaitForGPUIdle(g->dev);
@@ -1798,6 +1811,7 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     }
     g->profile_pending = g->profile != NULL;
 #endif
+    lazy_fence_wait(g);      /* the previous compose on this set may still be running on the GPU (F117_GPU_LAZY_FENCE) */
     faces_wait(SC(g));       /* a previous call on this set that returned early may have left the face list running */
     GS(g)->begun = 0;
     const Uint64 t_start = SDL_GetTicksNS();
@@ -2187,6 +2201,21 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     profile_resolve(g, cb);
     SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);
     if (!fence) return 0;
+    static int lazy = -1;
+    if (lazy < 0) { const char *e = getenv("F117_GPU_LAZY_FENCE"); lazy = e && atoi(e) != 0; }
+#ifdef F117_GPU_TIMESTAMPS
+    const int profiling = g->profile != NULL;
+#else
+    const int profiling = 0;
+#endif
+    if (lazy && !wide_out && !profiling && g->targets[0]) {
+        /* Nothing reads this picture back on the CPU: the queue orders the renderer's draw after it, and the set waits for this fence before its next use. */
+        GS(g)->lazy_fence = fence;
+        GS(g)->wait_ms = 0.0;
+        GS(g)->gpu_ms = GS(g)->copy_ms = 0.0;
+        g->last_written = g->cur_write; g->cur_write ^= 1;
+        return 1;
+    }
     const Uint64 t_wait = SDL_GetTicksNS();
     SDL_WaitForGPUFences(g->dev, true, &fence, 1);
     SDL_ReleaseGPUFence(g->dev, fence);
@@ -2222,6 +2251,7 @@ int gpu_compose_run(gpu_compose *g, const gpu_compose_in *in, uint32_t *wide_out
 int gpu_compose_make_targets(gpu_compose *g, int w, int h)
 {
     if (!g || !g->p_present || w < 1 || h < 1) return 0;
+    SDL_WaitForGPUIdle(g->dev);       /* a lazily fenced compose may still be writing the old targets */
     for (int k = 0; k < 2; k++) if (g->targets[k]) { SDL_ReleaseGPUTexture(g->dev, g->targets[k]); g->targets[k] = NULL; }
     if (g->tgt_down) { SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down); g->tgt_down = NULL; }
     SDL_GPUTextureCreateInfo ti;
