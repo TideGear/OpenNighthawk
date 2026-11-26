@@ -2240,7 +2240,15 @@ static int wide_air_exec(void *user, machine_t *m, unsigned k)
         }
         return 0;
     }
-    if ((int)k != g_air_k) return g_collector.exec ? g_collector.exec(user, m, k) : 0;
+    if ((int)k != g_air_k) {
+        const int r = g_collector.exec ? g_collector.exec(user, m, k) : 0;
+        /* F117_COPY_SKIP_SKY=1 (experiment, 26 Nov): the render copy's horizon bands (VGAME 1450: 16 sky and 16 ground software fills, about 214,000 instructions,
+         * 4.5 ms) are drawn natively from the band state the collector took at this entry, so the copy's own raster of them is skipped (a near call: return at once). */
+        static int skip = -1;
+        if (skip < 0) skip = getenv("F117_COPY_SKIP_SKY") != NULL;
+        if (skip && k < 5 && m->cpu.ip == 0x1450) m->cpu.ip = cpu_pop16(&m->cpu);
+        return r;
+    }
     const uint16_t ds = m->cpu.seg[S_DS];
     if (!g_air_done) {
         g_air_done = 1;
