@@ -3683,13 +3683,13 @@ int main(int argc, char **argv)
                         static remaster_live *projectile_scene;
                         if (hit_projectiles < 0) {
                             const char *e = getenv("F117_STAGE2_HIT_PROJECTILES");
-                            hit_projectiles = !(e && atoi(e) == 0);   /* on by default (R52, 26 Nov); F117_STAGE2_HIT_PROJECTILES=0 off */
+                            hit_projectiles = e && atoi(e) != 0;   /* opt-in until the owner has looked (R52, 26 Nov): F117_STAGE2_HIT_PROJECTILES=1 */
                         }
                         if (blended && hit_projectiles && have_view && plan.sa >= 0 && plan.sb >= 0) {
                             const rerun_snap *a = &g_live.step[plan.sa].snap, *b = &g_live.step[plan.sb].snap;
                             const unsigned slots = remaster_stage2_projectile_slots(g_s2.sc[ka], g_s2.sc[kb], &H.m);
                             if (slots) {
-                                g_pw.late_flash_palette = !getenv("F117_STAGE2_HIT_PALETTE_OFF");
+                                g_pw.late_flash_palette = getenv("F117_STAGE2_HIT_PALETTE") != NULL;
                                 if (!projectile_scene) projectile_scene = remaster_live_new(960, 720, ~0u, NULL);
                                 const uint64_t start = SDL_GetTicksNS();
                                 const rerun_snap *pose_a = a, *pose_b = b;

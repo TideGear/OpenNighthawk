@@ -2557,7 +2557,7 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
                         break;
                     }
             g_proj_k = -1;
-            if (g_air_k >= 0 && s->exec_hook_n < EXEC_HOOKS_MAX && !getenv("F117_WIDE_NO_PROJ_EXACT")) {   /* R52: the missile's exact position for this copy too */
+            if (g_air_k >= 0 && s->exec_hook_n < EXEC_HOOKS_MAX && getenv("F117_WIDE_PROJ_EXACT")) {   /* R52: the missile's exact position for this copy too (opt-in until the owner has looked, F117_WIDE_PROJ_EXACT=1) */
                 g_proj_k = (int)s->exec_hook_n;
                 s->exec_hook[s->exec_hook_n].cs = s->exec_hook[g_air_k].cs;
                 s->exec_hook[s->exec_hook_n].ip = 0xBB0D;
