@@ -204,6 +204,7 @@ the number of agents. The current user limit is four agents at once. `kit.py` th
 run while a gate does.
 
 ## Traps
+- **Test hygiene (from R44 item 6, closed 25 Nov):** host acceptance `transport-and-screen-edge` fails under machine load and passes alone; the gate runs host acceptance alone in stage 2, but the load sensitivity itself is not explained. Find what it times and make it load-independent, or document why it must run alone.
 
 Writing bodies:
 - **Each block's room claim must cover its longest path, rare early paths included** (bm2: `2F4C`'s `|dx| = 0`
