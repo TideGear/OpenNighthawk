@@ -112,12 +112,31 @@ static int copy_int(cpu_t *c, uint8_t vec)
         if (vec != 0x20 && (ah == 0x0B || ah == 0x2C)) return dos_int_hook(c, vec);
         static int reports;
         if (reports++ < 4) fprintf(stderr, "[rerun] blocked DOS vector %02X AX %04X at %04X:%04X\n", vec, c->r[R_AX], c->op_cs, c->op_ip);
-        g_blocked = 1;
+        if (machine_of(c) == &g_copy) g_blocked = 1;
         machine_of(c)->exited = 1;
         c->stop_at = 0;
         return 1;
     }
     return dos_int_hook(c, vec);
+}
+
+static void copy_machine_init(machine_t *copy, uint8_t *mem, const rerun_snap *snap)
+{
+    *copy = snap->m;
+    memcpy(mem, snap->mem, MEM_SIZE);
+    copy->mem = mem;
+    copy->cpu.mem = mem;
+    copy->cpu.user = copy;
+    copy->cpu.cover = NULL;
+    copy->cpu.int_hook = copy_int;
+    memset(copy->files, 0, sizeof copy->files);
+    memset(&copy->hooks, 0, sizeof copy->hooks);
+    copy->log = NULL;
+    copy->on_input = NULL;
+    copy->on_input_user = NULL;
+    copy->opl_sched = NULL;
+    copy->opl_sched_n = copy->opl_sched_i = copy->opl_sched_cap = 0;
+    copy->trap_on = 0;
 }
 
 static uint16_t rd16(const uint8_t *mem, uint16_t seg, uint16_t off)
@@ -191,10 +210,10 @@ static int16_t sdiff(uint16_t a, uint16_t b) { return (int16_t)(uint16_t)(b - a)
  * heading and roll by nearly half a turn while the model barely moves. Moving each angle by its own shortest difference
  * would twist the model half a turn about the vertical between the two steps, so b is taken in whichever of the two
  * spellings is nearer a. */
-static void nudge_att(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds,
+static void nudge_att(uint8_t *dst, uint16_t ds, const uint8_t *amem, uint16_t ads, const uint8_t *bmem, uint16_t bds,
                       uint16_t hdg, uint16_t pit, uint16_t rol, double t)
 {
-    const uint16_t ha = rd16(amem, ds, hdg), pa = rd16(amem, ds, pit), ra = rd16(amem, ds, rol);
+    const uint16_t ha = rd16(amem, ads, hdg), pa = rd16(amem, ads, pit), ra = rd16(amem, ads, rol);
     uint16_t hb = rd16(bmem, bds, hdg), pb = rd16(bmem, bds, pit), rb = rd16(bmem, bds, rol);
     const int direct = abs(sdiff(ha, hb)) + abs(sdiff(pa, pb)) + abs(sdiff(ra, rb));
     const uint16_t h2 = (uint16_t)(hb + 0x8000), p2 = (uint16_t)(0x8000 - pb), r2 = (uint16_t)(rb + 0x8000);
@@ -210,6 +229,19 @@ static void nudge_att(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint
  * slot of the same type and state in both); the weapons in flight (VGAME 683E: twelve 1Ch-byte records at 3C3A;
  * +0/+2/+4 X/Y/height, +6 speed, +8/+0A/+0C heading/pitch/roll, +0E life, +10 type, only one alive with the same type
  * in both). */
+static void nudge_projectile(uint8_t *dst, uint16_t ds, uint16_t at,
+                             const uint8_t *a, uint16_t ads, const uint8_t *b, uint16_t bds, double t)
+{
+    if (!rd16(a, ads, (uint16_t)(at + 0x0E)) || !rd16(b, bds, (uint16_t)(at + 0x0E)) ||
+        rd16(a, ads, (uint16_t)(at + 0x10)) != rd16(b, bds, (uint16_t)(at + 0x10))) return;
+    for (int k = 0; k < 3; k++) {
+        const uint16_t addr = (uint16_t)(at + 2 * k);
+        const uint16_t base = rd16(a, ads, addr);
+        wr16(dst, ds, addr, (uint16_t)(base + lerp_i(sdiff(base, rd16(b, bds, addr)), t)));
+    }
+    nudge_att(dst, ds, a, ads, b, bds, (uint16_t)(at + 8), (uint16_t)(at + 10), (uint16_t)(at + 12), t);
+}
+
 static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t *bmem, uint16_t bds, double t)
 {
     nudge32(dst, ds, amem, bmem, bds, 0xBA3C, t);
@@ -227,15 +259,122 @@ static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t 
             wr16(dst, ds, (uint16_t)(at + 2), (uint16_t)(x >> 5));
             wr16(dst, ds, (uint16_t)(at + 4), (uint16_t)(y >> 5));
             nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x06), t);
-            nudge_att(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x10), (uint16_t)(at + 0x12), (uint16_t)(at + 0x14), t);
+            nudge_att(dst, ds, amem, ds, bmem, bds, (uint16_t)(at + 0x10), (uint16_t)(at + 0x12), (uint16_t)(at + 0x14), t);
         }
-    for (int i = 0; i < 12; i++) {
-        const uint16_t at = (uint16_t)(0x3C3A + 0x1C * i);
-        if (!rd16(amem, ds, (uint16_t)(at + 0x0E)) || !rd16(bmem, bds, (uint16_t)(at + 0x0E)) ||
-            rd16(amem, ds, (uint16_t)(at + 0x10)) != rd16(bmem, bds, (uint16_t)(at + 0x10))) continue;
-        for (int k = 0; k < 3; k++) nudge16(dst, ds, amem, bmem, bds, (uint16_t)(at + 2 * k), t);
-        nudge_att(dst, ds, amem, bmem, bds, (uint16_t)(at + 0x08), (uint16_t)(at + 0x0A), (uint16_t)(at + 0x0C), t);
+    for (int i = 0; i < RERUN_PROJECTILE_COUNT; i++)
+        nudge_projectile(dst, ds, (uint16_t)(0x3C3A + 0x1C * i), amem, ds, bmem, bds, t);
+}
+
+rerun_projectile_key rerun_projectile_read(const uint8_t *mem, uint16_t ds, unsigned slot)
+{
+    const uint16_t at = (uint16_t)(0x3C3A + 0x1C * slot);
+    const uint16_t type = rd16(mem, ds, (uint16_t)(at + 0x10));
+    return (rerun_projectile_key){
+        rd16(mem, ds, (uint16_t)(0x33A4 + 0x12 * type)),
+        rd16(mem, ds, (uint16_t)(at + 0x0E)) != 0,
+        {rd16(mem, ds, at), rd16(mem, ds, (uint16_t)(at + 2)), rd16(mem, ds, (uint16_t)(at + 4))}
+    };
+}
+
+unsigned rerun_hit_projectiles(const machine_t *live)
+{
+    const uint8_t *mem = live->mem;
+    const uint16_t ds = live->cpu.seg[S_DS];
+    if ((int16_t)rd16(mem, ds, 0x9D3C) <= 0) return 0;
+    /* VGAME 6F1B leaves the incoming projectile in its slot for 2*S ticks
+     * after the hit. Only this short post-impact draw needs a new pose. */
+    const unsigned remaining = 2u * rd16(mem, ds, 0x368E);
+    unsigned slots = 0;
+    for (unsigned slot = 0; slot < 8; slot++) {
+        const unsigned life = rd16(mem, ds, (uint16_t)(0x3C48 + 0x1C * slot));
+        if (life && life <= remaining) slots |= 1u << slot;
     }
+    return slots;
+}
+
+static int projectile_copy_exec(void *user, machine_t *m, unsigned hook)
+{
+    if (hook < 5) return remaster_live_exec(user, m, hook);
+    cpu_t *c = &m->cpu;
+    const uint16_t ret = rd16(m->mem, c->seg[S_SS], c->r[R_SP]);
+    if (c->ip == 0x04C7 && ret == 0x0410) {
+        /* Skip the scene dispatch's timer wait in this draw-only copy. */
+        wr16(m->mem, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2), 0);
+        return 0;
+    }
+    if (c->ip != 0x04E6 || ret != 0x04A2) return 0;
+    /* Scene dispatch calls the terrain walk with eight words. Skip the
+     * walk and stop after the moving-object and deferred-draw passes. */
+    m->trap_on = 1;
+    m->trap_cs = c->seg[S_CS];
+    m->trap_ip = 0x04AB;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 18);
+    c->ip = cpu_pop16(c);
+    return 0;   /* the hook's handled return would pop a far address */
+}
+
+int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
+                           const rerun_snap *pose_a, const rerun_snap *pose_b, double pose_t,
+                           unsigned slots, remaster_live *scene)
+{
+    if (!a || !a->valid || !pose_a || !pose_a->valid || !slots || !scene) return 0;
+    const uint16_t ds = a->m.cpu.seg[S_DS];
+    if (rd16(a->mem, ds, 0xC0A6) != 0) return 0;
+    static machine_t copy;
+    static uint8_t *mem;
+    static void *pending, *fix_pending;
+    if (!mem) mem = malloc(MEM_SIZE);
+    if (!pending) pending = malloc(observe_pending_size());
+    if (!fix_pending) fix_pending = malloc(fixes_pending_size());
+    if (!mem || !pending || !fix_pending) return 0;
+
+    copy_machine_init(&copy, mem, a);
+    copy.engine = ENGINE_INTERP;   /* this pass stops within a matched scene routine */
+    if (b && b->valid && t > 0)
+        nudge(mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
+    for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
+        const uint16_t at = (uint16_t)(0x3C3A + 0x1C * slot);
+        if (slots & (1u << slot)) {
+            const uint16_t ads = pose_a->m.cpu.seg[S_DS];
+            for (unsigned word = 0; word < 0x1C; word += 2) {
+                const uint16_t addr = (uint16_t)(at + word);
+                wr16(mem, ds, addr, rd16(pose_a->mem, ads, addr));
+            }
+            if (pose_b && pose_b->valid)
+                nudge_projectile(mem, ds, at, pose_a->mem, ads, pose_b->mem, pose_b->m.cpu.seg[S_DS], pose_t);
+        } else wr16(mem, ds, (uint16_t)(at + 0x0E), 0);
+    }
+    for (unsigned slot = 0; slot < 16; slot++)
+        wr16(mem, ds, (uint16_t)(0x3A08 + 8 * slot), 0);
+    wr16(mem, ds, 0xDEFC, 0);   /* aircraft count */
+    wr16(mem, ds, 0xC62E, 0);   /* flare altitude */
+    wr16(mem, ds, 0x3D94, 0);   /* ground selection */
+    wr16(mem, ds, 0x3D92, 0xFFFF);
+
+    const uint16_t cs = copy.cpu.seg[S_CS];
+    copy.exec_hook_n = 0;
+    remaster_live_arm(scene, &copy, cs);
+    copy.exec_hook[copy.exec_hook_n].cs = cs;
+    copy.exec_hook[copy.exec_hook_n++].ip = 0x04E6;
+    copy.exec_hook[copy.exec_hook_n].cs = cs;
+    copy.exec_hook[copy.exec_hook_n++].ip = 0x04C7;
+    copy.hooks.exec = projectile_copy_exec;
+    copy.hooks.user = scene;
+    remaster_live_copy_begin(scene);
+
+    const f117_observer *observer = g_f117_observer;
+    observe_pending_save(pending);
+    fixes_pending_save(fix_pending);
+    observe_set(NULL);
+    observe_pending_clear();
+    fixes_pending_restore(a->fix_pending);
+    const int result = machine_run(&copy, copy.cpu.icount + 1000000);
+    fixes_pending_restore(fix_pending);
+    observe_pending_restore(pending);
+    observe_set(observer);
+    free(copy.opl_sched);
+    copy.opl_sched = NULL;
+    return result == RUN_TRAP;
 }
 
 static rerun_collector g_collector;
@@ -2164,23 +2303,8 @@ int rerun_begin(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *
         memcpy(g_before_mem, real_machine->mem, MEM_SIZE);
     }
     machine_t *s = &g_copy;
-    *s = a->m;
-    memcpy(g_copy_mem, a->mem, MEM_SIZE);
-    /* every way back to the real machine, cut */
-    s->mem = g_copy_mem;
-    s->cpu.mem = g_copy_mem;
-    s->cpu.user = s;
-    s->cpu.cover = NULL;
-    s->cpu.int_hook = copy_int;
-    memset(s->files, 0, sizeof s->files);
-    memset(&s->hooks, 0, sizeof s->hooks);
+    copy_machine_init(s, g_copy_mem, a);
     if (g_collector.exec) { s->hooks.exec = g_collector.exec; s->hooks.user = g_collector.user; }
-    s->log = NULL;
-    s->on_input = NULL;
-    s->on_input_user = NULL;
-    s->opl_sched = NULL;
-    s->opl_sched_n = s->opl_sched_i = s->opl_sched_cap = 0;
-    s->trap_on = 0;
     {   /* F117_COPY_INTERP=1 (diagnostic, the copy thread's parity race): the copy runs on the interpreter only, so it never enters the recompiled-code
          * runtime's shared tables (lookup, verdicts, floating instances); the live machine keeps its own engine */
         static int interp = -1;

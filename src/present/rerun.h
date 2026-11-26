@@ -69,6 +69,19 @@ int rerun_step_scene(uint64_t budget_ns);
 void rerun_set_thread_init(void (*fn)(void));
 int rerun_job_running(void);
 
+/* Run the forward view's moving-object pass for the selected projectile
+ * slots on a separate render copy. The collector receives only that pass. */
+enum { RERUN_PROJECTILE_COUNT = 12 };
+typedef struct {
+    uint16_t model, ring, world[3];
+} rerun_projectile_key;
+rerun_projectile_key rerun_projectile_read(const uint8_t *mem, uint16_t ds, unsigned slot);
+unsigned rerun_hit_projectiles(const machine_t *live);
+struct remaster_live;
+int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
+                           const rerun_snap *pose_a, const rerun_snap *pose_b, double pose_t,
+                           unsigned slots, struct remaster_live *scene);
+
 /* An optional collector for the copies (Remastered's, docs/remastered-design.md "Plan: Remastered from the rerun copy"): a
  * copy runs with its host hooks cleared, so its execution hooks (the snapshot keeps machine_t.exec_hook) reach nobody. With a
  * collector set, each copy gets hooks.exec = exec (and hooks.user = user), and begin(user) is called just before the copy

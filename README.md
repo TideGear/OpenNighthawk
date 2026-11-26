@@ -89,8 +89,10 @@ logic unless it says it is a fix; "optional" means off until you ask for it):
   - *GPU compositor and GPU present path*, on by default for Remastered in a
     real window on Windows with a Direct3D 12 GPU (about 50 to 60 frames a
     second at 4K in the author's flights; the CPU compositor is used without
-    a GPU). `F117_GPU_COMPOSE=0` and `F117_GPU_PRESENT=0` turn them off. Its
-    pictures equal the CPU compositor's exactly (checked pixel by pixel).
+    a GPU). `F117_GPU_COMPOSE=0` and `F117_GPU_PRESENT=0` turn them off. The
+    GPU compute compositor matched the CPU compositor pixel for pixel in
+    verification. The experimental hardware rasterizer may differ at the
+    pixel level. Its acceptance checks focus on correct pictures and motion.
   - *Model detail* (Full by default in Remastered): every building and object
     in its most detailed version at any distance, so lights no longer appear
     suddenly as you fly closer.

@@ -18,6 +18,11 @@
 #include "gpu_trace.h"
 
 /* A deep copy of a frame's primitives (the piece-2 blend check, below). */
+typedef struct {
+    rerun_projectile_key key[RERUN_PROJECTILE_COUNT];
+    unsigned clipped;
+} projectile_scene;
+
 struct remaster_frame_copy {
     remaster_prim *prim;
     size_t n, cap;
@@ -28,6 +33,7 @@ struct remaster_frame_copy {
     long hud_at;
     int16_t cam[12]; int have_cam;          /* reprojection (F117_STAGE2_REPROJECT): the view matrix at DS:7B28 (9 words) and heading, pitch, roll (2DEE..2DF2) the copy drew with */
     uint32_t eye[2]; int height, forward;
+    projectile_scene projectiles;
 };
 #ifdef _WIN32
 #include <windows.h>
@@ -125,7 +131,9 @@ struct remaster_live {
     double pending_camera_offset[3];
     int pending_shrink;                       /* the bits (2 per ring) by which the object is drawn at a coarser scale than its own ring: its vertices shrink by that much about its origin */
     int pending_terrain;                      /* the pending request was placed by the terrain walker: its pose may become a template */
-    struct { uint16_t bank, model; int16_t position[3]; double inv_depth, camera_offset[3]; int shrink, terrain; } units[UNITS_MAX];
+    unsigned pending_projectile;
+    projectile_scene frame_projectiles, staged_projectiles, done_projectiles;
+    struct { uint16_t bank, model; int16_t position[3]; uint8_t projectile; double inv_depth, camera_offset[3]; int shrink, terrain; } units[UNITS_MAX];
     /* Templates for natively drawn static terrain objects: the game's pose state (DS:7B28 .. 7DA0) as it stood for one terrain object of a model
      * this frame; a later object of the same model patches only what depends on its place (remaster_live_native). */
     struct { uint16_t bank, model; int parts; uint8_t bytes[TEMPLATE_LEN]; } tmpl[96];
@@ -221,6 +229,7 @@ void remaster_live_copy_begin(remaster_live *r)
     r->replay_copy = 1;
     expire_native_checks(r);
     remaster_frame_clear(&r->frame);
+    memset(&r->frame_projectiles, 0, sizeof r->frame_projectiles);
     r->pending = 0;
     r->nunits = 0;
     r->have_band = 0; r->camera_mfd = 0; r->have_cam = 0; r->cam_kinds = 0;
@@ -252,6 +261,7 @@ void remaster_live_commit(remaster_live *r)
         memcpy(r->done_cam, r->staged_cam, sizeof r->done_cam); r->done_have_cam = r->staged_have_cam;
         memcpy(r->done_eye, r->staged_eye, sizeof r->done_eye); r->done_height = r->staged_height; r->done_forward = r->staged_forward;
         r->done_complete = r->staged_complete;
+        r->done_projectiles = r->staged_projectiles;
         memcpy(r->done_origin, r->staged_origin, sizeof r->origin); memcpy(r->done_window, r->staged_window, sizeof r->window);
         if (r->staged_hud_set) { r->done_hud_at = r->staged_hud_at; r->staged_hud_set = 0; }
         r->have_staged = 0;
@@ -2045,6 +2055,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->pending_inv_depth = 1.0;
         r->pending_shrink = 0;
         r->pending_terrain = 0;
+        r->pending_projectile = 0;
         memset(r->pending_camera_offset, 0, sizeof r->pending_camera_offset);
         for (unsigned u = r->nunits; u > 0; --u) {
             if (r->units[u - 1].bank == r->bank && r->units[u - 1].model == r->model &&
@@ -2052,6 +2063,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 r->pending_inv_depth = r->units[u - 1].inv_depth;
                 r->pending_shrink = r->units[u - 1].shrink;
                 r->pending_terrain = r->units[u - 1].terrain;
+                r->pending_projectile = r->units[u - 1].projectile;
                 memcpy(r->pending_camera_offset, r->units[u - 1].camera_offset, sizeof r->pending_camera_offset);
                 break;
             }
@@ -2078,6 +2090,16 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 int32_t correction[3];
                 model_camera_correction(m, r->pending_camera_offset, correction);
                 finish_model(r->scene, &r->frame, first, n >= 0 ? r->pending_shrink : 0, r->pending_inv_depth, correction, r->pending_terrain);
+                if (r->pending_projectile) {
+                    const unsigned slot = r->pending_projectile - 1;
+                    r->frame_projectiles.key[slot] = rerun_projectile_read(m->mem, m->cpu.seg[S_DS], slot);
+                    for (size_t i = first; i < r->frame.n; i++) {
+                        remaster_prim *p = &r->frame.prim[i];
+                        p->projectile = (uint8_t)r->pending_projectile;
+                        for (int v = 0; v < p->n; v++)
+                            if (p->v[v].z <= 0x10000) r->frame_projectiles.clipped |= 1u << slot;
+                    }
+                }
             }
             if (n >= 0 && r->pending_terrain) capture_template(r, m);
             if (n >= 0 && r->nchk) check_native(r, m, first);
@@ -2134,6 +2156,16 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             r->units[u].terrain = peek16(m, ss, sp) == 0x06A6 || peek16(m, ss, sp) == 0x075E;
             memset(r->units[u].camera_offset, 0, sizeof r->units[u].camera_offset);
             const unsigned caller = peek16(m, ss, sp);
+            r->units[u].projectile = 0;
+            if (caller == 0xBC59) {
+                const uint16_t bp = m->cpu.r[R_BP];
+                if (peek16(m, ss, (uint16_t)(bp + 2)) == 0x9DE1) {
+                    /* BB0D saves the projectile table offset from SI below its locals. */
+                    const unsigned offset = peek16(m, ss, (uint16_t)(bp - 0x12));
+                    if (offset % 0x1C == 0 && offset / 0x1C < RERUN_PROJECTILE_COUNT)
+                        r->units[u].projectile = (uint8_t)(offset / 0x1C + 1);
+                }
+            }
             uint32_t view[3] = { 0, 0, 0 };
             if (caller == 0x06A6 || caller == 0x075E) {
                 const uint16_t bp = m->cpu.r[R_BP];
@@ -2276,6 +2308,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             memcpy(r->staged_cam, r->cam_rec, sizeof r->staged_cam); r->staged_have_cam = r->have_cam;
             memcpy(r->staged_eye, r->eye, sizeof r->eye); r->staged_height = r->height; r->staged_forward = r->forward;
             r->staged_complete = r->frame_complete;
+            r->staged_projectiles = r->frame_projectiles;
             memcpy(r->staged_origin, r->origin, sizeof r->origin); memcpy(r->staged_window, r->window, sizeof r->window);
             r->staged_hud_at = r->hud_at; r->staged_hud_set = 1;
         } else if (!r->camera_mfd) {            /* the completed frame becomes the one a composite uses */
@@ -2285,6 +2318,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             memcpy(r->done_cam, r->cam_rec, sizeof r->done_cam); r->done_have_cam = r->have_cam;
             memcpy(r->done_eye, r->eye, sizeof r->eye); r->done_height = r->height; r->done_forward = r->forward;
             r->done_complete = r->frame_complete;
+            r->done_projectiles = r->frame_projectiles;
             memcpy(r->done_origin, r->origin, sizeof r->origin); memcpy(r->done_window, r->window, sizeof r->window);
             r->done_hud_at = r->hud_at;
         }
@@ -2309,6 +2343,7 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                     if (nall % 100 == 0) fprintf(stderr, "[cam-kinds] %u frames, %u with more than one view matrix\n", nall, nmulti); } }
         r->have_cam = 0; r->cam_kinds = 0;
         remaster_frame_clear(&r->frame);
+        memset(&r->frame_projectiles, 0, sizeof r->frame_projectiles);
         r->frame_complete = 1;
         r->pending = 0;
     }
@@ -2453,6 +2488,7 @@ int remaster_live_done_clone(const remaster_live *r, remaster_frame_copy *out)
     out->complete = r->done_complete; out->hud_at = r->done_hud_at;
     memcpy(out->cam, r->done_cam, sizeof out->cam); out->have_cam = r->done_have_cam;
     memcpy(out->eye, r->done_eye, sizeof out->eye); out->height = r->done_height; out->forward = r->done_forward;
+    out->projectiles = r->done_projectiles;
     return 1;
 }
 
@@ -2469,6 +2505,7 @@ int remaster_live_done_take(remaster_live *r, remaster_frame_copy *out)
     out->complete = r->done_complete; out->hud_at = r->done_hud_at;
     memcpy(out->cam, r->done_cam, sizeof out->cam); out->have_cam = r->done_have_cam;
     memcpy(out->eye, r->done_eye, sizeof out->eye); out->height = r->done_height; out->forward = r->done_forward;
+    out->projectiles = r->done_projectiles;
     return 1;
 }
 
@@ -3464,6 +3501,7 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
     r->staged_have_cam = 0;
     r->staged_forward = 0;
     r->staged_complete = nr->complete;
+    r->staged_projectiles = nr->projectiles;
     memcpy(r->staged_origin, nr->origin, sizeof r->staged_origin); memcpy(r->staged_window, nr->window, sizeof r->staged_window);
     r->staged_hud_at = nr->hud_at; r->staged_hud_set = 1;
     r->have_staged = o->n > 0; r->copy_open = 1;
@@ -3473,6 +3511,88 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
         if (lim >= 0 && g_blend_t[3] > lim)
             fprintf(stderr, "[blend-timing] prims %zu parts %d pool %s view %d: vote %.2f ms, blend %.2f ms, grow %.2f ms, call %.2f ms\n", nr->n, g_s2_parts, g_blend_run ? "blend" : g_s2_run ? "copy" : "none", have_view, g_blend_t[0], g_blend_t[1], g_blend_t[2], g_blend_t[3]);
     }
+    return 1;
+}
+
+unsigned remaster_stage2_projectile_slots(const remaster_frame_copy *a, const remaster_frame_copy *b,
+                                          const machine_t *live)
+{
+    const unsigned hit = rerun_hit_projectiles(live);
+    unsigned slots = 0;
+    for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
+        const unsigned bit = 1u << slot;
+        if (!(hit & bit)) continue;
+        const rerun_projectile_key key = rerun_projectile_read(live->mem, live->cpu.seg[S_DS], slot);
+        const int in_a = !memcmp(&a->projectiles.key[slot], &key, sizeof key);
+        const int in_b = !memcmp(&b->projectiles.key[slot], &key, sizeof key);
+        /* A close object can lose faces at the near plane even when both
+         * endpoint scenes contain the request. Draw its actual pose. */
+        if ((!in_a && !in_b) || ((a->projectiles.clipped | b->projectiles.clipped) & bit))
+            slots |= bit;
+    }
+    return slots;
+}
+
+int remaster_stage2_add_projectiles(remaster_live *r, const remaster_live *pass, unsigned slots)
+{
+    if (getenv("F117_STAGE2_PROJECTILE_TRACE") && pass && r)
+        fprintf(stderr, "[projectile-frame] primary %d,%d pass %d,%d complete %d prims %zu first slot %u clip %03x\n",
+                r->staged_origin[0], r->staged_origin[1], pass->origin[0], pass->origin[1], pass->frame_complete,
+                pass->frame.n, pass->frame.n ? pass->frame.prim[0].projectile : 0, pass->frame_projectiles.clipped);
+    if (!r || !r->have_staged || !pass || !pass->frame_complete ||
+        memcmp(r->staged_origin, pass->origin, sizeof pass->origin)) return 0;
+    size_t add = 0;
+    unsigned drawn = 0;
+    for (size_t i = 0; i < pass->frame.n; i++) {
+        const unsigned slot = pass->frame.prim[i].projectile;
+        if (slot && (slots & (1u << (slot - 1)))) { drawn |= 1u << (slot - 1); add++; }
+    }
+    if (!add) return 0;
+
+    remaster_frame *f = &r->staged;
+    uint32_t owner[RERUN_PROJECTILE_COUNT] = {0};
+    uint32_t max_serial = 0;
+    for (size_t i = 0; i < f->n; i++) {
+        const remaster_prim *p = &f->prim[i];
+        const uint32_t serial = p->owner >> 12;
+        if (serial != 0xFFFFFu && serial > max_serial) max_serial = serial;
+        if (p->projectile) owner[p->projectile - 1] = serial;
+    }
+    for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
+        if (!(drawn & (1u << slot)) || owner[slot]) continue;
+        if (max_serial == 0xFFFFEu) return 0;   /* the legacy copy can handle a wrapped scene */
+        owner[slot] = ++max_serial;
+    }
+    if (f->n + add > f->cap) {
+        const size_t cap = s2_grow_cap(f->n + add);
+        remaster_prim *prim = realloc(f->prim, cap * sizeof *prim);
+        if (!prim) return 0;
+        f->prim = prim;
+        f->cap = cap;
+    }
+
+    size_t write = 0, insert = SIZE_MAX, hud = f->n;
+    for (size_t i = 0; i < f->n; i++) {
+        if ((long)i == r->staged_hud_at) hud = write;
+        const remaster_prim *p = &f->prim[i];
+        if (p->projectile && (drawn & (1u << (p->projectile - 1)))) {
+            if (insert == SIZE_MAX) insert = write;
+            continue;
+        }
+        f->prim[write++] = *p;
+    }
+    if (hud > write) hud = write;
+    if (insert == SIZE_MAX) insert = hud;
+    memmove(f->prim + insert + add, f->prim + insert, (write - insert) * sizeof *f->prim);
+    size_t at = insert;
+    for (size_t i = 0; i < pass->frame.n; i++) {
+        remaster_prim p = pass->frame.prim[i];
+        if (!p.projectile || !(drawn & (1u << (p.projectile - 1)))) continue;
+        p.owner = (owner[p.projectile - 1] << 12) | (p.owner & 0xFFFu);
+        f->prim[at++] = p;
+    }
+    f->n = write + add;
+    if (r->staged_hud_at >= 0) r->staged_hud_at = (long)(hud + (insert <= hud ? add : 0));
     return 1;
 }
 

@@ -830,12 +830,15 @@ typedef struct {
     int rel_mark;                         /* pipeline: how many steps were queued for release when the picture was planned */
     remaster_live *rl;                    /* pipeline: the scene instance this picture was committed into (its setup and its composite read this one) */
     drawlive_plan plan;
+    uint64_t plan_clock;
+    int late_flash_palette;
     present_frame frame;
     int got;
     int ww, composed;                     /* the wide picture's width the composite is to use; whether the worker composed this picture */
     const uint8_t *fine;                  /* the composed picture (g_rbuf), when composed */
 } present_worker;
 static present_worker g_pws[2];
+static uint64_t g_present_plan_age;
 static present_worker *g_pwc = &g_pws[0];
 #define g_pw (*g_pwc)
 /* The threads and their queues. Legacy (no pipeline): one thread does a picture's setup, picture step and compose. Pipeline: `sthread` does the setup (stage A) of the newest
@@ -879,7 +882,16 @@ static void pw_release_ex(int block)
         if (w->b_released) continue;
         if (block && g_a_new && i == g_pwx.nfifo - 1) break;     /* the picture whose setup was released this iteration: its finish goes out next iteration, so the setups overlap the finishes */
         if (block && !w->a_done && w->a_released) { pev("rel-wait-A-begin"); SDL_WaitSemaphore(g_pwx.sdone); w->a_done = 1; pev("rel-wait-A-end"); }      /* setups finish in the order they were released */
-        if (w->a_done) { w->b_released = 1; g_pwx.bq[g_pwx.bt++ & 7] = g_pwx.fifo[i]; SDL_SignalSemaphore(g_pwx.go); }
+        if (w->a_done) {
+            /* The flash's DAC entry cycles while the picture waits for composition. */
+            if (w->late_flash_palette) {
+                const uint8_t *dac = H.m.scan_valid ? H.m.scan_dac : H.m.dac_display;
+                memcpy(w->frame.dac + 3 * 0x0D, dac + 3 * 0x0D, 3);
+            }
+            w->b_released = 1;
+            g_pwx.bq[g_pwx.bt++ & 7] = g_pwx.fifo[i];
+            SDL_SignalSemaphore(g_pwx.go);
+        }
         break;
     }
 }
@@ -899,7 +911,7 @@ static int present_setup_main(void *u)
         present_worker *w = &g_pws[g_pwx.aq[g_pwx.ah++ & 7]];
         gpu_compose_use_set(w->set);
         w->a_ok = 0;
-        if (pw_a_applies(w)) {
+        if (!w->late_flash_palette && pw_a_applies(w)) {
             const Uint64 a0 = SDL_GetTicksNS();
             pev("A-begin");
             remaster_live_set_palette_thread(w->frame.dac);
@@ -3445,6 +3457,7 @@ int main(int argc, char **argv)
                     g_pw.busy = 0;
                     if (g_pipe) { g_pwx.fifo[0] = g_pwx.fifo[1]; g_pwx.nfifo--; }
                     older = g_pw.plan.older; newer = g_pw.plan.newer; t_shown = g_pw.plan.t_shown;
+                    g_present_plan_age = H.m.cpu.icount >= g_pw.plan_clock ? H.m.cpu.icount - g_pw.plan_clock : 0;
                     got = g_pw.got;
                     if (got) {
                         memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
@@ -3518,6 +3531,7 @@ int main(int argc, char **argv)
                  * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
                 if (early ? early_planned : drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
                     if (early) plan = eplan;
+                    g_pw.late_flash_palette = 0;
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); g_bt[3] += bt1 - bt0; bt0 = bt1; }
                     if (g_remaster && g_rlive && g_scale >= 1) {         /* the wide picture the next composite is to use (it may make a texture: here), and the copies' wider view */
                         int ww = wide_width();
@@ -3661,8 +3675,49 @@ int main(int argc, char **argv)
                         }
                         rerun_forward_view target_view;
                         const int have_view = ok && s2_target_view && drawlive_stage2_view(&g_live, &plan, &target_view);
-                        if (ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t,
-                                                             have_view ? &target_view : NULL)) {
+                        int blended = ok && remaster_live_stage2_blend(g_rlive_copy, g_s2.sc[ka], g_s2.sc[kb], g_s2.pairs[kp], use_t,
+                                                                           have_view ? &target_view : NULL);
+                        static int hit_projectiles = -1;
+                        static remaster_live *projectile_scene;
+                        if (hit_projectiles < 0) {
+                            const char *e = getenv("F117_STAGE2_HIT_PROJECTILES");
+                            hit_projectiles = e && atoi(e) != 0;
+                        }
+                        if (blended && hit_projectiles && have_view && plan.sa >= 0 && plan.sb >= 0) {
+                            const rerun_snap *a = &g_live.step[plan.sa].snap, *b = &g_live.step[plan.sb].snap;
+                            const unsigned slots = remaster_stage2_projectile_slots(g_s2.sc[ka], g_s2.sc[kb], &H.m);
+                            if (slots) {
+                                g_pw.late_flash_palette = getenv("F117_STAGE2_HIT_PALETTE") != NULL;
+                                if (!projectile_scene) projectile_scene = remaster_live_new(960, 720, ~0u, NULL);
+                                const uint64_t start = SDL_GetTicksNS();
+                                const rerun_snap *pose_a = a, *pose_b = b;
+                                /* Use the projectile pose for the clock at which the queued picture will show. */
+                                double pose_t = plan.t + g_live.extra_delay;
+                                if (g_pipe && g_live.ema > 0)
+                                    pose_t += (double)g_present_plan_age / g_live.ema;
+                                const char *phase = getenv("F117_STAGE2_PROJECTILE_PHASE");
+                                if (phase) pose_t += atof(phase);
+                                if (pose_t > 1.0) {
+                                    const drawlive_step *previous, *newest;
+                                    drawlive_steps(&g_live, &previous, &newest);
+                                    if (previous && newest && previous->seq == plan.newer && newest->seq == plan.newer + 1) {
+                                        pose_a = b;
+                                        pose_b = &newest->snap;
+                                        pose_t -= 1.0;
+                                    } else pose_t = 1.0;
+                                }
+                                const int copied = rerun_draw_projectiles(phase ? pose_a : a, phase ? pose_b : b,
+                                                                          phase ? pose_t : plan.t, pose_a, pose_b, pose_t,
+                                                                          slots, projectile_scene);
+                                blended = copied && remaster_stage2_add_projectiles(g_rlive_copy, projectile_scene, slots);
+                                if (getenv("F117_STAGE2_PROJECTILE_TRACE"))
+                                    fprintf(stderr, "[projectile-copy] clock %llu slots %03x copied %d applied %d in %.3f ms pose %.3f age %llu\n",
+                                            (unsigned long long)H.m.cpu.icount, slots, copied, blended,
+                                            (double)(SDL_GetTicksNS() - start) / 1e6, pose_t,
+                                            (unsigned long long)g_present_plan_age);
+                            }
+                        }
+                        if (blended) {
                             g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
                             c_blend = (double)SDL_GetTicksNS() / 1e6 - bl0;
                             plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
@@ -3716,6 +3771,7 @@ int main(int argc, char **argv)
                     }
                     if (g_loop_timing) { bt1 = SDL_GetTicksNS(); frame_copy_ns = bt1 - bt0; g_bt[4] += frame_copy_ns; bt0 = bt1; }
                     g_pw.plan = plan;
+                    g_pw.plan_clock = H.m.cpu.icount;
                     g_pw.frame = fresh;
                     g_pw.rl = g_rlive_copy;
                     g_pw.busy = 1;
