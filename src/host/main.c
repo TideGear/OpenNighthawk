@@ -3721,8 +3721,12 @@ int main(int argc, char **argv)
                             g_s2.blend_ms += (double)SDL_GetTicksNS() / 1e6 - bl0; g_s2.blend_n++; g_s2.blended++;
                             c_blend = (double)SDL_GetTicksNS() / 1e6 - bl0;
                             plan.stage2 = 1; plan.rerun_ready = 0; plan.rerun_inline = 0;
-                        } else { S2EV("no blend: ok %d ka %d kb %d kp %d older %llu newer %llu job %d finished %u\n", ok, ka, kb, kp, (unsigned long long)plan.older, (unsigned long long)plan.newer, g_s2.job, g_s2.finished); if (g_s2.job) { g_coll = g_s2.scene; while (!drawlive_scene_step(&g_live, ~0ull)) {} g_coll = NULL; s2_job_done(); }      /* the legacy copy needs the copy machine free */
-                            drawlive_prepare_rerun(&g_live, &plan); }      /* no scene yet: the legacy copy for this picture (so the worker composes it: never on the main thread beside the setup thread) */
+                        } else { S2EV("no blend: ok %d ka %d kb %d kp %d older %llu newer %llu job %d finished %u\n", ok, ka, kb, kp, (unsigned long long)plan.older, (unsigned long long)plan.newer, g_s2.job, g_s2.finished); static int start_hold = -1; if (start_hold < 0) { const char *e = getenv("F117_STAGE2_START_HOLD"); start_hold = e && atoi(e) != 0; }
+                            if (start_hold && plan.kind == PLAN_BETWEEN) {   /* no scene pair yet: show the nearer step's own finished picture and let the copy job go on in its slices, instead of finishing it here and taking the legacy copy */
+                                plan.kind = plan.t >= 0.5 ? PLAN_NEWER : PLAN_OLDER; plan.rerun_ready = 0; plan.rerun_inline = 0;
+                            } else {
+                            if (g_s2.job) { g_coll = g_s2.scene; while (!drawlive_scene_step(&g_live, ~0ull)) {} g_coll = NULL; s2_job_done(); }      /* the legacy copy needs the copy machine free */
+                            drawlive_prepare_rerun(&g_live, &plan); } }      /* no scene yet: the legacy copy for this picture (so the worker composes it: never on the main thread beside the setup thread) */
                         g_ph[0] = c_slice; g_ph[1] = c_done; g_ph[2] = c_begin; g_ph[3] = c_pair; g_ph[4] = c_blend; g_ph[5] = (double)SDL_GetTicksNS() / 1e6 - br0;
                         {   /* F117_STAGE2_SLOW=MS (diagnostic): the pictures whose Stage 2 branch took longer than that, with its parts */
                             static double slow_ms = -2; static unsigned slow_n;
