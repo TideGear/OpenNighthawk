@@ -328,6 +328,7 @@ static int wide_width(void)
 static int wide_prepare(int wide_w)
 {
     if (g_wtex && g_wpix && g_ww == wide_w) return 1;
+    const uint64_t wp0 = SDL_GetTicksNS(); const int wp_old = g_ww;
     if (g_wtex) SDL_DestroyTexture(g_wtex);
     free(g_wpix);
     g_wtex = NULL; g_wpix = NULL;
@@ -349,6 +350,7 @@ static int wide_prepare(int wide_w)
         }
         if (!g_gtex[0] || !g_gtex[1]) { for (int k = 0; k < 2; k++) if (g_gtex[k]) { SDL_DestroyTexture(g_gtex[k]); g_gtex[k] = NULL; } }
     }
+    if (getenv("F117_SLOW_FRAME_TRACE")) fprintf(stderr, "[wide-prepare] width %d -> %d rebuilt in %.2f ms\n", wp_old, wide_w, (double)(SDL_GetTicksNS() - wp0) / 1e6);
     return g_wtex && g_wpix;
 }
 
@@ -3691,11 +3693,11 @@ int main(int argc, char **argv)
                                 if (!projectile_scene) projectile_scene = remaster_live_new(960, 720, ~0u, NULL);
                                 const uint64_t start = SDL_GetTicksNS();
                                 const rerun_snap *pose_a = a, *pose_b = b;
-                                /* Use the projectile pose for the clock at which the queued picture will show. */
-                                double pose_t = plan.t + g_live.extra_delay;
-                                if (g_pipe && g_live.ema > 0)
-                                    pose_t += (double)g_present_plan_age / g_live.ema;
-                                const char *phase = getenv("F117_STAGE2_PROJECTILE_PHASE");
+                                /* The projectile stands at the same moment as the rest of this picture's scene (plan.t on the
+                                 * smoothed playback clock), so it moves with the world. A pose on the real-time clock ran ahead of
+                                 * the scene and was clamped at the newest step: the owner saw it jump and stall (25 Nov 23:27). */
+                                double pose_t = plan.t;
+                                const char *phase = getenv("F117_STAGE2_PROJECTILE_PHASE");   /* diagnostic offset in steps */
                                 if (phase) pose_t += atof(phase);
                                 if (pose_t > 1.0) {
                                     const drawlive_step *previous, *newest;

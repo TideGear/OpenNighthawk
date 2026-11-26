@@ -292,10 +292,70 @@ unsigned rerun_hit_projectiles(const machine_t *live)
     return slots;
 }
 
+static int g_wide_pct;   /* defined below (rerun_set_wide) */
+/* A projectile's position is kept in whole map units (the record's +0/+2 x and y; BB0D receives them shifted left by 5 into 32-bit scene
+ * units). A missile one to four map units from the eye, interpolated between two steps and rounded to a whole map unit, snapped by up to
+ * half a unit against a camera that moves smoothly in scene units: the owner's jittery missile (25 Nov 23:27). The restricted copy keeps
+ * each reposed slot's exact position in scene units here and hands it to BB0D in place of the rounded one. */
+static struct { int valid; int32_t x, y; int16_t z; } g_proj_exact[RERUN_PROJECTILE_COUNT];
 static int projectile_copy_exec(void *user, machine_t *m, unsigned hook)
 {
     if (hook < 5) return remaster_live_exec(user, m, hook);
     cpu_t *c = &m->cpu;
+    if (c->ip == 0xBB0D) {
+        /* The projectile loop's model call (9DDE, returning to 9DE1) with SI the slot's record offset: words at SP+4/6 the 32-bit x,
+         * SP+8/A the 32-bit y, SP+C the height (matched.c, projectile loop and VGAME BB0D). Give it the exact interpolated position. */
+        const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
+        const unsigned slot = c->r[R_SI] / 0x1C;
+        if (rd16(m->mem, ss, sp) == 0x9DE1 && c->r[R_SI] % 0x1C == 0 && slot < RERUN_PROJECTILE_COUNT && g_proj_exact[slot].valid) {
+            wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)g_proj_exact[slot].x);
+            wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)((uint32_t)g_proj_exact[slot].x >> 16));
+            wr16(m->mem, ss, (uint16_t)(sp + 8), (uint16_t)g_proj_exact[slot].y);
+            wr16(m->mem, ss, (uint16_t)(sp + 10), (uint16_t)((uint32_t)g_proj_exact[slot].y >> 16));
+            wr16(m->mem, ss, (uint16_t)(sp + 12), (uint16_t)g_proj_exact[slot].z);
+        }
+        return 0;
+    }
+    {   /* The projectile loop's placement test (B5DC, called from 9D86 and returning to 9D89) decides whether a slot is on
+         * screen ([4A10] is FFFFh when not) and whether it is a model or a dot ([DEBE] above -32). The scene copies make
+         * that call with the view matrix the Remastered view uses (wide_air_exec: every row divided by the reach,
+         * F117_WIDE_AIR_REACH, default 200; the x row also by three times the width percentage), so a missile in the wide
+         * margins, or at up to twice the game's distance, is drawn as a model there. This copy makes the same call with
+         * the same matrix, or it would drop a missile the step scenes drew and the picture would switch between the
+         * two (owner, 25 Nov 23:27). The matrix is the game's own again when the call returns. */
+        static int16_t saved[9];
+        static int have_saved;
+        const uint16_t ds = c->seg[S_DS];
+        if (c->ip == 0xB5DC && rd16(m->mem, c->seg[S_SS], c->r[R_SP]) == 0x9D89) {
+            static int reach = -1;
+            if (reach < 0) { const char *e = getenv("F117_WIDE_AIR_REACH"); reach = e ? atoi(e) : 200; if (reach < 100) reach = 100; }
+            static int env = -2;
+            if (env == -2) { const char *e = getenv("F117_WIDE_VIEW"); env = e ? atoi(e) : -1; }
+            const int pct = env >= 100 ? env : g_wide_pct;
+            if (pct > 100 && !getenv("F117_WIDE_NO_AIR")) {
+                for (int col = 0; col < 3; col++)
+                    for (int row = 0; row < 3; row++) {
+                        const uint16_t at = (uint16_t)(0xB082 + 6 * col + 2 * row);
+                        const int64_t w = (int16_t)rd16(m->mem, ds, at);
+                        saved[3 * col + row] = (int16_t)w;
+                        const int64_t div = (int64_t)reach * (row == 0 ? pct * 3 : 100);   /* in 1/10000, as wide_air_exec */
+                        wr16(m->mem, ds, at, (uint16_t)(int16_t)(w * 10000 / div));
+                    }
+                have_saved = 1;
+            }
+            return 0;
+        }
+        if (c->ip == 0x9D89 && have_saved) {
+            for (int col = 0; col < 3; col++)
+                for (int row = 0; row < 3; row++)
+                    wr16(m->mem, ds, (uint16_t)(0xB082 + 6 * col + 2 * row), (uint16_t)saved[3 * col + row]);
+            have_saved = 0;
+            if (getenv("F117_STAGE2_PROJECTILE_TRACE"))
+                fprintf(stderr, "[projectile-choice] slot record %04X screen x %d [DEBE] %d (model when on screen and above -32)\n",
+                        c->r[R_SI], (int16_t)rd16(m->mem, ds, 0x4A10), (int16_t)rd16(m->mem, ds, 0xDEBE));
+            return 0;
+        }
+    }
     const uint16_t ret = rd16(m->mem, c->seg[S_SS], c->r[R_SP]);
     if (c->ip == 0x04C7 && ret == 0x0410) {
         /* Skip the scene dispatch's timer wait in this draw-only copy. */
@@ -334,6 +394,20 @@ int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
         nudge(mem, ds, a->mem, b->mem, b->m.cpu.seg[S_DS], t > 1 ? 1 : t);
     for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
         const uint16_t at = (uint16_t)(0x3C3A + 0x1C * slot);
+        g_proj_exact[slot].valid = 0;
+        if ((slots & (1u << slot)) && pose_b && pose_b->valid) {
+            const uint16_t ads = pose_a->m.cpu.seg[S_DS], bds = pose_b->m.cpu.seg[S_DS];
+            /* the same condition as nudge_projectile: alive in both steps with the same type */
+            if (rd16(pose_a->mem, ads, (uint16_t)(at + 0x0E)) && rd16(pose_b->mem, bds, (uint16_t)(at + 0x0E)) &&
+                rd16(pose_a->mem, ads, (uint16_t)(at + 0x10)) == rd16(pose_b->mem, bds, (uint16_t)(at + 0x10))) {
+                const double tt = pose_t < 0 ? 0 : pose_t > 1 ? 1 : pose_t;
+                const uint16_t xa = rd16(pose_a->mem, ads, at), ya = rd16(pose_a->mem, ads, (uint16_t)(at + 2)), za = rd16(pose_a->mem, ads, (uint16_t)(at + 4));
+                g_proj_exact[slot].x = (int32_t)((uint32_t)xa << 5) + lerp_i((int32_t)sdiff(xa, rd16(pose_b->mem, bds, at)) * 32, tt);
+                g_proj_exact[slot].y = (int32_t)((uint32_t)ya << 5) + lerp_i((int32_t)sdiff(ya, rd16(pose_b->mem, bds, (uint16_t)(at + 2))) * 32, tt);
+                g_proj_exact[slot].z = (int16_t)(za + lerp_i(sdiff(za, rd16(pose_b->mem, bds, (uint16_t)(at + 4))), tt));
+                g_proj_exact[slot].valid = 1;
+            }
+        }
         if (slots & (1u << slot)) {
             const uint16_t ads = pose_a->m.cpu.seg[S_DS];
             for (unsigned word = 0; word < 0x1C; word += 2) {
@@ -342,6 +416,16 @@ int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
             }
             if (pose_b && pose_b->valid)
                 nudge_projectile(mem, ds, at, pose_a->mem, ads, pose_b->mem, pose_b->m.cpu.seg[S_DS], pose_t);
+            if (getenv("F117_STAGE2_PROJECTILE_TRACE")) {
+                const uint16_t bds = pose_b && pose_b->valid ? pose_b->m.cpu.seg[S_DS] : 0;
+                fprintf(stderr, "[projectile-pose] slot %u t %.3f a %d,%d,%d life %u b %d,%d,%d life %u -> %d,%d,%d | eye a %u,%u b %u,%u\n", slot, pose_t,
+                        (int16_t)rd16(pose_a->mem, ads, at), (int16_t)rd16(pose_a->mem, ads, (uint16_t)(at + 2)), (int16_t)rd16(pose_a->mem, ads, (uint16_t)(at + 4)),
+                        rd16(pose_a->mem, ads, (uint16_t)(at + 0x0E)),
+                        bds ? (int16_t)rd16(pose_b->mem, bds, at) : 0, bds ? (int16_t)rd16(pose_b->mem, bds, (uint16_t)(at + 2)) : 0,
+                        bds ? (int16_t)rd16(pose_b->mem, bds, (uint16_t)(at + 4)) : 0, bds ? rd16(pose_b->mem, bds, (uint16_t)(at + 0x0E)) : 0,
+                        (int16_t)rd16(mem, ds, at), (int16_t)rd16(mem, ds, (uint16_t)(at + 2)), (int16_t)rd16(mem, ds, (uint16_t)(at + 4)),
+                        rd16(pose_a->mem, ads, 0xC0D0), rd16(pose_a->mem, ads, 0xC0DE), bds ? rd16(pose_b->mem, bds, 0xC0D0) : 0, bds ? rd16(pose_b->mem, bds, 0xC0DE) : 0);
+            }
         } else wr16(mem, ds, (uint16_t)(at + 0x0E), 0);
     }
     for (unsigned slot = 0; slot < 16; slot++)
@@ -358,6 +442,11 @@ int rerun_draw_projectiles(const rerun_snap *a, const rerun_snap *b, double t,
     copy.exec_hook[copy.exec_hook_n++].ip = 0x04E6;
     copy.exec_hook[copy.exec_hook_n].cs = cs;
     copy.exec_hook[copy.exec_hook_n++].ip = 0x04C7;
+    copy.exec_hook[copy.exec_hook_n].cs = cs;
+    copy.exec_hook[copy.exec_hook_n++].ip = 0xB5DC;
+    copy.exec_hook[copy.exec_hook_n].cs = cs;
+    copy.exec_hook[copy.exec_hook_n++].ip = 0x9D89;
+    if (copy.exec_hook_n < EXEC_HOOKS_MAX) { copy.exec_hook[copy.exec_hook_n].cs = cs; copy.exec_hook[copy.exec_hook_n++].ip = 0xBB0D; }
     copy.hooks.exec = projectile_copy_exec;
     copy.hooks.user = scene;
     remaster_live_copy_begin(scene);
@@ -1035,7 +1124,7 @@ static void far_choose_row(const choose_ctx *cc, const choose_ring *rg, int64_t 
                  * of the late flight, 188 lines from shrink 4 to 2). F117_FAR_FADE=0: the drawn level's depth (the first version); 1: the own ring's depth (the
                  * game's fade carried on past its reach); 2: the own ring's depth held at the game's reach (8191), the fade the game gives at the edge of its drawing. */
                 static int fade = -1;
-                if (fade < 0) { const char *e = getenv("F117_FAR_FADE"); fade = e ? atoi(e) : 0; }   /* 0 until the owner has seen the pictures */
+                if (fade < 0) { const char *e = getenv("F117_FAR_FADE"); fade = e ? atoi(e) : 1; }   /* 1 (true depth) by default: owner decision 25 Nov 22:15 after seeing the mountains flicker and the lines pop; 0 is the old behaviour, 2 holds the fade at the game reach */
                 int16_t zf = zh;
                 if (fade && s) {
                     int64_t own = (int64_t)(zh < 0 ? 0 : zh) << s;

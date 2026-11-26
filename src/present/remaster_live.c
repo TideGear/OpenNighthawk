@@ -2045,6 +2045,23 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
         r->requests++;
         r->model = peek16(m, ss, (uint16_t)(sp + 4));
         r->bank = peek16(m, m->cpu.seg[S_DS], 0x8590);
+        {   /* F117_MODEL_BANK_DUMP=MODEL,PATH (diagnostic): the first request for that model writes its 64 KB model bank segment to PATH */
+            static int dump_model = -2; static char dump_path[512];
+            if (dump_model == -2) {
+                const char *e = getenv("F117_MODEL_BANK_DUMP"); dump_model = -1;
+                const char *comma = e ? strchr(e, ',') : NULL;
+                if (comma) { dump_model = atoi(e); snprintf(dump_path, sizeof dump_path, "%s", comma + 1); }
+            }
+            if (dump_model >= 0 && (r->model & 0x7FFF) == (unsigned)dump_model) {
+                FILE *df = fopen(dump_path, "wb");
+                if (df) {
+                    for (uint32_t a = 0; a < 65536; a++) fputc(m->mem[(((uint32_t)r->bank << 4) + a) & (MEM_SIZE - 1)], df);
+                    fclose(df);
+                    fprintf(stderr, "[bank-dump] model word %04X bank segment %04X written to %s\n", r->model, r->bank, dump_path);
+                }
+                dump_model = -1;
+            }
+        }
         r->origin[0] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8602);
         r->origin[1] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x8604);
         r->window[0] = (int16_t)peek16(m, m->cpu.seg[S_DS], 0x85FA);
@@ -3517,18 +3534,16 @@ int remaster_live_stage2_blend(remaster_live *r, const remaster_frame_copy *a, c
 unsigned remaster_stage2_projectile_slots(const remaster_frame_copy *a, const remaster_frame_copy *b,
                                           const machine_t *live)
 {
+    /* Every projectile either step scene drew as a model (it was close: the
+     * far ones are dots and blend as dots), and every one inside the
+     * post-hit window (VGAME 6F1B keeps it flying for 2*S ticks), is redrawn
+     * at the picture's own time for as long as that holds, so it never
+     * switches between the blended pair and a reposed copy. */
     const unsigned hit = rerun_hit_projectiles(live);
     unsigned slots = 0;
     for (unsigned slot = 0; slot < RERUN_PROJECTILE_COUNT; slot++) {
         const unsigned bit = 1u << slot;
-        if (!(hit & bit)) continue;
-        const rerun_projectile_key key = rerun_projectile_read(live->mem, live->cpu.seg[S_DS], slot);
-        const int in_a = !memcmp(&a->projectiles.key[slot], &key, sizeof key);
-        const int in_b = !memcmp(&b->projectiles.key[slot], &key, sizeof key);
-        /* A close object can lose faces at the near plane even when both
-         * endpoint scenes contain the request. Draw its actual pose. */
-        if ((!in_a && !in_b) || ((a->projectiles.clipped | b->projectiles.clipped) & bit))
-            slots |= bit;
+        if ((hit & bit) || a->projectiles.key[slot].ring || b->projectiles.key[slot].ring) slots |= bit;
     }
     return slots;
 }
