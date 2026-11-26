@@ -10,9 +10,9 @@ Make Remastered sustain **3840 × 2160 at 60 fps with measurable headroom**, inc
 
 Start at the current stopping point in [handoff.md](../handoff.md). Keep active tasks, settings and evidence there. Reconcile dated notes with current code, tools and owner decisions.
 
-**Established baseline.** The full DOS loop and Phase 1 translation are established. Keep their parity gates as regression checks. Phase 2 closure and Phase 3 acceptance remain open. In the current renderer milestone, R49 is owner-confirmed and R50 is replay-verified. The scanner self-test passes and the combined gate is still due.
+**Established baseline.** The full DOS loop and Phase 1 translation are established. Keep their parity gates as regression checks. Phase 2 closure and Phase 3 acceptance remain open. In the current renderer milestone, R49 is owner-confirmed and R50 is replay-verified. The 25 Nov combined gate failed only the scanner: the 2.263 G HUD tape, the 14.1 G flash (opt-in off in the scan) and an unclassified 6.6 G Vietnam horizon shift.
 
-**Open milestone work.** Close the hit flash with depth and scanner proof, capture live takeoffs and banks, and pass the combined gate. Verify the three daylight fade options in the app and bring the comparison to the owner. Settle the copy-thread A/B, then run visible 4K/60 acceptance and obtain picture review. Refresh this summary when the handoff changes.
+**Order of work.** Measure first: one visible 4K/60 run of the late flight alone. If it misses, optimize the traced bottleneck (copy thread, restricted-copy cost) before the full acceptance suite; run the suite only once the late flight holds. Between timing runs: classify the three scanner failures (bisect 6.6 G against 6295ab4), depth proof and live cost of the flash, live takeoff and bank captures, a second combined gate, the fade comparison for the owner, and the copy-thread A/B. Then picture review.
 
 ## Whole-project scope
 
