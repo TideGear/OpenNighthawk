@@ -6,13 +6,13 @@ Preserve DOS F-117A Nighthawk Stealth Fighter 2.0 in a lockstep-verified Windows
 
 ## Current priority
 
-Make Remastered sustain **3840 × 2160 at 60 fps with measurable headroom**, including under light load, alongside visual correctness work such as the hit flash. Prove 60 Hz first. Measure higher rates separately as hardware allows and follow the owner's current targets.
+Make Remastered sustain **3840 × 2160 at 60 fps with measurable headroom**, including under light load, alongside visual correctness work. Prove 60 Hz first.
 
 Start at the current stopping point in [handoff.md](../handoff.md). Keep active tasks, settings and evidence there. Reconcile dated notes with current code, tools and owner decisions.
 
-**Established baseline.** The full DOS loop and Phase 1 translation are established. Keep their parity gates as regression checks. Phase 2 closure and Phase 3 acceptance remain open. In the current renderer milestone, R49 is owner-confirmed and R50 is replay-verified. The 25 Nov combined gate failed only the scanner: the 2.263 G HUD tape, the 14.1 G flash (opt-in off in the scan) and an unclassified 6.6 G Vietnam horizon shift.
+**Established baseline.** The full DOS loop and Phase 1 translation are established. Keep their parity gates as regression checks. Phase 2 closure and Phase 3 acceptance remain open. R49 is owner-confirmed; R50 is replay-verified. The 25 Nov combined gate failed only the scanner: the 2.263 G HUD tape, the 14.1 G flash (opt-in off in the scan) and an unclassified 6.6 G Vietnam horizon shift.
 
-**Order of work.** Measure first: one visible 4K/60 run of the late flight alone. If it misses, optimize the traced bottleneck (copy thread, restricted-copy cost) before the full acceptance suite; run the suite only once the late flight holds. Between timing runs: classify the three scanner failures (bisect 6.6 G against 6295ab4), depth proof and live cost of the flash, live takeoff and bank captures, a second combined gate, the fade comparison for the owner, and the copy-thread A/B. Then picture review.
+**Order of work.** Measure the late flight alone and visible with the full fast path, including `F117_PREHUD=1` (try_fastpath menus 4-5). If it misses, cut the traced cost in the native renderer's order (gpu-compositor.md, 18 Nov): the 2D layer once per step, scene vertex buffers blended on the GPU, then native far scenery (copy as oracle). Run the full suite only once the late flight holds. Between timing runs: the scanner failures (bisect 6.6 G against 6295ab4), flash depth proof and live cost, live takeoff and bank captures, a second combined gate, and the copy-thread A/B. Owner to choose: far fade (R47/R51), start-up hold. Then picture review.
 
 ## Whole-project scope
 
