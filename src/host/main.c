@@ -3457,6 +3457,24 @@ int main(int argc, char **argv)
                         }
                     }
                 }
+                {   /* F117_STAGE2_EARLY_SLICE=1 (opt-in): Stage 2's running scene copy gets a slice while the worker still draws the previous picture, not after the wait for it.
+                     * At the missile hit the copy (about 6 ms) and the worker (about 9 ms) otherwise run back to back, about 16 ms a picture; the slice steps the copy into its own
+                     * scene instance, which the worker never reads (the commit comes after the wait), under the palette guard the early copy of the default path uses.
+                     * F117_STAGE2_EARLY_MS (default 6) bounds it. */
+                    static int early_slice = -1; static double early_ms = 6.0;
+                    if (early_slice < 0) { const char *e = getenv("F117_STAGE2_EARLY_SLICE"); early_slice = e && atoi(e) != 0; const char *m = getenv("F117_STAGE2_EARLY_MS"); if (m) early_ms = atof(m); }
+                    if (early_slice && g_pw.busy && g_s2.job && g_s2.sc[0]) {
+                        const double es0 = (double)SDL_GetTicksNS() / 1e6;
+                        remaster_live_ignore_palette_override(1);
+                        g_coll = g_s2.scene;
+                        const int edone = drawlive_scene_step(&g_live, (uint64_t)(early_ms * 1e6));
+                        g_coll = NULL;
+                        remaster_live_ignore_palette_override(0);
+                        if (edone) s2_job_done();
+                        static double e_sum; static unsigned e_n, e_done; e_sum += (double)SDL_GetTicksNS() / 1e6 - es0; e_n++; e_done += edone ? 1u : 0u;
+                        if (getenv("F117_STAGE2_LOG") && e_n % 300 == 0) fprintf(stderr, "[stage2-early] %u early slices, %.2f ms each, %u finished a copy\n", e_n, e_sum / e_n, e_done);
+                    }
+                }
                 /* the picture planned a frame ago, drawn meanwhile by the worker */
                 g_fine = NULL;
                 if (g_pw.busy) {
