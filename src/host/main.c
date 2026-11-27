@@ -403,6 +403,8 @@ static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const u
     const int tex = g_gpu_present && g_gtex[0] && g_gtex[1] && gpu_tex_mode() != 0 && !getenv("F117_GPU_COMPOSE_CHECK");
     const int both = tex && gpu_tex_mode() == 2;                           /* texture and readback: hash, shots, CRT filters */
     const int check = g_gpu_present && getenv("F117_GPU_PRESENT_CHECK") && g_gtex[0];
+    if (src == g_live.shown_hi && tag == g_live.shown_tag) gpu_compose_set_rows(g_gpu, g_live.shown_key, 320 * g_scale, g_live.shown_y0, g_live.shown_y1);   /* step A: the rows the HUD changed */
+    else gpu_compose_set_rows(g_gpu, 0, 0, 0, 0);
     const int ok = gpu_compose_finish(g_gpu, src, tag, dac, tex && !both ? NULL : wide_out);
     if (ok && (tex || (check && wide_out))) g_gpu_tex_fresh = 1;
     if (ok && check && wide_out) {                                           /* the texture against the readback buffer, every 60th picture */

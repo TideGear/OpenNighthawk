@@ -194,7 +194,8 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->list);
     drawlist_init(&r->pending_start);
     drawlist_init(&r->pending_prehud);
-    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
+    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }
+    { const char *e = getenv("F117_STEPA"); r->stepa = e && atoi(e) != 0; if (r->stepa) r->prehud_on = 1; r->stepa_check = getenv("F117_STEPA_CHECK") != NULL; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
     r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
 }
@@ -334,8 +335,118 @@ static const uint8_t *draw_recs_ex(drawlive *r, const drawlive_step *skel, const
 static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec) { return draw_recs_ex(r, skel, rec, nrec, 0); }
 
 /* The in-between picture's HUD pass only, on the step's replay as it stood when the pass began (F117_PREHUD): the records before the HUD are the step's own, whose pixels outside the HUD the scene or the static cockpit decide. */
+/* The coarse rows [*y0, *y1) where page a differs from page b in its bytes, stroke flags, fine pixels or tags (exact: the fine rows are compared), widened by one row each way; empty (0, 0) when none */
+static void changed_rows(const drawlist_page *a, const drawlist_page *b, int *y0, int *y1)
+{
+    int lo = 200, hi = -1;
+    for (int y = 0; y < 200; y++) {
+        const size_t fr = a->hi && b->hi && a->n == b->n ? (size_t)320 * a->n * a->n : 0, fo = (size_t)y * fr;   /* the row's n fine rows, contiguous */
+        if (memcmp(a->b + y * 320, b->b + y * 320, 320) || memcmp(a->strokes + y * 40, b->strokes + y * 40, 40) ||
+            memcmp(a->hud_strokes + y * 40, b->hud_strokes + y * 40, 40) ||
+            (fr && memcmp(a->hi + fo, b->hi + fo, fr)) || (fr && a->tag && b->tag && memcmp(a->tag + fo, b->tag + fo, fr))) { if (lo > y) lo = y; hi = y; }
+    }
+    if (hi < 0) { *y0 = *y1 = 0; return; }
+    *y0 = lo > 0 ? lo - 1 : 0; *y1 = hi + 2 < 200 ? hi + 2 : 200;
+}
+
+static void join_rows(int *y0, int *y1, int a0, int a1)
+{
+    if (a1 <= a0) return;
+    if (*y1 <= *y0) { *y0 = a0; *y1 = a1; return; }
+    if (a0 < *y0) *y0 = a0;
+    if (a1 > *y1) *y1 = a1;
+}
+
+/* Step A: the HUD records on the step's pre-HUD snapshot, touching only the rows the last picture changed and this one changes.
+ * The changed rows are found by comparing with the snapshot, fine planes included; F117_STEPA_CHECK holds every picture to the full path. */
+static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec)
+{
+    int from = -1;
+    for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; }
+    if (from < 0) return NULL;
+    static double t_restore, t_feed, t_diff, t_inter; const double q0 = probe_ms();
+    const uint64_t key = skel->gen;
+    int rows_restored = 0;
+    if (r->sa_key_in == key && drawlist_copy_rows(&r->scratch, &skel->prehud, r->sa_y0, r->sa_y1)) {
+        for (int k = 0; k < DRAWLIST_PAGES; k++) rows_restored += r->sa_y1[k] > r->sa_y0[k] ? r->sa_y1[k] - r->sa_y0[k] : 0;
+    } else {
+        drawlist_copy(&r->scratch, &skel->prehud);
+        r->sa_full++;
+        rows_restored = 200 * r->scratch.npages;
+    }
+    memcpy(r->scratch_hr, skel->prehud_hires, sizeof *r->scratch_hr);
+    const double q1 = probe_ms();
+    for (int i = from; i < nrec; i++) feed(&r->scratch, r->scratch_hr, rec[i].kind, rec[i].v, rec[i].n);
+    const double q2 = probe_ms();
+    int ok = r->scratch.npages == skel->prehud.npages;
+    for (int k = 0; k < DRAWLIST_PAGES; k++) {
+        r->sa_y0[k] = 0; r->sa_y1[k] = 200;
+        if (ok && k < r->scratch.npages) changed_rows(&r->scratch.page[k], &skel->prehud.page[k], &r->sa_y0[k], &r->sa_y1[k]);
+    }
+    const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000), *base = drawlist_get(&skel->prehud, 0xA000);
+    if (!ok || !disp || disp->size < 64000 || !base || !disp->hi) return NULL;
+    r->sa_key = key;
+    const double q3 = probe_ms();
+    const int k_disp = (int)(disp - r->scratch.page);
+    /* inter_hi: the guarded picture. Outside the rows this picture and the last one changed it already holds the guarded base (same key). */
+    int iy0 = r->sa_y0[k_disp], iy1 = r->sa_y1[k_disp];
+    const int full = r->sa_ikey_in != key;
+    if (full) { iy0 = 0; iy1 = 200; }
+    else join_rows(&iy0, &iy1, r->sa_iy0, r->sa_iy1);
+    if (iy1 > iy0) { if (iy0 > 0) iy0--; if (iy1 < 200) iy1++; }   /* the guard reads a row's neighbours */
+    const int n = r->scale;
+    const size_t W = (size_t)320 * n;
+    uint8_t *itag = r->inter_tag && disp->tag ? r->inter_tag : NULL;
+    if (iy1 > iy0) {
+        const size_t off = (size_t)iy0 * n * W, len = (size_t)(iy1 - iy0) * n * W;
+        memcpy(r->inter_hi + off, disp->hi + off, len);
+        if (itag) memcpy(itag + off, disp->tag + off, len);
+        uint64_t flat = 0, agree = 0;
+        hires_guard_masked_tag_rows(disp->b, r->inter_hi, n, disp->strokes, &flat, &agree, itag, iy0, iy1);
+    }
+    r->sa_iy0 = r->sa_y0[k_disp]; r->sa_iy1 = r->sa_y1[k_disp];
+    r->sa_ikey = itag || !r->inter_tag ? key : 0;          /* a tag plane not kept in step: next picture copies all */
+    r->shown_key = full ? 0 : key;
+    {   /* the fine rows the shown picture may differ from the step's guarded base in, for the upload (gpu_compose_set_rows) */
+        int y0 = r->sa_y0[k_disp], y1 = r->sa_y1[k_disp];
+        if (y1 > y0) { if (y0 > 0) y0--; if (y1 < 200) y1++; }
+        r->shown_y0 = y0 * n; r->shown_y1 = y1 * n;
+    }
+    if (full) r->shown_key = 0;
+    { const double q4 = probe_ms(); t_restore += q1 - q0; t_feed += q2 - q1; t_diff += q3 - q2; t_inter += q4 - q3; }
+    r->sa_pictures++; r->sa_rows += (uint64_t)rows_restored;
+    if (r->stepa_check) {   /* the full path's picture, pixel for pixel */
+        static drawlist chk; static hires *chr; static uint8_t *chi; static int init;
+        if (!init) { drawlist_init(&chk); chr = (hires *)malloc(sizeof *chr); chi = (uint8_t *)malloc(W * 200 * n); init = 1; }
+        drawlist_copy(&chk, &skel->prehud);
+        memcpy(chr, skel->prehud_hires, sizeof *chr);
+        for (int i = from; i < nrec; i++) feed(&chk, chr, rec[i].kind, rec[i].v, rec[i].n);
+        const drawlist_page *cd = drawlist_get(&chk, 0xA000);
+        r->sa_checked++;
+        if (cd && chi) {
+            memcpy(chi, cd->hi, W * 200 * n);
+            uint64_t flat = 0, agree = 0;
+            hires_guard_masked_tag(cd->b, chi, n, cd->strokes, &flat, &agree, NULL);
+            size_t bad = 0, first = (size_t)-1;
+            for (size_t q = 0; q < W * 200 * n; q++) if (chi[q] != r->inter_hi[q]) { if (first == (size_t)-1) first = q; bad++; }
+            if (memcmp(cd->b, disp->b, 64000)) bad++;
+            if (bad) { r->sa_mismatch++; fprintf(stderr, "[stepa-check] MISMATCH picture %llu: %zu fine pixels differ, first at row %zu (band %d-%d)\n", (unsigned long long)r->sa_checked, bad, first == (size_t)-1 ? 0 : first / W, r->sa_iy0 * n, r->sa_iy1 * n); }
+        }
+    }
+    if (r->sa_pictures % 300 == 0) fprintf(stderr, "[stepa-ms] per picture: restore %.3f, HUD records %.3f, row compare %.3f, picture copy and guard %.3f\n",
+        t_restore / r->sa_pictures, t_feed / r->sa_pictures, t_diff / r->sa_pictures, t_inter / r->sa_pictures);
+    if (r->sa_pictures % 300 == 0) fprintf(stderr, "[stepa] %llu pictures, %.1f coarse rows restored each (all pages), %llu full copies, shown band %d-%d of %d rows; checked %llu, mismatched %llu\n",
+        (unsigned long long)r->sa_pictures, (double)r->sa_rows / r->sa_pictures, (unsigned long long)r->sa_full, r->shown_y0, r->shown_y1, 200 * n, (unsigned long long)r->sa_checked, (unsigned long long)r->sa_mismatch);
+    return disp->b;
+}
+
 static const uint8_t *draw_list_hud(drawlive *r, const drawlive_step *skel)
 {
+    if (r->stepa && r->scale && r->inter_hi && skel->have_prehud) {
+        const uint8_t *p = draw_hud_stepa(r, skel, r->ilist.rec, r->ilist.n);
+        if (p) return p;
+        r->sa_key = r->sa_ikey = 0; r->shown_key = 0;
+    }
     return draw_recs_ex(r, skel, r->ilist.rec, r->ilist.n, r->prehud_on && skel->have_prehud);
 }
 
@@ -560,6 +671,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         swap_lists(&s->prehud, &r->pending_prehud);
         hires *oh = s->prehud_hires; s->prehud_hires = r->pending_prehud_hires; r->pending_prehud_hires = oh;
         s->have_prehud = r->pending_prehud_have;
+        s->gen = ++r->gen_next;
     }
     const double c1 = probe_ms();
     memcpy(s->picture, disp->b, 64000);
@@ -875,6 +987,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
 {
     r->shown_hi = r->shown_tag = NULL;
     r->shown_copy = 0;
+    r->sa_key_in = r->sa_key; r->sa_ikey_in = r->sa_ikey; r->sa_key = r->sa_ikey = 0; r->shown_key = 0;
     if (plan->kind == PLAN_NONE) return 0;
     r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {

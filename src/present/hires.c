@@ -835,9 +835,17 @@ int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_
 int hires_guard_masked_tag(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
                            uint64_t *flat, uint64_t *agree, uint8_t *tag)
 {
+    return hires_guard_masked_tag_rows(coarse, fine, n, strokes, flat, agree, tag, 0, 200);
+}
+
+int hires_guard_masked_tag_rows(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
+                                uint64_t *flat, uint64_t *agree, uint8_t *tag, int ylo, int yhi)
+{
     const size_t W = (size_t)320 * n;
     int restored = 0;
-    for (int y = 1; y < 199; y++)
+    if (ylo < 1) ylo = 1;
+    if (yhi > 199) yhi = 199;
+    for (int y = ylo; y < yhi; y++)
         for (int x = 1; x < 319; x++) {
             const unsigned a = (unsigned)(y * 320 + x);
             if (strokes && ((strokes[a >> 3] >> (a & 7)) & 1)) continue;

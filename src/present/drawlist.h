@@ -91,6 +91,9 @@ void drawlist_free(drawlist *d);
 void drawlist_reset(drawlist *d);
 void drawlist_reset_keep_overlays(drawlist *d);   /* a reset that keeps the kept fine rectangles */
 void drawlist_copy(drawlist *dst, const drawlist *src);
+/* drawlist_copy with each page's fine rows (and tags) copied only for coarse rows [y0[k], y1[k]): dst must hold src's pages at the same scale
+ * (it was copied from src before), else it copies nothing and returns 0 (step A, drawfeed.c) */
+int drawlist_copy_rows(drawlist *dst, const drawlist *src, const int *y0, const int *y1);
 
 /* Give the replay a page as it stands: 'Z' the work page at a phase's start
  * (its segment and the library origin then; it starts a phase), 'Y' the

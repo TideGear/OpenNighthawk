@@ -84,6 +84,7 @@ typedef struct {
     drawlist       prehud;        /* F117_PREHUD: the replay as it stood when the frame's HUD pass began (its first 'h' record): a picture redraws only the records from there */
     hires         *prehud_hires;
     int            have_prehud;
+    uint64_t       gen;           /* step A: a number no other publication of this slot shares */
     uint8_t        picture[64000];
     uint8_t       *picture_hi;    /* and the fine picture it left */
     uint8_t       *picture_tag;   /* diagnostic: that picture's origin plane (diagtag.h), or NULL */
@@ -177,6 +178,14 @@ typedef struct {
     double         diag_t;
     uint64_t       diag_older, diag_newer;
     uint64_t       fine_flat, fine_agree, fine_restored;
+    /* Step A (F117_STEPA, with F117_PREHUD): the 2D layer before the HUD pass is the step's, drawn once; a picture restores, redraws, guards and uploads only
+     * the coarse rows its HUD pass changed (docs/goal.md, handoff 26 Nov). sa_key names the step whose snapshot scratch and inter_hi hold outside those rows. */
+    int            stepa, stepa_check;
+    uint64_t       gen_next, sa_key, sa_ikey, sa_key_in, sa_ikey_in;   /* _in: as the last render left them (a render by another path leaves 0) */
+    int            sa_y0[DRAWLIST_PAGES], sa_y1[DRAWLIST_PAGES], sa_iy0, sa_iy1;
+    uint64_t       shown_key;      /* the shown fine picture equals the step's base (key) outside fine rows [shown_y0, shown_y1); 0: no such promise */
+    int            shown_y0, shown_y1;
+    uint64_t       sa_pictures, sa_rows, sa_full, sa_checked, sa_mismatch;
     /* rerun (rerun.h): in-between pictures drawn by the original on a copy of the machine */
     int            rerun;
     rerun_list     rlist;         /* the copy being made writes here */

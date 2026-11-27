@@ -80,7 +80,11 @@ void drawlist_reset_keep_overlays(drawlist *d)
     d->noverlay = n; d->overlay_next = next;
 }
 
-void drawlist_copy(drawlist *dst, const drawlist *src)
+static void copy_ex(drawlist *dst, const drawlist *src, const int *y0, const int *y1);
+void drawlist_copy(drawlist *dst, const drawlist *src) { copy_ex(dst, src, NULL, NULL); }
+
+/* With y0/y1, the fine planes are copied only for those coarse rows of each page (dst holds src's pages at the same scale: drawlist_copy_rows checks) */
+static void copy_ex(drawlist *dst, const drawlist *src, const int *y0, const int *y1)
 {
     uint8_t *keep[DRAWLIST_PAGES],*tags[DRAWLIST_PAGES];
     for (int k = 0; k < DRAWLIST_PAGES; k++) {keep[k] = dst->page[k].hi;tags[k]=dst->page[k].tag;}
@@ -108,11 +112,32 @@ void drawlist_copy(drawlist *dst, const drawlist *src)
         drawlist_page *p = &dst->page[k];
         if (!s->hi) { free(keep[k]);free(tags[k]);p->hi = NULL;p->tag=NULL;continue; }
         const size_t bytes = (size_t)320 * s->n * 200 * s->n;
+        if (y0) {
+            p->hi = keep[k]; p->tag = tags[k];
+            const int a = y0[k] < 0 ? 0 : y0[k], b = y1[k] > 200 ? 200 : y1[k];
+            if (b > a) {
+                const size_t W = (size_t)320 * s->n, off = (size_t)a * s->n * W, len = (size_t)(b - a) * s->n * W;
+                memcpy(p->hi + off, s->hi + off, len);
+                if (s->tag) memcpy(p->tag + off, s->tag + off, len);
+            }
+            continue;
+        }
         p->hi = (uint8_t *)realloc(keep[k], bytes);
         memcpy(p->hi, s->hi, bytes);
         if (s->tag) { p->tag = (uint8_t *)realloc(tags[k], bytes); if (p->tag) memcpy(p->tag, s->tag, bytes); }
         else { free(tags[k]); p->tag = NULL; }
     }
+}
+
+int drawlist_copy_rows(drawlist *dst, const drawlist *src, const int *y0, const int *y1)
+{
+    if (dst->npages != src->npages) return 0;
+    for (int k = 0; k < DRAWLIST_PAGES; k++) {
+        const drawlist_page *s = &src->page[k], *p = &dst->page[k];
+        if (!s->hi != !p->hi || !s->tag != !p->tag || (s->hi && (s->n != p->n || s->seg != p->seg))) return 0;
+    }
+    copy_ex(dst, src, y0, y1);
+    return 1;
 }
 
 static drawlist_page *page_of(drawlist *d, uint16_t seg)

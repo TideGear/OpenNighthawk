@@ -56,6 +56,8 @@ typedef struct {
     struct { SDL_Thread *th; SDL_Semaphore *go, *done; int quit, running, chunks; } fth;      /* this set's decal face list thread */
 } gscratch;
 
+typedef struct { uint64_t key; int w, y0, y1; const uint8_t *src, *tag; SDL_GPUBuffer *bs, *bt; } grows;   /* step A: a picture upload's rows (gpu_compose_set_rows) */
+
 /* One picture's GPU resources and bookkeeping. The compositor keeps two sets so that the setup of the next picture (a second thread, Part B pipeline) can fill one while the
  * first still holds the GPU's work of the previous picture; which set a call uses is the calling thread's (gpu_compose_use_set), 0 unless it says otherwise. */
 typedef struct {
@@ -72,6 +74,8 @@ typedef struct {
     Uint32 pbytes, game_bytes;
     size_t npix_game;
     SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
+    grows rows_next, rows_last;   /* step A (gpu_compose_set_rows) */
+    uint64_t rows_part, rows_whole;
     Uint32 up2_cap;
     Uint64 t_begin;
     struct {                                /* the hardware-rasterised path's (F117_HW_RASTER) per-set resources */
@@ -2118,6 +2122,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     return 1;
 }
 
+void gpu_compose_set_rows(gpu_compose *g, uint64_t key, int w, int y0, int y1)
+{
+    if (!g) return;
+    GS(g)->rows_next.key = key; GS(g)->rows_next.w = w; GS(g)->rows_next.y0 = y0; GS(g)->rows_next.y1 = y1;
+}
+
 int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out)
 {
     if (!g || !GS(g)->begun || !src || !tag || !dac) return 0;
@@ -2131,13 +2141,33 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
         GS(g)->up2 = SDL_CreateGPUTransferBuffer(g->dev, &ti); GS(g)->up2_cap = GS(g)->up2 ? ti.size : 0;
         if (!GS(g)->up2) return 0;
     }
+    /* Step A: only the rows that differ from what this set's buffers already hold (gpu_compose_set_rows) */
+    int part = 0; Uint32 p_off = 0, p_len = 0;
+    {
+        grows *nx = &GS(g)->rows_next, *ls = &GS(g)->rows_last;
+        if (nx->key && nx->w == w && ls->key == nx->key && ls->w == w && ls->src == src && ls->tag == tag && ls->bs == GS(g)->src.buf && ls->bt == GS(g)->tag.buf) {
+            int y0 = nx->y0, y1 = nx->y1;
+            if (ls->y1 > ls->y0) { if (y1 <= y0) { y0 = ls->y0; y1 = ls->y1; } else { if (ls->y0 < y0) y0 = ls->y0; if (ls->y1 > y1) y1 = ls->y1; } }
+            if (y0 < 0) y0 = 0;
+            if (y1 > h) y1 = h;
+            part = 1; p_off = y1 > y0 ? (Uint32)y0 * (Uint32)w : 0; p_len = y1 > y0 ? (Uint32)(y1 - y0) * (Uint32)w : 0;
+        }
+        ls->key = nx->key; ls->w = nx->w; ls->y0 = nx->y0; ls->y1 = nx->y1; ls->src = src; ls->tag = tag; ls->bs = GS(g)->src.buf; ls->bt = GS(g)->tag.buf;
+        nx->key = 0;
+        if (part) GS(g)->rows_part++; else GS(g)->rows_whole++;
+        if ((GS(g)->rows_part + GS(g)->rows_whole) % 600 == 0 && GS(g)->rows_part) fprintf(stderr, "[stepa-upload] %llu banded uploads, %llu whole\n", (unsigned long long)GS(g)->rows_part, (unsigned long long)GS(g)->rows_whole);
+    }
     {
         Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->up2, true);
         if (!m) return 0;
         /* Only the alignment tails need zeros (everything else is overwritten): zeroing the whole mapped buffer cost a second full pass over about 10 MB a picture. */
         const Uint32 np = GS(g)->npix_game;
-        memcpy(m, src, np); memset(m + np, 0, off_tag - np);
-        memcpy(m + off_tag, tag, np); memset(m + off_tag + np, 0, off_dac - off_tag - np);
+        if (part) {      /* rows [p0, p1) only, each plane from the buffer's start (tags at off_tag) */
+            memcpy(m, src + p_off, p_len); memcpy(m + off_tag, tag + p_off, p_len);
+        } else {
+            memcpy(m, src, np); memset(m + np, 0, off_tag - np);
+            memcpy(m + off_tag, tag, np); memset(m + off_tag + np, 0, off_dac - off_tag - np);
+        }
         memcpy(m + off_dac, dac, 768);
         SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->up2);
     }
@@ -2148,7 +2178,9 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     {
         SDL_GPUTransferBufferLocation f1 = { GS(g)->up2, 0 }, f2 = { GS(g)->up2, off_tag }, f3 = { GS(g)->up2, off_dac };
         SDL_GPUBufferRegion t1 = { GS(g)->src.buf, 0, game_bytes }, t2 = { GS(g)->tag.buf, 0, game_bytes }, t3 = { GS(g)->dac.buf, 0, 768 };
-        SDL_UploadToGPUBuffer(cp, &f1, &t1, false); SDL_UploadToGPUBuffer(cp, &f2, &t2, false); SDL_UploadToGPUBuffer(cp, &f3, &t3, false);
+        if (part) { t1.offset = t2.offset = p_off; t1.size = t2.size = p_len; }
+        if (!part || p_len) { SDL_UploadToGPUBuffer(cp, &f1, &t1, false); SDL_UploadToGPUBuffer(cp, &f2, &t2, false); }
+        SDL_UploadToGPUBuffer(cp, &f3, &t3, false);
     }
     SDL_EndGPUCopyPass(cp);
     profile_mark(g, cb, "picture_upload_end");
