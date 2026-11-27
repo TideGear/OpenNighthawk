@@ -336,13 +336,13 @@ static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const in
 
 /* The in-between picture's HUD pass only, on the step's replay as it stood when the pass began (F117_PREHUD): the records before the HUD are the step's own, whose pixels outside the HUD the scene or the static cockpit decide. */
 /* The coarse rows [*y0, *y1) where page a differs from page b in its bytes, stroke flags, fine pixels or tags (exact: the fine rows are compared), widened by one row each way; empty (0, 0) when none */
-static void changed_rows(const drawlist_page *a, const drawlist_page *b, int *y0, int *y1)
+static void changed_rows(const drawlist_page *a, const drawlist_page *b, int *y0, int *y1, int fine_only)
 {
     int lo = 200, hi = -1;
     for (int y = 0; y < 200; y++) {
         const size_t fr = a->hi && b->hi && a->n == b->n ? (size_t)320 * a->n * a->n : 0, fo = (size_t)y * fr;   /* the row's n fine rows, contiguous */
-        if (memcmp(a->b + y * 320, b->b + y * 320, 320) || memcmp(a->strokes + y * 40, b->strokes + y * 40, 40) ||
-            memcmp(a->hud_strokes + y * 40, b->hud_strokes + y * 40, 40) ||
+        if ((!fine_only && (memcmp(a->b + y * 320, b->b + y * 320, 320) || memcmp(a->strokes + y * 40, b->strokes + y * 40, 40) ||
+             memcmp(a->hud_strokes + y * 40, b->hud_strokes + y * 40, 40))) ||
             (fr && memcmp(a->hi + fo, b->hi + fo, fr)) || (fr && a->tag && b->tag && memcmp(a->tag + fo, b->tag + fo, fr))) { if (lo > y) lo = y; hi = y; }
     }
     if (hi < 0) { *y0 = *y1 = 0; return; }
@@ -377,13 +377,29 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     memcpy(r->scratch_hr, skel->prehud_hires, sizeof *r->scratch_hr);
     const double q1 = probe_ms();
     if (r->gpu_hud) { r->sink.page = drawlist_get(&r->scratch, 0xA000); r->sink.page2 = r->scratch.seg != 0xA000 ? drawlist_get(&r->scratch, r->scratch.seg) : NULL; r->sink.n = r->sink.n2 = 0; drawlist_set_stroke_sink(&r->sink); }
+    static int who = -1; if (who < 0) who = getenv("F117_STEPA_WHO") != NULL;   /* diagnostic: which record kinds still change the display page's coarse rows, and where */
+    if (who) {
+        static unsigned cnt[128], lo[128], hi[128], np; static uint8_t before[64000];
+        drawlist_page *dp = drawlist_page_of(&r->scratch, 0xA000);
+        for (int i = from; i < nrec; i++) {
+            if (dp) memcpy(before, dp->b, 64000);
+            feed(&r->scratch, r->scratch_hr, rec[i].kind, rec[i].v, rec[i].n);
+            if (dp && memcmp(before, dp->b, 64000)) {
+                int a = 0; while (before[a] == dp->b[a]) a++;
+                int b = 63999; while (before[b] == dp->b[b]) b--;
+                const int k = rec[i].kind & 127; if (!cnt[k]) { lo[k] = 200; hi[k] = 0; }
+                cnt[k]++; if ((unsigned)(a / 320) < lo[k]) lo[k] = (unsigned)(a / 320); if ((unsigned)(b / 320) > hi[k]) hi[k] = (unsigned)(b / 320);
+            }
+        }
+        if (++np % 300 == 0) for (int k = 0; k < 128; k++) if (cnt[k]) fprintf(stderr, "[stepa-who] '%c' changed the display %.1f times a picture, rows %u-%u\n", k, (double)cnt[k] / np, lo[k], hi[k]);
+    } else
     for (int i = from; i < nrec; i++) feed(&r->scratch, r->scratch_hr, rec[i].kind, rec[i].v, rec[i].n);
     if (r->gpu_hud) { drawlist_set_stroke_sink(NULL); r->shown_strokes = r->sink.n; }
     const double q2 = probe_ms();
     int ok = r->scratch.npages == skel->prehud.npages;
     for (int k = 0; k < DRAWLIST_PAGES; k++) {
         r->sa_y0[k] = 0; r->sa_y1[k] = 200;
-        if (ok && k < r->scratch.npages) changed_rows(&r->scratch.page[k], &skel->prehud.page[k], &r->sa_y0[k], &r->sa_y1[k]);
+        if (ok && k < r->scratch.npages) changed_rows(&r->scratch.page[k], &skel->prehud.page[k], &r->sa_y0[k], &r->sa_y1[k], r->gpu_hud);   /* GPU HUD: only what the GPU reads (fine pixels and tags); coarse bytes are restored whole anyway */
     }
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000), *base = drawlist_get(&skel->prehud, 0xA000);
     if (!ok || !disp || disp->size < 64000 || !base || !disp->hi) return NULL;

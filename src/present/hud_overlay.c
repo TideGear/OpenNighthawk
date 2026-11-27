@@ -46,6 +46,7 @@ static void fill_rect(const canvas *c, double x0, double y0, double x1, double y
     if (ix1 > cr) ix1 = cr;
     if (iy0 < ct) iy0 = ct;
     if (iy1 > cb) iy1 = cb;
+    if (ix1 > ix0 && iy1 > iy0 && drawlist_sink_rect(c->p, ix0, iy0, ix1 - ix0, iy1 - iy0, colour, cl, ct, cr, cb)) return;   /* GPU step A */
     for (int y = iy0; y < iy1; y++)
         for (int x = ix0; x < ix1; x++) put_fine(c, x, y, colour, cl, ct, cr, cb);
 }
@@ -97,6 +98,7 @@ static void draw_text(const canvas *c, const hud_fprim *f, const hud_font *ft)
                 if (!on && mode != 1) continue;
                 const int colour = on ? fg : bg;
                 const int px = X0 + (cx + k) * N, py = Y0 + r * N;
+                if (drawlist_sink_rect(c->p, px, py, N, N, colour, cl, ct, cr, cb)) continue;   /* GPU step A */
                 for (int yy = 0; yy < N; yy++)
                     for (int xx = 0; xx < N; xx++) put_fine(c, px + xx, py + yy, colour, cl, ct, cr, cb);
             }
@@ -144,6 +146,7 @@ static void draw_art(const canvas *c, const uint8_t *px, int w, int h, int X0, i
         for (int k = 0; k < w; k++) {
             const int colour = px[r * w + k];
             if (!colour) continue;
+            if (drawlist_sink_rect(c->p, X0 + k * N, Y0 + r * N, N, N, colour, cl, ct, cr, cb)) continue;   /* GPU step A */
             for (int yy = 0; yy < N; yy++)
                 for (int xx = 0; xx < N; xx++) put_fine(c, X0 + k * N + xx, Y0 + r * N + yy, colour, cl, ct, cr, cb);
         }

@@ -459,6 +459,26 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
 static F117_TLS drawlist_stroke_sink *g_sink;
 void drawlist_set_stroke_sink(drawlist_stroke_sink *sink) { g_sink = sink; }
 
+int drawlist_sink_rect(const drawlist_page *p, int x, int y, int w, int h, int colour, int cl, int ct, int cr, int cb)
+{
+    if (!g_sink || (g_sink->page != p && g_sink->page2 != p)) return 0;
+    int x0 = x > cl ? x : cl, y0 = y > ct ? y : ct, x1 = x + w < cr ? x + w : cr, y1 = y + h < cb ? y + h : cb;
+    if (x1 <= x0 || y1 <= y0) return 1;
+    if (g_sink->n == g_sink->cap) {
+        const int nc = g_sink->cap ? 2 * g_sink->cap : 256;
+        drawlist_gpu_stroke *ns = (drawlist_gpu_stroke *)realloc(g_sink->s, (size_t)nc * sizeof *ns);
+        if (!ns) return 0;
+        g_sink->s = ns; g_sink->cap = nc;
+    }
+    /* a horizontal square-pen stroke covers exactly [ax - half, bx + half) x [ay - half, ay + half) by pixel centres */
+    const float half = (float)(y1 - y0) / 2;
+    drawlist_gpu_stroke *s = &g_sink->s[g_sink->n++];
+    s->ax = (float)x0 + half; s->bx = (float)x1 - half; s->ay = s->by = (float)y0 + half; s->half = half;
+    s->cl = x0; s->ct = y0; s->cr = x1; s->cb = y1; s->col = (uint32_t)colour & 255u;
+    s->x0 = x0; s->y0 = y0; s->bw = x1 - x0; s->bh = y1 - y0; s->pad0 = s->pad1 = 0;
+    return 1;
+}
+
 void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
                      double width, int col, int cl, int ct, int cr, int cb)
 {

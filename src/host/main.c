@@ -528,6 +528,12 @@ static const uint8_t *remaster_apply_ex(const uint8_t *hi, const uint8_t *dac, i
     const uint64_t t0 = SDL_GetPerformanceCounter();
     const int composed = remaster_live_compose(src, &H.m, g_scale, hi, g_live.shown_tag, dac, g_rbuf, g_rrgb, g_rmask, ww, ww ? g_wpix : NULL);
     g_wide_filled = composed && ww;
+    {   /* R53 diagnostic (F117_WIDE_LOG): when the picture switches between the Remastered composite and the game's own, and why */
+        static int wl = -1, last = -1; if (wl < 0) wl = getenv("F117_WIDE_LOG") != NULL;
+        const int now = composed ? (ww ? 2 : 1) : 0;
+        if (wl && now != last) { fprintf(stderr, "[wide-log] clock %llu: %s (scene primitives %zu, wide %d, copy %d, compose skipped %d)\n", (unsigned long long)H.m.cpu.icount,
+            now == 2 ? "widescreen composite" : now == 1 ? "4:3 composite" : "the game's own picture", remaster_live_done_prims(src), ww, src != g_rlive, compose_skipped()); last = now; }
+    }
     if (getenv("F117_REMASTER_TIMING")) {               /* diagnostic: where a Remastered picture's milliseconds go (stderr, every 120th) */
         static double sum; static unsigned n;
         sum += (double)(SDL_GetPerformanceCounter() - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();

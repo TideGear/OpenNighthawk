@@ -120,6 +120,8 @@ drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg);
 typedef struct { float ax, ay, bx, by, half; int32_t cl, ct, cr, cb; uint32_t col; int32_t x0, y0, bw, bh, pad0, pad1; } drawlist_gpu_stroke;
 typedef struct { const drawlist_page *page, *page2; drawlist_gpu_stroke *s; int n, cap, dropped, n2; } drawlist_stroke_sink;   /* page2: the work page, when the HUD reaches the display by a page copy; n2 the strokes recorded there */
 void drawlist_set_stroke_sink(drawlist_stroke_sink *sink);
+/* The fine rectangle [x, x + w) x [y, y + h) in one colour, clipped to [cl, cr) x [ct, cb), recorded for the GPU when a sink on p is set: 1, else 0 (draw it yourself) */
+int drawlist_sink_rect(const drawlist_page *p, int x, int y, int w, int h, int colour, int cl, int ct, int cr, int cb);
 void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
                      double width, int colour, int cl, int ct, int cr, int cb);
 /* Integer fine-pixel centres, using the same pen. */
