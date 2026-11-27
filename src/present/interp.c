@@ -987,6 +987,8 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     memset(&made, 0, sizeof made);
     const int *of = use_b ? P->pb_of : P->pa_of;
     const int base = rowbase_of(S);
+    /* INTERP_FROM_HUD: records before the skeleton's HUD state record are left as they are (the caller replays only from there) */
+    const int from_rec = (flags & INTERP_FROM_HUD) && S->hud_rec >= 0 ? S->hud_rec : 0;
     static F117_TLS spans_t sp;
     static F117_TLS int rows[2 * SPAN_N];
     static F117_TLS int32_t vals[8 + 2 * SPAN_N];
@@ -995,6 +997,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         for (int q = 0; q < b->np; q++) {
             const int pi = BATCH_PI(S, b, q);
             const poly_t *p = &S->p[pi];
+            if (p->ri < from_rec) continue;
             const int pr = of[pi];
             if (pr < 0) { st[IS_HELD_UNPAIRED]++; continue; }
             const int *pp = &P->ppair[4 * pr];
@@ -1038,6 +1041,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     }
     for (int k = 0; k < S->ns; k++) {
         const span_t *s = &S->s[k];
+        if (s->ri < from_rec) continue;
         st[IS_SPANS]++;
         int j = -1;
         for (int q = 0; q < O->ns; q++)
@@ -1076,6 +1080,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     for (int k = 0; k < S->nu; k++) {
         const ut_t *u = &S->u[k];
         if ((flags & INTERP_BANDS) && u->covered) continue;   /* held: the band state moves instead */
+        if (u->ri < from_rec) continue;
         int j = -1;
         for (int q = 0; q < O->nu; q++)
             if (O->u[q].colour == u->colour && O->u[q].ord == u->ord) { j = O->u[q].ri; break; }
@@ -1097,6 +1102,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     for (int k = 0; k < S->nh; k++) {
         const hud_t *h = &S->h[k];
         if (HUD_SKIP(*h)) continue;
+        if (h->ri < from_rec) continue;
         int first = 1;
         for (int q = 0; q < k; q++)
             if (!HUD_SKIP(S->h[q]) && S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) { first = 0; break; }
@@ -1179,6 +1185,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         const batch_t *ob = bmap[bi] >= 0 ? &O->b[bmap[bi]] : NULL;
         for (int q = 0; q < b->nl; q++) {
             const int i = S->li[b->l0 + q];
+            if (i < from_rec) continue;
             const int32_t *v = S->rec[i].v;
             st[IS_OUTLINE]++;
             if (!ob) { st[IS_HELD_OUTLINE_BATCH]++; continue; }

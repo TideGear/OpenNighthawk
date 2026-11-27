@@ -194,7 +194,7 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->list);
     drawlist_init(&r->pending_start);
     drawlist_init(&r->pending_prehud);
-    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }
+    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
     r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
 }
@@ -897,8 +897,10 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
                 if (hud_step < 0) hud_step = getenv("F117_STAGE2_HUD_STEP") != NULL;      /* =1: the nearer step's own picture, as before */
                 if (!hud_step && b->pair && a->parsed && b->parsed) {
                     int sb;
+                    /* F117_PREHUD replays only from the HUD pass on, on the skeleton's own snapshot: interpolating the records before it is wasted */
+                    const int from_hud = r->prehud_on && r->scale && a->have_prehud && b->have_prehud ? INTERP_FROM_HUD : 0;
                     interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
-                                        (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD | INTERP_BANDS | INTERP_HUD_HOLD : 0),
+                                        (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD | INTERP_BANDS | INTERP_HUD_HOLD : 0) | from_hud,
                                         &r->ilist, &sb, r->istats);
                     const uint8_t *hp = draw_list_hud(r, sb ? b : a);
                     if (hp) {
