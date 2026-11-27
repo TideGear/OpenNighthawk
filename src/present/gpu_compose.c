@@ -2134,8 +2134,11 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
     {
         Uint8 *m = (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->up2, true);
         if (!m) return 0;
-        memset(m, 0, total2);
-        memcpy(m, src, GS(g)->npix_game); memcpy(m + off_tag, tag, GS(g)->npix_game); memcpy(m + off_dac, dac, 768);
+        /* Only the alignment tails need zeros (everything else is overwritten): zeroing the whole mapped buffer cost a second full pass over about 10 MB a picture. */
+        const Uint32 np = GS(g)->npix_game;
+        memcpy(m, src, np); memset(m + np, 0, off_tag - np);
+        memcpy(m + off_tag, tag, np); memset(m + off_tag + np, 0, off_dac - off_tag - np);
+        memcpy(m + off_dac, dac, 768);
         SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->up2);
     }
     SDL_GPUCommandBuffer *cb = SDL_AcquireGPUCommandBuffer(g->dev);
