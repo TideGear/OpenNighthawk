@@ -1818,6 +1818,8 @@ static void wide_tracer_line(machine_t *m, uint16_t ds, uint16_t ss, double hx, 
     }
 }
 
+static F117_TLS struct { int i, range; machine_t *m; } g_air_late[64];
+static F117_TLS int g_air_nlate;
 static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
 {
     static int log = -1;
@@ -1927,6 +1929,31 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
     }
     g_dot_prev.valid = ret == 0x9BDF || ret == 0x9D89 || ret == 0xA203 || ret == 0xA236; g_dot_prev.on = on; g_dot_prev.sx = (int16_t)sx; g_dot_prev.sy = sy; g_dot_prev.ret = ret;
     if (ret == 0xA203 || ret == 0xA236 || ret == 0x9A04) return;
+    /* R56 (owner, 27 Nov: the MiG-23's white dot "shaking around trying to fit the old low-resolution positions"): an aircraft the game draws as a dot (inside its 4,800 reach) is a
+     * whole game pixel at a whole-pixel place, 9 screen pixels at 4K, moved 15 times a second. F117_FAR_AIR_FINE=1: such a dot (one the game shows, in the 4:3 picture or in a
+     * margin) goes to the far aircraft overlay instead, projected when the overlays are flushed with the picture's own view matrix and without the integer divisions, sized by
+     * the Far light size rule (one game pixel at the model/dot swap depth, smaller beyond; Original: one game pixel), depth-tested; the game's own dot is not drawn in this render
+     * copy: the call's point is moved 64 units behind the eye, so the routine reports it behind ([DEBE] >= 0) and the loop goes on to the next aircraft (matched.c 34700). */
+    if (ret == 0x9BDF && !(view & 0x80) && (on || sx < 0 || sx > 0x13F || sy < 0 || sy > 199) && g_collector.overlay_rect) {
+        static int fine = -1; if (fine < 0) fine = getenv("F117_FAR_AIR_FINE") != NULL;
+        const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
+        const double l = sqrt(wx * wx + wa * wa + wy * wy);
+        const int unit = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22));
+        if (fine && l > 0.0 && unit >= 0 && unit < 64 && g_air_nlate < 64) {
+            const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4));
+            int dx = (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), dy = (int16_t)(rd16(m->mem, ds, 0xC0DE) - (uint16_t)y);
+            dx = dx < 0 ? -dx : dx; dy = dy < 0 ? -dy : dy;
+            int range = (dx > dy ? dx : dy) + ((dx > dy ? dy : dx) >> 1);
+            if (range > 0x7FFF) range = 0x7FFF;
+            g_air_late[g_air_nlate].i = unit; g_air_late[g_air_nlate].range = range; g_air_late[g_air_nlate].m = m; g_air_nlate++;
+            const int ox = (int)lround(64.0 * wx / l), oy = (int)lround(64.0 * wy / l), oa = (int)lround(64.0 * wa / l);   /* offsets x = C0D0 - x, y = y - C0DE, alt = (alt - 2DF4) >> 5 */
+            wr16(m->mem, ss, (uint16_t)(sp + 2), (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
+            wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
+            wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)(rd16(m->mem, ds, 0x2DF4) + (uint16_t)(oa * 32)));
+            g_dot_prev.valid = 0;
+            return;
+        }
+    }
     {   static int dl3 = -1; if (dl3 < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); dl3 = e && e[0] == '3'; }
         if (dl3 && (ret == 0x9BDF || ret == 0x9D89)) fprintf(stderr, "[dot-all] clock %llu %s on %d x %lld y %d unit %d\n", (unsigned long long)m->cpu.icount, ret == 0x9D89 ? "projectile" : "aircraft", on, (long long)sx, sy, (int)(int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22))); }
     if (on || !(sx < 0 || sx > 0x13F || sy < 0 || sy > 199) || !g_collector.overlay_dot) return;
@@ -1949,8 +1976,6 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
  * the dot. Per thread as well, for the copy thread. F117_FAR_AIR_SHARED=1 restores the shared list (the first version). */
 static F117_TLS struct { double x, y, w; int depth; unsigned unit; const machine_t *m; } g_pend[160];
 static F117_TLS int g_npend;
-static F117_TLS struct { int i, range; machine_t *m; } g_air_late[64];
-static F117_TLS int g_air_nlate;
 static void far_air_project(machine_t *m, int i, int range);
 static int far_air_shared(void) { static int s = -1; if (s < 0) s = getenv("F117_FAR_AIR_SHARED") != NULL; return s; }
 void rerun_flush_overlays(const machine_t *m)
