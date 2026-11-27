@@ -278,6 +278,7 @@ static void s2_job_done(void)
         s2_pair_launch();
     }
 }
+static int g_early_ran;                     /* an early scene slice ran in this iteration (F117_STAGE2_EARLY_SLICE): the regular slice after the wait is token-sized */
 static remaster_live *g_rlive_copy;       /* Remastered's collector for the rerun copies (rerun.h): the frame of the picture a copy drew */
 /* Part B pipeline (16 November 2026): one collector instance per pipeline slot, so the next picture's scene can be committed while the previous picture's setup still reads its own;
  * g_rlive_copy is the current slot's instance (main thread). g_apply_rl is the instance the calling thread's composite is for (the worker's stage B, per picture). */
@@ -3461,6 +3462,7 @@ int main(int argc, char **argv)
                      * At the missile hit the copy (about 6 ms) and the worker (about 9 ms) otherwise run back to back, about 16 ms a picture; the slice steps the copy into its own
                      * scene instance, which the worker never reads (the commit comes after the wait), under the palette guard the early copy of the default path uses.
                      * F117_STAGE2_EARLY_MS (default 6) bounds it. */
+                    g_early_ran = 0;
                     static int early_slice = -1; static double early_ms = 6.0;
                     if (early_slice < 0) { const char *e = getenv("F117_STAGE2_EARLY_SLICE"); early_slice = e && atoi(e) != 0; const char *m = getenv("F117_STAGE2_EARLY_MS"); if (m) early_ms = atof(m); }
                     if (early_slice && g_pw.busy && g_s2.job && g_s2.sc[0]) {
@@ -3470,6 +3472,7 @@ int main(int argc, char **argv)
                         const int edone = drawlive_scene_step(&g_live, (uint64_t)(early_ms * 1e6));
                         g_coll = NULL;
                         remaster_live_ignore_palette_override(0);
+                        g_early_ran = 1;
                         if (edone) s2_job_done();
                         static double e_sum; static unsigned e_n, e_done; e_sum += (double)SDL_GetTicksNS() / 1e6 - es0; e_n++; e_done += edone ? 1u : 0u;
                         if (getenv("F117_STAGE2_LOG") && e_n % 300 == 0) fprintf(stderr, "[stage2-early] %u early slices, %.2f ms each, %u finished a copy\n", e_n, e_sum / e_n, e_done);
@@ -3622,6 +3625,7 @@ int main(int argc, char **argv)
                                 if (budget_ms < 1.5) budget_ms = 1.5;
                                 if (budget_ms > s_slice_ms) budget_ms = s_slice_ms;
                             }
+                            if (g_early_ran) budget_ms = 0.3;          /* the early slice did this iteration's copying while the worker drew */
                             if ((s_eager & 2) && g_s2.job_seq <= (uint64_t)plan.newer + (plan.t > 0.5 ? 1u : 0u)) { const double want = s_eager_ms > 0 ? s_eager_ms : s_slice_ms; if (budget_ms < want) budget_ms = want; }
                             const int done = drawlive_scene_step(&g_live, (uint64_t)(budget_ms * 1e6));
                             g_coll = NULL;
