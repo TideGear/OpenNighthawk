@@ -2045,9 +2045,18 @@ static void far_air_project(machine_t *m, int i, int range)
             if (flog) fprintf(stderr, "[far-aircraft] clock %llu unit %d range %d depth %.0f at %lld,%d width %.3f flags %02X type %u\n", (unsigned long long)m->cpu.icount, i, range, depth, (long long)sx, sy, w, m->mem[(((uint32_t)ds << 4) + rec + 0x18) & 0xFFFFF], rd16(m->mem, ds, (uint16_t)(rec + 0x16)));
             if (flog) fprintf(stderr, "[far-aircraft-pos] unit %d pos %d %d alt %d | eye %d %d alt %d\n", i, x, y, alt, (int16_t)rd16(m->mem, ds, 0xC0D0), (int16_t)rd16(m->mem, ds, 0xC0DE), (int16_t)rd16(m->mem, ds, 0x2DF4));
         }
+        /* F117_FAR_AIR_FINE=1 (owner R56, 26 Nov: distant aircraft dots shook between whole game pixels): the same projection without the integer divisions, so the dot
+         * sits where the aircraft is at the fine picture's scale (the game's own dot is the whole pixel sx, sy; its centre is sx + 0.5) */
+        static int fine = -1; if (fine < 0) fine = getenv("F117_FAR_AIR_FINE") != NULL;
+        double fx = (double)sx + 0.5, fy = (double)sy + 0.5;
+        if (fine) {
+            const double qf = (double)comp[1] * 256.0 / (double)comp[2];
+            fx = (double)comp[0] * 256.0 / (double)comp[2] + 160.0 + 0.5;
+            fy = qf * 0.75 + (rows ? (zoom ? 0x3C : 0x34) : 0x64) + 0.5;
+        }
         if (g_npend < 160) {
-            g_pend[g_npend].x = (double)sx + 0.5 - w / 2;
-            g_pend[g_npend].y = (double)sy + 0.5 - w / 2;
+            g_pend[g_npend].x = fx - w / 2;
+            g_pend[g_npend].y = fy - w / 2;
             g_pend[g_npend].w = w;
             g_pend[g_npend].depth = (int)depth;
             g_pend[g_npend].unit = (unsigned)i;
