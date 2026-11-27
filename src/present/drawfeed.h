@@ -84,6 +84,7 @@ typedef struct {
     drawlist       prehud;        /* F117_PREHUD: the replay as it stood when the frame's HUD pass began (its first 'h' record): a picture redraws only the records from there */
     hires         *prehud_hires;
     int            have_prehud;
+    int            prehud_from;   /* the parsed record index the snapshot was taken at (a library line before 'h', or 'h') */
     uint64_t       gen;           /* step A: a number no other publication of this slot shares */
     uint8_t        picture[64000];
     uint8_t       *picture_hi;    /* and the fine picture it left */
@@ -131,7 +132,7 @@ typedef struct {
     hires *pending_hires;
     drawlist pending_prehud;       /* the same for the frame being collected */
     hires *pending_prehud_hires;
-    int pending_prehud_have, prehud_on;
+    int pending_prehud_have, prehud_on, pending_prehud_taken, pending_prehud_from, pending_ord;   /* R54: a snapshot taken at a library line before 'h', the parsed record index it was taken at, and the record ordinal (kinds the parse keeps) */
     uint64_t pending_seq;
     size_t pending_at;
     int pending_active;

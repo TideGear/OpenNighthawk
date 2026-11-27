@@ -295,8 +295,27 @@ static const uint8_t *draw_recs_ex(drawlive *r, const drawlive_step *skel, const
     if (prb < 0) prb = getenv("F117_DRAW_PROBE") != NULL;
     const double d0 = prb ? probe_ms() : 0;
     if (prb) { static unsigned calls, wantpre, havepre; calls++; if (r->prehud_on) wantpre++; if (skel->have_prehud) havepre++; if (calls % 600 == 0) fprintf(stderr, "[prehud] calls %u, prehud_on %u, step has snapshot %u, use_pre %d\n", calls, wantpre, havepre, use_pre); }
+    {   /* F117_PREH_DUMP=N (diagnostic): the record kinds of the Nth picture drawn here, with each 'N' and 'D' record's first values (R54: where the weapon box is drawn) */
+        static long want = -2, seen; if (want == -2) { const char *e = getenv("F117_PREH_DUMP"); want = e ? atol(e) : -1; }
+        if (want >= 0 && ++seen == want) {
+            for (int i = 0; i < nrec; i++) {
+                const char k = rec[i].kind;
+                static int all = -1; if (all < 0) all = getenv("F117_PREH_DUMP_ALL") != NULL;
+                if (all || k == 'N' || k == 'D' || k == 'h' || k == 'p' || k == 'C' || k == 'Z' || k == 'Y') {
+                    fprintf(stderr, "[preh-dump] %d %c", i, k);
+                    for (int q = 0; q < rec[i].n && q < 8; q++) fprintf(stderr, " %d", rec[i].v[q]);
+                    fputc(10, stderr);
+                }
+            }
+        }
+    }
     int from = 0;
-    if (use_pre) { for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; } if (!rec || nrec <= 0 || rec[from].kind != 'h') use_pre = 0; }
+    if (use_pre) {
+        for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; }
+        if (!rec || nrec <= 0 || rec[from].kind != 'h') use_pre = 0;
+        else if (skel->prehud_from >= 0 && skel->prehud_from <= from && (rec[skel->prehud_from].kind == 'N' || rec[skel->prehud_from].kind == 'h')) from = skel->prehud_from;   /* R54: where the snapshot was taken */
+        else use_pre = 0;
+    }
     drawlist_copy(&r->scratch, use_pre ? &skel->prehud : &skel->start);
     hires *h = NULL;
     if (r->scale) { memcpy(r->scratch_hr, use_pre ? skel->prehud_hires : skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
@@ -364,6 +383,8 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     int from = -1;
     for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; }
     if (from < 0) return NULL;
+    if (skel->prehud_from >= 0 && skel->prehud_from <= from && (rec[skel->prehud_from].kind == 'N' || rec[skel->prehud_from].kind == 'h')) from = skel->prehud_from;   /* R54: where the snapshot was taken */
+    else return NULL;
     static double t_restore, t_feed, t_diff, t_inter; const double q0 = probe_ms();
     const uint64_t key = skel->gen;
     int rows_restored = 0;
@@ -643,17 +664,27 @@ static void replay_available(drawlive *r, const drawfeed_frame *fr)
         r->pending_at = 0;
         r->pending_active = 1;
         r->pending_prehud_have = 0;
+        r->pending_prehud_taken = 0; r->pending_ord = 0;
     }
     char kind;
     uint64_t icount;
     const int32_t *v;
     int n;
     while (drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n)) {
-        if (kind == 'h' && r->prehud_on && r->interp && r->scale && !r->pending_prehud_have) {   /* the HUD pass begins: keep the replay as it stands */
-            drawlist_copy(&r->pending_prehud, &r->list);
-            memcpy(r->pending_prehud_hires, r->hr, sizeof *r->hr);
-            r->pending_prehud_have = 1;
+        if (r->prehud_on && r->interp && r->scale && !r->pending_prehud_have) {
+            /* The replay as it stands before the HUD pass, or before the run of library lines just ahead of it (the weapon box, R54): each picture replays from
+             * there, in order (the records between the lines set the library colour they draw in). Only lines, their colour and state records and text may lie
+             * between the snapshot and 'h'; anything else (a polygon, a blit: at the missile hit the flash) drops it, and the next line or 'h' takes it again. */
+            const int light = kind == 'N' || kind == 'n' || kind == 'X' || kind == 'K' || kind == 'T';
+            if (r->pending_prehud_taken && !light && kind != 'h') r->pending_prehud_taken = 0;
+            if (!r->pending_prehud_taken && (kind == 'N' || kind == 'h')) {
+                drawlist_copy(&r->pending_prehud, &r->list);
+                memcpy(r->pending_prehud_hires, r->hr, sizeof *r->hr);
+                r->pending_prehud_taken = 1; r->pending_prehud_from = r->pending_ord;
+            }
+            if (kind == 'h') r->pending_prehud_have = 1;
         }
+        if (kind != 'P' && kind != 'Z' && kind != 'Y' && kind != 'J') r->pending_ord++;   /* (the kinds the parse keeps: the snapshot's index in the step's records) */
         feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
     }
 }
@@ -717,6 +748,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         swap_lists(&s->prehud, &r->pending_prehud);
         hires *oh = s->prehud_hires; s->prehud_hires = r->pending_prehud_hires; r->pending_prehud_hires = oh;
         s->have_prehud = r->pending_prehud_have;
+        s->prehud_from = r->pending_prehud_from;
         s->gen = ++r->gen_next;
     }
     const double c1 = probe_ms();

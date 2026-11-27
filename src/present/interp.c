@@ -1101,8 +1101,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
 #define HUD_SKIP(hh) (((flags) & INTERP_HUD) && (hh).covered)
     for (int k = 0; k < S->nh; k++) {
         const hud_t *h = &S->h[k];
-        if (HUD_SKIP(*h)) continue;
-        if (h->ri < from_rec) continue;
+        if (HUD_SKIP(*h)) continue;   /* (HUD lines before 'h' are interpolated even under INTERP_FROM_HUD: the weapon box, R54; the caller draws them per picture) */
         int first = 1;
         for (int q = 0; q < k; q++)
             if (!HUD_SKIP(S->h[q]) && S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) { first = 0; break; }
