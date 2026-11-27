@@ -1183,8 +1183,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         const batch_t *b = &S->b[bi];
         const batch_t *ob = bmap[bi] >= 0 ? &O->b[bmap[bi]] : NULL;
         for (int q = 0; q < b->nl; q++) {
-            const int i = S->li[b->l0 + q];
-            if (i < from_rec) continue;
+            const int i = S->li[b->l0 + q];   /* (outline edges before 'h' are interpolated even under INTERP_FROM_HUD: the weapon box is drawn with them, R54) */
             const int32_t *v = S->rec[i].v;
             st[IS_OUTLINE]++;
             if (!ob) { st[IS_HELD_OUTLINE_BATCH]++; continue; }

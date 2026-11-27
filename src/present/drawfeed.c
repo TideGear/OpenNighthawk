@@ -313,7 +313,7 @@ static const uint8_t *draw_recs_ex(drawlive *r, const drawlive_step *skel, const
     if (use_pre) {
         for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; }
         if (!rec || nrec <= 0 || rec[from].kind != 'h') use_pre = 0;
-        else if (skel->prehud_from >= 0 && skel->prehud_from <= from && (rec[skel->prehud_from].kind == 'N' || rec[skel->prehud_from].kind == 'h')) from = skel->prehud_from;   /* R54: where the snapshot was taken */
+        else if (skel->prehud_from >= 0 && skel->prehud_from <= from && 1) from = skel->prehud_from;   /* R54: where the snapshot was taken */
         else use_pre = 0;
     }
     drawlist_copy(&r->scratch, use_pre ? &skel->prehud : &skel->start);
@@ -383,7 +383,7 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     int from = -1;
     for (int i = 0; i < nrec; i++) if (rec[i].kind == 'h') { from = i; break; }
     if (from < 0) return NULL;
-    if (skel->prehud_from >= 0 && skel->prehud_from <= from && (rec[skel->prehud_from].kind == 'N' || rec[skel->prehud_from].kind == 'h')) from = skel->prehud_from;   /* R54: where the snapshot was taken */
+    if (skel->prehud_from >= 0 && skel->prehud_from <= from && 1) from = skel->prehud_from;   /* R54: where the snapshot was taken */
     else return NULL;
     static double t_restore, t_feed, t_diff, t_inter; const double q0 = probe_ms();
     const uint64_t key = skel->gen;
@@ -664,25 +664,44 @@ static void replay_available(drawlive *r, const drawfeed_frame *fr)
         r->pending_at = 0;
         r->pending_active = 1;
         r->pending_prehud_have = 0;
-        r->pending_prehud_taken = 0; r->pending_ord = 0;
+        r->pending_ord = 0; r->nheld = 0;
+        r->pending_prehud_building = r->prehud_on && r->interp && r->scale;
+        if (r->pending_prehud_building) {   /* R54: a second replay of this step, which holds back the last light run (see below): one copy a step */
+            drawlist_copy(&r->pending_prehud, &r->list);
+            memcpy(r->pending_prehud_hires, r->hr, sizeof *r->hr);
+        }
     }
     char kind;
     uint64_t icount;
     const int32_t *v;
     int n;
-    while (drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n)) {
-        if (r->prehud_on && r->interp && r->scale && !r->pending_prehud_have) {
-            /* The replay as it stands before the HUD pass, or before the run of library lines just ahead of it (the weapon box, R54): each picture replays from
-             * there, in order (the records between the lines set the library colour they draw in). Only lines, their colour and state records and text may lie
-             * between the snapshot and 'h'; anything else (a polygon, a blit: at the missile hit the flash) drops it, and the next line or 'h' takes it again. */
-            const int light = kind == 'N' || kind == 'n' || kind == 'X' || kind == 'K' || kind == 'T';
-            if (r->pending_prehud_taken && !light && kind != 'h') r->pending_prehud_taken = 0;
-            if (!r->pending_prehud_taken && (kind == 'N' || kind == 'h')) {
-                drawlist_copy(&r->pending_prehud, &r->list);
-                memcpy(r->pending_prehud_hires, r->hr, sizeof *r->hr);
-                r->pending_prehud_taken = 1; r->pending_prehud_from = r->pending_ord;
+    for (;;) {
+        const size_t at_before = r->pending_at;   /* (where this record starts: a held record is read again from here) */
+        if (!drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n)) break;
+        const size_t rec_at = at_before;
+        if (r->pending_prehud_building && !r->pending_prehud_have) {
+            /* R54: the snapshot list is fed every record, except that a run of light records (the weapon box's outline edges B and L, library lines and their
+             * state N, n, X, K, blits C, sprites S, the panel record p, text T, H) is held back until a heavy record (a fill, a span, a seed...) releases it.
+             * At 'h' the list stands just before the light run that ends there: each picture replays from it, interpolated (27 Nov dump at the hit). */
+            const int light = kind == 'N' || kind == 'n' || kind == 'X' || kind == 'K' || kind == 'T' || kind == 'L' || kind == 'B' || kind == 'C' || kind == 'S' || kind == 'p' || kind == 'H';
+            if (kind == 'h') {
+                r->pending_prehud_from = r->nheld ? r->held_ord[0] : r->pending_ord;
+                r->pending_prehud_have = 1; r->pending_prehud_building = 0;
+            } else if (light) {
+                if (r->nheld == r->cheld) {
+                    r->cheld = r->cheld ? 2 * r->cheld : 256;
+                    r->held_at = (size_t *)realloc(r->held_at, (size_t)r->cheld * sizeof *r->held_at);
+                    r->held_ord = (int *)realloc(r->held_ord, (size_t)r->cheld * sizeof *r->held_ord);
+                }
+                r->held_at[r->nheld] = rec_at; r->held_ord[r->nheld] = r->pending_ord; r->nheld++;
+            } else {
+                for (int q = 0; q < r->nheld; q++) {   /* release the held run, in order */
+                    size_t at2 = r->held_at[q]; char k2; uint64_t ic2; const int32_t *v2; int n2;
+                    if (drawfeed_next(fr, &at2, &k2, &ic2, &v2, &n2)) feed(&r->pending_prehud, r->pending_prehud_hires, k2, v2, n2);
+                }
+                r->nheld = 0;
+                feed(&r->pending_prehud, r->pending_prehud_hires, kind, v, n);
             }
-            if (kind == 'h') r->pending_prehud_have = 1;
         }
         if (kind != 'P' && kind != 'Z' && kind != 'Y' && kind != 'J') r->pending_ord++;   /* (the kinds the parse keeps: the snapshot's index in the step's records) */
         feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);

@@ -132,7 +132,8 @@ typedef struct {
     hires *pending_hires;
     drawlist pending_prehud;       /* the same for the frame being collected */
     hires *pending_prehud_hires;
-    int pending_prehud_have, prehud_on, pending_prehud_taken, pending_prehud_from, pending_ord;   /* R54: a snapshot taken at a library line before 'h', the parsed record index it was taken at, and the record ordinal (kinds the parse keeps) */
+    int pending_prehud_have, prehud_on, pending_prehud_building, pending_prehud_from, pending_ord;   /* R54: the snapshot list is being fed; the parsed record index it stops at; the record ordinal */
+    size_t *held_at; int *held_ord, nheld, cheld;   /* R54: the run of light records not yet fed to the snapshot list (positions in the frame's records) */
     uint64_t pending_seq;
     size_t pending_at;
     int pending_active;

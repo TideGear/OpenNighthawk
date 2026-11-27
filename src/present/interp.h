@@ -88,7 +88,7 @@ int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_
 #define INTERP_HUD_HOLD 16
 /* INTERP_FROM_HUD: only the records from the skeleton's first HUD state record ('h') on are interpolated; the ones before it are kept as
  * they are (F117_PREHUD replays only from there, on the step's own snapshot, so their interpolation was thrown away). */
-#define INTERP_FROM_HUD 32   /* except the library lines ('N') before 'h': the weapon box (R54), which the caller draws per picture over a snapshot taken without them */
+#define INTERP_FROM_HUD 32   /* except the library lines ('N') and outline edges ('L') before 'h': the weapon box (R54) is drawn with them; the caller draws them per picture over a snapshot taken without them */
 int interp_inbetween_ex(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t, int flags,
                         interp_list *out, int *skel_b, uint64_t *stats);
 void interp_list_free(interp_list *l);
