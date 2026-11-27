@@ -2702,6 +2702,18 @@ static int rerun_step_run(uint64_t budget_ns)
             const int a = order[i - 1], c2 = order[i];
             sum_ms[a][c2] += g_prof_ms[c2] - g_prof_ms[a]; sum_ic[a][c2] += (double)(g_prof_ic[c2] - g_prof_ic[a]); seen[a][c2]++;
         }
+        {   /* F117_PROFILE_SLOW=MS (diagnostic): this copy's stretches when its instructions took more than MS of wall time in all (slices summed) */
+            static double slow_ms = -1;
+            if (slow_ms < 0) { const char *e = getenv("F117_PROFILE_SLOW"); slow_ms = e ? atof(e) : 0; }
+            if (slow_ms > 0 && k > 1) {
+                double wall = 0; for (int i = 1; i < k; i++) wall += g_prof_ms[order[i]] - g_prof_ms[order[i - 1]];
+                if (wall > slow_ms) {
+                    fprintf(stderr, "[profile-slow] copy from clock %llu, %.1f ms across its slices:", (unsigned long long)g_job.a_icount, wall);
+                    for (int i = 1; i < k; i++) fprintf(stderr, " | %s to %s %.1f ms %llu insns", name[order[i - 1]], name[order[i]], g_prof_ms[order[i]] - g_prof_ms[order[i - 1]], (unsigned long long)(g_prof_ic[order[i]] - g_prof_ic[order[i - 1]]));
+                    fputc('\n', stderr);
+                }
+            }
+        }
         if (++n % 40 == 0) {
             fprintf(stderr, "[profile] mean of %u copies, per stretch (wall ms, original instructions):\n", n);
             double tot_ms = 0, tot_ic = 0;

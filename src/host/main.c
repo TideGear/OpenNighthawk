@@ -986,7 +986,7 @@ static int present_worker_main(void *u)
     unsigned long long timing_frame = 0;
     if (timing_path && *timing_path && !timing)
         fprintf(stderr, "[worker-timing] cannot open %s\n", timing_path);
-    if (timing) fprintf(timing, "frame,got,composed,gpu_begin_ns,picture_ns,compose_ns,total_ns,gpu_wait_ns,gpu_span_ns\n");
+    if (timing) fprintf(timing, "frame,got,composed,gpu_begin_ns,picture_ns,compose_ns,total_ns,gpu_wait_ns,gpu_span_ns,step\n");
     for (;;) {
         SDL_WaitSemaphore(g_pwx.go);
         if (g_pwx.quit) break;
@@ -1022,10 +1022,10 @@ static int present_worker_main(void *u)
             double gspan = 0.0;
             if (g_gpu) gpu_compose_times(g_gpu, NULL, &gspan, NULL);
             const double gwait = g_gpu ? gpu_compose_wait_ms(g_gpu) : 0.0;
-            fprintf(timing, "%llu,%d,%d,%llu,%llu,%llu,%llu,%llu,%llu\n", ++timing_frame, w->got, w->composed,
+            fprintf(timing, "%llu,%d,%d,%llu,%llu,%llu,%llu,%llu,%llu,%llu\n", ++timing_frame, w->got, w->composed,
                     (unsigned long long)(wt1 - wt0), (unsigned long long)(wt2 - wt1),
                     (unsigned long long)(wt3 - wt2), (unsigned long long)(wt3 - wt0),
-                    (unsigned long long)(gwait * 1e6), (unsigned long long)(gspan * 1e6));
+                    (unsigned long long)(gwait * 1e6), (unsigned long long)(gspan * 1e6), (unsigned long long)w->plan.newer);
         }
         pev("B-end");
         SDL_SignalSemaphore(g_pwx.done);
