@@ -958,9 +958,14 @@ static void record_scene(scene_job *sj)
         g_rec.sj = sj; g_rec.recs = NULL; g_rec.n = 0; g_rec.failed = 0;
         ReleaseSemaphore(g_rec.go, 1, NULL);
         g_trace_n = 0; g_record_failed = 0; g_record_only = 1; remaster_trace_hook = gpu_trace_hook;
+        static int rsplit = -1; if (rsplit < 0) rsplit = getenv("F117_RECORD_TIME") != NULL;   /* diagnostic: this thread's share of the recording, the wait for the other thread, the merge */
+        const double r0 = rsplit ? now_ms() : 0.0;
         scene_job a = *sj; a.stage = 1; run_parts(scene_rows_part, &a, 1);
         remaster_trace_hook = NULL; g_record_only = 0;
+        const double r1 = rsplit ? now_ms() : 0.0;
         WaitForSingleObject(g_rec.done, INFINITE);
+        if (rsplit) { static double sa, sw; static unsigned k; sa += r1 - r0; sw += now_ms() - r1;
+            if (++k % 120 == 0) { fprintf(stderr, "[record-time] this thread %.2f ms, then waited %.2f ms for the other (mean of 120, %zu records)\n", sa / 120, sw / 120, g_trace_n + g_rec.n); sa = sw = 0; } }
         if (g_rec.failed) g_record_failed = 1;
         if (!g_record_failed && g_rec.n) {
             const size_t need = g_trace_n + g_rec.n;
@@ -1056,9 +1061,20 @@ int remaster_live_gpu_begin_ex(remaster_live *r, const machine_t *m, int n, int 
     if (!(wide_w > w)) return 0;
     uint32_t palette[256];
     gpu_compose_in gin;
+    static int split = -1; if (split < 0) split = getenv("F117_BEGIN_SPLIT") != NULL;   /* diagnostic: where gpu_begin's time goes (stderr, every 120th, mean) */
+    const double b0 = split ? now_ms() : 0.0;
     if (!gpu_prepare(r, m, n, w, h, wide_w, (wide_w - w) / 2, scene_is_complete(r), &gin, palette)) return 0;
+    const double b1 = split ? now_ms() : 0.0;
     line_series(r, m);
-    return g_gpu_begin_fn(&gin);
+    const double b2 = split ? now_ms() : 0.0;
+    const int ok = g_gpu_begin_fn(&gin);
+    if (split) {
+        static double sp, sl, sb, mx; static unsigned k; const double b3 = now_ms();
+        sp += b1 - b0; sl += b2 - b1; sb += b3 - b2; if (b3 - b0 > mx) mx = b3 - b0;
+        if (++k % 120 == 0) { fprintf(stderr, "[begin-split] clock %llu: prepare %.2f, line series %.2f, compositor begin %.2f ms (mean of 120; max total %.2f; %u records)\n",
+            (unsigned long long)m->cpu.icount, sp / 120, sl / 120, sb / 120, mx, gin.nrec); sp = sl = sb = mx = 0; }
+    }
+    return ok;
 }
 
 void remaster_live_set_gpu_begun(remaster_live *r, int begun) { if (r) r->gpu_begun = begun != 0; }

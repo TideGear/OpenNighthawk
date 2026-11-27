@@ -194,7 +194,7 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->list);
     drawlist_init(&r->pending_start);
     drawlist_init(&r->pending_prehud);
-    { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }
+    { const char *e = getenv("F117_PREHUD"); r->prehud_auto = e && !strcmp(e, "auto"); r->prehud_on = e && !r->prehud_auto && atoi(e) != 0; }
     { const char *e = getenv("F117_STEPA"); r->stepa = e && atoi(e) != 0; r->gpu_hud = r->stepa && getenv("F117_GPU_HUD") && atoi(getenv("F117_GPU_HUD")) != 0; if (r->stepa) r->prehud_on = 1; r->stepa_check = getenv("F117_STEPA_CHECK") != NULL; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
     r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
@@ -458,7 +458,35 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     return disp->b;
 }
 
+/* F117_PREHUD=auto: the 2D layer's picture cost decides. Redrawing the whole layer costs about 6 ms a picture in steady flight and 7 to 9 ms at a busy moment (a missile hit),
+ * where the worker then falls under 60 pictures a second; PREHUD (pixel-identical) costs 4.5 to 4.9 ms at both but adds a compose tail in steady flight (handoff, 26 Nov).
+ * So: smoothed whole-layer cost above 6.8 ms turns it on for 150 pictures; then one stretch off measures the whole layer again. */
+static void prehud_control(drawlive *r, double ms, int used_pre)
+{
+    if (!r->prehud_auto) return;
+    if (used_pre) {
+        if (--r->pre_hold <= 0) { r->prehud_on = 0; r->pre_ema = 0; r->pre_n = 0; }
+        return;
+    }
+    r->pre_ema = r->pre_n ? r->pre_ema * 0.9 + ms * 0.1 : ms; r->pre_n++;
+    if (r->pre_n >= 20 && r->pre_ema > 6.8) { r->prehud_on = 1; r->pre_hold = 150; }
+}
+
+static const uint8_t *draw_list_hud_inner(drawlive *r, const drawlive_step *skel);
 static const uint8_t *draw_list_hud(drawlive *r, const drawlive_step *skel)
+{
+    const int used_pre = r->prehud_on && skel->have_prehud;
+    const double t0 = r->prehud_auto ? probe_ms() : 0.0;
+    const uint8_t *p = draw_list_hud_inner(r, skel);
+    if (r->prehud_auto) {
+        prehud_control(r, probe_ms() - t0, used_pre);
+        static int log = -1; static unsigned n; if (log < 0) log = getenv("F117_PREHUD_LOG") != NULL;
+        if (log && ++n % 300 == 0) fprintf(stderr, "[prehud-auto] picture %u: layer %s, smoothed whole-layer cost %.2f ms, hold %d\n", n, r->prehud_on ? "PREHUD on" : "whole", r->pre_ema, r->pre_hold);
+    }
+    return p;
+}
+
+static const uint8_t *draw_list_hud_inner(drawlive *r, const drawlive_step *skel)
 {
     if (r->stepa && r->scale && r->inter_hi && skel->have_prehud) {
         const uint8_t *p = draw_hud_stepa(r, skel, r->ilist.rec, r->ilist.n);

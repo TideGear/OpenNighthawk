@@ -181,6 +181,8 @@ typedef struct {
     /* Step A (F117_STEPA, with F117_PREHUD): the 2D layer before the HUD pass is the step's, drawn once; a picture restores, redraws, guards and uploads only
      * the coarse rows its HUD pass changed (docs/goal.md, handoff 26 Nov). sa_key names the step whose snapshot scratch and inter_hi hold outside those rows. */
     int            stepa, stepa_check, gpu_hud;
+    int            prehud_auto, pre_hold, pre_n;   /* F117_PREHUD=auto: PREHUD only while the 2D layer is expensive (the controller in drawfeed.c) */
+    double         pre_ema;
     drawlist_stroke_sink sink;     /* F117_GPU_HUD: the shown picture's HUD strokes, which the GPU draws (gpu_compose_set_strokes); shown_strokes 0 when none */
     int            shown_strokes;
     uint64_t       gen_next, sa_key, sa_ikey, sa_key_in, sa_ikey_in;   /* _in: as the last render left them (a render by another path leaves 0) */
