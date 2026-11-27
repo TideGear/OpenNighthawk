@@ -41,6 +41,8 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in);
 int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, const uint8_t *dac, uint32_t *wide_out);
 /* Step A: the next gpu_compose_finish on this thread's set may upload only rows [y0, y1) of its w-wide picture: outside them the picture equals the one
  * last uploaded to this set under the same nonzero key (a step's base). key 0 uploads all. */
+/* GPU step A: the next gpu_compose_finish on this thread's set draws these HUD strokes (drawlist_gpu_stroke, 64 bytes each) over the picture after the replace step */
+void gpu_compose_set_strokes(gpu_compose *g, const void *strokes, int n);
 void gpu_compose_set_rows(gpu_compose *g, uint64_t key, int w, int y0, int y1);
 
 /* Piece 3 (no readback): two w x h RGBA textures (double-buffered: finish writes one while the caller draws the other) that the compositor writes the finished picture into itself

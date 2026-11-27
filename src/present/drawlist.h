@@ -115,6 +115,11 @@ drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg);
 
 /* A continuous fine-grid stroke with perpendicular width and square caps, clipped to
  * [cl, cr) x [ct, cb). Touched cells survive the flat-pixel guard. */
+/* GPU step A (F117_GPU_HUD): while a sink is set on this thread, drawlist_stroke on the sink's page records the stroke (clipped, square pen) instead of
+ * drawing it; the GPU draws it over the picture (gpu/hud_strokes.hlsl). Stroke layout matches the shader's. */
+typedef struct { float ax, ay, bx, by, half; int32_t cl, ct, cr, cb; uint32_t col; int32_t x0, y0, bw, bh, pad0, pad1; } drawlist_gpu_stroke;
+typedef struct { const drawlist_page *page, *page2; drawlist_gpu_stroke *s; int n, cap, dropped, n2; } drawlist_stroke_sink;   /* page2: the work page, when the HUD reaches the display by a page copy; n2 the strokes recorded there */
+void drawlist_set_stroke_sink(drawlist_stroke_sink *sink);
 void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
                      double width, int colour, int cl, int ct, int cr, int cb);
 /* Integer fine-pixel centres, using the same pen. */

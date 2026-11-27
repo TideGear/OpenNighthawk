@@ -195,7 +195,7 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->pending_start);
     drawlist_init(&r->pending_prehud);
     { const char *e = getenv("F117_PREHUD"); r->prehud_on = e && atoi(e) != 0; }
-    { const char *e = getenv("F117_STEPA"); r->stepa = e && atoi(e) != 0; if (r->stepa) r->prehud_on = 1; r->stepa_check = getenv("F117_STEPA_CHECK") != NULL; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
+    { const char *e = getenv("F117_STEPA"); r->stepa = e && atoi(e) != 0; r->gpu_hud = r->stepa && getenv("F117_GPU_HUD") && atoi(getenv("F117_GPU_HUD")) != 0; if (r->stepa) r->prehud_on = 1; r->stepa_check = getenv("F117_STEPA_CHECK") != NULL; }   /* opt-in: pixel-identical and keeps the long flight's hit at 60, but on the late flight it moves the cost into compose (p99 14 ms) and misses more frames (26 Nov, handoff) */
     r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
 }
@@ -376,7 +376,9 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     }
     memcpy(r->scratch_hr, skel->prehud_hires, sizeof *r->scratch_hr);
     const double q1 = probe_ms();
+    if (r->gpu_hud) { r->sink.page = drawlist_get(&r->scratch, 0xA000); r->sink.page2 = r->scratch.seg != 0xA000 ? drawlist_get(&r->scratch, r->scratch.seg) : NULL; r->sink.n = r->sink.n2 = 0; drawlist_set_stroke_sink(&r->sink); }
     for (int i = from; i < nrec; i++) feed(&r->scratch, r->scratch_hr, rec[i].kind, rec[i].v, rec[i].n);
+    if (r->gpu_hud) { drawlist_set_stroke_sink(NULL); r->shown_strokes = r->sink.n; }
     const double q2 = probe_ms();
     int ok = r->scratch.npages == skel->prehud.npages;
     for (int k = 0; k < DRAWLIST_PAGES; k++) {
@@ -415,7 +417,7 @@ static const uint8_t *draw_hud_stepa(drawlive *r, const drawlive_step *skel, con
     if (full) r->shown_key = 0;
     { const double q4 = probe_ms(); t_restore += q1 - q0; t_feed += q2 - q1; t_diff += q3 - q2; t_inter += q4 - q3; }
     r->sa_pictures++; r->sa_rows += (uint64_t)rows_restored;
-    if (r->stepa_check) {   /* the full path's picture, pixel for pixel */
+    if (r->stepa_check && !r->gpu_hud) {   /* the full path's picture, pixel for pixel */
         static drawlist chk; static hires *chr; static uint8_t *chi; static int init;
         if (!init) { drawlist_init(&chk); chr = (hires *)malloc(sizeof *chr); chi = (uint8_t *)malloc(W * 200 * n); init = 1; }
         drawlist_copy(&chk, &skel->prehud);
@@ -445,7 +447,7 @@ static const uint8_t *draw_list_hud(drawlive *r, const drawlive_step *skel)
     if (r->stepa && r->scale && r->inter_hi && skel->have_prehud) {
         const uint8_t *p = draw_hud_stepa(r, skel, r->ilist.rec, r->ilist.n);
         if (p) return p;
-        r->sa_key = r->sa_ikey = 0; r->shown_key = 0;
+        r->sa_key = r->sa_ikey = 0; r->shown_key = 0; r->shown_strokes = 0;
     }
     return draw_recs_ex(r, skel, r->ilist.rec, r->ilist.n, r->prehud_on && skel->have_prehud);
 }
@@ -987,7 +989,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
 {
     r->shown_hi = r->shown_tag = NULL;
     r->shown_copy = 0;
-    r->sa_key_in = r->sa_key; r->sa_ikey_in = r->sa_ikey; r->sa_key = r->sa_ikey = 0; r->shown_key = 0;
+    r->sa_key_in = r->sa_key; r->sa_ikey_in = r->sa_ikey; r->sa_key = r->sa_ikey = 0; r->shown_key = 0; r->shown_strokes = 0;
     if (plan->kind == PLAN_NONE) return 0;
     r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {

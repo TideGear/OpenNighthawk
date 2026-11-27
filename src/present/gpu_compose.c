@@ -2,6 +2,8 @@
  * gpu_replace): the CPU clips and projects the polygons and strokes, splits them into triangles and bins them into 16 x 16 tiles with the weights evaluated in
  * double at each tile's first pixel; the passes are the shaders in src/present/gpu. */
 #include "gpu_compose.h"
+#include "drawlist.h"
+#include "diagtag.h"
 #include "tls.h"
 
 #define STROKE_WORDS 24     /* words of one stroke record (strokes_x.hlsl: the same stride) */
@@ -76,6 +78,8 @@ typedef struct {
     SDL_GPUTransferBuffer *up2;             /* the game's picture, tags and palette, uploaded by the second half */
     grows rows_next, rows_last;   /* step A (gpu_compose_set_rows) */
     uint64_t rows_part, rows_whole;
+    const void *hud_s; int hud_n;           /* GPU step A: the strokes for the next finish (gpu_compose_set_strokes) */
+    SDL_GPUBuffer *hud_buf; SDL_GPUTransferBuffer *hud_up; Uint32 hud_cap;
     Uint32 up2_cap;
     Uint64 t_begin;
     struct {                                /* the hardware-rasterised path's (F117_HW_RASTER) per-set resources */
@@ -92,7 +96,7 @@ struct gpu_compose {
     char shader_dir[512];
     struct { int tried, ok; SDL_GPUGraphicsPipeline *pipe[HK_N], *rpipe; SDL_GPUComputePipeline *pexport; SDL_GPUSampler *smp; } hw;
     SDL_GPUDevice *dev;
-    SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present;
+    SDL_GPUComputePipeline *p_bands, *p_polys, *p_strokes, *p_replace, *p_present, *p_hud;
     int own_device;
     SDL_GPUTexture *targets[2];
     int cur_write, last_written;
@@ -225,6 +229,7 @@ static gpu_compose *compose_new(SDL_GPUDevice *device, const char *shader_dir, i
     g->p_polys = load_pipeline(g->dev, shader_dir, "gpu_polys_x.dxil", 4, 4, 0, 16, 16);
     g->p_strokes = load_pipeline(g->dev, shader_dir, "gpu_strokes_x.dxil", 4, 6, 0, 16, 16);
     g->p_replace = load_pipeline(g->dev, shader_dir, "gpu_replace.dxil", 4, 4, 0, 16, 16);
+    g->p_hud = load_pipeline(g->dev, shader_dir, "gpu_hud_strokes.dxil", 3, 1, 0, 16, 16);      /* optional: F117_GPU_HUD falls back without it */
     g->p_present = load_pipeline(g->dev, shader_dir, "gpu_present.dxil", 1, 0, 1, 16, 16);
     if (!g->p_bands || !g->p_polys || !g->p_strokes || !g->p_replace) { gpu_compose_destroy(g); return NULL; }
     profile_init(g);
@@ -298,6 +303,7 @@ void gpu_compose_destroy(gpu_compose *g)
         if (g->p_polys) SDL_ReleaseGPUComputePipeline(g->dev, g->p_polys);
         if (g->p_strokes) SDL_ReleaseGPUComputePipeline(g->dev, g->p_strokes);
         if (g->p_replace) SDL_ReleaseGPUComputePipeline(g->dev, g->p_replace);
+        if (g->p_hud) SDL_ReleaseGPUComputePipeline(g->dev, g->p_hud);
         if (g->p_present) SDL_ReleaseGPUComputePipeline(g->dev, g->p_present);
         for (int k = 0; k < 2; k++) if (g->targets[k]) SDL_ReleaseGPUTexture(g->dev, g->targets[k]);
         if (g->tgt_down) SDL_ReleaseGPUTransferBuffer(g->dev, g->tgt_down);
@@ -2122,6 +2128,12 @@ int gpu_compose_begin(gpu_compose *g, const gpu_compose_in *in)
     return 1;
 }
 
+void gpu_compose_set_strokes(gpu_compose *g, const void *strokes, int n)
+{
+    if (!g) return;
+    GS(g)->hud_s = strokes; GS(g)->hud_n = strokes ? n : 0;
+}
+
 void gpu_compose_set_rows(gpu_compose *g, uint64_t key, int w, int y0, int y1)
 {
     if (!g) return;
@@ -2197,6 +2209,48 @@ int gpu_compose_finish(gpu_compose *g, const uint8_t *src, const uint8_t *tag, c
         SDL_EndGPUComputePass(c);
     }
     profile_mark(g, cb, "replace_end");
+    {   /* diagnostic: strokes per picture handed to the GPU, and F117_GPU_HUD_SKIPDRAW (they are recorded and not drawn: the HUD lines vanish if the path is live) */
+        static unsigned long long pics, strokes; static int skip = -1; if (skip < 0) skip = getenv("F117_GPU_HUD_SKIPDRAW") != NULL;
+        if (GS(g)->hud_n > 0) { pics++; strokes += (unsigned long long)GS(g)->hud_n; if (pics % 600 == 1) fprintf(stderr, "[gpu-hud] %llu pictures with GPU strokes, %.1f strokes each\n", pics, (double)strokes / pics); }
+        if (skip) GS(g)->hud_n = 0;
+    }
+    if (GS(g)->hud_n > 0 && g->p_hud) {   /* GPU step A: the HUD strokes over the picture */
+        const int ns = GS(g)->hud_n; GS(g)->hud_n = 0;
+        const Uint32 bytes = (Uint32)ns * 64u;
+        if (GS(g)->hud_cap < bytes) {
+            if (GS(g)->hud_buf) SDL_ReleaseGPUBuffer(g->dev, GS(g)->hud_buf);
+            if (GS(g)->hud_up) SDL_ReleaseGPUTransferBuffer(g->dev, GS(g)->hud_up);
+            const Uint32 cap = bytes * 2;
+            SDL_GPUBufferCreateInfo bi = { SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, cap, 0 };
+            SDL_GPUTransferBufferCreateInfo ti = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, cap, 0 };
+            GS(g)->hud_buf = SDL_CreateGPUBuffer(g->dev, &bi); GS(g)->hud_up = SDL_CreateGPUTransferBuffer(g->dev, &ti);
+            GS(g)->hud_cap = GS(g)->hud_buf && GS(g)->hud_up ? cap : 0;
+        }
+        int maxw = 0, maxh = 0;
+        const drawlist_gpu_stroke *s = (const drawlist_gpu_stroke *)GS(g)->hud_s;
+        for (int i = 0; i < ns; i++) { if (s[i].bw > maxw) maxw = s[i].bw; if (s[i].bh > maxh) maxh = s[i].bh; }
+        Uint8 *m = GS(g)->hud_cap ? (Uint8 *)SDL_MapGPUTransferBuffer(g->dev, GS(g)->hud_up, true) : NULL;
+        if (m && maxw > 0 && maxh > 0) {
+            memcpy(m, s, bytes);
+            SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->hud_up);
+            SDL_GPUCopyPass *hp = SDL_BeginGPUCopyPass(cb);
+            SDL_GPUTransferBufferLocation f = { GS(g)->hud_up, 0 }; SDL_GPUBufferRegion t = { GS(g)->hud_buf, 0, bytes };
+            SDL_UploadToGPUBuffer(hp, &f, &t, true);
+            SDL_EndGPUCopyPass(hp);
+            SDL_GPUStorageBufferReadWriteBinding rw1 = { b_out, false };
+            SDL_GPUBuffer *ro2[3] = { GS(g)->hud_buf, GS(g)->dac.buf, GS(g)->tag.buf };
+            Uint32 u[8] = { (Uint32)w, (Uint32)h, (Uint32)tw, (Uint32)GS(g)->params.xoff, 0, 0, 0, 0 };
+            { static const int cover[] = { DT_BLIT_UNHELD, DT_BLIT_COARSE, DT_SPRITE, DT_SPRITE_RLE };
+              for (unsigned i = 0; i < sizeof cover / sizeof cover[0]; i++) u[4 + cover[i] / 32] |= 1u << (cover[i] % 32); }
+            SDL_GPUComputePass *c = SDL_BeginGPUComputePass(cb, NULL, 0, &rw1, 1);
+            SDL_BindGPUComputePipeline(c, g->p_hud);
+            SDL_BindGPUComputeStorageBuffers(c, 0, ro2, 3);
+            SDL_PushGPUComputeUniformData(cb, 0, u, sizeof u);
+            SDL_DispatchGPUCompute(c, ((Uint32)maxw + 15) / 16, ((Uint32)maxh + 15) / 16, (Uint32)ns);
+            SDL_EndGPUComputePass(c);
+        } else if (m) SDL_UnmapGPUTransferBuffer(g->dev, GS(g)->hud_up);
+    }
+    profile_mark(g, cb, "hud_end");
     static int split = -1; if (split < 0) split = getenv("F117_GPU_PRESENT_SPLIT") != NULL;     /* diagnostic: the present pass in a command buffer of its own after the first one finished */
     if (split && g->targets[0] && g->p_present) {
         SDL_GPUFence *f1 = SDL_SubmitGPUCommandBufferAndAcquireFence(cb);

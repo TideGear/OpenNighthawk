@@ -225,6 +225,10 @@ if(F117R_BUILD_APP)
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_replace.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/replace.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/replace.hlsl)
     add_custom_target(gpu_shaders_replace ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_replace.dxil)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_hud_strokes.dxil
+      COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_hud_strokes.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/hud_strokes.hlsl
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/hud_strokes.hlsl)
+    add_custom_target(gpu_shaders_hud_strokes ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/gpu_hud_strokes.dxil)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpu_present.dxil
       COMMAND ${F117R_DXC} -nologo -T cs_6_0 -E main -Fo ${CMAKE_CURRENT_BINARY_DIR}/gpu_present.dxil ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/present_tex.hlsl
       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/present/gpu/present_tex.hlsl)

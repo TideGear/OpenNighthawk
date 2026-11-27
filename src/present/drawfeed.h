@@ -180,7 +180,9 @@ typedef struct {
     uint64_t       fine_flat, fine_agree, fine_restored;
     /* Step A (F117_STEPA, with F117_PREHUD): the 2D layer before the HUD pass is the step's, drawn once; a picture restores, redraws, guards and uploads only
      * the coarse rows its HUD pass changed (docs/goal.md, handoff 26 Nov). sa_key names the step whose snapshot scratch and inter_hi hold outside those rows. */
-    int            stepa, stepa_check;
+    int            stepa, stepa_check, gpu_hud;
+    drawlist_stroke_sink sink;     /* F117_GPU_HUD: the shown picture's HUD strokes, which the GPU draws (gpu_compose_set_strokes); shown_strokes 0 when none */
+    int            shown_strokes;
     uint64_t       gen_next, sa_key, sa_ikey, sa_key_in, sa_ikey_in;   /* _in: as the last render left them (a render by another path leaves 0) */
     int            sa_y0[DRAWLIST_PAGES], sa_y1[DRAWLIST_PAGES], sa_iy0, sa_iy1;
     uint64_t       shown_key;      /* the shown fine picture equals the step's base (key) outside fine rows [shown_y0, shown_y1); 0: no such promise */

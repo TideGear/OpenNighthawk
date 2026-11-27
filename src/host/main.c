@@ -405,6 +405,7 @@ static int gpu_compose_finish_cb(const uint8_t *src, const uint8_t *tag, const u
     const int check = g_gpu_present && getenv("F117_GPU_PRESENT_CHECK") && g_gtex[0];
     if (src == g_live.shown_hi && tag == g_live.shown_tag) gpu_compose_set_rows(g_gpu, g_live.shown_key, 320 * g_scale, g_live.shown_y0, g_live.shown_y1);   /* step A: the rows the HUD changed */
     else gpu_compose_set_rows(g_gpu, 0, 0, 0, 0);
+    gpu_compose_set_strokes(g_gpu, src == g_live.shown_hi && g_live.shown_strokes ? g_live.sink.s : NULL, src == g_live.shown_hi ? g_live.shown_strokes : 0);   /* GPU step A: the HUD strokes */
     const int ok = gpu_compose_finish(g_gpu, src, tag, dac, tex && !both ? NULL : wide_out);
     if (ok && (tex || (check && wide_out))) g_gpu_tex_fresh = 1;
     if (ok && check && wide_out) {                                           /* the texture against the readback buffer, every 60th picture */

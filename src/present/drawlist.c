@@ -456,6 +456,9 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
 /* One pen for captured lines, projected outlines and the state-driven HUD.
  * The width is perpendicular to the segment; square caps join shared ends.
  * Clip before converting coordinates to integers, including off-screen geometry. */
+static F117_TLS drawlist_stroke_sink *g_sink;
+void drawlist_set_stroke_sink(drawlist_stroke_sink *sink) { g_sink = sink; }
+
 void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
                      double width, int col, int cl, int ct, int cr, int cb)
 {
@@ -483,6 +486,21 @@ void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double b
     }
     if (top < ct) top = ct; if (bottom > cb) bottom = cb;
     if (top >= bottom) return;
+    if (g_sink && (g_sink->page == p || g_sink->page2 == p) && square_pen) {
+        if (g_sink->page2 == p) g_sink->n2++;     /* GPU step A: recorded, drawn by the GPU */
+        if (g_sink->n == g_sink->cap) {
+            const int nc = g_sink->cap ? 2 * g_sink->cap : 256;
+            drawlist_gpu_stroke *ns = (drawlist_gpu_stroke *)realloc(g_sink->s, (size_t)nc * sizeof *ns);
+            if (!ns) { g_sink->dropped++; return; }
+            g_sink->s = ns; g_sink->cap = nc;
+        }
+        const double l = fmax((double)cl, floor(ax - half)), rr = fmin((double)cr, ceil(bx + half) + 1);
+        drawlist_gpu_stroke *s = &g_sink->s[g_sink->n++];
+        s->ax = (float)ax; s->ay = (float)ay; s->bx = (float)bx; s->by = (float)by; s->half = (float)half;
+        s->cl = cl; s->ct = ct; s->cr = cr; s->cb = cb; s->col = (uint32_t)col & 255u;
+        s->x0 = (int32_t)l; s->y0 = (int32_t)top; s->bw = rr > l ? (int32_t)(rr - l) : 0; s->bh = (int32_t)(bottom - top); s->pad0 = s->pad1 = 0;
+        return;
+    }
     for (int y = (int)top; y < (int)bottom; y++) {
         const double yc = y + 0.5;
         double lo = cl, hi = cr;
