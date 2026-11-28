@@ -1821,6 +1821,45 @@ static void wide_tracer_line(machine_t *m, uint16_t ds, uint16_t ss, double hx, 
 static F117_TLS struct { int i, range; machine_t *m; int16_t pt[3]; unsigned colour; } g_air_late[64];   /* i < 0: a projectile dot, slot -1 - i, at pt (x, y, alt) */
 static F117_TLS int g_air_nlate;
 static F117_TLS int g_box_dbg = -1, g_box_dbg_on; static F117_TLS double g_box_dbg_fx, g_box_dbg_fy;   /* F117_BOX_DEBUG: the precise box's position beside the game's own (4A10/4A18 at the next dot call) */
+/* A point in scene units (1/32 map unit; X, Y 32-bit, Z the height word) to fine game-screen coordinates, as BB0D places a model: relative to the view
+ * origin x [BA3C/BA3E], y 0x00100000 - [C056/C058], height [2DF4], through the picture's view matrix 7B28 (as the far dots), no integer divisions,
+ * halved on the zoomed view. Returns 1 with *fx, *fy when the point is in front of the eye. (The flat-overlay audit, 27 Nov: the weapon box, tracers.) */
+static int fine_screen_point(const machine_t *m, uint16_t ds, int32_t X, int32_t Y, int Z, unsigned zoom, double *fx, double *fy, double v_out[3])
+{
+    const int32_t ox = (int32_t)((uint32_t)rd16(m->mem, ds, 0xBA3C) | ((uint32_t)rd16(m->mem, ds, 0xBA3E) << 16));
+    const int32_t oy = (int32_t)((uint32_t)rd16(m->mem, ds, 0xC056) | ((uint32_t)rd16(m->mem, ds, 0xC058) << 16));
+    const double v[3] = { (double)(int32_t)((uint32_t)ox - (uint32_t)X) / 32.0, (double)(int16_t)((uint16_t)Z - rd16(m->mem, ds, 0x2DF4)) / 32.0,
+                          (double)(int32_t)((uint32_t)Y + (uint32_t)oy - 0x00100000u) / 32.0 };
+    if (v_out) { v_out[0] = v[0]; v_out[1] = v[1]; v_out[2] = v[2]; }
+    double comp[3];
+    for (int a = 0; a < 3; a++) {
+        comp[a] = 0;
+        for (int c = 0; c < 3; c++) {
+            const double w = (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * (3 * c + a)));
+            comp[a] += 2.0 * w * (a == 1 ? 4.0 / 3.0 : 1.0) * (c == 0 ? 1.0 : -1.0) * v[c] / 16384.0;
+        }
+    }
+    if (zoom) { comp[0] /= 2.0; comp[1] /= 2.0; }
+    if (!(comp[2] < 0.0)) return 0;
+    *fx = comp[0] * 256.0 / comp[2] + 160.0 + 0.5;
+    *fy = comp[1] * 256.0 / comp[2] * 0.75 + (zoom ? 0x3C : 0x34) + 0.5;
+    return 1;
+}
+
+/* Move a B5DC call's point (x, y, alt words at SP+2/4/6) 64 units behind the eye, so the game reports it off and draws nothing for it (render copy only). */
+static void point_behind_eye(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp)
+{
+    const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
+    const double l = sqrt(wx * wx + wa * wa + wy * wy);
+    if (l <= 0.0) return;
+    const int ox = (int)lround(64.0 * wx / l), oy = (int)lround(64.0 * wy / l), oa = (int)lround(64.0 * wa / l);
+    wr16(m->mem, ss, (uint16_t)(sp + 2), (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
+    wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
+    wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)(rd16(m->mem, ds, 0x2DF4) + (uint16_t)(oa * 32)));
+}
+
+static F117_TLS struct { int valid; double x, y; } g_tracer_tail;
+
 static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
 {
     static int log = -1;
@@ -1835,6 +1874,30 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
      * The game's own box is not drawn in this render copy: the call's point is moved behind the eye, so B5DC reports it off and section 1 skips the marker. */
     if (g_box_dbg < 0) g_box_dbg = getenv("F117_BOX_DEBUG") != NULL;
     if (g_box_dbg_on) { g_box_dbg_on = 0; fprintf(stderr, "[box-dbg] mine %.2f %.2f game %d %d\n", g_box_dbg_fx, g_box_dbg_fy, (int16_t)rd16(m->mem, ds, 0x4A10), (int16_t)rd16(m->mem, ds, 0x4A18)); }
+    /* F117_WIDE_TRACER_PRECISE=1 (off by default; flat-overlay audit, 27 Nov): gun tracers (symbology section 2, matched.c 68460): the tail is projected by B5DC
+     * from 0xA200 (return A203), the head, half a velocity step ahead, from 0xA233 (return A236), and the library line joins the two whole-pixel points. Here both
+     * are placed at fine precision from the same scene-unit view origin as the models, the line drawn in the tracer's pen (0Dh, the cycling colour, for the
+     * player's; 29h for the enemy's), and the game's own line is skipped in this render copy by moving the head's point behind the eye (the copy's hit tests
+     * after it are discarded with the copy; the live game is untouched). */
+    if ((ret == 0xA203 || ret == 0xA236) && !(view & 0x80) && g_collector.overlay_line) {
+        static int precise = -1; if (precise < 0) precise = getenv("F117_WIDE_TRACER_PRECISE") != NULL;
+        if (precise) {
+            const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), alt = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6));
+            double fx, fy;
+            const int on = fine_screen_point(m, ds, (int32_t)((uint32_t)(uint16_t)x << 5), (int32_t)((uint32_t)(uint16_t)y << 5), alt, zoom, &fx, &fy, NULL);
+            if (g_box_dbg < 0) g_box_dbg = getenv("F117_BOX_DEBUG") != NULL;
+            if (g_box_dbg) fprintf(stderr, "[tracer-dbg] clock %llu ret %04X on %d at %.1f %.1f game-units %d %d %d\n", (unsigned long long)m->cpu.icount, ret, on, on ? fx : 0.0, on ? fy : 0.0, x, y, alt);
+            if (ret == 0xA203) { g_tracer_tail.valid = on; g_tracer_tail.x = fx; g_tracer_tail.y = fy; return; }
+            if (on && g_tracer_tail.valid) {
+                const int idx = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x24)), players = (int16_t)rd16(m->mem, ds, 0xB198);
+                const unsigned colour = 0xFF00u | (idx < players ? 0x0Du : 0x29u);
+                g_collector.overlay_line(g_collector.user, fx, fy, g_tracer_tail.x, g_tracer_tail.y, colour);
+            }
+            g_tracer_tail.valid = 0;
+            point_behind_eye(m, ds, ss, sp);
+            return;
+        }
+    }
     if (ret == 0x9F49 && !(view & 0x80) && g_collector.overlay_line) {
         static int precise = -1; if (precise < 0) precise = getenv("F117_WIDE_BOX_PRECISE") != NULL;
         const int slot = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x24));
