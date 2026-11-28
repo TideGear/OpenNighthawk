@@ -3353,6 +3353,20 @@ int main(int argc, char **argv)
                     if (cleared) fflush(audio_queue_log);
                 }
             }
+            {   /* F117_PEEKW=CLOCK:PHYSADDR:N (diagnostic): print N little-endian words from that address once, when the clock reaches CLOCK */
+                static const char *pw; static int pwinit; static uint64_t pwat;
+                if (!pwinit) { pwinit = 1; pw = getenv("F117_PEEKW"); if (pw) pwat = strtoull(pw, NULL, 0); }
+                if (pw && pwat && H.m.cpu.icount >= pwat) {
+                    pwat = 0;
+                    const char *q = strchr(pw, ':');
+                    const unsigned long long addr = q ? strtoull(q + 1, NULL, 16) : 0;
+                    const char *nq = q ? strchr(q + 1, ':') : NULL;
+                    const int n = nq ? atoi(nq + 1) : 1;
+                    fprintf(stderr, "[peekw] clock %llu at %05llX:", (unsigned long long)H.m.cpu.icount, addr);
+                    for (int k = 0; k < n && k < 256; k++) fprintf(stderr, " %d", (int16_t)(H.m.mem[(addr + 2 * k) & 0xFFFFF] | H.m.mem[(addr + 2 * k + 1) & 0xFFFFF] << 8));
+                    fprintf(stderr, "\n");
+                }
+            }
             {   /* F117_POKE=CLOCK:PHYSADDR:HEXBYTES[,...] (diagnostic): write bytes into the machine's memory once, when the clock reaches CLOCK;
                  * for testing a guess about the game's state (the machine is not otherwise touched) */
                 static const char *pk; static int pinit; static uint64_t pat;
