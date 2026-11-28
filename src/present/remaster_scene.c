@@ -373,6 +373,11 @@ static void complete_parts(const scene_mesh *mesh, scene_pose *p, const uint8_t 
 
 int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *bank, uint16_t model, const int16_t position[3], remaster_frame *f)
 {
+    {   /* F117_HIDE_MODELS=a,b,... (diagnostic, R55): those models (by index) emit nothing, to show by difference which pixels a model draws */
+        static int init; static unsigned char hide[128];
+        if (!init) { init = 1; for (const char *q = getenv("F117_HIDE_MODELS"); q && *q; ) { const int v = atoi(q); if (v >= 0 && v < 128) hide[v] = 1; q = strchr(q, ','); if (q) q++; } }
+        if (model < 128 && hide[model]) return 0;
+    }
     int16_t camera[9];
     for (int k = 0; k < 9; k++) camera[k] = (int16_t)(dsp[0x7B28 + 2 * k] | dsp[0x7B28 + 2 * k + 1] << 8);
     uint32_t depth32 = scene_model_depth(position, camera);
