@@ -1820,6 +1820,7 @@ static void wide_tracer_line(machine_t *m, uint16_t ds, uint16_t ss, double hx, 
 
 static F117_TLS struct { int i, range; machine_t *m; int16_t pt[3]; unsigned colour; } g_air_late[64];   /* i < 0: a projectile dot, slot -1 - i, at pt (x, y, alt) */
 static F117_TLS int g_air_nlate;
+static F117_TLS int g_box_dbg = -1, g_box_dbg_on; static F117_TLS double g_box_dbg_fx, g_box_dbg_fy;   /* F117_BOX_DEBUG: the precise box's position beside the game's own (4A10/4A18 at the next dot call) */
 static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
 {
     static int log = -1;
@@ -1832,13 +1833,23 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
      * own view matrix (7B28, as the far dots), no integer divisions; the box's geometry is B171's (half-width size, half-height size - size >> 2, size halved on the small
      * HUD, nothing when [368C] is 0), drawn as four lines in the game's pen, clipped to the HUD clip box of 881F ((48, 15)-(271, 90), small HUD (99, 30)-(220, 90)).
      * The game's own box is not drawn in this render copy: the call's point is moved behind the eye, so B5DC reports it off and section 1 skips the marker. */
+    if (g_box_dbg < 0) g_box_dbg = getenv("F117_BOX_DEBUG") != NULL;
+    if (g_box_dbg_on) { g_box_dbg_on = 0; fprintf(stderr, "[box-dbg] mine %.2f %.2f game %d %d\n", g_box_dbg_fx, g_box_dbg_fy, (int16_t)rd16(m->mem, ds, 0x4A10), (int16_t)rd16(m->mem, ds, 0x4A18)); }
     if (ret == 0x9F49 && !(view & 0x80) && g_collector.overlay_line) {
         static int precise = -1; if (precise < 0) precise = getenv("F117_WIDE_BOX_PRECISE") != NULL;
         const int slot = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x24));
         if (precise && slot >= 0 && slot < 12) {
             const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), alt = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6));
-            const double v[3] = { (double)(int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), (double)(int16_t)((uint16_t)alt - rd16(m->mem, ds, 0x2DF4)) / 32.0,
-                                  (double)(int16_t)((uint16_t)y - rd16(m->mem, ds, 0xC0DE)) };
+            /* In scene units (1/32 map unit), as BB0D places the missile's model: the view origin x [BA3C/BA3E], y 0x00100000 - [C056/C058] (measured 27 Nov: matches C0DE in whole units for every slot), height [2DF4];
+             * the missile at its whole map unit << 5, or its exact interpolated position when the exact-projectile copy has one. Whole map units for the
+             * camera (C0D0/C0DE, as B5DC uses) are up to a unit off, which at a few units' range moves the box tens of pixels (the 27 Nov sheet). */
+            int32_t X = (int32_t)((uint32_t)(uint16_t)x << 5), Y = (int32_t)((uint32_t)(uint16_t)y << 5); int Z = alt;
+            if (slot < RERUN_PROJECTILE_COUNT && g_proj_exact[slot].valid) { X = g_proj_exact[slot].x; Y = g_proj_exact[slot].y; Z = g_proj_exact[slot].z; }
+            const int32_t ox = (int32_t)((uint32_t)rd16(m->mem, ds, 0xBA3C) | ((uint32_t)rd16(m->mem, ds, 0xBA3E) << 16));
+            const int32_t oy = (int32_t)((uint32_t)rd16(m->mem, ds, 0xC056) | ((uint32_t)rd16(m->mem, ds, 0xC058) << 16));
+            const double v[3] = { (double)(int32_t)((uint32_t)ox - (uint32_t)X) / 32.0, (double)(int16_t)((uint16_t)Z - rd16(m->mem, ds, 0x2DF4)) / 32.0,
+                                  (double)(int32_t)((uint32_t)Y + (uint32_t)oy - 0x00100000u) / 32.0 };
+            if (g_box_dbg) fprintf(stderr, "[box-dbg] whole %d %d\n", (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), (int16_t)((uint16_t)y - rd16(m->mem, ds, 0xC0DE)));
             double M[3][3];
             for (int c = 0; c < 3; c++) for (int a = 0; a < 3; a++) {
                 const double w = (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * (3 * c + a)));
@@ -1850,6 +1861,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
             const int rows = rd16(m->mem, ds, 0x368C) != 0;
             if (comp[2] < 0.0 && rows) {
                 const double fx = comp[0] * 256.0 / comp[2] + 160.0 + 0.5, fy = comp[1] * 256.0 / comp[2] * 0.75 + (zoom ? 0x3C : 0x34) + 0.5;
+                if (g_box_dbg) { g_box_dbg_on = 1; g_box_dbg_fx = fx; g_box_dbg_fy = fy; }
                 const double size = zoom ? 3.0 : 6.0, hh = zoom ? 3.0 : 5.0;
                 const double cx0 = zoom ? 99.0 : 48.0, cx1 = zoom ? 221.0 : 272.0, cy0 = zoom ? 30.0 : 15.0, cy1 = 91.0;
                 const double L = fx - size, R = fx + size, T = fy - hh, B = fy + hh;
@@ -1867,6 +1879,7 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
                     if (keep) g_collector.overlay_line(g_collector.user, e[k][0] + dx * t0, e[k][1] + dy * t0, e[k][0] + dx * t1, e[k][1] + dy * t1, colour);
                 }
             }
+            if (g_box_dbg) { if (comp[2] >= 0.0) { g_box_dbg_on = 1; g_box_dbg_fx = g_box_dbg_fy = -9999; } fprintf(stderr, "[box-dbg] clock %llu slot %d v %.1f %.2f %.1f comp %.1f %.1f %.1f\n", (unsigned long long)m->cpu.icount, slot, v[0], v[1], v[2], comp[0], comp[1], comp[2]); return; }
             /* the game's own box off: the point 64 units behind the eye */
             const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
             const double l = sqrt(wx * wx + wa * wa + wy * wy);
