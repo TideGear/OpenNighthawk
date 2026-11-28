@@ -1186,8 +1186,10 @@ static void vga_census(const machine_t *m, uint64_t icount)
     {   static uint8_t d0[3]; static int dh; static unsigned dn;   /* DAC colour 0Dh (the library's flash colour, MGRAPHIC 019C:125C) */
         static uint64_t from = 1; if (from == 1) { const char *e = getenv("F117_VGA_CENSUS_FROM"); from = e ? strtoull(e, NULL, 0) : 0; }
         {   static uint8_t all[768]; static int ah;     /* the whole DAC: how many colours changed since the last frame, from F117_VGA_CENSUS_FROM on */
-            if (ah && icount >= from) { int nchg = 0, first = -1; for (int k = 0; k < 256; k++) if (memcmp(all + 3 * k, m->dac + 3 * k, 3)) { nchg++; if (first < 0) first = k; }
-                if (nchg && dn < 3000) { dn++; fprintf(stderr, "[vga] clock %llu dac %d colours changed, first %02X: %02X%02X%02X -> %02X%02X%02X\n", (unsigned long long)icount, nchg, first, all[3*first], all[3*first+1], all[3*first+2], m->dac[3*first], m->dac[3*first+1], m->dac[3*first+2]); } }
+            static unsigned only0d;                         /* changes to colour 0Dh alone (the flash cycle) are counted, every other change is logged with its index range */
+            if (ah && icount >= from) { int nchg = 0, first = -1, lastk = -1; for (int k = 0; k < 256; k++) if (memcmp(all + 3 * k, m->dac + 3 * k, 3)) { nchg++; if (first < 0) first = k; lastk = k; }
+                if (nchg == 1 && first == 0x0D) only0d++;
+                else if (nchg && dn < 20000) { dn++; fprintf(stderr, "[vga] clock %llu dac %d colours changed, %02X-%02X, first %02X: %02X%02X%02X -> %02X%02X%02X (0D-only changes before: %u)\n", (unsigned long long)icount, nchg, first, lastk, first, all[3*first], all[3*first+1], all[3*first+2], m->dac[3*first], m->dac[3*first+1], m->dac[3*first+2], only0d); only0d = 0; } }
             memcpy(all, m->dac, 768); ah = 1; }
         if (0 && dh && memcmp(d0, m->dac + 3 * 0x0D, 3) && dn++ < 400) fprintf(stderr, "[vga] clock %llu dac 0D: %02X%02X%02X -> %02X%02X%02X\n", (unsigned long long)icount, d0[0], d0[1], d0[2], m->dac[39], m->dac[40], m->dac[41]);
         memcpy(d0, m->dac + 3 * 0x0D, 3); dh = 1; }
