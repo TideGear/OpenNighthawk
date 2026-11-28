@@ -1180,6 +1180,9 @@ static void on_input(void *u, const machine_input *in)
  * ([vga] clock, register, old, new), so every hardware-level effect a flight uses is named. The DAC is not logged here (the presented palettes already follow it). */
 static void vga_census(const machine_t *m, uint64_t icount)
 {
+    {   static long peek = -2; static int pv = -1;   /* F117_PEEK=LINEAR (diagnostic): the byte there, logged per VGA frame when it changes */
+        if (peek == -2) { const char *e = getenv("F117_PEEK"); peek = e ? strtol(e, NULL, 16) : -1; }
+        if (peek >= 0 && m->mem[peek & 0xFFFFF] != pv) { pv = m->mem[peek & 0xFFFFF]; fprintf(stderr, "[peek] clock %llu %05lX = %02X\n", (unsigned long long)icount, peek, pv); } }
     static int on = -1; static uint8_t last[8 + 16 + 32 + 32 + 2]; static int have; static unsigned left = 20000;
     if (on < 0) on = getenv("F117_VGA_CENSUS") != NULL;
     if (!on || !left) return;
@@ -1201,6 +1204,20 @@ static void vga_census(const machine_t *m, uint64_t icount)
         fprintf(stderr, "[vga] clock %llu %s %02X: %02X -> %02X\n", (unsigned long long)icount, g, r, last[i], now[i]); left--;
     }
     memcpy(last, now, sizeof last); have = 1;
+}
+
+/* F117_REMASTER_SHAKE=1 (opt-in, R57): the original jolts the picture while the library's shake count runs (60 frames when the aircraft takes damage,
+ * VGAME 7A1F via MGRAPHIC 019C:1251; 019C:125C writes CRTC 0Dh = random 0..3 each frame), so the scanned picture starts 0, 4, 8 or 12 pixels into the
+ * page: it moves left by that many game pixels. The Remastered picture is built from the game's drawing, not the scanout, so it never moved; this
+ * moves it by the same amount in picture pixels. Returns the shift in picture pixels. */
+static int remaster_shake_px(int w)
+{
+    static int on = -1; if (on < 0) on = getenv("F117_REMASTER_SHAKE") != NULL;
+    if (!on || H.frame.text) return 0;
+    const int start = H.frame.start % 320;
+    if (start <= 0 || start > 12) return 0;
+    (void)w;
+    return start * (g_scale > 0 ? g_scale : 1);     /* g_scale picture pixels per game pixel (x = 480 + 9 gx at 4K) */
 }
 
 static void on_vsync(void *u, uint64_t icount)
@@ -3898,6 +3915,12 @@ int main(int argc, char **argv)
         if (g_loop_timing) g_lt_upload += SDL_GetTicksNS() - lt_upload0;
         if (frame_hash_from && got && H.m.cpu.icount >= frame_hash_clock) {
             const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            static uint32_t *shake_px; static size_t shake_n;
+            const int sh_px = WIDE_IS(show) ? remaster_shake_px(w) : 0;
+            if (sh_px > 0) {                            /* F117_REMASTER_SHAKE: the shot shows the jolt as the window does (the picture moved left, black at the right) */
+                if (shake_n < (size_t)w * h) { free(shake_px); shake_px = (uint32_t *)malloc((size_t)w * h * 4); shake_n = shake_px ? (size_t)w * h : 0; }
+                if (shake_px) { for (int r = 0; r < h; r++) { memcpy(shake_px + (size_t)r * w, px + (size_t)r * w + sh_px, (size_t)(w - sh_px) * 4); memset(shake_px + (size_t)r * w + (w - sh_px), 0, (size_t)sh_px * 4); } px = shake_px; }
+            }
             uint64_t hash = 14695981039346656037ull;
             for (size_t i = 0; i < (size_t)w * h; ++i)
                 hash = (hash ^ (px[i] & 0xFFFFFFu)) * 1099511628211ull;
@@ -3939,6 +3962,12 @@ int main(int argc, char **argv)
                 if (shots_half) {   /* F117_PRESENT_SHOTS_HALF=1 (diagnostic, for motion clips): every picture kept in memory at half size (2 x 2 averaged) and all written when COUNT are held, so the loop is not slowed by file writes */
                     static struct { uint64_t clock; uint8_t *rgb; int w, h; } held[4096]; static int nheld;
                     const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            static uint32_t *shake_px; static size_t shake_n;
+            const int sh_px = WIDE_IS(show) ? remaster_shake_px(w) : 0;
+            if (sh_px > 0) {                            /* F117_REMASTER_SHAKE: the shot shows the jolt as the window does (the picture moved left, black at the right) */
+                if (shake_n < (size_t)w * h) { free(shake_px); shake_px = (uint32_t *)malloc((size_t)w * h * 4); shake_n = shake_px ? (size_t)w * h : 0; }
+                if (shake_px) { for (int r = 0; r < h; r++) { memcpy(shake_px + (size_t)r * w, px + (size_t)r * w + sh_px, (size_t)(w - sh_px) * 4); memset(shake_px + (size_t)r * w + (w - sh_px), 0, (size_t)sh_px * 4); } px = shake_px; }
+            }
                     const int w2 = w / 2, h2 = (rows >= 2 && rows < h ? rows : h) / 2;
                     uint8_t *rgb = nheld < 4096 ? (uint8_t *)malloc((size_t)w2 * h2 * 3) : NULL;
                     if (rgb) {
@@ -4025,6 +4054,12 @@ int main(int argc, char **argv)
                 SDL_UnlockMutex(g_gpu_lock);
             }
             const uint32_t *px = crt_view(WIDE_IS(show) ? g_wpix : show == tex_fine ? fine_pixels : pixels, w, h);
+            static uint32_t *shake_px; static size_t shake_n;
+            const int sh_px = WIDE_IS(show) ? remaster_shake_px(w) : 0;
+            if (sh_px > 0) {                            /* F117_REMASTER_SHAKE: the shot shows the jolt as the window does (the picture moved left, black at the right) */
+                if (shake_n < (size_t)w * h) { free(shake_px); shake_px = (uint32_t *)malloc((size_t)w * h * 4); shake_n = shake_px ? (size_t)w * h : 0; }
+                if (shake_px) { for (int r = 0; r < h; r++) { memcpy(shake_px + (size_t)r * w, px + (size_t)r * w + sh_px, (size_t)(w - sh_px) * 4); memset(shake_px + (size_t)r * w + (w - sh_px), 0, (size_t)sh_px * 4); } px = shake_px; }
+            }
             SDL_Surface *sf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, (void *)px, w * 4);
             const int ok = sf && (legacy ? SDL_SaveBMP(sf, path) : SDL_SavePNG(sf, path));
             if (sf) SDL_DestroySurface(sf);
@@ -4039,6 +4074,7 @@ int main(int argc, char **argv)
         SDL_FRect dst = output_rect(ren, aspect);
         SDL_FRect dstv = dst;                                   /* the picture; dst stays the 4:3 shape the overlays use */
         if (wide) { int ow = 0, oh = 0; SDL_GetRenderOutputSize(ren, &ow, &oh); dstv.x = 0; dstv.y = 0; dstv.w = (float)ow; dstv.h = (float)oh; }
+        if (WIDE_IS(show)) { const int sh = remaster_shake_px(w); if (sh > 0) dstv.x -= (float)sh * dstv.w / (float)w; }   /* F117_REMASTER_SHAKE (opt-in) */
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, show, &srcf, &dstv);

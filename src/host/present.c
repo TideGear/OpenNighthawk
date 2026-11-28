@@ -16,6 +16,7 @@ void present_capture(const machine_t *m, present_frame *f)
         f->blank = m->scan_blank;
         f->cursor_pos = f->cursor_type = 0;
         f->icount = m->scan_time;
+        f->start = m->scan_start;
         return;
     }
     if (f->text) memcpy(f->vram, m->mem + 0xB8000, 4000);
@@ -25,6 +26,7 @@ void present_capture(const machine_t *m, present_frame *f)
     f->cursor_pos = (uint16_t)(m->mem[0x450] | (m->mem[0x451] << 8));
     f->cursor_type = (uint16_t)(m->mem[0x460] | (m->mem[0x461] << 8));
     f->icount = m->cpu.icount;
+    f->start = (uint16_t)(vga_start_address(m) * 4u);
 }
 
 static uint32_t dac_rgb(const uint8_t *dac, unsigned i)

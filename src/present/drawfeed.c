@@ -995,7 +995,11 @@ int drawlive_current(const drawlive *r, const machine_t *m)
 {
     /* the replay's display is A000 from offset 0, and holds only what the
      * game_draw frames draw: a frame a quarter second old has been left */
-    return r->shown && m->video_mode == 0x13 && m->scan_start == 0 && !strcmp(dos_current_program(m), "VGAME.EXE") &&
+    /* F117_REMASTER_SHAKE (opt-in, R57): the library's screen jolt starts the scan 4, 8 or 12 bytes in (MGRAPHIC 019C:125C); without it such a
+     * frame drops to the game's own 320x200 picture, with it the Remastered picture stays and the host moves it by the same amount */
+    static int shake = -1; if (shake < 0) shake = getenv("F117_REMASTER_SHAKE") != NULL;
+    const int start_ok = m->scan_start == 0 || (shake && m->scan_start <= 12 && (m->scan_start & 3) == 0);
+    return r->shown && m->video_mode == 0x13 && start_ok && !strcmp(dos_current_program(m), "VGAME.EXE") &&
            m->cpu.icount - r->picture_end < m->ips / 4;
 }
 

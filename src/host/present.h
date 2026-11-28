@@ -17,6 +17,7 @@ typedef struct {
     uint8_t  pel_mask;
     uint16_t cursor_pos, cursor_type;
     uint64_t icount;
+    uint16_t start;                 /* the scanned frame's start offset in bytes (CRTC 0Ch/0Dh x 4): the library's screen jolt (MGRAPHIC 019C:125C) */
 } present_frame;
 
 /* Copy the last completed graphics frame, or the current text page. */
