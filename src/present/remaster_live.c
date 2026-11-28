@@ -542,6 +542,23 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
             }
         }
     }
+    {   /* F117_REMASTER_TRACK=X0,Y0,X1,Y1,FROM,UNTIL (diagnostic, R55): every frame in the clock window, each dot, line or polygon vertex (in front of the eye) whose
+         * screen position is in the box: clock, primitive, kind, model, colour word, screen x, y and depth, to see whether a light moves rigidly with the scenery round it */
+        static int tr_init; static double tb[4]; static unsigned long long tf, tu;
+        if (!tr_init) { tr_init = 1; const char *e = getenv("F117_REMASTER_TRACK"); if (!e || sscanf(e, "%lf,%lf,%lf,%lf,%llu,%llu", &tb[0], &tb[1], &tb[2], &tb[3], &tf, &tu) != 6) tu = 0; }
+        if (do1 && tu && m->cpu.icount >= tf && m->cpu.icount < tu) {
+            for (size_t i = 0; i < fr->n; i++) {
+                const remaster_prim *p = &fr->prim[i];
+                for (int k = 0; k < p->n; k++) {
+                    if (p->v[k].z <= 0) continue;
+                    const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
+                    if (sx < tb[0] || sx > tb[2] || sy < tb[1] || sy > tb[3]) continue;
+                    fprintf(stderr, "[track] %llu %zu %d %u %04X %d %.3f %.3f %d\n", (unsigned long long)m->cpu.icount, i, (int)p->kind, (unsigned)p->model, (unsigned)p->colour_word, k, sx, sy, (int)p->v[k].z);
+                }
+            }
+            fprintf(stderr, "[track-frame] %llu origin %.3f %.3f\n", (unsigned long long)m->cpu.icount, origin[0], origin[1]);
+        }
+    }
     const double tq2 = timing ? now_ms() : 0.0;
     if (timing) timing[1] += tq2 - tq1;
     for (size_t i = 0; do1 && i < fr->n; i++) {
