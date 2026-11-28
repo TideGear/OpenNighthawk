@@ -695,10 +695,10 @@ static void copy_overlay_dot(void *user, double x, double y, unsigned colour_wor
     if (COLL()) remaster_live_overlay_dot(COLL(), x, y, colour_word);
 }
 
-static void copy_far_air_dot(void *user, double x, double y, double size, int depth, unsigned unit)
+static void copy_far_air_dot(void *user, double x, double y, double size, int depth, unsigned unit, unsigned colour_word)
 {
     (void)user;
-    if (COLL()) remaster_live_far_air_dot(COLL(), x, y, size, depth, unit);
+    if (COLL()) remaster_live_far_air_dot(COLL(), x, y, size, depth, unit, colour_word);
 }
 
 static int on_exec_hook(void *user, machine_t *m, unsigned index)
@@ -1174,9 +1174,37 @@ static void on_input(void *u, const machine_input *in)
     }
 }
 
+/* F117_VGA_CENSUS=1 (diagnostic, owner 27 Nov: "what else might we have missed?"): the original reaches the screen through the VGA registers as well as through its
+ * drawing (the screen shake jitters the CRTC start address, MGRAPHIC 019C:1251/125C), and the Remastered picture is built from the drawing alone. At each VGA frame,
+ * every sequencer, graphics, CRTC and attribute register, the miscellaneous output and the PEL mask are compared with the last frame's; each change is logged
+ * ([vga] clock, register, old, new), so every hardware-level effect a flight uses is named. The DAC is not logged here (the presented palettes already follow it). */
+static void vga_census(const machine_t *m, uint64_t icount)
+{
+    static int on = -1; static uint8_t last[8 + 16 + 32 + 32 + 2]; static int have; static unsigned left = 20000;
+    if (on < 0) on = getenv("F117_VGA_CENSUS") != NULL;
+    if (!on || !left) return;
+    {   static uint8_t d0[3]; static int dh; static unsigned dn;   /* DAC colour 0Dh (the library's flash colour, MGRAPHIC 019C:125C) */
+        static uint64_t from = 1; if (from == 1) { const char *e = getenv("F117_VGA_CENSUS_FROM"); from = e ? strtoull(e, NULL, 0) : 0; }
+        {   static uint8_t all[768]; static int ah;     /* the whole DAC: how many colours changed since the last frame, from F117_VGA_CENSUS_FROM on */
+            if (ah && icount >= from) { int nchg = 0, first = -1; for (int k = 0; k < 256; k++) if (memcmp(all + 3 * k, m->dac + 3 * k, 3)) { nchg++; if (first < 0) first = k; }
+                if (nchg && dn < 3000) { dn++; fprintf(stderr, "[vga] clock %llu dac %d colours changed, first %02X: %02X%02X%02X -> %02X%02X%02X\n", (unsigned long long)icount, nchg, first, all[3*first], all[3*first+1], all[3*first+2], m->dac[3*first], m->dac[3*first+1], m->dac[3*first+2]); } }
+            memcpy(all, m->dac, 768); ah = 1; }
+        if (0 && dh && memcmp(d0, m->dac + 3 * 0x0D, 3) && dn++ < 400) fprintf(stderr, "[vga] clock %llu dac 0D: %02X%02X%02X -> %02X%02X%02X\n", (unsigned long long)icount, d0[0], d0[1], d0[2], m->dac[39], m->dac[40], m->dac[41]);
+        memcpy(d0, m->dac + 3 * 0x0D, 3); dh = 1; }
+    uint8_t now[sizeof last];
+    memcpy(now, m->seq, 8); memcpy(now + 8, m->gc, 16); memcpy(now + 24, m->crtc, 32); memcpy(now + 56, m->attr, 32); now[88] = m->misc_out; now[89] = m->pel_mask;
+    if (have) for (int i = 0; i < (int)sizeof now && left; i++) if (now[i] != last[i]) {
+        const char *g = i < 8 ? "seq" : i < 24 ? "gc" : i < 56 ? "crtc" : i < 88 ? "attr" : i == 88 ? "misc" : "pel";
+        const int r = i < 8 ? i : i < 24 ? i - 8 : i < 56 ? i - 24 : i < 88 ? i - 56 : 0;
+        fprintf(stderr, "[vga] clock %llu %s %02X: %02X -> %02X\n", (unsigned long long)icount, g, r, last[i], now[i]); left--;
+    }
+    memcpy(last, now, sizeof last); have = 1;
+}
+
 static void on_vsync(void *u, uint64_t icount)
 {
     (void)u; (void)icount;
+    vga_census(&H.m, icount);
     const uint64_t t0 = g_loop_timing ? SDL_GetPerformanceCounter() : 0;
     if (g_loop_timing) g_lt_calls[2]++;
     present_capture(&H.m, &H.frame);

@@ -73,7 +73,7 @@ void remaster_live_native_commit_range(remaster_live *r, machine_t *m, size_t k0
 void remaster_live_overlay_dot(remaster_live *r, double x, double y, unsigned colour_word);
 /* A w x h block of the game's pixels (a square polygon), the same way; clip_rows keeps only the rows inside the game's 3D clip window (r->window). */
 void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, double h, unsigned colour_word, int clip_rows, int layer);
-void remaster_live_far_air_dot(remaster_live *r, double x, double y, double size, int depth, unsigned unit);
+void remaster_live_far_air_dot(remaster_live *r, double x, double y, double size, int depth, unsigned unit, unsigned colour_word);
 /* A line primitive of one game pixel's width between two points of the game's 320 x 200 screen, in front of the scene. */
 void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x1, double y1, unsigned colour_word);
 

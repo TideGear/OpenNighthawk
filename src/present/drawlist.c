@@ -597,11 +597,18 @@ static void hud_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
     const int fine = p->hi && p->n > 1 && !p->suppress && origin >= 0 && origin < 64000 &&
         x0 + ox >= 0 && x0 + ox < 320 && x1 + ox >= 0 && x1 + ox < 320 &&
         y0 + oy >= 0 && y0 + oy < 200 && y1 + oy >= 0 && y1 + oy < 200;
+    /* F117_WIDE_BOX_PRECISE=1: the game's weapon-in-flight box (B171 through 881F: four HUD lines in pen 11h for an enemy weapon, 0Ah for the player's, half-width 6 and
+     * half-height 5, 3 and 3 on the small HUD; measured at the hit 27 Nov) stays in the coarse page, which the presentation checks against the game's own screen, but gets
+     * no fine stroke: the render copy draws the precise box in its place (rerun.c). In pen 0Ah, the green HUD's pen too, only the exact box lengths are taken. */
+    static int precise = -1; if (precise < 0) precise = getenv("F117_WIDE_BOX_PRECISE") != NULL;
+    const int bdx = abs(x1 - x0), bdy = abs(y1 - y0);
+    const int box = precise && ((col == 0x11 && ((bdy == 0 && bdx <= 12) || (bdx == 0 && bdy <= 10))) ||
+                                (col == 0x0A && ((bdy == 0 && (bdx == 12 || bdx == 6)) || (bdx == 0 && (bdy == 10 || bdy == 6)))));
     const int suppressed = p->suppress;
-    if (fine) p->suppress = 1;
+    if (fine || box) p->suppress = 1;
     lib_line(p, x0, y0, x1, y1, origin, col);
     p->suppress = suppressed;
-    if (fine) fine_line(p, x0 + ox, y0 + oy, x1 + ox, y1 + oy, width ? width : p->n, col);
+    if (fine && !box) fine_line(p, x0 + ox, y0 + oy, x1 + ox, y1 + oy, width ? width : p->n, col);
 }
 
 /* An outline edge (VGAME's own line routine) is the same kind of stroke as a HUD line: the exact

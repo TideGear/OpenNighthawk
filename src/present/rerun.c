@@ -1818,13 +1818,67 @@ static void wide_tracer_line(machine_t *m, uint16_t ds, uint16_t ss, double hx, 
     }
 }
 
-static F117_TLS struct { int i, range; machine_t *m; } g_air_late[64];
+static F117_TLS struct { int i, range; machine_t *m; int16_t pt[3]; unsigned colour; } g_air_late[64];   /* i < 0: a projectile dot, slot -1 - i, at pt (x, y, alt) */
 static F117_TLS int g_air_nlate;
 static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t sp, uint16_t ret)
 {
     static int log = -1;
     if (log < 0) { const char *e = getenv("F117_WIDE_DOTS_LOG"); log = e ? (e[0] == '2' ? 2 : 1) : 0; }
     const unsigned view = m->mem[(((uint32_t)ds << 4) + 0xC0A6) & 0xFFFFF], zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF];
+    /* F117_WIDE_BOX_PRECISE=1 (off by default; flat-overlay audit, owner 27 Nov): the weapon-in-flight box (symbology section 1, matched.c 68380: B5DC from 9F46, then
+     * the marker B171 at SCREEN_X/Y, size 6, unlocked, pen 11h for slots 0-7, 0Ah for 8-11) placed from the weapon's precise position. The game's B5DC takes the altitude
+     * offset in whole horizontal units ((alt - [2DF4]) >> 5) and rounds to whole pixels, while the missile's model is placed with the altitude unrounded, so close to the
+     * camera the game's box lands well off the missile and jumps (the owner's SA-N-4 at 14.09-14.12 G). Here: the same offsets with the altitude unrounded, the picture's
+     * own view matrix (7B28, as the far dots), no integer divisions; the box's geometry is B171's (half-width size, half-height size - size >> 2, size halved on the small
+     * HUD, nothing when [368C] is 0), drawn as four lines in the game's pen, clipped to the HUD clip box of 881F ((48, 15)-(271, 90), small HUD (99, 30)-(220, 90)).
+     * The game's own box is not drawn in this render copy: the call's point is moved behind the eye, so B5DC reports it off and section 1 skips the marker. */
+    if (ret == 0x9F49 && !(view & 0x80) && g_collector.overlay_line) {
+        static int precise = -1; if (precise < 0) precise = getenv("F117_WIDE_BOX_PRECISE") != NULL;
+        const int slot = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x24));
+        if (precise && slot >= 0 && slot < 12) {
+            const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), alt = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6));
+            const double v[3] = { (double)(int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), (double)(int16_t)((uint16_t)alt - rd16(m->mem, ds, 0x2DF4)) / 32.0,
+                                  (double)(int16_t)((uint16_t)y - rd16(m->mem, ds, 0xC0DE)) };
+            double M[3][3];
+            for (int c = 0; c < 3; c++) for (int a = 0; a < 3; a++) {
+                const double w = (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * (3 * c + a)));
+                M[c][a] = 2.0 * w * (a == 1 ? 4.0 / 3.0 : 1.0) * (c == 0 ? 1.0 : -1.0);
+            }
+            double comp[3];
+            for (int a = 0; a < 3; a++) { comp[a] = 0; for (int c = 0; c < 3; c++) comp[a] += M[c][a] * v[c] / 16384.0; }
+            if (zoom) { comp[0] /= 2.0; comp[1] /= 2.0; }
+            const int rows = rd16(m->mem, ds, 0x368C) != 0;
+            if (comp[2] < 0.0 && rows) {
+                const double fx = comp[0] * 256.0 / comp[2] + 160.0 + 0.5, fy = comp[1] * 256.0 / comp[2] * 0.75 + (zoom ? 0x3C : 0x34) + 0.5;
+                const double size = zoom ? 3.0 : 6.0, hh = zoom ? 3.0 : 5.0;
+                const double cx0 = zoom ? 99.0 : 48.0, cx1 = zoom ? 221.0 : 272.0, cy0 = zoom ? 30.0 : 15.0, cy1 = 91.0;
+                const double L = fx - size, R = fx + size, T = fy - hh, B = fy + hh;
+                const double e[4][4] = { { L, B, L, T }, { L, B, R, B }, { R, B, R, T }, { R, T, L, T } };
+                const unsigned colour = 0x10000u | 0xFF00u | (slot < 8 ? 0x11u : 0x0Au);   /* bit 16: on top of every face (remaster_live_overlay_line) */
+                for (int k = 0; k < 4; k++) {          /* Liang-Barsky against the clip box */
+                    double t0 = 0.0, t1 = 1.0;
+                    const double dx = e[k][2] - e[k][0], dy = e[k][3] - e[k][1];
+                    const double pp[4] = { -dx, dx, -dy, dy }, qq[4] = { e[k][0] - cx0, cx1 - e[k][0], e[k][1] - cy0, cy1 - e[k][1] };
+                    int keep = 1;
+                    for (int q = 0; q < 4 && keep; q++) {
+                        if (pp[q] == 0.0) { if (qq[q] < 0.0) keep = 0; }
+                        else { const double r = qq[q] / pp[q]; if (pp[q] < 0.0) { if (r > t1) keep = 0; else if (r > t0) t0 = r; } else { if (r < t0) keep = 0; else if (r < t1) t1 = r; } }
+                    }
+                    if (keep) g_collector.overlay_line(g_collector.user, e[k][0] + dx * t0, e[k][1] + dy * t0, e[k][0] + dx * t1, e[k][1] + dy * t1, colour);
+                }
+            }
+            /* the game's own box off: the point 64 units behind the eye */
+            const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
+            const double l = sqrt(wx * wx + wa * wa + wy * wy);
+            if (l > 0.0) {
+                const int ox = (int)lround(64.0 * wx / l), oy = (int)lround(64.0 * wy / l), oa = (int)lround(64.0 * wa / l);
+                wr16(m->mem, ss, (uint16_t)(sp + 2), (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
+                wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
+                wr16(m->mem, ss, (uint16_t)(sp + 6), (uint16_t)(rd16(m->mem, ds, 0x2DF4) + (uint16_t)(oa * 32)));
+            }
+            return;
+        }
+    }
     if (log && g_dot_prev.valid) {                  /* the previous call's prediction against what the routine stored */
         static unsigned long long checked, differ; static unsigned shown;
         const uint16_t gx = rd16(m->mem, ds, 0x4A10), gy = rd16(m->mem, ds, 0x4A18);
@@ -1933,19 +1987,23 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
      * whole game pixel at a whole-pixel place, 9 screen pixels at 4K, moved 15 times a second. F117_FAR_AIR_FINE=1: such a dot (one the game shows, in the 4:3 picture or in a
      * margin) goes to the far aircraft overlay instead, projected when the overlays are flushed with the picture's own view matrix and without the integer divisions, sized by
      * the Far light size rule (one game pixel at the model/dot swap depth, smaller beyond; Original: one game pixel), depth-tested; the game's own dot is not drawn in this render
-     * copy: the call's point is moved 64 units behind the eye, so the routine reports it behind ([DEBE] >= 0) and the loop goes on to the next aircraft (matched.c 34700). */
-    if (ret == 0x9BDF && !(view & 0x80) && (on || sx < 0 || sx > 0x13F || sy < 0 || sy > 199) && g_collector.overlay_rect) {
+     * copy: the call's point is moved 64 units behind the eye, so the routine reports it behind ([DEBE] >= 0) and the loop goes on to the next aircraft (matched.c 34700).
+     * Projectile dots (the projectile loop, 9D89, a missile or shell too far for its model) the same way, in the game's pen (29h for slots 0-7, 0Dh for 8-11: matched.c 34773);
+     * the routine marks a point behind the eye off screen ([4A10] = FFFFh), which the projectile loop skips (matched.c 34788). Flat-overlay audit, 27 Nov. */
+    if ((ret == 0x9BDF || ret == 0x9D89) && !(view & 0x80) && (on || sx < 0 || sx > 0x13F || sy < 0 || sy > 199) && g_collector.overlay_rect) {
         static int fine = -1; if (fine < 0) fine = getenv("F117_FAR_AIR_FINE") != NULL;
         const double wx = (int16_t)rd16(m->mem, ds, 0xB082 + 4), wa = (int16_t)rd16(m->mem, ds, 0xB088 + 4), wy = (int16_t)rd16(m->mem, ds, 0xB08E + 4);
         const double l = sqrt(wx * wx + wa * wa + wy * wy);
         const int unit = (int16_t)rd16(m->mem, ss, (uint16_t)(m->cpu.r[R_BP] - 0x22));
-        if (fine && l > 0.0 && unit >= 0 && unit < 64 && g_air_nlate < 64) {
+        if (fine && l > 0.0 && unit >= 0 && unit < (ret == 0x9D89 ? 12 : 64) && g_air_nlate < 64) {
             const int16_t x = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), y = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4));
             int dx = (int16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)x), dy = (int16_t)(rd16(m->mem, ds, 0xC0DE) - (uint16_t)y);
             dx = dx < 0 ? -dx : dx; dy = dy < 0 ? -dy : dy;
             int range = (dx > dy ? dx : dy) + ((dx > dy ? dy : dx) >> 1);
             if (range > 0x7FFF) range = 0x7FFF;
-            g_air_late[g_air_nlate].i = unit; g_air_late[g_air_nlate].range = range; g_air_late[g_air_nlate].m = m; g_air_nlate++;
+            g_air_late[g_air_nlate].i = ret == 0x9D89 ? -1 - unit : unit; g_air_late[g_air_nlate].range = range; g_air_late[g_air_nlate].m = m;
+            g_air_late[g_air_nlate].pt[0] = x; g_air_late[g_air_nlate].pt[1] = y; g_air_late[g_air_nlate].pt[2] = (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6));
+            g_air_late[g_air_nlate].colour = ret == 0x9D89 ? (unit < 8 ? 0xFF29u : 0xFF0Du) : 0xFF0Fu; g_air_nlate++;
             const int ox = (int)lround(64.0 * wx / l), oy = (int)lround(64.0 * wy / l), oa = (int)lround(64.0 * wa / l);   /* offsets x = C0D0 - x, y = y - C0DE, alt = (alt - 2DF4) >> 5 */
             wr16(m->mem, ss, (uint16_t)(sp + 2), (uint16_t)(rd16(m->mem, ds, 0xC0D0) - (uint16_t)ox));
             wr16(m->mem, ss, (uint16_t)(sp + 4), (uint16_t)(rd16(m->mem, ds, 0xC0DE) + (uint16_t)oy));
@@ -1974,16 +2032,16 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
  * menus 2 and 3 at live speed). A Stage 2 scene copy runs in slices across display frames; when another copy reached its flush between the scene's walk hook and
  * the scene's own flush, it took the scene's dots (projected with the other copy's matrix into the other copy's frame) and the scene had none: whole steps without
  * the dot. Per thread as well, for the copy thread. F117_FAR_AIR_SHARED=1 restores the shared list (the first version). */
-static F117_TLS struct { double x, y, w; int depth; unsigned unit; const machine_t *m; } g_pend[160];
+static F117_TLS struct { double x, y, w; int depth; unsigned unit; const machine_t *m; unsigned colour; } g_pend[160];
 static F117_TLS int g_npend;
-static void far_air_project(machine_t *m, int i, int range);
+static void far_air_project(machine_t *m, int i, int range, const int16_t *pt, unsigned colour);
 static int far_air_shared(void) { static int s = -1; if (s < 0) s = getenv("F117_FAR_AIR_SHARED") != NULL; return s; }
 void rerun_flush_overlays(const machine_t *m)
 {
     const int shared = far_air_shared();
     {   int keep = 0, foreign = 0;
         for (int k = 0; k < g_air_nlate; k++) {
-            if (shared || g_air_late[k].m == m || !m) { far_air_project(g_air_late[k].m, g_air_late[k].i, g_air_late[k].range); }
+            if (shared || g_air_late[k].m == m || !m) { far_air_project(g_air_late[k].m, g_air_late[k].i, g_air_late[k].range, g_air_late[k].i < 0 ? g_air_late[k].pt : NULL, g_air_late[k].colour); }
             else { g_air_late[keep++] = g_air_late[k]; foreign++; }
         }
         g_air_nlate = shared ? 0 : keep;
@@ -2000,14 +2058,14 @@ void rerun_flush_overlays(const machine_t *m)
     for (int i = 0; i < g_npend; i++) {
         if (!shared && m && g_pend[i].m && g_pend[i].m != m) { g_pend[keep++] = g_pend[i]; continue; }
         if (depth_test && g_collector.far_air_dot && g_pend[i].depth > 0)
-            g_collector.far_air_dot(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].depth, g_pend[i].unit);
+            g_collector.far_air_dot(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].depth, g_pend[i].unit, g_pend[i].colour);
         else if (g_collector.overlay_rect)
-            g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, 0xFF0F, 0, 99);
+            g_collector.overlay_rect(g_collector.user, g_pend[i].x, g_pend[i].y, g_pend[i].w, g_pend[i].w, g_pend[i].colour, 0, 99);
     }
     g_npend = keep;
 }
 /* One far aircraft's dot from the game's current view matrix (B082..), the unit's record and the pose now in memory: the same arithmetic as the aircraft test's (R43). */
-static void far_air_project(machine_t *m, int i, int range)
+static void far_air_project(machine_t *m, int i, int range, const int16_t *pt, unsigned colour)
 {
     const uint16_t ds = m->cpu.seg[S_DS];
     /* The game's matrix, [vector component][axis] = the word at B082 + 6c + 2a, as the aircraft test multiplies it (comp[a] = sum of M[c][a] * v[c], the same as the verified
@@ -2035,7 +2093,7 @@ static void far_air_project(machine_t *m, int i, int range)
         }
     }
     const int rows = rd16(m->mem, ds, 0x368C) != 0, zoom = m->mem[(((uint32_t)ds << 4) + 0x294B) & 0xFFFFF] != 0;
-    const uint16_t rec = (uint16_t)(0xC16A + 36 * i);
+    const uint16_t rec = (uint16_t)(0xC16A + 36 * (i < 0 ? 0 : i));
     {   /* F117_FAR_AIR_MATRIX_LOG=1 (diagnostic): the game's aircraft-test matrix (B082, as the game left it) beside the scene's view matrix (7B28) and the attitude (2DEE..2DF2), 40 lines */
         static int ml = -1; static unsigned left = 40;
         if (ml < 0) ml = getenv("F117_FAR_AIR_MATRIX_LOG") != NULL;
@@ -2048,7 +2106,7 @@ static void far_air_project(machine_t *m, int i, int range)
             fprintf(stderr, " att %d %d %d\n", (int16_t)rd16(m->mem, ds, 0x2DEE), (int16_t)rd16(m->mem, ds, 0x2DF0), (int16_t)rd16(m->mem, ds, 0x2DF2));
         }
     }
-    const int16_t x = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 2)), y = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 4)), alt = (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 6));
+    const int16_t x = pt ? pt[0] : (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 2)), y = pt ? pt[1] : (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 4)), alt = pt ? pt[2] : (int16_t)rd16(m->mem, ds, (uint16_t)(rec + 6));
         int16_t v[3];
         air_vector(m, ds, x, y, alt, v);
         int32_t comp[3];
@@ -2084,8 +2142,9 @@ static void far_air_project(machine_t *m, int i, int range)
             g_pend[g_npend].y = fy - w / 2;
             g_pend[g_npend].w = w;
             g_pend[g_npend].depth = (int)depth;
-            g_pend[g_npend].unit = (unsigned)i;
+            g_pend[g_npend].unit = i < 0 ? 0x100u + (unsigned)(-1 - i) : (unsigned)i;
             g_pend[g_npend].m = m;
+            g_pend[g_npend].colour = colour;
             g_npend++;
         }
 }
@@ -2096,7 +2155,7 @@ static void far_aircraft_dots(machine_t *m)
 {
     {   /* F117_WIDE_DOT_ROW=Y (test only): a row of far dots, one game pixel every 3 pixels from x -50 to 370 at row Y, drawn through the same layer as the far aircraft dots: which of them a building hides, and which survive over sky and ground, in one picture */
         static int row = -2; if (row == -2) { const char *e = getenv("F117_WIDE_DOT_ROW"); row = e ? atoi(e) : -1; }
-        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_pend[g_npend].depth = 0; g_pend[g_npend].m = m; g_npend++; } }
+        if (row >= 0 && g_collector.overlay_dot) for (int x = -50; x <= 370 && g_npend < 160; x += 3) { g_pend[g_npend].x = x; g_pend[g_npend].y = row; g_pend[g_npend].w = 1.0; g_pend[g_npend].depth = 0; g_pend[g_npend].m = m; g_pend[g_npend].colour = 0xFF0F; g_npend++; } }
     static int on = -1;
     if (on < 0) { const char *e = getenv("F117_WIDE_FAR_AIRCRAFT"); on = e ? (e[0] == '2' ? 2 : e[0] == '1') : 1; }      /* ON by default (owner, 13 Nov, after the picture); F117_WIDE_FAR_AIRCRAFT=0 turns it off; the reach is the Draw distance setting; 2 (diagnostic): every aircraft, the ones the game draws included: the overlay must land on the game's own dot */
     if (!on || !g_collector.overlay_rect || (on == 1 && g_distance <= 4800)) return;
@@ -2128,7 +2187,7 @@ static void far_aircraft_dots(machine_t *m)
             if (early < 0) early = getenv("F117_FAR_AIR_EARLY") != NULL;
             if (!early) { if (g_air_nlate < 64) { g_air_late[g_air_nlate].i = i; g_air_late[g_air_nlate].range = range; g_air_late[g_air_nlate].m = m; g_air_nlate++; } continue; }
         }
-        far_air_project(m, i, range);
+        far_air_project(m, i, range, NULL, 0xFF0F);
     }
 }
 

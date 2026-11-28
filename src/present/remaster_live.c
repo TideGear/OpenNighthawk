@@ -2442,10 +2442,10 @@ void remaster_live_overlay_rect(remaster_live *r, double x, double y, double w, 
     if (inv > 0.0) p->inv_depth_scale = inv;
 }
 
-void remaster_live_far_air_dot(remaster_live *r, double x, double y, double size, int depth, unsigned unit)
+void remaster_live_far_air_dot(remaster_live *r, double x, double y, double size, int depth, unsigned unit, unsigned colour_word)
 {
     const size_t first = r->frame.n;
-    remaster_live_overlay_rect(r, x, y, size, size, 0xFF0F, 0, -depth);
+    remaster_live_overlay_rect(r, x, y, size, size, colour_word, 0, -depth);
     if (r->frame.n > first) {
         remaster_prim *dot = &r->frame.prim[first];
         dot->owner = 0xFFFFF7FDu;    /* an ordinary depth-tested polygon, without the flat dot stencil rule */
@@ -2465,7 +2465,9 @@ void remaster_live_overlay_line(remaster_live *r, double x0, double y0, double x
     }
     remaster_prim *p = &f->prim[f->n++];
     memset(p, 0, sizeof *p);
-    const double z = 0x20200, xs[2] = { x0, x1 }, ys[2] = { y0, y1 };      /* layer 1 */      /* in front of everything, as the flat tracer is drawn last; no object's owner */
+    /* bit 16 of the colour word (REMASTER_LINE_HUD): a HUD symbol the original draws after the whole 3D picture (the precise weapon box), so at the near plane, in front of
+     * every face however close (a missile passing the canopy hid it at layer 1, owner 27 Nov) */
+    const double z = (colour_word & 0x10000u) ? 0x10001 : 0x20200, xs[2] = { x0, x1 }, ys[2] = { y0, y1 };      /* layer 1 */      /* in front of everything, as the flat tracer is drawn last; no object's owner */
     p->kind = SCENE_LINES;
     p->n = 2;
     for (int k = 0; k < 2; k++) {
