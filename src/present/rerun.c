@@ -2060,7 +2060,8 @@ static void wide_dot_at_entry(machine_t *m, uint16_t ds, uint16_t ss, uint16_t s
         sx_t += shift;
     }
     const int on = sx_t >= 0 && sx_t <= 0x13F && sy >= 0 && sy <= (rows ? 0x60 : 0xC7);
-    if (log == 2) fprintf(stderr, "[wide-pt] clock %llu caller %04X view %02X zoom %u true x %lld y %d %s\n", (unsigned long long)m->cpu.icount, ret, view, zoom, (long long)sx, sy, on ? "on" : "off");
+    if (log == 2) fprintf(stderr, "[wide-pt] clock %llu caller %04X view %02X zoom %u true x %lld y %d %s args %d %d %d\n", (unsigned long long)m->cpu.icount, ret, view, zoom, (long long)sx, sy, on ? "on" : "off",
+                           (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 2)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 4)), (int16_t)rd16(m->mem, ss, (uint16_t)(sp + 6)));
     if (log == 2 && (ret == 0xAD26 || ret == 0xA4ED))     /* the detection ring's projection (air unit AD26, ground site A4ED): the state B4F5 will test (matched.c 24061) */
         fprintf(stderr, "[wide-ring] clock %llu caller %04X countdown %d S %d detector %d margin %d predicted %s x %lld y %d\n", (unsigned long long)m->cpu.icount, ret,
                 (int16_t)rd16(m->mem, ds, 0x3D98), (int16_t)rd16(m->mem, ds, 0x368E), (int16_t)rd16(m->mem, ds, 0xC0AA), (int)(int16_t)rd16(m->mem, ds, 0x368E) - (int)(int16_t)rd16(m->mem, ds, 0x3D98), on ? "on" : "off", (long long)sx, sy);
