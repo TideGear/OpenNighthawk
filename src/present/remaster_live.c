@@ -549,11 +549,16 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
         if (do1 && tu && m->cpu.icount >= tf && m->cpu.icount < tu) {
             for (size_t i = 0; i < fr->n; i++) {
                 const remaster_prim *p = &fr->prim[i];
-                for (int k = 0; k < p->n; k++) {
+                int touch = 0;                      /* a primitive with any vertex in the box is logged whole (a line reaching out of the box keeps both ends) */
+                for (int k = 0; k < p->n && !touch; k++) {
                     if (p->v[k].z <= 0) continue;
                     const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
-                    if (sx < tb[0] || sx > tb[2] || sy < tb[1] || sy > tb[3]) continue;
-                    fprintf(stderr, "[track] %llu %zu %d %u %04X %d %.3f %.3f %d\n", (unsigned long long)m->cpu.icount, i, (int)p->kind, (unsigned)p->model, (unsigned)p->colour_word, k, sx, sy, (int)p->v[k].z);
+                    touch = !(sx < tb[0] || sx > tb[2] || sy < tb[1] || sy > tb[3]);
+                }
+                for (int k = 0; touch && k < p->n; k++) {
+                    if (p->v[k].z <= 0) continue;
+                    const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
+                    fprintf(stderr, "[track] %llu %zu %d %u %04X %d %.3f %.3f %d %.6g %08X %u\n", (unsigned long long)m->cpu.icount, i, (int)p->kind, (unsigned)p->model, (unsigned)p->colour_word, k, sx, sy, (int)p->v[k].z, p->inv_depth_scale, (unsigned)p->owner, (unsigned)p->flat);
                 }
             }
             fprintf(stderr, "[track-frame] %llu origin %.3f %.3f\n", (unsigned long long)m->cpu.icount, origin[0], origin[1]);
@@ -2194,6 +2199,10 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
                 const unsigned cls = m->mem[(((uint32_t)ds << 4) + (uint16_t)(tab + lo)) & 0xFFFFF];
                 cnt[hi][lo][(cls & 0x80) ? 1 : 0]++;
                 if (++n % 2000 == 0) { fprintf(stderr, "[class] after %u placements, immediate (bit 7 clear) / deferred by table.model:", n); for (unsigned i = 0; i < 8; i++) for (unsigned j = 0; j < 128; j++) if (cnt[i][j][0] || cnt[i][j][1]) fprintf(stderr, " %u.%u=%u/%u", i, j, cnt[i][j][0], cnt[i][j][1]); fputc(10, stderr); } } }
+        {   /* F117_REMASTER_PLACEMENT_MODEL=N (diagnostic, R55): every placement of model N (low seven bits), before the range test below */
+            static int want = -2; if (want == -2) { const char *e = getenv("F117_REMASTER_PLACEMENT_MODEL"); want = e ? atoi(e) : -1; }
+            if (want >= 0 && (int)(type & 0x7F) == want) fprintf(stderr, "[place-model] clock %llu model %u caller %04X ring %u shift %d recorded %d\n", (unsigned long long)m->cpu.icount, type, peek16(m, ss, sp), ring, shift, shift >= -16 && shift <= 16 && r->nunits < UNITS_MAX);
+        }
         if (shift >= -16 && shift <= 16 && r->nunits < UNITS_MAX) {
             const unsigned u = r->nunits++;
             r->units[u].bank = peek16(m, ds, (uint16_t)(0xB78A + 2 * (type >> 8)));
@@ -2229,13 +2238,13 @@ int remaster_live_exec(remaster_live *r, machine_t *m, unsigned k)
             static const char *placement_from; static int placement_all = -1;       /* read once: this runs for every placement */
             if (placement_all < 0) { placement_from = getenv("F117_REMASTER_PLACEMENT_LOG_FROM"); placement_all = getenv("F117_REMASTER_PLACEMENT_LOG_ALL") != NULL; }
             static unsigned placements_logged[5];
-            if (placement_from && ring >= 1 && ring <= 4 && placements_logged[ring] < (placement_all ? ~0u : 4u) &&
-                (caller == 0x06A6 || caller == 0x075E) &&
+            if (placement_from && ring <= 4 && placements_logged[ring] < (placement_all ? ~0u : 4u) &&
+                (caller == 0x06A6 || caller == 0x075E || getenv("F117_REMASTER_PLACEMENT_LOG_EVERY")) &&
                 m->cpu.icount >= strtoull(placement_from, NULL, 0)) {
-                fprintf(stderr, "[placement] clock %llu ring %u caller %04X model %u view %u,%u,%u native-eye %d,%d,%d position %d,%d,%d\n",
+                fprintf(stderr, "[placement] clock %llu ring %u caller %04X model %u view %u,%u,%u native-eye %d,%d,%d position %d,%d,%d shift %d offset %.3f,%.3f,%.3f\n",
                         (unsigned long long)m->cpu.icount, ring, caller, type, view[0], view[1], view[2],
                         (int16_t)peek16(m, ds, 0x49AC), (int16_t)peek16(m, ds, 0x49AE), (int16_t)peek16(m, ds, 0x49B0),
-                        r->units[u].position[0], r->units[u].position[1], r->units[u].position[2]);
+                        r->units[u].position[0], r->units[u].position[1], r->units[u].position[2], shift, r->units[u].camera_offset[0], r->units[u].camera_offset[1], r->units[u].camera_offset[2]);
                 ++placements_logged[ring];
             }
         }
