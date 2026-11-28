@@ -275,6 +275,7 @@ int remaster_scene_has_shared(const remaster_scene *s)
     for (unsigned i = 0; i < SCENE_VERTICES; i++) if (s->pose.shared_present[i]) return 1;
     return 0;
 }
+unsigned remaster_scene_parts(const remaster_scene *s) { return s->pose.nparts; }
 void remaster_scene_origin(const remaster_scene *s, int32_t out[3]) { for (int j = 0; j < 3; j++) out[j] = s->pose.part[0].translation[j]; }
 
 static F117_TLS unsigned g_lod_shift;
@@ -303,6 +304,73 @@ int remaster_scene_add(remaster_scene *s, const uint8_t *mem, size_t mem_size, u
 
 uint32_t remaster_scene_next_serial(remaster_scene *s) { s->serial = (s->serial + 1) & 0xFFFFF; return s->serial; }
 
+/* R55: a part pose the game did not compute. The game sets up the parts of the detail level it chose by distance (120A:0317 with that level's count,
+ * [7D58]); Model detail Full draws a finer level, which can have more parts (a radar's turning panel above the far version's single dot), and their
+ * pose words then hold whatever an earlier object left. Part k is built as 120A:0317 and 120A:03E8 build it: its rotation from its angle setting
+ * (1452:03AB: the angle in the first, second or third place by the axis byte, 65536 to the turn) composed with the base part's camera matrix
+ * (1452:0288), its translation the base's plus the pivot through the base matrix less the pivot through its own (120A:043C), and its eye and light
+ * the base-local ones (the eye less the pivot) through its own rotation (1452:021B, the high words summed and doubled). Checked against the game's
+ * own poses of models 49 and 73 (F117_PART_POSE_CHECK=1). */
+static int16_t clamp16(double v) { const long r = lround(v); return (int16_t)(r > 32767 ? 32767 : r < -32768 ? -32768 : r); }
+static void part_frame(const int16_t m[9], const int16_t v[3], int16_t out[3])
+{
+    for (int c = 0; c < 3; c++) {
+        uint16_t sum = 0;
+        for (int r = 0; r < 3; r++) sum = (uint16_t)(sum + (uint16_t)(((int32_t)v[r] * m[3 * c + r]) >> 16));   /* the transposed matrix: element (r, c) is m[3c + r] */
+        out[c] = (int16_t)(uint16_t)(sum << 1);
+    }
+}
+static void build_part(const scene_mesh *mesh, scene_pose *p, unsigned k)
+{
+    const scene_part_pose *b = &p->part[0];
+    scene_part_pose *q = &p->part[k];
+    const double a = p->setting[mesh->part[k].angle & 127] * (6.283185307179586 / 65536.0);
+    double an[3] = { 0, 0, 0 };
+    an[mesh->part[k].axis < 1 ? 0 : mesh->part[k].axis == 1 ? 1 : 2] = a;
+    const double s0 = sin(an[0]), c0 = cos(an[0]), s1 = sin(an[1]), c1 = cos(an[1]), s2 = sin(an[2]), c2 = cos(an[2]);
+    const double R[9] = { c2 * c0 - s2 * s1 * s0, s2 * c0 + c2 * s1 * s0, -c1 * s0, -s2 * c1, c2 * c1, s1, c2 * s0 + s2 * s1 * c0, s2 * s0 - c2 * s1 * c0, c1 * c0 };
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++) q->matrix[3 * i + j] = clamp16(R[3 * i] * b->matrix[j] + R[3 * i + 1] * b->matrix[3 + j] + R[3 * i + 2] * b->matrix[6 + j]);
+    const int16_t *off = mesh->part[k].offset;
+    for (int c = 0; c < 3; c++) {
+        uint32_t t = (uint32_t)b->translation[c];
+        for (int r = 0; r < 3; r++) t += (uint32_t)((int32_t)off[r] * b->matrix[3 * r + c]) - (uint32_t)((int32_t)off[r] * q->matrix[3 * r + c]);
+        q->translation[c] = (int32_t)t;
+    }
+    /* the eye and light go through the part's own rotation only: 120A:0317 stores the transpose of the rotation (1452:03A1 on 03AB's output), not of
+     * the composed matrix, in the pair's second half (1.15 fixed point) */
+    int16_t Rq[9], eye[3];
+    for (int i = 0; i < 9; i++) Rq[i] = clamp16(R[i] * 32768.0);
+    for (int r = 0; r < 3; r++) eye[r] = (int16_t)(uint16_t)((uint16_t)b->eye[r] - (uint16_t)off[r]);
+    part_frame(Rq, eye, q->eye);
+    part_frame(Rq, b->light, q->light);
+}
+static void complete_parts(const scene_mesh *mesh, scene_pose *p, const uint8_t *dsp)
+{
+    static int on = -1, check = -1;
+    if (on < 0) { on = getenv("F117_REMASTER_PART_POSE") != NULL; check = getenv("F117_PART_POSE_CHECK") != NULL; }
+    if ((!on && !check) || p->nparts < 2) return;
+    int set = (int16_t)(dsp[0x7D58] | dsp[0x7D59] << 8);
+    if (set < 1) set = 1;
+    if (check && set >= (int)p->nparts) {      /* the game built every part: compare ours with it */
+        static int worst[4]; static unsigned n;
+        for (unsigned k = 1; k < p->nparts; k++) {
+            scene_part_pose mine = p->part[k];
+            scene_pose tmp = *p; build_part(mesh, &tmp, k); mine = tmp.part[k];
+            int d[4] = { 0, 0, 0, 0 };
+            for (int j = 0; j < 9; j++) { const int e = abs(mine.matrix[j] - p->part[k].matrix[j]); if (e > d[0]) d[0] = e; }
+            for (int j = 0; j < 3; j++) {
+                const int64_t e = llabs((int64_t)mine.translation[j] - p->part[k].translation[j]); if (e > d[1]) d[1] = (int)(e > 2000000000 ? 2000000000 : e);
+                const int f = abs(mine.eye[j] - p->part[k].eye[j]); if (f > d[2]) d[2] = f;
+                const int g = abs(mine.light[j] - p->part[k].light[j]); if (g > d[3]) d[3] = g;
+            }
+            for (int i = 0; i < 4; i++) if (d[i] > worst[i]) worst[i] = d[i];
+            if (++n % 5000 == 1) fprintf(stderr, "[part-pose-check] %u parts compared; worst difference: matrix %d, translation %d, eye %d, light %d\n", n, worst[0], worst[1], worst[2], worst[3]);
+        }
+    }
+    if (on) for (unsigned k = (unsigned)set; k < p->nparts; k++) build_part(mesh, p, k);
+}
+
 int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *bank, uint16_t model, const int16_t position[3], remaster_frame *f)
 {
     int16_t camera[9];
@@ -316,6 +384,22 @@ int remaster_scene_add_at(remaster_scene *s, const uint8_t *dsp, const uint8_t *
     const scene_mesh *mesh = entry->mesh;
     s->serial = (s->serial + 1) & 0xFFFFF;
     if (!scene_pose_read(&s->pose, mesh, dsp, SCENE_SEGMENT)) return -1;
+    complete_parts(mesh, &s->pose, dsp);
+    {   /* F117_POSE_LOG_MODEL=N (diagnostic, R55): each part's 32-bit translation and first matrix row as read for model N */
+        static int want = -2; if (want == -2) { const char *e = getenv("F117_POSE_LOG_MODEL"); want = e ? atoi(e) : -1; }
+        if ((want >= 0 && (int)model == want) || (want == 999 && s->pose.nparts > 1)) {   /* 999: every model of more than one part */
+            fprintf(stderr, "[pose] model %u src %d parts %u set %d pos %d %d %d", (unsigned)model, remaster_prim_source, s->pose.nparts,
+                    (int16_t)(dsp[0x7D58] | dsp[0x7D59] << 8), position[0], position[1], position[2]);
+            for (unsigned k = 0; k < s->pose.nparts; k++) {
+                fprintf(stderr, " | p%u", k);
+                if (k) fprintf(stderr, " angle %u axis %u value %d", mesh->part[k].angle, mesh->part[k].axis, s->pose.setting[mesh->part[k].angle & 127]);
+                fprintf(stderr, " t %d %d %d e %d %d %d l %d %d %d m", (int)s->pose.part[k].translation[0], (int)s->pose.part[k].translation[1], (int)s->pose.part[k].translation[2],
+                        s->pose.part[k].eye[0], s->pose.part[k].eye[1], s->pose.part[k].eye[2], s->pose.part[k].light[0], s->pose.part[k].light[1], s->pose.part[k].light[2]);
+                for (int j = 0; j < 9; j++) fprintf(stderr, " %d", s->pose.part[k].matrix[j]);
+            }
+            fprintf(stderr, "\n");
+        }
+    }
     const uint32_t (*offsets)[3] = NULL;
     if (s->pose.nparts == 1 && !(mesh->raw_vertices & 0x8000) && mesh->nvertices <= CACHED_VERTICES) {
         const int16_t *matrix = s->pose.part[0].matrix;

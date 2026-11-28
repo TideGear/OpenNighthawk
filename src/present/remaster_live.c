@@ -558,7 +558,7 @@ static void draw_scene_ex(const machine_t *m, remaster_target *t, const remaster
                 for (int k = 0; touch && k < p->n; k++) {
                     if (p->v[k].z <= 0) continue;
                     const double sx = origin[0] + 256.0 * p->v[k].x / p->v[k].z, sy = origin[1] + 256.0 * p->v[k].y / p->v[k].z;
-                    fprintf(stderr, "[track] %llu %zu %d %u %04X %d %.3f %.3f %d %.6g %08X %u\n", (unsigned long long)m->cpu.icount, i, (int)p->kind, (unsigned)p->model, (unsigned)p->colour_word, k, sx, sy, (int)p->v[k].z, p->inv_depth_scale, (unsigned)p->owner, (unsigned)p->flat);
+                    fprintf(stderr, "[track] %llu %zu %d %u %04X %d %.3f %.3f %d %.6g %08X %u src %u\n", (unsigned long long)m->cpu.icount, i, (int)p->kind, (unsigned)p->model, (unsigned)p->colour_word, k, sx, sy, (int)p->v[k].z, p->inv_depth_scale, (unsigned)p->owner, (unsigned)p->flat, (unsigned)p->source);
                 }
             }
             fprintf(stderr, "[track-frame] %llu origin %.3f %.3f\n", (unsigned long long)m->cpu.icount, origin[0], origin[1]);
@@ -1674,10 +1674,11 @@ static void capture_template(remaster_live *r, machine_t *m)
         if (r->ntmpl == sizeof r->tmpl / sizeof r->tmpl[0]) return;
         r->ntmpl++;
         if (getenv("F117_TEMPLATE_LOG"))     /* diagnostic: when each model's template is first learned (far instances of a model cannot be drawn natively before it) */
-            fprintf(stderr, "[template] clock %llu: learned bank %04X model %u (%u templates)\n", (unsigned long long)m->cpu.icount, (unsigned)r->bank, (unsigned)r->model, r->ntmpl);
+            fprintf(stderr, "[template] clock %llu: learned bank %04X model %u parts %d (%u templates)\n", (unsigned long long)m->cpu.icount, (unsigned)r->bank, (unsigned)r->model, parts, r->ntmpl);
     }
     r->tmpl[i].bank = r->bank; r->tmpl[i].model = r->model;
     r->tmpl[i].parts = remaster_scene_has_shared(r->scene) ? -1 : parts;      /* -1: shared vertices, always the game's own pose */
+    if (getenv("F117_TEMPLATE_LOG")) fprintf(stderr, "[template-parts] bank %04X model %u [7D58] %d decoded parts %u -> %d\n", (unsigned)r->bank, (unsigned)r->model, parts, remaster_scene_parts(r->scene), r->tmpl[i].parts);
     memcpy(r->tmpl[i].bytes, m->mem + (((uint32_t)ds << 4) + TEMPLATE_AT), TEMPLATE_LEN);
 }
 

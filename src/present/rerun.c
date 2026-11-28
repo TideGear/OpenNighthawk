@@ -1495,6 +1495,21 @@ static int far_scenery_body(machine_t *m)
         if ((k & 63) == 63) rerun_yield_point();      /* a sliced copy gives the display loop its turn here (state is clean between picks) */
         const far_pick *pk = &picks[k];
         const far_inst *f = &g_inst[pk->idx];
+        {   /* F117_FAR_LOG_MODEL=N (diagnostic, R55): each far pick of model N: world position, eye, level units, and the view matrix 7B28, for an exact reference */
+            /* a comma list of models; F117_FAR_LOG_NEAR=X,Y,R keeps only picks within R world units of X,Y */
+            static int want = -2; static unsigned char wanted[128]; static long nx, ny, nr = -1;
+            if (want == -2) {
+                const char *e = getenv("F117_FAR_LOG_MODEL"); want = e ? 1 : -1;
+                for (const char *q = e; q && *q; ) { const int v = atoi(q); if (v >= 0 && v < 128) wanted[v] = 1; q = strchr(q, ','); if (q) q++; }
+                const char *b = getenv("F117_FAR_LOG_NEAR"); if (b) sscanf(b, "%ld,%ld,%ld", &nx, &ny, &nr);
+            }
+            if (want > 0 && wanted[pk->model & 0x7F] && (nr < 0 || (labs((long)f->x - nx) <= nr && labs((long)f->y - ny) <= nr))) {
+                fprintf(stderr, "[far-pick] %llu model %u ring %d level %d world %d %d %d eye %d %d %d pick %d %d %d origin %d %d %d m", (unsigned long long)m->cpu.icount, (unsigned)pk->model, f->ring, pk->level,
+                        f->x, f->y, f->z, (int32_t)eye_long[0], (int32_t)eye_long[1], (int32_t)eye_long[2], pk->x, pk->y, pk->z, pk->ox, pk->oy, pk->oz);
+                for (int i = 0; i < 9; i++) fprintf(stderr, " %d", (int16_t)rd16(m->mem, ds, (uint16_t)(0x7B28 + 2 * i)));
+                fprintf(stderr, "\n");
+            }
+        }
         if (use_range && batched && btook[k]) { if (!in_run) { run0 = k; in_run = 1; } native++; continue; }
         if (in_run) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit_range(g_collector.user, m, run0, k); if (stats) commit_ms_acc += walk_ms() - ct0; in_run = 0; }
         if (batched && btook[k]) { const double ct0 = stats ? walk_ms() : 0.0; g_collector.native_commit(g_collector.user, m, k); if (stats) commit_ms_acc += walk_ms() - ct0; native++; continue; }
